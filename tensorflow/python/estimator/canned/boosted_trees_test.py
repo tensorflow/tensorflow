@@ -564,13 +564,17 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     # Train for a few steps, and validate final checkpoint.
     est.train(input_fn, steps=num_steps)
 
-    feature_names_expected = ['f_0_bucketized', 'f_2_bucketized', 'f_1_bucketized']
+    feature_names_expected = ['f_0_bucketized',
+                              'f_2_bucketized',
+                              'f_1_bucketized']
 
-    feature_names, importances = est.experimental_feature_importances(normalize=False)
+    feature_names, importances = est.experimental_feature_importances(
+        normalize=False)
     self.assertAllEqual(feature_names_expected, feature_names)
     self.assertAllClose([0.833933, 0.606342, 0.0], importances)
 
-    feature_names, importances = est.experimental_feature_importances(normalize=True)
+    feature_names, importances = est.experimental_feature_importances(
+        normalize=True)
     self.assertAllEqual(feature_names_expected, feature_names)
     self.assertAllClose([0.579010, 0.420990, 0.0], importances)
 
@@ -599,7 +603,9 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError, 'empty serialized string'):
       est.experimental_feature_importances(normalize=True)
 
-  def _create_fake_checkpoint_with_tree_ensemble_proto(self, est, tree_ensemble_text):
+  def _create_fake_checkpoint_with_tree_ensemble_proto(self,
+                                                       est,
+                                                       tree_ensemble_text):
     with ops.Graph().as_default():
       with ops.name_scope('boosted_trees') as name:
         tree_ensemble = boosted_trees_ops.TreeEnsemble(name=name)
@@ -731,14 +737,21 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
         tree_weights: 1.0
         tree_weights: 1.0
         """
-    self._create_fake_checkpoint_with_tree_ensemble_proto(est, tree_ensemble_text)
+    self._create_fake_checkpoint_with_tree_ensemble_proto(
+        est, tree_ensemble_text)
 
-    feature_names_expected = ['f_0_bucketized', 'f_2_bucketized', 'f_1_bucketized']
-    feature_names, importances = est.experimental_feature_importances(normalize=False)
+    feature_names_expected = ['f_0_bucketized',
+                              'f_2_bucketized',
+                              'f_1_bucketized']
+    feature_names, importances = est.experimental_feature_importances(
+        normalize=False)
     self.assertAllEqual(feature_names_expected, feature_names)
+    # Gain sum for each features:
+    # = 1.0 * [3 + 1, 2, 2] + 1.0 * [1, 1, 0]
     self.assertAllClose([5.0, 3.0, 2.0], importances)
 
-    feature_names, importances = est.experimental_feature_importances(normalize=True)
+    feature_names, importances = est.experimental_feature_importances(
+        normalize=True)
     self.assertAllEqual(feature_names_expected, feature_names)
     self.assertAllClose([0.5, 0.3, 0.2], importances)
 
@@ -820,14 +833,21 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
         tree_weights: 0.6
         tree_weights: 1.0
         """
-    self._create_fake_checkpoint_with_tree_ensemble_proto(est, tree_ensemble_text)
+    self._create_fake_checkpoint_with_tree_ensemble_proto(
+        est, tree_ensemble_text)
 
-    feature_names_expected = ['f_0_bucketized', 'f_2_bucketized', 'f_1_bucketized']
-    feature_names, importances = est.experimental_feature_importances(normalize=False)
+    feature_names_expected = ['f_0_bucketized',
+                              'f_2_bucketized',
+                              'f_1_bucketized']
+    feature_names, importances = est.experimental_feature_importances(
+        normalize=False)
     self.assertAllEqual(feature_names_expected, feature_names)
+    # Gain sum for each features:
+    # = 0.4 * [12.5, 0, 5] + 0.6 * [0, 5, 0] + 1.0 * [0, 0, 0]
     self.assertAllClose([5.0, 3.0, 2.0], importances)
 
-    feature_names, importances = est.experimental_feature_importances(normalize=True)
+    feature_names, importances = est.experimental_feature_importances(
+        normalize=True)
     self.assertAllEqual(feature_names_expected, feature_names)
     self.assertAllClose([0.5, 0.3, 0.2], importances)
 
@@ -856,11 +876,15 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
         tree_weights: 1.0
         tree_weights: 1.0
         """
-    self._create_fake_checkpoint_with_tree_ensemble_proto(est, tree_ensemble_text)
+    self._create_fake_checkpoint_with_tree_ensemble_proto(
+        est, tree_ensemble_text)
 
     # Reverse order because feature importances are sorted by np.argsort(f)[::-1]
-    feature_names_expected = ['f_2_bucketized', 'f_1_bucketized', 'f_0_bucketized']
-    feature_names, importances = est.experimental_feature_importances(normalize=False)
+    feature_names_expected = ['f_2_bucketized',
+                              'f_1_bucketized',
+                              'f_0_bucketized']
+    feature_names, importances = est.experimental_feature_importances(
+        normalize=False)
     self.assertAllEqual(feature_names_expected, feature_names)
     self.assertAllClose([0.0, 0.0, 0.0], importances)
 
@@ -868,17 +892,20 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
                                  'all empty or contain only a root node'):
       est.experimental_feature_importances(normalize=True)
 
-  def TestFeatureImportancesNamesForCategoricalColumn(self):
+  def testFeatureImportancesNamesForCategoricalColumn(self):
     categorical = feature_column.categorical_column_with_vocabulary_list(
         key='categorical', vocabulary_list=('bad', 'good', 'ok'))
     feature_indicator = feature_column.indicator_column(categorical)
     bucketized_col = feature_column.bucketized_column(
         feature_column.numeric_column(
-            'an_uninformative_feature', dtype=dtypes.float32),
+            'continuous', dtype=dtypes.float32),
         BUCKET_BOUNDARIES)
+    bucketized_indicator = feature_column.indicator_column(bucketized_col)
 
     est = boosted_trees.BoostedTreesRegressor(
-        feature_columns=[bucketized_col, feature_indicator],
+        feature_columns=[feature_indicator,
+                         bucketized_col,
+                         bucketized_indicator],
         n_batches_per_layer=1,
         n_trees=2,
         learning_rate=1.0,
@@ -898,7 +925,7 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
           }
           nodes {
             bucketized_split {
-              feature_id: 3
+              feature_id: 4
               left_id: 3
               right_id: 4
             }
@@ -930,36 +957,63 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
               right_id: 2
             }
             metadata {
-              gain: 3.0
+              gain: 1.0
+            }
+          }
+          nodes {
+            bucketized_split {
+              feature_id: 5
+              left_id: 3
+              right_id: 4
+            }
+            metadata {
+              gain: 2.0
             }
           }
           nodes {
             leaf {
-              scalar: -0.34
+              scalar: -2.34
             }
           }
           nodes {
             leaf {
-              scalar: 1.34
+              scalar: 3.34
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 4.34
             }
           }
         }
         tree_weights: 1.0
         tree_weights: 1.0
         """
-    self._create_fake_checkpoint_with_tree_ensemble_proto(est, tree_ensemble_text)
+    self._create_fake_checkpoint_with_tree_ensemble_proto(
+        est, tree_ensemble_text)
 
-    feature_names_expected = ['categorical_indicator:good',
-                              'an_uninformative_feature_bucketized',
-                              'categorical_indicator:ok',
-                              'categorical_indicator:bad']
-    feature_names, importances = est.experimental_feature_importances(normalize=False)
-    self.assertAllEqual(feature_names_expected, feature_names)
-    self.assertAllClose([5.0, 3.0, 2.0, 0.0], importances)
+    feature_names_expected = ['categorical_indicator:ok',
+                              'continuous_bucketized_indicator:(-2.0, 0.5)',
+                              'continuous_bucketized_indicator:(-inf, -2.0)',
+                              'categorical_indicator:bad',
+                              # Reverse order because feature importances
+                              # are sorted by np.argsort(f)[::-1]
+                              'continuous_bucketized_indicator:(12.0, inf)',
+                              'continuous_bucketized_indicator:(0.5, 12.0)',
+                              'continuous_bucketized',
+                              'categorical_indicator:good']
 
-    feature_names, importances = est.experimental_feature_importances(normalize=True)
+    feature_names, importances = est.experimental_feature_importances(
+        normalize=False)
     self.assertAllEqual(feature_names_expected, feature_names)
-    self.assertAllClose([0.5, 0.3, 0.2, 0.0], importances)
+    # Gain sum for each features:
+    # = 1.0 * [5, 0, 2, 0, 0, 0, 0, 0] + 1.0 * [0, 2, 0, 1, 0, 0, 0, 0]
+    self.assertAllClose([5.0, 2.0, 2.0, 1.0, 0.0, 0.0, 0.0, 0.0], importances)
+
+    feature_names, importances = est.experimental_feature_importances(
+        normalize=True)
+    self.assertAllEqual(feature_names_expected, feature_names)
+    self.assertAllClose([0.5, 0.2, 0.2, 0.1, 0.0, 0.0, 0.0, 0.0], importances)
 
   def testNegativeFeatureImportances(self):
     est = boosted_trees.BoostedTreesClassifier(
@@ -995,7 +1049,8 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
         }
         tree_weights: -1.0
         """
-    self._create_fake_checkpoint_with_tree_ensemble_proto(est, tree_ensemble_text)
+    self._create_fake_checkpoint_with_tree_ensemble_proto(
+        est, tree_ensemble_text)
 
     with self.assertRaisesRegexp(AssertionError, 'non-negative'):
       est.experimental_feature_importances(normalize=False)
