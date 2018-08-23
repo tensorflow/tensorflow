@@ -134,6 +134,21 @@ py_test(
 )
 
 py_test(
+    name = "indexed_dataset_ops_test",
+    srcs = ["indexed_dataset_ops_test.py"],
+    deps = [
+        "//tensorflow/contrib/data/python/ops:contrib_op_loader",
+        "//tensorflow/contrib/data/python/ops:gen_dataset_ops",
+        "//tensorflow/contrib/data/python/ops:indexed_dataset_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "interleave_dataset_op_test",
     size = "medium",
     srcs = ["interleave_dataset_op_test.py"],
