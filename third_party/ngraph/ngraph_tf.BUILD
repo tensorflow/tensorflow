@@ -8,15 +8,6 @@ load(
 )
 
 cc_library(
-    name = "ngraph_libs_linux",
-    srcs = [
-        "lib/libiomp5.so",
-        "lib/libmklml_intel.so",
-    ],
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
     name = "ngraph_tf",
     srcs = [
         "src/ngraph_builder.h",
@@ -58,7 +49,7 @@ cc_library(
         "-I external/ngraph_tf/src",
         "-I external/ngraph_tf/logging",
         "-I external/ngraph/src",
-        "-D NGRAPH_EMBEDDED_IN_TENSORFLOW=1",
+        #"-D NGRAPH_EMBEDDED_IN_TENSORFLOW=1",
     ],
     alwayslink = 1,
     visibility = ["//visibility:public"],

@@ -833,15 +833,26 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
-        name = "ngraph",
+        name = "tbb",
         urls = [
-            "https://mirror.bazel.build/github.com/NervanaSystems/ngraph/archive/v0.5.0.tar.gz",
-            "https://github.com/NervanaSystems/ngraph/archive/v0.5.0.tar.gz",
+            "https://mirror.bazel.build/github.com/01org/tbb/archive/tbb_2018.zip",
+            "https://github.com/01org/tbb/archive/tbb_2018.zip",
         ],
-        sha256 = "cb35d3d98836f615408afd18371fb13e3400711247e0d822ba7f306c45e9bb2c",
-        strip_prefix = "ngraph-0.5.0",
-        build_file = clean_dep("//third_party/ngraph:ngraph.BUILD"),
+        sha256 = "724686f90bcda78f13b76f297d964008737ccd6399328143c1c0093e73ae6a13",
+        strip_prefix = "tbb-tbb_2018",
+        build_file = clean_dep("//third_party/ngraph:tbb.BUILD"),
     )
+
+    # tf_http_archive(
+    #     name = "ngraph",
+    #     urls = [
+    #         "https://mirror.bazel.build/github.com/NervanaSystems/ngraph/archive/v0.5.0.tar.gz",
+    #         "https://github.com/NervanaSystems/ngraph/archive/v0.5.0.tar.gz",
+    #     ],
+    #     sha256 = "cb35d3d98836f615408afd18371fb13e3400711247e0d822ba7f306c45e9bb2c",
+    #     strip_prefix = "ngraph-0.5.0",
+    #     build_file = clean_dep("//third_party/ngraph:ngraph.BUILD"),
+    # )
 
     tf_http_archive(
         name = "nlohmann_json_lib",
