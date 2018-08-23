@@ -306,18 +306,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
                                           {operand_value->getType()}, b_);
     }
     case HloOpcode::kSign: {
-      bool is_signed =
-          primitive_util::IsSignedIntegralType(op->shape().element_type());
+      CHECK(primitive_util::IsSignedIntegralType(op->shape().element_type()))
+          << op->shape().element_type();
       auto type =
           llvm_ir::PrimitiveTypeToIrType(op->shape().element_type(), module_);
       auto cmp = b_->CreateICmpEQ(operand_value, GetZero(type));
-      if (is_signed) {
-        auto ashr =
-            b_->CreateAShr(operand_value, type->getIntegerBitWidth() - 1);
-        return Select(cmp, GetZero(type), b_->CreateOr(ashr, 1));
-      } else {
-        return Select(cmp, GetZero(type), GetOne(type));
-      }
+      auto ashr = b_->CreateAShr(operand_value, type->getIntegerBitWidth() - 1);
+      return Select(cmp, GetZero(type), b_->CreateOr(ashr, 1));
     }
     case HloOpcode::kNegate:
       return b_->CreateNeg(operand_value);

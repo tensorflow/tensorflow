@@ -234,10 +234,12 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   switch (opcode) {
     case HloOpcode::kFloor:
     case HloOpcode::kCeil:
+    case HloOpcode::kRoundNearestAfz:
       if (!ShapeUtil::ElementIsFloating(shape)) {
         return InvalidArgument(
-            "Expected element type in shape to be floating for floor/ceil "
-            "operation; got %s.",
+            "Expected element type in shape to be floating for %s operation; "
+            "got %s.",
+            HloOpcodeString(opcode).c_str(),
             PrimitiveType_Name(shape.element_type()).c_str());
       }
       return shape;
@@ -251,8 +253,9 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
       if (!ShapeUtil::ElementIsFloating(shape) &&
           !ShapeUtil::ElementIsComplex(shape)) {
         return InvalidArgument(
-            "Expected element type in shape to be floating or complex for "
-            "sin/cos/exp/log/tanh operation; got %s.",
+            "Expected element type in shape to be floating or complex for %s "
+            "operation; got %s.",
+            HloOpcodeString(opcode).c_str(),
             PrimitiveType_Name(shape.element_type()).c_str());
       }
       return shape;
@@ -265,19 +268,51 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
       } else {
         return InvalidArgument(
             "Expected element type in shape to be floating or complex for "
-            "real/imag operation; got %s.",
+            "%s operation; got %s.",
+            HloOpcodeString(opcode).c_str(),
             PrimitiveType_Name(shape.element_type()).c_str());
       }
     case HloOpcode::kAbs:
       if (ShapeUtil::ElementIsComplex(shape)) {
         return ShapeUtil::ChangeElementType(
             shape, primitive_util::ComplexComponentType(shape.element_type()));
+      } else if (ShapeUtil::ElementIsSigned(shape)) {
+        return shape;
+      } else {
+        return InvalidArgument(
+            "Expected element type in shape to be floating or complex for "
+            "%s operation; got %s.",
+            HloOpcodeString(opcode).c_str(),
+            PrimitiveType_Name(shape.element_type()).c_str());
+      }
+    case HloOpcode::kClz:
+      if (!ShapeUtil::ElementIsIntegral(shape)) {
+        return InvalidArgument(
+            "Expected an integral element type in argument to Clz "
+            "operation; got %s.",
+            PrimitiveType_Name(shape.element_type()).c_str());
       }
       return shape;
-    case HloOpcode::kClz:
     case HloOpcode::kNegate:
-    case HloOpcode::kRoundNearestAfz:
+      if (!ShapeUtil::ElementIsIntegral(shape) &&
+          !ShapeUtil::ElementIsFloating(shape) &&
+          !ShapeUtil::ElementIsComplex(shape)) {
+        return InvalidArgument(
+            "Expected element type in shape to be integral, floating or "
+            "complex for %s operation; got %s.",
+            HloOpcodeString(opcode).c_str(),
+            PrimitiveType_Name(shape.element_type()).c_str());
+      }
+      return shape;
     case HloOpcode::kSign:
+      if (!ShapeUtil::ElementIsSigned(shape) &&
+          !ShapeUtil::ElementIsComplex(shape)) {
+        return InvalidArgument(
+            "Expected element type in shape to be signed or complex for "
+            "%s operation; got %s.",
+            HloOpcodeString(opcode).c_str(),
+            PrimitiveType_Name(shape.element_type()).c_str());
+      }
       return shape;
 
     case HloOpcode::kNot:
