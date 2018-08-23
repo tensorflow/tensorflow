@@ -260,9 +260,9 @@ class HloSharding {
   bool maximal_;
   bool tuple_;
   Array<int64> tile_assignment_;
-  // Only non-empty when tuple_ is true, but because empty tuples are allowed
-  // may also be empty even then. This is a flattened list of all the leaf
-  // shardings in a tuple shape, by pre-order walk (ShapeTree iterator order).
+  // Only non-empty when tuple_ is true. If a tuple is empty then one entry is
+  // present for the root. This is a flattened list of all the leaf shardings in
+  // a tuple shape, by pre-order walk (ShapeTree iterator order).
   std::vector<HloSharding> tuple_elements_;
 };
 
