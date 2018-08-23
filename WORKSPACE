@@ -79,3 +79,10 @@ new_http_archive(
         "http://download.tensorflow.org/models/speech_commands_v0.01.zip",
     ],
 )
+
+new_local_repository(
+    name = "ngraph",
+    path = "/nfs/site/home/avijitch/workspace/tf-upstream/ngraph",
+    build_file = "//third_party/ngraph:ngraph.BUILD",
+)
+
