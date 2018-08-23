@@ -2504,7 +2504,8 @@ Status EncapsulateSubgraphsPass::Run(
 
         const int num_args = input_permutation->size();
         std::vector<bool> const_args(num_args);
-        TF_RETURN_IF_ERROR(BackwardsConstAnalysis(**subgraph, &const_args));
+        TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
+            **subgraph, &const_args, /*compile_time_const_nodes=*/nullptr));
 
         DataTypeVector arg_types(num_args);
         TF_RETURN_IF_ERROR(GetArgTypes(**subgraph, &arg_types));

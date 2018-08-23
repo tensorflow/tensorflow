@@ -126,7 +126,8 @@ Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
   const DataTypeVector& arg_types = (*fbody)->arg_types;
   std::vector<bool> const_args(arg_types.size());
   // If we can't analyze the const args. Bail out.
-  TF_RETURN_IF_ERROR(BackwardsConstAnalysis(*((*fbody)->graph), &const_args));
+  TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
+      *((*fbody)->graph), &const_args, /*compile_time_const_nodes=*/nullptr));
 
   for (int i = 0; i < const_args.size(); ++i) {
     if (const_args[i]) {

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
+#include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -343,6 +344,10 @@ Status FindCompilationCandidates(
                                         flib_def, opts));
   FunctionLibraryRuntime* lib_runtime =
       pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
+  std::vector<bool> compile_time_const_nodes(graph.num_node_ids(), false);
+  TF_RETURN_IF_ERROR(
+      BackwardsConstAnalysis(graph, /*compile_time_const_arg_indices=*/nullptr,
+                             &compile_time_const_nodes));
 
   int64& fuel =
       legacy_flags::GetMarkForCompilationPassFlags()->tf_xla_clustering_fuel;
@@ -396,6 +401,21 @@ Status FindCompilationCandidates(
       VLOG(2) << "Rejecting: " << node->name() << ": resource input/output "
               << node->type_string();
       continue;
+    }
+    if (compile_time_const_nodes[node->id()] &&
+        !registration->requires_compilation) {
+      const OpDef* op_def;
+      TF_RETURN_IF_ERROR(
+          OpRegistry::Global()->LookUpOpDef(node->type_string(), &op_def));
+      if (op_def->is_stateful()) {
+        // We need to be able to constant fold the nodes in
+        // compile_time_const_nodes given constant inputs (required by XLA) and
+        // therefore can't auto-cluster stateful ops since these can never be
+        // constant folded.
+        VLOG(2) << "Rejecting " << node->name()
+                << ": must-be-constant stateful op";
+        continue;
+      }
     }
     if (node->type_string() == "While" &&
         !IsCompilableWhile(*node, jit_device_type, 0, lib_runtime)) {
