@@ -2378,7 +2378,7 @@ def make_lstm_tests(zip_path):
           "time_step_size": [1],
           "input_vec_size": [3],
           "num_cells": [4],
-          "split_tflite_lstm_inputs": [True, False],
+          "split_tflite_lstm_inputs": [False],
       },
   ]
 
