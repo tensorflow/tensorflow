@@ -42,19 +42,19 @@ def main(args):
   model_dir = args[1]
   print('Using %s to store checkpoints.' % model_dir)
 
-  # Define tf.keras Model.
+  # Define a Keras Model.
   model = tf.keras.Sequential()
   model.add(tf.keras.layers.Dense(16, activation='relu', input_shape=(10,)))
   model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
 
-  # Compile tf.keras Model.
+  # Compile the model.
   optimizer = tf.train.GradientDescentOptimizer(0.2)
   model.compile(loss='binary_crossentropy', optimizer=optimizer)
   model.summary()
   tf.keras.backend.set_learning_phase(True)
 
-  # Define a DistributionStrategy and convert the tf.keras Model to a
-  # tf.Estimator that utilizes the DistributionStrategy.
+  # Define a DistributionStrategy and convert the Keras Model to an
+  # Estimator that utilizes the DistributionStrategy.
   strategy = tf.contrib.distribute.MirroredStrategy(
       ['/device:GPU:0', '/device:GPU:1'])
   config = tf.estimator.RunConfig(
@@ -62,7 +62,7 @@ def main(args):
   keras_estimator = tf.keras.estimator.model_to_estimator(
       keras_model=model, config=config, model_dir=model_dir)
 
-  # Train and evaluate the tf.Estimator.
+  # Train and evaluate the model.
   keras_estimator.train(input_fn=input_fn, steps=10)
   eval_result = keras_estimator.evaluate(input_fn=input_fn)
   print('Eval result: {}'.format(eval_result))
