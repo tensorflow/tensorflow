@@ -24,7 +24,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
-from tensorflow.python.framework import function
+from tensorflow.python.eager import function
 from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.ops import gradients_impl
 

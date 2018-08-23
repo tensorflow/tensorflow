@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import sys
 import threading
 
 import numpy as np
@@ -38,6 +39,7 @@ from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond_v2_impl
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
@@ -48,6 +50,10 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+
+# This is to avoid a circular dependency with cond_v2_impl
+# (function -> gradients_impl -> control_flow_ops -> cond_v2_impl).
+cond_v2_impl._function = sys.modules[__name__]  # pylint: disable=protected-access
 
 
 def create_substitute_placeholder(value, name, dtype=None):
@@ -199,6 +205,8 @@ class FuncGraph(CapturingGraph):
       by this function. The Tensors in this structure are the same as those of
       self.outputs. Note that this structure might contain Python `None`s.
     variables: Variables that should be watched during function execution.
+    outer_graph: The graph this function is defined in. May be another FuncGraph
+      or the global default Graph.
     seed: The graph-level random seed.
   """
 
@@ -218,8 +226,9 @@ class FuncGraph(CapturingGraph):
     self.outputs = []
     self.structured_outputs = None
     self.variables = []
+    self.outer_graph = ops.get_default_graph()
 
-    graph = ops.get_default_graph()
+    graph = self.outer_graph
 
     if context.executing_eagerly():
       self.seed = context.global_seed()
@@ -254,6 +263,16 @@ class FuncGraph(CapturingGraph):
       self.inputs.append(internal_tensor)
 
     return internal_tensor
+
+  @property
+  def external_captures(self):
+    """External tensors captured by this function."""
+    return list(self.captures.keys())
+
+  @property
+  def internal_captures(self):
+    """Placeholders in this function corresponding captured tensors."""
+    return list(self.captures.values())
 
 
 def _forward_name(n):
@@ -691,7 +710,7 @@ def _get_defun_inputs_from_args(args):
   return nest.pack_sequence_as(args, function_inputs)
 
 
-def _func_graph_from_py_func(name, python_func, args, kwds, signature=None):
+def func_graph_from_py_func(name, python_func, args, kwds, signature=None):
   """Returns a `FuncGraph` generated from `python_func`.
 
   Args:
@@ -1065,8 +1084,8 @@ class _PolymorphicFunction(object):
 
       if graph_function is None:
         graph_function = GraphCallable(
-            _func_graph_from_py_func(self._name, self._python_function, args,
-                                     kwds, self._input_signature))
+            func_graph_from_py_func(self._name, self._python_function, args,
+                                    kwds, self._input_signature))
         self._variables.extend(
             [v for v in graph_function.variables if v not in self._variables])
         self._arguments_to_functions[cache_key] = graph_function
@@ -1465,8 +1484,7 @@ def make_defun_op(func, *args, **kwds):
      and which can be called directly the way a `@defun` wrapped function
      can.
   """
-  return GraphCallable(
-      _func_graph_from_py_func(func.__name__, func, args, kwds))
+  return GraphCallable(func_graph_from_py_func(func.__name__, func, args, kwds))
 
 
 class AutomaticControlDependencies(object):
