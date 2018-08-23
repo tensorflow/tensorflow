@@ -24,6 +24,7 @@ operators to your graph.
 *   `tf.realdiv`
 *   `tf.truncatediv`
 *   `tf.floor_div`
+*   `tf.div_no_nan`
 *   `tf.truncatemod`
 *   `tf.floormod`
 *   `tf.mod`
