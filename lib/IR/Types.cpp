@@ -35,10 +35,40 @@ FunctionType::FunctionType(Type *const *inputsAndResults, unsigned numInputs,
     numResults(numResults), inputsAndResults(inputsAndResults) {
 }
 
+VectorOrTensorType::VectorOrTensorType(Kind kind, MLIRContext *context,
+                                       Type *elementType, unsigned subClassData)
+    : Type(kind, context, subClassData), elementType(elementType) {}
+
+/// If this is ranked tensor or vector type, return the rank.  If it is an
+/// unranked tensor, return -1.
+int VectorOrTensorType::getRankIfPresent() const {
+  switch (getKind()) {
+  default:
+    llvm_unreachable("not a VectorOrTensorType");
+  case Kind::Vector:
+    return cast<VectorType>(this)->getRank();
+  case Kind::RankedTensor:
+    return cast<RankedTensorType>(this)->getRank();
+  case Kind::UnrankedTensor:
+    return -1;
+  }
+}
+
 VectorType::VectorType(ArrayRef<unsigned> shape, Type *elementType,
                        MLIRContext *context)
-    : Type(Kind::Vector, context, shape.size()), shapeElements(shape.data()),
-      elementType(elementType) {}
+    : VectorOrTensorType(Kind::Vector, context, elementType, shape.size()),
+      shapeElements(shape.data()) {}
+
+/// Return true if the specified element type is ok in a tensor.
+static bool isValidTensorElementType(Type *type, MLIRContext *context) {
+  return isa<FloatType>(type) || isa<VectorType>(type) ||
+         isa<IntegerType>(type) || type == Type::getTFString(context);
+}
+
+TensorType::TensorType(Kind kind, Type *elementType, MLIRContext *context)
+    : VectorOrTensorType(kind, context, elementType) {
+  assert(isValidTensorElementType(elementType, context));
+}
 
 RankedTensorType::RankedTensorType(ArrayRef<int> shape, Type *elementType,
                                    MLIRContext *context)
@@ -65,7 +95,7 @@ ArrayRef<AffineMap*> MemRefType::getAffineMaps() const {
 unsigned MemRefType::getNumDynamicDims() const {
   unsigned numDynamicDims = 0;
   for (int dimSize : getShape()) {
-    if (dimSize < 0)
+    if (dimSize == -1)
       ++numDynamicDims;
   }
   return numDynamicDims;

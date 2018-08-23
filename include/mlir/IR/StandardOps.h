@@ -327,6 +327,47 @@ private:
   explicit DimOp(const Operation *state) : OpBase(state) {}
 };
 
+/// The "extract_element" op reads a tensor or vector and returns one element
+/// from it specified by an index list. The output of extract is a new value
+/// with the same type as the elements of the tensor or vector. The arity of
+/// indices matches the rank of the accessed value (i.e., if a tensor is of rank
+/// 3, then 3 indices are required for the extract).  The indices should all be
+/// of affine_int type.
+///
+/// For example:
+///
+///   %3 = extract_element %0[%1, %2] : vector<4x4xi32>
+///
+class ExtractElementOp
+    : public OpBase<ExtractElementOp, OpTrait::VariadicOperands,
+                    OpTrait::OneResult> {
+public:
+  static void build(Builder *builder, OperationState *result,
+                    SSAValue *aggregate, ArrayRef<SSAValue *> indices = {});
+
+  SSAValue *getAggregate() { return getOperand(0); }
+  const SSAValue *getAggregate() const { return getOperand(0); }
+
+  llvm::iterator_range<Operation::operand_iterator> getIndices() {
+    return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
+  }
+
+  llvm::iterator_range<Operation::const_operand_iterator> getIndices() const {
+    return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
+  }
+
+  static StringRef getOperationName() { return "extract_element"; }
+
+  // Hooks to customize behavior of this op.
+  const char *verify() const;
+  static bool parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p) const;
+
+private:
+  friend class Operation;
+  explicit ExtractElementOp(const Operation *state) : OpBase(state) {}
+};
+
 /// The "load" op reads an element from a memref specified by an index list. The
 /// output of load is a new value with the same type as the elements of the
 /// memref. The arity of indices is the rank of the memref (i.e., if the memref
@@ -352,6 +393,8 @@ public:
   static StringRef getOperationName() { return "load"; }
 
   // Hooks to customize behavior of this op.
+  static void build(Builder *builder, OperationState *result, SSAValue *memref,
+                    ArrayRef<SSAValue *> indices = {});
   const char *verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;

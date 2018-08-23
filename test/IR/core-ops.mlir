@@ -132,4 +132,16 @@ mlfunc @calls(%arg0 : i32) {
   return
 }
 
+// CHECK-LABEL: mlfunc @extract_element(%arg0 : tensor<??i32>, %arg1 : tensor<4x4xf32>) -> i32 {
+mlfunc @extract_element(%arg0 : tensor<??i32>, %arg1 : tensor<4x4xf32>) -> i32 {
+  %c0 = "constant"() {value: 0} : () -> affineint
+
+  // CHECK: %0 = extract_element %arg0[%c0, %c0, %c0, %c0] : tensor<??i32>
+  %0 = extract_element %arg0[%c0, %c0, %c0, %c0] : tensor<??i32>
+
+  // CHECK: %1 = extract_element %arg1[%c0, %c0] : tensor<4x4xf32>
+  %1 = extract_element %arg1[%c0, %c0] : tensor<4x4xf32>
+
+  return %0 : i32
+}
 

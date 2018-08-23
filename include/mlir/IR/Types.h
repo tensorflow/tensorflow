@@ -256,9 +256,33 @@ private:
   ~FunctionType() = delete;
 };
 
+/// This is a common base class between Vector, UnrankedTensor, and RankedTensor
+/// types, because many operations work on values of these aggregate types.
+class VectorOrTensorType : public Type {
+public:
+  Type *getElementType() const { return elementType; }
+
+  /// If this is ranked tensor or vector type, return the rank.  If it is an
+  /// unranked tensor, return -1.
+  int getRankIfPresent() const;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const Type *type) {
+    return type->getKind() == Kind::Vector ||
+           type->getKind() == Kind::RankedTensor ||
+           type->getKind() == Kind::UnrankedTensor;
+  }
+
+public:
+  Type *elementType;
+
+  VectorOrTensorType(Kind kind, MLIRContext *context, Type *elementType,
+                     unsigned subClassData = 0);
+};
+
 /// Vector types represent multi-dimensional SIMD vectors, and have a fixed
 /// known constant shape with one or more dimension.
-class VectorType : public Type {
+class VectorType : public VectorOrTensorType {
 public:
   static VectorType *get(ArrayRef<unsigned> shape, Type *elementType);
 
@@ -266,7 +290,7 @@ public:
     return ArrayRef<unsigned>(shapeElements, getSubclassData());
   }
 
-  Type *getElementType() const { return elementType; }
+  unsigned getRank() const { return getSubclassData(); }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Type *type) {
@@ -283,9 +307,8 @@ private:
 
 /// Tensor types represent multi-dimensional arrays, and have two variants:
 /// RankedTensorType and UnrankedTensorType.
-class TensorType : public Type {
+class TensorType : public VectorOrTensorType {
 public:
-  Type *getElementType() const { return elementType; }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Type *type) {
@@ -294,9 +317,6 @@ public:
   }
 
 protected:
-  /// The type of each scalar element of the tensor.
-  Type *elementType;
-
   TensorType(Kind kind, Type *elementType, MLIRContext *context);
   ~TensorType() {}
 };
@@ -313,7 +333,7 @@ public:
     return ArrayRef<int>(shapeElements, getSubclassData());
   }
 
-  unsigned getRank() const { return getShape().size(); }
+  unsigned getRank() const { return getSubclassData(); }
 
   static bool classof(const Type *type) {
     return type->getKind() == Kind::RankedTensor;
@@ -346,7 +366,6 @@ private:
 /// number of dimensions. Each shape element can be a positive integer or
 /// unknown (represented by any negative integer). MemRef types also have an
 /// affine map composition, represented as an array AffineMap pointers.
-// TODO: Use -1 for unknown dimensions (rather than arbitrary negative numbers).
 class MemRefType : public Type {
 public:
   /// Get or create a new MemRefType based on shape, element type, affine

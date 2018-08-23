@@ -454,17 +454,6 @@ VectorType *VectorType::get(ArrayRef<unsigned> shape, Type *elementType) {
   return *existing.first = result;
 }
 
-static bool isValidTensorElementType(Type *type, MLIRContext *context) {
-  return isa<FloatType>(type) || isa<VectorType>(type) ||
-         isa<IntegerType>(type) || type == Type::getTFString(context);
-}
-
-TensorType::TensorType(Kind kind, Type *elementType, MLIRContext *context)
-    : Type(kind, context), elementType(elementType) {
-  assert(isValidTensorElementType(elementType, context));
-  assert(isa<TensorType>(this));
-}
-
 RankedTensorType *RankedTensorType::get(ArrayRef<int> shape,
                                         Type *elementType) {
   auto *context = elementType->getContext();
