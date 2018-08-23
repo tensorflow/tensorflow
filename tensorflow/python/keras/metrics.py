@@ -455,7 +455,7 @@ class Mean(Metric):
     state_ops.assign_add(self.count, num_values)
 
   def result(self):
-    return math_ops.div_no_nan(self.total, self.count, negative_to_zero=True)
+    return math_ops.div_no_nan(self.total, math_ops.maximum(self.count, 0))
 
 
 class MeanMetricWrapper(Mean):

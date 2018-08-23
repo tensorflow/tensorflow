@@ -1039,14 +1039,13 @@ def div(x, y, name=None):
 
 
 @tf_export("div_no_nan")
-def div_no_nan(x, y, name=None, negative_to_zero=False):
+def div_no_nan(x, y, name=None):
   """Computes an unsafe divide which returns 0 if the y is zero.
 
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`.
     y: A `Tensor` whose dtype is compatible with `x`.
     name: A name for the operation (optional).
-    negative_to_zero: If `True`, negative is treated as zero in denominator.
   Returns:
     The element-wise value of the x divided by y.
   """
@@ -1059,8 +1058,6 @@ def div_no_nan(x, y, name=None, negative_to_zero=False):
     if x_dtype != y_dtype:
       raise TypeError("x and y must have the same dtype, got %r != %r" %
                       (x_dtype, y_dtype))
-    if negative_to_zero:
-      y = gen_math_ops.maximum(y, 0, name='negative_to_zero')
     return gen_math_ops.div_no_nan(x, y, name=name)
 
 

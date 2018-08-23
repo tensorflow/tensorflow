@@ -141,6 +141,6 @@ class Rate(object):
     state_ops.assign(self.prev_values, values)
     state_ops.assign(self.prev_denominator, denominator)
 
-    return math_ops.div_no_nan(self.numer, self.denom,
-                               negative_to_zero=True,
+    return math_ops.div_no_nan(self.numer,
+                               math_op.maximum(self.denom, 0),
                                name="safe_rate")
