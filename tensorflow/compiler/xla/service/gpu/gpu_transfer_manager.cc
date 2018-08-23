@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 #endif
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -189,13 +188,13 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
 }  // namespace xla
 
 static std::unique_ptr<xla::TransferManager> CreateNVGpuTransferManager() {
-  return xla::MakeUnique<xla::GpuTransferManager>(
-      stream_executor::cuda::kCudaPlatformId);
+  //return xla::MakeUnique<xla::GpuTransferManager>(
+      //stream_executor::cuda::kCudaPlatformId);
 }
 
 static std::unique_ptr<xla::TransferManager> CreateAMDGpuTransferManager() {
-  return xla::MakeUnique<xla::GpuTransferManager>(
-      stream_executor::rocm::kROCmPlatformId);
+  //return xla::MakeUnique<xla::GpuTransferManager>(
+  //    stream_executor::rocm::kROCmPlatformId);
 }
 
 static bool InitModule() {
