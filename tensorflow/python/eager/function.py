@@ -113,10 +113,6 @@ class CapturingGraph(ops.Graph):
     # for resource tensors.
     self._last_op_using_resource_tensor = {}
 
-  # TODO(apassos) remove once the C API is used by default.
-  def _use_c_api_hack(self):
-    return True
-
   def clear_resource_control_flow_state(self):
     self._last_op_using_resource_tensor = {}
 
