@@ -41,9 +41,17 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import device_util
 
 
-def _make_per_device(values, devices):
+def _make_per_device(values, devices, regroup=False):
   devices = cross_tower_ops_lib.get_devices_from(devices)
   assert len(values) == len(devices)
+
+  # We simulate the result of regroup called on PerDevice which strips the
+  # PerDevice wrapper if it has only one value.
+  if len(values) == 1 and regroup:
+    with ops.device(devices[0]):
+      placed_v = array_ops.identity(values[0])
+    return placed_v
+
   index = {}
   for d, v in zip(devices, values):
     with ops.device(d):
@@ -473,7 +481,7 @@ class MultiWorkerCollectiveAllReduceTest(
       # Collective ops doesn't support scalar tensors, so we have to construct
       # 1-d tensors.
       values = [constant_op.constant([float(d)]) for d in range(len(devices))]
-      per_device = _make_per_device(values, devices)
+      per_device = _make_per_device(values, devices, regroup=True)
       mean = np.array([(len(devices) - 1.) / 2.])
 
       values_2 = [constant_op.constant([d + 1.0]) for d in range(len(devices))]
