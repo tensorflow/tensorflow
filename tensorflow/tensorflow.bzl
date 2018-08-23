@@ -1923,7 +1923,9 @@ def tf_py_build_info_genrule():
         name = "py_build_info_gen",
         outs = ["platform/build_info.py"],
         cmd =
-            "$(location //tensorflow/tools/build_info:gen_build_info.py) --raw_generate \"$@\" --build_config " + if_cuda("cuda", "cpu") + if_rocm("rocm", "cpu"),
+            "$(location //tensorflow/tools/build_info:gen_build_info.py) --raw_generate \"$@\" "
+            + " --is_config_cuda " + if_cuda("True", "False")
+            + " --is_config_rocm " + if_rocm("True", "False"),
         local = 1,
         tools = [clean_dep("//tensorflow/tools/build_info:gen_build_info.py")],
     )
