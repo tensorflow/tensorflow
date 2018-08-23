@@ -38,7 +38,7 @@ class HloDomainIsolator : public HloPassInterface {
   // instruction differes from the attribute of the root (the second
   // HloInstruction argument).
   // Returns nullptr in case no domain separation is necessary.
-  using DomainCreator = std::function<std::unique_ptr<HloInstruction>(
+  using DomainCreator = std::function<HloInstruction*(
       HloInstruction*, HloInstruction*, HloInstruction*)>;
 
   explicit HloDomainIsolator(DomainCreator creator);

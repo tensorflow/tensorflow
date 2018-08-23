@@ -27,7 +27,7 @@ namespace xla {
 // A DomainMetadata implementation that internally wraps a sharding attribute.
 class ShardingMetadata : public DomainMetadata {
  public:
-  explicit ShardingMetadata(std::unique_ptr<HloSharding> sharding)
+  explicit ShardingMetadata(std::shared_ptr<const HloSharding> sharding)
       : sharding_(std::move(sharding)) {}
 
   std::unique_ptr<DomainMetadata> Clone() const override;
@@ -55,15 +55,33 @@ class ShardingMetadata : public DomainMetadata {
                                         const DomainMetadata* metadata);
 
  private:
-  std::unique_ptr<HloSharding> sharding_;
+  std::shared_ptr<const HloSharding> sharding_;
 };
 
-// Given an HLO graph edge between instruction and one of its operands, creates
-// a ShardingMetadata based kDomain instruction if the sharding between
-// instruction and parent changes. Returns nullptr if there is no need for a
-// domain separation.
-std::unique_ptr<HloInstruction> CreateShardingDomain(
-    HloInstruction* instruction, HloInstruction* root, HloInstruction* operand);
+// If the sharding between root and instruction changes then returns a
+// ShardingMetadata based kDomain instruction what can be used to separate
+// operand and instruction.
+// Returns nullptr if there is no need for a domain separation.
+class ShardingDomainCreator {
+ public:
+  HloInstruction* operator()(HloInstruction* instruction, HloInstruction* root,
+                             HloInstruction* operand);
+
+ private:
+  // Map from instruction and user sharding to domain users to CSE identical
+  // domains.
+  struct DomainCseMapKey {
+    const HloInstruction* instruction;
+    std::shared_ptr<const HloSharding> sharding;
+
+    bool operator==(const DomainCseMapKey& other) const;
+  };
+  struct DomainCseMapHasher {
+    size_t operator()(const DomainCseMapKey& key) const;
+  };
+  std::unordered_map<DomainCseMapKey, HloInstruction*, DomainCseMapHasher>
+      domain_cse_map_;
+};
 
 }  // namespace xla
 
