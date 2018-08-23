@@ -73,9 +73,6 @@ void VariableOp::Compute(OpKernelContext* ctx) {
   // here is valid because it owns a ref on var.
   ctx->set_output_ref(0, var->mu(), var->tensor());
   if (ctx->track_allocations() && var->tensor()->IsInitialized()) {
-    AllocatorAttributes attr;
-    attr.set_gpu_compatible(true);
-    attr.set_nic_compatible(true);
     ctx->record_persistent_memory_allocation(var->tensor()->AllocatedBytes());
   }
   var->Unref();

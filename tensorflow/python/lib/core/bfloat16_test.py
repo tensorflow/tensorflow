@@ -245,6 +245,20 @@ class Bfloat16NumPyTest(test.TestCase):
                         np.logaddexp(x.astype(bfloat16), y.astype(bfloat16)),
                         atol=2e-2)
 
+  def testArange(self):
+    self.assertAllEqual(
+        np.arange(100, dtype=np.float32).astype(bfloat16),
+        np.arange(100, dtype=bfloat16))
+    self.assertAllEqual(
+        np.arange(-10.5, 7.8, 0.5, dtype=np.float32).astype(bfloat16),
+        np.arange(-10.5, 7.8, 0.5, dtype=bfloat16))
+    self.assertAllEqual(
+        np.arange(-0., -7., -0.25, dtype=np.float32).astype(bfloat16),
+        np.arange(-0., -7., -0.25, dtype=bfloat16))
+    self.assertAllEqual(
+        np.arange(-16384., 16384., 64., dtype=np.float32).astype(bfloat16),
+        np.arange(-16384., 16384., 64., dtype=bfloat16))
+
 
 if __name__ == "__main__":
   test.main()

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -51,16 +52,6 @@ bool RemoveInput(NodeDef* node, const string& input, NodeMap* node_map) {
     }
   }
   return removed_input;
-}
-
-void DeleteNodes(const std::set<int>& nodes_to_delete, GraphDef* graph) {
-  int last = graph->node_size() - 1;
-  for (auto it = nodes_to_delete.rbegin(); it != nodes_to_delete.rend(); ++it) {
-    const int index = *it;
-    graph->mutable_node()->SwapElements(index, last);
-    last--;
-  }
-  graph->mutable_node()->DeleteSubrange(last + 1, nodes_to_delete.size());
 }
 
 }  // namespace
@@ -260,14 +251,14 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
         }
         continue;
       }
+      // Replace a normal input with a control input.
       const string ctrl_input = ConstantFolding::AddControlDependency(
           old_input, optimized_graph_, node_map_.get());
-      if (ctrl_inputs.insert(ctrl_input).second) {
-        node->set_input(pos, ctrl_input);
-        node_map_->UpdateInput(node_name, old_input, ctrl_input);
-        const NodeDef* old_input_node = node_map_->GetNode(old_input);
-        nodes_to_simplify->PushBack(node_to_idx_[old_input_node]);
-      }
+      ctrl_inputs.insert(ctrl_input);
+      node->set_input(pos, ctrl_input);
+      node_map_->UpdateInput(node_name, old_input, ctrl_input);
+      const NodeDef* old_input_node = node_map_->GetNode(old_input);
+      nodes_to_simplify->PushBack(node_to_idx_[old_input_node]);
       ++pos;
     }
     node->set_op("NoOp");
@@ -441,7 +432,7 @@ Status DependencyOptimizer::OptimizeDependencies() {
   if (fetch_nodes_known_) {
     VLOG(1) << "Deleted " << nodes_to_delete.size() << " out of "
             << optimized_graph_->node_size() << " nodes.";
-    DeleteNodes(nodes_to_delete, optimized_graph_);
+    EraseNodesFromGraph(nodes_to_delete, optimized_graph_);
     node_map_.reset(new NodeMap(optimized_graph_));
     BuildNodeToIdx();
   }

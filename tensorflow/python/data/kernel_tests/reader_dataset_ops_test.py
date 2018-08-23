@@ -374,7 +374,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
@@ -401,7 +401,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(restore_op)
         for epoch in range(num_epochs):
           for f in range(self._num_files):
@@ -427,7 +427,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
@@ -454,7 +454,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         sess.run(restore_op)
         for epoch in range(num_epochs):
@@ -479,7 +479,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
@@ -506,7 +506,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs_1)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(restore_op)
         for epoch in range(num_epochs):
           for f in range(self._num_files):
@@ -529,7 +529,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
@@ -555,7 +555,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
 
     with ops.Graph().as_default() as g:
       restore_op, get_next_op = self._restore_iterator()
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(restore_op)
         for epoch in range(num_epochs):
           for f in range(self._num_files):
@@ -574,7 +574,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
@@ -585,7 +585,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(restore_op)
         for _ in range(num_epochs * self._num_files * self._num_records):
           sess.run(get_next_op)
@@ -598,7 +598,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
@@ -615,7 +615,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(restore_op)
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next_op)

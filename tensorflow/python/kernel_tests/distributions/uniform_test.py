@@ -22,6 +22,7 @@ import importlib
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
@@ -47,7 +48,7 @@ stats = try_import("scipy.stats")
 
 class UniformTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testUniformRange(self):
     with self.test_session():
       a = 3.0
@@ -57,7 +58,7 @@ class UniformTest(test.TestCase):
       self.assertAllClose(b, self.evaluate(uniform.high))
       self.assertAllClose(b - a, self.evaluate(uniform.range()))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testUniformPDF(self):
     with self.test_session():
       a = constant_op.constant([-3.0] * 5 + [15.0])
@@ -83,7 +84,7 @@ class UniformTest(test.TestCase):
       log_pdf = uniform.log_prob(x)
       self.assertAllClose(np.log(expected_pdf), self.evaluate(log_pdf))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testUniformShape(self):
     with self.test_session():
       a = constant_op.constant([-3.0] * 5)
@@ -95,7 +96,7 @@ class UniformTest(test.TestCase):
       self.assertAllEqual(self.evaluate(uniform.event_shape_tensor()), [])
       self.assertEqual(uniform.event_shape, tensor_shape.TensorShape([]))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testUniformPDFWithScalarEndpoint(self):
     with self.test_session():
       a = constant_op.constant([0.0, 5.0])
@@ -108,7 +109,7 @@ class UniformTest(test.TestCase):
       pdf = uniform.prob(x)
       self.assertAllClose(expected_pdf, self.evaluate(pdf))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testUniformCDF(self):
     with self.test_session():
       batch_size = 6
@@ -132,7 +133,7 @@ class UniformTest(test.TestCase):
       log_cdf = uniform.log_cdf(x)
       self.assertAllClose(np.log(_expected_cdf()), self.evaluate(log_cdf))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testUniformEntropy(self):
     with self.test_session():
       a_v = np.array([1.0, 1.0, 1.0])
@@ -142,7 +143,7 @@ class UniformTest(test.TestCase):
       expected_entropy = np.log(b_v - a_v)
       self.assertAllClose(expected_entropy, self.evaluate(uniform.entropy()))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testUniformAssertMaxGtMin(self):
     with self.test_session():
       a_v = np.array([1.0, 1.0, 1.0], dtype=np.float32)
@@ -153,7 +154,7 @@ class UniformTest(test.TestCase):
         uniform = uniform_lib.Uniform(low=a_v, high=b_v, validate_args=True)
         self.evaluate(uniform.low)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testUniformSample(self):
     with self.test_session():
       a = constant_op.constant([3.0, 4.0])
@@ -168,15 +169,15 @@ class UniformTest(test.TestCase):
       sample_values = self.evaluate(samples)
       self.assertEqual(sample_values.shape, (100000, 2))
       self.assertAllClose(
-          sample_values[::, 0].mean(), (b_v + a1_v) / 2, atol=1e-2)
+          sample_values[::, 0].mean(), (b_v + a1_v) / 2, atol=1e-1, rtol=0.)
       self.assertAllClose(
-          sample_values[::, 1].mean(), (b_v + a2_v) / 2, atol=1e-2)
+          sample_values[::, 1].mean(), (b_v + a2_v) / 2, atol=1e-1, rtol=0.)
       self.assertFalse(
           np.any(sample_values[::, 0] < a1_v) or np.any(sample_values >= b_v))
       self.assertFalse(
           np.any(sample_values[::, 1] < a2_v) or np.any(sample_values >= b_v))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def _testUniformSampleMultiDimensional(self):
     # DISABLED: Please enable this test once b/issues/30149644 is resolved.
     with self.test_session():
@@ -207,7 +208,7 @@ class UniformTest(test.TestCase):
       self.assertAllClose(
           sample_values[:, 0, 1].mean(), (a_v[1] + b_v[1]) / 2, atol=1e-2)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testUniformMean(self):
     with self.test_session():
       a = 10.0
@@ -218,7 +219,7 @@ class UniformTest(test.TestCase):
       s_uniform = stats.uniform(loc=a, scale=b - a)
       self.assertAllClose(self.evaluate(uniform.mean()), s_uniform.mean())
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testUniformVariance(self):
     with self.test_session():
       a = 10.0
@@ -229,7 +230,7 @@ class UniformTest(test.TestCase):
       s_uniform = stats.uniform(loc=a, scale=b - a)
       self.assertAllClose(self.evaluate(uniform.variance()), s_uniform.var())
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testUniformStd(self):
     with self.test_session():
       a = 10.0
@@ -240,7 +241,7 @@ class UniformTest(test.TestCase):
       s_uniform = stats.uniform(loc=a, scale=b - a)
       self.assertAllClose(self.evaluate(uniform.stddev()), s_uniform.std())
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testUniformNans(self):
     with self.test_session():
       a = 10.0
@@ -258,7 +259,7 @@ class UniformTest(test.TestCase):
       self.assertFalse(is_nan[0])
       self.assertTrue(is_nan[1])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testUniformSamplePdf(self):
     with self.test_session():
       a = 10.0
@@ -268,7 +269,7 @@ class UniformTest(test.TestCase):
           self.evaluate(
               math_ops.reduce_all(uniform.prob(uniform.sample(10)) > 0)))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testUniformBroadcasting(self):
     with self.test_session():
       a = 10.0
@@ -279,7 +280,7 @@ class UniformTest(test.TestCase):
       expected_pdf = np.array([[1.0, 0.1], [0.0, 0.1], [1.0, 0.0]])
       self.assertAllClose(expected_pdf, self.evaluate(pdf))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testUniformSampleWithShape(self):
     with self.test_session():
       a = 10.0
@@ -298,6 +299,18 @@ class UniformTest(test.TestCase):
       pdf = uniform.prob(uniform.sample())
       expected_pdf = [1.0, 0.1]
       self.assertAllClose(expected_pdf, self.evaluate(pdf))
+
+  def testFullyReparameterized(self):
+    a = constant_op.constant(0.1)
+    b = constant_op.constant(0.8)
+    with backprop.GradientTape() as tape:
+      tape.watch(a)
+      tape.watch(b)
+      uniform = uniform_lib.Uniform(a, b)
+      samples = uniform.sample(100)
+    grad_a, grad_b = tape.gradient(samples, [a, b])
+    self.assertIsNotNone(grad_a)
+    self.assertIsNotNone(grad_b)
 
   # Eager doesn't pass due to a type mismatch in one of the ops.
   def testUniformFloat64(self):

@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"

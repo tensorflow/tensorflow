@@ -38,7 +38,6 @@ namespace tensorflow {
 namespace {
 
 static int64 kStepId = 123;
-static int32 kNumSubdivs = 1;  // Subdiv not yet meaningful for broadcast
 
 // The test harness won't allow a mixture of fixture and non-fixture
 // tests in one file, so this is a trival fixture for tests that don't
@@ -59,12 +58,14 @@ class TrivialTest : public ::testing::Test {
     CollectiveParams cp;                                           \
     cp.group.group_size = D;                                       \
     cp.instance.impl_details.subdiv_source_rank = {S};             \
+    cp.instance.impl_details.subdiv_permutations.push_back(        \
+        std::vector<int>(D, 0));                                   \
     cp.subdiv_rank = {R};                                          \
     cp.is_source = (S == R);                                       \
-    EXPECT_EQ(RF, Broadcaster::TreeRecvFrom(cp));                  \
+    EXPECT_EQ(RF, Broadcaster::TreeRecvFrom(cp, 0));               \
     std::vector<int> expected = ST;                                \
     std::vector<int> send_to;                                      \
-    Broadcaster::TreeSendTo(cp, &send_to);                         \
+    Broadcaster::TreeSendTo(cp, 0, &send_to);                      \
     ASSERT_EQ(expected.size(), send_to.size());                    \
     for (int i = 0; i < expected.size(); ++i) {                    \
       EXPECT_EQ(expected[i], send_to[i]);                          \
@@ -161,12 +162,12 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
                     bool peer_is_local, const string& key, Device* to_device,
                     DeviceContext* to_device_ctx,
                     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
-                    const DeviceLocality& client_locality,
+                    const DeviceLocality& client_locality, int stream_index,
                     const StatusCallback& done) override {
     if (MaybeFail(done)) return;
     CollectiveRemoteAccessLocal::RecvFromPeer(
         peer_device, peer_task, peer_is_local, key, to_device, to_device_ctx,
-        to_alloc_attr, to_tensor, client_locality, done);
+        to_alloc_attr, to_tensor, client_locality, stream_index, done);
   }
 
   void PostToPeer(const string& peer_device, const string& peer_task,
@@ -209,8 +210,11 @@ class BroadcasterTest : public ::testing::Test {
 #endif
   }
 
-  void Init(int num_workers, int num_devices, DataType dtype,
+  void Init(int num_workers, int num_devices_per_worker, DataType dtype,
             const DeviceType& device_type, int fail_after) {
+    VLOG(2) << "num_workers=" << num_workers
+            << " num_devices_per_worker=" << num_devices_per_worker;
+    int total_num_devices = num_workers * num_devices_per_worker;
     device_type_ = device_type;
     std::vector<Device*> local_devices;
     SessionOptions sess_opts;
@@ -218,14 +222,14 @@ class BroadcasterTest : public ::testing::Test {
     Bytes mem_limit(4 << 20);
     DeviceLocality dev_locality;
     for (int wi = 0; wi < num_workers; ++wi) {
-      for (int di = 0; di < num_devices; ++di) {
+      for (int di = 0; di < num_devices_per_worker; ++di) {
         if (device_type == DEVICE_CPU) {
           string dev_name = strings::StrCat("/job:worker/replica:0/task:", wi,
                                             "/device:CPU:", di);
           local_devices.push_back(new ThreadPoolDevice(
               sess_opts, dev_name, mem_limit, dev_locality, cpu_allocator()));
         } else if (device_type == DEVICE_GPU && !gpu_devices_.empty()) {
-          int dev_idx = (wi * num_devices) + di;
+          int dev_idx = (wi * num_devices_per_worker) + di;
           if (dev_idx >= static_cast<int>(gpu_devices_.size())) {
             LOG(INFO) << "dev_mgr has access to limited GPUs, reusing for more "
                          "than one ring node.";
@@ -247,67 +251,86 @@ class BroadcasterTest : public ::testing::Test {
                                            dev_mgr_.get());
     col_params_.name = "test_collective";
     col_params_.instance.data_type = dtype;
-    static const int kGroupKey = 5;
+    static const int kGroupKey = 6;
     col_params_.group.group_key = kGroupKey;
-    static const int kInstanceKey = 17;
+    static const int kInstanceKey = 18;
     col_params_.instance.instance_key = kInstanceKey;
     col_params_.group.device_type = device_type;
-    col_params_.group.group_size = num_workers * num_devices;
+    col_params_.group.group_size = num_workers * num_devices_per_worker;
     col_params_.instance.impl_details.subdiv_offsets.clear();
     col_params_.instance.type = BROADCAST_COLLECTIVE;
-    col_params_.instance.impl_details.subdiv_permutations.resize(kNumSubdivs);
-    col_params_.subdiv_rank.resize(kNumSubdivs);
-    int subdiv_stride = num_devices / kNumSubdivs;
-    for (int sdi = 0; sdi < kNumSubdivs; ++sdi) {
-      col_params_.instance.impl_details.subdiv_offsets.push_back(sdi *
-                                                                 subdiv_stride);
-      col_params_.subdiv_rank[sdi] = sdi * subdiv_stride;
-    }
 
-    // Set up a local device ring order that's not just 0,1,2...
-    std::vector<int> local_ring_order;
-    for (int di = 0; di < num_devices; ++di) {
-      local_ring_order.push_back(di);
-    }
-    for (int di = 0; di < num_devices; ++di) {
-      bool is_odd = ((di % 2) == 1);
-      int other = (di + (is_odd ? 7 : 3)) % num_devices;
-      if (di == other) continue;
-      iter_swap(local_ring_order.begin() + di,
-                local_ring_order.begin() + other);
-    }
-    broadcast_dev_id_ = local_ring_order[0];
-    string lro_buf;
-    for (auto d : local_ring_order) strings::StrAppend(&lro_buf, d, ", ");
-    VLOG(1) << "local_ring_order " << lro_buf;
+    int num_subdivs = num_workers + (num_workers > 1 ? 1 : 0);
+    VLOG(2) << "#subdiv=" << num_subdivs;
+    col_params_.instance.impl_details.subdiv_permutations.resize(num_subdivs);
+    col_params_.subdiv_rank.resize(num_subdivs);
 
-    // Set up all of the fake device contexts.
-    for (int wi = 0; wi < num_workers; ++wi) {
-      for (int di = 0; di < num_devices; ++di) {
-        string task_name = strings::StrCat("/job:worker/replica:0/task:", wi);
-        string dev_name = strings::StrCat(task_name, "/device:CPU:", di);
-        if (device_type == DEVICE_GPU) {
-          dev_name = strings::StrCat(task_name, "/device:GPU:0");
-        }
-        col_params_.instance.device_names.push_back(dev_name);
-        col_params_.instance.task_names.push_back(task_name);
-        // Normally each device would set is_local to its own perspective but
-        // this test runs in a single process so is_local is always true.
-        col_params_.task.is_local.push_back(true);
-        for (int sdi = 0; sdi < kNumSubdivs; ++sdi) {
-          int rotated_di =
-              (di + col_params_.instance.impl_details.subdiv_offsets[sdi]) %
-              num_devices;
-          col_params_.instance.impl_details.subdiv_permutations[sdi].push_back(
-              wi * num_devices + local_ring_order[rotated_di]);
+    // Inter-machine broadcast.
+    int subdiv_i = 0;
+    if (num_workers > 1) {
+      col_params_.instance.impl_details.subdiv_permutations[subdiv_i].resize(
+          total_num_devices, -1);
+      for (int i = 0, rank = 0; i < total_num_devices; i++) {
+        if (i % num_devices_per_worker == 0) {
+          col_params_.instance.impl_details
+              .subdiv_permutations[subdiv_i][rank] = i;
+          rank++;
         }
       }
+      if (VLOG_IS_ON(2)) {
+        string sp_buf;
+        for (int p :
+             col_params_.instance.impl_details.subdiv_permutations[subdiv_i])
+          strings::StrAppend(&sp_buf, p, ", ");
+        VLOG(2) << "subdiv_i=" << subdiv_i << " perm=" << sp_buf;
+      }
+      subdiv_i++;
     }
-    for (int wi = 0; wi < num_workers; ++wi) {
-      for (int di = 0; di < num_devices; ++di) {
-        int rank = wi * num_devices + di;
+    // Intra-machine broadcast.
+    for (int i = 0; subdiv_i < num_subdivs; i++, subdiv_i++) {
+      col_params_.instance.impl_details.subdiv_permutations[subdiv_i].resize(
+          total_num_devices, -1);
+      int perm_i_base = i * num_devices_per_worker;
+      VLOG(2) << "subdiv_i=" << subdiv_i << " i=" << i
+              << " perm_i_base=" << perm_i_base << " subdiv_perms.size="
+              << col_params_.instance.impl_details.subdiv_permutations.size();
+      // subdiv for worker i.
+      for (int j = perm_i_base, rank = 0;
+           j < perm_i_base + num_devices_per_worker; j++, rank++) {
+        col_params_.instance.impl_details.subdiv_permutations[subdiv_i][rank] =
+            j;
+      }
+      if (VLOG_IS_ON(2)) {
+        string sp_buf;
+        for (int p :
+             col_params_.instance.impl_details.subdiv_permutations[subdiv_i])
+          strings::StrAppend(&sp_buf, p, ", ");
+        VLOG(2) << "subdiv_i=" << subdiv_i << " perm=" << sp_buf;
+      }
+    }
+
+    // Set up all the fake device contexts.
+    for (int wi = 0; wi < num_workers; wi++) {
+      for (int di = 0; di < num_devices_per_worker; di++) {
+        string task_name = strings::StrCat("/job:worker/replica:0/task:", wi);
+        string dev_name;
+        if (device_type == DEVICE_GPU) {
+          dev_name = strings::StrCat(task_name, "/device:GPU:0");
+        } else {
+          dev_name = strings::StrCat(task_name, "/device:CPU:", di);
+        }
+        VLOG(2) << "dev=" << dev_name;
+        col_params_.instance.device_names.push_back(dev_name);
+        col_params_.instance.task_names.push_back(task_name);
+        col_params_.task.is_local.push_back(true);
+      }
+    }
+    for (int wi = 0; wi < num_workers; wi++) {
+      for (int di = 0; di < num_devices_per_worker; di++) {
+        int default_rank = wi * num_devices_per_worker + di;
         instances_.push_back(new DeviceInstance(
-            rank, col_params_.instance.device_names[rank], device_type_, this));
+            default_rank, col_params_.instance.device_names[default_rank],
+            device_type, this));
       }
     }
   }
@@ -315,6 +338,7 @@ class BroadcasterTest : public ::testing::Test {
   typedef std::function<void(Tensor*)> InitFunc;
 
   void Broadcast(bool forward_input) {
+    VLOG(2) << "#instances=" << instances_.size();
     std::atomic<int> done(0);
     for (auto di : instances_) {
       SchedClosure([di, forward_input, &done] {
@@ -516,39 +540,29 @@ class BroadcasterTest : public ::testing::Test {
       CHECK_EQ(group_size, col_params_.instance.device_names.size());
       // Default rank is order in device_names.
       col_params_.default_rank = rank;
-      // perm_rank is order in subdiv[0]:
-      int perm_rank = -1;
-      for (int i = 0;
-           i < col_params_.instance.impl_details.subdiv_permutations[0].size();
-           ++i) {
-        if (rank ==
-            col_params_.instance.impl_details.subdiv_permutations[0][i]) {
-          perm_rank = i;
-          break;
-        }
-      }
-      CHECK_GE(perm_rank, 0);
-      col_params_.instance.impl_details.subdiv_source_rank.resize(1, 0);
-      col_params_.is_source =
-          (perm_rank ==
-           col_params_.instance.impl_details.subdiv_source_rank[0]);
-      // Set rank in all subdivs by finding that default_rank.
-      for (int sdi = 0; sdi < kNumSubdivs; ++sdi) {
-        for (int r = 0;
-             r <
-             col_params_.instance.impl_details.subdiv_permutations[sdi].size();
-             ++r) {
-          if (col_params_.default_rank ==
-              col_params_.instance.impl_details.subdiv_permutations[sdi][r]) {
-            col_params_.subdiv_rank[sdi] = r;
-            CHECK_EQ(0, sdi);
-            CHECK_EQ(perm_rank, col_params_.subdiv_rank[sdi]);
+
+      auto& impl = col_params_.instance.impl_details;
+      size_t num_subdivs = impl.subdiv_permutations.size();
+      impl.subdiv_source_rank.resize(num_subdivs, 0);
+      col_params_.subdiv_rank.resize(num_subdivs);
+      for (size_t si = 0; si < num_subdivs; si++) {
+        int perm_rank = -1;
+        for (int i = 0; i < group_size; i++) {
+          if (rank == impl.subdiv_permutations[si][i]) {
+            perm_rank = i;
             break;
           }
         }
+        col_params_.subdiv_rank[si] = perm_rank;
       }
-      CHECK_EQ(group_size, col_params_.task.is_local.size());
-      CHECK_EQ(group_size, col_params_.instance.task_names.size());
+      string rank_buf;
+      for (int r : col_params_.subdiv_rank) {
+        strings::StrAppend(&rank_buf, r, ", ");
+      }
+      VLOG(1) << "default=" << rank << " subdiv_ranks=" << rank_buf;
+
+      col_params_.is_source =
+          col_params_.subdiv_rank[0] == impl.subdiv_source_rank[0];
     }
 
     void InitTensor(DataType dtype, const TensorShape& shape,

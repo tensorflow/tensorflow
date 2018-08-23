@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import abc
 import collections
+import os
 import weakref
 
 from tensorflow.core.protobuf import checkpointable_object_graph_pb2
@@ -34,12 +35,15 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import saveable_object as saveable_object_lib
 from tensorflow.python.training import saver as saver_lib
-from tensorflow.python.training.checkpointable import base as checkpointable_lib
+from tensorflow.python.training.checkpointable import base
+from tensorflow.python.training.checkpointable import data_structures
+from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
@@ -64,16 +68,25 @@ _OBJECT_ATTRIBUTES_NAME = _ESCAPE_CHAR + "ATTRIBUTES"
 class _CheckpointRestoreCoordinator(object):
   """Holds the status of an object-based checkpoint load."""
 
-  def __init__(self, object_graph_proto, save_path, dtype_map=None):
+  def __init__(self, object_graph_proto, save_path, save_path_tensor,
+               restore_op_cache, saveable_object_cache):
     """Specify the checkpoint being loaded.
 
     Args:
       object_graph_proto: The CheckpointableObjectGraph protocol buffer
         associated with this checkpoint.
-      save_path: A string `Tensor`. The path to the checkpoint, as returned by
+      save_path: A string, the path to the checkpoint, as returned by
         `tf.train.latest_checkpoint`.
-      dtype_map: When executing eagerly, specifies dtypes for creating slot
-        variables. None when graph building.
+      save_path_tensor: A string `Tensor` which contains or will be fed the save
+        path.
+      restore_op_cache: A dictionary shared between
+        `_CheckpointRestoreCoordinator`s for the same Python objects, used to
+        look up restore ops by name to avoid re-creating them across multiple
+        `restore()` calls.
+      saveable_object_cache: A mapping of checkpointable objects -> attribute
+        names -> list(`SaveableObject`s), used when `SaveableObjects` must be
+        referenced every restore (e.g. for Python state); otherwise they would
+        create their own ops every restore.
     """
     self.builder = saver_lib.BulkSaverBuilder()
     self.object_graph_proto = object_graph_proto
@@ -92,13 +105,19 @@ class _CheckpointRestoreCoordinator(object):
     # use them (for example because of inconsistent references when
     # loading). Used to make status assertions fail when loading checkpoints
     # that don't quite match.
-    self.all_python_objects = weakref.WeakSet()
-    self.save_path = save_path
-    self.dtype_map = dtype_map
+    self.all_python_objects = _ObjectIdentityWeakSet()
+    self.save_path_tensor = save_path_tensor
+    self.save_path_string = save_path
+    self.dtype_map = pywrap_tensorflow.NewCheckpointReader(
+        save_path).get_variable_to_dtype_map()
+    # A NewCheckpointReader for the most recent checkpoint, for streaming Python
+    # state restoration.
     # When graph building, contains a list of ops to run to restore objects from
     # this checkpoint.
     self.restore_ops = []
-    self.restore_ops_by_name = {}
+    self.restore_ops_by_name = restore_op_cache
+    self.saveable_object_cache = saveable_object_cache
+    self.new_restore_ops_callback = None
     # A mapping from optimizer proto ids to lists of slot variables to be
     # restored when the optimizer is tracked. Only includes slot variables whose
     # regular variables have already been created, and only for optimizer
@@ -114,10 +133,15 @@ class _CheckpointRestoreCoordinator(object):
         # `node` refers to an `Optimizer`, since only these have slot variables.
         self.slot_restorations.setdefault(
             slot_reference.original_variable_node_id, []).append(
-                checkpointable_lib._SlotVariableRestoration(  # pylint: disable=protected-access
+                base._SlotVariableRestoration(  # pylint: disable=protected-access
                     optimizer_id=node_index,
                     slot_variable_id=slot_reference.slot_variable_node_id,
                     slot_name=slot_reference.slot_name))
+
+  def new_restore_ops(self, new_ops):
+    self.restore_ops.extend(new_ops)
+    if self.new_restore_ops_callback:
+      self.new_restore_ops_callback(new_ops)  # pylint: disable=not-callable
 
 
 class _NameBasedRestoreCoordinator(object):
@@ -217,10 +241,11 @@ def _default_getter(name, shape, dtype, initializer=None,
       def initial_value():
         return initializer(
             shape_object.as_list(), dtype=dtype, partition_info=partition_info)
-    return resource_variable_ops.ResourceVariable(
+    return variables.Variable(
         initial_value=initial_value,
         name=name,
         dtype=variable_dtype,
+        use_resource=True,
         **kwargs
     )
 
@@ -258,27 +283,163 @@ def object_metadata(save_path):
   reader = pywrap_tensorflow.NewCheckpointReader(save_path)
   try:
     object_graph_string = reader.get_tensor(
-        checkpointable_lib.OBJECT_GRAPH_PROTO_KEY)
+        base.OBJECT_GRAPH_PROTO_KEY)
   except errors_impl.NotFoundError:
     raise ValueError(
         ('The specified checkpoint "%s" does not appear to be object-based (it '
          'is missing the key "%s"). Likely it was created with a name-based '
          'saver and does not contain an object dependency graph.') % (
-             save_path, checkpointable_lib.OBJECT_GRAPH_PROTO_KEY))
+             save_path, base.OBJECT_GRAPH_PROTO_KEY))
   object_graph_proto = (
       checkpointable_object_graph_pb2.CheckpointableObjectGraph())
   object_graph_proto.ParseFromString(object_graph_string)
   return object_graph_proto
 
 
+class _ObjectIdentityWrapper(object):
+  """Wraps an object, mapping __eq__ on wrapper to "is" on wrapped.
+
+  Since __eq__ is based on object identity, it's safe to also define __hash__
+  based on object ids. This lets us add unhashable types like checkpointable
+  _ListWrapper objects to object-identity collections.
+  """
+
+  def __init__(self, wrapped):
+    self._wrapped = wrapped
+
+  @property
+  def unwrapped(self):
+    return self._wrapped
+
+  def __eq__(self, other):
+    if isinstance(other, _ObjectIdentityWrapper):
+      return self._wrapped is other._wrapped  # pylint: disable=protected-access
+    return self._wrapped is other
+
+  def __hash__(self):
+    # Wrapper id() is also fine for weakrefs. In fact, we rely on
+    # id(weakref.ref(a)) == id(weakref.ref(a)) and weakref.ref(a) is
+    # weakref.ref(a) in _WeakObjectIdentityWrapper.
+    return id(self._wrapped)
+
+
+class _WeakObjectIdentityWrapper(_ObjectIdentityWrapper):
+
+  def __init__(self, wrapped):
+    super(_WeakObjectIdentityWrapper, self).__init__(weakref.ref(wrapped))
+
+  @property
+  def unwrapped(self):
+    return self._wrapped()
+
+
+class _ObjectIdentityDictionary(collections.MutableMapping):
+  """A mutable mapping data structure which compares using "is".
+
+  This is necessary because we have checkpointable objects (_ListWrapper) which
+  have behavior identical to built-in Python lists (including being unhashable
+  and comparing based on the equality of their contents by default).
+  """
+
+  def __init__(self):
+    self._storage = {}
+
+  def _wrap_key(self, key):
+    return _ObjectIdentityWrapper(key)
+
+  def __getitem__(self, key):
+    return self._storage[self._wrap_key(key)]
+
+  def __setitem__(self, key, value):
+    self._storage[self._wrap_key(key)] = value
+
+  def __delitem__(self, key):
+    del self._storage[self._wrap_key(key)]
+
+  def __len__(self):
+    return len(self._storage)
+
+  def __iter__(self):
+    for key in self._storage:
+      yield key.unwrapped
+
+
+class _ObjectIdentityWeakKeyDictionary(_ObjectIdentityDictionary):
+  """Like weakref.WeakKeyDictionary, but compares objects with "is"."""
+
+  def _wrap_key(self, key):
+    return _WeakObjectIdentityWrapper(key)
+
+  def __len__(self):
+    # Iterate, discarding old weak refs
+    return len(list(self._storage))
+
+  def __iter__(self):
+    keys = self._storage.keys()
+    for key in keys:
+      unwrapped = key.unwrapped
+      if unwrapped is None:
+        del self[key]
+      else:
+        yield unwrapped
+
+
+class _ObjectIdentitySet(collections.MutableSet):
+  """Like the built-in set, but compares objects with "is"."""
+
+  def __init__(self, *args):
+    self._storage = set([self._wrap_key(obj) for obj in list(*args)])
+
+  def _wrap_key(self, key):
+    return _ObjectIdentityWrapper(key)
+
+  def __contains__(self, key):
+    return self._wrap_key(key) in self._storage
+
+  def discard(self, key):
+    self._storage.discard(self._wrap_key(key))
+
+  def add(self, key):
+    self._storage.add(self._wrap_key(key))
+
+  def __len__(self):
+    return len(self._storage)
+
+  def __iter__(self):
+    keys = list(self._storage)
+    for key in keys:
+      yield key.unwrapped
+
+
+class _ObjectIdentityWeakSet(_ObjectIdentitySet):
+  """Like weakref.WeakSet, but compares objects with "is"."""
+
+  def _wrap_key(self, key):
+    return _WeakObjectIdentityWrapper(key)
+
+  def __len__(self):
+    # Iterate, discarding old weak refs
+    return len([_ for _ in self])
+
+  def __iter__(self):
+    keys = list(self._storage)
+    for key in keys:
+      unwrapped = key.unwrapped
+      if unwrapped is None:
+        self.discard(key)
+      else:
+        yield unwrapped
+
+
 def _breadth_first_checkpointable_traversal(root_checkpointable):
   """Find shortest paths to all variables owned by dependencies of root."""
   bfs_sorted = []
   to_visit = collections.deque([root_checkpointable])
-  path_to_root = {root_checkpointable: ()}
+  path_to_root = _ObjectIdentityDictionary()
+  path_to_root[root_checkpointable] = ()
   while to_visit:
     current_checkpointable = to_visit.popleft()
-    if isinstance(current_checkpointable, checkpointable_lib.NotCheckpointable):
+    if isinstance(current_checkpointable, tracking.NotCheckpointable):
       raise NotImplementedError(
           ("The object %s does not support object-based saving. File a feature "
            "request if this limitation bothers you. In the meantime, you can "
@@ -336,7 +497,7 @@ def _slot_variable_naming_for_optimizer(optimizer_path):
 def _serialize_slot_variables(checkpointable_objects, node_ids, object_names):
   """Gather and name slot variables."""
   non_slot_objects = list(checkpointable_objects)
-  slot_variables = {}
+  slot_variables = _ObjectIdentityDictionary()
   for checkpointable in non_slot_objects:
     if isinstance(checkpointable, optimizer_lib.Optimizer):
       naming_scheme = _slot_variable_naming_for_optimizer(
@@ -499,11 +660,12 @@ def _serialize_object_graph(root_checkpointable, saveables_cache):
   """
   checkpointable_objects, path_to_root = (
       _breadth_first_checkpointable_traversal(root_checkpointable))
-  object_names = {
-      obj: _object_prefix_from_path(path)
-      for obj, path in path_to_root.items()}
-  node_ids = {node: node_id for node_id, node
-              in enumerate(checkpointable_objects)}
+  object_names = _ObjectIdentityDictionary()
+  for obj, path in path_to_root.items():
+    object_names[obj] = _object_prefix_from_path(path)
+  node_ids = _ObjectIdentityDictionary()
+  for node_id, node in enumerate(checkpointable_objects):
+    node_ids[node] = node_id
   slot_variables = _serialize_slot_variables(
       checkpointable_objects=checkpointable_objects,
       node_ids=node_ids,
@@ -534,11 +696,12 @@ def list_objects(root_checkpointable):
   # to run.
   checkpointable_objects, path_to_root = (
       _breadth_first_checkpointable_traversal(root_checkpointable))
-  object_names = {
-      obj: _object_prefix_from_path(path)
-      for obj, path in path_to_root.items()}
-  node_ids = {node: node_id for node_id, node
-              in enumerate(checkpointable_objects)}
+  object_names = _ObjectIdentityDictionary()
+  for obj, path in path_to_root.items():
+    object_names[obj] = _object_prefix_from_path(path)
+  node_ids = _ObjectIdentityDictionary()
+  for node_id, node in enumerate(checkpointable_objects):
+    node_ids[node] = node_id
   _serialize_slot_variables(
       checkpointable_objects=checkpointable_objects,
       node_ids=node_ids,
@@ -625,7 +788,7 @@ def capture_dependencies(template):
           initial_value=initializer,
           name=name,
           **inner_kwargs)
-    if name.startswith(name_prefix):
+    if name is not None and name.startswith(name_prefix):
       scope_stripped_name = name[len(name_prefix) + 1:]
       if not checkpointable_parent:
         return template._add_variable_with_custom_getter(  # pylint: disable=protected-access
@@ -671,6 +834,11 @@ class _LoadStatus(object):
     pass
 
   @abc.abstractmethod
+  def assert_existing_objects_matched(self):
+    """Raises an exception unless existing Python objects have been matched."""
+    pass
+
+  @abc.abstractmethod
   def run_restore_ops(self, session=None):
     """Runs restore ops from the checkpoint. Requires a valid checkpoint."""
     pass
@@ -679,6 +847,31 @@ class _LoadStatus(object):
   def initialize_or_restore(self, session=None):
     """Runs restore ops from the checkpoint, or initializes variables."""
     pass
+
+
+def streaming_restore(status, session=None):
+  """When graph building, runs restore ops as soon as they come in.
+
+  Args:
+    status: A _LoadStatus objects from an object-based saver's
+      restore(). Streaming restore from name-based checkpoints is not currently
+      supported.
+    session: A session to run new restore ops in.
+  """
+  if context.executing_eagerly():
+    # Streaming restore is the default/only behavior when executing eagerly.
+    return
+  if session is None:
+    session = ops.get_default_session()
+  if isinstance(status, NameBasedSaverStatus):
+    raise NotImplementedError(
+        "Streaming restore not supported from name-based checkpoints. File a "
+        "feature request if this limitation bothers you.")
+  status.run_restore_ops(session=session)
+  # pylint: disable=protected-access
+  status._checkpoint.new_restore_ops_callback = (
+      lambda ops: session.run(ops, feed_dict=status._feed_dict))
+  # pylint: enable=protected-access
 
 
 class CheckpointLoadStatus(_LoadStatus):
@@ -715,13 +908,11 @@ class CheckpointLoadStatus(_LoadStatus):
         or if there are any checkpointed values which have not been matched to
         Python objects.
     """
+    self.assert_existing_objects_matched()
     for node_id, node in enumerate(self._checkpoint.object_graph_proto.nodes):
       checkpointable = self._checkpoint.object_by_proto_id.get(node_id, None)
       if checkpointable is None:
         raise AssertionError("Unresolved object in checkpoint: %s" % (node,))
-      if checkpointable._update_uid < self._checkpoint.restore_uid:  # pylint: disable=protected-access
-        raise AssertionError(
-            "Object not assigned a value from checkpoint: %s" % (node,))
     if self._checkpoint.slot_restorations:
       # Sanity check; this collection should be clear if everything has been
       # restored.
@@ -732,16 +923,41 @@ class CheckpointLoadStatus(_LoadStatus):
           ("Unused attributes in these objects (the attributes exist in the "
            "checkpoint but not in the objects): %s") % (
                self._checkpoint.unused_attributes.items(),))
+    return self
+
+  def assert_existing_objects_matched(self):
+    """Asserts that checkpointable Python objects have been matched.
+
+    Note that this is a weaker assertion than `assert_consumed`. It will only
+    fail for existing Python objects which are (transitive) dependencies of the
+    root object and which do not have an entry in the checkpoint.
+
+    It will not fail, for example, if a `tf.keras.Layer` object has not yet been
+    built and so has not created any `tf.Variable` objects.
+
+    Returns:
+      `self` for chaining.
+
+    Raises:
+      AssertionError: If a Python object exists in the transitive dependencies
+        of the root object but does not have a value in the checkpoint.
+    """
+    for node_id, node in enumerate(self._checkpoint.object_graph_proto.nodes):
+      checkpointable = self._checkpoint.object_by_proto_id.get(node_id, None)
+      if (checkpointable is not None
+          and checkpointable._update_uid < self._checkpoint.restore_uid):  # pylint: disable=protected-access
+        raise AssertionError(
+            "Object not assigned a value from checkpoint: %s" % (node,))
     for checkpointable_object in list_objects(self._root_checkpointable):
       self._checkpoint.all_python_objects.add(checkpointable_object)
     unused_python_objects = (
-        set(self._checkpoint.all_python_objects)
-        - set(self._checkpoint.object_by_proto_id.values()))
+        _ObjectIdentitySet(self._checkpoint.all_python_objects)
+        - _ObjectIdentitySet(self._checkpoint.object_by_proto_id.values()))
     if unused_python_objects:
       raise AssertionError(
           ("Some Python objects were not bound to checkpointed values, likely "
            "due to changes in the Python program: %s")
-          % (unused_python_objects,))
+          % (list(unused_python_objects),))
     return self
 
   def run_restore_ops(self, session=None):
@@ -772,7 +988,7 @@ class CheckpointLoadStatus(_LoadStatus):
     if session is None:
       session = ops.get_default_session()
     all_objects = list_objects(self._root_checkpointable)
-    already_initialized_objects = set(
+    already_initialized_objects = _ObjectIdentitySet(
         self._checkpoint.object_by_proto_id.values())
     initializers_for_non_restored_variables = [
         c.initializer for c in all_objects
@@ -799,6 +1015,11 @@ class InitializationOnlyStatus(_LoadStatus):
     self._root_checkpointable = root_checkpointable
 
   def assert_consumed(self):
+    """Assertion for consistency with `CheckpointLoadStatus`. Always fails."""
+    raise AssertionError(
+        "No checkpoint specified (save_path=None); nothing is being restored.")
+
+  def assert_existing_objects_matched(self):
     """Assertion for consistency with `CheckpointLoadStatus`. Always fails."""
     raise AssertionError(
         "No checkpoint specified (save_path=None); nothing is being restored.")
@@ -852,11 +1073,13 @@ _DEPRECATED_RESTORE_INSTRUCTIONS = (
     "one this message is coming from) and use that checkpoint in the future.")
 
 
-@deprecation.deprecated(
-    date=None, instructions=_DEPRECATED_RESTORE_INSTRUCTIONS)
 class NameBasedSaverStatus(_LoadStatus):
   """Status for loading a name-based training checkpoint."""
 
+  # Ideally this deprecation decorator would be on the class, but that
+  # interferes with isinstance checks.
+  @deprecation.deprecated(
+      date=None, instructions=_DEPRECATED_RESTORE_INSTRUCTIONS)
   def __init__(self, checkpoint, root_checkpointable):
     self._checkpoint = checkpoint
     self._root_checkpointable = root_checkpointable
@@ -874,6 +1097,15 @@ class NameBasedSaverStatus(_LoadStatus):
       if checkpointable._update_uid < self._checkpoint.restore_uid:
         raise AssertionError("Object not restored: %s" % (checkpointable,))
       # pylint: enable=protected-access
+    return self
+
+  def assert_existing_objects_matched(self):
+    """Raises an exception if currently created objects are unmatched."""
+    # For name-based checkpoints there's no object information in the
+    # checkpoint, so there's no distinction between
+    # assert_existing_objects_matched and assert_consumed (and both are less
+    # useful since we don't touch Python objects or Python state).
+    return self.assert_consumed()
 
   def _gather_saveable_objects(self):
     """Walk the object graph, using global names for SaveableObjects."""
@@ -927,7 +1159,7 @@ class _SessionWithFeedDictAdditions(session_lib.SessionInterface):
 
 def _copy_saver_with_new_var_list(old_saver, new_var_list):
   """Copy a `tf.train.Saver`'s state to a new Saver with different variables."""
-  new_saver = saver_lib.Saver(var_list=new_var_list)
+  new_saver = saver_lib.Saver(var_list=new_var_list, max_to_keep=None)
   # TODO(allenl): Move to copying functionality to Saver?
   # pylint: disable=protected-access
   new_saver._last_checkpoints = old_saver._last_checkpoints
@@ -977,17 +1209,16 @@ class CheckpointableSaver(object):
     self._last_save_object_graph = None
     self._last_save_saver = None
 
-    # Op caching for restore
-    self._last_restore_object_graph = None
-    self._last_restore_checkpoint = None
+    # Op caching for restore, shared between _CheckpointRestoreCoordinators
+    self._restore_op_cache = {}
 
     if context.executing_eagerly():
       # SaveableObjects are always recreated when executing eagerly.
       self._saveable_object_cache = None
     else:
-      # Maps Checkpointable objects -> attribute names -> SaveableObjects, to
-      # avoid re-creating SaveableObjects when graph building.
-      self._saveable_object_cache = weakref.WeakKeyDictionary()
+      # Maps Checkpointable objects -> attribute names -> list(SaveableObjects),
+      # to avoid re-creating SaveableObjects when graph building.
+      self._saveable_object_cache = _ObjectIdentityWeakKeyDictionary()
 
   @property
   def _root_checkpointable(self):
@@ -1038,11 +1269,11 @@ class CheckpointableSaver(object):
       with ops.device("/cpu:0"):
         object_graph_tensor = constant_op.constant(
             graph_proto.SerializeToString(), dtype=dtypes.string)
-    assert checkpointable_lib.OBJECT_GRAPH_PROTO_KEY not in named_variables
+    assert base.OBJECT_GRAPH_PROTO_KEY not in named_variables
     named_variables.append(
         _NoRestoreSaveable(
             tensor=object_graph_tensor,
-            name=checkpointable_lib.OBJECT_GRAPH_PROTO_KEY))
+            name=base.OBJECT_GRAPH_PROTO_KEY))
     if (self._last_save_object_graph != graph_proto
         # When executing eagerly, we need to re-create SaveableObjects each time
         # save() is called so they pick up new Tensors passed to their
@@ -1053,7 +1284,8 @@ class CheckpointableSaver(object):
         self._last_save_saver = _copy_saver_with_new_var_list(
             old_saver=self._last_save_saver, new_var_list=named_variables)
       else:
-        self._last_save_saver = saver_lib.Saver(var_list=named_variables)
+        self._last_save_saver = saver_lib.Saver(
+            var_list=named_variables, max_to_keep=None)
       self._last_save_object_graph = graph_proto
     with ops.device("/cpu:0"):
       save_path = self._last_save_saver.save(
@@ -1061,6 +1293,7 @@ class CheckpointableSaver(object):
               session=session, feed_additions=feed_additions),
           save_path=file_prefix,
           write_meta_graph=False,
+          write_state=False,
           global_step=checkpoint_number)
     return save_path
 
@@ -1132,7 +1365,7 @@ class CheckpointableSaver(object):
       dtype_map = reader.get_variable_to_dtype_map()
     try:
       object_graph_string = reader.get_tensor(
-          checkpointable_lib.OBJECT_GRAPH_PROTO_KEY)
+          base.OBJECT_GRAPH_PROTO_KEY)
     except errors_impl.NotFoundError:
       # The object graph proto does not exist in this checkpoint. Try the
       # name-based compatibility mode.
@@ -1162,23 +1395,13 @@ class CheckpointableSaver(object):
     object_graph_proto = (
         checkpointable_object_graph_pb2.CheckpointableObjectGraph())
     object_graph_proto.ParseFromString(object_graph_string)
-    if graph_building and object_graph_proto == self._last_restore_object_graph:
-      checkpoint = self._last_restore_checkpoint
-    else:
-      checkpoint = _CheckpointRestoreCoordinator(
-          object_graph_proto=object_graph_proto,
-          save_path=file_prefix_tensor,
-          dtype_map=dtype_map)
-      if graph_building:
-        if self._last_restore_object_graph is not None:
-          raise NotImplementedError(
-              "Using a single Saver to restore different object graphs is not "
-              "currently supported when graph building. Use a different Saver "
-              "for each object graph (restore ops will be duplicated), or "
-              "file a feature request if this limitation bothers you.")
-        self._last_restore_checkpoint = checkpoint
-        self._last_restore_object_graph = object_graph_proto
-    checkpointable_lib._CheckpointPosition(  # pylint: disable=protected-access
+    checkpoint = _CheckpointRestoreCoordinator(
+        object_graph_proto=object_graph_proto,
+        save_path=save_path,
+        save_path_tensor=file_prefix_tensor,
+        restore_op_cache=self._restore_op_cache,
+        saveable_object_cache=self._saveable_object_cache)
+    base._CheckpointPosition(  # pylint: disable=protected-access
         checkpoint=checkpoint, proto_id=0).restore(self._root_checkpointable)
     load_status = CheckpointLoadStatus(
         checkpoint,
@@ -1188,7 +1411,7 @@ class CheckpointableSaver(object):
 
 
 @tf_export("train.Checkpoint")
-class Checkpoint(checkpointable_lib.Checkpointable):
+class Checkpoint(tracking.Checkpointable):
   """Groups checkpointable objects, saving and restoring them.
 
   `Checkpoint`'s constructor accepts keyword arguments whose values are types
@@ -1290,7 +1513,7 @@ class Checkpoint(checkpointable_lib.Checkpointable):
     """
     super(Checkpoint, self).__init__()
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
-      if not isinstance(v, checkpointable_lib.CheckpointableBase):
+      if not isinstance(v, base.CheckpointableBase):
         raise ValueError(
             ("`Checkpoint` was expecting a checkpointable object (an object "
              "derived from `CheckpointableBase`), got %s. If you believe this "
@@ -1309,9 +1532,35 @@ class Checkpoint(checkpointable_lib.Checkpointable):
       with ops.device("/cpu:0"):
         # add_variable creates a dependency named "save_counter"; NoDependency
         # prevents creating a second dependency named "_save_counter".
-        self._save_counter = checkpointable_lib.NoDependency(
+        self._save_counter = data_structures.NoDependency(
             add_variable(self, name="save_counter", initializer=0,
                          dtype=dtypes.int64))
+
+  def write(self, file_prefix, session=None):
+    """Writes a training checkpoint.
+
+    The checkpoint includes variables created by this object and any
+    checkpointable objects it depends on at the time `Checkpoint.write()` is
+    called.
+
+    `write` does not number checkpoints, increment `save_counter`, or update the
+    metadata used by `tf.train.latest_checkpoint`. It is primarily intended for
+    use by higher level checkpoint management utilities. `save` provides a very
+    basic implementation of these features.
+
+    Args:
+      file_prefix: A prefix to use for the checkpoint filenames
+        (/path/to/directory/and_a_prefix).
+      session: The session to evaluate variables in. Ignored when executing
+        eagerly. If not provided when graph building, the default session is
+        used.
+
+    Returns:
+      The full path to the checkpoint (i.e. `file_prefix`).
+    """
+    return self._saver.save(
+        file_prefix=file_prefix,
+        session=session)
 
   @property
   def save_counter(self):
@@ -1326,11 +1575,18 @@ class Checkpoint(checkpointable_lib.Checkpointable):
     return self._save_counter
 
   def save(self, file_prefix, session=None):
-    """Save a training checkpoint.
+    """Saves a training checkpoint and provides basic checkpoint management.
 
     The saved checkpoint includes variables created by this object and any
     checkpointable objects it depends on at the time `Checkpoint.save()` is
     called.
+
+    `save` is a basic convenience wrapper around the `write` method,
+    sequentially numbering checkpoints using `save_counter` and updating the
+    metadata used by `tf.train.latest_checkpoint`. More advanced checkpoint
+    management, for example garbage collection and custom numbering, may be
+    provided by other utilities which also wrap `write`
+    (`tf.contrib.checkpoint.CheckpointManager` for example).
 
     Args:
       file_prefix: A prefix to use for the checkpoint filenames
@@ -1354,15 +1610,20 @@ class Checkpoint(checkpointable_lib.Checkpointable):
         session.run(self.save_counter.initializer)
     if not graph_building or self._save_assign_op is None:
       with ops.colocate_with(self.save_counter):
-        assign_op = self.save_counter.assign_add(1, read_value=False)
+        assign_op = self.save_counter.assign_add(1, read_value=True)
       if graph_building:
-        self._save_assign_op = assign_op
+        self._save_assign_op = data_structures.NoDependency(assign_op)
     if graph_building:
-      session.run(self._save_assign_op)
-    return self._saver.save(
-        file_prefix=file_prefix,
-        checkpoint_number=self.save_counter,
-        session=session)
+      checkpoint_number = session.run(self._save_assign_op)
+    else:
+      checkpoint_number = assign_op.numpy()
+    file_path = self.write("%s-%d" % (file_prefix, checkpoint_number),
+                           session=session)
+    checkpoint_management.update_checkpoint_state(
+        save_dir=os.path.dirname(file_prefix),
+        model_checkpoint_path=file_path,
+        all_model_checkpoint_paths=[file_path])
+    return file_path
 
   def restore(self, save_path):
     """Restore a training checkpoint.
@@ -1428,6 +1689,17 @@ class Checkpoint(checkpointable_lib.Checkpointable):
           Python objects in the dependency graph with no values in the
           checkpoint. This method returns the status object, and so may be
           chained with `initialize_or_restore` or `run_restore_ops`.
+      -  `assert_existing_objects_matched()`:
+          Raises an exception if any existing Python objects in the dependency
+          graph are unmatched. Unlike `assert_consumed`, this assertion will
+          pass if values in the checkpoint have no corresponding Python
+          objects. For example a `tf.keras.Layer` object which has not yet been
+          built, and so has not created any variables, will pass this assertion
+          but fail `assert_consumed`. Useful when loading part of a larger
+          checkpoint into a new Python program, e.g. a training checkpoint with
+          a `tf.train.Optimizer` was saved but only the state required for
+          inference is being loaded. This method returns the status object, and
+          so may be chained with `initialize_or_restore` or `run_restore_ops`.
       - `initialize_or_restore(session=None)`:
           When graph building, runs variable initializers if `save_path` is
           `None`, but otherwise runs restore operations. If no `session` is

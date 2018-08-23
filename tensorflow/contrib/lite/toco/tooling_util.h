@@ -101,6 +101,8 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOp(Model& model,
 const char* OperatorTypeName(OperatorType type);
 string HelpfulOperatorTypeName(const Operator& op);
 
+// Whether the operator can be fused with an activation function. Note that this
+// will return false by default for new operators; fusing support is opt-in.
 bool OperatorSupportsFusedActivation(OperatorType type);
 
 void DumpGraphvizVideoFrame(const Model& model);
@@ -113,10 +115,9 @@ void ExtendShape(Shape* shape, int new_shape_size);
 // TODO(b/36075966): Clean up when dims superseded by array shape.
 void UnextendShape(Shape* shape, int new_shape_size);
 
-// Checks that all dimensions of 'shape' are at least 1.
-bool IsValid(const Shape& shape);
-// Same as above, but reports error using CHECK.
-void CheckShapeDimensions(const Shape& shape);
+// Checks that all dimensions of 'shape' are at least 1. Note that scalars,
+// lacking dimensions, satisfy this condition and are considered non-empty.
+bool IsNonEmpty(const Shape& shape);
 
 // Given two shapes with potentially different dimensionality and dimension
 // arrays d0 and d1. Without loss of generality, assume that shape0 may have
@@ -341,6 +342,14 @@ tensorflow::Status NumElements(const std::vector<T>& shape, U* num_elements) {
   }
   return tensorflow::Status::OK();
 }
+
+// A model file may have shuffled FC weights.
+// When that happens, we want to de-shuffle them immediately on import,
+// so that the rest of toco doesn't need to know about shuffled weights.
+void UndoWeightsShuffling(Model* model);
+
+// Copies minmax, quantization_params, and narrow_range.
+void CopyMinMaxAndQuantizationRelatedFields(const Array& src, Array* dst);
 
 }  // namespace toco
 

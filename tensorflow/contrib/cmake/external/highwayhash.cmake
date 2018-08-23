@@ -20,14 +20,6 @@ set(highwayhash_TAG be5edafc2e1a455768e260ccd68ae7317b6690ee)
 set(highwayhash_BUILD ${CMAKE_CURRENT_BINARY_DIR}/highwayhash/src/highwayhash)
 set(highwayhash_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/highwayhash/install)
 
-# put highwayhash includes in the directory where they are expected
-add_custom_target(highwayhash_create_destination_dir
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${highwayhash_INCLUDE_DIR}/highwayhash
-    DEPENDS highwayhash)
-
-add_custom_target(highwayhash_copy_headers_to_destination
-    DEPENDS highwayhash_create_destination_dir)
-
 if(WIN32)
   set(highwayhash_HEADERS "${highwayhash_BUILD}/highwayhash/*.h")
   set(highwayhash_STATIC_LIBRARIES ${highwayhash_INSTALL}/lib/highwayhash.lib)
@@ -35,6 +27,20 @@ else()
   set(highwayhash_HEADERS "${highwayhash_BUILD}/highwayhash/*.h")
   set(highwayhash_STATIC_LIBRARIES ${highwayhash_INSTALL}/lib/libhighwayhash.a)
 endif()
+
+set(highwayhash_HEADERS
+    "${highwayhash_INSTALL}/include/code_annotation.h"
+    "${highwayhash_INSTALL}/include/highway_tree_hash.h"
+    "${highwayhash_INSTALL}/include/scalar_highway_tree_hash.h"
+    "${highwayhash_INSTALL}/include/scalar_sip_tree_hash.h"
+    "${highwayhash_INSTALL}/include/sip_hash.h"
+    "${highwayhash_INSTALL}/include/sip_tree_hash.h"
+    "${highwayhash_INSTALL}/include/sse41_highway_tree_hash.h"
+    "${highwayhash_INSTALL}/include/state_helpers.h"
+    "${highwayhash_INSTALL}/include/types.h"
+    "${highwayhash_INSTALL}/include/vec.h"
+    "${highwayhash_INSTALL}/include/vec2.h"
+)
 
 ExternalProject_Add(highwayhash
     PREFIX highwayhash
@@ -50,5 +56,15 @@ ExternalProject_Add(highwayhash
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -DCMAKE_INSTALL_PREFIX:STRING=${highwayhash_INSTALL})
 
-add_custom_command(TARGET highwayhash_copy_headers_to_destination PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${highwayhash_INSTALL}/include/ ${highwayhash_INCLUDE_DIR}/highwayhash)
+# put highwayhash includes in the directory where they are expected
+add_custom_target(highwayhash_create_destination_dir
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${highwayhash_INCLUDE_DIR}/highwayhash
+    DEPENDS highwayhash)
+
+add_custom_target(highwayhash_copy_headers_to_destination
+    DEPENDS highwayhash_create_destination_dir)
+
+foreach(header_file ${highwayhash_HEADERS})
+  add_custom_command(TARGET highwayhash_copy_headers_to_destination PRE_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${header_file} ${highwayhash_INCLUDE_DIR}/highwayhash/)
+endforeach()

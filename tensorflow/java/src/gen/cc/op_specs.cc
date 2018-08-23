@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <map>
-#include <vector>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "re2/re2.h"
 #include "tensorflow/core/framework/op.h"
@@ -50,7 +50,7 @@ class TypeResolver {
   // For example, if the argument's datatype is DT_STRING, this method will
   // return "java.lang.String", so the argument can become "Operand<String>"
   // in the Ops API
-  Type TypeOf(const OpDef_ArgDef& arg_def, bool *iterable_out);
+  Type TypeOf(const OpDef_ArgDef& arg_def, bool* iterable_out);
 
   // Returns types of an input attribute
   //
@@ -62,7 +62,7 @@ class TypeResolver {
   // <java.lang.Float, float>, so the attribute can be used as a "Float" object
   // in the Ops API and casted to a "float" when passing through the JNI layer.
   std::pair<Type, Type> TypesOf(const OpDef_AttrDef& attr_def,
-      bool *iterable_out);
+                                bool* iterable_out);
 
   // Returns true if the type of this attribute has already been resolved
   bool IsAttributeVisited(const string& attr_name) {
@@ -89,14 +89,14 @@ class TypeResolver {
   }
 };
 
-Type TypeResolver::TypeOf(const OpDef_ArgDef& arg_def,
-    bool* iterable_out) {
+Type TypeResolver::TypeOf(const OpDef_ArgDef& arg_def, bool* iterable_out) {
   *iterable_out = false;
   if (!arg_def.number_attr().empty()) {
     // when number_attr is set, argument has to be a list of tensors
     *iterable_out = true;
     visited_attrs_.insert(std::make_pair(arg_def.number_attr(), Type::Int()));
   }
+
   Type type = Type::Wildcard();
   if (arg_def.type() != DataType::DT_INVALID) {
     // resolve type from DataType
@@ -153,13 +153,13 @@ Type TypeResolver::TypeOf(const OpDef_ArgDef& arg_def,
 
   } else {
     LOG(FATAL) << "Cannot resolve data type of argument \"" << arg_def.name()
-        << "\" in operation \"" << op_def_.name() << "\"";
+               << "\" in operation \"" << op_def_.name() << "\"";
   }
   return type;
 }
 
 std::pair<Type, Type> TypeResolver::TypesOf(const OpDef_AttrDef& attr_def,
-    bool* iterable_out) {
+                                            bool* iterable_out) {
   std::pair<Type, Type> types = MakeTypePair(Type::Wildcard());
   *iterable_out = false;
   StringPiece attr_type = attr_def.type();
@@ -184,7 +184,7 @@ std::pair<Type, Type> TypeResolver::TypesOf(const OpDef_AttrDef& attr_def,
 
   } else if (attr_type == "tensor") {
     types = MakeTypePair(Type::Class("Tensor", "org.tensorflow")
-        .add_parameter(Type::Wildcard()));
+                             .add_parameter(Type::Wildcard()));
 
   } else if (attr_type == "type") {
     Type type = *iterable_out ? Type::Wildcard() : NextGeneric();
@@ -195,7 +195,7 @@ std::pair<Type, Type> TypeResolver::TypesOf(const OpDef_AttrDef& attr_def,
 
   } else {
     LOG(FATAL) << "Cannot resolve data type for attribute \"" << attr_type
-        << "\" in operation \"" << op_def_.name() << "\"";
+               << "\" in operation \"" << op_def_.name() << "\"";
   }
   visited_attrs_.insert(std::make_pair(attr_def.name(), types.first));
   return types;
@@ -218,47 +218,43 @@ string SnakeToCamelCase(const string& str, bool upper = false) {
   return result;
 }
 
-bool FindAndCut(re2::StringPiece* input, const RE2& expr,
-    re2::StringPiece* before_match, re2::StringPiece* ret_match = nullptr) {
-  re2::StringPiece match;
-  if (!expr.Match(*input, 0, input->size(), RE2::UNANCHORED, &match, 1)) {
-    return false;
-  }
-  before_match->set(input->data(), match.begin() - input->begin());
-  input->remove_prefix(match.end() - before_match->begin());
-  if (ret_match != nullptr) {
-    *ret_match = match;
-  }
+bool FindAndCut(string* input, const RE2& expr, string* before_match,
+                string* ret_match = nullptr) {
+  string match;
+  if (!RE2::PartialMatch(*input, expr, &match)) return false;
+  *before_match = input->substr(0, input->find(match));
+  *input = input->substr(before_match->size() + match.size());
+  if (ret_match != nullptr) *ret_match = match;
   return true;
 }
 
-string ParseDocumentation(re2::StringPiece input) {
+string ParseDocumentation(const string& inp) {
   std::stringstream javadoc_text;
 
   // TODO(karllessard) This is a very minimalist utility method for converting
   // markdown syntax, as found in ops descriptions, to Javadoc/html tags. Check
   // for alternatives to increase the level of support for markups.
   std::vector<string> markups_subexpr;
-  markups_subexpr.push_back("\n+\\*\\s+");  // lists
-  markups_subexpr.push_back("\n{2,}");  // paragraphs
+  markups_subexpr.push_back("\n+\\*\\s+");                // lists
+  markups_subexpr.push_back("\n{2,}");                    // paragraphs
   markups_subexpr.push_back("`{3,}\\s*[^\\s\n]*\\s*\n");  // code blocks
-  markups_subexpr.push_back("`+");  // inlined code and code blocks
+  markups_subexpr.push_back("`+");           // inlined code and code blocks
   markups_subexpr.push_back("\\*{1,2}\\b");  // text emphasis
-  markups_subexpr.push_back("\\[");  // hyperlinks
-  const RE2 markup_expr(str_util::Join(markups_subexpr, "|"));
+  markups_subexpr.push_back("\\[");          // hyperlinks
+  const RE2 markup_expr("(" + str_util::Join(markups_subexpr, "|") + ")");
 
   bool in_list = false;
+  string input = inp;
   while (true) {
-    re2::StringPiece text;
-    re2::StringPiece markup;
+    string text, markup;
     if (!FindAndCut(&input, markup_expr, &text, &markup)) {
       javadoc_text << input;
       break;  // end of loop
     }
     javadoc_text << text;
-    if (markup.starts_with("\n")) {
+    if (str_util::StartsWith(markup, "\n")) {
       javadoc_text << "\n";
-      if (markup.contains("*")) {
+      if (str_util::StrContains(markup, "*")) {
         // new list item
         javadoc_text << (in_list ? "</li>\n" : "<ul>\n") << "<li>\n";
         in_list = true;
@@ -266,18 +262,18 @@ string ParseDocumentation(re2::StringPiece input) {
         // end of list
         javadoc_text << "</li>\n</ul>\n";
         in_list = false;
-      } else if (!input.starts_with("```")) {
+      } else if (!str_util::StartsWith(input, "```")) {
         // new paragraph (not required if a <pre> block follows)
         javadoc_text << "<p>\n";
       }
-    } else if (markup.starts_with("```")) {
+    } else if (str_util::StartsWith(markup, "```")) {
       // code blocks
-      if (FindAndCut(&input, "```\\s*\n*", &text)) {
+      if (FindAndCut(&input, "(```\\s*\n*)", &text)) {
         javadoc_text << "<pre>{@code\n" << text << "}</pre>\n";
       } else {
         javadoc_text << markup;
       }
-    } else if (markup.starts_with("`")) {
+    } else if (str_util::StartsWith("(" + markup + ")", "`")) {
       // inlined code
       if (FindAndCut(&input, markup, &text)) {
         javadoc_text << "{@code " << text << "}";
@@ -286,26 +282,28 @@ string ParseDocumentation(re2::StringPiece input) {
       }
     } else if (markup == "**") {
       // text emphasis (strong)
-      if (FindAndCut(&input, "\\b\\*{2}", &text)) {
+      if (FindAndCut(&input, "(\\b\\*{2})", &text)) {
         javadoc_text << "<b>" << ParseDocumentation(text) << "</b>";
       } else {
         javadoc_text << markup;
       }
     } else if (markup == "*") {
       // text emphasis (normal)
-      if (FindAndCut(&input, "\\b\\*{1}", &text)) {
+      if (FindAndCut(&input, "(\\b\\*{1})", &text)) {
         javadoc_text << "<i>" << ParseDocumentation(text) << "</i>";
       } else {
         javadoc_text << markup;
       }
-    } else if (markup.starts_with("[")) {
+    } else if (str_util::StartsWith(markup, "[")) {
       // hyperlinks
       string label;
       string link;
-      if (RE2::Consume(&input, "([^\\[]+)\\]\\((http.+)\\)", &label, &link)) {
+      if (RE2::PartialMatch(input, "([^\\[]+)\\]\\((http.+)\\)", &label,
+                            &link) &&
+          str_util::StartsWith(input, label + link)) {
+        input = input.substr(label.size() + link.size());
         javadoc_text << "<a href=\"" << link << "\">"
-            << ParseDocumentation(label)
-            << "</a>";
+                     << ParseDocumentation(label) << "</a>";
       } else {
         javadoc_text << markup;
       }
@@ -318,57 +316,56 @@ string ParseDocumentation(re2::StringPiece input) {
 }
 
 ArgumentSpec CreateInput(const OpDef_ArgDef& input_def,
-    const ApiDef::Arg& input_api_def, TypeResolver* type_resolver) {
+                         const ApiDef::Arg& input_api_def,
+                         TypeResolver* type_resolver) {
   bool iterable = false;
   Type type = type_resolver->TypeOf(input_def, &iterable);
-  Type var_type = Type::Interface("Operand", "org.tensorflow")
-    .add_parameter(type);
+  Type var_type =
+      Type::Interface("Operand", "org.tensorflow").add_parameter(type);
   if (iterable) {
     var_type = Type::IterableOf(var_type);
   }
-  return ArgumentSpec(input_api_def.name(),
+  return ArgumentSpec(
+      input_api_def.name(),
       Variable::Create(SnakeToCamelCase(input_api_def.rename_to()), var_type),
-      type,
-      ParseDocumentation(input_api_def.description()),
-      iterable);
+      type, ParseDocumentation(input_api_def.description()), iterable);
 }
 
 AttributeSpec CreateAttribute(const OpDef_AttrDef& attr_def,
-    const ApiDef::Attr& attr_api_def, TypeResolver* type_resolver) {
+                              const ApiDef::Attr& attr_api_def,
+                              TypeResolver* type_resolver) {
   bool iterable = false;
   std::pair<Type, Type> types = type_resolver->TypesOf(attr_def, &iterable);
-  Type var_type = types.first.kind() == Type::GENERIC ?
-      Type::Class("Class").add_parameter(types.first) : types.first;
+  Type var_type = types.first.kind() == Type::GENERIC
+                      ? Type::Class("Class").add_parameter(types.first)
+                      : types.first;
   if (iterable) {
     var_type = Type::ListOf(var_type);
   }
-  return AttributeSpec(attr_api_def.name(),
+  return AttributeSpec(
+      attr_api_def.name(),
       Variable::Create(SnakeToCamelCase(attr_api_def.rename_to()), var_type),
-      types.first,
-      types.second,
-      ParseDocumentation(attr_api_def.description()),
-      iterable,
-      attr_api_def.has_default_value());
+      types.first, types.second, ParseDocumentation(attr_api_def.description()),
+      iterable, attr_api_def.has_default_value());
 }
 
 ArgumentSpec CreateOutput(const OpDef_ArgDef& output_def,
-    const ApiDef::Arg& output_api, TypeResolver* type_resolver) {
+                          const ApiDef::Arg& output_api,
+                          TypeResolver* type_resolver) {
   bool iterable = false;
   Type type = type_resolver->TypeOf(output_def, &iterable);
-  Type var_type = Type::Class("Output", "org.tensorflow")
-    .add_parameter(type);
+  Type var_type = Type::Class("Output", "org.tensorflow").add_parameter(type);
   if (iterable) {
     var_type = Type::ListOf(var_type);
   }
-  return ArgumentSpec(output_api.name(),
+  return ArgumentSpec(
+      output_api.name(),
       Variable::Create(SnakeToCamelCase(output_api.rename_to()), var_type),
-      type,
-      ParseDocumentation(output_api.description()),
-      iterable);
+      type, ParseDocumentation(output_api.description()), iterable);
 }
 
 EndpointSpec CreateEndpoint(const OpDef& op_def, const ApiDef& api_def,
-    const ApiDef_Endpoint& endpoint_def) {
+                            const ApiDef_Endpoint& endpoint_def) {
   std::vector<string> name_tokens = str_util::Split(endpoint_def.name(), ".");
   string package;
   string name;
@@ -376,27 +373,25 @@ EndpointSpec CreateEndpoint(const OpDef& op_def, const ApiDef& api_def,
     package = name_tokens.at(0);
     name = name_tokens.at(1);
   } else {
-    package = kDefaultEndpointPackage;
+    package = "core";  // generate unclassified ops in the 'core' package
     name = name_tokens.at(0);
   }
-  return EndpointSpec(package,
-      name,
-      Javadoc::Create(ParseDocumentation(api_def.summary()))
-          .details(ParseDocumentation(api_def.description())));
+  return EndpointSpec(package, name,
+                      Javadoc::Create(ParseDocumentation(api_def.summary()))
+                          .details(ParseDocumentation(api_def.description())));
 }
 
 }  // namespace
 
 OpSpec OpSpec::Create(const OpDef& op_def, const ApiDef& api_def) {
-  OpSpec op(api_def.graph_op_name(),
-      api_def.visibility() == ApiDef::HIDDEN,
-      op_def.deprecation().explanation());
+  OpSpec op(api_def.graph_op_name(), api_def.visibility() == ApiDef::HIDDEN,
+            op_def.deprecation().explanation());
   TypeResolver type_resolver(op_def);
   for (const string& next_input_name : api_def.arg_order()) {
     for (int i = 0; i < op_def.input_arg().size(); ++i) {
       if (op_def.input_arg(i).name() == next_input_name) {
         op.inputs_.push_back(CreateInput(op_def.input_arg(i), api_def.in_arg(i),
-            &type_resolver));
+                                         &type_resolver));
         break;
       }
     }
@@ -405,8 +400,8 @@ OpSpec OpSpec::Create(const OpDef& op_def, const ApiDef& api_def) {
     // do not parse attributes already visited, they have probably been inferred
     // before as an input argument type
     if (!type_resolver.IsAttributeVisited(op_def.attr(i).name())) {
-      AttributeSpec attr = CreateAttribute(op_def.attr(i), api_def.attr(i),
-          &type_resolver);
+      AttributeSpec attr =
+          CreateAttribute(op_def.attr(i), api_def.attr(i), &type_resolver);
       // attributes with a default value are optional
       if (attr.has_default_value() && attr.type().kind() != Type::GENERIC) {
         op.optional_attributes_.push_back(attr);
@@ -416,8 +411,8 @@ OpSpec OpSpec::Create(const OpDef& op_def, const ApiDef& api_def) {
     }
   }
   for (int i = 0; i < op_def.output_arg().size(); ++i) {
-    op.outputs_.push_back(CreateOutput(op_def.output_arg(i), api_def.out_arg(i),
-        &type_resolver));
+    op.outputs_.push_back(
+        CreateOutput(op_def.output_arg(i), api_def.out_arg(i), &type_resolver));
   }
   for (const auto& endpoint_def : api_def.endpoint()) {
     op.endpoints_.push_back(CreateEndpoint(op_def, api_def, endpoint_def));

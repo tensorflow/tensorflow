@@ -102,7 +102,7 @@ class SpeechTest : public ::testing::TestWithParam<int> {
   int GetMaxInvocations() { return GetParam(); }
 };
 
-TEST_P(SpeechTest, HotwordOkGoogleRank1Test) {
+TEST_P(SpeechTest, DISABLED_HotwordOkGoogleRank1Test) {
   std::stringstream os;
   ASSERT_TRUE(ConvertCsvData(
       "speech_hotword_model_rank1.tflite", "speech_hotword_model_in.csv",
@@ -114,7 +114,7 @@ TEST_P(SpeechTest, HotwordOkGoogleRank1Test) {
       << test_driver.GetErrorMessage();
 }
 
-TEST_P(SpeechTest, HotwordOkGoogleRank2Test) {
+TEST_P(SpeechTest, DISABLED_HotwordOkGoogleRank2Test) {
   std::stringstream os;
   ASSERT_TRUE(ConvertCsvData(
       "speech_hotword_model_rank2.tflite", "speech_hotword_model_in.csv",

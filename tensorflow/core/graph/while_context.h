@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPH_WHILE_CONTEXT_H_
-#define TENSORFLOW_GRAPH_WHILE_CONTEXT_H_
+#ifndef TENSORFLOW_CORE_GRAPH_WHILE_CONTEXT_H_
+#define TENSORFLOW_CORE_GRAPH_WHILE_CONTEXT_H_
 
 #include "tensorflow/core/graph/graph.h"
 
@@ -73,4 +73,4 @@ class WhileContext {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_GRAPH_H_
+#endif  // TENSORFLOW_CORE_GRAPH_WHILE_CONTEXT_H_

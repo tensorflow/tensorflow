@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_liveness_analysis.h"
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"

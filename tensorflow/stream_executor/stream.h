@@ -25,6 +25,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.h"
@@ -121,10 +122,14 @@ class Stream {
   // Get or create a sub-stream from this stream. If there is any sub-stream in
   // the pool that can be reused then just return this sub-stream.  Otherwise
   // create a new sub-stream.
+  //
+  // TODO(b/112196569): The semantics of failed sub-streams is error-prone.
   Stream *GetOrCreateSubStream() LOCKS_EXCLUDED(mu_);
 
   // Return the sub-stream back to the host stream so that it can be reused
-  // later.
+  // later. Sub-streams that are !ok() will not be reused.
+  //
+  // TODO(b/112196569): The semantics of failed sub-streams is error-prone.
   void ReturnSubStream(Stream *sub_stream) LOCKS_EXCLUDED(mu_);
 
   // Allocate temporary memories. The stream will deallocate them when blocked
@@ -156,14 +161,13 @@ class Stream {
                      const TypedKernel<Params...> &kernel, Args... args);
 
   // Record a "start" event for the interval timer at this point in the
-  // stream's
-  // execution (relative to the previously and subsequently enqueued items in
-  // the stream's execution). Streams may be started/stopped multiple times.
+  // stream's execution (relative to the previously and subsequently enqueued
+  // items in the stream's execution). Streams may be started/stopped multiple
+  // times.
   Stream &ThenStartTimer(Timer *t);
 
   // Record a "stop" event for the interval timer at this point in the
-  // stream's
-  // execution. See also Stream::ThenStartTimer.
+  // stream's execution. See also Stream::ThenStartTimer.
   Stream &ThenStopTimer(Timer *t);
 
   // TODO(leary) If work is added to the stream that is being depended upon,
@@ -179,8 +183,7 @@ class Stream {
   //
   // Checks that a stream does not wait for itself, and it is up to the
   // user to guarantee that a stream does not come to wait on itself in a
-  // cyclic
-  // manner; in that case, behavior is undefined.
+  // cyclic manner; in that case, behavior is undefined.
   //
   // N.B. Base recursion case for the variadic ThenWaitFor.
   Stream &ThenWaitFor(Stream *other);
@@ -630,19 +633,22 @@ class Stream {
                           const dnn::BatchDescriptor &input_dimensions,
                           const DeviceMemory<double> &input_data,
                           const dnn::BatchDescriptor &output_dimensions,
-                          DeviceMemory<double> *output_data);
+                          DeviceMemory<double> *output_data,
+                          ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
                           const dnn::BatchDescriptor &input_dimensions,
                           const DeviceMemory<float> &input_data,
                           const dnn::BatchDescriptor &output_dimensions,
-                          DeviceMemory<float> *output_data);
+                          DeviceMemory<float> *output_data,
+                          ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
                           const dnn::BatchDescriptor &input_dimensions,
                           const DeviceMemory<Eigen::half> &input_data,
                           const dnn::BatchDescriptor &output_dimensions,
-                          DeviceMemory<Eigen::half> *output_data);
+                          DeviceMemory<Eigen::half> *output_data,
+                          ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
                            const dnn::BatchDescriptor &input_dimensions,
@@ -650,7 +656,8 @@ class Stream {
                            const dnn::BatchDescriptor &output_dimensions,
                            const DeviceMemory<double> &output_data,
                            const DeviceMemory<double> &input_diff_data,
-                           DeviceMemory<double> *output_diff_data);
+                           DeviceMemory<double> *output_diff_data,
+                           ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
                            const dnn::BatchDescriptor &input_dimensions,
@@ -658,7 +665,8 @@ class Stream {
                            const dnn::BatchDescriptor &output_dimensions,
                            const DeviceMemory<float> &output_data,
                            const DeviceMemory<float> &input_diff_data,
-                           DeviceMemory<float> *output_diff_data);
+                           DeviceMemory<float> *output_diff_data,
+                           ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
                            const dnn::BatchDescriptor &input_dimensions,
@@ -666,7 +674,8 @@ class Stream {
                            const dnn::BatchDescriptor &output_dimensions,
                            const DeviceMemory<Eigen::half> &output_data,
                            const DeviceMemory<Eigen::half> &input_diff_data,
-                           DeviceMemory<Eigen::half> *output_diff_data);
+                           DeviceMemory<Eigen::half> *output_diff_data,
+                           ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenNormalize(const dnn::NormalizeDescriptor &normalize_descriptor,
                         const DeviceMemory<float> &input_data,
@@ -685,7 +694,8 @@ class Stream {
       const DeviceMemory<float> &raw_data,
       const DeviceMemory<float> &normalized_data,
       const DeviceMemory<float> &normalized_variable_gradient,
-      DeviceMemory<float> *raw_variable_gradient);
+      DeviceMemory<float> *raw_variable_gradient,
+      ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenActivate(dnn::ActivationMode activation_mode,
                        const dnn::BatchDescriptor &dimensions,
@@ -1351,33 +1361,39 @@ class Stream {
                        DeviceMemory<std::complex<double>> *x, int incx);
 
   // See BlasSupport::DoBlasGemm.
-  Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb, uint64 m,
-                       uint64 n, uint64 k, float alpha,
-                       const DeviceMemory<Eigen::half> &a, int lda,
-                       const DeviceMemory<Eigen::half> &b, int ldb, float beta,
-                       DeviceMemory<Eigen::half> *c, int ldc);
-  Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb, uint64 m,
-                       uint64 n, uint64 k, float alpha,
-                       const DeviceMemory<float> &a, int lda,
-                       const DeviceMemory<float> &b, int ldb, float beta,
-                       DeviceMemory<float> *c, int ldc);
-  Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb, uint64 m,
-                       uint64 n, uint64 k, double alpha,
-                       const DeviceMemory<double> &a, int lda,
-                       const DeviceMemory<double> &b, int ldb, double beta,
-                       DeviceMemory<double> *c, int ldc);
-  Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb, uint64 m,
-                       uint64 n, uint64 k, std::complex<float> alpha,
-                       const DeviceMemory<std::complex<float>> &a, int lda,
-                       const DeviceMemory<std::complex<float>> &b, int ldb,
-                       std::complex<float> beta,
-                       DeviceMemory<std::complex<float>> *c, int ldc);
-  Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb, uint64 m,
-                       uint64 n, uint64 k, std::complex<double> alpha,
-                       const DeviceMemory<std::complex<double>> &a, int lda,
-                       const DeviceMemory<std::complex<double>> &b, int ldb,
-                       std::complex<double> beta,
-                       DeviceMemory<std::complex<double>> *c, int ldc);
+  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                                 uint64 m, uint64 n, uint64 k, float alpha,
+                                 const DeviceMemory<Eigen::half> &a, int lda,
+                                 const DeviceMemory<Eigen::half> &b, int ldb,
+                                 float beta, DeviceMemory<Eigen::half> *c,
+                                 int ldc);
+  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                                 uint64 m, uint64 n, uint64 k, float alpha,
+                                 const DeviceMemory<float> &a, int lda,
+                                 const DeviceMemory<float> &b, int ldb,
+                                 float beta, DeviceMemory<float> *c, int ldc);
+  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                                 uint64 m, uint64 n, uint64 k, double alpha,
+                                 const DeviceMemory<double> &a, int lda,
+                                 const DeviceMemory<double> &b, int ldb,
+                                 double beta, DeviceMemory<double> *c, int ldc);
+  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                                 uint64 m, uint64 n, uint64 k,
+                                 std::complex<float> alpha,
+                                 const DeviceMemory<std::complex<float>> &a,
+                                 int lda,
+                                 const DeviceMemory<std::complex<float>> &b,
+                                 int ldb, std::complex<float> beta,
+                                 DeviceMemory<std::complex<float>> *c, int ldc);
+  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                                 uint64 m, uint64 n, uint64 k,
+                                 std::complex<double> alpha,
+                                 const DeviceMemory<std::complex<double>> &a,
+                                 int lda,
+                                 const DeviceMemory<std::complex<double>> &b,
+                                 int ldb, std::complex<double> beta,
+                                 DeviceMemory<std::complex<double>> *c,
+                                 int ldc);
 
   Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
                                     blas::Transpose transb, uint64 m, uint64 n,
@@ -1545,6 +1561,38 @@ class Stream {
       std::complex<double> beta,
       const port::ArraySlice<DeviceMemory<std::complex<double>> *> &c, int ldc,
       int batch_count, ScratchAllocator *scratch_allocator);
+  Stream &ThenBlasGemmStridedBatched(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, float alpha, const DeviceMemory<Eigen::half> &a, int lda,
+      int64 stride_a, const DeviceMemory<Eigen::half> &b, int ldb,
+      int64 stride_b, float beta, DeviceMemory<Eigen::half> *c, int ldc,
+      int64 stride_c, int batch_count);
+  Stream &ThenBlasGemmStridedBatched(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, float alpha, const DeviceMemory<float> &a, int lda,
+      int64 stride_a, const DeviceMemory<float> &b, int ldb, int64 stride_b,
+      float beta, DeviceMemory<float> *c, int ldc, int64 stride_c,
+      int batch_count);
+  Stream &ThenBlasGemmStridedBatched(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, double alpha, const DeviceMemory<double> &a, int lda,
+      int64 stride_a, const DeviceMemory<double> &b, int ldb, int64 stride_b,
+      double beta, DeviceMemory<double> *c, int ldc, int64 stride_c,
+      int batch_count);
+  Stream &ThenBlasGemmStridedBatched(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, std::complex<float> alpha,
+      const DeviceMemory<std::complex<float>> &a, int lda, int64 stride_a,
+      const DeviceMemory<std::complex<float>> &b, int ldb, int64 stride_b,
+      std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
+      int64 stride_c, int batch_count);
+  Stream &ThenBlasGemmStridedBatched(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, std::complex<double> alpha,
+      const DeviceMemory<std::complex<double>> &a, int lda, int64 stride_a,
+      const DeviceMemory<std::complex<double>> &b, int ldb, int64 stride_b,
+      std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
+      int64 stride_c, int batch_count);
 
   // See BlasSupport::DoBlasHemm.
   Stream &ThenBlasHemm(blas::Side side, blas::UpperLower uplo, uint64 m,
@@ -1997,6 +2045,11 @@ class Stream {
   // negative effects on performance.
   Stream &ThenDoHostCallback(std::function<void()> callback);
 
+  // Entrains onto the stream a callback to the host (from the device).
+  // Behaves as ThenDoHostCallback above, but returns a Status instead of void.
+  // This overload should be preferred if the callback could fail.
+  Stream &ThenDoHostCallbackWithStatus(std::function<port::Status()> callback);
+
   // Returns the StreamExecutor (parent object) associated with this stream.
   StreamExecutor *parent() const {
     CHECK(parent_ != nullptr);
@@ -2006,6 +2059,9 @@ class Stream {
   // Returns the (internal usage) temporary-memory-allocation manager associated
   // with this stream.
   internal::TemporaryMemoryManager *temporary_memory_manager();
+
+  // Returns a debugging string "[stream=0x...,impl=0x...]".
+  string DebugStreamPointers() const;
 
  private:
   friend class host::HostBlas;  // for parent_.

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_TENSOR_UTIL_H_
-#define TENSORFLOW_FRAMEWORK_TENSOR_UTIL_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_TENSOR_UTIL_H_
+#define TENSORFLOW_CORE_FRAMEWORK_TENSOR_UTIL_H_
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -160,4 +160,4 @@ CreateTensorProto(const std::vector<Type>& values,
 }  // namespace tensor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_TENSOR_UTIL_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_TENSOR_UTIL_H_

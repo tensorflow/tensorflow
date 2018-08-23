@@ -366,7 +366,7 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
 
       squeezed_predictions, squeezed_labels = (
           tensor_util.remove_squeezable_dimensions(predictions, labels))
-      with self.test_session(g):
+      with self.session(g):
         variables_lib.local_variables_initializer().run()
         self.assertAllClose(
             predictions_value, squeezed_predictions.eval(feed_dict=feed_dict))

@@ -38,7 +38,8 @@ void CopyToBuffer(const Cord& src, char* dest) { src.CopyToArray(dest); }
 }  // namespace port
 }  // namespace toco
 
-#if defined(PLATFORM_GOOGLE) && !defined(__APPLE__) && !defined(__ANDROID__)
+#if defined(PLATFORM_GOOGLE) && !defined(__APPLE__) && \
+    !defined(__ANDROID__) && !defined(_WIN32)
 
 // Wrap Google file operations.
 
@@ -115,9 +116,12 @@ string JoinPath(const string& a, const string& b) {
 }  // namespace port
 }  // namespace toco
 
-#else  // (__APPLE__ || __ANDROID__)
+#else  // !PLATFORM_GOOGLE || __APPLE__ || __ANDROID__ || _WIN32
 
 #include <fcntl.h>
+#if defined(_WIN32)
+#include <io.h>  // for _close, _open, _read
+#endif
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -129,6 +133,21 @@ string JoinPath(const string& a, const string& b) {
 
 namespace toco {
 namespace port {
+
+#if defined(_WIN32)
+#define close _close
+#define open _open
+#define read _read
+// Windows does not support the same set of file permissions as other platforms,
+// and also requires an explicit flag for binary file read/write support.
+constexpr int kFileCreateMode = _S_IREAD | _S_IWRITE;
+constexpr int kFileReadFlags = _O_RDONLY | _O_BINARY;
+constexpr int kFileWriteFlags = _O_WRONLY | _O_BINARY | _O_CREAT;
+#else
+constexpr int kFileCreateMode = 0664;
+constexpr int kFileReadFlags = O_RDONLY;
+constexpr int kFileWriteFlags = O_CREAT | O_WRONLY;
+#endif  // _WIN32
 
 static bool port_initialized = false;
 
@@ -180,7 +199,7 @@ tensorflow::Status GetContents(const string& path, string* output,
                                const file::Options& options) {
   output->clear();
 
-  int fd = open(path.c_str(), O_RDONLY);
+  int fd = open(path.c_str(), kFileReadFlags);
   if (fd == -1) {
     return tensorflow::errors::NotFound("can't open() for read");
   }
@@ -209,7 +228,7 @@ tensorflow::Status GetContents(const string& path, string* output,
 
 tensorflow::Status SetContents(const string& filename, const string& contents,
                                const file::Options& options) {
-  int fd = open(filename.c_str(), O_WRONLY | O_CREAT, 0664);
+  int fd = open(filename.c_str(), kFileWriteFlags, kFileCreateMode);
   if (fd == -1) {
     return tensorflow::errors::Internal("can't open() for write");
   }
@@ -243,4 +262,4 @@ string JoinPath(const string& base, const string& filename) {
 }  // namespace port
 }  // namespace toco
 
-#endif  // (__APPLE || __ANDROID__)
+#endif  // !PLATFORM_GOOGLE || __APPLE || __ANDROID__ || _WIN32

@@ -43,6 +43,8 @@ class SingleMachine : public Cluster {
              const std::vector<std::pair<string, Tensor>>& feed,
              const std::vector<string>& fetch, RunMetadata* metadata) override;
 
+  const DeviceSet* GetDeviceSet() const override { return device_set_.get(); }
+
   Status EnablePeakMemoryStats(bool enable) override;
 
   // It requires EnableAllocatorStats(true) be called before Provision().
@@ -73,6 +75,7 @@ class SingleMachine : public Cluster {
   int64 expected_init_time_s_;
   std::unique_ptr<Coordinator> coordinator_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
+  std::unique_ptr<DeviceSet> device_set_;
 
   RunMetadata init_metadata_;
 

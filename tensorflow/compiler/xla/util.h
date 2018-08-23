@@ -24,6 +24,8 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -53,7 +55,7 @@ Status WithLogBacktrace(const Status& status);
 // the InlinedVector will just behave like an std::vector<> and allocate the
 // memory to store its values.
 static constexpr int kInlineRank = 8;
-using DimensionVector = tensorflow::gtl::InlinedVector<int64, kInlineRank>;
+using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
 
 // RAII timer that logs with a given label the wall clock time duration in human
 // readable form. This differs from base's ElapsedTimer primarily in that it
@@ -433,110 +435,15 @@ std::vector<std::pair<int64, int64>> CommonFactors(
 // Removes illegal characters from filenames.
 string SanitizeFileName(string file_name);
 
-template <typename Container, typename Predicate>
-bool c_all_of(const Container& container, Predicate&& predicate) {
-  return std::all_of(std::begin(container), std::end(container),
-                     std::forward<Predicate>(predicate));
-}
-
-template <typename Container, typename Predicate>
-bool c_any_of(const Container& container, Predicate&& predicate) {
-  return std::any_of(std::begin(container), std::end(container),
-                     std::forward<Predicate>(predicate));
-}
-
-template <typename InputContainer, typename OutputIterator,
-          typename UnaryOperation>
-OutputIterator c_transform(const InputContainer& input_container,
-                           OutputIterator output_iterator,
-                           UnaryOperation&& unary_op) {
-  return std::transform(std::begin(input_container), std::end(input_container),
-                        output_iterator,
-                        std::forward<UnaryOperation>(unary_op));
-}
-
-template <class InputContainer, class OutputIterator, class UnaryPredicate>
-OutputIterator c_copy_if(const InputContainer& input_container,
-                         OutputIterator output_iterator,
-                         UnaryPredicate&& predicate) {
-  return std::copy_if(std::begin(input_container), std::end(input_container),
-                      output_iterator, std::forward<UnaryPredicate>(predicate));
-}
-
-template <class InputContainer, class OutputIterator>
-OutputIterator c_copy(const InputContainer& input_container,
-                      OutputIterator output_iterator) {
-  return std::copy(std::begin(input_container), std::end(input_container),
-                   output_iterator);
-}
-
-template <class InputContainer>
-void c_sort(InputContainer& input_container) {
-  std::sort(std::begin(input_container), std::end(input_container));
-}
-
-template <class InputContainer, class Comparator>
-void c_sort(InputContainer& input_container, Comparator&& comparator) {
-  std::sort(std::begin(input_container), std::end(input_container),
-            std::forward<Comparator>(comparator));
-}
-
-template <typename Sequence, typename T>
-bool c_binary_search(const Sequence& sequence, T&& value) {
-  return std::binary_search(std::begin(sequence), std::end(sequence),
-                            std::forward<T>(value));
-}
-
-template <typename C>
-bool c_is_sorted(const C& c) {
-  return std::is_sorted(std::begin(c), std::end(c));
-}
-
-template <typename C, typename Compare>
-bool c_is_sorted(const C& c, Compare&& comp) {
-  return std::is_sorted(std::begin(c), std::end(c),
-                        std::forward<Compare>(comp));
-}
-
-template <typename C>
-auto c_adjacent_find(const C& c) -> decltype(std::begin(c)) {
-  return std::adjacent_find(std::begin(c), std::end(c));
-}
-
-template <typename C, typename Pred>
-auto c_find_if(const C& c, Pred&& pred) -> decltype(std::begin(c)) {
-  return std::find_if(std::begin(c), std::end(c), std::forward<Pred>(pred));
-}
-
-template <typename C, typename Value>
-auto c_find(const C& c, Value&& value) -> decltype(std::begin(c)) {
-  return std::find(std::begin(c), std::end(c), std::forward<Value>(value));
-}
-
-template <typename Sequence>
-void c_reverse(Sequence& sequence) {
-  std::reverse(std::begin(sequence), std::end(sequence));
-}
-
-template <typename Sequence, typename T, typename BinaryOp>
-typename std::decay<T>::type c_accumulate(const Sequence& sequence, T&& init,
-                                          BinaryOp&& binary_op) {
-  return std::accumulate(std::begin(sequence), std::end(sequence),
-                         std::forward<T>(init),
-                         std::forward<BinaryOp>(binary_op));
-}
-
-template <typename C, typename Pred>
-typename std::iterator_traits<
-    decltype(std::begin(std::declval<C>()))>::difference_type
-c_count_if(const C& c, Pred&& pred) {
-  return std::count_if(std::begin(c), std::end(c), std::forward<Pred>(pred));
-}
-
 template <typename C, typename Value>
 int64 FindIndex(const C& c, Value&& value) {
-  auto it = c_find(c, std::forward<Value>(value));
+  auto it = absl::c_find(c, std::forward<Value>(value));
   return std::distance(c.begin(), it);
+}
+
+template <typename T>
+bool ArrayContains(tensorflow::gtl::ArraySlice<T> c, const T& value) {
+  return absl::c_find(c, value) != c.end();
 }
 
 template <typename C, typename Value>
@@ -547,6 +454,17 @@ void InsertAt(C* c, int64 index, Value&& value) {
 template <typename C>
 void EraseAt(C* c, int64 index) {
   c->erase(c->begin() + index);
+}
+
+template <typename T>
+std::vector<T> ArraySliceToVector(tensorflow::gtl::ArraySlice<T> slice) {
+  return std::vector<T>(slice.begin(), slice.end());
+}
+
+template <typename T, size_t N>
+std::vector<T> InlinedVectorToVector(
+    const absl::InlinedVector<T, N>& inlined_vector) {
+  return std::vector<T>(inlined_vector.begin(), inlined_vector.end());
 }
 
 // Returns true if `x` fits in 32-bits.
@@ -560,8 +478,8 @@ bool IsInt32(T x) {
 
 template <typename T>
 Status EraseElementFromVector(std::vector<T>* container, const T& value) {
-  // c_find returns a const_iterator which does not seem to work on gcc 4.8.4,
-  // and this breaks the ubuntu/xla_gpu build bot.
+  // absl::c_find returns a const_iterator which does not seem to work on
+  // gcc 4.8.4, and this breaks the ubuntu/xla_gpu build bot.
   auto it = std::find(container->begin(), container->end(), value);
   TF_RET_CHECK(it != container->end());
   container->erase(it);

@@ -22,8 +22,9 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
+#include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -58,7 +59,7 @@ HloComputation* HloModule::AddComputationInternal(
 
     // If the module configuration has no entry layout computation set, create a
     // default one based on the program shape.
-    if (!config_.has_host_entry_computation_layout()) {
+    if (!config_.has_entry_computation_layout()) {
       config_.SetDefaultComputationLayout(
           entry_computation_->ComputeProgramShape());
     }
@@ -231,14 +232,11 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   TF_RET_CHECK(proto.has_program_shape())
       << "No program shape found in the proto";
   const auto& expected_program_shape = proto.program_shape();
-  TF_RET_CHECK(
-      expected_program_shape.parameters_size() ==
-      module_config.device_entry_computation_layout().parameter_count());
+  TF_RET_CHECK(expected_program_shape.parameters_size() ==
+               module_config.entry_computation_layout().parameter_count());
   for (int i = 0; i < expected_program_shape.parameters_size(); ++i) {
     const Shape& parameter_shape =
-        module_config.device_entry_computation_layout()
-            .parameter_layout(i)
-            .shape();
+        module_config.entry_computation_layout().parameter_layout(i).shape();
     TF_RET_CHECK(ShapeUtil::Compatible(expected_program_shape.parameters(i),
                                        parameter_shape))
         << "HloModuleConfig has different shape for parameter " << i
@@ -248,7 +246,7 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
         << ", actual: " << ShapeUtil::HumanStringWithLayout(parameter_shape);
   }
   const Shape& result_shape =
-      module_config.device_entry_computation_layout().result_layout().shape();
+      module_config.entry_computation_layout().result_layout().shape();
   TF_RET_CHECK(
       ShapeUtil::Compatible(expected_program_shape.result(), result_shape))
       << "HloModuleConfig has different result shape than the HLO module. "
@@ -277,7 +275,7 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   }
   TF_RET_CHECK(entry != nullptr);
 
-  auto module = MakeUnique<HloModule>(proto.name(), module_config);
+  auto module = absl::make_unique<HloModule>(proto.name(), module_config);
 
   // Sort the computations in the proto id's order.
   std::sort(computations.begin(), computations.end(),
@@ -327,7 +325,7 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
   // The module config is constructed with default layouts regardless of what is
   // passed in via the ProgramShape. Set the layouts to the appropriate values.
   ComputationLayout* entry_layout =
-      module_config.mutable_host_entry_computation_layout();
+      module_config.mutable_entry_computation_layout();
   for (int64 i = 0; i < entry_layout->parameter_count(); ++i) {
     TF_RETURN_IF_ERROR(
         entry_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
@@ -335,9 +333,6 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
   }
   TF_RETURN_IF_ERROR(entry_layout->mutable_result_layout()->CopyLayoutFromShape(
       program_shape.result()));
-  *module_config.mutable_device_entry_computation_layout() =
-      module_config.host_entry_computation_layout();
-
   return module_config;
 }
 
@@ -451,7 +446,7 @@ int64 HloModule::instruction_count() const {
   return n;
 }
 
-std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
+std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // First determine all root computations by building a set of nonroot
   // computations (computations which are called by an instruction in the
   // module).
@@ -469,7 +464,7 @@ std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // order. This prevents duplication as an embedded computation may be called
   // from two different root computations.
   std::set<HloComputation*> added_computations;
-  std::list<HloComputation*> post_order;
+  std::vector<HloComputation*> post_order;
   for (auto& computation : computations_) {
     if (nonroot_computations.count(computation.get()) == 0) {
       for (HloComputation* embedded_computation :
@@ -513,7 +508,7 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputations() const {
 
 std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
-  auto module = MakeUnique<HloModule>(name_ + "-" + suffix, config_);
+  auto module = absl::make_unique<HloModule>(name_ + "-" + suffix, config_);
 
   HloCloneContext context(module.get(), suffix);
   auto cloned_computation = entry_computation_->Clone(suffix, &context);
@@ -543,10 +538,11 @@ uint64 HloModule::RandomNew64() const {
 
 HloComputation* HloModule::GetComputationWithName(
     tensorflow::StringPiece name) {
-  auto it = c_find_if(computations(), [&](HloComputation* computation) {
-    return computation->name() == name;
-  });
-  return it == computations().end() ? nullptr : *it;
+  auto computations_in_module = computations();
+  auto it = absl::c_find_if(
+      computations_in_module,
+      [&](HloComputation* computation) { return computation->name() == name; });
+  return it == computations_in_module.end() ? nullptr : *it;
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

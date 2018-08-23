@@ -74,6 +74,12 @@ bool SplitLstmCellInputs::Run(Model* model, std::size_t op_index) {
   lstm_cell_op->inputs[kInputTensor] =
       curr_op->inputs[LstmCellOperator::ACTIV_OUTPUT];
 
+  // Previous states.
+  lstm_cell_op->inputs[kInputActivationStateTensor] =
+      curr_op->inputs[LstmCellOperator::PREV_ACTIV_INPUT];
+  lstm_cell_op->inputs[kInputCellStateTensor] =
+      curr_op->inputs[LstmCellOperator::PREV_STATE_INPUT];
+
   // Get original weight tensor and decompose 1 tensor to 8 sub tensors.
   Array& kernel =
       model->GetArray(curr_op->inputs[LstmCellOperator::WEIGHTS_INPUT]);
@@ -160,10 +166,6 @@ bool SplitLstmCellInputs::Run(Model* model, std::size_t op_index) {
   // Erase curr lstm op being replaced.
   DeleteArrayIfUnused(curr_op->inputs[LstmCellOperator::WEIGHTS_INPUT], model);
   DeleteArrayIfUnused(curr_op->inputs[LstmCellOperator::BIASES_INPUT], model);
-  DeleteArrayIfUnused(curr_op->inputs[LstmCellOperator::PREV_ACTIV_INPUT],
-                      model);
-  DeleteArrayIfUnused(curr_op->inputs[LstmCellOperator::PREV_STATE_INPUT],
-                      model);
   model->operators.erase(FindOp(*model, curr_op));
 
   return true;

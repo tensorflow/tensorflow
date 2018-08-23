@@ -22,6 +22,7 @@ from __future__ import print_function
 import os
 import time
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training
@@ -129,3 +130,24 @@ class _DatasetInitializerHook(training.SessionRunHook):
   def after_create_session(self, session, coord):
     del coord
     session.run(self._initializer)
+
+
+class StrategyInitFinalizeHook(training.SessionRunHook):
+  """Creates a SessionRunHook that initializes and shutsdown devices."""
+
+  def __init__(self, initialization_fn, finalize_fn):
+    self._initialization_fn = initialization_fn
+    self._finalize_fn = finalize_fn
+
+  def begin(self):
+    self._init_ops = self._initialization_fn()
+    self._finalize_ops = self._finalize_fn()
+
+  def after_create_session(self, session, coord):
+    logging.info('Initialize system')
+    session.run(self._init_ops,
+                options=config_pb2.RunOptions(timeout_in_ms=5 * 60 * 1000))
+
+  def end(self, session):
+    logging.info('Finalize system.')
+    session.run(self._finalize_ops)

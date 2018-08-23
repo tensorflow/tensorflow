@@ -340,6 +340,20 @@ string InferenceContext::DebugString() const {
                          ProtoDebugString(*node_def_));
 }
 
+string InferenceContext::DebugString(const ShapeAndType& shape_and_type) {
+  return strings::StrCat(DebugString(shape_and_type.shape), ":",
+                         DataTypeString(shape_and_type.dtype));
+}
+
+string InferenceContext::DebugString(
+    gtl::ArraySlice<ShapeAndType> shape_and_types) {
+  std::vector<string> pieces;
+  for (const ShapeAndType& s : shape_and_types) {
+    pieces.push_back(DebugString(s));
+  }
+  return strings::StrCat("[", str_util::Join(pieces, ","), "]");
+}
+
 Status InferenceContext::WithRank(ShapeHandle shape, int64 rank,
                                   ShapeHandle* out) {
   if (rank > kint32max) {
@@ -936,8 +950,7 @@ Status InferenceContext::GetScalarFromTensor(const Tensor* t, int64* val) {
     *val = t->scalar<int64>()();
     return Status::OK();
   } else {
-    return errors::InvalidArgument(
-        "Scalar input for dim size must be int32 or int64");
+    return errors::InvalidArgument("Scalar input must be int32 or int64.");
   }
 }
 

@@ -84,13 +84,6 @@ class OpLevelCostEstimator {
     int64 sy;         // Stride y.
     Padding padding;  // SAME or VALID.
   };
-  enum ConvolutionFormat {
-    UNKNOWN_CONVOLUTION_FORMAT,
-    NHWC,
-    NCHW,
-    NCHW_VECT_C,
-    NCHW_VECT_W,
-  };
   int64 CountConv2DOperations(const OpInfo& op_features,
                               bool* found_unknown_shapes) const;
   int64 CountConv2DOperations(const OpInfo& op_features,
@@ -197,9 +190,6 @@ class OpLevelCostEstimator {
   // Helper to construct tensor shapes.
   static OpInfo::TensorProperties DescribeTensor(
       DataType type, const std::vector<int64>& dims);
-
-  // Returns the Conv2D format for this operation.
-  static ConvolutionFormat GetConvolutionFormat(const OpContext& op_context);
 
   // This method calculates the execution time depending on whether IO can
   // overlap with computation. It assumes the memory and the compute times have

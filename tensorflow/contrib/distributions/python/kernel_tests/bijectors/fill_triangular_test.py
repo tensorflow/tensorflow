@@ -31,7 +31,7 @@ from tensorflow.python.platform import test
 class FillTriangularBijectorTest(test.TestCase):
   """Tests the correctness of the FillTriangular bijector."""
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testBijector(self):
     x = np.float32(np.array([1., 2., 3.]))
     y = np.float32(np.array([[3., 0.],
@@ -51,7 +51,7 @@ class FillTriangularBijectorTest(test.TestCase):
     ildj = self.evaluate(b.inverse_log_det_jacobian(y, event_ndims=2))
     self.assertAllClose(ildj, 0.)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testShape(self):
     x_shape = tensor_shape.TensorShape([5, 4, 6])
     y_shape = tensor_shape.TensorShape([5, 4, 3, 3])
@@ -76,7 +76,7 @@ class FillTriangularBijectorTest(test.TestCase):
         b.inverse_event_shape_tensor(y_shape.as_list()))
     self.assertAllEqual(x_shape_tensor, x_shape.as_list())
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testShapeError(self):
 
     b = bijectors.FillTriangular(validate_args=True)

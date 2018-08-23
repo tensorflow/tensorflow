@@ -22,7 +22,7 @@ import copy
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -36,7 +36,7 @@ CPU_DEVICE = "/job:localhost/replica:0/task:0/cpu:0"
 
 # Local response normalization tests. The forward tests are copied from
 # tensorflow/python/kernel_tests/lrn_op_test.py
-class LRNTest(XLATestCase):
+class LRNTest(xla_test.XLATestCase):
 
   def _LRN(self, input_image, lrn_depth_radius=5, bias=1.0, alpha=1.0,
            beta=0.5):
@@ -58,7 +58,7 @@ class LRNTest(XLATestCase):
     return output
 
   def _RunAndVerify(self, dtype):
-    with self.test_session():
+    with self.cached_session():
       # random shape
       shape = np.random.randint(1, 16, size=4)
       # Make depth at least 2 to make it meaningful
@@ -110,7 +110,7 @@ class LRNTest(XLATestCase):
     alpha = 1.0 * np.random.rand()
     beta = 1.0 * np.random.rand()
 
-    with self.test_session():
+    with self.cached_session():
       in_image = constant_op.constant(in_image_vals, shape=shape)
       out_image = constant_op.constant(out_image_vals, shape=shape)
       out_grads = constant_op.constant(out_grads_vals, shape=shape)

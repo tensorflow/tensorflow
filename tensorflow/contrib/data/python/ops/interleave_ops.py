@@ -42,7 +42,7 @@ def parallel_interleave(map_func,
 
   `parallel_interleave()` maps `map_func` across its input to produce nested
   datasets, and outputs their elements interleaved. Unlike
-  @{tf.data.Dataset.interleave}, it gets elements from `cycle_length` nested
+  `tf.data.Dataset.interleave`, it gets elements from `cycle_length` nested
   datasets in parallel, which increases the throughput, especially in the
   presence of stragglers. Furthermore, the `sloppy` argument can be used to
   improve performance, by relaxing the requirement that the outputs are produced
@@ -79,7 +79,7 @@ def parallel_interleave(map_func,
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
   def _apply_fn(dataset):
     return readers.ParallelInterleaveDataset(
@@ -138,7 +138,7 @@ def sloppy_interleave(map_func, cycle_length, block_length=1):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
   def _apply_fn(dataset):
     return readers.ParallelInterleaveDataset(
@@ -153,7 +153,7 @@ def sloppy_interleave(map_func, cycle_length, block_length=1):
   return _apply_fn
 
 
-class DirectedInterleaveDataset(dataset_ops.Dataset):
+class _DirectedInterleaveDataset(dataset_ops.Dataset):
   """A substitute for `Dataset.interleave()` on a fixed list of datasets."""
 
   def __init__(self, selector_input, data_inputs):
@@ -163,7 +163,7 @@ class DirectedInterleaveDataset(dataset_ops.Dataset):
     for data_input in data_inputs[1:]:
       if (data_input.output_types != data_inputs[0].output_types or
           data_input.output_classes != data_inputs[0].output_classes):
-        raise TypeError("All datasets must have the same type.")
+        raise TypeError("All datasets must have the same type and class.")
 
   def _as_variant_tensor(self):
     # pylint: disable=protected-access
@@ -196,15 +196,15 @@ def sample_from_datasets(datasets, weights=None, seed=None):
   """Samples elements at random from the datasets in `datasets`.
 
   Args:
-    datasets: A list of @{tf.data.Dataset} objects with compatible structure.
+    datasets: A list of `tf.data.Dataset` objects with compatible structure.
     weights: (Optional.) A list of `len(datasets)` floating-point values where
       `weights[i]` represents the probability with which an element should be
-      sampled from `datasets[i]`, or a @{tf.data.Dataset} object where each
+      sampled from `datasets[i]`, or a `tf.data.Dataset` object where each
       element is such a list. Defaults to a uniform distribution across
       `datasets`.
     seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
       random seed that will be used to create the distribution. See
-      @{tf.set_random_seed} for behavior.
+      `tf.set_random_seed` for behavior.
 
   Returns:
     A dataset that interleaves elements from `datasets` at random, according to
@@ -236,7 +236,7 @@ def sample_from_datasets(datasets, weights=None, seed=None):
   selector_input = dataset_ops.Dataset.zip(
       (logits_ds, random_ops.RandomDataset(seed).batch(2))).map(select_dataset)
 
-  return DirectedInterleaveDataset(selector_input, datasets)
+  return _DirectedInterleaveDataset(selector_input, datasets)
 
 
 def choose_from_datasets(datasets, choice_dataset):
@@ -262,8 +262,8 @@ def choose_from_datasets(datasets, choice_dataset):
   ```
 
   Args:
-    datasets: A list of @{tf.data.Dataset} objects with compatible structure.
-    choice_dataset: A @{tf.data.Dataset} of scalar `tf.int64` tensors between
+    datasets: A list of `tf.data.Dataset` objects with compatible structure.
+    choice_dataset: A `tf.data.Dataset` of scalar `tf.int64` tensors between
       `0` and `len(datasets) - 1`.
 
   Returns:
@@ -280,4 +280,4 @@ def choose_from_datasets(datasets, choice_dataset):
           and choice_dataset.output_classes == ops.Tensor):
     raise TypeError("`choice_dataset` must be a dataset of scalar "
                     "`tf.int64` tensors.")
-  return DirectedInterleaveDataset(choice_dataset, datasets)
+  return _DirectedInterleaveDataset(choice_dataset, datasets)

@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_CORE_KERNELS_CONCAT_LIB_CPU_H_
+#define TENSORFLOW_CORE_KERNELS_CONCAT_LIB_CPU_H_
+
 #define EIGEN_USE_THREADS
 
 #include <vector>
@@ -162,3 +165,5 @@ void ConcatSYCLImpl(
 }
 #endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_KERNELS_CONCAT_LIB_CPU_H_

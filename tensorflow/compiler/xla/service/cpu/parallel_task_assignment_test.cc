@@ -110,8 +110,10 @@ TEST_F(ParallelTaskAssignmentTest, InfeedOutfeedOperationNotParallelized) {
   const string hlo_string = R"(
     HloModule TestTaskParallel_infeed_outfeed
     ENTRY InfeedOutfeed {
-      infeed0 = u32[12345678,2]{1,0} infeed()
-      ROOT outfeed0 = u32[12345678,2]{1,0} outfeed(infeed0)
+      token = token[] after-all()
+      infeed0 = (u32[12345678,2]{1,0}, token[]) infeed(token)
+      infeed0.data = u32[12345678,2]{1,0} get-tuple-element((u32[12345678,2]{1,0}, token[]) infeed0), index=0
+      ROOT outfeed0 = token[] outfeed(infeed0.data, token)
     }
   )";
 

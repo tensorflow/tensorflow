@@ -100,6 +100,8 @@ void CopyBuffer(const ::tflite::Buffer& buffer, Array* array) {
       return ::tflite::TensorType_STRING;
     case ArrayDataType::kBool:
       return ::tflite::TensorType_BOOL;
+    case ArrayDataType::kComplex64:
+      return ::tflite::TensorType_COMPLEX64;
     default:
       // FLOAT32 is filled for unknown data types.
       // TODO(ycling): Implement type inference in TF Lite interpreter.
@@ -123,6 +125,8 @@ ArrayDataType DataType::Deserialize(int tensor_type) {
       return ArrayDataType::kUint8;
     case ::tflite::TensorType_BOOL:
       return ArrayDataType::kBool;
+    case ::tflite::TensorType_COMPLEX64:
+      return ArrayDataType::kComplex64;
     default:
       LOG(FATAL) << "Unhandled tensor type '" << tensor_type << "'.";
   }
@@ -147,6 +151,8 @@ flatbuffers::Offset<flatbuffers::Vector<uint8_t>> DataBuffer::Serialize(
       return CopyBuffer<ArrayDataType::kUint8>(array, builder);
     case ArrayDataType::kBool:
       return CopyBoolToBuffer(array, builder);
+    case ArrayDataType::kComplex64:
+      return CopyBuffer<ArrayDataType::kComplex64>(array, builder);
     default:
       LOG(FATAL) << "Unhandled array data type.";
   }
@@ -172,6 +178,8 @@ void DataBuffer::Deserialize(const ::tflite::Tensor& tensor,
       return CopyBuffer<ArrayDataType::kUint8>(buffer, array);
     case ::tflite::TensorType_BOOL:
       return CopyBuffer<ArrayDataType::kBool>(buffer, array);
+    case ::tflite::TensorType_COMPLEX64:
+      return CopyBuffer<ArrayDataType::kComplex64>(buffer, array);
     default:
       LOG(FATAL) << "Unhandled tensor type.";
   }

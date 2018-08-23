@@ -39,7 +39,7 @@ class MultivariateNormalDiagPlusLowRankTest(test.TestCase):
     diag = np.array([[1., 2], [3, 4], [5, 6]])
     # batch_shape: [1], event_shape: []
     identity_multiplier = np.array([5.])
-    with self.test_session():
+    with self.cached_session():
       dist = ds.MultivariateNormalDiagPlusLowRank(
           scale_diag=diag,
           scale_identity_multiplier=identity_multiplier,
@@ -61,7 +61,7 @@ class MultivariateNormalDiagPlusLowRankTest(test.TestCase):
     diag = np.array([[1., 2], [3, 4], [5, 6]])
     # batch_shape: [3, 1], event_shape: []
     identity_multiplier = np.array([[5.], [4], [3]])
-    with self.test_session():
+    with self.cached_session():
       dist = ds.MultivariateNormalDiagPlusLowRank(
           scale_diag=diag,
           scale_identity_multiplier=identity_multiplier,
@@ -75,7 +75,7 @@ class MultivariateNormalDiagPlusLowRankTest(test.TestCase):
     diag = np.array([[1., 2], [3, 4], [5, 6]])
     # batch_shape: [3], event_shape: []
     identity_multiplier = np.array([5., 4, 3])
-    with self.test_session():
+    with self.cached_session():
       dist = ds.MultivariateNormalDiagPlusLowRank(
           scale_diag=diag,
           scale_identity_multiplier=identity_multiplier,
@@ -94,7 +94,7 @@ class MultivariateNormalDiagPlusLowRankTest(test.TestCase):
     loc = np.array([1., 0, -1])
     # batch_shape: [3], event_shape: []
     identity_multiplier = np.array([5., 4, 3])
-    with self.test_session():
+    with self.cached_session():
       dist = ds.MultivariateNormalDiagPlusLowRank(
           loc=loc,
           scale_identity_multiplier=identity_multiplier,
@@ -116,7 +116,7 @@ class MultivariateNormalDiagPlusLowRankTest(test.TestCase):
     diag_large = [1.0, 5.0]
     v = [[2.0], [3.0]]
     diag_small = [3.0]
-    with self.test_session():
+    with self.cached_session():
       dist = ds.MultivariateNormalDiagPlusLowRank(
           loc=mu,
           scale_diag=diag_large,
@@ -146,7 +146,7 @@ class MultivariateNormalDiagPlusLowRankTest(test.TestCase):
     true_variance = np.diag(true_covariance)
     true_stddev = np.sqrt(true_variance)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       dist = ds.MultivariateNormalDiagPlusLowRank(
           loc=mu,
           scale_diag=diag_large,
@@ -380,7 +380,7 @@ class MultivariateNormalDiagPlusLowRankTest(test.TestCase):
     cov = np.stack([np.matmul(scale[0], scale[0].T),
                     np.matmul(scale[1], scale[1].T)])
     logging.vlog(2, "expected_cov:\n{}".format(cov))
-    with self.test_session():
+    with self.cached_session():
       mvn = ds.MultivariateNormalDiagPlusLowRank(
           loc=mu,
           scale_perturb_factor=u,
