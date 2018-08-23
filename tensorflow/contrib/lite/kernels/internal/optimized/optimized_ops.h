@@ -2143,38 +2143,6 @@ void Conv(const uint8* input_data, const Dims<4>& input_dims,
        im2col_data, im2col_dims, gemm_context);
 }
 
-template <typename T>
-inline void DepthToSpace(const T* input_data, const Dims<4>& input_dims,
-                         int block_size, T* output_data,
-                         const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("DepthToSpace");
-
-  const int input_depth = ArraySize(input_dims, 0);
-  const int input_width = ArraySize(input_dims, 1);
-  const int input_height = ArraySize(input_dims, 2);
-
-  const int output_depth = ArraySize(output_dims, 0);
-  const int batch_size = ArraySize(output_dims, 3);
-
-  // Number of continuous values that we can copy in one interation.
-  const int stride = block_size * output_depth;
-
-  for (int batch = 0; batch < batch_size; ++batch) {
-    for (int in_h = 0; in_h < input_height; ++in_h) {
-      const T* input_ptr = input_data + Offset(input_dims, 0, 0, in_h, batch);
-      for (int offset_h = 0; offset_h < block_size; ++offset_h) {
-        const T* src = input_ptr;
-        for (int in_w = 0; in_w < input_width; ++in_w) {
-          memcpy(output_data, src, stride * sizeof(T));
-          output_data += stride;
-          src += input_depth;
-        }
-        input_ptr += stride;
-      }
-    }
-  }
-}
-
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac, typename T>
 void Im2col(const T* input_data, const Dims<4>& input_dims, int stride,
@@ -2250,25 +2218,87 @@ void ConvAsGemm(const uint8* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
-inline void SpaceToDepth(const T* input_data, const Dims<4>& input_dims,
-                         int block_size, T* output_data,
-                         const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("SpaceToDepth");
+inline void DepthToSpace(const tflite::DepthToSpaceParams& op_params,
+                         const RuntimeShape& unextended_input_shape,
+                         const T* input_data,
+                         const RuntimeShape& unextended_output_shape,
+                         T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("DepthToSpace");
 
-  const int output_depth = ArraySize(output_dims, 0);
-  const int output_width = ArraySize(output_dims, 1);
-  const int output_height = ArraySize(output_dims, 2);
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
-  const int input_depth = ArraySize(input_dims, 0);
-  const int batch_size = ArraySize(input_dims, 3);
+  const int input_depth = input_shape.Dims(3);
+  const int input_width = input_shape.Dims(2);
+  const int input_height = input_shape.Dims(1);
+
+  const int output_depth = output_shape.Dims(3);
+  const int batch_size = output_shape.Dims(0);
 
   // Number of continuous values that we can copy in one interation.
-  const int stride = block_size * input_depth;
+  const int stride = op_params.block_size * output_depth;
+
+  for (int batch = 0; batch < batch_size; ++batch) {
+    for (int in_h = 0; in_h < input_height; ++in_h) {
+      const T* input_ptr = input_data + Offset(input_shape, batch, in_h, 0, 0);
+      for (int offset_h = 0; offset_h < op_params.block_size; ++offset_h) {
+        const T* src = input_ptr;
+        for (int in_w = 0; in_w < input_width; ++in_w) {
+          memcpy(output_data, src, stride * sizeof(T));
+          output_data += stride;
+          src += input_depth;
+        }
+        input_ptr += stride;
+      }
+    }
+  }
+}
+
+// Legacy Dims<4>.
+template <typename T>
+inline void DepthToSpace(const T* input_data, const Dims<4>& input_dims,
+                         int block_size, T* output_data,
+                         const Dims<4>& output_dims) {
+  tflite::DepthToSpaceParams op_params;
+  op_params.block_size = block_size;
+
+  DepthToSpace(op_params, DimsToShape(input_dims), input_data,
+               DimsToShape(output_dims), output_data);
+}
+
+template <typename T>
+inline void SpaceToDepth(const tflite::SpaceToDepthParams& op_params,
+                         const RuntimeShape& unextended_input_shape,
+                         const T* input_data,
+                         const RuntimeShape& unextended_output_shape,
+                         T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("SpaceToDepth");
+
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
+  const int output_depth = output_shape.Dims(3);
+  const int output_width = output_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+
+  const int input_depth = input_shape.Dims(3);
+  const int batch_size = input_shape.Dims(0);
+
+  // Number of continuous values that we can copy in one interation.
+  const int stride = op_params.block_size * input_depth;
 
   for (int batch = 0; batch < batch_size; ++batch) {
     for (int out_h = 0; out_h < output_height; ++out_h) {
-      T* output_ptr = output_data + Offset(output_dims, 0, 0, out_h, batch);
-      for (int offset_h = 0; offset_h < block_size; ++offset_h) {
+      T* output_ptr = output_data + Offset(output_shape, batch, out_h, 0, 0);
+      for (int offset_h = 0; offset_h < op_params.block_size; ++offset_h) {
         T* dst = output_ptr;
         for (int out_w = 0; out_w < output_width; ++out_w) {
           memcpy(dst, input_data, stride * sizeof(T));
@@ -2279,6 +2309,18 @@ inline void SpaceToDepth(const T* input_data, const Dims<4>& input_dims,
       }
     }
   }
+}
+
+// Legacy Dims<4>.
+template <typename T>
+inline void SpaceToDepth(const T* input_data, const Dims<4>& input_dims,
+                         int block_size, T* output_data,
+                         const Dims<4>& output_dims) {
+  tflite::SpaceToDepthParams op_params;
+  op_params.block_size = block_size;
+
+  SpaceToDepth(op_params, DimsToShape(input_dims), input_data,
+               DimsToShape(output_dims), output_data);
 }
 
 template <FusedActivationFunctionType Ac>
@@ -5565,20 +5607,29 @@ inline void GetIndexRange(int spatial_index_dim, int block_shape_dim,
 }
 
 template <typename T>
-inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
-                           const int32* block_shape_data,
-                           const Dims<4>& block_shape_dims,
-                           const int32* crops_data, const Dims<4>& crops_dims,
-                           T* output_data, const Dims<4>& output_dims) {
+inline void BatchToSpaceND(
+    const RuntimeShape& unextended_input1_shape, const T* input1_data,
+    const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
+    const RuntimeShape& unextended_input3_shape, const int32* crops_data,
+    const RuntimeShape& unextended_output_shape, T* output_data) {
   gemmlowp::ScopedProfilingLabel label("BatchToSpaceND");
 
-  const int output_batch_size = ArraySize(output_dims, 3);
-  const int output_height = ArraySize(output_dims, 2);
-  const int output_width = ArraySize(output_dims, 1);
-  const int input_batch_size = ArraySize(input_dims, 3);
-  const int input_height = ArraySize(input_dims, 2);
-  const int input_width = ArraySize(input_dims, 1);
-  const int depth = ArraySize(input_dims, 0);
+  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape input1_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input1_shape);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
+  const int output_width = output_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+  const int output_batch_size = output_shape.Dims(0);
+
+  const int depth = input1_shape.Dims(3);
+  const int input_width = input1_shape.Dims(2);
+  const int input_height = input1_shape.Dims(1);
+  const int input_batch_size = input1_shape.Dims(0);
+
   const int block_shape_width = block_shape_data[1];
   const int block_shape_height = block_shape_data[0];
   const int crops_top = crops_data[0];
@@ -5613,12 +5664,26 @@ inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
                           spatial_offset % block_shape_width - crops_left;
         TFLITE_DCHECK_GE(out_w, 0);
         TFLITE_DCHECK_LT(out_w, output_width);
-        T* out = output_data + Offset(output_dims, 0, out_w, out_h, out_batch);
-        const T* in = input_data + Offset(input_dims, 0, in_w, in_h, in_batch);
+        T* out = output_data + Offset(output_shape, out_batch, out_h, out_w, 0);
+        const T* in =
+            input1_data + Offset(input1_shape, in_batch, in_h, in_w, 0);
         memcpy(out, in, depth * sizeof(T));
       }
     }
   }
+}
+
+// Legacy Dims<4>.
+template <typename T>
+inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
+                           const int32* block_shape_data,
+                           const Dims<4>& block_shape_dims,
+                           const int32* crops_data, const Dims<4>& crops_dims,
+                           T* output_data, const Dims<4>& output_dims) {
+  BatchToSpaceND(DimsToShape(input_dims), input_data,
+                 DimsToShape(block_shape_dims), block_shape_data,
+                 DimsToShape(crops_dims), crops_data, DimsToShape(output_dims),
+                 output_data);
 }
 
 template <typename T>
