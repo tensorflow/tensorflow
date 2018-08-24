@@ -201,7 +201,7 @@ class BFCGdrAllocatorFactory : public AllocatorFactory {
   }
 };
 
-REGISTER_MEM_ALLOCATOR("BFCGdrAllocator", 101, BFCGdrAllocatorFactory);
+REGISTER_MEM_ALLOCATOR("BFCGdrAllocator", 102, BFCGdrAllocatorFactory);
 
 GdrMemoryManager::GdrMemoryManager(const string& host, const string& port)
     : host_(host),
