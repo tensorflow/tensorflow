@@ -24,6 +24,7 @@ from absl.testing import parameterized
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import parameter_server_strategy
+from tensorflow.contrib.distribute.python import values
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
@@ -38,6 +39,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribution_strategy_context
+from tensorflow.python.training import training_util
 
 CHIEF = run_config.TaskType.CHIEF
 WORKER = run_config.TaskType.WORKER
@@ -472,6 +474,19 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
   def testMinimizeLossGraph(self, num_gpus):
     self._run_between_graph_clients(self._test_minimize_loss_graph,
                                     self._cluster_spec, num_gpus)
+
+  def testGlobalStepIsWrapped(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    with ops.Graph().as_default(), distribution.scope():
+      created_step = training_util.create_global_step()
+      get_step = training_util.get_global_step()
+      self.assertEqual(created_step, get_step,
+                       msg=('created_step %s type %s vs. get_step %s type %s' %
+                            (id(created_step), created_step.__class__.__name__,
+                             id(get_step), get_step.__class__.__name__)))
+      self.assertIs(values.AggregatingVariable, type(created_step))
+      self.assertIs(values.AggregatingVariable, type(get_step))
 
 
 if __name__ == '__main__':
