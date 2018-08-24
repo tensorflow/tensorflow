@@ -66,8 +66,6 @@ static std::map<std::string, FusedCallFn> fused_call_map = {
     {"trunc_norm", TruncatedNormal},
     {"norm_scale_add", RandomNormalScale},
     {"uniform_scale_add", RandomUniformScale},
-    {"norm", RandomNormal},
-    {"uniform", RandomUniform},
     {"avg_pool", CreatePoplibsWindowReduction},
     {"wide_const", CreateWideConstant},
     {"depthwise_conv", CreateConv2D},
@@ -192,7 +190,35 @@ Status BaseVisitor::HandleCrossReplicaSum(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleRng(HloInstruction* inst) {
-  return Unimplemented(inst);
+  VLOG(1) << "Processing " << inst->name();
+  if (inst->operand_count() != 2) {
+    LOG(FATAL) << "RNG must have two operands.";
+  }
+  for (auto* op : inst->operands()) {
+    if (op->opcode() != HloOpcode::kConstant) {
+      LOG(FATAL) << "Operand " << op->ToString() << " is not a constant.";
+    }
+  }
+  poplar::program::Program prog;
+  switch (inst->random_distribution()) {
+    case RandomDistribution::RNG_NORMAL: {
+      TF_ASSIGN_OR_RETURN(prog, RandomNormal(graph_, resources_, inst,
+                                             GetOutputShape(inst), tensor_map));
+      break;
+    }
+    case RandomDistribution::RNG_UNIFORM: {
+      TF_ASSIGN_OR_RETURN(
+          prog, RandomUniform(graph_, resources_, inst, GetOutputShape(inst),
+                              tensor_map));
+      break;
+    }
+    default: {
+      LOG(FATAL) << "Unsupported random distribution type "
+                 << inst->random_distribution() << ".";
+    }
+  }
+  sequence.add(prog);
+  return Status::OK();
 }
 
 Status BaseVisitor::HandleReverse(HloInstruction* inst) {

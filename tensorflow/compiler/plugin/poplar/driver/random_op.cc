@@ -111,9 +111,8 @@ StatusOr<poplar::program::Program> RandomNormal(poplar::Graph& graph,
                                                 const HloInstruction* inst,
                                                 const xla::Shape& output_shape,
                                                 TensorMap& tensor_map) {
-  const HloInstruction* root = inst->to_apply()->root_instruction();
-  const HloInstruction* mean = root->operand(0);
-  const HloInstruction* sd = root->operand(1);
+  const HloInstruction* mean = inst->operand(0);
+  const HloInstruction* sd = inst->operand(1);
 
   double mean_val;
   TF_ASSIGN_OR_RETURN(mean_val, DoubleValueOfScalarLiteral(mean->literal()));
@@ -137,9 +136,8 @@ StatusOr<poplar::program::Program> RandomUniform(poplar::Graph& graph,
                                                  const HloInstruction* inst,
                                                  const xla::Shape& output_shape,
                                                  TensorMap& tensor_map) {
-  const HloInstruction* root = inst->to_apply()->root_instruction();
-  const HloInstruction* lower = root->operand(0);
-  const HloInstruction* upper = root->operand(1);
+  const HloInstruction* lower = inst->operand(0);
+  const HloInstruction* upper = inst->operand(1);
 
   double lower_val;
   TF_ASSIGN_OR_RETURN(lower_val, DoubleValueOfScalarLiteral(lower->literal()));

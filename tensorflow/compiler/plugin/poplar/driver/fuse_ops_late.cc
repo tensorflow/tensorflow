@@ -40,8 +40,6 @@ static const std::vector<FusedGraphInfo> fuse_info = {
     {"zero_pad", 0},
     {"norm_scale_add", 4},
     {"uniform_scale_add", 4},
-    {"norm", 0},
-    {"uniform", 0},
     {"avg_pool", 1},
     {"avg_pool", 1},
     {"avg_pool", 1},
@@ -175,16 +173,6 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kMultiply, true, 0, nullptr, {4, 3}},
      {HloOpcode::kConstant, true, 0, nullptr, {}},
      {HloOpcode::kRng, true, 0, IsRandomUniform, {5, 6}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}}},
-
-    // Random 2-constant without post scale and add
-    {{HloOpcode::kRng, true, 0, IsRandomNormal, {1, 2}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}}},
-
-    // Random 2-constant without post scale and add
-    {{HloOpcode::kRng, true, 0, IsRandomUniform, {1, 2}},
      {HloOpcode::kConstant, true, 0, nullptr, {}},
      {HloOpcode::kConstant, true, 0, nullptr, {}}},
 
