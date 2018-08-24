@@ -40,7 +40,6 @@ using ::absl::optional;
 using ::absl::StrAppend;
 using ::absl::StrCat;
 using ::absl::StrJoin;
-using ::tensorflow::str_util::SplitAndParseAsInts;
 using ::tensorflow::strings::Printf;
 
 const double kF16max = 65504;
@@ -292,6 +291,17 @@ class HloParser {
                                                    const optional<Shape>&)>
       missing_instruction_hook_;
 };
+
+bool SplitToInt64s(absl::string_view s, char delim, std::vector<int64>* out) {
+  for (const auto& split : absl::StrSplit(s, delim)) {
+    int64 val;
+    if (!absl::SimpleAtoi(split, &val)) {
+      return false;
+    }
+    out->push_back(val);
+  }
+  return true;
+}
 
 // Creates replica groups from the provided nested array. groups[i] represents
 // the replica ids for group 'i'.
@@ -2833,7 +2843,7 @@ bool HloParser::ParseDxD(const string& name,
   // 2D or higher.
   if (lexer_.GetKind() == TokKind::kDxD) {
     string str = lexer_.GetStrVal();
-    if (!SplitAndParseAsInts(str, 'x', result)) {
+    if (!SplitToInt64s(str, 'x', result)) {
       return Error(loc,
                    Printf("expects sub-attribute '%s=ixj...'", name.c_str()));
     }
@@ -2853,10 +2863,9 @@ bool HloParser::ParseWindowPad(
     return TokenError("expects window pad pattern, e.g., '0_0x3_3'");
   }
   string str = lexer_.GetStrVal();
-  std::vector<string> padding_str = absl::StrSplit(str, 'x');
-  for (int i = 0; i < padding_str.size(); i++) {
+  for (const auto& padding_dim_str : absl::StrSplit(str, 'x')) {
     std::vector<tensorflow::int64> low_high;
-    if (!SplitAndParseAsInts(padding_str[i], '_', &low_high) ||
+    if (!SplitToInt64s(padding_dim_str, '_', &low_high) ||
         low_high.size() != 2) {
       return Error(loc,
                    "expects padding_low and padding_high separated by '_'");
@@ -2877,10 +2886,9 @@ bool HloParser::ParsePaddingConfig(PaddingConfig* padding) {
   }
   LocTy loc = lexer_.GetLoc();
   string str = lexer_.GetStrVal();
-  std::vector<string> padding_str = absl::StrSplit(str, 'x');
-  for (const auto& padding_dim_str : padding_str) {
+  for (const auto& padding_dim_str : absl::StrSplit(str, 'x')) {
     std::vector<tensorflow::int64> padding_dim;
-    if (!SplitAndParseAsInts(padding_dim_str, '_', &padding_dim) ||
+    if (!SplitToInt64s(padding_dim_str, '_', &padding_dim) ||
         (padding_dim.size() != 2 && padding_dim.size() != 3)) {
       return Error(loc,
                    "expects padding config pattern like 'low_high_interior' or "
