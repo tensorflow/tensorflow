@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
@@ -31,17 +33,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
-
-using ::tensorflow::str_util::Join;
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
-
 namespace {
+
+using absl::StrAppend;
 
 bool IsEntryParameterValue(const HloValue& value) {
   const HloComputation* computation = value.defining_instruction()->parent();
@@ -381,7 +378,7 @@ class CopyRemover {
   }
 
   string ToString() const {
-    string out = StrCat("CopyRemover, module ", module_->name(), "\n");
+    string out = absl::StrCat("CopyRemover, module ", module_->name(), "\n");
     StrAppend(&out, "  Buffer values, in dependency order:\n");
     for (const HloBuffer& buffer : alias_analysis_.buffers()) {
       StrAppend(&out, "    HloBuffer ", buffer.id(), ":\n");
@@ -863,16 +860,16 @@ class CopyRemover {
       for (const ValueNode* p = head; p != nullptr; p = Next(*p)) {
         values.push_back(p->value);
       }
-      return StrCat("{",
-                    Join(values, ", ",
-                         [](string* s, const HloValue* value) {
-                           StrAppend(s, value->ToShortString());
-                         }),
-                    "}");
+      return absl::StrCat("{",
+                          absl::StrJoin(values, ", ",
+                                        [](string* s, const HloValue* value) {
+                                          StrAppend(s, value->ToShortString());
+                                        }),
+                          "}");
     }
 
     string ToString() const {
-      string out = StrCat("BufferValueTracker:\n");
+      string out = absl::StrCat("BufferValueTracker:\n");
       StrAppend(&out, "  Def-use chains in each buffer:\n");
       for (const ValueNode* head : value_lists_) {
         StrAppend(&out, "    Buffer defined by ", head->value->ToShortString(),
@@ -880,10 +877,10 @@ class CopyRemover {
         const ValueNode* p = head;
         do {
           StrAppend(&out, "      ", p->value->ToShortString(), ", uses: ",
-                    Join(p->uses, "; ",
-                         [](string* s, const HloUse* use) {
-                           StrAppend(s, use->ToString());
-                         }),
+                    absl::StrJoin(p->uses, "; ",
+                                  [](string* s, const HloUse* use) {
+                                    StrAppend(s, use->ToString());
+                                  }),
                     "\n");
 
           p = p->next;

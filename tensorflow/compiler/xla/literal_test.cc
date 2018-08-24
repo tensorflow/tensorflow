@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -119,10 +122,10 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
   auto bf16_lit = LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(0.5f));
   ASSERT_EQ("0.5", bf16_lit->ToString());
 
-  // 3.14 will be truncated to 3.125 in bfloat16 format.
+  // 3.14 will be rounded to 3.14062 in bfloat16 format.
   auto bf16_lit_truncated =
       LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(3.14f));
-  ASSERT_EQ("3.125", bf16_lit_truncated->ToString());
+  ASSERT_EQ("3.14062", bf16_lit_truncated->ToString());
 
   auto bf16_lit_truncated2 =
       LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(9.001f));
@@ -355,15 +358,15 @@ TEST_F(LiteralUtilTest, TokenEquality) {
 
 TEST_F(LiteralUtilTest, DifferentLayoutEquality) {
   // Test equality with literals which have different layouts.
-  auto colmajor =
-      MakeUnique<Literal>(ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1}));
+  auto colmajor = absl::make_unique<Literal>(
+      ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1}));
   colmajor->Set<float>({0, 0}, 1.0);
   colmajor->Set<float>({0, 1}, 2.0);
   colmajor->Set<float>({1, 0}, 3.0);
   colmajor->Set<float>({1, 1}, 4.0);
 
-  auto rowmajor =
-      MakeUnique<Literal>(ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0}));
+  auto rowmajor = absl::make_unique<Literal>(
+      ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0}));
   rowmajor->Set<float>({0, 0}, 1.0);
   rowmajor->Set<float>({0, 1}, 2.0);
   rowmajor->Set<float>({1, 0}, 3.0);
@@ -1089,7 +1092,7 @@ TEST_F(LiteralUtilTest, Populate) {
     Shape shape = ShapeUtil::MakeShapeWithLayout(
         primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
         data.layout);
-    auto literal = MakeUnique<Literal>(shape);
+    auto literal = absl::make_unique<Literal>(shape);
     auto generator = [&](ArraySlice<int64> indexes) -> uint32 {
       // Offsets from linear index just to avoid R0 literals to be initialized
       // with zero.
@@ -1131,7 +1134,7 @@ TEST_F(LiteralUtilTest, PopulateParallel) {
     Shape shape = ShapeUtil::MakeShapeWithLayout(
         primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
         data.layout);
-    auto literal = MakeUnique<Literal>(shape);
+    auto literal = absl::make_unique<Literal>(shape);
     auto generator = [&](ArraySlice<int64> indexes) -> uint32 {
       // Offsets from linear index just to avoid R0 literals to be initialized
       // with zero.
@@ -1323,8 +1326,8 @@ TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
   auto literal = LiteralUtil::CreateR0<uint32>(1234);
   Status status = literal->BitcastConvert(F64).status();
   EXPECT_NE(Status::OK(), status);
-  EXPECT_TRUE(tensorflow::str_util::StrContains(status.error_message(),
-                                                "bit widths are different"));
+  EXPECT_TRUE(
+      absl::StrContains(status.error_message(), "bit widths are different"));
 }
 
 TEST_F(LiteralUtilTest, CopyFromProto_Bool) {
@@ -1818,21 +1821,20 @@ TEST_F(LiteralUtilTest, GetSparseElementAsString) {
       "false");
   ASSERT_EQ(LiteralUtil::CreateSparse<int64>(dimensions, indices, {1, 2, 3})
                 ->GetSparseElementAsString(1),
-            tensorflow::strings::StrCat(int64{2}));
+            absl::StrCat(int64{2}));
   ASSERT_EQ(
       LiteralUtil::CreateSparse<double>(dimensions, indices, {1.0, 2.0, 3.0})
           ->GetSparseElementAsString(1),
-      tensorflow::strings::StrCat(double{2.0}));
+      absl::StrCat(double{2.0}));
   ASSERT_EQ(LiteralUtil::CreateSparse<half>(dimensions, indices,
                                             {half{1.0}, half{2.0}, half{3.0}})
                 ->GetSparseElementAsString(1),
-            tensorflow::strings::StrCat(static_cast<float>(half{2.0})));
-  ASSERT_EQ(
-      LiteralUtil::CreateSparse<complex64>(
-          dimensions, indices,
-          std::vector<complex64>{{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}})
-          ->GetSparseElementAsString(1),
-      tensorflow::strings::StrCat("(", float{3.0}, ", ", float{4.0}, ")"));
+            absl::StrCat(static_cast<float>(half{2.0})));
+  ASSERT_EQ(LiteralUtil::CreateSparse<complex64>(
+                dimensions, indices,
+                std::vector<complex64>{{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}})
+                ->GetSparseElementAsString(1),
+            absl::StrCat("(", float{3.0}, ", ", float{4.0}, ")"));
 }
 
 TEST_F(LiteralUtilTest, BroadcastVectorToMatrix0) {

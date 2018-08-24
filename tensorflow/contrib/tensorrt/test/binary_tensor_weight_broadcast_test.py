@@ -37,6 +37,7 @@ class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
     dtype = dtypes.float32
     input_name = "input"
     input_dims = [10, 24, 24, 20]
+    output_name = "output"
     g = ops.Graph()
     with g.as_default():
       x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
@@ -104,32 +105,34 @@ class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
       a = constant_op.constant(np.random.randn(24, 20), dtype=dtype)
       f = x + a
       x = math_ops.sigmoid(f)
-      gen_array_ops.reshape(x, [5, -1], name=self.output_name)
+      gen_array_ops.reshape(x, [5, -1], name=output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
         input_dims=[input_dims],
-        expected_engines=[
-            "my_trt_op_0",
-            "my_trt_op_1",
-            "my_trt_op_2",
-            "my_trt_op_3",
-            "my_trt_op_4",
-            "my_trt_op_5",
-            "my_trt_op_6",
-            "my_trt_op_7",
-            "my_trt_op_8",
-            "my_trt_op_9",
-            "my_trt_op_10",
-            "my_trt_op_11",
-            "my_trt_op_12",
-            "my_trt_op_13",
-            "my_trt_op_14",
-            "my_trt_op_15",
-        ],
-        expected_output_dims=(5, 23040),
-        allclose_atol=1.e-03,
-        allclose_rtol=1.e-03)
+        output_names=[output_name],
+        expected_output_dims=[(5, 23040)])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return [
+        "my_trt_op_0",
+        "my_trt_op_1",
+        "my_trt_op_2",
+        "my_trt_op_3",
+        "my_trt_op_4",
+        "my_trt_op_5",
+        "my_trt_op_6",
+        "my_trt_op_7",
+        "my_trt_op_8",
+        "my_trt_op_9",
+        "my_trt_op_10",
+        "my_trt_op_11",
+        "my_trt_op_12",
+        "my_trt_op_13",
+        "my_trt_op_14",
+        "my_trt_op_15",
+    ]
 
 
 if __name__ == "__main__":

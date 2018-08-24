@@ -21,13 +21,15 @@ limitations under the License.
 #include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <utility>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -85,7 +87,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -352,9 +353,9 @@ void WarnIfBadPtxasVersion(const string& ptxas_path) {
   string vmaj_str, vmin_str, vdot_str;
   if (!RE2::PartialMatch(out, R"(\bV(\d+)\.(\d+)\.(\d+)\b)", &vmaj_str,
                          &vmin_str, &vdot_str) ||
-      !tensorflow::strings::safe_strto64(vmaj_str, &vmaj) ||
-      !tensorflow::strings::safe_strto64(vmin_str, &vmin) ||
-      !tensorflow::strings::safe_strto64(vdot_str, &vdot)) {
+      !absl::SimpleAtoi(vmaj_str, &vmaj) ||
+      !absl::SimpleAtoi(vmin_str, &vmin) ||
+      !absl::SimpleAtoi(vdot_str, &vdot)) {
     LOG(WARNING) << "Couldn't parse ptxas version in output of " << ptxas_path
                  << " --version:\n"
                  << out;
@@ -466,7 +467,7 @@ StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
   tensorflow::SubProcess ptxas_info_dumper;
   std::vector<string> ptxas_args = {
       ptxas_path, ptx_path, "-o", cubin_path,
-      tensorflow::strings::StrCat("-arch=sm_", cc_major, cc_minor)};
+      absl::StrCat("-arch=sm_", cc_major, cc_minor)};
   if (VLOG_IS_ON(2)) {
     ptxas_args.push_back("-v");
   }
@@ -674,7 +675,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   // Write PTX to IR dump directory, if IR dumping was requested.
   if (!ir_dump_directory.empty()) {
     const string ptx_outfile = tensorflow::io::JoinPath(
-        ir_dump_directory, tensorflow::strings::StrCat(module->name(), ".ptx"));
+        ir_dump_directory, absl::StrCat(module->name(), ".ptx"));
     auto status = [&] {
       auto* env = tensorflow::Env::Default();
       TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(ir_dump_directory));
@@ -690,7 +691,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   const std::vector<uint8> cubin =
       CompilePtxOrGetCachedResult(ptx, cc_major, cc_minor);
 
-  auto thunk_schedule = MakeUnique<ThunkSchedule>(
+  auto thunk_schedule = absl::make_unique<ThunkSchedule>(
       ir_emitter.ConsumeThunkSequence(), std::move(stream_assignment),
       hlo_schedule->ThunkLaunchOrder());
   VLOG(2) << "Printing the thunk schedule...";
@@ -704,7 +705,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     cost_analysis.set_bytes_per_second(
         stream_exec->GetDeviceDescription().memory_bandwidth());
     TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
-    profile_index_map = MakeUnique<HloProfileIndexMap>(*module);
+    profile_index_map = absl::make_unique<HloProfileIndexMap>(*module);
     profile_printer =
         CreateHloProfilePrinterData(*profile_index_map, cost_analysis);
   }
@@ -813,7 +814,7 @@ se::Platform::Id NVPTXCompiler::PlatformId() const {
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       stream_executor::cuda::kCudaPlatformId,
-      []() { return xla::MakeUnique<xla::gpu::NVPTXCompiler>(); });
+      []() { return absl::make_unique<xla::gpu::NVPTXCompiler>(); });
   return true;
 }
 static bool module_initialized = InitModule();

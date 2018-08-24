@@ -1038,29 +1038,27 @@ def div(x, y, name=None):
   return _div_python2(x, y, name)
 
 
-def unsafe_div(x, y, name=None):
+@tf_export("div_no_nan")
+def div_no_nan(x, y, name=None):
   """Computes an unsafe divide which returns 0 if the y is zero.
 
-  Note that the function uses Python 3 division operator semantics.
-
   Args:
-    x: A `Tensor`. Must be one of the following types:
-       `float32`, `float64`, `int16`, `int32`, `int64`.
+    x: A `Tensor`. Must be one of the following types: `float32`, `float64`.
     y: A `Tensor` whose dtype is compatible with `x`.
     name: A name for the operation (optional).
   Returns:
     The element-wise value of the x divided by y.
   """
 
-  with ops.name_scope(name, "unsafe_div", [x, y]) as name:
+  with ops.name_scope(name, "div_no_nan", [x, y]) as name:
     x = ops.convert_to_tensor(x, name="x")
     y = ops.convert_to_tensor(y, name="y", dtype=x.dtype.base_dtype)
     x_dtype = x.dtype.base_dtype
     y_dtype = y.dtype.base_dtype
     if x_dtype != y_dtype:
-      raise TypeError(
-          "x and y must have the same dtype, got %r != %r" % (x_dtype, y_dtype))
-    return gen_math_ops.unsafe_div(x, y, name=name)
+      raise TypeError("x and y must have the same dtype, got %r != %r" %
+                      (x_dtype, y_dtype))
+    return gen_math_ops.div_no_nan(x, y, name=name)
 
 
 # TODO(aselle): This should be removed
@@ -2063,7 +2061,7 @@ def _calc_mat_mul_flops(graph, node):
   output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
   output_shape.assert_is_fully_defined()
   output_count = np.prod(output_shape.as_list())
-  return ops.OpStats("flops", (k * output_count * 2))
+  return ops.OpStats("flops", ((2 * k - 1) * output_count))
 
 
 def _as_indexed_slices(x, optimize=True):

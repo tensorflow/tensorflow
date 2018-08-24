@@ -100,7 +100,7 @@ class EvaluationTest(test.TestCase):
 
     # Save initialized variables to a checkpoint directory:
     saver = saver_lib.Saver()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       init_op.run()
       saver.save(sess, os.path.join(chkpt_dir, 'chkpt'))
 
@@ -211,7 +211,7 @@ class EvaluationTest(test.TestCase):
 
     # Save initialized variables to a checkpoint directory:
     saver = saver_lib.Saver()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       init_op.run()
       saver.save(sess, os.path.join(chkpt_dir, 'chkpt'))
 
@@ -248,7 +248,7 @@ class SingleEvaluationTest(test.TestCase):
     init_op = control_flow_ops.group(variables.global_variables_initializer(),
                                      variables.local_variables_initializer())
     saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V1)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       saver.save(sess, checkpoint_path)
 

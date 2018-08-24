@@ -332,6 +332,16 @@ class XlaCompiler {
   // same XlaCompiler.
   Status GetChannelHandle(const string& key, xla::ChannelHandle* channel);
 
+  // Retrieves the host-to-device channel handle associated with `key`.
+  // Allocates a new channel handle if none exists.
+  Status GetHostToDeviceChannelHandle(const string& key,
+                                      xla::ChannelHandle* channel);
+
+  // Retrieves the device-to-host channel handle associated with `key`.
+  // Allocates a new channel handle if none exists.
+  Status GetDeviceToHostChannelHandle(const string& key,
+                                      xla::ChannelHandle* channel);
+
   // Sets the shapes and types for the device to host transfer associated with
   // 'key'.
   Status SetDeviceToHostMetadata(const string& key,

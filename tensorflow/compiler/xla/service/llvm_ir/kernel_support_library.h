@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_KERNEL_SUPPORT_LIBRARY_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_KERNEL_SUPPORT_LIBRARY_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_KERNEL_SUPPORT_LIBRARY_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_KERNEL_SUPPORT_LIBRARY_H_
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace xla {
 // A thin wrapper around llvm_loop.h to make code generating structured control
@@ -49,13 +49,13 @@ class KernelSupportLibrary {
   //       `for_body_generator(/*ind_var=*/,i, /*is_first_iteration=*/false)`;
   //   }
   Status For(
-      tensorflow::StringPiece name, llvm::Value* start, llvm::Value* end,
+      absl::string_view name, llvm::Value* start, llvm::Value* end,
       llvm::Value* step,
       const std::function<Status(llvm::Value* ind_var,
                                  bool is_first_iteration)>& for_body_generator);
 
   void ForReturnVoid(
-      tensorflow::StringPiece name, llvm::Value* start, llvm::Value* end,
+      absl::string_view name, llvm::Value* start, llvm::Value* end,
       llvm::Value* step,
       const std::function<void(llvm::Value* ind_var, bool is_first_iteration)>&
           for_body_generator) {
@@ -67,7 +67,7 @@ class KernelSupportLibrary {
                  }));
   }
 
-  Status For(tensorflow::StringPiece name, int64 start, int64 end, int64 step,
+  Status For(absl::string_view name, int64 start, int64 end, int64 step,
              const std::function<Status(llvm::Value* ind_var,
                                         bool is_first_iteration)>&
                  for_body_generator) {
@@ -77,7 +77,7 @@ class KernelSupportLibrary {
   }
 
   void ForReturnVoid(
-      tensorflow::StringPiece name, int64 start, int64 end, int64 step,
+      absl::string_view name, int64 start, int64 end, int64 step,
       const std::function<void(llvm::Value* ind_var, bool is_first_iteration)>&
           for_body_generator) {
     ForReturnVoid(name, /*start=*/b_->getInt64(start),
@@ -99,13 +99,13 @@ class KernelSupportLibrary {
   //   for (i64 i = `start`; i s< `end`; i += `step`)
   //     `for_body_generator(/*ind_var=*/,i,
   //                         /*is_first_iteration=*/,(i != `start`))`;
-  Status For(tensorflow::StringPiece name, llvm::Value* start, llvm::Value* end,
+  Status For(absl::string_view name, llvm::Value* start, llvm::Value* end,
              llvm::Value* step, bool peel_first_iteration,
              const std::function<Status(llvm::Value* ind_var,
                                         llvm::Value* is_first_iteration)>&
                  for_body_generator);
 
-  void ForReturnVoid(tensorflow::StringPiece name, llvm::Value* start,
+  void ForReturnVoid(absl::string_view name, llvm::Value* start,
                      llvm::Value* end, llvm::Value* step,
                      bool peel_first_iteration,
                      const std::function<void(llvm::Value* ind_var,
@@ -119,7 +119,7 @@ class KernelSupportLibrary {
         }));
   }
 
-  Status For(tensorflow::StringPiece name, llvm::Value* start, llvm::Value* end,
+  Status For(absl::string_view name, llvm::Value* start, llvm::Value* end,
              int64 step, bool peel_first_iteration,
              const std::function<Status(llvm::Value* ind_var,
                                         llvm::Value* is_first_iteration)>&
@@ -129,7 +129,7 @@ class KernelSupportLibrary {
                peel_first_iteration, for_body_generator);
   }
 
-  void ForReturnVoid(tensorflow::StringPiece name, llvm::Value* start,
+  void ForReturnVoid(absl::string_view name, llvm::Value* start,
                      llvm::Value* end, int64 step, bool peel_first_iteration,
                      const std::function<void(llvm::Value* ind_var,
                                               llvm::Value* is_first_iteration)>&
@@ -140,7 +140,7 @@ class KernelSupportLibrary {
   }
 
   Status For(
-      tensorflow::StringPiece name, llvm::Value* start, llvm::Value* end,
+      absl::string_view name, llvm::Value* start, llvm::Value* end,
       llvm::Value* step,
       const std::function<Status(llvm::Value* ind_var)>& for_body_generator) {
     return For(name, start, end, step,
@@ -151,7 +151,7 @@ class KernelSupportLibrary {
   }
 
   void ForReturnVoid(
-      tensorflow::StringPiece name, llvm::Value* start, llvm::Value* end,
+      absl::string_view name, llvm::Value* start, llvm::Value* end,
       llvm::Value* step,
       const std::function<void(llvm::Value* ind_var)>& for_body_generator) {
     ForReturnVoid(name, start, end, step,
@@ -162,8 +162,7 @@ class KernelSupportLibrary {
   }
 
   Status For(
-      tensorflow::StringPiece name, llvm::Value* start, llvm::Value* end,
-      int64 step,
+      absl::string_view name, llvm::Value* start, llvm::Value* end, int64 step,
       const std::function<Status(llvm::Value* ind_var)>& for_body_generator) {
     return For(name, start, end, llvm::ConstantInt::get(start->getType(), step),
                /*peel_first_iteration=*/false,
@@ -173,8 +172,7 @@ class KernelSupportLibrary {
   }
 
   void ForReturnVoid(
-      tensorflow::StringPiece name, llvm::Value* start, llvm::Value* end,
-      int64 step,
+      absl::string_view name, llvm::Value* start, llvm::Value* end, int64 step,
       const std::function<void(llvm::Value* ind_var)>& for_body_generator) {
     ForReturnVoid(name, start, end,
                   llvm::ConstantInt::get(start->getType(), step),
@@ -182,7 +180,7 @@ class KernelSupportLibrary {
   }
 
   Status For(
-      tensorflow::StringPiece name, int64 start, int64 end, int64 step,
+      absl::string_view name, int64 start, int64 end, int64 step,
       const std::function<Status(llvm::Value* ind_var)>& for_body_generator) {
     return For(name, /*start=*/b_->getInt64(start),
                /*end=*/b_->getInt64(end),
@@ -190,7 +188,7 @@ class KernelSupportLibrary {
   }
 
   void ForReturnVoid(
-      tensorflow::StringPiece name, int64 start, int64 end, int64 step,
+      absl::string_view name, int64 start, int64 end, int64 step,
       const std::function<void(llvm::Value* ind_var)>& for_body_generator) {
     ForReturnVoid(name, /*start=*/b_->getInt64(start),
                   /*end=*/b_->getInt64(end),
@@ -203,7 +201,7 @@ class KernelSupportLibrary {
   //     `true_block_generator()`;
   //   else
   //      `false_block_generator()`;
-  Status If(tensorflow::StringPiece name, llvm::Value* condition,
+  Status If(absl::string_view name, llvm::Value* condition,
             const std::function<Status()>& true_block_generator,
             const std::function<Status()>& false_block_generator =
                 []() -> Status { return Status::OK(); });
@@ -222,7 +220,7 @@ class KernelSupportLibrary {
     IfReturnVoid("", condition, true_block_generator, false_block_generator);
   }
 
-  void IfReturnVoid(tensorflow::StringPiece name, llvm::Value* condition,
+  void IfReturnVoid(absl::string_view name, llvm::Value* condition,
                     const std::function<void()>& true_block_generator,
                     const std::function<void()>& false_block_generator = []() {
                     }) {
@@ -259,13 +257,13 @@ class KernelSupportLibrary {
   // Currently we only support at most one nullptr value in `arguments`.
   static void EmitAndCallOutlinedKernel(
       bool enable_fast_math, bool optimize_for_size, llvm::IRBuilder<>* b,
-      tensorflow::StringPiece kernel_name, ArgumentVector arguments,
+      absl::string_view kernel_name, ArgumentVector arguments,
       const std::function<void(ArgumentVector)>& kernel_body_generator);
 
   // Thin wrappers around the more general EmitAndCallOutlinedKernel above.
   static void EmitAndCallOutlinedKernel(
       bool enable_fast_math, bool optimize_for_size, llvm::IRBuilder<>* b,
-      tensorflow::StringPiece kernel_name, llvm::Value* arg0, llvm::Value* arg1,
+      absl::string_view kernel_name, llvm::Value* arg0, llvm::Value* arg1,
       llvm::Value* arg2,
       const std::function<void(llvm::Value*, llvm::Value*, llvm::Value*)>&
           kernel_body_generator) {
@@ -278,7 +276,7 @@ class KernelSupportLibrary {
 
   static void EmitAndCallOutlinedKernel(
       bool enable_fast_math, bool optimize_for_size, llvm::IRBuilder<>* b,
-      tensorflow::StringPiece kernel_name, llvm::Value* arg0, llvm::Value* arg1,
+      absl::string_view kernel_name, llvm::Value* arg0, llvm::Value* arg1,
       llvm::Value* arg2, llvm::Value* arg3,
       const std::function<void(llvm::Value*, llvm::Value*, llvm::Value*,
                                llvm::Value*)>& kernel_body_generator) {
@@ -296,4 +294,4 @@ class KernelSupportLibrary {
 };
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_KERNEL_SUPPORT_LIBRARY_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_KERNEL_SUPPORT_LIBRARY_H_

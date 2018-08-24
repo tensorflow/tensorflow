@@ -88,6 +88,10 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
+      auto init_func = [this](IteratorContext* ctx) {
+        return captured_func_->Instantiate(ctx);
+      };
+
       auto map_func = [this](IteratorContext* ctx,
                              std::vector<Tensor> input_element,
                              std::vector<Tensor>* result, StatusCallback done) {
@@ -97,7 +101,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
       return NewParallelMapIterator(
           {this, strings::StrCat(prefix, "::ParallelMap")}, input_,
-          std::move(map_func), num_parallel_calls_);
+          std::move(init_func), std::move(map_func), num_parallel_calls_);
     }
 
     const DataTypeVector& output_dtypes() const override {

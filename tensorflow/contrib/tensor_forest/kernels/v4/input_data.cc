@@ -130,7 +130,11 @@ void TensorDataSet::RandomSample(int example,
       num_total_features += num_sparse;
     }
   }
-  int rand_feature = rng_->Uniform(num_total_features);
+  int rand_feature = 0;
+  {
+    mutex_lock lock(mu_);
+    rand_feature = rng_->Uniform(num_total_features);
+  }
   if (rand_feature < available_features_.size()) {  // it's dense.
     *feature_id = available_features_[rand_feature];
     *type = input_spec_.GetDenseFeatureType(rand_feature);

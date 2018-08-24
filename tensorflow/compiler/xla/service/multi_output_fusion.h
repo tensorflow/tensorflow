@@ -19,10 +19,10 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace xla {
 
@@ -48,9 +48,7 @@ class MultiOutputFusion : public HloPassInterface {
  public:
   MultiOutputFusion(int64 fuel) : fuel_(fuel) {}
 
-  tensorflow::StringPiece name() const override {
-    return "multi_output_fusion";
-  }
+  absl::string_view name() const override { return "multi_output_fusion"; }
 
   // Run multi-output fusion on the given module. Returns whether the module
   // was changed.
@@ -104,16 +102,16 @@ class MultiOutputFusion : public HloPassInterface {
   // InstructionFusion instead.
   virtual bool DoProducerConsumerMultiOutputFusion();
 
- private:
-  // Update the internal data structures after instr1 and instr2 are fused into
-  // one fusion instruction.
-  void Update(HloInstruction* instr1, HloInstruction* instr2);
-
   // Optimization fuel is a compiler debugging technique that makes an
   // optimization pass stop what it is doing after having made N changes to the
   // program, where N is the fuel. By varying N, this can be used to find the
   // first single change that makes a test fail.
   int64 fuel_;
+
+ private:
+  // Update the internal data structures after instr1 and instr2 are fused into
+  // one fusion instruction.
+  void Update(HloInstruction* instr1, HloInstruction* instr2);
 
   // Computation for the pass.
   HloComputation* computation_;

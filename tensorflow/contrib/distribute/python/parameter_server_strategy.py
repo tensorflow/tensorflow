@@ -26,6 +26,7 @@ from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribute as distribute_lib
@@ -55,7 +56,11 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   assigned to.
 
   This class assumes between-graph replication will be used and works on a graph
-  for a particular worker.
+  for a particular worker. Note that each graph and worker is independent.
+  This means that while each worker will synchronously compute a single gradient
+  update across all GPUs, updates between workers proceed asynchronously.
+  Operations that occur only on the first tower (such as incrementing the global
+  step), will occur on the first tower *of every worker*.
 
   It is expected to call `call_for_each_tower(fn, *args, **kwargs)` for any
   operations which potentially can be replicated across towers (i.e. multiple
@@ -73,7 +78,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   3) It is also not recommended to open a colocation scope (i.e. calling
   `tf.colocate_with`) under the strategy's scope. For colocating variables,
   use `distribution.colocate_vars_with` instead. Colocation of ops will possibly
-  create conflicts of device assignement.
+  create conflicts of device assignment.
   """
 
   def __init__(self,
@@ -81,7 +86,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
                cluster_spec=None,
                task_type=None,
                task_id=None):
-    """Initiailizes this strategy.
+    """Initializes this strategy.
 
     Args:
       num_gpus_per_worker: number of local GPUs or GPUs per worker.
@@ -217,14 +222,30 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   # TODO(yuefengz): not all ops in device_setter.STANDARD_PS_OPS will go through
   # this creator, such as "MutableHashTable".
   def _create_variable(self, next_creator, *args, **kwargs):
+    if self.num_towers > 1:
+      aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
+      if aggregation not in (
+          vs.VariableAggregation.NONE,
+          vs.VariableAggregation.SUM,
+          vs.VariableAggregation.MEAN
+      ):
+        raise ValueError("Invalid variable aggregation mode: " + aggregation +
+                         " for variable: " + kwargs["name"])
+
+      def var_creator(*args, **kwargs):
+        v = next_creator(*args, **kwargs)
+        return values.AggregatingVariable(v, aggregation)
+    else:
+      var_creator = next_creator
+
     if "colocate_with" in kwargs:
       with ops.device(None):
         with ops.colocate_with(kwargs["colocate_with"]):
-          return next_creator(*args, **kwargs)
+          return var_creator(*args, **kwargs)
 
     with ops.colocate_with(None, ignore_existing=True):
       with ops.device(self._variable_device):
-        return next_creator(*args, **kwargs)
+        return var_creator(*args, **kwargs)
 
   def _call_for_each_tower(self, fn, *args, **kwargs):
     # pylint: disable=protected-access
@@ -246,7 +267,6 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
       # pylint: disable=protected-access
       return mirrored_strategy._reduce_non_distributed_value(
           self, aggregation, value, destinations)
-
     return self._cross_tower_ops.reduce(
         aggregation, value, destinations=destinations)
 
@@ -279,6 +299,8 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     return nest.map_structure(_select_fn, structured)
 
   def _update(self, var, fn, *args, **kwargs):
+    if isinstance(var, values.AggregatingVariable):
+      var = var.get()
     if not isinstance(var, resource_variable_ops.ResourceVariable):
       raise ValueError(
           "You can not update `var` %r. It must be a Variable." % var)

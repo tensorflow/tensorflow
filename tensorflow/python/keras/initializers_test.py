@@ -40,7 +40,7 @@ class KerasInitializersTest(test.TestCase):
 
   def test_uniform(self):
     tensor_shape = (9, 6, 7)
-    with self.test_session():
+    with self.cached_session():
       self._runner(keras.initializers.RandomUniform(minval=-1,
                                                     maxval=1,
                                                     seed=124),
@@ -49,14 +49,14 @@ class KerasInitializersTest(test.TestCase):
 
   def test_normal(self):
     tensor_shape = (8, 12, 99)
-    with self.test_session():
+    with self.cached_session():
       self._runner(keras.initializers.RandomNormal(mean=0, stddev=1, seed=153),
                    tensor_shape,
                    target_mean=0., target_std=1)
 
   def test_truncated_normal(self):
     tensor_shape = (12, 99, 7)
-    with self.test_session():
+    with self.cached_session():
       self._runner(keras.initializers.TruncatedNormal(mean=0,
                                                       stddev=1,
                                                       seed=126),
@@ -65,13 +65,13 @@ class KerasInitializersTest(test.TestCase):
 
   def test_constant(self):
     tensor_shape = (5, 6, 4)
-    with self.test_session():
+    with self.cached_session():
       self._runner(keras.initializers.Constant(2), tensor_shape,
                    target_mean=2, target_max=2, target_min=2)
 
   def test_lecun_uniform(self):
     tensor_shape = (5, 6, 4, 2)
-    with self.test_session():
+    with self.cached_session():
       fan_in, _ = init_ops._compute_fans(tensor_shape)
       std = np.sqrt(1. / fan_in)
       self._runner(keras.initializers.lecun_uniform(seed=123), tensor_shape,
@@ -79,7 +79,7 @@ class KerasInitializersTest(test.TestCase):
 
   def test_glorot_uniform(self):
     tensor_shape = (5, 6, 4, 2)
-    with self.test_session():
+    with self.cached_session():
       fan_in, fan_out = init_ops._compute_fans(tensor_shape)
       std = np.sqrt(2. / (fan_in + fan_out))
       self._runner(keras.initializers.glorot_uniform(seed=123), tensor_shape,
@@ -87,7 +87,7 @@ class KerasInitializersTest(test.TestCase):
 
   def test_he_uniform(self):
     tensor_shape = (5, 6, 4, 2)
-    with self.test_session():
+    with self.cached_session():
       fan_in, _ = init_ops._compute_fans(tensor_shape)
       std = np.sqrt(2. / fan_in)
       self._runner(keras.initializers.he_uniform(seed=123), tensor_shape,
@@ -95,7 +95,7 @@ class KerasInitializersTest(test.TestCase):
 
   def test_lecun_normal(self):
     tensor_shape = (5, 6, 4, 2)
-    with self.test_session():
+    with self.cached_session():
       fan_in, _ = init_ops._compute_fans(tensor_shape)
       std = np.sqrt(1. / fan_in)
       self._runner(keras.initializers.lecun_normal(seed=123), tensor_shape,
@@ -103,7 +103,7 @@ class KerasInitializersTest(test.TestCase):
 
   def test_glorot_normal(self):
     tensor_shape = (5, 6, 4, 2)
-    with self.test_session():
+    with self.cached_session():
       fan_in, fan_out = init_ops._compute_fans(tensor_shape)
       std = np.sqrt(2. / (fan_in + fan_out))
       self._runner(keras.initializers.glorot_normal(seed=123), tensor_shape,
@@ -111,7 +111,7 @@ class KerasInitializersTest(test.TestCase):
 
   def test_he_normal(self):
     tensor_shape = (5, 6, 4, 2)
-    with self.test_session():
+    with self.cached_session():
       fan_in, _ = init_ops._compute_fans(tensor_shape)
       std = np.sqrt(2. / fan_in)
       self._runner(keras.initializers.he_normal(seed=123), tensor_shape,
@@ -119,12 +119,12 @@ class KerasInitializersTest(test.TestCase):
 
   def test_orthogonal(self):
     tensor_shape = (20, 20)
-    with self.test_session():
+    with self.cached_session():
       self._runner(keras.initializers.orthogonal(seed=123), tensor_shape,
                    target_mean=0.)
 
   def test_identity(self):
-    with self.test_session():
+    with self.cached_session():
       tensor_shape = (3, 4, 5)
       with self.assertRaises(ValueError):
         self._runner(keras.initializers.identity(), tensor_shape,
@@ -136,13 +136,13 @@ class KerasInitializersTest(test.TestCase):
 
   def test_zero(self):
     tensor_shape = (4, 5)
-    with self.test_session():
+    with self.cached_session():
       self._runner(keras.initializers.zeros(), tensor_shape,
                    target_mean=0., target_max=0.)
 
   def test_one(self):
     tensor_shape = (4, 5)
-    with self.test_session():
+    with self.cached_session():
       self._runner(keras.initializers.ones(), tensor_shape,
                    target_mean=1., target_max=1.)
 

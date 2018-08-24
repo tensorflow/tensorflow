@@ -74,7 +74,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleAllToAll(const HloInstruction* hlo) override;
   Status HandleInfeed(const HloInstruction* infeed) override;
   Status HandleOutfeed(const HloInstruction* outfeed) override;
-  Status HandleHostCompute(const HloInstruction* host_compute) override;
   Status HandleRng(const HloInstruction* random) override;
   Status HandleReverse(const HloInstruction* reverse) override;
   Status HandleSort(const HloInstruction* sort) override;

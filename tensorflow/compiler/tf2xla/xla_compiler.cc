@@ -18,6 +18,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
@@ -310,7 +311,7 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   // unique_ptr so we can capture the cleanup status in the end.
   xla_context->Ref();
   Status status;
-  auto step_container = xla::MakeUnique<ScopedStepContainer>(
+  auto step_container = absl::make_unique<ScopedStepContainer>(
       step_id, [&status, device](const string& name) {
         status = device->resource_manager()->Cleanup(name);
       });
@@ -413,7 +414,7 @@ Status BuildComputation(
 
       // Request that the value be returned on a specific core.
       xla::XlaScopedShardingAssignment assign_sharding(
-          builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
+          builder, core == -1 ? absl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
 
       xla::XlaOp handle;
@@ -570,7 +571,7 @@ Status XlaCompiler::BuildArguments(
     for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
       const int core = (*arg_cores)[input_mapping->at(i)];
       xla::XlaScopedShardingAssignment assign_sharding(
-          builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
+          builder, core == -1 ? absl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
       arg_handles[i] = xla::GetTupleElement(tuple, i);
     }
@@ -578,7 +579,7 @@ Status XlaCompiler::BuildArguments(
     for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
       const int core = (*arg_cores)[input_mapping->at(i)];
       xla::XlaScopedShardingAssignment assign_sharding(
-          builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
+          builder, core == -1 ? absl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
       arg_handles[i] = xla::Parameter(builder, i, (*input_shapes)[i],
                                       strings::StrCat("arg", i));
@@ -791,14 +792,6 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   VLOG(2) << "XLA output shape: "
           << xla::ShapeUtil::HumanString(result->xla_output_shape);
 
-  // Copy the host transfer metadata to the result.
-  for (const auto& send : host_compute_sends_) {
-    *result->host_compute_metadata.add_device_to_host() = send.second;
-  }
-  for (const auto& recv : host_compute_recvs_) {
-    *result->host_compute_metadata.add_host_to_device() = recv.second;
-  }
-
   // Tensorflow expects a major-to-minor order of results.
   xla::LayoutUtil::SetToDefaultLayout(&result->xla_output_shape);
 
@@ -813,6 +806,30 @@ Status XlaCompiler::GetChannelHandle(const string& key,
   }
   *channel = result.first->second;
   VLOG(1) << "Channel: " << key << " " << channel->DebugString();
+  return Status::OK();
+}
+
+Status XlaCompiler::GetHostToDeviceChannelHandle(const string& key,
+                                                 xla::ChannelHandle* channel) {
+  auto result = channels_.emplace(key, xla::ChannelHandle());
+  if (result.second) {
+    TF_ASSIGN_OR_RETURN(result.first->second,
+                        client()->CreateHostToDeviceChannelHandle());
+  }
+  *channel = result.first->second;
+  VLOG(1) << "Host to device channel: " << key << " " << channel->DebugString();
+  return Status::OK();
+}
+
+Status XlaCompiler::GetDeviceToHostChannelHandle(const string& key,
+                                                 xla::ChannelHandle* channel) {
+  auto result = channels_.emplace(key, xla::ChannelHandle());
+  if (result.second) {
+    TF_ASSIGN_OR_RETURN(result.first->second,
+                        client()->CreateDeviceToHostChannelHandle());
+  }
+  *channel = result.first->second;
+  VLOG(1) << "Device to host channel: " << key << " " << channel->DebugString();
   return Status::OK();
 }
 

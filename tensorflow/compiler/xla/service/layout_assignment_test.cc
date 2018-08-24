@@ -59,7 +59,7 @@ class LayoutAssignmentTest : public HloTestBase {
     EXPECT_IS_OK(layout_assignment.Run(module).status());
   }
 
-  std::vector<int64> LayoutOf(HloModule* module, tensorflow::StringPiece name) {
+  std::vector<int64> LayoutOf(HloModule* module, absl::string_view name) {
     auto minor_to_major =
         FindInstruction(module, name)->shape().layout().minor_to_major();
     return std::vector<int64>(minor_to_major.begin(), minor_to_major.end());

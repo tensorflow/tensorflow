@@ -232,7 +232,7 @@ def group_norm(inputs,
       variance may have poor result due to repeated roundoff error and
       denormalization in `mean`.  When `mean` is large, like 1e2,
       sum(`input`^2) is so large that only the high-order digits of the elements
-      are being accumulated. Thus, use sum(`input` - `mean`)^2/n to calcualte
+      are being accumulated. Thus, use sum(`input` - `mean`)^2/n to calculate
       the variance has better accuracy compared to (sum(`input`^2)/n - `mean`^2)
       when `mean` is large.
 

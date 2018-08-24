@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_ops
@@ -121,9 +122,12 @@ class SoftplusTest(test.TestCase):
     print("softplus (float) third-order gradient err = ", err)
     self.assertLess(err, 5e-5)
 
-  def testWarnInts(self):
-    # Running the op triggers address sanitizer errors, so we just make it
-    nn_ops.softplus(constant_op.constant(7))
+  def testNoInts(self):
+    with self.test_session():
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "No OpKernel was registered to support Op 'Softplus'"):
+        nn_ops.softplus(constant_op.constant(7)).eval()
 
 
 if __name__ == "__main__":

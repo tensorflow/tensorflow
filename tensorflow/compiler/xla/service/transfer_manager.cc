@@ -18,6 +18,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -27,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/notification.h"
 
-using ::tensorflow::strings::StrCat;
+using absl::StrCat;
 
 namespace xla {
 /* static */ tensorflow::mutex
@@ -61,7 +63,7 @@ StatusOr<std::unique_ptr<Literal>> TransferManager::TransferLiteralFromDevice(
   if (!s.ok()) {
     return s;
   }
-  return MakeUnique<Literal>(std::move(literal));
+  return absl::make_unique<Literal>(std::move(literal));
 }
 
 Status TransferManager::TransferLiteralFromDevice(
@@ -120,7 +122,7 @@ StatusOr<std::unique_ptr<Literal>> TransferManager::TransferArrayFromDevice(
   if (!s.ok()) {
     return s;
   }
-  return MakeUnique<Literal>(std::move(literal));
+  return absl::make_unique<Literal>(std::move(literal));
 }
 
 Status TransferManager::TransferArrayToDevice(

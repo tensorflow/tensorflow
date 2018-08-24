@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -109,7 +110,7 @@ class PointsToSet {
   // Add a tuple source instruction for the given index.
   void add_tuple_source(const ShapeIndex& index, HloInstruction* tuple);
 
-  using BufferList = tensorflow::gtl::InlinedVector<const LogicalBuffer*, 1>;
+  using BufferList = absl::InlinedVector<const LogicalBuffer*, 1>;
 
   // Return the list of logical buffers for the subshape at index.
   const BufferList& element(const ShapeIndex& index) const {
@@ -203,7 +204,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   // logical buffer The buffer alias set is the inverse of the points-to set.
   // That is, LogicalBuffer B is in the points-to set of instruction I at index
   // N iff instruction I, index N is a BufferAlias of B.
-  using BufferAliasVector = tensorflow::gtl::InlinedVector<BufferAlias, 1>;
+  using BufferAliasVector = absl::InlinedVector<BufferAlias, 1>;
   const BufferAliasVector& GetBufferAliases(const LogicalBuffer& buffer) const;
 
   // Returns the number of logical buffers in the module
@@ -226,8 +227,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   // instructions produce a single buffer (the top-level buffer), some produce
   // no buffers (eg bitcast), and some produce more than one buffer (eg,
   // tuple-shaped parameters).
-  using BufferDefinitionVector =
-      tensorflow::gtl::InlinedVector<const LogicalBuffer*, 1>;
+  using BufferDefinitionVector = absl::InlinedVector<const LogicalBuffer*, 1>;
   const BufferDefinitionVector& GetBuffersDefinedByInstruction(
       const HloInstruction* instruction) const;
 

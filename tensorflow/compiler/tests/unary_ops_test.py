@@ -65,7 +65,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
       rtol: relative tolerance for equality test.
       atol: absolute tolerance for equality test.
     """
-    with self.test_session() as session:
+    with self.cached_session() as session:
       with self.test_scope():
         pinp = array_ops.placeholder(
             dtypes.as_dtype(inp.dtype), inp.shape, name="a")
@@ -202,7 +202,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
       # Disable float16 testing for now
       if dtype != np.float16:
         x = np.arange(-10, 10, 1).astype(dtype)
-        with self.test_session() as session:
+        with self.cached_session() as session:
           erf_x = session.run(math_ops.erf(x))
           erfc_x = session.run(math_ops.erfc(x))
 
@@ -398,6 +398,11 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
       self._assertOpOutputMatchesExpected(
           math_ops.lgamma,
+          np.array(0.5, dtype=dtype),
+          expected=np.array(np.log(np.pi) / 2, dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.lgamma,
           np.array(
               [[1, 2, 3], [4, 5, 6], [1 / 2, 3 / 2, 5 / 2],
                [-3 / 2, -7 / 2, -11 / 2]],
@@ -419,6 +424,19 @@ class UnaryOpsTest(xla_test.XLATestCase):
                   ],
               ],
               dtype=dtype))
+
+      # The actual result is complex. Take the real part.
+      self._assertOpOutputMatchesExpected(
+          math_ops.lgamma,
+          np.array([-1 / 2, -5 / 2, -9 / 2], dtype=dtype),
+          expected=np.array(
+              [
+                  np.log(np.pi) / 2 + np.log(2),
+                  np.log(np.pi) / 2 - np.log(15) + np.log(8),
+                  np.log(np.pi) / 2 - np.log(945) + np.log(32),
+              ],
+              dtype=dtype),
+          atol=1e-4)
 
       self._assertOpOutputMatchesExpected(
           math_ops.digamma,

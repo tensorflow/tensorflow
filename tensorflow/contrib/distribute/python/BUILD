@@ -85,6 +85,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:multi_worker_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
     ],
@@ -138,6 +139,7 @@ py_library(
         "//tensorflow/python:collective_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python/distribute:multi_worker_util",
         "//tensorflow/python/eager:context",
     ],
 )
@@ -271,6 +273,7 @@ cuda_py_test(
     srcs = ["mirrored_strategy_multigpu_test.py"],
     additional_deps = [
         ":mirrored_strategy",
+        ":multi_worker_test_base",
         ":values",
         ":strategy_test_lib",
         "//tensorflow/python:distribute",
@@ -339,19 +342,17 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "collective_all_reduce_strategy_test",
     srcs = ["collective_all_reduce_strategy_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",
-    ],
-    deps = [
+    additional_deps = [
         ":collective_all_reduce_strategy",
         ":combinations",
         ":cross_tower_utils",
         ":multi_worker_test_base",
         ":strategy_test_lib",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -365,8 +366,10 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:estimator_py",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
+    ],
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
     ],
 )
 
@@ -601,6 +604,7 @@ cuda_py_test(
         ":combinations",
         ":cross_tower_ops",
         ":multi_worker_test_base",
+        ":mirrored_strategy",
         ":values",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",

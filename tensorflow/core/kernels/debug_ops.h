@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_DEBUG_OP_H_
-#define TENSORFLOW_KERNELS_DEBUG_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_
+#define TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
@@ -389,4 +389,4 @@ class DebugNumericSummaryOp : public BaseDebugOp {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_DEBUG_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_

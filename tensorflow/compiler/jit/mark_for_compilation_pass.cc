@@ -27,7 +27,9 @@ limitations under the License.
 #include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
+#include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
+#include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
@@ -74,18 +77,40 @@ bool HasXLAKernel(const Node& node, const DeviceType& jit_device_type) {
   return FindKernelDef(jit_device_type, node.def(), nullptr, nullptr).ok();
 }
 
+bool HasResourceOutput(const Node& node) {
+  return std::find(node.output_types().begin(), node.output_types().end(),
+                   DT_RESOURCE) != node.output_types().end();
+}
+
+bool HasResourceInput(const Node& node) {
+  return std::find(node.input_types().begin(), node.input_types().end(),
+                   DT_RESOURCE) != node.input_types().end();
+}
+
+// Returns true if `node` is a resource operation recognized by tf2xla that
+// operates on something other than resource variables.
+bool IsNonResourceVarResourceOp(const Node& node) {
+  // TODO(b/112837194): We can't cluster these because we only support
+  // snapshotting resource variables (and we can't e.g. snapshot stacks).  This
+  // limitation may be fixable with some work.
+  const XlaResourceOpInfo* op_info = GetResourceOpInfoForOp(node.type_string());
+  return op_info && op_info->resource_kind() != XlaResourceKind::kVariable;
+}
+
 // Make sure we don't recurse infinitely on recursive functions.
 const int kMaxRecursionDepth = 10;
 
 bool IsCompilableCall(const NodeDef& call_def,
-                      const DeviceType& jit_device_type, int depth,
+                      const DeviceType& jit_device_type,
+                      bool allow_resource_ops, int depth,
                       FunctionLibraryRuntime* lib_runtime);
 
 // Tests whether 'while_node' is a completely compilable loop.
 // Every operator in the condition and body functions must be compilable for a
 // while loop to be compilable.
 bool IsCompilableWhile(const Node& while_node,
-                       const DeviceType& jit_device_type, int depth,
+                       const DeviceType& jit_device_type,
+                       bool allow_resource_ops, int depth,
                        FunctionLibraryRuntime* lib_runtime) {
   const NameAttrList* name_attr;
   NodeDef call;
@@ -100,7 +125,8 @@ bool IsCompilableWhile(const Node& while_node,
   call.set_name("while_cond");
   call.set_op(cond_func);
   *call.mutable_attr() = name_attr->attr();
-  if (!IsCompilableCall(call, jit_device_type, depth + 1, lib_runtime)) {
+  if (!IsCompilableCall(call, jit_device_type, allow_resource_ops, depth + 1,
+                        lib_runtime)) {
     VLOG(2) << "Rejecting While " << while_node.name()
             << ": can't compile loop condition: " << cond_func;
     return false;
@@ -115,7 +141,8 @@ bool IsCompilableWhile(const Node& while_node,
   call.set_name("while_body");
   call.set_op(body_func);
   *call.mutable_attr() = name_attr->attr();
-  if (!IsCompilableCall(call, jit_device_type, depth + 1, lib_runtime)) {
+  if (!IsCompilableCall(call, jit_device_type, allow_resource_ops, depth + 1,
+                        lib_runtime)) {
     VLOG(2) << "Rejecting While " << while_node.name()
             << ": can't compile loop body: " << body_func;
     return false;
@@ -127,7 +154,8 @@ bool IsCompilableWhile(const Node& while_node,
 // Every operator in the function must be compilable for a function to be
 // compilable.
 bool IsCompilableCall(const NodeDef& call_def,
-                      const DeviceType& jit_device_type, int depth,
+                      const DeviceType& jit_device_type,
+                      bool allow_resource_ops, int depth,
                       FunctionLibraryRuntime* lib_runtime) {
   if (depth > kMaxRecursionDepth) {
     VLOG(2) << "Rejecting " << call_def.op()
@@ -167,12 +195,17 @@ bool IsCompilableCall(const NodeDef& call_def,
     if (node->type_string() == "_Arg" || node->type_string() == "_Retval")
       continue;
     if (node->type_string() == "While") {
-      // Handle functional While loop (not in open source build).
-      return IsCompilableWhile(*node, jit_device_type, depth + 1, lib_runtime);
+      // Handle functional While loop.
+      return IsCompilableWhile(*node, jit_device_type, allow_resource_ops,
+                               depth + 1, lib_runtime);
+    }
+    if (!allow_resource_ops &&
+        (HasResourceInput(*node) || HasResourceOutput(*node))) {
+      return false;
     }
     if (!HasXLAKernel(*node, jit_device_type) &&
-        !IsCompilableCall(node->def(), jit_device_type, depth + 1,
-                          lib_runtime)) {
+        !IsCompilableCall(node->def(), jit_device_type, allow_resource_ops,
+                          depth + 1, lib_runtime)) {
       VLOG(2) << "Rejecting " << call_def.op() << ": unsupported op "
               << node->name() << ": " << node->def().ShortDebugString();
       return false;
@@ -343,6 +376,10 @@ Status FindCompilationCandidates(
                                         flib_def, opts));
   FunctionLibraryRuntime* lib_runtime =
       pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
+  std::vector<bool> compile_time_const_nodes(graph.num_node_ids(), false);
+  TF_RETURN_IF_ERROR(
+      BackwardsConstAnalysis(graph, /*compile_time_const_arg_indices=*/nullptr,
+                             &compile_time_const_nodes));
 
   int64& fuel =
       legacy_flags::GetMarkForCompilationPassFlags()->tf_xla_clustering_fuel;
@@ -386,19 +423,46 @@ Status FindCompilationCandidates(
         XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration));
     DeviceType jit_device_type(registration->compilation_device_name);
     if (!HasXLAKernel(*node, jit_device_type) &&
-        !IsCompilableCall(node->def(), jit_device_type, 0, lib_runtime)) {
+        !IsCompilableCall(node->def(), jit_device_type,
+                          registration->compile_resource_ops, 0, lib_runtime)) {
       VLOG(2) << "Rejecting " << node->name() << ": unsupported op "
               << node->type_string();
       continue;
     }
     if (!registration->compile_resource_ops &&
-        HasResourceInputOrOutput(*node)) {
-      VLOG(2) << "Rejecting: " << node->name() << ": resource input/output "
+        (HasResourceOutput(*node) || IsNonResourceVarResourceOp(*node))) {
+      // We don't have a way of returning values of type DT_RESOURCE from XLA
+      // computations so we avoid auto-clustering nodes producing DT_RESOURCE.
+      // XlaLaunchOp also cannot snapshot resources that are not resource
+      // variables so we avoid clustering resource operations that operate on
+      // non-resource variables.
+      VLOG(2) << "Rejecting: " << node->name() << ": resource output "
               << node->type_string();
       continue;
     }
+    if (compile_time_const_nodes[node->id()] &&
+        !registration->requires_compilation) {
+      const OpDef* op_def;
+      TF_RETURN_IF_ERROR(
+          OpRegistry::Global()->LookUpOpDef(node->type_string(), &op_def));
+      if (op_def->is_stateful()) {
+        // We need to be able to constant fold the nodes in
+        // compile_time_const_nodes given constant inputs (required by XLA) and
+        // therefore can't auto-cluster stateful ops since these can never be
+        // constant folded.
+        VLOG(2) << "Rejecting " << node->name()
+                << ": must-be-constant stateful op";
+        continue;
+      }
+    }
+    // We don't auto-cluster functional control flow nodes containing resource
+    // operations because safety checks are trickier in this case.
+    // registration->compile_resource_ops is true for XLA_CPU/XLA_GPU but not
+    // for CPU/GPU.
     if (node->type_string() == "While" &&
-        !IsCompilableWhile(*node, jit_device_type, 0, lib_runtime)) {
+        !IsCompilableWhile(*node, jit_device_type,
+                           registration->compile_resource_ops, 0,
+                           lib_runtime)) {
       continue;
     }
     // _Arg nodes in a top-level function represent feeds.
@@ -418,27 +482,11 @@ Status FindCompilationCandidates(
   return Status::OK();
 }
 
-struct Cluster {
-  // Identifies the node that represents this cluster in the cycle detection
-  // graph.
-  int representative = -1;
-};
-
-}  // anonymous namespace
-
-bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
-  Device* device = flr->device();
-  const XlaOpRegistry::DeviceRegistration* registration;
-  CHECK(XlaOpRegistry::GetCompilationDevice(device->device_type(),
-                                            &registration));
-  DeviceType jit_device_type(registration->compilation_device_name);
-  return IsCompilableCall(ndef, jit_device_type, 0, flr);
-}
-
-Status MarkForCompilationPass::Run(
+// Determine the global jit level which is ON if either the
+// GraphOptimizationPassOptions has the jit ON, or if the --tf_xla_auto_jit flag
+// is true.
+OptimizerOptions::GlobalJitLevel GetGlobalJitLevel(
     const GraphOptimizationPassOptions& options) {
-  // TODO(phawkins): precompute the "GetCompilationDevice" properties of each
-  // device ahead of time.
   OptimizerOptions::GlobalJitLevel global_jit_level =
       options.session_options->config.graph_options()
           .optimizer_options()
@@ -456,6 +504,38 @@ Status MarkForCompilationPass::Run(
     global_jit_level =
         static_cast<OptimizerOptions::GlobalJitLevel>(flags->tf_xla_auto_jit);
   }
+  return global_jit_level;
+}
+
+struct Cluster {
+  // Identifies the node that represents this cluster in the cycle detection
+  // graph.
+  int representative = -1;
+};
+
+}  // anonymous namespace
+
+bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
+  Device* device = flr->device();
+  const XlaOpRegistry::DeviceRegistration* registration;
+  CHECK(XlaOpRegistry::GetCompilationDevice(device->device_type(),
+                                            &registration));
+  DeviceType jit_device_type(registration->compilation_device_name);
+
+  // We can always *compile* resource operations, even if we are sometimes
+  // unable to auto-cluster them.
+  const bool compile_resource_ops = true;
+  return IsCompilableCall(ndef, jit_device_type, compile_resource_ops, 0, flr);
+}
+
+Status MarkForCompilationPass::Run(
+    const GraphOptimizationPassOptions& options) {
+  // TODO(phawkins): precompute the "GetCompilationDevice" properties of each
+  // device ahead of time.
+  OptimizerOptions::GlobalJitLevel global_jit_level =
+      GetGlobalJitLevel(options);
+  legacy_flags::MarkForCompilationPassFlags* flags =
+      legacy_flags::GetMarkForCompilationPassFlags();
   bool cpu_global_jit = flags->tf_xla_cpu_global_jit;
   bool fusion_only = flags->tf_xla_fusion_only;
 
@@ -523,9 +603,9 @@ Status MarkForCompilationPass::Run(
     bool ignore_registration = cpu_global_jit && device_type == DEVICE_CPU;
     bool should_compile =
         (ignore_registration || registration->enable_jit_by_default) &&
-        global_jit_level > 0;
+        global_jit_level != OptimizerOptions::OFF;
     if (!should_compile) {
-      if (global_jit_level <= 0) {
+      if (global_jit_level == OptimizerOptions::OFF) {
         VLOG(2) << "Rejecting " << node->name() << ": global jit disabled.";
       } else {
         VLOG(2) << "Rejecting " << node->name() << ": JIT for device disabled.";
@@ -553,7 +633,7 @@ static void VLogClusteringSummary(const Graph& g) {
   int clustered_node_count = 0;
 
   for (Node* n : g.nodes()) {
-    gtl::optional<StringPiece> cluster_name = GetXlaClusterForNode(*n);
+    absl::optional<StringPiece> cluster_name = GetXlaClusterForNode(*n);
     if (cluster_name) {
       clustered_node_count++;
       cluster_name_to_size[*cluster_name]++;
@@ -597,6 +677,43 @@ static bool IsShapeConsumerOp(const Node& node) {
          node.type_string() == "Size";
 }
 
+static Status IgnoreResourceOpForSafetyAnalysis(const Node& n, bool* ignore) {
+  // If a resource operation is assigned to XLA_CPU or XLA_GPU explicitly then
+  // ignore it during resource operation safety analysis.  We need this hack
+  // because of two reasons:
+  //
+  //  1. Operations assigned to XLA_CPU and XLA_GPU have to always be compiled.
+  //  2. We don't support live-out values of type DT_RESOURCE and live-in values
+  //     of type DT_RESOURCE that are not resource variables.
+  //
+  // Together these imply we cannot let resource variable safety analysis
+  // constrain e.g. a TensorArrayV3->TensorArrayAssignV3 edge to be in different
+  // clusters: both of them will have to be clustered because of (1) and we
+  // won't be able to keep the edge between the two as neither the input to the
+  // second XLA cluster nor the output from the first XLA cluster are supported
+  // because of (2).
+  //
+  // TODO(b/113100872): This can be fixed if the TensorFlow representation for
+  // TensorArray and Stack on the XLA_{C|G}PU devices were the same in XLA; then
+  // (2) would no longer hold.
+
+  if (n.assigned_device_name().empty()) {
+    *ignore = false;
+    return Status::OK();
+  }
+  DeviceType device_type("");
+  TF_RETURN_IF_ERROR(
+      DeviceToDeviceType(n.assigned_device_name(), &device_type));
+
+  const XlaOpRegistry::DeviceRegistration* registration;
+  if (!XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
+    *ignore = true;
+  } else {
+    *ignore = registration->compile_resource_ops;
+  }
+  return Status::OK();
+}
+
 // Sequence number generator to ensure clusters have unique names.
 static std::atomic<int64> cluster_sequence_num;
 
@@ -625,6 +742,8 @@ Status MarkForCompilationPass::RunImpl(
 
   GraphCycles cycles;
   TF_RETURN_IF_ERROR(CreateCycleDetectionGraph(graph, &cycles));
+  TF_RETURN_IF_ERROR(AdjustCycleDetectionGraphForResourceOps(
+      graph, options.flib_def, IgnoreResourceOpForSafetyAnalysis, &cycles));
 
   // Each compilation candidate belongs to a cluster. The cluster's
   // representative
@@ -637,6 +756,8 @@ Status MarkForCompilationPass::RunImpl(
     worklist.push_back(&clusters[node->id()]);
   }
 
+  OptimizerOptions::GlobalJitLevel global_jit_level =
+      GetGlobalJitLevel(options);
   legacy_flags::MarkForCompilationPassFlags* flags =
       legacy_flags::GetMarkForCompilationPassFlags();
 
@@ -661,7 +782,7 @@ Status MarkForCompilationPass::RunImpl(
     string to_scope;
     for (int to : cycles.Successors(from)) {
       if (to >= graph->num_node_ids()) {
-        // Node is a "frame" node that is present only in the cycle detection
+        // Node is a fictitious node that is present only in the cycle detection
         // graph. No clustering is possible.
         continue;
       }
@@ -676,13 +797,15 @@ Status MarkForCompilationPass::RunImpl(
       }
       // Look for an _XlaScope on both nodes.  If both nodes have a
       // scope and the scopes do not match, do not cluster along this
-      // edge.  If even one of the nodes lacks an _XlaScope attribute,
+      // edge. This restriction is overridden if the global_jit_level is ON. If
+      // even one of the nodes lacks an _XlaScope attribute,
       // then it is treated as a "bridge" and a cluster may be created
       // along it.  We may want to restrict this behavior to require
       // all nodes marked with _XlaCompile=true to also have a
       // _XlaScope property set (and raise an error otherwise); but
       // for now we don't do this.
-      if (GetNodeAttr(node_from->attrs(), kXlaScopeAttr, &from_scope).ok() &&
+      if (global_jit_level == OptimizerOptions::OFF &&
+          GetNodeAttr(node_from->attrs(), kXlaScopeAttr, &from_scope).ok() &&
           GetNodeAttr(node_to->attrs(), kXlaScopeAttr, &to_scope).ok() &&
           from_scope != to_scope) {
         continue;

@@ -33,7 +33,15 @@ using ParallelMapIteratorFunction =
                        std::vector<Tensor>*, StatusCallback)>;
 
 // Returns a new iterator that applies `map_func` to the elements of
-// `input_dataset` using the given degree of parallelism.
+// `input_dataset` using the given degree of parallelism. `init_func` (if
+// specified) will be executed when the iterator is initialized (see
+// `IteratorBase::Initialize()`) and enables the user to specify error checking
+// logic that can fail early.
+std::unique_ptr<IteratorBase> NewParallelMapIterator(
+    const DatasetBaseIterator::BaseParams& params,
+    const DatasetBase* input_dataset,
+    std::function<Status(IteratorContext*)> init_func,
+    ParallelMapIteratorFunction map_func, int32 num_parallel_calls);
 std::unique_ptr<IteratorBase> NewParallelMapIterator(
     const DatasetBaseIterator::BaseParams& params,
     const DatasetBase* input_dataset, ParallelMapIteratorFunction map_func,

@@ -217,6 +217,29 @@ class TensorServingInputReceiver(
         receiver_tensors_alternatives=receiver.receiver_tensors_alternatives)
 
 
+class UnsupervisedInputReceiver(ServingInputReceiver):
+  """A return type for a training_input_receiver_fn or eval_input_receiver_fn.
+
+  This differs from SupervisedInputReceiver in that it does not require a set
+  of labels.
+
+  The expected return values are:
+    features: A `Tensor`, `SparseTensor`, or dict of string to `Tensor` or
+      `SparseTensor`, specifying the features to be passed to the model.
+    receiver_tensors: A `Tensor`, `SparseTensor`, or dict of string to `Tensor`
+      or `SparseTensor`, specifying input nodes where this receiver expects to
+      be fed by default.  Typically, this is a single placeholder expecting
+      serialized `tf.Example` protos.
+  """
+
+  def __new__(cls, features, receiver_tensors):
+    return super(UnsupervisedInputReceiver, cls).__new__(
+        cls,
+        features=features,
+        receiver_tensors=receiver_tensors,
+        receiver_tensors_alternatives=None)
+
+
 class SupervisedInputReceiver(
     collections.namedtuple('SupervisedInputReceiver',
                            ['features', 'labels', 'receiver_tensors'])):

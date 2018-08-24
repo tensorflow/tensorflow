@@ -184,3 +184,22 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   # for further checks in the caller function
   return actual_output
 
+
+def get_small_sequential_mlp(num_hidden, num_classes, input_dim=None):
+  model = keras.models.Sequential()
+  if input_dim:
+    model.add(keras.layers.Dense(num_hidden, activation='relu',
+                                 input_dim=input_dim))
+  else:
+    model.add(keras.layers.Dense(num_hidden, activation='relu'))
+  activation = 'sigmoid' if num_classes == 1 else 'softmax'
+  model.add(keras.layers.Dense(num_classes, activation=activation))
+  return model
+
+
+def get_small_functional_mlp(num_hidden, num_classes, input_dim):
+  inputs = keras.Input(shape=(input_dim,))
+  outputs = keras.layers.Dense(num_hidden, activation='relu')(inputs)
+  activation = 'sigmoid' if num_classes == 1 else 'softmax'
+  outputs = keras.layers.Dense(num_classes, activation=activation)(outputs)
+  return keras.Model(inputs, outputs)

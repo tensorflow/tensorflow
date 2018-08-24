@@ -93,6 +93,9 @@ class EagerContext {
 
   // TODO(apassos) make this return a constant reference
   std::vector<Device*>* devices() { return &devices_; }
+  const std::vector<DeviceType>& prioritized_device_type_list() {
+    return prioritized_device_type_list_;
+  }
 
   // Clears the kernel caches.
   void ClearCaches();
@@ -210,6 +213,7 @@ class EagerContext {
 
   // Devices owned by device_manager
   std::vector<Device*> devices_;
+  std::vector<DeviceType> prioritized_device_type_list_;
   // All devices are not owned.
   gtl::FlatMap<string, Device*, StringPieceHasher> devices_map_;
   Rendezvous* rendezvous_;

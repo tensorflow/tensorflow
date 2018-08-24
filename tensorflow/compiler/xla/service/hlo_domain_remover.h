@@ -35,13 +35,13 @@ class HloDomainRemover : public HloPassInterface {
   // instructions in it with the same attributes (ie, sharding), a normalizer
   // function is tasked at applying attribute normalization on the instructions
   // within such domain.
-  HloDomainRemover(tensorflow::StringPiece kind,
+  HloDomainRemover(absl::string_view kind,
                    std::function<Status(const DomainMetadata::Domain&,
                                         const DomainMetadata* metadata)>
                        normalizer)
-      : kind_(kind.ToString()), normalizer_(std::move(normalizer)) {}
+      : kind_(kind), normalizer_(std::move(normalizer)) {}
 
-  tensorflow::StringPiece name() const override { return "domain_remover"; }
+  absl::string_view name() const override { return "domain_remover"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 

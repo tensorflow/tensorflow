@@ -341,33 +341,6 @@ mirrored_strategy_with_two_gpus = NamedDistribution(
         ["/gpu:0", "/gpu:1"], prefetch_on_device=False),
     required_gpus=2)
 
-multi_worker_strategy_with_cpu = NamedDistribution(
-    "MultiWorkerCPU",
-    lambda: mirrored_lib.MirroredStrategy(
-        cluster_spec={
-            "worker": [
-                "/job:worker/replica:0/task:0", "/job:worker/replica:0/task:1"
-            ]
-        },
-        num_gpus=0), 0)
-multi_worker_strategy_with_one_gpu = NamedDistribution(
-    "MultiWorker1GPU",
-    lambda: mirrored_lib.MirroredStrategy(
-        cluster_spec={
-            "worker": [
-                "/job:worker/replica:0/task:0", "/job:worker/replica:0/task:1"
-            ]
-        },
-        num_gpus=1), 1)
-multi_worker_strategy_with_two_gpus = NamedDistribution(
-    "MultiWorker2GPUs",
-    lambda: mirrored_lib.MirroredStrategy(
-        cluster_spec={
-            "worker": [
-                "/job:worker/replica:0/task:0", "/job:worker/replica:0/task:1"
-            ]
-        },
-        num_gpus=2), 2)
 
 adam_optimizer_v1_fn = NamedObject(
     "AdamV1", lambda: adam.AdamOptimizer(0.2, epsilon=1))

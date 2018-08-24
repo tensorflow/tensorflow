@@ -457,7 +457,7 @@ class LSTMTest(test.TestCase):
     input_size = 5
     batch_size = 2
     max_length = 8
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       state_saver = TestStateSaver(batch_size, num_units)
@@ -491,7 +491,7 @@ class LSTMTest(test.TestCase):
     input_size = 5
     batch_size = 2
     max_length = 8
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       state_saver = TestStateSaver(
@@ -588,7 +588,7 @@ class LSTMTest(test.TestCase):
     num_proj = 4
     max_length = 8
     sequence_length = [4, 6]
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       inputs = max_length * [
@@ -834,7 +834,7 @@ class LSTMTest(test.TestCase):
     batch_size = 2
     num_proj = 4
     max_length = 8
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(-1, 1, seed=self._seed)
       initializer_d = init_ops.random_uniform_initializer(
           -1, 1, seed=self._seed + 1)
@@ -884,7 +884,7 @@ class LSTMTest(test.TestCase):
     batch_size = 2
     num_proj = 4
     max_length = 8
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(-1, 1, seed=self._seed)
       inputs = max_length * [
           array_ops.placeholder(dtypes.float32, shape=(None, input_size))
@@ -930,7 +930,7 @@ class LSTMTest(test.TestCase):
     max_length = 8
     sequence_length = [4, 6]
     in_graph_mode = not context.executing_eagerly()
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       if in_graph_mode:
@@ -1006,7 +1006,7 @@ class LSTMTest(test.TestCase):
     max_length = 8
     sequence_length = [4, 6]
     in_graph_mode = not context.executing_eagerly()
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       if in_graph_mode:
@@ -1612,7 +1612,7 @@ class MultiDimensionalLSTMTest(test.TestCase):
     batch_size = 2
     max_length = 8
     sequence_length = [4, 6]
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       inputs = max_length * [
           array_ops.placeholder(dtypes.float32, shape=(None,) + input_size)
       ]
@@ -1723,7 +1723,7 @@ class NestedLSTMTest(test.TestCase):
     state_size = 6
     max_length = 8
     sequence_length = [4, 6]
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       state_saver = TestStateSaver(batch_size, state_size)
       single_input = (array_ops.placeholder(
           dtypes.float32, shape=(None, input_size)),
@@ -2017,7 +2017,7 @@ class RawRNNTest(test.TestCase):
     np.random.seed(self._seed)
 
   def _testRawRNN(self, max_time):
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       batch_size = 16
       input_depth = 4
       num_units = 3
@@ -2126,7 +2126,7 @@ class RawRNNTest(test.TestCase):
     self._testRawRNN(max_time=10)
 
   def testLoopState(self):
-    with self.test_session(graph=ops_lib.Graph()):
+    with self.session(graph=ops_lib.Graph()):
       max_time = 10
       batch_size = 16
       input_depth = 4
@@ -2162,7 +2162,7 @@ class RawRNNTest(test.TestCase):
       self.assertEqual([10], loop_state.eval())
 
   def testLoopStateWithTensorArray(self):
-    with self.test_session(graph=ops_lib.Graph()):
+    with self.session(graph=ops_lib.Graph()):
       max_time = 4
       batch_size = 16
       input_depth = 4
@@ -2205,7 +2205,7 @@ class RawRNNTest(test.TestCase):
       self.assertAllEqual([1, 2, 2 + 2, 4 + 3, 7 + 4], loop_state.eval())
 
   def testEmitDifferentStructureThanCellOutput(self):
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       max_time = 10
       batch_size = 16
       input_depth = 4

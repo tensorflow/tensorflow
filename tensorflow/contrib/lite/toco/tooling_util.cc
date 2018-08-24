@@ -405,6 +405,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(LogicalNot)
     HANDLE_OPERATORTYPENAME_CASE(LogicalOr)
     HANDLE_OPERATORTYPENAME_CASE(CTCBeamSearchDecoder)
+    HANDLE_OPERATORTYPENAME_CASE(Unpack)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -2276,6 +2277,16 @@ void UndoWeightsShuffling(Model* model) {
     // Switch this FC op to using the deshuffled weights.
     weights_data = std::move(deshuffled_data);
   }
+}
+
+void CopyMinMaxAndQuantizationRelatedFields(const Array& src, Array* dst) {
+  if (src.minmax) {
+    dst->GetOrCreateMinMax() = src.GetMinMax();
+  }
+  if (src.quantization_params) {
+    dst->GetOrCreateQuantizationParams() = src.GetQuantizationParams();
+  }
+  dst->narrow_range = src.narrow_range;
 }
 
 }  // namespace toco

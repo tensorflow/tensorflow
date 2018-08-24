@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
+import collections as collections_lib
 import enum  # pylint: disable=g-bad-import-order
 import inspect  # Necessary supplement to tf_inspect to deal with variadic args.
 
@@ -50,6 +50,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
 
 
 class CallConvention(enum.Enum):
@@ -79,6 +80,7 @@ class Layer(checkpointable.CheckpointableBase):
   Users will just instantiate a layer and then treat it as a callable.
 
   We recommend that descendants of `Layer` implement the following methods:
+
   * `__init__()`: Save configuration in member variables
   * `build()`: Called once from `__call__`, when we know the shapes of inputs
     and `dtype`. Should have the calls to `add_weight()`, and then
@@ -272,6 +274,7 @@ class Layer(checkpointable.CheckpointableBase):
       return []
     return self._updates
 
+  @doc_controls.for_subclass_implementers
   def add_update(self, updates, inputs=None):
     """Add update op(s), potentially dependent on layer inputs.
 
@@ -372,6 +375,7 @@ class Layer(checkpointable.CheckpointableBase):
     else:
       return self._losses
 
+  @doc_controls.for_subclass_implementers
   def add_loss(self, losses, inputs=None):
     """Add loss tensor(s), potentially dependent on layer inputs.
 
@@ -463,10 +467,12 @@ class Layer(checkpointable.CheckpointableBase):
     """Creates the variables of the layer."""
     self.built = True
 
+  @doc_controls.for_subclass_implementers
   def add_variable(self, *args, **kwargs):
     """Alias for `add_weight`."""
     return self.add_weight(*args, **kwargs)
 
+  @doc_controls.for_subclass_implementers
   def add_weight(self,
                  name,
                  shape,
@@ -479,7 +485,7 @@ class Layer(checkpointable.CheckpointableBase):
                  use_resource=None,
                  synchronization=vs.VariableSynchronization.AUTO,
                  aggregation=vs.VariableAggregation.NONE,
-                 getter=None):
+                 **kwargs):
     """Adds a new variable to the layer, or gets an existing one; returns it.
 
     Arguments:
@@ -507,7 +513,8 @@ class Layer(checkpointable.CheckpointableBase):
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
-      getter: Variable getter argument to be passed to the `Checkpointable` API.
+      **kwargs: Additional keyword arguments. Accepted values are `getter` and
+        `collections`.
 
     Returns:
       The created variable.  Usually either a `Variable` or `ResourceVariable`
@@ -520,6 +527,13 @@ class Layer(checkpointable.CheckpointableBase):
       ValueError: When giving unsupported dtype and no initializer or when
         trainable has been set to True with synchronization set as `ON_READ`.
     """
+    # Validate optional keyword arguments.
+    for kwarg in kwargs:
+      if kwarg not in ['getter', 'collections']:
+        raise TypeError('Unknown keyword argument:', kwarg)
+    getter = kwargs.pop('getter', None)
+    collections = kwargs.pop('collections', None)
+
     if dtype is None:
       dtype = self.dtype or backend.floatx()
     dtype = dtypes.as_dtype(dtype)
@@ -568,8 +582,10 @@ class Layer(checkpointable.CheckpointableBase):
         trainable=trainable and self.trainable,
         partitioner=partitioner,
         use_resource=use_resource,
+        collections=collections,
         synchronization=synchronization,
         aggregation=aggregation)
+    backend.track_variable(variable)
 
     if regularizer is not None:
       # TODO(fchollet): in the future, this should be handled at the
@@ -646,6 +662,7 @@ class Layer(checkpointable.CheckpointableBase):
           activity_regularization = self._activity_regularizer(output)
         self.add_loss(activity_regularization, inputs=inputs)
 
+  @doc_controls.for_subclass_implementers
   def call(self, inputs, **kwargs):  # pylint: disable=unused-argument
     """This is where the layer's logic lives.
 
@@ -1412,11 +1429,13 @@ class Layer(checkpointable.CheckpointableBase):
                            'instead.' % self.name)
 
   @property
+  @doc_controls.do_not_doc_inheritable
   def inbound_nodes(self):
     """Deprecated, do NOT use! Only for compatibility with external Keras."""
     return self._inbound_nodes
 
   @property
+  @doc_controls.do_not_doc_inheritable
   def outbound_nodes(self):
     """Deprecated, do NOT use! Only for compatibility with external Keras."""
     return self._outbound_nodes
@@ -1871,7 +1890,7 @@ def get_default_graph_uid_map():
   graph = ops.get_default_graph()
   name_uid_map = backend.PER_GRAPH_LAYER_NAME_UIDS.get(graph, None)
   if name_uid_map is None:
-    name_uid_map = collections.defaultdict(int)
+    name_uid_map = collections_lib.defaultdict(int)
     backend.PER_GRAPH_LAYER_NAME_UIDS[graph] = name_uid_map
   return name_uid_map
 
@@ -1886,6 +1905,7 @@ def make_variable(name,
                   validate_shape=True,
                   constraint=None,
                   use_resource=None,
+                  collections=None,
                   synchronization=vs.VariableSynchronization.AUTO,
                   aggregation=vs.VariableAggregation.NONE,
                   partitioner=None):  # pylint: disable=unused-argument
@@ -1919,6 +1939,8 @@ def make_variable(name,
     validate_shape: Passed to `vs.variable`.
     constraint: Constraint instance (callable).
     use_resource: Whether to use a `ResourceVariable`.
+    collections: List of graph collections keys. The new variable is added to
+      these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
     synchronization: Indicates when a distributed a variable will be
       aggregated. Accepted values are constants defined in the class
       `tf.VariableSynchronization`. By default the synchronization is set to
@@ -1960,6 +1982,7 @@ def make_variable(name,
       validate_shape=validate_shape,
       constraint=constraint,
       use_resource=use_resource,
+      collections=collections,
       synchronization=synchronization,
       aggregation=aggregation)
   return v

@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -40,7 +40,7 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
     const BufferAssignment* buffer_assignment, int device_ordinal,
     DeviceMemoryAllocator* memory_allocator) {
   const int64 num_buffers = buffer_assignment->Allocations().size();
-  auto buffer_allocations = WrapUnique(new BufferAllocations(
+  auto buffer_allocations = absl::WrapUnique(new BufferAllocations(
       num_buffers, device_ordinal, memory_allocator, buffer_assignment));
 
   for (BufferAllocation::Index i = 0; i < num_buffers; ++i) {

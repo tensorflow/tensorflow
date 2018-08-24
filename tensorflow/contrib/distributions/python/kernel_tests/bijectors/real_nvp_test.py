@@ -43,7 +43,7 @@ class RealNVPTest(test_util.VectorDistributionTestHelpers, test.TestCase):
 
   def testBijector(self):
     x_ = np.arange(3 * 4 * 2).astype(np.float32).reshape(3, 4 * 2)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       nvp = RealNVP(
           num_masked=4,
           validate_args=True,
@@ -78,7 +78,7 @@ class RealNVPTest(test_util.VectorDistributionTestHelpers, test.TestCase):
 
   def testMutuallyConsistent(self):
     dims = 4
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       nvp = RealNVP(
           num_masked=3,
           validate_args=True,
@@ -98,7 +98,7 @@ class RealNVPTest(test_util.VectorDistributionTestHelpers, test.TestCase):
 
   def testInvertMutuallyConsistent(self):
     dims = 4
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       nvp = Invert(RealNVP(
           num_masked=3,
           validate_args=True,

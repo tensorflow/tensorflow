@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using tensorflow::gtl::nullopt;
+using absl::nullopt;
 
 class ElementalIrEmitterExecutionTest : public HloTestBase {
  protected:

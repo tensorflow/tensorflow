@@ -54,7 +54,7 @@ class WhileLoopConstantSinking : public HloPassInterface {
  public:
   ~WhileLoopConstantSinking() override = default;
 
-  tensorflow::StringPiece name() const override {
+  absl::string_view name() const override {
     return "while-loop-invariant-code-motion";
   }
 

@@ -1076,7 +1076,8 @@ class GradientBoostedDecisionTreeModel(object):
             learner_config=self._learner_config_serialized,
             dropout_seed=dropout_seed,
             center_bias=self._center_bias,
-            max_tree_depth=self._max_tree_depth)
+            max_tree_depth=self._max_tree_depth,
+            weak_learner_type=self._learner_config.weak_learner_type)
 
       def _grow_ensemble_not_ready_fn():
         # Don't grow the ensemble, just update the stamp.
@@ -1091,7 +1092,8 @@ class GradientBoostedDecisionTreeModel(object):
             learner_config=self._learner_config_serialized,
             dropout_seed=dropout_seed,
             center_bias=self._center_bias,
-            max_tree_depth=self._max_tree_depth)
+            max_tree_depth=self._max_tree_depth,
+            weak_learner_type=self._learner_config.weak_learner_type)
 
       def _grow_ensemble_fn():
         # Conditionally grow an ensemble depending on whether the splits

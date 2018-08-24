@@ -23,8 +23,8 @@ limitations under the License.
 // non-const method, all threads accessing the same StringPiece must use
 // external synchronization.
 
-#ifndef TENSORFLOW_LIB_CORE_STRINGPIECE_H_
-#define TENSORFLOW_LIB_CORE_STRINGPIECE_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_
+#define TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_
 
 #include <assert.h>
 #include <stddef.h>
@@ -156,4 +156,4 @@ extern std::ostream& operator<<(std::ostream& o, tensorflow::StringPiece piece);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_CORE_STRINGPIECE_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_

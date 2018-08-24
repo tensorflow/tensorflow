@@ -19,8 +19,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -112,7 +112,7 @@ Status GpuExecutable::ExecuteThunks(
     //
     // TODO(jlebar): Should we cache the results of HloInstruction::ToString(),
     // since we expect it to be an expensive call?
-    tensorflow::gtl::optional<ScopedAnnotation> op_annotation;
+    absl::optional<ScopedAnnotation> op_annotation;
     if (top_level_annotation.IsEnabled()) {
       op_annotation.emplace(
           thunk->hlo_instruction() != nullptr
@@ -144,7 +144,7 @@ Status GpuExecutable::ExecuteThunks(
     TF_RETURN_IF_ERROR(
         thunk->ExecuteOnStream(buffer_allocations, stream, &profiler));
     if (thunk_schedule_->Depended(thunk)) {
-      auto finish_event = MakeUnique<se::Event>(main_stream->parent());
+      auto finish_event = absl::make_unique<se::Event>(main_stream->parent());
       finish_event->Init();
       stream->ThenRecordEvent(finish_event.get());
       thunk_to_finish_event[thunk] = std::move(finish_event);

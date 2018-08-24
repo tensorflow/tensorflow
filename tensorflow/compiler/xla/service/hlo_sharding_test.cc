@@ -115,6 +115,13 @@ TEST_F(HloShardingTest, Tile) {
   }
 }
 
+// Tests that empty tuple is supported.
+TEST_F(HloShardingTest, EmptySingleTuple) {
+  HloSharding sharding = HloSharding::SingleTuple(ShapeUtil::MakeTupleShape({}),
+                                                  HloSharding::AssignDevice(0));
+  EXPECT_TRUE(sharding.ExtractSingleSharding());
+}
+
 TEST_F(HloShardingTest, NestedTuple) {
   // nested_tuple_shape = (f32[], (f32[3]), f32[4, 6])
   Shape nested_tuple_shape = ShapeUtil::MakeTupleShape({
