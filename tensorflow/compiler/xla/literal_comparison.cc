@@ -48,8 +48,8 @@ Status CompareFloatsBitwiseEqual(
     return InvalidArgument(
         "floating values are not bitwise-equal; and equality testing "
         "was requested: %s=%g=%a vs %s=%g=%a at array index %s",
-        StrCat(tensorflow::strings::Hex(ulhs)).c_str(), lhs_double, lhs_double,
-        StrCat(tensorflow::strings::Hex(urhs)).c_str(), rhs_double, rhs_double,
+        StrCat(absl::Hex(ulhs)).c_str(), lhs_double, lhs_double,
+        StrCat(absl::Hex(urhs)).c_str(), rhs_double, rhs_double,
         LiteralUtil::MultiIndexAsString(multi_index).c_str());
   }
   return Status::OK();
