@@ -256,6 +256,50 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionTwoLoops) {
               op::Tuple(op::Multiply(), op::Divide()));
 }
 
+TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopReduceToInputFusion) {
+  // Fusing a reduce into a loop fusion would require changing the fusion kind.
+  // That's not supported yet.
+  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+    fused_computation_1 {
+      p0.1 = f32[6400]{0} parameter(0)
+      ROOT mul = f32[6400]{0} multiply(p0.1, p0.1)
+    }
+
+    ENTRY entry {
+      p0 = f32[6400]{0} parameter(0)
+      fusion.1 = f32[6400]{0} fusion(p0), kind=kLoop, calls=fused_computation_1
+      const.2 = f32[] constant(0)
+      reduce = f32[] reduce(p0, const.2), dimensions={0}, to_apply=scalar_add_computation
+      ROOT root = (f32[6400]{0}, f32[]) tuple(fusion.1, reduce)
+    })"))
+                    .ValueOrDie();
+  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+}
+
+TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopElementwise) {
+  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+    fused_computation_1 {
+      p0.1 = f32[6400]{0} parameter(0)
+      ROOT mul = f32[6400]{0} multiply(p0.1, p0.1)
+    }
+
+    ENTRY entry {
+      p0 = f32[6400]{0} parameter(0)
+      fusion.1 = f32[6400]{0} fusion(p0), kind=kLoop, calls=fused_computation_1
+      const.2 = f32[] constant(1)
+      div = f32[6400]{0} divide(p0, const.2)
+      ROOT root = (f32[6400]{0}, f32[6400]{0}) tuple(fusion.1, div)
+    })"))
+                    .ValueOrDie();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+  SCOPED_TRACE(module->ToString());
+  const HloInstruction* fusion =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  ASSERT_TRUE(fusion->IsMultiOutputFusion());
+  EXPECT_THAT(fusion->fused_expression_root(),
+              op::Tuple(op::Multiply(), op::Divide()));
+}
+
 TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopsDifferentShapes) {
   auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
     fused_computation_1 {
