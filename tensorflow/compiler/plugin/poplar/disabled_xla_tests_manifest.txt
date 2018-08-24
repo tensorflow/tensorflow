@@ -268,3 +268,6 @@ TokenHloTest.TokenInConditional POPLAR
 TupleHloTest.NonAmbiguousTopLevelAllocation POPLAR
 
 IotaTest POPLAR // Don't support iota
+
+ScatterTest POPLAR // Don't support scatter
+
