@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
 
-#include "absl/strings/str_join.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -536,47 +536,5 @@ TEST(ResourceOperationSafetyAnalysisTest, Loop) {
 bool IsResourceArgDef(const OpDef::ArgDef& arg_def) {
   return arg_def.type() == DT_RESOURCE;
 }
-
-bool HasResourceInputOrOutput(const OpDef& op_def) {
-  return std::any_of(op_def.input_arg().begin(), op_def.input_arg().end(),
-                     IsResourceArgDef) ||
-         std::any_of(op_def.output_arg().begin(), op_def.output_arg().end(),
-                     IsResourceArgDef);
-}
-
-TEST(ResourceOperationSafetyAnalysisTest, HaveAllResourceOps) {
-  gtl::FlatMap<string, bool> known_resource_ops;
-  for (const string& known_resource_op :
-       resource_op_safety_analysis_internal::GetKnownResourceOperations()) {
-    ASSERT_TRUE(known_resource_ops.insert({known_resource_op, false}).second);
-  }
-
-  std::vector<string> xla_op_names = XlaOpRegistry::GetAllRegisteredOps();
-  for (const string& xla_op_name : xla_op_names) {
-    if (xla_op_name == "StackV2" || xla_op_name == "TensorArrayV3") {
-      continue;
-    }
-
-    const OpDef* op_def;
-    TF_ASSERT_OK(OpRegistry::Global()->LookUpOpDef(xla_op_name, &op_def));
-    if (HasResourceInputOrOutput(*op_def)) {
-      EXPECT_EQ(known_resource_ops.count(xla_op_name), 1)
-          << "Unknown resource op " << xla_op_name;
-      known_resource_ops[xla_op_name] = true;
-    }
-  }
-
-  std::vector<string> unnecessary_resource_ops;
-  for (const auto& pair : known_resource_ops) {
-    if (!pair.second) {
-      unnecessary_resource_ops.push_back(pair.first);
-    }
-  }
-
-  EXPECT_TRUE(unnecessary_resource_ops.empty())
-      << "Stale resource ops:\n"
-      << absl::StrJoin(unnecessary_resource_ops, "\n");
-}
-
 }  // namespace
 }  // namespace tensorflow

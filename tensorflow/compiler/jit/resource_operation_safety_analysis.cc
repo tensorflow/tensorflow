@@ -84,6 +84,8 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/optional.h"
+#include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/tensor_id.h"
@@ -94,82 +96,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-// Every TensorFlow operation is mapped to one of four kinds:
-enum class ResourceOpKind {
-  kNone,   // Has no interaction with resources.
-  kRead,   // Only reads from resources.
-  kWrite,  // Only writes to resources.
-  kModify  // Reads from and writes to resources.
-};
-
-StringPiece ResourceOpKindToString(ResourceOpKind op_kind) {
-  switch (op_kind) {
-    case ResourceOpKind::kRead:
-      return "Read";
-    case ResourceOpKind::kWrite:
-      return "Write";
-    case ResourceOpKind::kModify:
-      return "Modify";
-    case ResourceOpKind::kNone:
-      return "None";
-  }
-}
-
-// Returns a map that maps TensorFlow operation names to the corresponding
-// ResourceOpKind.  We only care about XLA operations that we can cluster.
-gtl::FlatMap<StringPiece, ResourceOpKind>* GetResourceOpKindMap() {
-  gtl::FlatMap<StringPiece, ResourceOpKind>* result =
-      new gtl::FlatMap<StringPiece, ResourceOpKind>;
-
-  result->insert({"AssignAddVariableOp", ResourceOpKind::kModify});
-  result->insert({"AssignSubVariableOp", ResourceOpKind::kModify});
-  result->insert({"AssignVariableOp", ResourceOpKind::kWrite});
-  result->insert({"ReadVariableOp", ResourceOpKind::kRead});
-  result->insert({"ResourceApplyAdaMax", ResourceOpKind::kModify});
-  result->insert({"ResourceApplyAdadelta", ResourceOpKind::kModify});
-  result->insert({"ResourceApplyAdagrad", ResourceOpKind::kModify});
-  result->insert({"ResourceApplyAdagradDA", ResourceOpKind::kModify});
-  result->insert({"ResourceApplyAdam", ResourceOpKind::kModify});
-  result->insert({"ResourceApplyAddSign", ResourceOpKind::kModify});
-  result->insert({"ResourceApplyCenteredRMSProp", ResourceOpKind::kModify});
-  result->insert({"ResourceApplyFtrl", ResourceOpKind::kModify});
-  result->insert({"ResourceApplyFtrlV2", ResourceOpKind::kModify});
-  result->insert({"ResourceApplyGradientDescent", ResourceOpKind::kModify});
-  result->insert({"ResourceApplyMomentum", ResourceOpKind::kModify});
-  result->insert({"ResourceApplyPowerSign", ResourceOpKind::kModify});
-  result->insert({"ResourceApplyProximalAdagrad", ResourceOpKind::kModify});
-  result->insert(
-      {"ResourceApplyProximalGradientDescent", ResourceOpKind::kModify});
-  result->insert({"ResourceApplyRMSProp", ResourceOpKind::kModify});
-  result->insert({"ResourceGather", ResourceOpKind::kRead});
-  result->insert({"ResourceScatterAdd", ResourceOpKind::kModify});
-  result->insert({"ResourceScatterDiv", ResourceOpKind::kModify});
-  result->insert({"ResourceScatterMax", ResourceOpKind::kModify});
-  result->insert({"ResourceScatterMin", ResourceOpKind::kModify});
-  result->insert({"ResourceScatterMul", ResourceOpKind::kModify});
-  result->insert({"ResourceScatterNdAdd", ResourceOpKind::kModify});
-  result->insert({"ResourceScatterNdUpdate", ResourceOpKind::kModify});
-  result->insert({"ResourceScatterSub", ResourceOpKind::kModify});
-  result->insert({"ResourceScatterUpdate", ResourceOpKind::kModify});
-  result->insert({"ResourceStridedSliceAssign", ResourceOpKind::kModify});
-  result->insert({"StackCloseV2", ResourceOpKind::kRead});  // Reads shape
-  result->insert({"StackPopV2", ResourceOpKind::kModify});
-  result->insert({"StackPushV2", ResourceOpKind::kModify});
-  result->insert({"TensorArrayConcatV3", ResourceOpKind::kRead});
-  result->insert({"TensorArrayGatherV3", ResourceOpKind::kRead});
-  result->insert({"TensorArrayScatterV3", ResourceOpKind::kWrite});
-  result->insert({"TensorArrayGradV3", ResourceOpKind::kRead});   // Reads shape
-  result->insert({"TensorArrayCloseV3", ResourceOpKind::kRead});  // Reads shape
-  result->insert({"TensorArrayReadV3", ResourceOpKind::kRead});
-  result->insert({"TensorArraySizeV3", ResourceOpKind::kRead});
-  result->insert({"TensorArraySplitV3", ResourceOpKind::kWrite});
-  result->insert({"TensorArrayWriteV3", ResourceOpKind::kWrite});
-  result->insert({"VarIsInitializedOp", ResourceOpKind::kRead});
-  result->insert({"VariableShape", ResourceOpKind::kRead});
-
-  return result;
-}
-
 // Returns true if `n` may call a function.
 Status MayCallFunction(const Node& n, const FunctionLibraryDefinition* flib_def,
                        bool* out_result) {
@@ -186,26 +112,25 @@ Status MayCallFunction(const Node& n, const FunctionLibraryDefinition* flib_def,
   return Status::OK();
 }
 
-// Maps `n` to the ResourceOpKind corresponding to its operation.
-Status ResourceOpKindForNode(
+// Maps `n` to the XlaResourceOpKind corresponding to its operation.  If `n` is
+// not a resource operation recognized by XLA then sets `out_resource_op_kind`
+// to nullopt.
+Status XlaResourceOpKindForNode(
     const Node& n, const FunctionLibraryDefinition* flib_def,
     const std::function<Status(const Node&, bool*)>& resource_ops_to_ignore,
-    ResourceOpKind* out_resource_op_kind) {
-  static const gtl::FlatMap<StringPiece, ResourceOpKind>& resource_op_kind_map =
-      *GetResourceOpKindMap();
-
+    absl::optional<XlaResourceOpKind>* out_resource_op_kind) {
   bool should_ignore = false;
   if (resource_ops_to_ignore) {
     TF_RETURN_IF_ERROR(resource_ops_to_ignore(n, &should_ignore));
   }
   if (should_ignore) {
-    *out_resource_op_kind = ResourceOpKind::kNone;
+    *out_resource_op_kind = absl::nullopt;
     return Status::OK();
   }
 
-  auto it = resource_op_kind_map.find(n.type_string());
-  if (it != resource_op_kind_map.end()) {
-    *out_resource_op_kind = it->second;
+  const XlaResourceOpInfo* op_info = GetResourceOpInfoForOp(n.type_string());
+  if (op_info) {
+    *out_resource_op_kind = op_info->kind();
     return Status::OK();
   }
 
@@ -214,8 +139,11 @@ Status ResourceOpKindForNode(
   // inter-procedural analysis.
   bool may_call_function;
   TF_RETURN_IF_ERROR(MayCallFunction(n, flib_def, &may_call_function));
-  *out_resource_op_kind =
-      may_call_function ? ResourceOpKind::kModify : ResourceOpKind::kNone;
+  if (may_call_function) {
+    *out_resource_op_kind = XlaResourceOpKind::kReadWrite;
+  } else {
+    *out_resource_op_kind = absl::nullopt;
+  }
 
   return Status::OK();
 }
@@ -224,22 +152,22 @@ Status ResourceOpKindForNode(
 // resource op kind `from` to a TensorFlow operation of resource op kind `to`
 // can be represented by an XLA cluster and needs no special handling around
 // auto-jit.
-bool IsEdgeSafe(ResourceOpKind from, ResourceOpKind to) {
+bool IsEdgeSafe(XlaResourceOpKind from, XlaResourceOpKind to) {
   // XLA clusters forces all reads to happen before all writes, which means the
   // kinds of edges it can faithfully represent are: Read->Write, Read->Modify,
   // Modify->Write, Read->Read, Write->Write.
   //
   // TODO(b/112856632): We can, in theory, support Read->Read and Write->Write
   // dependencies.
-  return from == ResourceOpKind::kNone || to == ResourceOpKind::kNone ||
-         (from == ResourceOpKind::kRead && to == ResourceOpKind::kWrite);
+  return from == XlaResourceOpKind::kRead && to == XlaResourceOpKind::kWrite;
 }
 
-using ResourceOp = std::pair<int, ResourceOpKind>;
+using ResourceOp = std::pair<int, XlaResourceOpKind>;
 
 string ResourceOpToString(const ResourceOp& resource_op) {
-  return strings::StrCat(resource_op.first, ": ",
-                         ResourceOpKindToString(resource_op.second));
+  return strings::StrCat(
+      resource_op.first, ": ",
+      XlaResourceOpInfo::XlaResourceOpKindToString(resource_op.second));
 }
 
 // A copy-on-write set used to store the set of ResourceOps reaching a node in a
@@ -332,9 +260,10 @@ string ResourceOpSetToString(const ResourceOpSet& resource_op_set) {
   return strings::StrCat("{", absl::StrJoin(elements_debug_string, ","), "}");
 }
 
-string NodeToString(const Node& n, ResourceOpKind resource_op_kind) {
-  return strings::StrCat("[", n.name(), ": ", n.type_string(), "(",
-                         ResourceOpKindToString(resource_op_kind), ")", "]");
+string NodeToString(const Node& n, XlaResourceOpKind resource_op_kind) {
+  return strings::StrCat(
+      "[", n.name(), ": ", n.type_string(), "(",
+      XlaResourceOpInfo::XlaResourceOpKindToString(resource_op_kind), ")", "]");
 }
 }  // namespace
 
@@ -356,14 +285,17 @@ Status ComputeIncompatibleResourceOperationPairs(
   const bool vlog = VLOG_IS_ON(2);
 
   for (Node* n : rpo) {
-    ResourceOpKind op_kind;
-    TF_RETURN_IF_ERROR(
-        ResourceOpKindForNode(*n, flib_def, resource_ops_to_ignore, &op_kind));
+    absl::optional<XlaResourceOpKind> op_kind;
+    TF_RETURN_IF_ERROR(XlaResourceOpKindForNode(
+        *n, flib_def, resource_ops_to_ignore, &op_kind));
 
     ResourceOpSet* resource_op_set = &resource_op_set_for_node[n->id()];
 
+    // Merge the reaching resource operations for all the incoming edges to
+    // create the set of all possible resource ops reaching `n`.
     for (const Edge* e : n->in_edges()) {
       if (n->IsMerge() && e->src()->IsNextIteration()) {
+        // Ignore back-edges (see file comment).
         continue;
       }
 
@@ -372,21 +304,23 @@ Status ComputeIncompatibleResourceOperationPairs(
       resource_op_set->Add(incoming_op_set);
     }
 
-    for (ResourceOp incoming_op : *resource_op_set) {
-      if (!IsEdgeSafe(incoming_op.second, op_kind)) {
+    // Add to the "incompatible resource ops" set if necessary.
+    if (op_kind) {
+      for (ResourceOp incoming_op : *resource_op_set) {
+        if (IsEdgeSafe(incoming_op.second, *op_kind)) {
+          continue;
+        }
+
         if (vlog) {
           VLOG(2) << "Unsafe edge: "
                   << NodeToString(*g.FindNodeId(incoming_op.first),
                                   incoming_op.second)
-                  << " -> " << NodeToString(*n, op_kind);
+                  << " -> " << NodeToString(*n, *op_kind);
         }
         result->push_back({incoming_op.first, n->id()});
       }
-    }
 
-    if (op_kind != ResourceOpKind::kNone) {
-      // This check is an optimization, not necessary for correctness.
-      resource_op_set->Add({n->id(), op_kind});
+      resource_op_set->Add({n->id(), *op_kind});
     }
 
     if (vlog) {
@@ -399,18 +333,4 @@ Status ComputeIncompatibleResourceOperationPairs(
 
   return Status::OK();
 }
-
-namespace resource_op_safety_analysis_internal {
-std::vector<string> GetKnownResourceOperations() {
-  std::unique_ptr<gtl::FlatMap<StringPiece, ResourceOpKind>>
-      resource_op_kind_map(GetResourceOpKindMap());
-
-  std::vector<string> result;
-  for (const auto& name_kind_map : *resource_op_kind_map) {
-    result.push_back(string(name_kind_map.first));
-  }
-  std::sort(result.begin(), result.end());
-  return result;
-}
-}  // namespace resource_op_safety_analysis_internal
 }  // namespace tensorflow

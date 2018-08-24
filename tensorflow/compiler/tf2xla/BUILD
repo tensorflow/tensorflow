@@ -601,3 +601,30 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+cc_library(
+    name = "resource_operation_table",
+    srcs = ["resource_operation_table.cc"],
+    hdrs = ["resource_operation_table.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+tf_cc_test(
+    name = "resource_operation_table_test",
+    srcs = ["resource_operation_table_test.cc"],
+    deps = [
+        ":resource_operation_table",
+        ":xla_compiler",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)

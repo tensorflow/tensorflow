@@ -316,12 +316,14 @@ cc_library(
     hdrs = ["resource_operation_safety_analysis.h"],
     deps = [
         "//tensorflow/compiler/jit/graphcycles",
+        "//tensorflow/compiler/tf2xla:resource_operation_table",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -381,6 +383,7 @@ cc_library(
         "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
         "//tensorflow/compiler/jit/ops:xla_ops",
         "//tensorflow/compiler/tf2xla:dump_graph",
+        "//tensorflow/compiler/tf2xla:resource_operation_table",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",

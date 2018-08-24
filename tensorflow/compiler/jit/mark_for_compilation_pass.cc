@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
+#include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -86,35 +87,14 @@ bool HasResourceInput(const Node& node) {
                    DT_RESOURCE) != node.input_types().end();
 }
 
-gtl::FlatSet<StringPiece>* GetNonResourceVarResourceOpSet() {
-  gtl::FlatSet<StringPiece>* result = new gtl::FlatSet<StringPiece>;
-
-  result->insert("StackCloseV2");
-  result->insert("StackPopV2");
-  result->insert("StackPushV2");
-  result->insert("TensorArrayConcatV3");
-  result->insert("TensorArrayGatherV3");
-  result->insert("TensorArrayScatterV3");
-  result->insert("TensorArrayGradV3");
-  result->insert("TensorArrayCloseV3");
-  result->insert("TensorArrayReadV3");
-  result->insert("TensorArraySizeV3");
-  result->insert("TensorArraySplitV3");
-  result->insert("TensorArrayWriteV3");
-
-  return result;
-}
-
 // Returns true if `node` is a resource operation recognized by tf2xla that
 // operates on something other than resource variables.
 bool IsNonResourceVarResourceOp(const Node& node) {
   // TODO(b/112837194): We can't cluster these because we only support
   // snapshotting resource variables (and we can't e.g. snapshot stacks).  This
   // limitation may be fixable with some work.
-  static gtl::FlatSet<StringPiece>* non_resource_var_resource_op =
-      GetNonResourceVarResourceOpSet();
-
-  return non_resource_var_resource_op->count(node.type_string());
+  const XlaResourceOpInfo* op_info = GetResourceOpInfoForOp(node.type_string());
+  return op_info && op_info->resource_kind() != XlaResourceKind::kVariable;
 }
 
 // Make sure we don't recurse infinitely on recursive functions.
