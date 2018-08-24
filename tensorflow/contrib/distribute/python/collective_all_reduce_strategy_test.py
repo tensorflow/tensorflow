@@ -164,14 +164,18 @@ class CollectiveAllReduceStrategyTestBase(
           distribution.reduce(
               variable_scope.VariableAggregation.MEAN, x,
               destinations='/cpu:0'))[0]
+      x = distribution.unwrap(x)[0]
 
       sess.run(
           variables.global_variables_initializer(), options=self._run_options)
 
       x_value, reduced_x_value = sess.run(
           [x, reduced_x], options=self._run_options)
-      self.assertTrue(np.array_equal(x_value, reduced_x_value))
-    return np.array_equal(x_value, reduced_x_value)
+      self.assertTrue(
+          np.allclose(x_value, reduced_x_value, atol=1e-5),
+          msg=('x_value = %r, reduced_x_value = %r' % (x_value,
+                                                       reduced_x_value)))
+    return np.allclose(x_value, reduced_x_value, atol=1e-5)
 
 
 class DistributedCollectiveAllReduceStrategyTest(
