@@ -19,13 +19,11 @@ from __future__ import print_function
 
 import portpicker
 
-from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import momentum

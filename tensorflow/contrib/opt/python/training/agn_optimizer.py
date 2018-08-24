@@ -16,12 +16,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import logging_ops
@@ -31,7 +28,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import session_run_hook
-from tensorflow.python.training import gradient_descent
 
 
 GLOBAL_VARIABLE_NAME = 'global_center_variable'
