@@ -383,13 +383,13 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
         mutex_lock l(mu_);
         do {
           // We are currently processing a file, so try to read the next record.
-          if (input_buffer_) {
-            const int64 current_pos = input_buffer_->Tell();
+          if (buffered_input_stream_) {
+            const int64 current_pos = buffered_input_stream_->Tell();
             DCHECK_GE(file_pos_limit_, 0);
             if (current_pos < file_pos_limit_) {
               string record;
-              TF_RETURN_IF_ERROR(
-                  input_buffer_->ReadNBytes(dataset()->record_bytes_, &record));
+              TF_RETURN_IF_ERROR(buffered_input_stream_->ReadNBytes(
+                  dataset()->record_bytes_, &record));
               // Produce the record as output.
               out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
                                         TensorShape({}));
@@ -400,7 +400,7 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
 
             // We have reached the end of the current file, so maybe
             // move on to next file.
-            input_buffer_.reset();
+            buffered_input_stream_.reset();
             file_.reset();
             ++current_file_index_;
           }
@@ -432,10 +432,10 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
           }
           TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
               dataset()->filenames_[current_file_index_], &file_));
-          input_buffer_.reset(
-              new io::InputBuffer(file_.get(), dataset()->buffer_size_));
+          buffered_input_stream_.reset(new io::BufferedInputStream(
+              file_.get(), dataset()->buffer_size_));
           TF_RETURN_IF_ERROR(
-              input_buffer_->SkipNBytes(dataset()->header_bytes_));
+              buffered_input_stream_->SkipNBytes(dataset()->header_bytes_));
         } while (true);
       }
 
@@ -450,10 +450,11 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("current_file_index"),
                                                current_file_index_));
 
-        // `input_buffer_` is empty if
+        // `buffered_input_stream_` is empty if
         // 1. GetNext has not been called even once.
         // 2. All files have been read and iterator has been exhausted.
-        int64 current_pos = input_buffer_ ? input_buffer_->Tell() : -1;
+        int64 current_pos =
+            buffered_input_stream_ ? buffered_input_stream_->Tell() : -1;
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name("current_pos"), current_pos));
         return Status::OK();
@@ -471,18 +472,18 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
             reader->ReadScalar(full_name("current_pos"), &current_pos));
 
         // Seek to current_pos.
-        input_buffer_.reset();
+        buffered_input_stream_.reset();
         file_.reset();
-        if (current_pos >= 0) {  // There was an active input_buffer_.
+        if (current_pos >= 0) {  // There was an active buffered_input_stream_.
           uint64 file_size;
           TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(
               dataset()->filenames_[current_file_index_], &file_size));
           file_pos_limit_ = file_size - dataset()->footer_bytes_;
           TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
               dataset()->filenames_[current_file_index_], &file_));
-          input_buffer_.reset(
-              new io::InputBuffer(file_.get(), dataset()->buffer_size_));
-          TF_RETURN_IF_ERROR(input_buffer_->Seek(current_pos));
+          buffered_input_stream_.reset(new io::BufferedInputStream(
+              file_.get(), dataset()->buffer_size_));
+          TF_RETURN_IF_ERROR(buffered_input_stream_->SkipNBytes(current_pos));
         }
 
         return Status::OK();
@@ -492,8 +493,9 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
       mutex mu_;
       size_t current_file_index_ GUARDED_BY(mu_) = 0;
       std::unique_ptr<RandomAccessFile> file_
-          GUARDED_BY(mu_);  // must outlive input_buffer_
-      std::unique_ptr<io::InputBuffer> input_buffer_ GUARDED_BY(mu_);
+          GUARDED_BY(mu_);  // must outlive buffered_input_stream_
+      std::unique_ptr<io::RandomAccessInputStream> buffered_input_stream_
+          GUARDED_BY(mu_);
       int64 file_pos_limit_ GUARDED_BY(mu_) = -1;
     };
 
