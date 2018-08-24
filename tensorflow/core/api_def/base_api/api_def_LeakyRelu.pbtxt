@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "LeakyRelu"
+  summary: "Computes rectified linear: `max(features, features * alpha)`."
+}

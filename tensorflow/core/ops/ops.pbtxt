@@ -13637,7 +13637,7 @@ op {
   }
 }
 op {
-  name: "LeakykReluGrad"
+  name: "LeakyReluGrad"
   input_arg {
     name: "gradients"
     type_attr: "T"
