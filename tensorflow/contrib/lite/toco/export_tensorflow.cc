@@ -1967,6 +1967,20 @@ void ConvertCTCBeamSearchDecoderOperator(
   (*op->mutable_attr())["merge_repeated"].set_b(src_op.merge_repeated);
 }
 
+void ConvertUnpackOperator(const Model& model, const UnpackOperator& src_op,
+                           const char* op_name, GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* unpack_op = tensorflow_graph->add_node();
+  unpack_op->set_op(op_name);
+  unpack_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *unpack_op->add_input() = src_op.inputs[0];
+  const tensorflow::DataType data_type =
+      GetTensorFlowDataType(model, src_op.inputs[0]);
+  (*unpack_op->mutable_attr())["T"].set_type(data_type);
+  (*unpack_op->mutable_attr())["num"].set_i(src_op.num);
+  (*unpack_op->mutable_attr())["axis"].set_i(src_op.axis);
+}
+
 void ConvertOperator(const Model& model, const Operator& src_op,
                      GraphDef* tensorflow_graph) {
   if (src_op.fused_activation_function != FusedActivationFunctionType::kNone) {
@@ -2228,6 +2242,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
     ConvertCTCBeamSearchDecoderOperator(
         model, static_cast<const CTCBeamSearchDecoderOperator&>(src_op),
         "CTCBeamSearchDecoder", tensorflow_graph);
+  } else if (src_op.type == OperatorType::kUnpack) {
+    ConvertUnpackOperator(model, static_cast<const UnpackOperator&>(src_op),
+                          "Unpack", tensorflow_graph);
   } else {
     LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(src_op.type);
   }

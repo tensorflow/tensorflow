@@ -3149,6 +3149,36 @@ def make_pack_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_unpack_tests(zip_path):
+  """Make a set of tests to do unstack."""
+
+  test_parameters = [{
+      "base_shape": [[3, 4, 3], [3, 4], [5, 6, 7, 8]],
+      "axis": [0, 1, 2, 3],
+  }]
+
+  def get_valid_axis(parameters):
+    """Return a tweaked version of 'axis'."""
+    axis = parameters["axis"]
+    shape = parameters["base_shape"][:]
+    while axis > len(shape) - 1:
+      axis -= 1
+    return axis
+
+  def build_graph(parameters):
+    input_tensor = tf.placeholder(
+        dtype=tf.float32, name=("input"), shape=parameters["base_shape"])
+    outs = tf.unstack(input_tensor, axis=get_valid_axis(parameters))
+    return [input_tensor], outs
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(np.float32, shape=parameters["base_shape"])
+    return [input_value], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def _make_logical_tests(op):
   """Make a set of tests to do logical operations."""
 
