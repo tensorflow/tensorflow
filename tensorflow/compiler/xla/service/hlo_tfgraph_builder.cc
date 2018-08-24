@@ -24,15 +24,15 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 
-using ::absl::StrAppend;
-using ::absl::StrCat;
-using ::tensorflow::GraphDef;
-using ::tensorflow::NodeDef;
-using ::tensorflow::TensorShapeProto;
-
 namespace xla {
 namespace hlo_graph_dumper {
 namespace {
+
+using absl::StrAppend;
+using absl::StrCat;
+using tensorflow::GraphDef;
+using tensorflow::NodeDef;
+using tensorflow::TensorShapeProto;
 
 string GetOpDefName(const HloInstruction* instruction) {
   string name = StrCat("hlo-", HloOpcodeString(instruction->opcode()));

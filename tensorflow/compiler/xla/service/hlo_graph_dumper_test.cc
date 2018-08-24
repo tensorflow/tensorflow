@@ -28,7 +28,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::absl::StrCat;
+using absl::StrCat;
 using ::testing::HasSubstr;
 
 string TestName() {

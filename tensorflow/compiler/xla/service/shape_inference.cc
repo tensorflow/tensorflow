@@ -38,12 +38,11 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 
+namespace xla {
+namespace {
+
 using absl::StrJoin;
 using tensorflow::strings::Printf;
-
-namespace xla {
-
-namespace {
 
 // Returns true if no element is present in slice more than once.
 bool AllUnique(tensorflow::gtl::ArraySlice<int64> slice) {

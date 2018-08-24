@@ -37,8 +37,8 @@ limitations under the License.
 
 namespace xla {
 
-using ::absl::StrAppend;
-using ::absl::StrCat;
+using absl::StrAppend;
+using absl::StrCat;
 
 const Shape& HloPosition::shape() const {
   return ShapeUtil::GetSubshape(instruction->shape(), index);

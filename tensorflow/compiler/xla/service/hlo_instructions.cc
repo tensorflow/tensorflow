@@ -33,10 +33,10 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::absl::CEscape;
-using ::absl::StrAppend;
-using ::absl::StrCat;
-using ::absl::StrJoin;
+using absl::CEscape;
+using absl::StrAppend;
+using absl::StrCat;
+using absl::StrJoin;
 
 bool IsInstructionElementwiseOnOperand(const HloInstruction* instruction,
                                        const HloInstruction* operand) {

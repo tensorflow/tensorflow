@@ -24,13 +24,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
-namespace op = ::xla::testing::opcode_matchers;
-
 namespace xla {
-
 namespace {
 
-using ::absl::string_view;
+namespace op = ::xla::testing::opcode_matchers;
+using absl::string_view;
 
 struct TestData {
   string test_name;

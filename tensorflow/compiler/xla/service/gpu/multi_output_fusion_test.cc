@@ -23,10 +23,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 
-namespace op = xla::testing::opcode_matchers;
-
 namespace xla {
 namespace gpu {
+
+namespace op = xla::testing::opcode_matchers;
 
 using MultiOutputFusionTest = HloTestBase;
 

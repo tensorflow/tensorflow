@@ -55,7 +55,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/ptr_util.h"
 
-using ::absl::StrCat;
+using absl::StrCat;
 using ::tensorflow::strings::Printf;
 
 namespace xla {

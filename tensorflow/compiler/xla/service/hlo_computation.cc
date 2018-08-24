@@ -44,7 +44,7 @@ limitations under the License.
 
 namespace xla {
 
-using ::absl::StrCat;
+using absl::StrCat;
 
 std::unique_ptr<HloComputation> HloComputation::Builder::Build(
     HloInstruction* root_instruction) {

@@ -27,12 +27,12 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/logging.h"
 
-using ::absl::StrAppend;
-using ::absl::StrCat;
-
 namespace xla {
-
 namespace {
+
+using absl::StrAppend;
+using absl::StrCat;
+
 void DumpModuleGraph(const HloModule& module, const string& message) {
   hlo_graph_dumper::MaybeDumpHloModule(module, message);
   VLOG(3) << "HLO " << message << ":";

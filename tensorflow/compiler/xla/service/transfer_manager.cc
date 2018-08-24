@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/notification.h"
 
-using ::absl::StrCat;
+using absl::StrCat;
 
 namespace xla {
 /* static */ tensorflow::mutex

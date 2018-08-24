@@ -52,9 +52,9 @@ limitations under the License.
 namespace xla {
 
 using absl::CEscape;
-using ::absl::StrAppend;
-using ::absl::StrCat;
-using ::absl::StrJoin;
+using absl::StrAppend;
+using absl::StrCat;
+using absl::StrJoin;
 
 /* static */
 StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
