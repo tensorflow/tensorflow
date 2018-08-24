@@ -109,8 +109,7 @@ def main(_):
   # `distribute` argument. `fit`, `evaluate` and `predict` will be distributed
   # based on the strategy instantiated.
   model.compile(loss=tf.keras.losses.categorical_crossentropy,
-                optimizer=tf.train.GradientDescentOptimizer(
-                    learning_rate=0.001),
+                optimizer=tf.train.RMSPropOptimizer(learning_rate=0.001),
                 metrics=['accuracy'],
                 distribute=strategy)
 
