@@ -106,6 +106,38 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+cuda_py_test(
+    name = "parameter_server_strategy_test",
+    srcs = ["parameter_server_strategy_test.py"],
+    additional_deps = [
+        ":combinations",
+        ":multi_worker_test_base",
+        ":parameter_server_strategy",
+        ":values",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:session",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/estimator:estimator_py",
+    ],
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
     ],
 )
 
@@ -236,35 +268,6 @@ py_test(
         ":strategy_test_lib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/eager:test",
-    ],
-)
-
-py_test(
-    name = "parameter_server_strategy_test",
-    srcs = ["parameter_server_strategy_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",
-    ],
-    deps = [
-        ":combinations",
-        ":multi_worker_test_base",
-        ":parameter_server_strategy",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:layers",
-        "//tensorflow/python:session",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/estimator:estimator_py",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 

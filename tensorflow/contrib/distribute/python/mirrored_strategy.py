@@ -276,6 +276,9 @@ def _create_mirrored_variable(devices, real_mirrored_creator, *args, **kwargs): 
     else:
       result = values.MirroredVariable(index, index[devices[0]], aggregation)
 
+  # Add the wrapped variable to the requested collections.
+  # The handling of eager mode and the global step matches
+  # ResourceVariable._init_from_args().
   if not context.executing_eagerly():
     g = ops.get_default_graph()
     # If "trainable" is True, next_creator() will add the member variables
@@ -289,6 +292,9 @@ def _create_mirrored_variable(devices, real_mirrored_creator, *args, **kwargs): 
       for v in index.values():
         l.remove(v)
     g.add_to_collections(collections, result)
+  elif ops.GraphKeys.GLOBAL_STEP in collections:
+    ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, result)
+
   return result
 
 
