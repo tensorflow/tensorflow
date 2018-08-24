@@ -4,7 +4,7 @@ exports_files(["LICENSE"])
 
 cc_library(
     name = "ngraph_headers",
-    hdrs = glob(["src/ngraph/**/*.hpp"]) ,
+    hdrs = glob(["src/ngraph/**/*.hpp"]),
     visibility = ["//visibility:public"],
 )
 
@@ -102,7 +102,7 @@ cc_library(
         "-I external/nlohmann_json_lib/include/",
         '-D SHARED_LIB_EXT=\\".so\\"',
         '-D NGRAPH_VERSION=\\"0.5.0\\"',
-        '-D NGRAPH_DEX_ONLY',
+        "-D NGRAPH_DEX_ONLY",
     ],
     visibility = ["//visibility:public"],
     alwayslink = 1,
@@ -124,8 +124,8 @@ cc_library(
         "src/ngraph/pass/*.hpp",
         "src/ngraph/runtime/*.cpp",
         "src/ngraph/type/*.cpp",
-        "src/ngraph/runtime/interpreter/*.cpp",
-        "src/ngraph/runtime/interpreter/*.hpp",
+        #"src/ngraph/runtime/interpreter/*.cpp",
+        #"src/ngraph/runtime/interpreter/*.hpp",
     ]),
     deps = [
         ":ngraph_headers",

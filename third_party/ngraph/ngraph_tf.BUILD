@@ -71,7 +71,7 @@ tf_cc_test(
     ],
     extra_copts = [
         "-fexceptions ",
-        "-D NGRAPH_EMBEDDED_IN_TENSORFLOW=1",
+        #"-D NGRAPH_EMBEDDED_IN_TENSORFLOW=1",
         "-I external/ngraph_tf/src",
         "-I external/ngraph_tf/logging",
         "-I external/ngraph/src",
