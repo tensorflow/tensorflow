@@ -888,8 +888,18 @@ class MirroredVariableUpdateTest(test.TestCase):
       self.assertIsInstance(mirrored_var, values.MirroredVariable)
       self.evaluate(variables.global_variables_initializer())
       self.assertEquals(1.0, self.evaluate(mirrored_var))
-      mirrored_var_result = self.evaluate(mirrored_var.assign_add(6.0))
+
+      # read_value == True
+      mirrored_var_result = self.evaluate(
+          mirrored_var.assign_add(6.0, read_value=True))
       self.assertEquals(7.0, mirrored_var_result)
+      self.assertEquals(7.0, self.evaluate(mirrored_var.get("/device:CPU:0")))
+      self.assertEquals(7.0, self.evaluate(mirrored_var.get("/device:GPU:0")))
+
+      # read_value == False
+      self.evaluate(mirrored_var.assign_add(2.0, read_value=False))
+      self.assertEquals(9.0, self.evaluate(mirrored_var.get("/device:CPU:0")))
+      self.assertEquals(9.0, self.evaluate(mirrored_var.get("/device:GPU:0")))
 
   @test_util.run_in_graph_and_eager_modes(config=config)
   def testAssignAddMirroredVarTowerContext(self):
@@ -956,6 +966,8 @@ class MirroredVariableUpdateTest(test.TestCase):
       self.assertEquals(5.0, self.evaluate(mirrored_var))
       mirrored_var_result = self.evaluate(mirrored_var.assign_sub(2.0))
       self.assertEquals(3.0, mirrored_var_result)
+      self.assertEquals(3.0, self.evaluate(mirrored_var.get("/device:GPU:0")))
+      self.assertEquals(3.0, self.evaluate(mirrored_var.get("/device:CPU:0")))
 
   @test_util.run_in_graph_and_eager_modes(config=config)
   def testAssignSubMirroredVarTowerContext(self):
