@@ -15,6 +15,7 @@ limitations under the License.
 
 // XLA-specific reduction Ops.
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/tf2xla/kernels/reduction_ops.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -66,7 +67,7 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, ctx->ConstantInputReshapedToIntVector(1, &axes));
 
   VLOG(1) << "data shape: " << data_shape.DebugString();
-  VLOG(1) << "axes      : " << str_util::Join(axes, ",");
+  VLOG(1) << "axes      : " << absl::StrJoin(axes, ",");
 
   gtl::InlinedVector<bool, 4> bitmap(data_shape.dims(), false);
   std::vector<int64> xla_axes;

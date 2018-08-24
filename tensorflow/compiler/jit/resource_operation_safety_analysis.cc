@@ -82,6 +82,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/tensor_id.h"
@@ -327,7 +328,7 @@ string ResourceOpSetToString(const ResourceOpSet& resource_op_set) {
   std::vector<string> elements_debug_string;
   std::transform(resource_op_set.begin(), resource_op_set.end(),
                  std::back_inserter(elements_debug_string), ResourceOpToString);
-  return strings::StrCat("{", str_util::Join(elements_debug_string, ","), "}");
+  return strings::StrCat("{", absl::StrJoin(elements_debug_string, ","), "}");
 }
 
 string NodeToString(const Node& n, ResourceOpKind resource_op_kind) {

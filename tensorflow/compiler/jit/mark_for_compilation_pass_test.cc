@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/mark_for_compilation_pass_test_helper.h"
 
+#include "absl/strings/match.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -656,11 +656,11 @@ TEST(XlaCompilationTest, IllegalCycle_UsefulErrorMessage) {
 
   Status status = MarkForCompilationPassTestHelper::MarkForCompilation(&graph);
   EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(str_util::StrContains(status.ToString(),
-                                    "Edge from c to a would create a cycle.\n"
-                                    "+-> a\n"
-                                    "|   b\n"
-                                    "+-- c\n"));
+  EXPECT_TRUE(absl::StrContains(status.ToString(),
+                                "Edge from c to a would create a cycle.\n"
+                                "+-> a\n"
+                                "|   b\n"
+                                "+-- c\n"));
 }
 
 TEST(XlaCompilationTest, Retval) {
