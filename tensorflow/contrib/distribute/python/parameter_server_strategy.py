@@ -94,11 +94,18 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
         cluster configurations.
       task_type: the current task type.
       task_id: the current task id.
+
+    Raises:
+      ValueError: if `cluster_spec` is given but `task_type` or `task_id` is
+        not.
     """
     super(ParameterServerStrategy, self).__init__()
     self._num_gpus_per_worker = num_gpus_per_worker
     if cluster_spec:
       cluster_spec = multi_worker_util.normalize_cluster_spec(cluster_spec)
+      if task_type is None or task_id is None:
+        raise ValueError("When `cluster_spec` is given, must also specify "
+                         "`task_type` and `task_id`.")
     self._cluster_spec = cluster_spec
 
     # We typically don't need to do all-reduce in this strategy.
@@ -345,6 +352,10 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
         cluster configurations.
       task_type: the current task type.
       task_id: the current task id.
+
+    Raises:
+      ValueError: if `cluster_spec` is given but `task_type` or `task_id` is
+        not.
     """
     del session_config
 
@@ -353,6 +364,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     if not self._cluster_spec and cluster_spec:
       self._cluster_spec = multi_worker_util.normalize_cluster_spec(
           cluster_spec)
+      if task_type is None or task_id is None:
+        raise ValueError("When `cluster_spec` is given, must also specify "
+                         "`task_type` and `task_id`.")
       self._initialize_devices(self._num_gpus_per_worker, self._cluster_spec,
                                task_type, task_id)
 
