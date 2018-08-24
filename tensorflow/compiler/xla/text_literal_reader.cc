@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -56,33 +56,6 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadPath(
 
 TextLiteralReader::TextLiteralReader(tensorflow::RandomAccessFile* file)
     : file_(file) {}
-
-namespace {
-// This is an optimized version of tensorflow::str_util::Split which uses
-// StringPiece for the delimited strings and uses an out parameter for the
-// result to avoid vector creation/destruction.
-void SplitByDelimToStringPieces(absl::string_view text, char delim,
-                                std::vector<absl::string_view>* result) {
-  result->clear();
-
-  if (text.empty()) {
-    return;
-  }
-
-  // The following loop is a little strange: its bound is text.size() + 1
-  // instead of the more typical text.size().
-  // The final iteration of the loop (when i is equal to text.size()) handles
-  // the trailing token.
-  size_t token_start = 0;
-  for (size_t i = 0; i < text.size() + 1; i++) {
-    if (i == text.size() || text[i] == delim) {
-      absl::string_view token(text.data() + token_start, i - token_start);
-      result->push_back(token);
-      token_start = i + 1;
-    }
-  }
-}
-}  // namespace
 
 StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
   tensorflow::io::RandomAccessInputStream stream(file_.get());
@@ -109,7 +82,7 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
   std::vector<int64> coordinate_values;
   string line;
   while (buf.ReadLine(&line).ok()) {
-    SplitByDelimToStringPieces(line, ':', &pieces);
+    pieces = absl::StrSplit(line, ':');
     absl::string_view coordinates_string =
         absl::StripAsciiWhitespace(pieces[0]);
     absl::string_view value_string = absl::StripAsciiWhitespace(pieces[1]);
@@ -126,7 +99,7 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
       return InvalidArgument("could not parse value as float: \"%s\"",
                              std::string(value_string).c_str());
     }
-    SplitByDelimToStringPieces(coordinates_string, ',', &coordinates);
+    coordinates = absl::StrSplit(coordinates_string, ',');
     coordinate_values.clear();
     for (absl::string_view piece : coordinates) {
       int64 coordinate_value;

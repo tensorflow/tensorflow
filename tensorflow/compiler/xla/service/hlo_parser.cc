@@ -40,7 +40,6 @@ using ::absl::optional;
 using ::absl::StrAppend;
 using ::absl::StrCat;
 using ::absl::StrJoin;
-using ::tensorflow::str_util::Split;
 using ::tensorflow::str_util::SplitAndParseAsInts;
 using ::tensorflow::strings::Printf;
 
@@ -2854,7 +2853,7 @@ bool HloParser::ParseWindowPad(
     return TokenError("expects window pad pattern, e.g., '0_0x3_3'");
   }
   string str = lexer_.GetStrVal();
-  std::vector<string> padding_str = Split(str, 'x');
+  std::vector<string> padding_str = absl::StrSplit(str, 'x');
   for (int i = 0; i < padding_str.size(); i++) {
     std::vector<tensorflow::int64> low_high;
     if (!SplitAndParseAsInts(padding_str[i], '_', &low_high) ||
@@ -2878,7 +2877,7 @@ bool HloParser::ParsePaddingConfig(PaddingConfig* padding) {
   }
   LocTy loc = lexer_.GetLoc();
   string str = lexer_.GetStrVal();
-  std::vector<string> padding_str = Split(str, 'x');
+  std::vector<string> padding_str = absl::StrSplit(str, 'x');
   for (const auto& padding_dim_str : padding_str) {
     std::vector<tensorflow::int64> padding_dim;
     if (!SplitAndParseAsInts(padding_dim_str, '_', &padding_dim) ||

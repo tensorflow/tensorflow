@@ -20,9 +20,9 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/regexp.h"
 
@@ -55,7 +55,7 @@ ManifestT ReadManifest() {
     if (line.empty()) {
       continue;
     }
-    tensorflow::str_util::StripTrailingWhitespace(&line);
+    absl::StripTrailingAsciiWhitespace(&line);
     std::vector<string> pieces = absl::StrSplit(line, ' ');
     CHECK_GE(pieces.size(), 1);
     auto& platforms = manifest[pieces[0]];
