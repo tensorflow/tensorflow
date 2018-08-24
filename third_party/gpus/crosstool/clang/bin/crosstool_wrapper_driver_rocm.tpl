@@ -214,8 +214,16 @@ def main():
   if args.pass_exit_codes:
     gpu_compiler_flags = [flag for flag in sys.argv[1:]
                                if not flag.startswith(('-pass-exit-codes'))]
-    if args.rocm_log: Log('Link with hipcc: %s' % (' '.join([HIPCC_PATH] + gpu_compiler_flags)))
-    return subprocess.call([HIPCC_PATH] + gpu_compiler_flags)
+
+    # special handling for $ORIGIN
+    # - guard every argument with ''
+    modified_gpu_compiler_flags = []
+    for flag in gpu_compiler_flags:
+      modified_gpu_compiler_flags.append(
+          "'" + flag + "'")
+
+    if args.rocm_log: Log('Link with hipcc: %s' % (' '.join([HIPCC_PATH] + modified_gpu_compiler_flags)))
+    return subprocess.call([HIPCC_PATH] + modified_gpu_compiler_flags)
 
   # Strip our flags before passing through to the CPU compiler for files which
   # are not -x rocm. We can't just pass 'leftover' because it also strips -x.
