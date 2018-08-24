@@ -1180,6 +1180,10 @@ class AggregatingVariable(checkpointable.CheckpointableBase):
   def __repr__(self):
     return repr(self._v)
 
+  def _should_act_as_resource_variable(self):
+    """Pass resource_variable_ops.is_resource_variable check."""
+    pass
+
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
