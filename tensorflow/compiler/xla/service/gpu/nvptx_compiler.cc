@@ -141,7 +141,8 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
                          Compiler* compiler) {
   {
     HloPassPipeline pipeline("optimization");
-    pipeline.AddInvariantChecker<HloVerifier>();
+    pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
+                                              /*allow_mixed_precision=*/false);
     pipeline.AddPass<GpuHloSupportChecker>();
     ReducePrecisionInsertion::AddPasses(
         &pipeline, hlo_module->config().debug_options(),
@@ -157,7 +158,8 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     {
       auto& pass =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
-      pass.AddInvariantChecker<HloVerifier>();
+      pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
+                                            /*allow_mixed_precision=*/false);
 
       // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
       // where possible.  Not every batchnorm op can be implemented as a call to
@@ -204,7 +206,8 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // Convert convolutions into CustomCalls to cudnn, then canonicalize them
     // (PadInsertion).
     HloPassPipeline pipeline("conv_canonicalization");
-    pipeline.AddInvariantChecker<HloVerifier>();
+    pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
+                                              /*allow_mixed_precision=*/false);
     // TODO(b/31709653): Directly use the grouped convolution support of Cudnn.
     pipeline.AddPass<ConvolutionFeatureGroupConverter>();
     pipeline.AddPass<CudnnConvolutionRewriter>();
@@ -219,9 +222,22 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
   }
 
   {
-    HloPassPipeline pipeline("layout_assignment");
+    // Run layout assignment in a separate pipeline from
+    // "post-layout-assignment" because we want everything after layout
+    // assignment to have a layout-sensitive invariant-checker, but
+    // HloPassPipeline also runs its invariant checker before any passes are
+    // run, meaning, the pipeline that contains layout assignment cannot contain
+    // a layout-sensitive verifier!
+    HloPassPipeline pipeline("layout assignment");
     pipeline.AddPass<GpuLayoutAssignment>(
         hlo_module->mutable_entry_computation_layout(), stream_exec);
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
+  {
+    HloPassPipeline pipeline("post-layout_assignment");
+    pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/true,
+                                              /*allow_mixed_precision=*/false);
 
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
@@ -267,7 +283,8 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
 
   {
     HloPassFix<HloPassPipeline> fusion("fusion");
-    fusion.AddInvariantChecker<HloVerifier>();
+    fusion.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/true,
+                                            /*allow_mixed_precision=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
     fusion.AddPass<FusionMerger>();
@@ -277,7 +294,8 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
 
     HloPassPipeline reduce_pipeline("reduce-precision");
-    reduce_pipeline.AddInvariantChecker<HloVerifier>();
+    reduce_pipeline.AddInvariantChecker<HloVerifier>(
+        /*is_layout_sensitive=*/true, /*allow_mixed_precision=*/false);
     ReducePrecisionInsertion::AddPasses(
         &reduce_pipeline, hlo_module->config().debug_options(),
         ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
@@ -303,7 +321,8 @@ Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // (b/27180329). Therefore, in that case, we set the output to be a copy of
   // the parameter.
   HloPassPipeline pipeline("GPU-ir-emit-prepare");
-  pipeline.AddInvariantChecker<HloVerifier>();
+  pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/true,
+                                            /*allow_mixed_precision=*/false);
 
   // Copy insertion should be performed immediately before IR emission to avoid
   // inserting unnecessary copies (later pass adds an instruction which
