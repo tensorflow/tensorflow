@@ -2072,7 +2072,7 @@ def _calc_mat_mul_flops(graph, node):
   output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
   output_shape.assert_is_fully_defined()
   output_count = np.prod(output_shape.as_list())
-  return ops.OpStats("flops", ((2 * k - 1) * output_count))
+  return ops.OpStats("flops", (k * output_count * 2))
 
 
 def _as_indexed_slices(x, optimize=True):
