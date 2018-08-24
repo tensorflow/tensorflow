@@ -221,13 +221,11 @@ cc_library(
     srcs = [
         "literal_util.cc",
         "shape_util.cc",
-        "str_util.cc",
         "type_util.cc",
     ],
     hdrs = [
         "literal_util.h",
         "shape_util.h",
-        "str_util.h",
         "type_util.h",
     ],
     visibility = [":friends"],
@@ -374,19 +372,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cc_test(
-    name = "str_util_test",
-    srcs = [
-        "str_util_test.cc",
-    ],
-    deps = [
-        ":common",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 

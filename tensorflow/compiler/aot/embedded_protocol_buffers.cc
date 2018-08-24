@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_replace.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/LLVMContext.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
-#include "tensorflow/compiler/tf2xla/str_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -65,14 +65,13 @@ static string CreateCPPShimExpression(StringPiece qualified_cpp_protobuf_name,
       "    return proto;\n"
       "  }()";
 
-  str_util::ReplaceAllPairs(
-      &code,
+  return absl::StrReplaceAll(
+      code,
       {
           {"{{ARRAY_SYMBOL}}", strings::StrCat(protobuf_array_symbol_name)},
           {"{{ARRAY_SIZE}}", strings::StrCat(protobuf_array_size)},
           {"{{PROTOBUF_NAME}}", strings::StrCat(qualified_cpp_protobuf_name)},
       });
-  return code;
 }
 
 static StatusOr<string> CodegenModule(llvm::TargetMachine* target_machine,
