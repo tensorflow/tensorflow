@@ -320,6 +320,7 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
 )

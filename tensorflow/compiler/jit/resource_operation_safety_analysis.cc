@@ -82,6 +82,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
 
+#include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -300,7 +301,7 @@ class ResourceOpSet {
 
   void EnsureIsCopied() {
     if (storage_ == nullptr) {
-      storage_ = MakeUnique<Impl>();
+      storage_ = absl::make_unique<Impl>();
       for (ResourceOp op : *this) {
         storage_->insert(op);
       }
@@ -349,7 +350,8 @@ Status ComputeIncompatibleResourceOperationPairs(
                         return !edge.src()->IsNextIteration();
                       });
 
-  auto resource_op_set_for_node = MakeUnique<ResourceOpSet[]>(g.num_node_ids());
+  auto resource_op_set_for_node =
+      absl::make_unique<ResourceOpSet[]>(g.num_node_ids());
 
   const bool vlog = VLOG_IS_ON(2);
 
