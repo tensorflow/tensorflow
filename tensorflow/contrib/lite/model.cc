@@ -745,6 +745,15 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = static_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_UNPACK: {
+      TfLiteUnpackParams* params = MallocPOD<TfLiteUnpackParams>();
+      if (auto* unpack_params = op->builtin_options_as_UnpackOptions()) {
+        params->num = unpack_params->num();
+        params->axis = unpack_params->axis();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
 
     // Below are the ops with no builtin_data strcture.
     case BuiltinOperator_BATCH_TO_SPACE_ND:
@@ -790,7 +799,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_LOGICAL_OR:
     case BuiltinOperator_LOGICAL_AND:
     case BuiltinOperator_LOGICAL_NOT:
-    case BuiltinOperator_UNPACK:
     case BuiltinOperator_FLOOR_DIV:
     case BuiltinOperator_REDUCE_ANY:
       break;

@@ -841,6 +841,19 @@ Outputs {
 }
 ```
 
+**UNPACK**
+
+```
+Inputs {
+  0: a tensor.
+  1: an integer.
+  2: an integer.
+}
+Outputs {
+  0-N: tensors of unpacked tensor.
+}
+```
+
 And these are TensorFlow Lite operations that are present but not ready for
 custom models yet:
 

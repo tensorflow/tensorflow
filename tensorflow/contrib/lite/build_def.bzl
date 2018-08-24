@@ -293,6 +293,7 @@ def generated_test_models():
         "topk",
         "transpose",
         #"transpose_conv",   # disabled due to b/111213074
+        "unpack",
         "where",
     ]
 
