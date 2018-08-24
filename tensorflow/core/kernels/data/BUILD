@@ -237,6 +237,7 @@ cc_library(
     srcs = ["parse_example_dataset_op.cc"],
     deps = [
         ":parallel_map_iterator",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
     ],
 )
