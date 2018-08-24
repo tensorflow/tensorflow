@@ -73,19 +73,27 @@ class StackedRNNCells(Layer):
                          '`state_size` attribute. '
                          'received cells:', cells)
     self.cells = cells
+    # reverse_state_order determines whether the state size will be in a reverse
+    # order of the cells' state. User might want to set this to True to keep the
+    # existing behavior. This is only useful when use RNN(return_state=True)
+    # since the state will be returned as the same order of state_size.
+    self.reverse_state_order = kwargs.pop('reverse_state_order', False)
+    if self.reverse_state_order:
+      logging.warning('reverse_state_order=True in StackedRNNCells will soon '
+                      'be deprecated. Please update the code to work with the '
+                      'natural order of states if you reply on the RNN states, '
+                      'eg RNN(return_state=True).')
     super(StackedRNNCells, self).__init__(**kwargs)
 
   @property
   def state_size(self):
-    # States are a flat list
-    # in reverse order of the cell stack.
-    # This allows to preserve the requirement
-    # `stack.state_size[0] == output_dim`.
-    # e.g. states of a 2-layer LSTM would be
-    # `[h2, c2, h1, c1]`
+    # States are a flat list of the individual cell state size.
+    # e.g. states of a 2-layer LSTM would be `[h1, c1, h2, c2]`.
     # (assuming one LSTM has states [h, c])
+    # In the case of reverse_state_order=True, the state_size will be
+    # [h2, c2, h1, c1].
     state_size = []
-    for cell in self.cells[::-1]:
+    for cell in self.cells[::-1] if self.reverse_state_order else self.cells:
       if _is_multiple_state(cell.state_size):
         state_size += list(cell.state_size)
       else:
@@ -96,15 +104,16 @@ class StackedRNNCells(Layer):
   def output_size(self):
     if getattr(self.cells[-1], 'output_size', None) is not None:
       return self.cells[-1].output_size
+    elif _is_multiple_state(self.cells[-1].state_size):
+      return self.cells[-1].state_size[0]
     else:
-      return self.state_size[0]
+      return self.cells[-1].state_size
 
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
-    # The init state is in reverse order of cell's initial state since the
-    # state_size is in reverse order. It is flattened into a list also because
-    # the state_size is a flattened list.
+    # The init state is flattened into a list because state_size is a flattened
+    # list.
     initial_states = []
-    for cell in self.cells[::-1]:
+    for cell in self.cells[::-1] if self.reverse_state_order else self.cells:
       get_initial_state_fn = getattr(cell, 'get_initial_state', None)
       if get_initial_state_fn:
         initial_states.append(get_initial_state_fn(
@@ -118,14 +127,15 @@ class StackedRNNCells(Layer):
   def call(self, inputs, states, constants=None, **kwargs):
     # Recover per-cell states.
     nested_states = []
-    for cell in self.cells[::-1]:
+    for cell in self.cells[::-1] if self.reverse_state_order else self.cells:
       if _is_multiple_state(cell.state_size):
         nested_states.append(states[:len(cell.state_size)])
         states = states[len(cell.state_size):]
       else:
         nested_states.append([states[0]])
         states = states[1:]
-    nested_states = nested_states[::-1]
+    if self.reverse_state_order:
+      nested_states = nested_states[::-1]
 
     # Call the cells in order and store the returned states.
     new_nested_states = []
@@ -139,11 +149,12 @@ class StackedRNNCells(Layer):
       new_nested_states.append(states)
 
     # Format the new states as a flat list
-    # in reverse cell order.
-    states = []
-    for cell_states in new_nested_states[::-1]:
-      states += cell_states
-    return inputs, states
+    new_states = []
+    if self.reverse_state_order:
+      new_nested_states = new_nested_states[::-1]
+    for cell_states in new_nested_states:
+      new_states += cell_states
+    return inputs, new_states
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
@@ -156,7 +167,9 @@ class StackedRNNCells(Layer):
           cell.build([input_shape] + constants_shape)
         else:
           cell.build(input_shape)
-      if _is_multiple_state(cell.state_size):
+      if getattr(cell, 'output_size', None) is not None:
+        output_dim = cell.output_size
+      elif _is_multiple_state(cell.state_size):
         output_dim = cell.state_size[0]
       else:
         output_dim = cell.state_size
