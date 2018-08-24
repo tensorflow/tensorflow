@@ -274,3 +274,5 @@ IotaTest POPLAR // Don't support iota
 ScatterTest POPLAR // Don't support scatter
 
 IntegerDivideOpTest.SignedOverflow POPLAR // Crashes - find out why
+
+HloTestBase.ReduceWindowF16 POPLAR // using a reduce-window as a padding op
