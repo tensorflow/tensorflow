@@ -49,7 +49,7 @@ bool GpuMultiOutputFusion::ShapesCompatibleForFusion(HloInstruction* instr1,
         // If possible, we want to pick a reduce operand of the fusion root,
         // because it has the most constraints.
         for (const auto* inst : fused_expression_root->operands()) {
-          if (inst->opcode() == HloOpcode::kReduce) {
+          if (IsReductionToVector(*inst)) {
             return inst;
           }
         }
@@ -64,7 +64,7 @@ bool GpuMultiOutputFusion::ShapesCompatibleForFusion(HloInstruction* instr1,
   auto get_element_shape = [&](const HloInstruction* element_instr) {
     // Special handling of kReduce instructions -- the fusion
     // applies to the first operand.
-    if (element_instr->opcode() == HloOpcode::kReduce) {
+    if (IsReductionToVector(*element_instr)) {
       return element_instr->operand(0)->shape();
     }
     return element_instr->shape();
@@ -185,19 +185,6 @@ bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
       (instr2->opcode() != HloOpcode::kFusion &&
        instr1->fusion_kind() == HloInstruction::FusionKind::kLoop)) {
     return false;
-  }
-
-  // Multi-output loop fusions must have equal output shapes to be lowered.
-  if (instr1->fusion_kind() == HloInstruction::FusionKind::kLoop) {
-    Shape shape1 = instr1->IsMultiOutputFusion()
-                       ? instr1->shape().tuple_shapes(0)
-                       : instr1->shape();
-    Shape shape2 = instr2->IsMultiOutputFusion()
-                       ? instr2->shape().tuple_shapes(0)
-                       : instr2->shape();
-    if (!ShapeUtil::Equal(shape1, shape2)) {
-      return false;
-    }
   }
 
   // Do this check last, as it may be expensive.
