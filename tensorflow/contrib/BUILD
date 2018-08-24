@@ -119,6 +119,11 @@ py_library(
         ],
         "//conditions:default": [],
     }) + select({
+        "//tensorflow:with_ignite_support": [
+            "//tensorflow/contrib/ignite",
+        ],
+        "//conditions:default": [],
+    }) + select({
         "//tensorflow:with_aws_support_windows_override": [],
         "//tensorflow:with_aws_support": [
             "//tensorflow/contrib/kinesis",
@@ -161,6 +166,11 @@ cc_library(
         ],
         "//conditions:default": [],
     }) + select({
+        "//tensorflow:with_ignite_support": [
+            "//tensorflow/contrib/ignite:dataset_kernels",
+        ],
+        "//conditions:default": [],
+    }) + select({
         "//tensorflow:with_aws_support_windows_override": [],
         "//tensorflow:with_aws_support": [
             "//tensorflow/contrib/kinesis:dataset_kernels",
@@ -195,6 +205,11 @@ cc_library(
         "//tensorflow:with_kafka_support_windows_override": [],
         "//tensorflow:with_kafka_support": [
             "//tensorflow/contrib/kafka:dataset_ops_op_lib",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "//tensorflow:with_ignite_support": [
+            "//tensorflow/contrib/ignite:dataset_ops_op_lib",
         ],
         "//conditions:default": [],
     }) + select({
