@@ -68,12 +68,6 @@ Status ComputeIncompatibleResourceOperationPairs(
     const Graph& g, const FunctionLibraryDefinition* flib_def,
     const std::function<Status(const Node&, bool*)>& resource_ops_to_ignore,
     std::vector<std::pair<int, int>>* result);
-
-namespace resource_op_safety_analysis_internal {
-// Internal API for whitebox testing.
-std::vector<string> GetKnownResourceOperations();
-}  // namespace resource_op_safety_analysis_internal
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_RESOURCE_OPERATION_SAFETY_ANALYSIS_H_
