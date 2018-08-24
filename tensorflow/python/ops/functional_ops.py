@@ -999,7 +999,6 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None):
       op_name,
       args,
       tout,
-      compute_shapes=False,
       name="PartitionedFunctionCall",
       attrs={"Tin": tin_attr, "Tout": tout_attr, "f": func_attr})
   outputs = op.outputs
