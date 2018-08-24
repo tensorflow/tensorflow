@@ -454,14 +454,14 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 namespace {
 
 // Class to memoize the computation of
-//   tensorflow::str_util::Lowercase(PrimitiveType_Name(p))
+//   absl::AsciiStrToLower(PrimitiveType_Name(p))
 // for all PrimitiveType values "p"
 class PrimitiveTypeNameGenerator {
  public:
   PrimitiveTypeNameGenerator() {
     for (int i = 0; i < PrimitiveType_ARRAYSIZE; i++) {
       if (PrimitiveType_IsValid(i)) {
-        lowercase_name_[i] = tensorflow::str_util::Lowercase(
+        lowercase_name_[i] = absl::AsciiStrToLower(
             PrimitiveType_Name(static_cast<PrimitiveType>(i)));
       }
     }
