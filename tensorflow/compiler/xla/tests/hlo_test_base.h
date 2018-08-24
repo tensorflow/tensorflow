@@ -85,12 +85,14 @@ class HloTestBase : public ::testing::Test {
   // automatically finds another supported backend as the test backend. If the
   // interpreter is the only supported backend, it will be both the test backend
   // and the reference backend.
-  HloTestBase(bool allow_mixed_precision_in_hlo_verifier = true);
+  HloTestBase(bool verifier_layout_sensitive = false,
+              bool allow_mixed_precision_in_hlo_verifier = true);
 
   // If your test doesn't use interpreter as the reference backend, you can use
   // this constructor. Note that your test target is responsible for linking in
   // both needed backends.
   HloTestBase(se::Platform* test_platform, se::Platform* reference_platform,
+              bool verifier_layout_sensitive = false,
               bool allow_mixed_precision_in_hlo_verifier = true);
 
   ~HloTestBase() override {}

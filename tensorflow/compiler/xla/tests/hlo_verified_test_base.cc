@@ -25,8 +25,11 @@ limitations under the License.
 
 namespace xla {
 
-HloVerifiedTestBase::HloVerifiedTestBase()
-    : shape_verifier_(absl::make_unique<ShapeVerifier>()) {}
+HloVerifiedTestBase::HloVerifiedTestBase(bool layout_sensitive,
+                                         bool allow_mixed_precision)
+    : HloTestBase(
+          /*verifier_layout_sensitive=*/layout_sensitive,
+          /*allow_mixed_precision_in_hlo_verifier=*/allow_mixed_precision) {}
 
 HloVerifiedTestBase::~HloVerifiedTestBase() {
   // We can't call the ASSERT or EXPECT test macros in destructors, so we
@@ -51,8 +54,7 @@ void HloVerifiedTestBase::TearDown() {
 }
 
 void HloVerifiedTestBase::VerifyModule(HloModule* module) {
-  HloVerifier verifier(/*allow_mixed_precision=*/true);
-  xla::StatusOr<bool> mutated = verifier.Run(module);
+  xla::StatusOr<bool> mutated = verifier().Run(module);
   if (!mutated.ok()) {
     ADD_FAILURE() << "HloVerifier failed: " << mutated.status();
   } else {

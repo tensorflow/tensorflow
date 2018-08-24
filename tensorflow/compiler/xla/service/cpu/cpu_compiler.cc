@@ -234,15 +234,15 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
   std::unordered_map<const HloInstruction*, int64>* hlo_to_profile_idx_;
   const std::unordered_map<const HloInstruction*, int64>& assigned_indices_;
 };
+
 }  // namespace
 
-Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
-                                 llvm::TargetMachine* target_machine) {
-  LLVMTargetMachineFeatures target_machine_features(target_machine);
-
-  // Optimization pipeline.
-  HloPassPipeline pipeline("CPU");
-  pipeline.AddInvariantChecker<HloVerifier>();
+Status CpuCompiler::RunHloPassesThroughLayoutAssn(
+    HloModule* module, bool /*is_aot_compile*/,
+    LLVMTargetMachineFeatures* target_machine_features) {
+  HloPassPipeline pipeline("HLO passes through layout assignment");
+  pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
+                                            /*allow_mixed_precision=*/false);
   pipeline.AddPass<CpuHloSupportChecker>();
 
   ReducePrecisionInsertion::AddPasses(
@@ -259,11 +259,12 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
   pipeline.AddPass<BatchDotSimplification>();
   pipeline.AddPass<DotDecomposer>();
   pipeline.AddPass<ConvolutionFeatureGroupConverter>();
-  pipeline.AddPass<ConvCanonicalization>(&target_machine_features);
+  pipeline.AddPass<ConvCanonicalization>(target_machine_features);
   {
     auto& pass =
         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
-    pass.AddInvariantChecker<HloVerifier>();
+    pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
+                                          /*allow_mixed_precision=*/false);
 
     pass.AddPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
@@ -290,10 +291,9 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
   }
   pipeline.AddPass<IndexedArrayAnalysisPrinterPass>();
   pipeline.AddPass<TransposeFolding>(
-      [&target_machine_features](
-          const HloInstruction& dot,
+      [&](const HloInstruction& dot,
           const TransposeFolding::OperandIndices& candidate_operands) {
-        return PotentiallyImplementedAsEigenDot(dot, target_machine_features)
+        return PotentiallyImplementedAsEigenDot(dot, *target_machine_features)
                    ? candidate_operands
                    : TransposeFolding::OperandIndices{};
       },
@@ -308,12 +308,28 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
       ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
 
   pipeline.AddPass<CpuLayoutAssignment>(
-      module->mutable_entry_computation_layout(), &target_machine_features);
+      module->mutable_entry_computation_layout(), target_machine_features);
+  return pipeline.Run(module).status();
+}
+
+Status CpuCompiler::RunHloPassesAfterLayoutAssn(
+    HloModule* module, bool is_aot_compile,
+    LLVMTargetMachineFeatures* target_machine_features) {
+  HloPassPipeline pipeline("HLO passes after layout assignment");
+  // After layout assignment, use a layout-sensitive verifier.
+  auto& after_layout_assn =
+      pipeline.AddPass<HloPassPipeline>("after layout assignment");
+  after_layout_assn.AddInvariantChecker<HloVerifier>(
+      /*layout_sensitive=*/true,
+      /*allow_mixed_precision=*/false);
+
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   {
     auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-        "after layout assignement");
+        "simplification after layout assignement");
+    pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/true,
+                                          /*allow_mixed_precision=*/false);
     pass.AddPass<HloPassFix<AlgebraicSimplifier>>(
         /*is_layout_sensitive=*/true,
         [](const Shape&, const Shape&) { return true; },
@@ -321,7 +337,9 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
     pass.AddPass<HloDCE>();
     pass.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   }
+
   pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
+
   // Outline ops in the entry computation into calls to subcomputations.
   const int max_parallelism =
       module->config().intra_op_parallelism_threads() > 0
@@ -334,19 +352,28 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
     // binary size (and most AOT applications are single-threaded).
     // TODO(b/29630486) Support multi-threaded AOT.
     pipeline.AddPass<ParallelTaskAssigner>(
-        max_parallelism, ShapeSizeBytesFunction(), &target_machine_features);
+        max_parallelism, ShapeSizeBytesFunction(), target_machine_features);
   }
-  // Copy insertion should be performed immediately before IR emission to avoid
-  // inserting unnecessary copies (later pass adds an instruction which
-  // materializes the value) or missing a necessary copy (later pass removes an
-  // instruction which materializes a value). DCE must be run immediately before
-  // (and sometime after) copy insertion, to avoid dead code from interfering
-  // with the rewrites.
+  // Copy insertion should be performed immediately before IR emission to
+  // avoid inserting unnecessary copies (later pass adds an instruction which
+  // materializes the value) or missing a necessary copy (later pass removes
+  // an instruction which materializes a value). DCE must be run immediately
+  // before (and sometime after) copy insertion, to avoid dead code from
+  // interfering with the rewrites.
   pipeline.AddPass<HloDCE>();
   pipeline.AddPass<FlattenCallGraph>();
   pipeline.AddPass<CpuCopyInsertion>();
   pipeline.AddPass<HloDCE>();
   return pipeline.Run(module).status();
+}
+
+Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
+                                 llvm::TargetMachine* target_machine) {
+  LLVMTargetMachineFeatures target_machine_features(target_machine);
+  TF_RETURN_IF_ERROR(RunHloPassesThroughLayoutAssn(module, is_aot_compile,
+                                                   &target_machine_features));
+  return RunHloPassesAfterLayoutAssn(module, is_aot_compile,
+                                     &target_machine_features);
 }
 
 namespace {
