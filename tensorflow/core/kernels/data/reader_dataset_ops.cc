@@ -271,6 +271,9 @@ REGISTER_KERNEL_BUILDER(Name("TextLineDataset").Device(DEVICE_CPU),
 class FixedLengthRecordDatasetOp : public DatasetOpKernel {
  public:
   using DatasetOpKernel::DatasetOpKernel;
+  explicit FixedLengthRecordDatasetOp(OpKernelConstruction* ctx)
+      : DatasetOpKernel(ctx),
+        op_version_(ctx->def().op() == "FixedLengthRecordDataset" ? 1 : 2) {}
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     const Tensor* filenames_tensor;
@@ -311,9 +314,16 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
     if (buffer_size == 0) {
       buffer_size = 256 << 10;  // 256 kB as default.
     }
-
+    string compression_type;
+    if (op_version_ > 1) {
+      OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "compression_type",
+                                                      &compression_type));
+      OP_REQUIRES(ctx, compression_type.empty() || compression_type == "ZLIB" ||
+                           compression_type == "GZIP",
+                  errors::InvalidArgument("Unsupported compression_type."));
+    }
     *output = new Dataset(ctx, std::move(filenames), header_bytes, record_bytes,
-                          footer_bytes, buffer_size);
+                          footer_bytes, buffer_size, compression_type);
   }
 
  private:
@@ -321,13 +331,14 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
    public:
     explicit Dataset(OpKernelContext* ctx, std::vector<string> filenames,
                      int64 header_bytes, int64 record_bytes, int64 footer_bytes,
-                     int64 buffer_size)
+                     int64 buffer_size, const string& compression_type)
         : DatasetBase(DatasetContext(ctx)),
           filenames_(std::move(filenames)),
           header_bytes_(header_bytes),
           record_bytes_(record_bytes),
           footer_bytes_(footer_bytes),
-          buffer_size_(buffer_size) {}
+          buffer_size_(buffer_size),
+          compression_type_(compression_type) {}
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
@@ -359,15 +370,17 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
       Node* record_bytes = nullptr;
       Node* footer_bytes = nullptr;
       Node* buffer_size = nullptr;
+      Node* compression_type = nullptr;
       TF_RETURN_IF_ERROR(b->AddVector(filenames_, &filenames));
       TF_RETURN_IF_ERROR(b->AddScalar(header_bytes_, &header_bytes));
       TF_RETURN_IF_ERROR(b->AddScalar(record_bytes_, &record_bytes));
       TF_RETURN_IF_ERROR(b->AddScalar(footer_bytes_, &footer_bytes));
       TF_RETURN_IF_ERROR(b->AddScalar(buffer_size_, &buffer_size));
-      TF_RETURN_IF_ERROR(b->AddDataset(
-          this,
-          {filenames, header_bytes, record_bytes, footer_bytes, buffer_size},
-          output));
+      TF_RETURN_IF_ERROR(b->AddScalar(compression_type_, &compression_type));
+      TF_RETURN_IF_ERROR(
+          b->AddDataset(this, {filenames, header_bytes, record_bytes,
+                               footer_bytes, buffer_size, compression_type},
+                        output));
       return Status::OK();
     }
 
@@ -504,10 +517,14 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
     const int64 record_bytes_;
     const int64 footer_bytes_;
     const int64 buffer_size_;
+    const string compression_type_;
   };
+  const int op_version_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("FixedLengthRecordDataset").Device(DEVICE_CPU),
+                        FixedLengthRecordDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("FixedLengthRecordDatasetV2").Device(DEVICE_CPU),
                         FixedLengthRecordDatasetOp);
 
 class TFRecordDatasetOp : public DatasetOpKernel {
