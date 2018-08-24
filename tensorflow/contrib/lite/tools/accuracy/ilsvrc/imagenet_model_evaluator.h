@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/contrib/lite/tools/accuracy/imagenet_topk_eval.h"
+#include "tensorflow/contrib/lite/tools/accuracy/ilsvrc/imagenet_topk_eval.h"
 #include "tensorflow/contrib/lite/tools/accuracy/utils.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status.h"

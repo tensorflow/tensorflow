@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/contrib/lite/tools/accuracy/csv_writer.h"
-#include "tensorflow/contrib/lite/tools/accuracy/imagenet_model_evaluator.h"
-#include "tensorflow/contrib/lite/tools/accuracy/imagenet_topk_eval.h"
+#include "tensorflow/contrib/lite/tools/accuracy/ilsvrc/imagenet_model_evaluator.h"
+#include "tensorflow/contrib/lite/tools/accuracy/ilsvrc/imagenet_topk_eval.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
@@ -126,7 +126,9 @@ int Main(int argc, char* argv[]) {
   std::vector<string> columns;
   columns.reserve(evaluator->params().num_ranks);
   for (int i = 0; i < evaluator->params().num_ranks; i++) {
-    columns.push_back("Top " + std::to_string(i + 1));
+    string column_name = "Top ";
+    tensorflow::strings::StrAppend(&column_name, i + 1);
+    columns.push_back(column_name);
   }
 
   ResultsWriter results_writer(
