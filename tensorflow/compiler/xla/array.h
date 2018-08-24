@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -508,9 +507,7 @@ class Array {
         }
       }
 
-      pieces.push_back(
-          tensorflow::strings::AlphaNum(values_[calculate_index(index)])
-              .data());
+      pieces.push_back(absl::StrCat(values_[calculate_index(index)]));
 
       // Emit comma if it isn't the last element
       if (index.back() != sizes_.back() - 1) {

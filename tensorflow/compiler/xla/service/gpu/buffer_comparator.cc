@@ -19,7 +19,6 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace xla {
 namespace gpu {

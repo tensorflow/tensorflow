@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_parsers.h"
 #include "tensorflow/compiler/xla/legacy_flags/parse_flags_from_env.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace xla {
 namespace legacy_flags {
