@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -575,7 +575,7 @@ TEST(ResourceOperationSafetyAnalysisTest, HaveAllResourceOps) {
 
   EXPECT_TRUE(unnecessary_resource_ops.empty())
       << "Stale resource ops:\n"
-      << str_util::Join(unnecessary_resource_ops, "\n");
+      << absl::StrJoin(unnecessary_resource_ops, "\n");
 }
 
 }  // namespace

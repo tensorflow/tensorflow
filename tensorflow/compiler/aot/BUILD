@@ -72,6 +72,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
         "@llvm//:support",  # fixdeps: keep
         "@llvm//:x86_code_gen",  # fixdeps: keep
     ],
@@ -100,6 +101,7 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 

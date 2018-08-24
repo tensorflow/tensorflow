@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/deadness_analysis.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/deadness_analysis_internal.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/tensor_id.h"
@@ -153,7 +154,7 @@ class AndPredicate : public Predicate {
                    std::back_inserter(operands_str),
                    [](Predicate* pred) { return pred->ToString(); });
 
-    return strings::StrCat("(", str_util::Join(operands_str, " & "), ")");
+    return strings::StrCat("(", absl::StrJoin(operands_str, " & "), ")");
   }
 
   Kind kind() const override { return Kind::kAnd; }
@@ -182,7 +183,7 @@ class OrPredicate : public Predicate {
                    std::back_inserter(operands_str),
                    [](Predicate* pred) { return pred->ToString(); });
 
-    return strings::StrCat("(", str_util::Join(operands_str, " | "), ")");
+    return strings::StrCat("(", absl::StrJoin(operands_str, " | "), ")");
   }
 
   Kind kind() const override { return Kind::kOr; }
