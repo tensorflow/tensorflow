@@ -33,11 +33,10 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
+namespace {
 
 using Worklist = std::deque<const HloInstruction*>;
 using Workset = std::unordered_set<const HloInstruction*>;
-
-namespace {
 
 void AddToWorklist(const HloInstruction* instruction, Worklist* worklist,
                    Workset* workset) {

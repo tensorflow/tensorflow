@@ -47,8 +47,8 @@ limitations under the License.
 
 namespace xla {
 
-using ::absl::StrAppend;
-using ::absl::StrCat;
+using absl::StrAppend;
+using absl::StrCat;
 
 string ShapeIndex::ToString() const { return ShapeIndexView(*this).ToString(); }
 

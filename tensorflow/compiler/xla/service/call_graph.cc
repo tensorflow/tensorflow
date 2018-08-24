@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace xla {
 
-using ::absl::StrCat;
+using absl::StrCat;
 using ::tensorflow::strings::Appendf;
 
 string CallContextToString(CallContext context) {

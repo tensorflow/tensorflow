@@ -34,7 +34,7 @@ limitations under the License.
 
 namespace xla {
 
-using ::absl::StrAppend;
+using absl::StrAppend;
 
 // Data structure used to construct the alias analysis. Thrown away after alias
 // analysis is complete. This data structure keeps track of which sets of

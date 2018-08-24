@@ -27,10 +27,9 @@ limitations under the License.
 #include "tensorflow/core/platform/regexp.h"
 
 namespace xla {
-
-using ::absl::string_view;
-
 namespace {
+
+using absl::string_view;
 
 constexpr int kEOF = -1;
 constexpr int kError = -2;

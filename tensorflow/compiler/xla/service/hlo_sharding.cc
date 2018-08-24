@@ -21,8 +21,8 @@ limitations under the License.
 
 namespace xla {
 
-using ::absl::StrCat;
-using ::absl::StrJoin;
+using absl::StrCat;
+using absl::StrJoin;
 
 HloSharding HloSharding::AssignDevice(int64 device_id) {
   return HloSharding(device_id);

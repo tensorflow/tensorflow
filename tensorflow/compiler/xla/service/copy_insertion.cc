@@ -38,7 +38,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::absl::StrAppend;
+using absl::StrAppend;
 
 bool IsEntryParameterValue(const HloValue& value) {
   const HloComputation* computation = value.defining_instruction()->parent();

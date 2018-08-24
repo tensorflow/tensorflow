@@ -35,11 +35,11 @@ namespace xla {
 
 namespace {
 
-using ::absl::nullopt;
-using ::absl::optional;
-using ::absl::StrAppend;
-using ::absl::StrCat;
-using ::absl::StrJoin;
+using absl::nullopt;
+using absl::optional;
+using absl::StrAppend;
+using absl::StrCat;
+using absl::StrJoin;
 using ::tensorflow::strings::Printf;
 
 const double kF16max = 65504;

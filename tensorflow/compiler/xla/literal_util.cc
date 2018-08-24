@@ -38,11 +38,10 @@ limitations under the License.
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 
-using absl::StrCat;
-
 namespace xla {
-
 namespace {
+
+using absl::StrCat;
 
 // Return a literal with all arrays of type FromNativeT converted to type
 // ToNativeT in the given literal.

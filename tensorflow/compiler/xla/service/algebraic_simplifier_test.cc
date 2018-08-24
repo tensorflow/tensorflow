@@ -37,10 +37,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
-using ::testing::ElementsAre;
-
 namespace xla {
 namespace {
+
+using ::testing::ElementsAre;
 
 namespace op = xla::testing::opcode_matchers;
 
