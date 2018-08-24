@@ -82,7 +82,6 @@ py_library(
         ":interleave_ops",
         ":parsing_ops",
         ":shuffle_ops",
-        ":stats_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
