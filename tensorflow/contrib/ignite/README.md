@@ -1,4 +1,3 @@
-### Ignite Dataset
 # Ignite Dataset
 
 - [Overview](#overview)
