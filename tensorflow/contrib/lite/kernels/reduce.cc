@@ -256,11 +256,27 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_ENSURE(context, TF_LITE_MEAN(reference_ops, int64_t, int64_t));
         break;
       case kTfLiteUInt8:
-        TF_LITE_ENSURE_EQ(context, op_context.input->params.scale,
-                          op_context.output->params.scale);
-        TF_LITE_ENSURE_EQ(context, op_context.input->params.zero_point,
-                          op_context.output->params.zero_point);
-        TF_LITE_ENSURE(context, TF_LITE_MEAN(reference_ops, uint8_t, int));
+        if (op_context.input->params.zero_point ==
+                op_context.output->params.zero_point &&
+            op_context.input->params.scale == op_context.output->params.scale) {
+          TF_LITE_ENSURE(context, TF_LITE_MEAN(reference_ops, uint8_t, int));
+        } else {
+          TF_LITE_ENSURE(
+              context,
+              reference_ops::Mean<>(
+                  GetTensorData<uint8_t>(op_context.input),
+                  op_context.input->params.zero_point,
+                  op_context.input->params.scale, op_context.input->dims->data,
+                  op_context.input->dims->size,
+                  GetTensorData<uint8_t>(op_context.output),
+                  op_context.output->params.zero_point,
+                  op_context.output->params.scale,
+                  op_context.output->dims->data, op_context.output->dims->size,
+                  GetTensorData<int>(op_context.axis), num_axis,
+                  op_context.params->keep_dims, GetTensorData<int>(temp_index),
+                  GetTensorData<int>(resolved_axis),
+                  GetTensorData<int>(temp_sum)));
+        }
         break;
       default:
         return kTfLiteError;
