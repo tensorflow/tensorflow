@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -2826,12 +2827,11 @@ string OpMetadataToString(const OpMetadata& metadata) {
 }
 
 string RandomDistributionToString(const RandomDistribution& distribution) {
-  return tensorflow::str_util::Lowercase(RandomDistribution_Name(distribution));
+  return absl::AsciiStrToLower(RandomDistribution_Name(distribution));
 }
 
 string PrecisionToString(const PrecisionConfigProto::Precision& precision) {
-  return tensorflow::str_util::Lowercase(
-      PrecisionConfigProto::Precision_Name(precision));
+  return absl::AsciiStrToLower(PrecisionConfigProto::Precision_Name(precision));
 }
 
 string ConvolutionDimensionNumbersToString(
@@ -2899,7 +2899,7 @@ StatusOr<RandomDistribution> StringToRandomDistribution(const string& name) {
     }
     return map;
   }();
-  auto found = map->find(tensorflow::str_util::Lowercase(name));
+  auto found = map->find(absl::AsciiStrToLower(name));
   if (found == map->end()) {
     return InvalidArgument("Unknown distribution");
   }
@@ -2936,7 +2936,7 @@ StatusOr<PrecisionConfigProto::Precision> StringToPrecision(
     }
     return map;
   }();
-  auto found = map->find(tensorflow::str_util::Lowercase(name));
+  auto found = map->find(absl::AsciiStrToLower(name));
   if (found == map->end()) {
     return InvalidArgument("Unknown distribution");
   }

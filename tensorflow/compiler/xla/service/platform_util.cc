@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -32,8 +33,6 @@ limitations under the License.
 
 namespace xla {
 
-using tensorflow::str_util::Lowercase;
-
 // Minimum supported CUDA compute capability is 3.5.
 constexpr int kMinCudaComputeCapabilityMajor = 3;
 constexpr int kMinCudaComputeCapabilityMinor = 5;
@@ -44,7 +43,7 @@ constexpr char kInterpreter[] = "interpreter";
 namespace {
 
 string CanonicalPlatformName(const string& name) {
-  string platform_str = Lowercase(name);
+  string platform_str = absl::AsciiStrToLower(name);
   // "cpu" and "host" mean the same thing.
   if (platform_str == "cpu") {
     platform_str = "host";
@@ -111,8 +110,8 @@ PlatformUtil::GetSupportedPlatforms() {
     return platforms[0];
   } else if (platforms.size() == 2) {
     for (int i = 0; i < 2; i++) {
-      if (Lowercase(platforms[i]->Name()) == kInterpreter &&
-          Lowercase(platforms[1 - i]->Name()) != kInterpreter) {
+      if (absl::AsciiStrToLower(platforms[i]->Name()) == kInterpreter &&
+          absl::AsciiStrToLower(platforms[1 - i]->Name()) != kInterpreter) {
         return platforms[1 - i];
       }
     }
@@ -133,7 +132,7 @@ PlatformUtil::GetSupportedPlatforms() {
   string platform_str = CanonicalPlatformName(platform_name);
   TF_ASSIGN_OR_RETURN(auto platforms, PlatformUtil::GetSupportedPlatforms());
   for (se::Platform* platform : platforms) {
-    if (Lowercase(platform->Name()) == platform_str) {
+    if (absl::AsciiStrToLower(platform->Name()) == platform_str) {
       return platform;
     }
   }
@@ -147,7 +146,7 @@ PlatformUtil::GetSupportedPlatforms() {
   TF_ASSIGN_OR_RETURN(auto platforms, PlatformUtil::GetSupportedPlatforms());
   std::vector<se::Platform*> matched;
   for (se::Platform* platform : platforms) {
-    if (Lowercase(platform->Name()) != platform_name) {
+    if (absl::AsciiStrToLower(platform->Name()) != platform_name) {
       matched.push_back(platform);
     }
   }
