@@ -180,9 +180,9 @@ If you follow these instructions, you will not need to disable SIP.
 
 After installing pip, invoke the following commands:
 
-<pre> $ <b>sudo pip install six numpy wheel mock h5py</b>
- $ <b>sudo pip install keras_applications==1.0.4 --no-deps</b>
- $ <b>sudo pip install keras_preprocessing==1.0.2 --no-deps</b>
+<pre> $ <b>pip install six numpy wheel mock h5py</b>
+ $ <b>pip install keras_applications==1.0.5 --no-deps</b>
+ $ <b>pip install keras_preprocessing==1.0.3 --no-deps</b>
 </pre>
 
 Note: These are just the minimum requirements to _build_ tensorflow. Installing
