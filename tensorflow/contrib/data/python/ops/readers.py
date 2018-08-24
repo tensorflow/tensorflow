@@ -325,7 +325,6 @@ def make_csv_dataset(
     shuffle_seed=None,
     prefetch_buffer_size=1,
     num_parallel_reads=1,
-    num_parallel_parser_calls=2,
     sloppy=False,
     num_rows_for_inference=100,
     compression_type=None,
@@ -392,8 +391,6 @@ def make_csv_dataset(
       batches consumed per training step.
     num_parallel_reads: Number of threads used to read CSV records from files.
       If >1, the results will be interleaved.
-    num_parallel_parser_calls: Number of parallel invocations of the CSV parsing
-      function on CSV records.
     sloppy: If `True`, reading performance will be improved at
       the cost of non-deterministic ordering. If `False`, the order of elements
       produced is deterministic prior to shuffling (elements are still
@@ -502,7 +499,7 @@ def make_csv_dataset(
   # indefinitely, and all batches will be full-sized.
   dataset = dataset.batch(batch_size=batch_size,
                           drop_remainder=num_epochs is None)
-  dataset = dataset.map(map_fn, num_parallel_calls=num_parallel_parser_calls)
+  dataset = dataset.map(map_fn)
   dataset = dataset.prefetch(prefetch_buffer_size)
 
   return dataset
