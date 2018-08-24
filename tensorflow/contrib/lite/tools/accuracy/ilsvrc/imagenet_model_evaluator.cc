@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/lite/tools/accuracy/imagenet_model_evaluator.h"
+#include "tensorflow/contrib/lite/tools/accuracy/ilsvrc/imagenet_model_evaluator.h"
 
 #include <fstream>
 #include <iomanip>
@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/contrib/lite/tools/accuracy/eval_pipeline.h"
 #include "tensorflow/contrib/lite/tools/accuracy/eval_pipeline_builder.h"
 #include "tensorflow/contrib/lite/tools/accuracy/file_reader_stage.h"
-#include "tensorflow/contrib/lite/tools/accuracy/imagenet_topk_eval.h"
-#include "tensorflow/contrib/lite/tools/accuracy/inception_preprocessing.h"
+#include "tensorflow/contrib/lite/tools/accuracy/ilsvrc/imagenet_topk_eval.h"
+#include "tensorflow/contrib/lite/tools/accuracy/ilsvrc/inception_preprocessing.h"
 #include "tensorflow/contrib/lite/tools/accuracy/run_tflite_model_stage.h"
 #include "tensorflow/contrib/lite/tools/accuracy/utils.h"
 #include "tensorflow/core/platform/init_main.h"
