@@ -94,8 +94,8 @@ string BufferLiveness::ToString() const {
 
 bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
                                                 const LogicalBuffer& b) const {
-  TF_CHECK_OK(points_to_analysis_->VerifyBuffer(a));
-  TF_CHECK_OK(points_to_analysis_->VerifyBuffer(b));
+  TF_DCHECK_OK(points_to_analysis_->VerifyBuffer(a));
+  TF_DCHECK_OK(points_to_analysis_->VerifyBuffer(b));
 
   if (!hlo_ordering_->ExecutesBefore(a.instruction(), b.instruction())) {
     return false;
