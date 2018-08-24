@@ -2055,7 +2055,7 @@ class SVDFOpModel : public BaseSVDFOpModel {
   }
 };
 
-TEST(NNAPIDelegate, SVDFBlackBoxTestRank1) {
+TEST(NNAPIDelegate, DISABLED_SVDFBlackBoxTestRank1) {
   SVDFOpModel svdf(/*batches=*/2, /*units=*/4, /*input_size=*/3,
                    /*memory_size=*/10, /*rank=*/1);
   svdf.SetWeightsFeature({-0.31930989, -0.36118156, 0.0079667, 0.37613347,
@@ -2078,7 +2078,7 @@ TEST(NNAPIDelegate, SVDFBlackBoxTestRank1) {
   svdf.VerifyGoldens(svdf_input, svdf_golden_output_rank_1, sizeof(svdf_input));
 }
 
-TEST(NNAPIDelegate, SVDFBlackBoxTestRank2) {
+TEST(NNAPIDelegate, DISABLED_SVDFBlackBoxTestRank2) {
   SVDFOpModel svdf(/*batches=*/2, /*units=*/4, /*input_size=*/3,
                    /*memory_size=*/10, /*rank=*/2);
   svdf.SetWeightsFeature({-0.31930989, 0.0079667,   0.39296314,  0.37613347,
