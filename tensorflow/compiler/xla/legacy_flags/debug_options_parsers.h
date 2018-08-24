@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_LEGACY_FLAGS_DEBUG_OPTIONS_PARSERS_H_
 
 #include <vector>
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
@@ -87,10 +87,11 @@ inline bool parse_xla_reduce_precision_option(
 
   // Split E and M, and parse.
   std::vector<int32> bitsizes;
-  if (!tensorflow::str_util::SplitAndParseAsInts(colon_split[0], ',',
-                                                 &bitsizes) ||
-      bitsizes.size() != 2) {
-    return false;
+  for (const auto& s : absl::StrSplit(colon_split[0], ',')) {
+    bitsizes.emplace_back();
+    if (!absl::SimpleAtoi(s, &bitsizes.back())) {
+      return false;
+    }
   }
   options->set_exponent_bits(bitsizes[0]);
   options->set_mantissa_bits(bitsizes[1]);
