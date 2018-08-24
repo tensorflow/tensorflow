@@ -290,7 +290,6 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       return "ParseExampleDatasetOp::Dataset";
     }
 
-    // TODO(b/111553342): Add/Check support for checkpointing.
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
