@@ -32,7 +32,7 @@ bool ParseStringFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
   if (str_util::ConsumePrefix(&arg, "--") &&
       str_util::ConsumePrefix(&arg, flag) &&
       str_util::ConsumePrefix(&arg, "=")) {
-    *value_parsing_ok = hook(std::string(arg));
+    *value_parsing_ok = hook(string(arg));
     return true;
   }
 
