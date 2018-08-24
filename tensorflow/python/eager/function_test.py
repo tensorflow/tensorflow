@@ -130,16 +130,16 @@ class FunctionTest(test.TestCase):
     with ops.Graph().as_default():
       self.assertEqual(f().shape, ())
 
-  def testBasicDefunOpGraphMode(self):
+  def testBasicGraphFunction(self):
     matmul = function.defun(math_ops.matmul)
 
+    @function.defun
     def sq(a):
       return matmul(a, a)
 
     t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
 
-    sq_op = function.make_defun_op(sq, t)
-
+    sq_op = sq.get_concrete_function(t)
     self.assertEqual(sq_op.output_shapes, tensor_shape.TensorShape([2, 2]))
     out = sq_op(t)
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
@@ -223,33 +223,32 @@ class FunctionTest(test.TestCase):
       g, = gradients_impl.gradients(f_c, c)
       self.assertAllEqual(sess.run(g), [[1.0]])
 
-  def testNestedInputsDefunOpGraphMode(self):
+  def testNestedInputsGraphFunction(self):
     matmul = function.defun(math_ops.matmul)
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
+    @function.defun
     def a_times_b(inputs):
       return matmul(inputs.a['a'], inputs.b['b'])
 
     t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
-
     inputs = pair({'a': t}, {'b': t})
-    sq_op = function.make_defun_op(a_times_b, inputs)
-
+    sq_op = a_times_b.get_concrete_function(inputs)
     self.assertEqual(sq_op.output_shapes, tensor_shape.TensorShape([2, 2]))
     out = sq_op(inputs)
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
-  def testNestedOutputDefunOpGraphMode(self):
+  def testNestedOutputGraphFunction(self):
     matmul = function.defun(math_ops.matmul)
 
+    @function.defun
     def sq(a):
       return (matmul(a, a), {'b': constant_op.constant(1.0)})
 
     t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
 
-    sq_op = function.make_defun_op(sq, t)
-
+    sq_op = sq.get_concrete_function(t)
     self.assertEqual(sq_op.output_shapes,
                      (tensor_shape.TensorShape([2, 2]),
                       {'b': tensor_shape.TensorShape([])}))
@@ -259,28 +258,28 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(a, math_ops.matmul(t, t).numpy())
     self.assertAllEqual(b['b'].numpy(), 1.0)
 
-  def testDefunOpGraphModeWithGradients(self):
+  def testGraphFunctionWithGradients(self):
     v = resource_variable_ops.ResourceVariable(1.0, name='v')
 
+    @function.defun
     def step():
       def inner():
         return v * v
 
       return backprop.implicit_grad(inner)()[0][0]
 
-    step_op = function.make_defun_op(step)
-
+    step_op = step.get_concrete_function()
     self.assertEqual(step_op.output_dtypes, dtypes.float32)
     self.assertEqual(step_op.output_shapes, tensor_shape.TensorShape([]))
     self.assertAllEqual(step_op(), 2.0)
 
-  def testDefunOpGraphModeNoneOutput(self):
+  def testGraphFunctionNoneOutput(self):
+    @function.defun
     def fn(unused_a, unused_b):
       return None
 
     x = constant_op.constant(1)
-    fn_op = function.make_defun_op(fn, x, x)
-
+    fn_op = fn.get_concrete_function(x, x)
     self.assertEqual(fn_op.output_dtypes, None)
     self.assertEqual(fn_op.output_shapes, None)
     self.assertAllEqual(fn_op(x, x), None)
@@ -321,13 +320,13 @@ class FunctionTest(test.TestCase):
     x = random_ops.random_uniform([2, 2]).numpy()
     defined = function.defun(f)
     defined(x)
-    self.assertEqual(len(defined._arguments_to_functions), 1)
+    self.assertEqual(len(defined._function_cache), 1)
 
     x = random_ops.random_uniform([2, 2]).numpy()
     defined(x)
     # A NumPy array with different values but the same shape and dtype
     # shouldn't trigger another function definition.
-    self.assertEqual(len(defined._arguments_to_functions), 1)
+    self.assertEqual(len(defined._function_cache), 1)
 
   def testDefunCapturedInt32(self):
     x = constant_op.constant(1, dtype=dtypes.int32)
@@ -686,17 +685,19 @@ class FunctionTest(test.TestCase):
   def testReturningIndexedSlicesWithDefun(self):
 
     def validate(indexed_slice):
+      @function.defun
       def f():
         return indexed_slice
 
-      output = function.defun(f)()
+      output = f()
       self.assertTrue(isinstance(output, ops.IndexedSlices))
       self.assertAllEqual(indexed_slice.values, output.values)
       self.assertAllEqual(indexed_slice.indices, output.indices)
       self.assertAllEqual(indexed_slice.dense_shape, output.dense_shape)
 
       self.assertEqual(
-          function.make_defun_op(f).output_shapes, indexed_slice.values.shape)
+          f.get_concrete_function().output_shapes,
+          indexed_slice.values.shape)
 
     arg = ops.IndexedSlices(
         values=constant_op.constant([1, 2]),
@@ -1035,14 +1036,14 @@ class FunctionTest(test.TestCase):
 
     defined = function.defun(multi_device_fn)
     outputs = self.evaluate(defined())
-    self.assertEqual(len(defined._arguments_to_functions), 1)
+    self.assertEqual(len(defined._function_cache), 1)
     self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
     self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
     self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
 
     with ops.device('/cpu:3'):
       outputs = self.evaluate(defined())
-    self.assertEqual(len(defined._arguments_to_functions), 2)
+    self.assertEqual(len(defined._function_cache), 2)
     self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
     self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
     self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
@@ -1050,12 +1051,12 @@ class FunctionTest(test.TestCase):
 
     # This should retrieve the call-site-device agnostic function
     defined()
-    self.assertEqual(len(defined._arguments_to_functions), 2)
+    self.assertEqual(len(defined._function_cache), 2)
 
     # And this should retrieve the function created for '/cpu:3'
     with ops.device('/cpu:3'):
       defined()
-    self.assertEqual(len(defined._arguments_to_functions), 2)
+    self.assertEqual(len(defined._function_cache), 2)
 
   @test_util.run_in_graph_and_eager_modes(
       config=config_pb2.ConfigProto(device_count={'CPU': 2}))
@@ -1064,8 +1065,9 @@ class FunctionTest(test.TestCase):
     def func():
       return constant_op.constant(0)
 
+    defined = function.defun(func)
     with ops.device('cpu:0'):
-      cpu_graph_function = function.make_defun_op(func)
+      cpu_graph_function = defined.get_concrete_function()
 
     with ops.device('cpu:0'):
       self.assertEqual(
@@ -1087,8 +1089,7 @@ class FunctionTest(test.TestCase):
       with ops.device(None):
         cpu_graph_function()
 
-    default_graph_function = function.make_defun_op(func)
-
+    default_graph_function = defined.get_concrete_function()
     self.assertEqual(
         self.evaluate(default_graph_function()), self.evaluate(func()))
 
@@ -1130,7 +1131,7 @@ class FunctionTest(test.TestCase):
 
     def cache_keys():
       """Sanitizes cache keys of non-input metadata."""
-      return tuple(key[:3] for key in defined._arguments_to_functions)
+      return tuple(key[:3] for key in defined._function_cache)
 
     # `True` corresponds to the fact that we're executing eagerly
     self.assertIn((0, 1, 20), cache_keys())
@@ -1140,18 +1141,18 @@ class FunctionTest(test.TestCase):
 
     # This matches the previous call.
     defined(foo=1)
-    self.assertEqual(len(defined._arguments_to_functions), 2)
+    self.assertEqual(len(defined._function_cache), 2)
 
     defined(1, 2, 3)
     self.assertIn((1, 2, 3), cache_keys())
 
     # This matches the previous call.
     defined(1, bar=2, baz=3)
-    self.assertEqual(len(defined._arguments_to_functions), 3)
+    self.assertEqual(len(defined._function_cache), 3)
 
     # This matches the previous call.
     defined(1, baz=3, bar=2)
-    self.assertEqual(len(defined._arguments_to_functions), 3)
+    self.assertEqual(len(defined._function_cache), 3)
 
   def testFunctoolsPartialUnwrappedCorrectly(self):
 
@@ -1177,7 +1178,7 @@ class FunctionTest(test.TestCase):
     defined = function.defun(foo, input_signature=signature)
     a = array_ops.ones([2])
     out = defined(a)
-    self.assertEqual(len(defined._arguments_to_functions), 1)
+    self.assertEqual(len(defined._function_cache), 1)
     self.assertAllEqual(out, a)
 
     def bar(a):
@@ -1188,13 +1189,13 @@ class FunctionTest(test.TestCase):
     defined = function.defun(bar, input_signature=signature)
     a = array_ops.ones([2, 1])
     out = defined(a)
-    self.assertEqual(len(defined._arguments_to_functions), 1)
+    self.assertEqual(len(defined._function_cache), 1)
     self.assertAllEqual(out, a)
 
     # Changing the second dimension shouldn't create a new function.
     b = array_ops.ones([2, 3])
     out = defined(b)
-    self.assertEqual(len(defined._arguments_to_functions), 1)
+    self.assertEqual(len(defined._function_cache), 1)
     self.assertAllEqual(out, b)
 
   def testNestedInputSignatures(self):
@@ -1211,7 +1212,7 @@ class FunctionTest(test.TestCase):
     a = array_ops.ones([2, 1])
     b = array_ops.ones([1])
     out = defined([a, a], b)
-    self.assertEqual(len(defined._arguments_to_functions), 1)
+    self.assertEqual(len(defined._function_cache), 1)
     nest.assert_same_structure(out, [[a, a], b])
     self.assertAllEqual(out[0][0], a)
     self.assertAllEqual(out[0][1], a)
@@ -1222,7 +1223,7 @@ class FunctionTest(test.TestCase):
     b = array_ops.ones([2, 5])
     c = array_ops.ones([1])
     out = defined([a, b], c)
-    self.assertEqual(len(defined._arguments_to_functions), 1)
+    self.assertEqual(len(defined._function_cache), 1)
     nest.assert_same_structure(out, [[a, b], c])
     self.assertAllEqual(out[0][0], a)
     self.assertAllEqual(out[0][1], b)
@@ -1258,13 +1259,13 @@ class FunctionTest(test.TestCase):
     # Signatures must consist exclusively of `TensorSpec` objects.
     signature = [(2, 3), tensor_spec.TensorSpec([2, 3], dtypes.float32)]
     with self.assertRaisesRegexp(TypeError, 'Invalid input_signature.*'):
-      function.defun(foo, input_signature=signature)(1, 2)
+      function.defun(foo, input_signature=signature)
 
     # Signatures must be either lists or tuples on their outermost levels.
     signature = {'t1': tensor_spec.TensorSpec([], dtypes.float32)}
     with self.assertRaisesRegexp(TypeError, 'input_signature must be either a '
                                  'tuple or a list.*'):
-      function.defun(foo, input_signature=signature)(1, 2)
+      function.defun(foo, input_signature=signature)
 
   def testInputsIncompatibleWithSignatureRaisesError(self):
 
@@ -1318,22 +1319,22 @@ class FunctionTest(test.TestCase):
     integer = constant_op.constant(2, dtypes.int64)
 
     out1, out2 = foo(flt, integer)
-    self.assertEqual(len(foo._arguments_to_functions), 1)
+    self.assertEqual(len(foo._function_cache), 1)
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
     out1, out2 = foo(flt=flt, integer=integer)
-    self.assertEqual(len(foo._arguments_to_functions), 1)
+    self.assertEqual(len(foo._function_cache), 1)
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
     out1, out2 = foo(integer=integer, flt=flt)
-    self.assertEqual(len(foo._arguments_to_functions), 1)
+    self.assertEqual(len(foo._function_cache), 1)
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
     out1, out2 = foo(flt, integer=integer)
-    self.assertEqual(len(foo._arguments_to_functions), 1)
+    self.assertEqual(len(foo._function_cache), 1)
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
@@ -1363,27 +1364,27 @@ class FunctionTest(test.TestCase):
     a = constant_op.constant(2.0)
     b = constant_op.constant([1.0, 2.0])
     one = defined(a, b)
-    self.assertEqual(len(defined._arguments_to_functions), 1)
+    self.assertEqual(len(defined._function_cache), 1)
 
     two = defined(a=a, b=b)
-    self.assertEqual(len(defined._arguments_to_functions), 1)
+    self.assertEqual(len(defined._function_cache), 1)
 
     three = defined(b=b, a=a)
-    self.assertEqual(len(defined._arguments_to_functions), 1)
+    self.assertEqual(len(defined._function_cache), 1)
 
     four = defined(a, b=b)
-    self.assertEqual(len(defined._arguments_to_functions), 1)
+    self.assertEqual(len(defined._function_cache), 1)
 
     # The next call corresponds to a new input signature, hence
     # we expect another function to be defined.
     five = defined(b, a)
-    self.assertEqual(len(defined._arguments_to_functions), 2)
+    self.assertEqual(len(defined._function_cache), 2)
 
     six = defined(a=b, b=a)
-    self.assertEqual(len(defined._arguments_to_functions), 2)
+    self.assertEqual(len(defined._function_cache), 2)
 
     seven = defined(b=a, a=b)
-    self.assertEqual(len(defined._arguments_to_functions), 2)
+    self.assertEqual(len(defined._function_cache), 2)
 
     self.assertAllEqual(one, [1.0, 2.0])
     self.assertAllEqual(two, [1.0, 2.0])
@@ -1468,7 +1469,7 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(state, [0])
 
     # Whereas calling the python function directly should create a side-effect.
-    side_effecting_function.call_python_function()
+    side_effecting_function.python_function()
     self.assertAllEqual(state, [0, 0])
 
 

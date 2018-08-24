@@ -199,10 +199,11 @@ class FunctionDefToGraphDefTest(test.TestCase):
 
       return inner_fn()
 
+    @function.defun
     def fn2():
       return 2 * fn()
 
-    fn2_defun = function.make_defun_op(fn2)
+    fn2_defun = fn2.get_concrete_function()
 
     # Call `fn2` to make sure `fn` is correctly instantiated so
     # `function_def_to_graph` can find it.
@@ -221,6 +222,7 @@ class FunctionDefToGraphDefTest(test.TestCase):
 
   def testControlDependencies(self):
 
+    @function.defun
     def fn(inp):
       x = constant_op.constant(2.0, name="x")
       # TODO(b/79881896): Test external control dependency once that's
@@ -230,7 +232,7 @@ class FunctionDefToGraphDefTest(test.TestCase):
       return 4.0
 
     inp = constant_op.constant(1.0)
-    fdef = function.make_defun_op(fn, inp)._inference_function.definition
+    fdef = fn.get_concrete_function(inp).function_def
     func_graph = function_def_to_graph.function_def_to_graph(fdef)
 
     op = func_graph.get_operation_by_name("y")
