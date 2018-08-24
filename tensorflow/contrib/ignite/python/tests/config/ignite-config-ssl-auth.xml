@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+     http://www.apache.org/licenses/LICENSE-2.0
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+
+
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+       xmlns:util="http://www.springframework.org/schema/util"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://www.springframework.org/schema/util
+       http://www.springframework.org/schema/util/spring-util.xsd">  
+
+  <bean id="client-connector-configuration" 
+        class="org.apache.ignite.configuration.ClientConnectorConfiguration">
+    <property name="sslClientAuth" value="true" />
+    <property name="sslEnabled" value="true" />
+    <property name="useIgniteSslContextFactory" value="true" />
+  </bean>
+
+  <bean id="ssl-context-factory" 
+        class="org.apache.ignite.ssl.SslContextFactory">
+    <property name="keyStoreFilePath" value="/data/keystore/server.jks"/>
+    <property name="keyStorePassword" value="123456"/>
+    <property name="trustStoreFilePath" value="/data/keystore/trust.jks"/>
+    <property name="trustStorePassword" value="123456"/>
+  </bean>
+
+  <bean id="ignite-configuration" 
+        class="org.apache.ignite.configuration.IgniteConfiguration">
+    <property name="clientConnectorConfiguration" 
+              ref="client-connector-configuration" />
+    <property name="sslContextFactory" ref="ssl-context-factory" />
+    <property name="discoverySpi">
+      <bean class="org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi">
+        <property name="ipFinder">
+          <bean class="org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder">
+            <property name="addresses">
+              <list>
+                <value>127.0.0.1</value>
+              </list>
+            </property>
+          </bean>
+        </property>
+      </bean>
+    </property>
+  </bean>
+
+</beans>
