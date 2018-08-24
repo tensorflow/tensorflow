@@ -212,9 +212,9 @@ class XlaCompiler {
 
   struct CompilationResult {
     // Vector that maps from the parameters of the XLA computation to their
-    // original argument positions. To handle compile-time constant inputs and
-    // resources, the parameters to the XLA computation may be a subset of the
-    // original arguments, and are not necessarily in the same order.)
+    // original argument positions. To handle compile-time constant inputs, the
+    // parameters to the XLA computation may be a subset of the original
+    // arguments. The relative ordering of parameters are maintained.
     std::vector<int> input_mapping;
 
     // Input shapes of the computation. If we are flattening inputs, these are

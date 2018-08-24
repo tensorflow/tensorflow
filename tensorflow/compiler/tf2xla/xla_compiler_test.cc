@@ -280,6 +280,54 @@ TEST_F(XlaCompilerTest, OutOfOrderGraph) {
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(*param0_literal, *actual_literal));
 }
 
+// Tests that the compiler doesn't reorder the parameters.
+TEST_F(XlaCompilerTest, MixedOrderArguments) {
+  for (bool swap_order : {false, true}) {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto var =
+        ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, swap_order ? 0 : 1);
+    auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, swap_order ? 1 : 0);
+    // Adds an identity op around the resource to make sure identity ops
+    // propagate resources correctly.
+    auto identity = ops::Identity(scope.WithOpName("VIdentity"), var);
+    auto write = ops::AssignAddVariableOp(scope, identity, a);
+    auto read = ops::ReadVariableOp(
+        scope.WithControlDependencies(std::vector<Operation>{write}), var,
+        DT_INT32);
+    auto read_plus_one = ops::Add(scope, read, ops::Const<int32>(scope, 1));
+    auto d = ops::_Retval(scope.WithOpName("D"), read_plus_one, 0);
+    std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+    TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+    // Builds a description of the arguments.
+    std::vector<XlaCompiler::Argument> args(2);
+    args[0].kind = XlaCompiler::Argument::kParameter;
+    args[0].type = DT_INT32;
+    args[0].shape = TensorShape({2});
+    args[1].kind = XlaCompiler::Argument::kResource;
+    args[1].resource_kind = XlaResource::kVariable;
+    args[1].initialized = true;
+    args[1].type = DT_INT32;
+    args[1].shape = TensorShape({2});
+
+    if (swap_order) {
+      // Even after swapping arguments, the compiler should maintain the new
+      // ordering of parameters.
+      std::swap(args[0], args[1]);
+    }
+    // Compiles the graph.
+    XlaCompiler compiler(DefaultOptions());
+
+    XlaCompiler::CompileOptions compile_options;
+    compile_options.always_return_tuple = false;
+    XlaCompiler::CompilationResult result;
+    TF_ASSERT_OK(compiler.CompileGraph(compile_options, "add", std::move(graph),
+                                       args, &result));
+
+    EXPECT_THAT(result.input_mapping, ::testing::ElementsAre(0, 1));
+  }
+}
+
 TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
   // Builds a graph that adds reshapes a tensor, but with the shape not
   // statically known.
