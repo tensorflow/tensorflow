@@ -186,17 +186,6 @@ def get_nested_model_3(input_dim, num_classes):
   return keras.Model(inputs, outputs, name='nested_model_3')
 
 
-class MinimalDeterministicModel(keras.Model):
-
-  def __init__(self):
-    super(MinimalDeterministicModel, self).__init__(name='')
-    self.fc = keras.layers.Dense(2, name='fc', kernel_initializer='ones',
-                                 bias_initializer='zeros')
-
-  def call(self, inputs, training=True):
-    return self.fc(inputs)
-
-
 class ModelSubclassingTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
@@ -988,21 +977,6 @@ class ModelSubclassingTest(test.TestCase):
     self.assertEqual([m.var], m.trainable_variables)
     self.assertEqual([m.dense.kernel, m.dense.bias, m.not_trainable_var],
                      m.non_trainable_variables)
-
-  @test_util.run_in_graph_and_eager_modes
-  def test_loss_correctness(self):
-    # Test that training loss is the same in eager and graph
-    # (by comparing it to a reference value in a deterministic case)
-    model = MinimalDeterministicModel()
-    model.compile(loss='sparse_categorical_crossentropy',
-                  optimizer=RMSPropOptimizer(learning_rate=0.001))
-
-    x = np.ones((100, 4))
-    np.random.seed(123)
-    y = np.random.randint(0, 1, size=(100, 1))
-    history = model.fit(x, y, epochs=1, batch_size=10)
-    self.assertEqual(
-        np.around(history.history['loss'][-1], decimals=4), 0.6931)
 
 
 class CustomCallModel(keras.Model):
