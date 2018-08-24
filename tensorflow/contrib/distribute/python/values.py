@@ -304,6 +304,10 @@ class DistributedVariable(DistributedDelegate):
                               self._primary_var.op.type)
     return self.get().op
 
+  @property
+  def _in_graph_mode(self):
+    return self._primary_var._in_graph_mode   # pylint: disable=protected-access
+
   def read_value(self):
     return distribution_strategy_context.get_distribution_strategy().read_var(
         self)
