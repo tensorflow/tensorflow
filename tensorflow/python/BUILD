@@ -3246,7 +3246,6 @@ py_library(
     ),
     srcs_version = "PY2AND3",
     deps = [
-        "saver",
         ":array_ops",
         ":array_ops_gen",
         ":checkpoint_management",
@@ -3270,6 +3269,7 @@ py_library(
         ":random_ops",
         ":resource_variable_ops",
         ":resources",
+        ":saver",
         ":sdca_ops",
         ":session",
         ":sparse_ops",
