@@ -29,7 +29,7 @@ Tensor ground_truth = ... read ground truth for the model ...
 TF_CHECK_OK(eval_pipeline.Run(input1, ground_truth1));
 ```
 For further examples, check the usage in [imagenet accuracy evaluation binary]
-(ilsvrc/imagenet_accuracy_eval.cc)
+(https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/tools/accuracy/ilsvrc/imagenet_accuracy_eval.cc)
 
 ## Measuring accuracy of published models.
 
@@ -37,4 +37,4 @@ For further examples, check the usage in [imagenet accuracy evaluation binary]
 For measuring accuracy for [ILSVRC 2012 image classification task]
 (http://www.image-net.org/challenges/LSVRC/2012/), the binary can be built
 using these
-[instructions](accuracy/ilsvrc/)
+[instructions.](ilsvrc/)
