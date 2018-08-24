@@ -32,13 +32,13 @@ namespace {
 //
 //    1. S := (N - 1) /  gcd(N-1, R-1)
 //    2. k := (R - 1) /  gcd(N-1, R-1)
-//    3. Convolution(kxk, stride=S, lhs_dilation=k, padding=k-1)
+//    3. Convolution((2k-1)x(2k-1), stride=S, lhs_dilation=k, padding=k-1)
 //
 // For example, to Scale from 7x7 -> 15x15:
 //
 //    1. S := (7-1) / gcd(7-1, 15-1) = 6 / gcd(6, 14) = 6 / 2 = 3
 //    2. k := (15 - 1) / gcd(7-1, 15-1) = 14 / gcd(6, 14) = 14 / 2 = 7
-//    3. Convolution(7x7, stride=3, lhs_dilation=3, padding=2)
+//    3. Convolution(15x15, stride=3, lhs_dilation=7, padding=2)
 //
 //
 // The 7x7 -> 15x15 case is much too large to write out in full as an
@@ -65,6 +65,8 @@ namespace {
 // 1/9 * 3 6 9 6 3
 //       2 4 6 4 2
 //       1 2 3 2 1
+// Note that the convolution kernel matrix is separable and thus we can instead
+// use 2 consecutive 1D kernel of the dimension 2k-1, along each axis.
 
 // Computes the size of the convolutional kernel and stride to use when resizing
 // from in_size to out_size.
@@ -198,7 +200,7 @@ xla::XlaOp ResizeUsingDilationAndConvolution(xla::XlaBuilder* builder,
   ResizeConvolutionDims dims =
       ComputeResizeConvolutionParameters(in_size, out_size);
   xla::XlaOp output;
-  // Split convolutions into independent dimensions if they wmuld be a very
+  // Split convolutions into independent dimensions if they would be a very
   // large kernel.
   if (dims.kernel_size[0] * dims.kernel_size[1] < kMax2DKernelSize) {
     xla::XlaOp kernel =

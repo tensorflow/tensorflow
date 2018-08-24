@@ -27,6 +27,8 @@ limitations under the License.
 #include <tuple>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -49,19 +51,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
-
-// For now moving only one API here, but we should have a single top level
-// anonymous namespace, instead of three or four spread all over this file.
-namespace {
-
-}  // namespace
 
 std::ostream& operator<<(std::ostream& out,
                          const LayoutConstraint& constraint) {
@@ -368,31 +362,27 @@ const ShapeLayout* LayoutConstraints::ResultLayout() const {
 
 string LayoutConstraints::ToString() const {
   string output;
-  tensorflow::strings::StrAppend(&output, "LayoutConstraints for computation ",
-                                 computation_->name(), ":\n");
+  absl::StrAppend(&output, "LayoutConstraints for computation ",
+                  computation_->name(), ":\n");
   for (auto* instruction : computation_->MakeInstructionPostOrder()) {
-    tensorflow::strings::StrAppend(&output, "  ", instruction->ToShortString(),
-                                   "\n");
+    absl::StrAppend(&output, "  ", instruction->ToShortString(), "\n");
     for (int64 i = 0; i < instruction->operand_count(); ++i) {
       if (OperandLayout(instruction, i) != nullptr) {
-        tensorflow::strings::StrAppend(
-            &output, "    operand (", i,
-            "): ", OperandLayout(instruction, i)->ToString(), "\n");
+        absl::StrAppend(&output, "    operand (", i,
+                        "): ", OperandLayout(instruction, i)->ToString(), "\n");
       }
     }
     for (const LogicalBuffer* buffer :
          points_to_analysis_.GetBuffersDefinedByInstruction(instruction)) {
       if (BufferLayout(*buffer) != nullptr) {
-        tensorflow::strings::StrAppend(
-            &output, "    ", buffer->ToString(), " : ",
-            LayoutUtil::HumanString(*BufferLayout(*buffer)), "\n");
+        absl::StrAppend(&output, "    ", buffer->ToString(), " : ",
+                        LayoutUtil::HumanString(*BufferLayout(*buffer)), "\n");
       }
     }
   }
 
   if (ResultLayout() != nullptr) {
-    tensorflow::strings::StrAppend(&output, "  => ", ResultLayout()->ToString(),
-                                   "\n");
+    absl::StrAppend(&output, "  => ", ResultLayout()->ToString(), "\n");
   }
   return output;
 }
@@ -909,7 +899,7 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
                       "Layout of instruction %s at index {%s} does not match "
                       "source LogicalBuffer %s: %s vs %s",
                       instruction->name().c_str(),
-                      tensorflow::str_util::Join(index, ",").c_str(),
+                      absl::StrJoin(index, ",").c_str(),
                       buffer->ToString().c_str(),
                       ShapeUtil::HumanStringWithLayout(instruction_subshape)
                           .c_str(),
@@ -1400,8 +1390,8 @@ StatusOr<Layout> InferArrayLayout(
       return FailedPrecondition(
           "Array at index {%s} in instruction %s aliases buffers %s "
           "and %s which have different layouts",
-          tensorflow::str_util::Join(index, ",").c_str(),
-          instruction->name().c_str(), source_buffers[0]->ToString().c_str(),
+          absl::StrJoin(index, ",").c_str(), instruction->name().c_str(),
+          source_buffers[0]->ToString().c_str(),
           source_buffer->ToString().c_str());
     }
   }

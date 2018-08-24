@@ -49,7 +49,7 @@ bool GpuMultiOutputFusion::ShapesCompatibleForFusion(HloInstruction* instr1,
         // If possible, we want to pick a reduce operand of the fusion root,
         // because it has the most constraints.
         for (const auto* inst : fused_expression_root->operands()) {
-          if (inst->opcode() == HloOpcode::kReduce) {
+          if (IsReductionToVector(*inst)) {
             return inst;
           }
         }
@@ -64,7 +64,7 @@ bool GpuMultiOutputFusion::ShapesCompatibleForFusion(HloInstruction* instr1,
   auto get_element_shape = [&](const HloInstruction* element_instr) {
     // Special handling of kReduce instructions -- the fusion
     // applies to the first operand.
-    if (element_instr->opcode() == HloOpcode::kReduce) {
+    if (IsReductionToVector(*element_instr)) {
       return element_instr->operand(0)->shape();
     }
     return element_instr->shape();
@@ -141,10 +141,15 @@ bool ReduceFriendlyInputLayouts(HloInstruction* instr) {
 }  // namespace
 
 bool GpuMultiOutputFusion::IsFusible(HloInstruction* instr) {
-  // We can fuse reduces and loop fusions.
-  return IsInputFusibleReduction(instr) ||
-         (instr->opcode() == HloOpcode::kFusion &&
-          instr->fusion_kind() == HloInstruction::FusionKind::kLoop);
+  // We can fuse reduces and loop fusions. Elementwise instructions can be fused
+  // with any other instruction.
+  // TODO(b/112957171): This should use the same isFusible logic as
+  // instruction_fusion.
+  return instr->IsFusable() &&
+         (IsInputFusibleReduction(instr) ||
+          (instr->opcode() == HloOpcode::kFusion &&
+           instr->fusion_kind() == HloInstruction::FusionKind::kLoop) ||
+          instr->IsElementwise());
 }
 
 int64 GpuMultiOutputFusion::GetProfit(HloInstruction* instr1,
@@ -178,11 +183,12 @@ bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
   // merge into bigger loop fusions and input (reduce) fusions become fusions
   // with multiple reduce outputs. We could fuse reduce and loop fusions
   // together too (the result being an input fusion) if we find cases where this
-  // improves things.
+  // improves things. Also disable fusing standalone input-fusible reduces into
+  // loop fusions.
   CHECK(instr1->opcode() == HloOpcode::kFusion);
   if ((instr2->opcode() == HloOpcode::kFusion &&
        instr1->fusion_kind() != instr2->fusion_kind()) ||
-      (instr2->opcode() != HloOpcode::kFusion &&
+      (IsReductionToVector(*instr2) &&
        instr1->fusion_kind() == HloInstruction::FusionKind::kLoop)) {
     return false;
   }

@@ -144,7 +144,7 @@ Status HeapSimulator::RunComputation(
         }
       } else {
         // A GetTupleElement doesn't need to keep all of its operand's buffers
-        // alive. It only needs the buffers that relate to the element its
+        // alive. It only needs the buffers that relate to the element it's
         // extracting, and the tuple it's extracting from, but not the buffers
         // for the other elements.
         for (const BufferValue* buffer : points_to.element({})) {
@@ -277,13 +277,13 @@ Status HeapSimulator::RunComputation(
                                                  *memory_by_computation_);
     }
 
-    // If the whole module is sequential, we can save memory by running the
-    // heap-simulation for sub-computations inline. E.g. the buffers for the
-    // condition and body of a kWhile instruction are only live for the duration
-    // of the instruction itself.
+    // If all computations in the module have been scheduled, we can save memory
+    // by running the heap-simulation for sub-computations inline. E.g. the
+    // buffers for the condition and body of a kWhile instruction are only live
+    // for the duration of the instruction itself.
     //
     // The order that the sub-computations are simulated does not affect
-    // correctness; since the whole module is sequential, we know that the
+    // correctness; since the whole module has been scheduled, we know that the
     // sub-computations will never be run concurrently.
     if (module_sequence_ != nullptr) {
       if (instruction->opcode() == HloOpcode::kCall ||
@@ -380,9 +380,10 @@ void HeapSimulator::Alloc(const BufferValue* buffer,
 
   allocated_buffers_.insert(buffer);
   const int64 size = size_fn_(*buffer);
-  algorithm_->Alloc(buffer, size);
-  no_fragmentation_stats_->Alloc(buffer, size);
-
+  const HloInstruction* instruction_to_calc_aliasing =
+      memory_by_computation_ == nullptr ? nullptr : instruction;
+  algorithm_->Alloc(buffer, size, instruction_to_calc_aliasing);
+  no_fragmentation_stats_->Alloc(buffer, size, instruction_to_calc_aliasing);
   FillDebugTrace(HeapSimulatorTrace::Event::ALLOC, buffer, instruction,
                  nullptr);
 }
@@ -517,6 +518,18 @@ void NoFragmentationStatsHeap::Alloc(const BufferValue* buffer, int64 size) {
   current_heap_size_ += size;
   if (current_heap_size_ > max_heap_size_) {
     max_heap_size_ = current_heap_size_;
+  }
+}
+
+void NoFragmentationStatsHeap::Alloc(const BufferValue* buffer, int64 size,
+                                     const HloInstruction* instruction) {
+  // The output buffer of while/call/conditional is always aliased with the
+  // output buffer of the root instruction in the body. Don't double count.
+  if (instruction == nullptr ||
+      (instruction->opcode() != HloOpcode::kWhile &&
+       instruction->opcode() != HloOpcode::kCall &&
+       instruction->opcode() != HloOpcode::kConditional)) {
+    Alloc(buffer, size);
   }
 }
 

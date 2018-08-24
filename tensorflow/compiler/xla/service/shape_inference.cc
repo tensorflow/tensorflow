@@ -22,6 +22,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -29,28 +32,24 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 
-using tensorflow::str_util::Join;
-using tensorflow::strings::Printf;
-
 namespace xla {
-
 namespace {
+
+using absl::StrJoin;
+using tensorflow::strings::Printf;
 
 // Returns true if no element is present in slice more than once.
 bool AllUnique(tensorflow::gtl::ArraySlice<int64> slice) {
   return std::set<int64>(slice.begin(), slice.end()).size() == slice.size();
 }
 
-Status ExpectArray(const Shape& shape, tensorflow::StringPiece op_type) {
+Status ExpectArray(const Shape& shape, absl::string_view op_type) {
   if (!ShapeUtil::IsArray(shape)) {
     return InvalidArgument("Expected array argument for %s, but got %s.",
                            std::string(op_type).c_str(),
@@ -234,10 +233,12 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   switch (opcode) {
     case HloOpcode::kFloor:
     case HloOpcode::kCeil:
+    case HloOpcode::kRoundNearestAfz:
       if (!ShapeUtil::ElementIsFloating(shape)) {
         return InvalidArgument(
-            "Expected element type in shape to be floating for floor/ceil "
-            "operation; got %s.",
+            "Expected element type in shape to be floating for %s operation; "
+            "got %s.",
+            HloOpcodeString(opcode).c_str(),
             PrimitiveType_Name(shape.element_type()).c_str());
       }
       return shape;
@@ -251,8 +252,9 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
       if (!ShapeUtil::ElementIsFloating(shape) &&
           !ShapeUtil::ElementIsComplex(shape)) {
         return InvalidArgument(
-            "Expected element type in shape to be floating or complex for "
-            "sin/cos/exp/log/tanh operation; got %s.",
+            "Expected element type in shape to be floating or complex for %s "
+            "operation; got %s.",
+            HloOpcodeString(opcode).c_str(),
             PrimitiveType_Name(shape.element_type()).c_str());
       }
       return shape;
@@ -265,19 +267,51 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
       } else {
         return InvalidArgument(
             "Expected element type in shape to be floating or complex for "
-            "real/imag operation; got %s.",
+            "%s operation; got %s.",
+            HloOpcodeString(opcode).c_str(),
             PrimitiveType_Name(shape.element_type()).c_str());
       }
     case HloOpcode::kAbs:
       if (ShapeUtil::ElementIsComplex(shape)) {
         return ShapeUtil::ChangeElementType(
             shape, primitive_util::ComplexComponentType(shape.element_type()));
+      } else if (ShapeUtil::ElementIsSigned(shape)) {
+        return shape;
+      } else {
+        return InvalidArgument(
+            "Expected element type in shape to be floating or complex for "
+            "%s operation; got %s.",
+            HloOpcodeString(opcode).c_str(),
+            PrimitiveType_Name(shape.element_type()).c_str());
+      }
+    case HloOpcode::kClz:
+      if (!ShapeUtil::ElementIsIntegral(shape)) {
+        return InvalidArgument(
+            "Expected an integral element type in argument to Clz "
+            "operation; got %s.",
+            PrimitiveType_Name(shape.element_type()).c_str());
       }
       return shape;
-    case HloOpcode::kClz:
     case HloOpcode::kNegate:
-    case HloOpcode::kRoundNearestAfz:
+      if (!ShapeUtil::ElementIsIntegral(shape) &&
+          !ShapeUtil::ElementIsFloating(shape) &&
+          !ShapeUtil::ElementIsComplex(shape)) {
+        return InvalidArgument(
+            "Expected element type in shape to be integral, floating or "
+            "complex for %s operation; got %s.",
+            HloOpcodeString(opcode).c_str(),
+            PrimitiveType_Name(shape.element_type()).c_str());
+      }
+      return shape;
     case HloOpcode::kSign:
+      if (!ShapeUtil::ElementIsSigned(shape) &&
+          !ShapeUtil::ElementIsComplex(shape)) {
+        return InvalidArgument(
+            "Expected element type in shape to be signed or complex for "
+            "%s operation; got %s.",
+            HloOpcodeString(opcode).c_str(),
+            PrimitiveType_Name(shape.element_type()).c_str());
+      }
       return shape;
 
     case HloOpcode::kNot:
@@ -879,16 +913,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       "inferring shape for <%s>(%s, %s) with broadcast_dimensions={%s}",
       HloOpcodeString(opcode).c_str(), ShapeUtil::HumanString(lhs).c_str(),
       ShapeUtil::HumanString(rhs).c_str(),
-      Join(broadcast_dimensions, ", ").c_str());
+      StrJoin(broadcast_dimensions, ", ").c_str());
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
 
-  TF_RETURN_IF_ERROR(
-      ExpectArray(lhs, tensorflow::strings::StrCat("lhs of binary operation ",
-                                                   HloOpcodeString(opcode))));
-  TF_RETURN_IF_ERROR(
-      ExpectArray(rhs, tensorflow::strings::StrCat("rhs of binary operation ",
-                                                   HloOpcodeString(opcode))));
+  TF_RETURN_IF_ERROR(ExpectArray(
+      lhs, absl::StrCat("lhs of binary operation ", HloOpcodeString(opcode))));
+  TF_RETURN_IF_ERROR(ExpectArray(
+      rhs, absl::StrCat("rhs of binary operation ", HloOpcodeString(opcode))));
   switch (opcode) {
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
@@ -1059,7 +1091,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     return InvalidArgument(
         "Map operation requires all operands to have the same shape; got: "
         "%s.",
-        Join(pieces, ", ").c_str());
+        StrJoin(pieces, ", ").c_str());
   }
 
   // Check that dimensions.size == arg_shape.dimensions_size() (we currently
@@ -1076,7 +1108,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     if (dimensions[i] != i) {
       return InvalidArgument(
           "Map requires monotonically increasing dimension numbers; got: %s.",
-          Join(dimensions, ", ").c_str());
+          StrJoin(dimensions, ", ").c_str());
     }
   }
 
@@ -1977,14 +2009,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         "%s in slice operation; argument shape: %s; starts: {%s}; limits: "
         "{%s}; strides: {%s}.",
         message.c_str(), ShapeUtil::HumanString(arg).c_str(),
-        Join(starts, ",").c_str(), Join(limits, ",").c_str(),
-        Join(strides, ",").c_str());
+        StrJoin(starts, ",").c_str(), StrJoin(limits, ",").c_str(),
+        StrJoin(strides, ",").c_str());
   };
   TF_RETURN_IF_ERROR(ExpectArray(arg, "operand of slice"));
   VLOG(2) << tensorflow::strings::Printf(
       "slicing shape %s starts={%s} limits={%s}",
-      ShapeUtil::HumanString(arg).c_str(), Join(starts, ", ").c_str(),
-      Join(limits, ", ").c_str());
+      ShapeUtil::HumanString(arg).c_str(), StrJoin(starts, ", ").c_str(),
+      StrJoin(limits, ", ").c_str());
 
   if (starts.size() != limits.size()) {
     return error(Printf("slice start and limit sizes differ: %zu vs %zu",
@@ -2047,7 +2079,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       "slicing shape %s at dynamic start_indices %s with slice_sizes={%s}",
       ShapeUtil::HumanString(operand_shape).c_str(),
       ShapeUtil::HumanString(start_indices_shape).c_str(),
-      Join(slice_sizes, ", ").c_str());
+      StrJoin(slice_sizes, ", ").c_str());
 
   if (ShapeUtil::Rank(start_indices_shape) != 1) {
     return InvalidArgument(
@@ -2344,7 +2376,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     return InvalidArgument(
         "Reshape dimensions [%s] are not a permutation of the operand "
         "dimensions (operand shape is %s).",
-        Join(dimensions, ",").c_str(), ShapeUtil::HumanString(operand).c_str());
+        StrJoin(dimensions, ",").c_str(),
+        ShapeUtil::HumanString(operand).c_str());
   }
 
   return inferred_shape;
@@ -2464,8 +2497,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   if (arg_shapes.size() != to_apply.parameters_size()) {
     string computation_signature = ShapeUtil::HumanString(to_apply);
     string argument_shapes =
-        Join(arg_shapes, ", ", [](string* out, const Shape* shape) {
-          tensorflow::strings::StrAppend(out, ShapeUtil::HumanString(*shape));
+        StrJoin(arg_shapes, ", ", [](string* out, const Shape* shape) {
+          absl::StrAppend(out, ShapeUtil::HumanString(*shape));
         });
     return InvalidArgument(
         "Call applied function arity must match number of arguments; got: "
@@ -2498,14 +2531,14 @@ static Status ValidateGatherDimensionNumbers(
   if (!absl::c_is_sorted(dim_numbers.offset_dims())) {
     return InvalidArgument(
         "Output window dimensions in gather op must be ascending; got: %s.",
-        Join(dim_numbers.offset_dims(), ", ").c_str());
+        StrJoin(dim_numbers.offset_dims(), ", ").c_str());
   }
 
   if (absl::c_adjacent_find(dim_numbers.offset_dims()) !=
       dim_numbers.offset_dims().end()) {
     return InvalidArgument(
         "Output window dimensions in gather op must not repeat; got: %s.",
-        Join(dim_numbers.offset_dims(), ", ").c_str());
+        StrJoin(dim_numbers.offset_dims(), ", ").c_str());
   }
 
   const int64 output_offset_dim_count = dim_numbers.offset_dims_size();
@@ -2554,7 +2587,7 @@ static Status ValidateGatherDimensionNumbers(
     return InvalidArgument(
         "Repeated dimensions are not allowed in start_index_map; "
         "got: %s.",
-        Join(dim_numbers.start_index_map(), ", ").c_str());
+        StrJoin(dim_numbers.start_index_map(), ", ").c_str());
   }
 
   for (int64 collapsed_dim : dim_numbers.collapsed_slice_dims()) {
@@ -2569,7 +2602,7 @@ static Status ValidateGatherDimensionNumbers(
   if (!absl::c_is_sorted(dim_numbers.collapsed_slice_dims())) {
     return InvalidArgument(
         "collapsed_slice_dims in gather op must be sorted; got: %s",
-        Join(dim_numbers.collapsed_slice_dims(), ", ").c_str());
+        StrJoin(dim_numbers.collapsed_slice_dims(), ", ").c_str());
   }
 
   if (absl::c_adjacent_find(dim_numbers.collapsed_slice_dims()) !=
@@ -2577,7 +2610,7 @@ static Status ValidateGatherDimensionNumbers(
     return InvalidArgument(
         "Repeated dimensions not allowed in collapsed_slice_dims in gather op; "
         "got: %s.",
-        Join(dim_numbers.collapsed_slice_dims(), ", ").c_str());
+        StrJoin(dim_numbers.collapsed_slice_dims(), ", ").c_str());
   }
 
   return Status::OK();
@@ -2639,8 +2672,9 @@ static Status ValidateGatherDimensionNumbers(
         "All components of the offset index in a gather op must either be a "
         "offset dimension or explicitly collapsed; got len(slice_sizes)=%lu, "
         "output_slice_sizes=%s, collapsed_slice_dims=%s.",
-        slice_sizes.size(), Join(gather_dim_numbers.offset_dims(), ",").c_str(),
-        Join(gather_dim_numbers.collapsed_slice_dims(), ",").c_str());
+        slice_sizes.size(),
+        StrJoin(gather_dim_numbers.offset_dims(), ",").c_str(),
+        StrJoin(gather_dim_numbers.collapsed_slice_dims(), ",").c_str());
   }
 
   for (int i = 0; i < slice_sizes.size(); i++) {
@@ -2703,13 +2737,13 @@ Status ValidateScatterDimensionNumbers(
   if (!absl::c_is_sorted(dim_numbers.update_window_dims())) {
     return InvalidArgument(
         "update_window_dims in scatter op must be sorted; got: %s.",
-        Join(dim_numbers.update_window_dims(), ", ").c_str());
+        StrJoin(dim_numbers.update_window_dims(), ", ").c_str());
   }
   if (absl::c_adjacent_find(dim_numbers.update_window_dims()) !=
       dim_numbers.update_window_dims().end()) {
     return InvalidArgument(
         "update_window_dims in scatter op must not repeat; got: %s.",
-        Join(dim_numbers.update_window_dims(), ", ").c_str());
+        StrJoin(dim_numbers.update_window_dims(), ", ").c_str());
   }
   const int64 updates_rank = ShapeUtil::Rank(updates_shape);
   for (int64 window_dim : dim_numbers.update_window_dims()) {
@@ -2725,13 +2759,13 @@ Status ValidateScatterDimensionNumbers(
   if (!absl::c_is_sorted(dim_numbers.inserted_window_dims())) {
     return InvalidArgument(
         "inserted_window_dims in scatter op must be sorted; got: %s.",
-        Join(dim_numbers.inserted_window_dims(), ", ").c_str());
+        StrJoin(dim_numbers.inserted_window_dims(), ", ").c_str());
   }
   if (absl::c_adjacent_find(dim_numbers.inserted_window_dims()) !=
       dim_numbers.inserted_window_dims().end()) {
     return InvalidArgument(
         "inserted_window_dims in scatter op must not repeat; got: %s.",
-        Join(dim_numbers.inserted_window_dims(), ", ").c_str());
+        StrJoin(dim_numbers.inserted_window_dims(), ", ").c_str());
   }
   for (int64 inserted_dim : dim_numbers.inserted_window_dims()) {
     if (inserted_dim < 0 || inserted_dim >= operand_shape.dimensions_size()) {
@@ -2773,7 +2807,7 @@ Status ValidateScatterDimensionNumbers(
     return InvalidArgument(
         "Repeated dimensions not allowed in scatter_dims_to_operand_dims; "
         "got: %s.",
-        Join(dim_numbers.scatter_dims_to_operand_dims(), ", ").c_str());
+        StrJoin(dim_numbers.scatter_dims_to_operand_dims(), ", ").c_str());
   }
 
   return Status::OK();

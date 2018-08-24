@@ -112,7 +112,7 @@ Status GpuExecutable::ExecuteThunks(
     //
     // TODO(jlebar): Should we cache the results of HloInstruction::ToString(),
     // since we expect it to be an expensive call?
-    tensorflow::gtl::optional<ScopedAnnotation> op_annotation;
+    absl::optional<ScopedAnnotation> op_annotation;
     if (top_level_annotation.IsEnabled()) {
       op_annotation.emplace(
           thunk->hlo_instruction() != nullptr

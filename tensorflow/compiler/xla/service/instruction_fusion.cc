@@ -131,7 +131,6 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kFft:
     case HloOpcode::kFusion:
     case HloOpcode::kGather:
-    case HloOpcode::kHostCompute:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
     case HloOpcode::kMap:

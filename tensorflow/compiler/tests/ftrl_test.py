@@ -29,7 +29,6 @@ from tensorflow.python.training import adagrad
 from tensorflow.python.training import ftrl
 from tensorflow.python.training import gradient_descent
 
-
 class FtrlOptimizerTest(xla_test.XLATestCase):
 
   def initVariableAndGradient(self, dtype):
@@ -112,7 +111,7 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
 
   def testFtrlwithoutRegularization(self):
     for dtype in self.float_types:
-      with self.test_session(), self.test_scope():
+      with self.cached_session(), self.test_scope():
         var0 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -146,7 +145,7 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
 
   def testFtrlwithoutRegularization2(self):
     for dtype in self.float_types:
-      with self.test_session(), self.test_scope():
+      with self.cached_session(), self.test_scope():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -174,7 +173,7 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
 
   def testFtrlWithL1(self):
     for dtype in self.float_types:
-      with self.test_session(), self.test_scope():
+      with self.cached_session(), self.test_scope():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -196,13 +195,17 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
 
         # Validate updated params
         self.assertAllCloseAccordingToType(
-            np.array([-7.66718769, -10.91273689]), var0.eval(), rtol=1e-4)
+            np.array([-7.66718769, -10.91273689]),
+            var0.eval(),
+            rtol=1e-4,
+            bfloat16_rtol=1e-1,
+            bfloat16_atol=1e-1)
         self.assertAllCloseAccordingToType(
             np.array([-0.93460727, -1.86147261]), var1.eval(), rtol=1e-4)
 
   def testFtrlWithL1_L2(self):
     for dtype in self.float_types:
-      with self.test_session(), self.test_scope():
+      with self.cached_session(), self.test_scope():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -236,7 +239,7 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
     weights will tend to have smaller magnitudes with this parameter set.
     """
     for dtype in self.float_types:
-      with self.test_session(), self.test_scope():
+      with self.cached_session(), self.test_scope():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -273,9 +276,9 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
   def testEquivAdagradwithoutRegularization(self):
     steps = 5
     for dtype in self.float_types:
-      with self.test_session(), self.test_scope():
+      with self.cached_session(), self.test_scope():
         val0, val1 = self.equivAdagradTest_FtrlPart(steps, dtype)
-      with self.test_session(), self.test_scope():
+      with self.cached_session(), self.test_scope():
         val2, val3 = self.equivAdagradTest_AdagradPart(steps, dtype)
 
     self.assertAllCloseAccordingToType(val0, val2, rtol=1e-4, half_rtol=1e-2)
@@ -284,9 +287,9 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
   def testEquivGradientDescentwithoutRegularization(self):
     steps = 5
     for dtype in self.float_types:
-      with self.test_session(), self.test_scope():
+      with self.cached_session(), self.test_scope():
         val0, val1 = self.equivGradientDescentTest_FtrlPart(steps, dtype)
-      with self.test_session(), self.test_scope():
+      with self.cached_session(), self.test_scope():
         val2, val3 = self.equivGradientDescentTest_GradientDescentPart(
             steps, dtype)
 

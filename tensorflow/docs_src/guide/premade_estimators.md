@@ -366,6 +366,8 @@ Running this code yields the following output (or something similar):
 Test set accuracy: 0.967
 ```
 
+The `eval_result` dictionary also contains the `average_loss` (mean loss per sample), the `loss` (mean loss per mini-batch) and the value of the estimator's `global_step` (the number of training iterations it underwent).
+
 ### Making predictions (inferring) from the trained model
 
 We now have a trained model that produces good evaluation results.

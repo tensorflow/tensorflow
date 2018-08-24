@@ -137,8 +137,7 @@ static StatusOr<ScopedShapedBuffer> ToBuffer(LocalClient* client,
 
 /* static */
 StatusOr<LocalShapedBuffer*> LocalShapedBuffer::FromLiteral(
-    const Literal& argument,
-    const tensorflow::gtl::optional<Shape>& shape_with_layout) {
+    const Literal& argument, const absl::optional<Shape>& shape_with_layout) {
   LocalClient* client = GetOrCreateLocalClient();
   StatusOr<ScopedShapedBuffer> buf = [&] {
     if (shape_with_layout) {
@@ -163,7 +162,7 @@ CompiledLocalComputation::CompiledLocalComputation(
 
 StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
     const std::vector<Literal>& arguments,
-    const std::vector<tensorflow::gtl::optional<Shape>>& shapes_with_layout) {
+    const std::vector<absl::optional<Shape>>& shapes_with_layout) {
   LocalClient* client = GetOrCreateLocalClient();
 
   VLOG(1) << "Execution requested with " << GetReplicaCount() << " replicas.";
@@ -194,7 +193,7 @@ StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
             scoped_buffers.reserve(arguments.size());
             for (int i = 0; i < arguments.size(); ++i) {
               const Literal& argument = arguments[i];
-              const tensorflow::gtl::optional<Shape>& shape_with_layout =
+              const absl::optional<Shape>& shape_with_layout =
                   shapes_with_layout[i];
 
               StatusOr<ScopedShapedBuffer> pushed;
@@ -576,7 +575,7 @@ StatusOr<bool> LocalComputationBuilder::IsConstant(const LocalOp& operand) {
 }
 
 LocalOp LocalComputationBuilder::Sort(const LocalOp& operand, int64 dimension) {
-  return xla::Sort(operand.op(), tensorflow::gtl::nullopt, dimension);
+  return xla::Sort(operand.op(), absl::nullopt, dimension);
 }
 
 LocalOp LocalComputationBuilder::SortKeyVal(const LocalOp& keys,

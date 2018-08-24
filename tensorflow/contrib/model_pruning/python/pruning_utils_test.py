@@ -38,7 +38,7 @@ class PruningUtilsTest(test.TestCase):
   def _compare_cdf(self, values):
     abs_values = math_ops.abs(values)
     max_value = math_ops.reduce_max(abs_values)
-    with self.test_session():
+    with self.cached_session():
       variables.global_variables_initializer().run()
       cdf_from_histogram = pruning_utils.compute_cdf_from_histogram(
           abs_values, [0.0, max_value], nbins=pruning_utils._NBINS)
@@ -55,7 +55,7 @@ class PruningUtilsTest(test.TestCase):
         "weights", [width, height], initializer=init)
     histogram = pruning_utils._histogram(
         weights, [0, 1.0], nbins, dtype=np.float32)
-    with self.test_session():
+    with self.cached_session():
       variables.global_variables_initializer().run()
       computed_histogram = histogram.eval()
     self.assertAllEqual(expected_histogram, computed_histogram)
@@ -67,7 +67,7 @@ class PruningUtilsTest(test.TestCase):
     norm_cdf = pruning_utils.compute_cdf_from_histogram(
         abs_weights, [0.0, 5.0], nbins=nbins)
     expected_cdf = np.array([0.1, 0.4, 0.5, 0.6, 1.0], dtype=np.float32)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       variables.global_variables_initializer().run()
       norm_cdf_val = sess.run(norm_cdf)
       self.assertAllEqual(len(norm_cdf_val), nbins)
@@ -90,7 +90,7 @@ class PruningUtilsTest(test.TestCase):
 class PruningUtilsParameterizedTest(test.TestCase, parameterized.TestCase):
 
   def _compare_pooling_methods(self, weights, pooling_kwargs):
-    with self.test_session():
+    with self.cached_session():
       variables.global_variables_initializer().run()
       pooled_weights_tf = array_ops.squeeze(
           nn_ops.pool(
@@ -104,7 +104,7 @@ class PruningUtilsParameterizedTest(test.TestCase, parameterized.TestCase):
                           pooled_weights_factorized_pool.eval())
 
   def _compare_expand_tensor_with_kronecker_product(self, tensor, block_dim):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       variables.global_variables_initializer().run()
       expanded_tensor = pruning_utils.expand_tensor(tensor, block_dim)
       kronecker_product = pruning_utils.kronecker_product(

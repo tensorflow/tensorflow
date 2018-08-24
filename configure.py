@@ -1508,6 +1508,8 @@ def main():
                 False, 'gdr')
   set_build_var(environ_cp, 'TF_NEED_VERBS', 'VERBS', 'with_verbs_support',
                 False, 'verbs')
+  set_build_var(environ_cp, 'TF_NEED_NGRAPH', 'nGraph',
+                'with_ngraph_support', False, 'ngraph')
 
   set_action_env_var(environ_cp, 'TF_NEED_OPENCL_SYCL', 'OpenCL SYCL', False)
   if environ_cp.get('TF_NEED_OPENCL_SYCL') == '1':

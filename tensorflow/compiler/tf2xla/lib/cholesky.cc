@@ -49,7 +49,8 @@ namespace {
 //     l[..., j+1:, j] = (a[..., j+1:, j] - np.dot(l[..., j+1:, :j], row_t)) /
 //                       l[..., j, j]
 //   return l
-xla::XlaOp CholeskyUnblocked(xla::XlaOp a) {
+xla::XlaOp CholeskyUnblocked(xla::XlaOp a,
+                             xla::PrecisionConfigProto::Precision precision) {
   xla::XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
     TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));
@@ -101,7 +102,8 @@ xla::XlaOp CholeskyUnblocked(xla::XlaOp a) {
       // np.dot(row, np.swapaxes(row, -1, -2))
       auto diag_dot = BatchDot(row, row,
                                /*transpose_x=*/false,
-                               /*transpose_y=*/true);
+                               /*transpose_y=*/true, /*conjugate_x=*/false,
+                               /*conjugate_y=*/false, precision);
       // l[..., i, i] = np.sqrt(a[..., i, i] - np.dot(row,
       //                                              np.swapaxes(row, -1, -2)))
       auto l_ii =
@@ -121,7 +123,8 @@ xla::XlaOp CholeskyUnblocked(xla::XlaOp a) {
       // r.T)
       auto dot = BatchDot(body_l, row,
                           /*transpose_x=*/false,
-                          /*transpose_y=*/true);
+                          /*transpose_y=*/true, /*conjugate_x=*/false,
+                          /*conjugate_y=*/false, precision);
       // np.dot(l[..., i+1:, :i], r.T)
       auto dot_ip1 =
           xla::Select(xla::Le(mask_range_col, i), mask_zeros_col, dot);
@@ -145,7 +148,8 @@ xla::XlaOp CholeskyUnblocked(xla::XlaOp a) {
 
 }  // namespace
 
-xla::XlaOp Cholesky(xla::XlaOp a, int64 block_size) {
+xla::XlaOp Cholesky(xla::XlaOp a, int64 block_size,
+                    xla::PrecisionConfigProto::Precision precision) {
   xla::XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
     TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));
@@ -181,14 +185,15 @@ xla::XlaOp Cholesky(xla::XlaOp a, int64 block_size) {
         auto lhs = SliceInMinorDims(l, {i, 0}, {n, i});
         auto rhs = SliceInMinorDims(l, {i, 0}, {i + k, i});
         auto delta = BatchDot(lhs, rhs, /*transpose_x=*/false,
-                              /*transpose_y=*/true);
+                              /*transpose_y=*/true, /*conjugate_x=*/false,
+                              /*conjugate_y=*/false, precision);
         auto before = SliceInMinorDims(a, {i, i}, {n, i + k});
         a = UpdateSliceInMinorDims(a, before - delta, {i, i});
       }
 
       // l[i:i+k, i:i+k] = cholesky_unblocked(a[i:i+k, i:i+k])
       auto x = SliceInMinorDims(a, {i, i}, {i + k, i + k});
-      auto factorized = CholeskyUnblocked(x);
+      auto factorized = CholeskyUnblocked(x, precision);
       l = UpdateSliceInMinorDims(l, factorized, {i, i});
 
       if (i + k < n) {

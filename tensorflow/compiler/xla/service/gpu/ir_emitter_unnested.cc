@@ -22,7 +22,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
@@ -78,7 +81,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -86,13 +88,13 @@ namespace gpu {
 
 namespace {
 
+using absl::InlinedVector;
+using absl::nullopt;
+using absl::optional;
+using absl::StrCat;
 using llvm_ir::IrArray;
 using llvm_ir::IrName;
 using tensorflow::gtl::ArraySlice;
-using tensorflow::gtl::InlinedVector;
-using tensorflow::gtl::nullopt;
-using tensorflow::gtl::optional;
-using tensorflow::strings::StrCat;
 
 // If a dimensions is smaller than this, untiled transposition may be more
 // efficient.
@@ -800,8 +802,7 @@ Status IrEmitterUnnested::EmitReductionToScalar(
   // //     RoundUpToNextMultipleOf(Ceil(num_elems / kTileSize), warpSize),
   // //
   // // and threads_per_block is a multiple of warpSize.
-  // reduce_kernel<<<num_blocks, threads_per_block>>>();
-  //
+  // reduce_kernel  //
   auto loop_body_emitter = [=](const IrArray::Index& tile_index) -> Status {
     const int num_reduces = reducers.size();
     llvm::Type* element_ir_type =
@@ -2097,9 +2098,9 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
 
       TF_RETURN_IF_ERROR(llvm_ir::EmitSortInPlace(
           dimension_to_sort, GetIrArray(*sort, *sort, keys_shape_index),
-          values != nullptr ? tensorflow::gtl::make_optional<IrArray>(
+          values != nullptr ? absl::make_optional<IrArray>(
                                   GetIrArray(*sort, *sort, values_shape_index))
-                            : tensorflow::gtl::nullopt,
+                            : absl::nullopt,
           IrName(sort), xor_mask, &b_, &launch_dimensions));
     }
   }
@@ -2307,7 +2308,7 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
   for (const auto& kv : hlo_slices) {
     buffers_needed.insert(kv.second.first.allocation());
   }
-  tensorflow::gtl::optional<const BufferAllocation*> temp_buffer;
+  absl::optional<const BufferAllocation*> temp_buffer;
   for (const BufferAllocation& alloc : buffer_assn.Allocations()) {
     if (alloc.IsPreallocatedTempBuffer()) {
       if (!temp_buffer.has_value()) {

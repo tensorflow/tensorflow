@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
+#include "absl/strings/str_cat.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/BasicBlock.h"
@@ -67,7 +68,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
@@ -502,7 +502,7 @@ Status IrEmitter::HandleTuple(HloInstruction* tuple) {
 llvm::Value* IrEmitter::EmitElementalMap(
     const HloMapInstruction& map_instr,
     tensorflow::gtl::ArraySlice<llvm::Value*> elemental_operands,
-    tensorflow::StringPiece name) {
+    absl::string_view name) {
   return EmitThreadLocalCall(*map_instr.to_apply(), elemental_operands, name);
 }
 
@@ -846,7 +846,7 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForConvolution(
         loops
             .AddLoop(
                 0, rhs->shape().dimensions(dnums.kernel_spatial_dimensions(i)),
-                tensorflow::strings::StrCat("k", i))
+                absl::StrCat("k", i))
             ->GetIndVarValue();
   }
   llvm::Value* input_feature =
@@ -2118,7 +2118,7 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
 
 Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   gtl::ArraySlice<HloInstruction*> operands(custom_call->operands());
-  tensorflow::StringPiece custom_call_target(custom_call->custom_call_target());
+  absl::string_view custom_call_target(custom_call->custom_call_target());
   llvm::Type* i8_ptr_type = b_.getInt8PtrTy();
   llvm::AllocaInst* operands_alloca =
       llvm_ir::EmitAllocaAtFunctionEntryWithCount(
@@ -2687,9 +2687,8 @@ llvm::Value* IrEmitter::EmitThreadLocalTempBufferPointer(
     auto buf_it = thread_local_buffers_.find(key);
     if (buf_it == thread_local_buffers_.end()) {
       llvm::Value* buffer = llvm_ir::EmitAllocaAtFunctionEntry(
-          IrShapeType(shape),
-          tensorflow::strings::StrCat("thread_local", slice.ToString()), &b_,
-          MinimumAlignmentForShape(target_shape));
+          IrShapeType(shape), absl::StrCat("thread_local", slice.ToString()),
+          &b_, MinimumAlignmentForShape(target_shape));
       auto it_inserted_pair = thread_local_buffers_.insert({key, buffer});
       CHECK(it_inserted_pair.second);
       buf_it = it_inserted_pair.first;
@@ -2753,7 +2752,7 @@ Status IrEmitter::EmitTargetElementLoop(
 }
 
 Status IrEmitter::EmitTargetElementLoop(
-    HloInstruction* target_op, tensorflow::StringPiece desc,
+    HloInstruction* target_op, absl::string_view desc,
     const llvm_ir::ElementGenerator& element_generator) {
   VLOG(2) << "EmitTargetElementLoop: " << target_op->ToString();
 
@@ -2848,7 +2847,7 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
 llvm::Value* IrEmitter::EmitThreadLocalCall(
     const HloComputation& callee,
     tensorflow::gtl::ArraySlice<llvm::Value*> parameters,
-    tensorflow::StringPiece name) {
+    absl::string_view name) {
   const Shape& return_shape = callee.root_instruction()->shape();
 
   // Lifting this restriction to allow "small" arrays should be easy.  Allowing
@@ -2869,7 +2868,7 @@ llvm::Value* IrEmitter::EmitThreadLocalCall(
 
   llvm::Value* return_value_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
       llvm_ir::PrimitiveTypeToIrType(return_type, module_),
-      tensorflow::strings::StrCat(name, "_retval_addr"), &b_,
+      absl::StrCat(name, "_retval_addr"), &b_,
       MinimumAlignmentForPrimitiveType(return_type));
 
   b_.CreateCall(
@@ -2886,7 +2885,7 @@ llvm::Value* IrEmitter::EmitThreadLocalCall(
 }
 
 void IrEmitter::EmitGlobalCall(const HloComputation& callee,
-                               tensorflow::StringPiece name) {
+                               absl::string_view name) {
   b_.CreateCall(FindOrDie(emitted_functions_, &callee),
                 GetArrayFunctionCallArguments(
                     /*parameter_addresses=*/{}, &b_, name,

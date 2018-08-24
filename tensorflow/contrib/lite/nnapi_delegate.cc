@@ -636,6 +636,7 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_NOT_EQUAL:
       case tflite::BuiltinOperator_SUM:
       case tflite::BuiltinOperator_REDUCE_MAX:
+      case tflite::BuiltinOperator_REDUCE_MIN:
       case tflite::BuiltinOperator_REDUCE_PROD:
       case tflite::BuiltinOperator_SQRT:
       case tflite::BuiltinOperator_RSQRT:
@@ -648,6 +649,8 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_LOGICAL_AND:
       case tflite::BuiltinOperator_LOGICAL_NOT:
       case tflite::BuiltinOperator_UNPACK:
+      case tflite::BuiltinOperator_FLOOR_DIV:
+      case tflite::BuiltinOperator_REDUCE_ANY:
         logError("Op code %d is currently not delegated to NNAPI", builtin);
         return kTfLiteError;
         break;

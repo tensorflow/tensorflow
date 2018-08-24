@@ -111,17 +111,24 @@ def reset_tpu_sessions():
 
 
 # Work-around dependency cycle between DistributionStrategy and TPU lib.
-def TPUDistributionStrategy(tpu_cluster_resolver=None):  # pylint: disable=invalid-name
+def TPUDistributionStrategy(tpu_cluster_resolver=None, num_cores=None):  # pylint: disable=invalid-name
   """Construct a TPUDistributionStrategy."""
   from tensorflow.contrib.distribute.python import tpu_strategy  # pylint: disable=g-import-not-at-top
-  # TODO -- remove this when TPUStrategy API is consistent (b/112705069)
+  # TODO(b/112705069): Remove this when TPUStrategy API is consistent.
+  # We are including this for (a) backwards compatibility for open sourced
+  # releases of TensorFlow and (b) to work around a circular dependency
+  # where keras_support and tpu_strategy depends on each other. Once we release
+  # a final version and remove support for the old API, this will be deleted.
+  # (See bug above for more details)
   if tpu_cluster_resolver is None:
     tpu_cluster_resolver = tpu_cluster_resolver_lib.TPUClusterResolver('')
 
   args, _, _, _ = tf_inspect.getargspec(tpu_strategy.TPUStrategy.__init__)
-  if len(args) == 3:
+  if len(args) == 4:
     logging.info('Detected new TPUStrategy API.')
-    return tpu_strategy.TPUStrategy(tpu_cluster_resolver, steps_per_run=1)
+    return tpu_strategy.TPUStrategy(tpu_cluster_resolver,
+                                    steps_per_run=1,
+                                    num_cores=num_cores)
   else:
     logging.info('Detected old TPUStrategy API.')
     strategy = tpu_strategy.TPUStrategy(num_cores_per_host=8)

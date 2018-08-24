@@ -94,6 +94,7 @@ TfLiteRegistration* Register_NEG();
 TfLiteRegistration* Register_SUM();
 TfLiteRegistration* Register_REDUCE_PROD();
 TfLiteRegistration* Register_REDUCE_MAX();
+TfLiteRegistration* Register_REDUCE_MIN();
 TfLiteRegistration* Register_SELECT();
 TfLiteRegistration* Register_SLICE();
 TfLiteRegistration* Register_SIN();
@@ -112,6 +113,7 @@ TfLiteRegistration* Register_ONE_HOT();
 TfLiteRegistration* Register_LOGICAL_OR();
 TfLiteRegistration* Register_LOGICAL_AND();
 TfLiteRegistration* Register_LOGICAL_NOT();
+TfLiteRegistration* Register_UNPACK();
 
 TfLiteStatus UnsupportedTensorFlowOp(TfLiteContext* context, TfLiteNode* node) {
   context->ReportError(
@@ -219,6 +221,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SUM, Register_SUM());
   AddBuiltin(BuiltinOperator_REDUCE_PROD, Register_REDUCE_PROD());
   AddBuiltin(BuiltinOperator_REDUCE_MAX, Register_REDUCE_MAX());
+  AddBuiltin(BuiltinOperator_REDUCE_MIN, Register_REDUCE_MIN());
   AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXPAND_DIMS());
   AddBuiltin(BuiltinOperator_SPARSE_TO_DENSE, Register_SPARSE_TO_DENSE());
   AddBuiltin(BuiltinOperator_EQUAL, Register_EQUAL());
@@ -233,6 +236,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_LOGICAL_OR, Register_LOGICAL_OR());
   AddBuiltin(BuiltinOperator_LOGICAL_AND, Register_LOGICAL_AND());
   AddBuiltin(BuiltinOperator_LOGICAL_NOT, Register_LOGICAL_NOT());
+  AddBuiltin(BuiltinOperator_UNPACK, Register_UNPACK());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

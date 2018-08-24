@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "absl/strings/match.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/data_flow_ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/version.h"
 
@@ -309,10 +309,10 @@ TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
                             std::move(graph), args, &result);
   EXPECT_FALSE(status.ok());
   EXPECT_TRUE(
-      str_util::StrContains(status.error_message(), "depends on a parameter"))
+      absl::StrContains(status.error_message(), "depends on a parameter"))
       << status.error_message();
   EXPECT_TRUE(
-      str_util::StrContains(status.error_message(), "[[{{node C}} = Reshape"))
+      absl::StrContains(status.error_message(), "[[{{node C}} = Reshape"))
       << status.error_message();
 }
 
@@ -727,8 +727,7 @@ TEST_F(XlaCompilerTest, UndefinedFunctionFails) {
       compiler.CompileFunction(XlaCompiler::CompileOptions(), name_attr,
                                /*args=*/{}, &result);
   EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(str_util::StrContains(StringPiece(status.error_message()),
-                                    "is not defined."))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "is not defined."))
       << status.error_message();
 }
 
@@ -807,12 +806,10 @@ TEST_F(XlaCompilerTest, LocalFunctionWithWrongArgumentsFail) {
 
   ASSERT_FALSE(status.ok());
   // Flib lookup failure.
-  EXPECT_TRUE(str_util::StrContains(StringPiece(status.error_message()),
-                                    "is not defined."))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "is not defined."))
       << status.error_message();
   // Local flib lookup failure.
-  EXPECT_TRUE(str_util::StrContains(StringPiece(status.error_message()),
-                                    "Attr T is not found"))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "Attr T is not found"))
       << status.error_message();
 }
 
@@ -1078,9 +1075,9 @@ TEST_F(XlaCompilerTest, FunctionWithInvalidOp) {
   status = compiler.CompileGraph(XlaCompiler::CompileOptions(), "fill",
                                  std::move(graph), args, &result);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(str_util::StrContains(status.error_message(), "InvalidOp"))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "InvalidOp"))
       << status.error_message();
-  EXPECT_TRUE(str_util::StrContains(status.error_message(), "{{node fill_fn}}"))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "{{node fill_fn}}"))
       << status.error_message();
 }
 
@@ -1103,10 +1100,10 @@ TEST_F(XlaCompilerTest, NodeWithInvalidDataType) {
   status = compiler.CompileGraph(XlaCompiler::CompileOptions(), "invalid_type",
                                  std::move(graph), args, &result);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(str_util::StrContains(status.error_message(),
-                                    "is not in the list of allowed values"))
+  EXPECT_TRUE(absl::StrContains(status.error_message(),
+                                "is not in the list of allowed values"))
       << status.error_message();
-  EXPECT_TRUE(str_util::StrContains(status.error_message(), "{{node Shape}}"))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "{{node Shape}}"))
       << status.error_message();
 }
 
@@ -1130,9 +1127,9 @@ TEST_F(XlaCompilerTest, SingleOpWithoutInputs) {
                                    std::move(graph_copy), args, &result);
     ASSERT_FALSE(status.ok());
     EXPECT_TRUE(
-        str_util::StrContains(status.error_message(),
-                              "The following nodes are unreachable "
-                              "from the source in the graph: {{node NoOp}}"))
+        absl::StrContains(status.error_message(),
+                          "The following nodes are unreachable "
+                          "from the source in the graph: {{node NoOp}}"))
         << status.error_message();
   }
 

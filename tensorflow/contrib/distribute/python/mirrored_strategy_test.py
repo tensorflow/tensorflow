@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
@@ -28,7 +27,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import distribution_strategy_context
-from tensorflow.python.training import server_lib
 
 
 class MirroredOneCPUDistributionTest(strategy_test_lib.DistributionTestBase):
@@ -90,26 +88,15 @@ class VariableCreatorStackTest(test.TestCase):
       self.assertEquals(expected, result)
 
 
-class MultiWorkerMirroredStrategyTest(
-    multi_worker_test_base.MultiWorkerTestBase,
-    strategy_test_lib.DistributionTestBase):
-
-  def _get_distribution_strategy(self):
-    return mirrored_strategy.MirroredStrategy(
-        cluster_spec=server_lib.ClusterSpec({
-            'worker': ['/job:worker/task:0', '/job:worker/task:1']
-        }),
-        num_gpus=context.num_gpus())
-
-  def testMinimizeLossGraph(self):
-    self._test_minimize_loss_graph(self._get_distribution_strategy())
+class MultiWorkerMirroredStrategyTest(test.TestCase):
 
   def testDeviceScope(self):
     """Test the device scope of multi-worker MirroredStrategy."""
     with context.graph_mode():
       strategy = mirrored_strategy.MirroredStrategy(
-          cluster_spec={'worker': ['/job:worker/task:0', '/job:worker/task:1']},
           num_gpus=context.num_gpus())
+      strategy.configure(
+          cluster_spec={"worker": ["/job:worker/task:0", "/job:worker/task:1"]})
       with strategy.scope():
         a = constant_op.constant(1.)
         with ops.device('/cpu:0'):

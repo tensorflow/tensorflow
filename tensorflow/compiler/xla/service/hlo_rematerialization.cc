@@ -20,6 +20,9 @@ limitations under the License.
 #include <set>
 #include <string>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
@@ -37,16 +40,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
-using ::tensorflow::strings::HumanReadableNumBytes;
-
 namespace xla {
-
 namespace {
+
+using ::tensorflow::strings::HumanReadableNumBytes;
 
 // Potential optimizations:
 // . TODO(b/35244891): Avoid N^2 behavior by keeping a priority queue
@@ -88,7 +88,7 @@ bool CanBeRematerialized(
 
 // Type holding a unique identifier for each Buffer object.
 using BufferId = int64;
-using BufferIdList = tensorflow::gtl::InlinedVector<BufferId, 3>;
+using BufferIdList = absl::InlinedVector<BufferId, 3>;
 
 // We wrap HloInstruction* with an Item that holds auxiliary
 // per-instruction state.
@@ -123,7 +123,7 @@ struct Item {
   int64 position;
 };
 
-using ItemList = tensorflow::gtl::InlinedVector<Item*, 3>;
+using ItemList = absl::InlinedVector<Item*, 3>;
 
 // Class which maintains an ordered list of instructions with fast insertion
 // before arbitrary elements.
@@ -206,11 +206,10 @@ class InstructionList {
       Item* to_insert, tensorflow::gtl::ArraySlice<Item*> before_instructions) {
     VLOG(3) << "InsertBeforeInstructions: " << to_insert->instruction->name()
             << " before {"
-            << tensorflow::str_util::Join(before_instructions, ", ",
-                                          [](string* out, Item* item) {
-                                            tensorflow::strings::StrAppend(
-                                                out, item->instruction->name());
-                                          })
+            << absl::StrJoin(before_instructions, ", ",
+                             [](string* out, Item* item) {
+                               absl::StrAppend(out, item->instruction->name());
+                             })
             << "}";
 
     // Find the minimal position number of any instruction in
@@ -393,10 +392,9 @@ class MemoryUsageTracker {
     int64 unfinished_user_count;
 
     string ToString() const {
-      return tensorflow::strings::StrCat(
-          "Buffer ", id, " (defined by ",
-          defining_instruction->instruction->name(), ", size ", size,
-          " bytes)");
+      return absl::StrCat("Buffer ", id, " (defined by ",
+                          defining_instruction->instruction->name(), ", size ",
+                          size, " bytes)");
     }
   };
 
@@ -740,29 +738,27 @@ Status MemoryUsageTracker::AddRematerializedInstruction(Item* original_item,
 }
 
 string MemoryUsageTracker::ToString() const {
-  string output = tensorflow::strings::StrCat("MemoryUsageTracker for ",
-                                              computation_->name(), "\n");
-  tensorflow::strings::StrAppend(
-      &output, "Memory usage: ", HumanReadableNumBytes(memory_usage()), " (",
-      memory_usage(), " bytes)");
+  string output =
+      absl::StrCat("MemoryUsageTracker for ", computation_->name(), "\n");
+  absl::StrAppend(&output,
+                  "Memory usage: ", HumanReadableNumBytes(memory_usage()), " (",
+                  memory_usage(), " bytes)");
   for (auto* item = instruction_list_.first(); item != nullptr;
        item = instruction_list_.next(item)) {
     const HloInstruction* instruction = item->instruction;
     string inprogress = item == in_progress_item_ ? " in-progress" : "";
     string placed = item->placed ? " placed" : "";
-    tensorflow::strings::StrAppend(&output, "  ", instruction->name(),
-                                   inprogress, placed, "\n    Defines:\n");
+    absl::StrAppend(&output, "  ", instruction->name(), inprogress, placed,
+                    "\n    Defines:\n");
     for (BufferId buffer_id : item->buffers_defined) {
       const Buffer& buffer = buffers_[buffer_id];
       string live = IsCurrentlyLive(buffer_id) ? " live" : "";
-      tensorflow::strings::StrAppend(&output, "      ", buffer.ToString(), live,
-                                     ", ", buffer.unfinished_user_count,
-                                     " unfinished uses\n");
+      absl::StrAppend(&output, "      ", buffer.ToString(), live, ", ",
+                      buffer.unfinished_user_count, " unfinished uses\n");
     }
-    tensorflow::strings::StrAppend(&output, "    Uses:\n");
+    absl::StrAppend(&output, "    Uses:\n");
     for (BufferId buffer_id : item->buffers_used) {
-      tensorflow::strings::StrAppend(&output, "      ",
-                                     buffers_[buffer_id].ToString(), "\n");
+      absl::StrAppend(&output, "      ", buffers_[buffer_id].ToString(), "\n");
     }
   }
   return output;
@@ -780,10 +776,9 @@ bool MemoryUsageTracker::Check() const {
     CHECK(elements_are_unique(defined_buffers))
         << "Instruction " << instruction->name()
         << " does not have unique defined buffers: "
-        << tensorflow::str_util::Join(
+        << absl::StrJoin(
                defined_buffers, ", ", [this](string* out, BufferId buffer_id) {
-                 tensorflow::strings::StrAppend(
-                     out, buffers_.at(buffer_id).ToString());
+                 absl::StrAppend(out, buffers_.at(buffer_id).ToString());
                });
 
     for (const Buffer& buffer : buffers_) {
@@ -803,10 +798,9 @@ bool MemoryUsageTracker::Check() const {
     CHECK(elements_are_unique(used_buffers))
         << "Instruction " << instruction->name()
         << " does not have unique used buffers: "
-        << tensorflow::str_util::Join(
+        << absl::StrJoin(
                used_buffers, ", ", [this](string* out, BufferId buffer_id) {
-                 tensorflow::strings::StrAppend(
-                     out, buffers_.at(buffer_id).ToString());
+                 absl::StrAppend(out, buffers_.at(buffer_id).ToString());
                });
   }
   for (const Buffer& buffer : buffers_) {

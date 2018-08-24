@@ -619,11 +619,11 @@ def tf_additional_lib_defines():
         "//tensorflow:with_jemalloc_linux_x86_64": ["TENSORFLOW_USE_JEMALLOC"],
         "//tensorflow:with_jemalloc_linux_ppc64le": ["TENSORFLOW_USE_JEMALLOC"],
         "//conditions:default": [],
-    }) + if_not_mobile(["TENSORFLOW_USE_ABSL"])
+    })
 
 def tf_additional_lib_deps():
     """Additional dependencies needed to build TF libraries."""
-    return if_not_mobile(["@com_google_absl//absl/base:base"]) + if_static(
+    return ["@com_google_absl//absl/base:base"] + if_static(
         ["@nsync//:nsync_cpp"],
         ["@nsync//:nsync_headers"],
     ) + select({

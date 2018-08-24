@@ -23,6 +23,10 @@ load(
     "//tensorflow/python/tools/api/generator:api_gen.bzl",
     "gen_api_init_files",  # @unused
 )
+load(
+    "//third_party/ngraph:build_defs.bzl",
+    "if_ngraph",
+)
 
 # Config setting used when building for products
 # which requires restricted licenses to be avoided.
@@ -411,6 +415,14 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# This flag is set from the configure step when the user selects with nGraph option.
+# By default it should be false
+config_setting(
+    name = "with_ngraph_support",
+    values = {"define": "with_ngraph_support=true"},
+    visibility = ["//visibility:public"],
+)
+
 package_group(
     name = "internal",
     packages = [
@@ -563,7 +575,7 @@ tf_cc_shared_object(
         "//tensorflow/cc:scope",
         "//tensorflow/cc/profiler",
         "//tensorflow/core:tensorflow",
-    ],
+    ] + if_ngraph(["@ngraph_tf//:ngraph_tf"]),
 )
 
 exports_files(

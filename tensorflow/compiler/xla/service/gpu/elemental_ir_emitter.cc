@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 // IWYU pragma: no_include "llvm/IR/Attributes.gen.inc"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Instructions.h"
@@ -43,16 +45,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 namespace gpu {
 
+using absl::StrAppend;
 using llvm_ir::IrArray;
 using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
-using tensorflow::strings::StrAppend;
 
 namespace {
 // Returns whether operand is a floating-point literal with the given value.

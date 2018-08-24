@@ -204,6 +204,10 @@ const HloModuleGroupMetadata::Channel& HloModuleGroupMetadata::GetChannel(
   return channels_[channel_id_map_.at(channel_id)];
 }
 
+bool HloModuleGroupMetadata::HasChannel(int64 channel_id) const {
+  return channel_id_map_.find(channel_id) != channel_id_map_.end();
+}
+
 HloComputation* HloModuleGroupMetadata::PeerComputation(
     const HloInstruction* instruction) const {
   CHECK(IsChannelInstruction(instruction));
@@ -267,15 +271,14 @@ int64 HloModuleGroupMetadata::GetModuleId(const HloModule* module) const {
   LOG(FATAL) << "unknown module";
 }
 
-tensorflow::gtl::optional<int64> HloModuleGroupMetadata::GetInstructionDevice(
+absl::optional<int64> HloModuleGroupMetadata::GetInstructionDevice(
     const HloInstruction& instruction) const {
   // The module group metadata can be created in both "single module, multiple
   // devices" and "multiple modules, no explicit devices" fashions.
   // The API returns an optional even though the current implementation always
   // returns a device, to account for cases where we cannot guess a device.
   // In such cases the VerifyChannelInstructions() will return proper errors.
-  tensorflow::gtl::optional<int64> device =
-      instruction.sharding_unique_device();
+  absl::optional<int64> device = instruction.sharding_unique_device();
   if (!device) {
     device = GetModuleId(instruction.parent()->parent());
   }
@@ -283,10 +286,7 @@ tensorflow::gtl::optional<int64> HloModuleGroupMetadata::GetInstructionDevice(
 }
 
 int64 HloModuleGroupMetadata::GetDeviceModulesCount() const {
-  return std::count_if(modules_.begin(), modules_.end(),
-                       [](const HloModule* module) {
-                         return !module->config().is_host_module();
-                       });
+  return modules_.size();
 }
 
 Status HloModuleGroupMetadata::RecordInstructions() {

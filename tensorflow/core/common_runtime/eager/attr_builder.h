@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_C_EAGER_RUNTIME_H_
-#define TENSORFLOW_C_EAGER_RUNTIME_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_ATTR_BUILDER_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_ATTR_BUILDER_H_
 
 // Support for eager execution of TensorFlow kernels.
 
@@ -154,4 +154,4 @@ AttrBuilder& AttrBuilder::Set(StringPiece attr_name,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_C_EAGER_RUNTIME_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_ATTR_BUILDER_H_

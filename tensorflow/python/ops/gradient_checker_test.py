@@ -76,7 +76,7 @@ class GradientCheckerTest(test.TestCase):
 
   def testAddCustomized(self):
     np.random.seed(3)  # Fix seed to avoid flakiness
-    with self.test_session():
+    with self.cached_session():
       # a test case for Add operation
       size = (2, 3)
       x1 = constant_op.constant(
@@ -94,7 +94,7 @@ class GradientCheckerTest(test.TestCase):
 
   def testGather(self):
     np.random.seed(4)  # Fix seed to avoid flakiness
-    with self.test_session():
+    with self.cached_session():
       p_shape = (4, 2)
       p_size = 8
       index_values = [1, 3]
@@ -111,7 +111,7 @@ class GradientCheckerTest(test.TestCase):
 
   def testNestedGather(self):
     np.random.seed(5)  # Fix seed to avoid flakiness
-    with self.test_session():
+    with self.cached_session():
       p_shape = (8, 2)
       p_size = 16
       index_values = [1, 3, 5, 6]
@@ -131,7 +131,7 @@ class GradientCheckerTest(test.TestCase):
     assert error < 1e-4
 
   def testComplexMul(self):
-    with self.test_session():
+    with self.cached_session():
       size = ()
       c = constant_op.constant(5 + 7j, dtype=dtypes.complex64)
       x = constant_op.constant(11 - 13j, dtype=dtypes.complex64)
@@ -145,7 +145,7 @@ class GradientCheckerTest(test.TestCase):
           gradient_checker.compute_gradient_error(x, size, y, size), 2e-4)
 
   def testComplexConj(self):
-    with self.test_session():
+    with self.cached_session():
       size = ()
       x = constant_op.constant(11 - 13j, dtype=dtypes.complex64)
       y = math_ops.conj(x)
@@ -158,7 +158,7 @@ class GradientCheckerTest(test.TestCase):
           gradient_checker.compute_gradient_error(x, size, y, size), 2e-5)
 
   def testEmptySucceeds(self):
-    with self.test_session():
+    with self.cached_session():
       x = array_ops.placeholder(dtypes.float32)
       y = array_ops.identity(x)
       for grad in gradient_checker.compute_gradient(x, (0, 3), y, (0, 3)):
@@ -168,7 +168,7 @@ class GradientCheckerTest(test.TestCase):
 
   def testEmptyFails(self):
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g):
+      with self.session(graph=g):
         x = array_ops.placeholder(dtypes.float32)
         with g.gradient_override_map({"Identity": "BadGrad"}):
           y = array_ops.identity(x)
@@ -180,7 +180,7 @@ class GradientCheckerTest(test.TestCase):
 
   def testNaNGradFails(self):
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g):
+      with self.session(graph=g):
         x = array_ops.placeholder(dtypes.float32)
         with g.gradient_override_map({"Identity": "NaNGrad"}):
           y = array_ops.identity(x)

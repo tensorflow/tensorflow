@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_
-#define TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_COMMON_SHAPE_FNS_H_
+#define TENSORFLOW_CORE_FRAMEWORK_COMMON_SHAPE_FNS_H_
 
 #include <array>
 
@@ -311,4 +311,4 @@ Status ExplicitShapes(InferenceContext* c);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_COMMON_SHAPE_FNS_H_

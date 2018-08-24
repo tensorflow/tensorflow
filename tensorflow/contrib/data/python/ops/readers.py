@@ -25,8 +25,8 @@ import numpy as np
 from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import gen_dataset_ops as contrib_gen_dataset_ops
 from tensorflow.contrib.data.python.ops import interleave_ops
+from tensorflow.contrib.data.python.ops import parsing_ops
 from tensorflow.contrib.data.python.ops import shuffle_ops
-from tensorflow.contrib.data.python.ops import stats_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import convert
@@ -37,7 +37,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import gen_dataset_ops
-from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.util import deprecation
 
@@ -778,8 +777,6 @@ def make_batched_features_dataset(file_pattern,
   dataset = _maybe_shuffle_and_repeat(
       dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
 
-  dataset = dataset.apply(stats_ops.feature_stats("record_stats"))
-
   # NOTE(mrry): We set `drop_remainder=True` when `num_epochs is None` to
   # improve the shape inference, because it makes the batch dimension static.
   # It is safe to do this because in that case we are repeating the input
@@ -788,9 +785,9 @@ def make_batched_features_dataset(file_pattern,
       batch_size, drop_remainder=drop_final_batch or num_epochs is None)
 
   # Parse `Example` tensors to a dictionary of `Feature` tensors.
-  dataset = dataset.map(
-      lambda x: parsing_ops.parse_example(x, features),
-      num_parallel_calls=parser_num_threads)
+  dataset = dataset.apply(
+      parsing_ops.parse_example_dataset(
+          features, num_parallel_calls=parser_num_threads))
 
   # TODO(rachelim): Add an optional label_name argument for extracting the label
   # from the features dictionary, to comply with the type expected by the
@@ -974,3 +971,49 @@ class SqlDataset(dataset_ops.Dataset):
   @property
   def output_types(self):
     return self._output_types
+
+
+class LMDBDataset(dataset_ops.Dataset):
+  """A LMDB Dataset that reads the lmdb file."""
+
+  def __init__(self, filenames):
+    """Create a `LMDBDataset`.
+
+    `LMDBDataset` allows a user to read data from a mdb file as
+    (key value) pairs sequentially.
+    For example:
+    ```python
+    dataset = tf.contrib.lmdb.LMDBDataset("/foo/bar.mdb")
+    iterator = dataset.make_one_shot_iterator()
+    next_element = iterator.get_next()
+    # Prints the (key, value) pairs inside a lmdb file.
+    while True:
+      try:
+        print(sess.run(next_element))
+      except tf.errors.OutOfRangeError:
+        break
+    ```
+    Args:
+      filenames: A `tf.string` tensor containing one or more filenames.
+    """
+    super(LMDBDataset, self).__init__()
+    self._filenames = ops.convert_to_tensor(
+        filenames, dtype=dtypes.string, name="filenames")
+
+  def _as_variant_tensor(self):
+    return contrib_gen_dataset_ops.lmdb_dataset(
+        self._filenames,
+        output_types=nest.flatten(self.output_types),
+        output_shapes=nest.flatten(self.output_shapes))
+
+  @property
+  def output_classes(self):
+    return ops.Tensor, ops.Tensor
+
+  @property
+  def output_shapes(self):
+    return (tensor_shape.TensorShape([]), tensor_shape.TensorShape([]))
+
+  @property
+  def output_types(self):
+    return dtypes.string, dtypes.string

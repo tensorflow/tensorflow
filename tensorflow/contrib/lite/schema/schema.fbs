@@ -170,6 +170,9 @@ enum BuiltinOperator : byte {
   LOGICAL_AND = 86,
   LOGICAL_NOT = 87,
   UNPACK = 88,
+  REDUCE_MIN = 89,
+  FLOOR_DIV = 90,
+  REDUCE_ANY = 91,
 }
 
 // Options for the builtin operators.
@@ -238,6 +241,7 @@ union BuiltinOptions {
   LogicalAndOptions,
   LogicalNotOptions,
   UnpackOptions,
+  FloorDivOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -572,6 +576,9 @@ table UnpackOptions {
   axis:int;
 }
 
+table FloorDivOptions {
+}
+
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
 // builtin, or a string if the operator is custom.
 table OperatorCode {
@@ -638,9 +645,9 @@ table SubGraph {
 }
 
 // Table of raw data buffers (used for constant tensors). Referenced by tensors
-// by index.
+// by index. The generous alignment accommodates mmap-friendly data structures.
 table Buffer {
-  data:[ubyte];
+  data:[ubyte] (force_align: 16);
 }
 
 table Model {

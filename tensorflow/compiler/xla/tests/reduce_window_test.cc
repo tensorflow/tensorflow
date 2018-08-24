@@ -19,6 +19,8 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -55,7 +57,7 @@ class ReduceWindowTestBase : public ClientLibraryTestBase {
  public:
   ErrorSpec DefaultErrorSpec() const {
     if (use_bfloat16()) {
-      return ErrorSpec(1e-1, 5e-2);
+      return ErrorSpec(2e-1, 6e-2);
     } else {
       return ErrorSpec(1e-3, 1e-3);
     }
@@ -579,21 +581,20 @@ string R4ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<R4ReduceWindowTestData, bool>>& data) {
   const auto& param = ::testing::get<0>(data.param);
-  string str = tensorflow::strings::StrCat(
-      "base_bounds_", tensorflow::str_util::Join(param.base_bounds, "x"),  //
-      "__window_bounds_",
-      tensorflow::str_util::Join(param.window_bounds, "x"),            //
-      "__strides_", tensorflow::str_util::Join(param.strides, "x"),    //
-      "__pad_low_", tensorflow::str_util::Join(param.pad_low, "x"),    //
-      "__pad_high_", tensorflow::str_util::Join(param.pad_high, "x"),  //
-      "__layout_", tensorflow::str_util::Join(param.layout, "_"),      //
+  string str = absl::StrCat(
+      "base_bounds_", absl::StrJoin(param.base_bounds, "x"),        //
+      "__window_bounds_", absl::StrJoin(param.window_bounds, "x"),  //
+      "__strides_", absl::StrJoin(param.strides, "x"),              //
+      "__pad_low_", absl::StrJoin(param.pad_low, "x"),              //
+      "__pad_high_", absl::StrJoin(param.pad_high, "x"),            //
+      "__layout_", absl::StrJoin(param.layout, "_"),                //
       (param.reducer == kAdd) ? "_add" : "_max");
   CHECK(param.reducer == kAdd || param.reducer == kMax);
 
   // Test names are not allowed to contain the '-' character.
   std::replace(str.begin(), str.end(), '-', 'n');
   if (::testing::get<1>(data.param)) {
-    str = tensorflow::strings::StrCat(str, "_bfloat16");
+    str = absl::StrCat(str, "_bfloat16");
   }
   return str;
 }
@@ -935,15 +936,15 @@ string R3ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<R3ReduceWindowTestData, bool>>& data) {
   const auto& param = ::testing::get<0>(data.param);
-  string str = tensorflow::strings::StrCat(
-      "base_bounds_", tensorflow::str_util::Join(param.base_bounds, "x"),
-      "__window_bounds_", tensorflow::str_util::Join(param.window_bounds, "x"),
-      "__strides_", tensorflow::str_util::Join(param.strides, "x"),
-      "__padding_", param.padding == Padding::kSame ? "same" : "valid",
-      "__layout_", param.layout[0], "_", param.layout[1], "_", param.layout[2],
-      "__reducer_", param.reducer == kAdd ? "add" : "max");
+  string str = absl::StrCat(
+      "base_bounds_", absl::StrJoin(param.base_bounds, "x"), "__window_bounds_",
+      absl::StrJoin(param.window_bounds, "x"), "__strides_",
+      absl::StrJoin(param.strides, "x"), "__padding_",
+      param.padding == Padding::kSame ? "same" : "valid", "__layout_",
+      param.layout[0], "_", param.layout[1], "_", param.layout[2], "__reducer_",
+      param.reducer == kAdd ? "add" : "max");
   if (::testing::get<1>(data.param)) {
-    str = tensorflow::strings::StrCat(str, "_bfloat16");
+    str = absl::StrCat(str, "_bfloat16");
   }
   return str;
 }
@@ -1069,17 +1070,16 @@ string R2ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<R2ReduceWindowTestData, bool>>& data) {
   const auto& param = ::testing::get<0>(data.param);
-  string str = tensorflow::strings::StrCat(
-      "base_bounds_", tensorflow::str_util::Join(param.base_bounds, "x"),  //
-      "__window_bounds_",
-      tensorflow::str_util::Join(param.window_bounds, "x"),          //
-      "__strides_", tensorflow::str_util::Join(param.strides, "x"),  //
-      "__pad_low_", tensorflow::str_util::Join(param.pad_low, "x"),
-      "__pad_high_", tensorflow::str_util::Join(param.pad_high, "x"),
-      "__layout_", param.layout[0], "_", param.layout[1],  //
+  string str = absl::StrCat(
+      "base_bounds_", absl::StrJoin(param.base_bounds, "x"),        //
+      "__window_bounds_", absl::StrJoin(param.window_bounds, "x"),  //
+      "__strides_", absl::StrJoin(param.strides, "x"),              //
+      "__pad_low_", absl::StrJoin(param.pad_low, "x"), "__pad_high_",
+      absl::StrJoin(param.pad_high, "x"), "__layout_", param.layout[0], "_",
+      param.layout[1],  //
       "__reducer_", param.reducer == kAdd ? "add" : "max");
   if (::testing::get<1>(data.param)) {
-    str = tensorflow::strings::StrCat(str, "_bfloat16");
+    str = absl::StrCat(str, "_bfloat16");
   }
   return str;
 }
@@ -1274,15 +1274,15 @@ string R1ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<R1ReduceWindowTestData, bool>>& data) {
   const auto& param = ::testing::get<0>(data.param);
-  string str = tensorflow::strings::StrCat(
-      "base_bounds_", tensorflow::str_util::Join(param.base_bounds, "x"),
-      "__window_bounds_", tensorflow::str_util::Join(param.window_bounds, "x"),
-      "__strides_", tensorflow::str_util::Join(param.strides, "x"),
-      "__pad_low_", tensorflow::str_util::Join(param.pad_low, "x"),
-      "__pad_high_", tensorflow::str_util::Join(param.pad_high, "x"),
-      "__reducer_", param.reducer == kAdd ? "add" : "max");
+  string str =
+      absl::StrCat("base_bounds_", absl::StrJoin(param.base_bounds, "x"),
+                   "__window_bounds_", absl::StrJoin(param.window_bounds, "x"),
+                   "__strides_", absl::StrJoin(param.strides, "x"),
+                   "__pad_low_", absl::StrJoin(param.pad_low, "x"),
+                   "__pad_high_", absl::StrJoin(param.pad_high, "x"),
+                   "__reducer_", param.reducer == kAdd ? "add" : "max");
   if (::testing::get<1>(data.param)) {
-    str = tensorflow::strings::StrCat(str, "_bfloat16");
+    str = absl::StrCat(str, "_bfloat16");
   }
   return str;
 }
@@ -1449,7 +1449,7 @@ ENTRY reduce-window-identity {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, tensorflow::gtl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowS32) {
@@ -1468,7 +1468,7 @@ ENTRY %reduce-window (parameter.0: s32[81,8], parameter.1: s32[]) -> s32[82,8] {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, tensorflow::gtl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowF16) {
@@ -1487,7 +1487,7 @@ ENTRY %reduce-window (parameter.0: f16[81,8], parameter.1: f16[]) -> f16[82,8] {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, tensorflow::gtl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
 }
 
 }  // namespace

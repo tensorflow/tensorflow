@@ -569,3 +569,18 @@ message ReplicaGroup {
   // ids matters in some op (e.g., all-to-all).
   repeated int64 replica_ids = 1;
 }
+
+// Used to indicate the precision configuration. It has backend specific
+// meaning.
+message PrecisionConfigProto {
+  enum Precision {
+    DEFAULT = 0;
+    HIGH = 1;
+    HIGHEST = 2;
+
+    // Next: 3
+  }
+  repeated Precision operand_precision = 1;
+
+  // Next: 2
+}

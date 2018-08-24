@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_LINALG_OPS_COMMON_H_
-#define TENSORFLOW_KERNELS_LINALG_OPS_COMMON_H_
+#ifndef TENSORFLOW_CORE_KERNELS_LINALG_OPS_COMMON_H_
+#define TENSORFLOW_CORE_KERNELS_LINALG_OPS_COMMON_H_
 
 // Classes to support linear algebra functionality, similar to the numpy.linalg
 // module. Supports batch computation on several matrices at once, sharding the
@@ -194,4 +194,4 @@ extern template class LinearAlgebraOp<complex128>;
 #define REGISTER_LINALG_OP(OpName, OpClass, Scalar) \
   REGISTER_LINALG_OP_CPU(OpName, OpClass, Scalar)
 
-#endif  // TENSORFLOW_KERNELS_LINALG_OPS_COMMON_H_
+#endif  // TENSORFLOW_CORE_KERNELS_LINALG_OPS_COMMON_H_

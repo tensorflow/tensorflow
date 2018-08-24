@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import sys
 import threading
 
 import numpy as np
@@ -33,10 +34,12 @@ from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import c_api_util
+from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond_v2_impl
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
@@ -47,6 +50,10 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+
+# This is to avoid a circular dependency with cond_v2_impl
+# (function -> gradients_impl -> control_flow_ops -> cond_v2_impl).
+cond_v2_impl._function = sys.modules[__name__]  # pylint: disable=protected-access
 
 
 def create_substitute_placeholder(value, name, dtype=None):
@@ -101,7 +108,7 @@ class CapturingGraph(ops.Graph):
       The entries are in the order they were captured.
   """
 
-  def __init__(self, graph=None):
+  def __init__(self):
     super(CapturingGraph, self).__init__()
 
     self.captures = collections.OrderedDict()
@@ -111,10 +118,6 @@ class CapturingGraph(ops.Graph):
     # this tensor. Used to enforce that execution order matches program order
     # for resource tensors.
     self._last_op_using_resource_tensor = {}
-
-  # TODO(apassos) remove once the C API is used by default.
-  def _use_c_api_hack(self):
-    return True
 
   def clear_resource_control_flow_state(self):
     self._last_op_using_resource_tensor = {}
@@ -179,6 +182,14 @@ class CapturingGraph(ops.Graph):
         compute_device=compute_device)
 
 
+def _get_device_functions(ctx, graph):
+  """Returns a tuple of device functions representing the device stack."""
+  if ctx.executing_eagerly():
+    return (pydev.merge_device(ctx.device_name),)
+  else:
+    return tuple(graph._device_functions_outer_to_inner)  # pylint: disable=protected-access
+
+
 class FuncGraph(CapturingGraph):
   """Graph representing a function body.
 
@@ -194,49 +205,54 @@ class FuncGraph(CapturingGraph):
       by this function. The Tensors in this structure are the same as those of
       self.outputs. Note that this structure might contain Python `None`s.
     variables: Variables that should be watched during function execution.
+    outer_graph: The graph this function is defined in. May be another FuncGraph
+      or the global default Graph.
     seed: The graph-level random seed.
   """
 
-  def __init__(self, name, graph=None):
+  def __init__(self, name):
     """Construct a new FuncGraph.
+
+    The graph will inherit its graph key, collections, seed, device stack, and
+    distribution strategy stack from the current context or graph.
 
     Args:
       name: the name of the function.
-      graph: if specified, this FuncGraph will inherit its graph key,
-        collections, and seed from `graph`.
     """
-    super(FuncGraph, self).__init__(graph=graph)
+    super(FuncGraph, self).__init__()
 
     self.name = name
     self.inputs = []
     self.outputs = []
     self.structured_outputs = None
     self.variables = []
+    self.outer_graph = ops.get_default_graph()
 
-    if graph is not None:
-      # Inherit the graph key, since this is used for matching variables in
-      # optimizers.
-      self._graph_key = graph._graph_key  # pylint: disable=protected-access
+    graph = self.outer_graph
 
-      # Copy the graph collections to ensure summaries and other things work.
-      # This lets the function access (but not mutate) collections of the
-      # containing graph, such as the global step and the summary writer
-      # collections.
-      for collection in graph.collections:
-        self.get_collection_ref(collection)[:] = graph.get_collection(
-            collection)
-
-      # Copy distribution strategy scope from the containing graph as well.
-      self._distribution_strategy_stack = graph._distribution_strategy_stack  # pylint: disable=protected-access
-
-      if context.executing_eagerly():
-        self.seed = context.global_seed()
-        self._xla_compile = (context.context().device_spec.device_type == "TPU")
-      else:
-        self.seed = graph.seed
-        self._xla_compile = getattr(graph, "_xla_compile", False)
+    if context.executing_eagerly():
+      self.seed = context.global_seed()
+      self._xla_compile = (context.context().device_spec.device_type == "TPU")
+      self._add_device_to_stack(context.context().device_name)
     else:
-      self._xla_compile = False
+      self.seed = graph.seed
+      self._xla_compile = getattr(graph, "_xla_compile", False)
+      self._device_function_stack = graph._device_function_stack.copy()  # pylint: disable=protected-access
+
+    # TODO(b/112165328, b/112906995): summaries depend on inheriting collections
+    # from the default graph even in eager mode. It'd be nice to not have a
+    # default graph with eager execution, so hopefully this will go away when we
+    # remove collections.
+    # pylint: disable=protected-access
+    self._collections = graph._collections
+    # TODO(b/112906995): distribution strategy depends on inheriting this stack
+    # from the default graph even in eager mode. Maybe it should be part of the
+    # eager context?
+    self._distribution_strategy_stack = graph._distribution_strategy_stack
+    # Inherit the graph key, since this is used for matching variables in
+    # optimizers.
+    self._graph_key = graph._graph_key
+    # pylint: enable=protected-access
 
   def capture(self, tensor, name=None):
     """Calls CapturingGraph.capture and updates self.inputs if necessary."""
@@ -247,6 +263,16 @@ class FuncGraph(CapturingGraph):
       self.inputs.append(internal_tensor)
 
     return internal_tensor
+
+  @property
+  def external_captures(self):
+    """External tensors captured by this function."""
+    return list(self.captures.keys())
+
+  @property
+  def internal_captures(self):
+    """Placeholders in this function corresponding captured tensors."""
+    return list(self.captures.values())
 
 
 def _forward_name(n):
@@ -449,6 +475,8 @@ class GraphCallable(object):
     self._output_shapes = tuple(
         output.shape for output in self._func_graph.outputs)
     self._attrs = attrs or {}
+    self._device_functions = tuple(
+        self._func_graph._device_functions_outer_to_inner)  # pylint: disable=protected-access
 
     self._inference_function = _EagerDefinedFunction(
         _inference_name(self._func_graph.name), self._func_graph,
@@ -476,8 +504,7 @@ class GraphCallable(object):
 
   def _construct_backprop_function(self):
     """Constructs the backprop function object for this function."""
-    backwards_graph = FuncGraph(
-        _backward_name(self._func_graph.name), self._func_graph)
+    backwards_graph = FuncGraph(_backward_name(self._func_graph.name))
     with backwards_graph.as_default():
       gradients_wrt_outputs = [
           graph_placeholder(x.dtype, x.shape) for x in self._func_graph.outputs
@@ -603,7 +630,17 @@ class GraphCallable(object):
     return self._captured_inputs
 
   def __call__(self, *args):
-    """Executes the passed function in eager mode."""
+    """Executes the wrapped function."""
+    ctx = context.context()
+    device_functions = _get_device_functions(ctx, ops.get_default_graph())
+    if device_functions != self._device_functions:
+      raise ValueError(
+          "The current device stack does not match the device stack under "
+          "which the TensorFlow function '%s' was created.\n"
+          "Current device stack: %s\n%s device stack: %s" %
+          (self._inference_function.name, device_functions,
+           self._inference_function.name, self._device_functions))
+
     for v in self._func_graph.variables:
       if v.trainable:
         tape.watch_variable(v)
@@ -615,7 +652,6 @@ class GraphCallable(object):
     if tape.should_record(tensor_inputs) or tape.should_record(captures):
       return self._backprop_call(args)
 
-    ctx = context.context()
     outputs = self._inference_function.call(ctx, args)
     return self._build_call_outputs(outputs)
 
@@ -674,7 +710,7 @@ def _get_defun_inputs_from_args(args):
   return nest.pack_sequence_as(args, function_inputs)
 
 
-def _func_graph_from_py_func(name, python_func, args, kwds, signature=None):
+def func_graph_from_py_func(name, python_func, args, kwds, signature=None):
   """Returns a `FuncGraph` generated from `python_func`.
 
   Args:
@@ -697,7 +733,7 @@ def _func_graph_from_py_func(name, python_func, args, kwds, signature=None):
     TypeError: If any of `python_func`'s return values is neither `None` nor a
       `Tensor`.
   """
-  func_graph = FuncGraph(name, graph=ops.get_default_graph())
+  func_graph = FuncGraph(name)
   with func_graph.as_default(), AutomaticControlDependencies() as a:
     variable_scope.get_variable_scope().set_use_resource(True)
 
@@ -932,17 +968,24 @@ class _PolymorphicFunction(object):
     # then `instance` will be `foo` (and `owner` will be `Foo`).
     return functools.partial(self.__call__, instance)
 
-  def _cache_key(self, args, kwds):
-    """Computes the cache key given inputs."""
+  def _cache_key(self, args, kwds, ctx, graph):
+    """Computes the cache key given inputs and execution context."""
     if self._input_signature is None:
       inputs = (args, kwds) if kwds else args
       cache_key = tuple(_encode_arg(arg) for arg in inputs)
     else:
       del args, kwds
       cache_key = self._flat_input_signature
+
     # The graph, or whether we're executing eagerly, should be a part of the
     # cache key so we don't improperly capture tensors such as variables.
-    return cache_key + (context.executing_eagerly() or ops.get_default_graph(),)
+    execution_context = ctx.executing_eagerly() or graph
+
+    # Putting the device in the cache key ensures that call-site device
+    # annotations are respected.
+    device_functions = _get_device_functions(ctx, graph)
+
+    return cache_key + (execution_context, device_functions)
 
   def _canonicalize_function_inputs(self, *args, **kwds):
     """Canonicalizes `args` and `kwds`.
@@ -1030,7 +1073,8 @@ class _PolymorphicFunction(object):
     """
 
     args, kwds = self._canonicalize_function_inputs(*args, **kwds)
-    cache_key = self._cache_key(args, kwds)
+    cache_key = self._cache_key(args, kwds, context.context(),
+                                ops.get_default_graph())
     with self._lock:
       try:
         graph_function = self._arguments_to_functions.get(cache_key, None)
@@ -1040,8 +1084,8 @@ class _PolymorphicFunction(object):
 
       if graph_function is None:
         graph_function = GraphCallable(
-            _func_graph_from_py_func(self._name, self._python_function, args,
-                                     kwds, self._input_signature))
+            func_graph_from_py_func(self._name, self._python_function, args,
+                                    kwds, self._input_signature))
         self._variables.extend(
             [v for v in graph_function.variables if v not in self._variables])
         self._arguments_to_functions[cache_key] = graph_function
@@ -1440,8 +1484,7 @@ def make_defun_op(func, *args, **kwds):
      and which can be called directly the way a `@defun` wrapped function
      can.
   """
-  return GraphCallable(
-      _func_graph_from_py_func(func.__name__, func, args, kwds))
+  return GraphCallable(func_graph_from_py_func(func.__name__, func, args, kwds))
 
 
 class AutomaticControlDependencies(object):

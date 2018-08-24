@@ -36,7 +36,9 @@ class TRTOptimizationPass : public tensorflow::grappler::CustomGraphOptimizer {
         minimum_segment_size_(3),
         precision_mode_(0),
         maximum_batch_size_(-1),
-        maximum_workspace_size_(-1) {
+        is_dynamic_op_(false),
+        max_cached_batches_(1),
+        max_workspace_size_bytes_(256LL << 20) {
     VLOG(1) << "Constructing " << name_;
   }
 
@@ -57,14 +59,14 @@ class TRTOptimizationPass : public tensorflow::grappler::CustomGraphOptimizer {
                       const tensorflow::grappler::GrapplerItem& item);
 
  private:
-  string name_;
+  const string name_;
   int minimum_segment_size_;
   int precision_mode_;
   int maximum_batch_size_;
   bool is_dynamic_op_;
   std::vector<int> batches_;
   int max_cached_batches_;
-  int64_t maximum_workspace_size_;
+  int64_t max_workspace_size_bytes_;
 };
 
 }  // namespace convert

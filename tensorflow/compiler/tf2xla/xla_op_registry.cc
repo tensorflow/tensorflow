@@ -325,6 +325,17 @@ std::vector<const KernelDef*> XlaOpRegistry::DeviceKernels(
   return kernels;
 }
 
+/*static*/ std::vector<string> XlaOpRegistry::GetAllRegisteredOps() {
+  std::vector<string> ops;
+  XlaOpRegistry& registry = Instance();
+  mutex_lock lock(registry.mutex_);
+  for (const auto& pair : registry.ops_) {
+    ops.push_back(pair.first);
+  }
+  std::sort(ops.begin(), ops.end());
+  return ops;
+}
+
 /* static */ const std::unordered_set<string>*
 XlaOpRegistry::CompileTimeConstantInputs(const string& op) {
   XlaOpRegistry& registry = Instance();

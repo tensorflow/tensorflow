@@ -375,6 +375,7 @@ cc_library(
         ":lib_platform",
         ":platform_base",
         "//tensorflow/core/platform/default/build_config:port",
+        "@com_google_absl//absl/base",
         "@snappy",
     ],
 )
@@ -668,8 +669,11 @@ cc_library(
         "lib/io/table_builder.h",
         "lib/io/table_options.h",
         "lib/math/math_util.h",
+        "lib/monitoring/collected_metrics.h",
+        "lib/monitoring/collection_registry.h",
         "lib/monitoring/counter.h",
         "lib/monitoring/gauge.h",
+        "lib/monitoring/metric_def.h",
         "lib/monitoring/sampler.h",
         "lib/random/distribution_sampler.h",
         "lib/random/philox_random.h",
@@ -1572,6 +1576,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":mobile_additional_lib_deps",
         ":protos_all_cc_impl",
         ":stats_calculator_portable",
         "//third_party/eigen3",
@@ -1580,6 +1585,11 @@ cc_library(
         "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "mobile_additional_lib_deps",
+    deps = tf_additional_lib_deps(),
 )
 
 # Native library support for iOS applications.
@@ -1613,6 +1623,7 @@ cc_library(
     copts = tf_copts() + ["-Os"] + ["-std=c++11"],
     visibility = ["//visibility:public"],
     deps = [
+        ":mobile_additional_lib_deps",
         ":protos_all_cc_impl",
         ":stats_calculator_portable",
         "//third_party/eigen3",
@@ -2009,9 +2020,6 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "lib/io/zlib_compression_options.h",
     "lib/io/zlib_inputstream.h",
     "lib/io/zlib_outputbuffer.h",
-    "lib/monitoring/collected_metrics.h",
-    "lib/monitoring/collection_registry.h",
-    "lib/monitoring/metric_def.h",
     "lib/monitoring/mobile_counter.h",
     "lib/monitoring/mobile_gauge.h",
     "lib/monitoring/mobile_sampler.h",
@@ -2350,6 +2358,7 @@ tf_generate_proto_text_sources(
     srcs = COMMON_PROTO_SRCS,
     protodeps = ERROR_CODES_PROTO_SRCS,
     srcs_relative_dir = "tensorflow/core/",
+    visibility = ["//visibility:public"],
     deps = [
         ":error_codes_proto_text",
         ":lib_internal",
@@ -2462,6 +2471,7 @@ cc_header_only_library(
 
 cc_header_only_library(
     name = "core_cpu_headers_lib",
+    visibility = ["//visibility:public"],
     deps = [
         ":core_cpu_lib",
     ],
@@ -2585,6 +2595,7 @@ tf_cuda_library(
 # TODO(josh11b): Is this needed, or can we just use ":protos_all_cc"?
 cc_library(
     name = "protos_cc",
+    visibility = ["//visibility:public"],
     deps = ["//tensorflow/core/platform/default/build_config:protos_cc"],
 )
 

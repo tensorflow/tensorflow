@@ -120,7 +120,7 @@ if [[ "$TF_NIGHTLY" == 1 ]]; then
 fi
 
 # Running python tests on Windows needs pip package installed
-PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow-*.whl)
+PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow_gpu-*.whl)
 reinstall_tensorflow_pip ${PIP_NAME}
 
 TF_GPU_COUNT=${TF_GPU_COUNT:-8}

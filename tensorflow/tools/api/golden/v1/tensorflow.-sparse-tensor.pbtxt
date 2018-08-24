@@ -24,12 +24,20 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "values"
     mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'indices\', \'values\', \'dense_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "consumers"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "eval"

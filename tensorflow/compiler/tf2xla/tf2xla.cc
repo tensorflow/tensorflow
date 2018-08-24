@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -197,8 +197,8 @@ Status RewriteAndPruneGraph(
   if (!missing_feeds.empty() || !missing_fetches.empty()) {
     return errors::Aborted(
         "Post graph-pruning",
-        ", missing feeds: ", str_util::Join(missing_feeds, ", "),
-        ", missing fetches: ", str_util::Join(missing_fetches, ", "));
+        ", missing feeds: ", absl::StrJoin(missing_feeds, ", "),
+        ", missing fetches: ", absl::StrJoin(missing_fetches, ", "));
   }
   return Status::OK();
 }

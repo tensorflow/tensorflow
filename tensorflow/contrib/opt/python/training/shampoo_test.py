@@ -52,7 +52,7 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
     grad_np = np.random.rand(size)
     grad_np_2 = np.random.rand(size)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       global_step = variables.Variable(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
       var = variables.Variable(
@@ -103,7 +103,7 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
     grad_np = np.random.rand(size[0], size[1])
     grad_np_2 = np.random.rand(size[0], size[1])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       global_step = variables.Variable(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
       var = variables.Variable(
@@ -162,7 +162,7 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
     grad_np = np.random.rand(size[0], size[1], size[2])
     grad_np_2 = np.random.rand(size[0], size[1], size[2])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       global_step = variables.Variable(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
       var = variables.Variable(
@@ -240,7 +240,7 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
     grad_np = np.random.rand(size)
     grad_np_2 = np.random.rand(size)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       global_step = variables.Variable(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
       var = variables.Variable(
@@ -294,7 +294,7 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
     grad_np = np.random.rand(size[0], size[1])
     grad_np_2 = np.random.rand(size[0], size[1])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       global_step = variables.Variable(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
       var = variables.Variable(
@@ -365,7 +365,7 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
                                               replace=False))
     grad_np_2 = np.random.rand(sample_size_2, size[1])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       global_step = variables.Variable(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
       var = variables.Variable(
@@ -445,7 +445,7 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
                                             replace=False))
     grad_np = np.random.rand(sample_size, size[1], size[2])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       global_step = variables.Variable(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
       var = variables.Variable(
@@ -512,7 +512,7 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
     gbar_decay = 0.9
     gbar_weight = 0.1
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       global_step = variables.Variable(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
       var = variables.Variable(
@@ -601,7 +601,7 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
     mat_g3_a = np.eye(size[2])
     mat_g3 = np.zeros_like(mat_g3_a)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       global_step = variables.Variable(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
       var = variables.Variable(
@@ -672,7 +672,7 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
     mat_g3_a = np.eye(size[2])
     mat_g3 = np.zeros_like(mat_g3_a)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       global_step = variables.Variable(
           0, dtype=dtypes.int64, use_resource=use_resource_var)
       var = variables.Variable(

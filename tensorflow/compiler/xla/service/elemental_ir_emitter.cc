@@ -22,6 +22,7 @@ limitations under the License.
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
@@ -39,17 +40,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
+using absl::StrCat;
 using llvm_ir::AsStringRef;
 using llvm_ir::IrArray;
 using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
-using tensorflow::strings::StrCat;
 
 namespace {
 
@@ -293,10 +293,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
       if (is_signed) {
         auto type =
             llvm_ir::PrimitiveTypeToIrType(op->shape().element_type(), module_);
-        auto zero = llvm::ConstantInt::get(type, 0);
-        auto cmp = b_->CreateICmpSGE(operand_value, zero);
-        return b_->CreateSelect(cmp, operand_value,
-                                b_->CreateNeg(operand_value));
+        auto cmp = b_->CreateICmpSGE(operand_value, GetZero(type));
+        return Select(cmp, operand_value, b_->CreateNeg(operand_value));
       } else {
         return operand_value;
       }
@@ -308,19 +306,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
                                           {operand_value->getType()}, b_);
     }
     case HloOpcode::kSign: {
-      bool is_signed =
-          primitive_util::IsSignedIntegralType(op->shape().element_type());
+      CHECK(primitive_util::IsSignedIntegralType(op->shape().element_type()))
+          << op->shape().element_type();
       auto type =
           llvm_ir::PrimitiveTypeToIrType(op->shape().element_type(), module_);
-      auto zero = llvm::ConstantInt::get(type, 0);
-      auto cmp = b_->CreateICmpEQ(operand_value, zero);
-      if (is_signed) {
-        auto ashr =
-            b_->CreateAShr(operand_value, type->getIntegerBitWidth() - 1);
-        return b_->CreateSelect(cmp, zero, b_->CreateOr(ashr, 1));
-      } else {
-        return b_->CreateSelect(cmp, zero, llvm::ConstantInt::get(type, 1));
-      }
+      auto cmp = b_->CreateICmpEQ(operand_value, GetZero(type));
+      auto ashr = b_->CreateAShr(operand_value, type->getIntegerBitWidth() - 1);
+      return Select(cmp, GetZero(type), b_->CreateOr(ashr, 1));
     }
     case HloOpcode::kNegate:
       return b_->CreateNeg(operand_value);
@@ -456,9 +448,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       auto zero = llvm::ConstantFP::get(type, 0.0);
       auto oeq = b_->CreateFCmpOEQ(operand_value, zero);
       auto olt = b_->CreateFCmpOLT(operand_value, zero);
-      return b_->CreateSelect(
-          oeq, zero,
-          b_->CreateSelect(olt, llvm::ConstantFP::get(type, -1.0),
+      return Select(oeq, zero,
+                    Select(olt, llvm::ConstantFP::get(type, -1.0),
                            llvm::ConstantFP::get(type, 1.0)));
     }
     case HloOpcode::kIsFinite: {
@@ -676,7 +667,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       auto type = cplx_abs->getType();
       auto zero = llvm::ConstantFP::get(type, 0.0);
       auto oeq = b_->CreateFCmpOEQ(cplx_abs, zero);
-      return b_->CreateSelect(
+      return Select(
           oeq, EmitComposeComplex(op, zero, zero),
           EmitComposeComplex(
               op, b_->CreateFDiv(EmitExtractReal(operand_value), cplx_abs),
@@ -808,7 +799,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
       auto oeq = b_->CreateFCmpOEQ(rhs_sum_sq, zero);
       auto real_inf_or_nan = b_->CreateFDiv(EmitExtractReal(lhs_value), zero);
       auto imag_inf_or_nan = b_->CreateFDiv(EmitExtractImag(lhs_value), zero);
-      return b_->CreateSelect(
+      return Select(
           oeq, EmitComposeComplex(op, real_inf_or_nan, imag_inf_or_nan),
           EmitComposeComplex(
               op,
@@ -1006,7 +997,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog1p(PrimitiveType prim_type,
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {value}, {type}, b_);
   auto x_is_small = b_->CreateFCmpOLT(
       abs_x, llvm::ConstantFP::get(type, kAntilogarithmIsSmallThreshold));
-  return b_->CreateSelect(x_is_small, for_small_x, for_large_x);
+  return Select(x_is_small, for_small_x, for_large_x);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitSin(PrimitiveType prim_type,
@@ -1047,7 +1038,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {value}, {type}, b_);
   auto x_is_small = b_->CreateFCmpOLT(
       abs_x, llvm::ConstantFP::get(type, kExponentIsSmallThreshold));
-  return b_->CreateSelect(x_is_small, for_small_x, for_large_x);
+  return Select(x_is_small, for_small_x, for_large_x);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitPow(PrimitiveType prim_type,
@@ -1100,6 +1091,95 @@ static llvm::Value* SaturateShiftIfNecessary(llvm::IRBuilder<>* b,
   return b->CreateSelect(shift_amt_in_range, shift_result, saturated_value);
 }
 
+llvm::Value* ElementalIrEmitter::GetOne(llvm::Type* type) const {
+  return llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(type), 1);
+}
+
+llvm::Value* ElementalIrEmitter::GetZero(llvm::Type* type) const {
+  return llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(type), 0);
+}
+
+llvm::Value* ElementalIrEmitter::GetIntSMin(llvm::Type* type) const {
+  auto* integer_type = llvm::cast<llvm::IntegerType>(type);
+  return llvm::ConstantInt::get(integer_type, llvm::APInt::getSignedMinValue(
+                                                  integer_type->getBitWidth()));
+}
+
+llvm::Value* ElementalIrEmitter::GetMinusOne(llvm::Type* type) const {
+  auto* integer_type = llvm::cast<llvm::IntegerType>(type);
+  return llvm::ConstantInt::get(
+      integer_type, llvm::APInt::getAllOnesValue(integer_type->getBitWidth()));
+}
+
+llvm::Value* ElementalIrEmitter::IsZero(llvm::Value* v) const {
+  return b_->CreateICmpEQ(v, llvm::ConstantInt::get(v->getType(), 0));
+}
+
+llvm::Value* ElementalIrEmitter::IsIntMinDivisionOverflow(
+    llvm::Value* lhs, llvm::Value* rhs) const {
+  return b_->CreateAnd(b_->CreateICmpEQ(lhs, GetIntSMin(lhs->getType())),
+                       b_->CreateICmpEQ(rhs, GetMinusOne(rhs->getType())));
+}
+
+llvm::Value* ElementalIrEmitter::Select(llvm::Value* cond, llvm::Value* if_true,
+                                        llvm::Value* if_false) const {
+  return b_->CreateSelect(cond, if_true, if_false);
+}
+
+llvm::Value* ElementalIrEmitter::EmitIntegerDivide(llvm::Value* lhs,
+                                                   llvm::Value* rhs,
+                                                   bool is_signed) const {
+  // Integer division overflow behavior:
+  //
+  // X / 0 == -1
+  // INT_SMIN /s -1 = INT_SMIN
+
+  if (!is_signed) {
+    llvm::Value* udiv_is_unsafe = IsZero(rhs);
+    llvm::Value* safe_rhs = Select(udiv_is_unsafe, GetOne(lhs->getType()), rhs);
+    llvm::Value* safe_div = b_->CreateUDiv(lhs, safe_rhs);
+    return Select(udiv_is_unsafe, GetMinusOne(lhs->getType()), safe_div);
+  }
+
+  llvm::Value* has_zero_divisor = IsZero(rhs);
+  llvm::Value* has_int_min_overflow = IsIntMinDivisionOverflow(lhs, rhs);
+  llvm::Value* sdiv_is_unsafe =
+      b_->CreateOr(has_int_min_overflow, has_zero_divisor);
+  llvm::Value* safe_rhs = Select(sdiv_is_unsafe, GetOne(lhs->getType()), rhs);
+  llvm::Value* safe_div = b_->CreateSDiv(lhs, safe_rhs);
+
+  return Select(
+      has_zero_divisor, GetMinusOne(lhs->getType()),
+      Select(has_int_min_overflow, GetIntSMin(lhs->getType()), safe_div));
+}
+
+llvm::Value* ElementalIrEmitter::EmitIntegerRemainder(llvm::Value* lhs,
+                                                      llvm::Value* rhs,
+                                                      bool is_signed) const {
+  // Integer remainder overflow behavior:
+  //
+  // X % 0 == X
+  // INT_SMIN %s -1 = 0
+
+  if (!is_signed) {
+    llvm::Value* urem_is_unsafe = IsZero(rhs);
+    llvm::Value* safe_rhs = Select(urem_is_unsafe, GetOne(lhs->getType()), rhs);
+    llvm::Value* safe_rem = b_->CreateURem(lhs, safe_rhs);
+    return Select(urem_is_unsafe, lhs, safe_rem);
+  }
+
+  llvm::Value* has_zero_divisor = IsZero(rhs);
+  llvm::Value* has_int_min_overflow = IsIntMinDivisionOverflow(lhs, rhs);
+  llvm::Value* srem_is_unsafe =
+      b_->CreateOr(has_int_min_overflow, has_zero_divisor);
+  llvm::Value* safe_rhs = Select(srem_is_unsafe, GetOne(lhs->getType()), rhs);
+  llvm::Value* safe_rem = b_->CreateSRem(lhs, safe_rhs);
+
+  return Select(
+      has_zero_divisor, lhs,
+      Select(has_int_min_overflow, GetZero(lhs->getType()), safe_rem));
+}
+
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
     const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value,
     bool is_signed) const {
@@ -1112,11 +1192,9 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
     case HloOpcode::kMultiply:
       return b_->CreateMul(lhs_value, rhs_value);
     case HloOpcode::kDivide:
-      return is_signed ? b_->CreateSDiv(lhs_value, rhs_value)
-                       : b_->CreateUDiv(lhs_value, rhs_value);
+      return EmitIntegerDivide(lhs_value, rhs_value, is_signed);
     case HloOpcode::kRemainder:
-      return is_signed ? b_->CreateSRem(lhs_value, rhs_value)
-                       : b_->CreateURem(lhs_value, rhs_value);
+      return EmitIntegerRemainder(lhs_value, rhs_value, is_signed);
     case HloOpcode::kEq:
       return llvm_ir::EmitComparison(llvm::CmpInst::ICMP_EQ, lhs_value,
                                      rhs_value, b_);
@@ -1176,19 +1254,19 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
 llvm::Value* ElementalIrEmitter::EmitIntegralMax(llvm::Value* lhs_value,
                                                  llvm::Value* rhs_value,
                                                  bool is_signed) const {
-  return b_->CreateSelect(b_->CreateICmp(is_signed ? llvm::ICmpInst::ICMP_SGE
-                                                   : llvm::ICmpInst::ICMP_UGE,
-                                         lhs_value, rhs_value),
-                          lhs_value, rhs_value);
+  return Select(b_->CreateICmp(is_signed ? llvm::ICmpInst::ICMP_SGE
+                                         : llvm::ICmpInst::ICMP_UGE,
+                               lhs_value, rhs_value),
+                lhs_value, rhs_value);
 }
 
 llvm::Value* ElementalIrEmitter::EmitIntegralMin(llvm::Value* lhs_value,
                                                  llvm::Value* rhs_value,
                                                  bool is_signed) const {
-  return b_->CreateSelect(b_->CreateICmp(is_signed ? llvm::ICmpInst::ICMP_SLE
-                                                   : llvm::ICmpInst::ICMP_ULE,
-                                         lhs_value, rhs_value),
-                          lhs_value, rhs_value);
+  return Select(b_->CreateICmp(is_signed ? llvm::ICmpInst::ICMP_SLE
+                                         : llvm::ICmpInst::ICMP_ULE,
+                               lhs_value, rhs_value),
+                lhs_value, rhs_value);
 }
 
 llvm_ir::IrArray::Index ElementalIrEmitter::ElementwiseSourceIndex(
@@ -1506,8 +1584,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalSelect(
   TF_ASSIGN_OR_RETURN(llvm::Value * on_false_value,
                       operand_to_generator.at(hlo->operand(2))(
                           ElementwiseSourceIndex(index, *hlo, 2)));
-  return b_->CreateSelect(b_->CreateTrunc(pred_value, b_->getInt1Ty()),
-                          on_true_value, on_false_value);
+  return Select(b_->CreateTrunc(pred_value, b_->getInt1Ty()), on_true_value,
+                on_false_value);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalClamp(

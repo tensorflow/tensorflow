@@ -44,6 +44,10 @@ load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_mpi_deps")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_gdr_deps")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
+load(
+    "//third_party/ngraph:build_defs.bzl",
+    "if_ngraph",
+)
 
 py_library(
     name = "python",
@@ -139,6 +143,7 @@ py_library(
         "//tensorflow/python/profiler",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/tools:component_api_helper",
+        "//tensorflow/python/tools/api/generator:create_python_api",
         "//third_party/py/numpy",
     ],
 )
@@ -718,7 +723,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
-        ":cond_v2_impl",
         ":dtypes",
         ":framework_ops",
         ":graph_to_function_def",
@@ -2609,6 +2613,19 @@ py_library(
     ],
 )
 
+py_test(
+    name = "sparse_ops_test",
+    srcs = ["ops/sparse_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":constant_op",
+        ":dtypes",
+        ":framework_test_lib",
+        ":sparse_ops",
+        ":sparse_tensor",
+    ],
+)
+
 py_library(
     name = "spectral_grad",
     srcs = ["ops/spectral_grad.py"],
@@ -3816,7 +3833,9 @@ tf_py_wrap_cc(
          tf_additional_plugin_deps() +
          tf_additional_verbs_deps() +
          tf_additional_mpi_deps() +
-         tf_additional_gdr_deps()),
+         tf_additional_gdr_deps()) + if_ngraph([
+        "@ngraph_tf//:ngraph_tf",
+    ]),
 )
 
 # ** Targets for Windows build (start) **

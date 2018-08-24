@@ -39,6 +39,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/python:numpy_lib",
+        "@com_google_absl//absl/strings",
     ],
 )
 

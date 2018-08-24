@@ -21,6 +21,7 @@ from __future__ import print_function
 import sys
 
 from tensorflow.contrib.distribute.python import mirrored_strategy
+from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.contrib.distribute.python import values
 from tensorflow.core.protobuf import config_pb2
@@ -41,6 +42,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribution_strategy_context
+from tensorflow.python.training import server_lib
 
 
 GPU_TEST = "test_gpu" in sys.argv[0]
@@ -1242,6 +1244,22 @@ class MirroredStrategyDefunTest(test.TestCase):
     expected_result = values.PerDevice({"CPU:0": 5.0 * 1.25,
                                         "GPU:0": 3.0 * 1.25})
     self._call_and_check(fn1, [factors], expected_result, [fn1])
+
+
+class MultiWorkerMirroredStrategyTest(
+    multi_worker_test_base.MultiWorkerTestBase,
+    strategy_test_lib.DistributionTestBase):
+
+  def _get_distribution_strategy(self):
+    cluster_spec = server_lib.ClusterSpec({
+        "worker": ["/job:worker/task:0", "/job:worker/task:1"]
+    })
+    strategy = mirrored_strategy.MirroredStrategy(num_gpus=context.num_gpus())
+    strategy.configure(cluster_spec=cluster_spec)
+    return strategy
+
+  def testMinimizeLossGraph(self):
+    self._test_minimize_loss_graph(self._get_distribution_strategy())
 
 
 if __name__ == "__main__":

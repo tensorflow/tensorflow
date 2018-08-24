@@ -297,7 +297,7 @@ class LayoutAssignment : public HloPassInterface {
       ComputationLayout* entry_computation_layout,
       ChannelLayoutConstraints* channel_constraints = nullptr);
   ~LayoutAssignment() override {}
-  tensorflow::StringPiece name() const override { return "layout-assignment"; }
+  absl::string_view name() const override { return "layout-assignment"; }
 
   // Assign layouts to the given module. Returns whether the module was changed
   // (any layouts were changed).

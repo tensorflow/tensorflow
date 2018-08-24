@@ -30,8 +30,8 @@ ParallelLoopEmitter::ParallelLoopEmitter(
       dynamic_loop_bounds_(dynamic_loop_bounds) {}
 
 std::vector<llvm_ir::IrArray::Index>
-ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
-    tensorflow::StringPiece loop_name, llvm::Type* index_type) {
+ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
+                                                   llvm::Type* index_type) {
   CHECK_NE(index_type, nullptr);
 
   CHECK(!ShapeUtil::IsTuple(shape_));

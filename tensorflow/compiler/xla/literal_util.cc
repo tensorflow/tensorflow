@@ -23,6 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -31,18 +33,15 @@ limitations under the License.
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 
-using tensorflow::strings::StrCat;
-
 namespace xla {
-
 namespace {
+
+using absl::StrCat;
 
 // Return a literal with all arrays of type FromNativeT converted to type
 // ToNativeT in the given literal.
@@ -287,7 +286,7 @@ std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
 }
 
 /* static */ std::unique_ptr<Literal> LiteralUtil::CreateR1U8(
-    tensorflow::StringPiece value) {
+    absl::string_view value) {
   auto literal = absl::make_unique<Literal>(
       ShapeUtil::MakeShape(U8, {static_cast<int64>(value.size())}));
   for (int i = 0; i < value.size(); ++i) {
@@ -477,7 +476,7 @@ std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
 
 /* static */ string LiteralUtil::MultiIndexAsString(
     tensorflow::gtl::ArraySlice<int64> multi_index) {
-  return StrCat("{", tensorflow::str_util::Join(multi_index, ","), "}");
+  return StrCat("{", absl::StrJoin(multi_index, ","), "}");
 }
 
 }  // namespace xla

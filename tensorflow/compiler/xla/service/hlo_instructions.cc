@@ -19,6 +19,10 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/escaping.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -29,10 +33,10 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::tensorflow::str_util::CEscape;
-using ::tensorflow::str_util::Join;
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
+using absl::CEscape;
+using absl::StrAppend;
+using absl::StrCat;
+using absl::StrJoin;
 
 bool IsInstructionElementwiseOnOperand(const HloInstruction* instruction,
                                        const HloInstruction* operand) {
@@ -160,7 +164,7 @@ HloInstructionProto HloFftInstruction::ToProto() const {
 std::vector<string> HloFftInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("fft_type=", FftType_Name(fft_type())),
-          StrCat("fft_length={", Join(fft_length(), ","), "}")};
+          StrCat("fft_length={", StrJoin(fft_length(), ","), "}")};
 }
 
 bool HloFftInstruction::IdenticalSlowPath(
@@ -297,27 +301,63 @@ HloRecvDoneInstruction::CloneWithNewOperandsImpl(
       Cast<HloRecvInstruction>(new_operands[0]), is_host_transfer());
 }
 
-HloAllReduceInstruction::HloAllReduceInstruction(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    HloComputation* reduce_computation,
-    tensorflow::gtl::ArraySlice<int64> replica_group_ids,
-    tensorflow::StringPiece barrier,
-    const tensorflow::gtl::optional<int64>& all_reduce_id)
-    : HloInstruction(HloOpcode::kCrossReplicaSum, shape),
-      replica_group_ids_(replica_group_ids.begin(), replica_group_ids.end()),
-      cross_replica_sum_barrier_(barrier.begin(), barrier.end()),
-      all_reduce_id_(all_reduce_id) {
+HloCollectiveInstruction::HloCollectiveInstruction(
+    HloOpcode opcode, const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    const std::vector<ReplicaGroup>& replica_groups)
+    : HloInstruction(opcode, shape), replica_groups_(replica_groups) {
   for (auto operand : operands) {
     AppendOperand(operand);
   }
+}
+
+HloInstructionProto HloCollectiveInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  *proto.mutable_replica_groups() = {replica_groups_.begin(),
+                                     replica_groups_.end()};
+  return proto;
+}
+
+std::vector<string> HloCollectiveInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& /*options*/) const {
+  std::vector<string> result;
+  std::vector<string> replica_group_str;
+  for (const ReplicaGroup& group : replica_groups()) {
+    replica_group_str.push_back(
+        StrCat("{", StrJoin(group.replica_ids(), ","), "}"));
+  }
+  result.push_back(
+      StrCat("replica_groups={", StrJoin(replica_group_str, ","), "}"));
+  return result;
+}
+
+bool HloCollectiveInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    /*eq_computations*/) const {
+  const auto& casted_other =
+      static_cast<const HloCollectiveInstruction&>(other);
+  return ContainersEqual(replica_groups(), casted_other.replica_groups(),
+                         [](const ReplicaGroup& a, const ReplicaGroup& b) {
+                           return ContainersEqual(a.replica_ids(),
+                                                  b.replica_ids());
+                         });
+}
+
+HloAllReduceInstruction::HloAllReduceInstruction(
+    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    HloComputation* reduce_computation,
+    const std::vector<ReplicaGroup>& replica_groups, absl::string_view barrier,
+    const absl::optional<int64>& all_reduce_id)
+    : HloCollectiveInstruction(HloOpcode::kCrossReplicaSum, shape, operands,
+                               replica_groups),
+      cross_replica_sum_barrier_(barrier),
+      all_reduce_id_(all_reduce_id) {
   AppendComputation(reduce_computation);
 }
 
 HloInstructionProto HloAllReduceInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  for (int64 i : replica_group_ids_) {
-    proto.add_replica_group_ids(i);
-  }
+  HloInstructionProto proto = HloCollectiveInstruction::ToProto();
   // Proto3 is so sad.
   if (all_reduce_id_) {
     proto.set_all_reduce_id(*all_reduce_id_);
@@ -327,9 +367,9 @@ HloInstructionProto HloAllReduceInstruction::ToProto() const {
 }
 
 std::vector<string> HloAllReduceInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& /*options*/) const {
-  std::vector<string> result = {
-      StrCat("replica_group_ids={", Join(replica_group_ids(), ","), "}")};
+    const HloPrintOptions& options) const {
+  std::vector<string> result =
+      HloCollectiveInstruction::ExtraAttributesToStringImpl(options);
   if (!cross_replica_sum_barrier().empty()) {
     result.push_back(StrCat("barrier=\"", cross_replica_sum_barrier(), "\""));
   }
@@ -344,7 +384,7 @@ bool HloAllReduceInstruction::IdenticalSlowPath(
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
   const auto& casted_other = static_cast<const HloAllReduceInstruction&>(other);
-  return replica_group_ids() == casted_other.replica_group_ids() &&
+  return HloCollectiveInstruction::IdenticalSlowPath(other, eq_computations) &&
          eq_computations(to_apply(), casted_other.to_apply()) &&
          cross_replica_sum_barrier() ==
              casted_other.cross_replica_sum_barrier() &&
@@ -357,69 +397,23 @@ HloAllReduceInstruction::CloneWithNewOperandsImpl(
     tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
     HloCloneContext* /*context*/) const {
   return absl::make_unique<HloAllReduceInstruction>(
-      shape, new_operands, to_apply(), replica_group_ids(),
+      shape, new_operands, to_apply(), replica_groups(),
       cross_replica_sum_barrier(), all_reduce_id());
 }
 
 HloAllToAllInstruction::HloAllToAllInstruction(
     const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    const std::vector<ReplicaGroup>& replica_groups,
-    tensorflow::StringPiece barrier)
-    : HloInstruction(HloOpcode::kAllToAll, shape),
-      replica_groups_(replica_groups),
-      cross_replica_sum_barrier_(barrier.begin(), barrier.end()) {
-  for (auto operand : operands) {
-    AppendOperand(operand);
-  }
-}
-
-bool HloAllToAllInstruction::IdenticalSlowPath(
-    const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
-        eq_computations) const {
-  const auto& casted_other = static_cast<const HloAllToAllInstruction&>(other);
-  return ContainersEqual(replica_groups(), casted_other.replica_groups(),
-                         [](const ReplicaGroup& a, const ReplicaGroup& b) {
-                           return ContainersEqual(a.replica_ids(),
-                                                  b.replica_ids());
-                         }) &&
-         cross_replica_sum_barrier() ==
-             casted_other.cross_replica_sum_barrier();
-}
+    const std::vector<ReplicaGroup>& replica_groups)
+    : HloCollectiveInstruction(HloOpcode::kAllToAll, shape, operands,
+                               replica_groups) {}
 
 std::unique_ptr<HloInstruction>
 HloAllToAllInstruction::CloneWithNewOperandsImpl(
     const Shape& shape,
     tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
     HloCloneContext* /*context*/) const {
-  return absl::make_unique<HloAllToAllInstruction>(
-      shape, new_operands, replica_groups(), cross_replica_sum_barrier());
-}
-
-std::vector<string> HloAllToAllInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  std::vector<string> result;
-  std::vector<string> replica_group_str;
-  for (const ReplicaGroup& group : replica_groups()) {
-    replica_group_str.push_back(
-        StrCat("{", Join(group.replica_ids(), ","), "}"));
-  }
-  result.push_back(
-      StrCat("replica_groups={", Join(replica_group_str, ","), "}"));
-
-  if (!cross_replica_sum_barrier().empty()) {
-    result.push_back(StrCat("barrier=\"", cross_replica_sum_barrier(), "\""));
-  }
-
-  return result;
-}
-
-HloInstructionProto HloAllToAllInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_replica_groups() = {replica_groups_.begin(),
-                                     replica_groups_.end()};
-  proto.set_cross_replica_sum_barrier(cross_replica_sum_barrier_);
-  return proto;
+  return absl::make_unique<HloAllToAllInstruction>(shape, new_operands,
+                                                   replica_groups());
 }
 
 HloReverseInstruction::HloReverseInstruction(
@@ -440,7 +434,7 @@ HloInstructionProto HloReverseInstruction::ToProto() const {
 
 std::vector<string> HloReverseInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", Join(dimensions(), ","), "}")};
+  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
 
 bool HloReverseInstruction::IdenticalSlowPath(
@@ -479,7 +473,7 @@ HloInstructionProto HloConcatenateInstruction::ToProto() const {
 
 std::vector<string> HloConcatenateInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", Join(dimensions(), ","), "}")};
+  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
 
 bool HloConcatenateInstruction::IdenticalSlowPath(
@@ -522,7 +516,7 @@ HloInstructionProto HloReduceInstruction::ToProto() const {
 
 std::vector<string> HloReduceInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", Join(dimensions(), ","), "}")};
+  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
 
 bool HloReduceInstruction::IdenticalSlowPath(
@@ -565,7 +559,7 @@ HloInstructionProto HloSortInstruction::ToProto() const {
 
 std::vector<string> HloSortInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", Join(dimensions(), ","), "}")};
+  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
 
 bool HloSortInstruction::IdenticalSlowPath(
@@ -598,7 +592,7 @@ HloTransposeInstruction::HloTransposeInstruction(
                    Permute(dimensions, shape.dimensions()).begin()))
       << "shape: " << ShapeUtil::HumanString(shape)
       << ", operand->shape(): " << ShapeUtil::HumanString(shape)
-      << ", dimensions: {" << Join(dimensions, ", ") << "}";
+      << ", dimensions: {" << StrJoin(dimensions, ", ") << "}";
   AppendOperand(operand);
 }
 
@@ -619,7 +613,7 @@ HloInstructionProto HloTransposeInstruction::ToProto() const {
 
 std::vector<string> HloTransposeInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", Join(dimensions(), ","), "}")};
+  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
 
 bool HloTransposeInstruction::IdenticalSlowPath(
@@ -658,7 +652,7 @@ HloInstructionProto HloBroadcastInstruction::ToProto() const {
 
 std::vector<string> HloBroadcastInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", Join(dimensions(), ","), "}")};
+  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
 
 bool HloBroadcastInstruction::IdenticalSlowPath(
@@ -702,7 +696,7 @@ HloInstructionProto HloMapInstruction::ToProto() const {
 }
 
 bool HloMapInstruction::IsElementwiseImpl(
-    const tensorflow::gtl::optional<int64>& operand_idx) const {
+    const absl::optional<int64>& operand_idx) const {
   if (!dimensions().empty()) {
     // Check that the map is executed in elementwise compatible dimensions.
     if (dimensions().size() != shape().dimensions_size()) {
@@ -719,7 +713,7 @@ bool HloMapInstruction::IsElementwiseImpl(
 
 std::vector<string> HloMapInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", Join(dimensions(), ","), "}")};
+  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
 
 bool HloMapInstruction::IdenticalSlowPath(
@@ -777,7 +771,7 @@ std::vector<string> HloSliceInstruction::ExtraAttributesToStringImpl(
     bounds.push_back(
         StrCat("[", slice_starts_[i], ":", slice_limits_[i], stride_str, "]"));
   }
-  return {StrCat("slice={", Join(bounds, ", "), "}")};
+  return {StrCat("slice={", StrJoin(bounds, ", "), "}")};
 }
 
 bool HloSliceInstruction::IdenticalSlowPath(
@@ -815,7 +809,7 @@ HloInstructionProto HloConstantInstruction::ToProto() const {
 }
 
 bool HloConstantInstruction::IsElementwiseImpl(
-    const tensorflow::gtl::optional<int64>& operand_idx) const {
+    const absl::optional<int64>& operand_idx) const {
   return true;
 }
 
@@ -863,7 +857,7 @@ string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
     // lines. Compact this into one line by stripping out white space.
     string tmp = literal().ToString();
     std::replace(tmp.begin(), tmp.end(), '\n', ' ');
-    std::vector<string> v = tensorflow::str_util::Split(tmp, ' ');
+    std::vector<string> v = absl::StrSplit(tmp, ' ');
     bool first = true;
     // Concatenate elements in "v" with spaces separating them, but ignoring
     // empty entries.
@@ -955,7 +949,7 @@ HloInstructionProto HloFusionInstruction::ToProto() const {
 }
 
 bool HloFusionInstruction::IsElementwiseImpl(
-    const tensorflow::gtl::optional<int64>& operand_idx) const {
+    const absl::optional<int64>& operand_idx) const {
   if (!operand_idx.has_value()) {
     for (auto* fused : fused_instructions()) {
       if (fused->opcode() != HloOpcode::kParameter && !fused->IsElementwise()) {
@@ -1387,7 +1381,7 @@ std::vector<string> HloRngInstruction::ExtraAttributesToStringImpl(
 }
 
 bool HloRngInstruction::IsElementwiseImpl(
-    const tensorflow::gtl::optional<int64>& operand_idx) const {
+    const absl::optional<int64>& operand_idx) const {
   return true;
 }
 
@@ -1564,12 +1558,13 @@ std::unique_ptr<HloInstruction> HloInfeedInstruction::CloneWithNewOperandsImpl(
       infeed_shape(), new_operands[0], infeed_config());
 }
 
-HloOutfeedInstruction::HloOutfeedInstruction(
-    const Shape& outfeed_shape, HloInstruction* operand,
-    HloInstruction* token_operand, tensorflow::StringPiece outfeed_config)
+HloOutfeedInstruction::HloOutfeedInstruction(const Shape& outfeed_shape,
+                                             HloInstruction* operand,
+                                             HloInstruction* token_operand,
+                                             absl::string_view outfeed_config)
     : HloInstruction(HloOpcode::kOutfeed, ShapeUtil::MakeTokenShape()),
       outfeed_shape_(outfeed_shape),
-      outfeed_config_(outfeed_config.begin(), outfeed_config.end()) {
+      outfeed_config_(outfeed_config) {
   CHECK(ShapeUtil::Compatible(operand->shape(), outfeed_shape))
       << "Outfeed shape " << outfeed_shape
       << " must be compatible with operand shape " << operand->shape();
@@ -1777,7 +1772,7 @@ HloSelectAndScatterInstruction::CloneWithNewOperandsImpl(
 
 HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    tensorflow::StringPiece custom_call_target)
+    absl::string_view custom_call_target)
     : HloInstruction(HloOpcode::kCustomCall, shape),
       custom_call_target_(custom_call_target.begin(),
                           custom_call_target.end()) {
@@ -1856,41 +1851,6 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
   return std::move(cloned);
 }
 
-HloHostComputeInstruction::HloHostComputeInstruction(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    tensorflow::StringPiece channel_name, const int64 cost_estimate_ns)
-    : HloInstruction(HloOpcode::kHostCompute, shape),
-      channel_name_(channel_name.begin(), channel_name.end()),
-      cost_estimate_ns_(cost_estimate_ns) {
-  for (auto operand : operands) {
-    AppendOperand(operand);
-  }
-}
-
-HloInstructionProto HloHostComputeInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_channel_name(channel_name_);
-  proto.set_cost_estimate_ns(cost_estimate_ns_);
-  return proto;
-}
-
-bool HloHostComputeInstruction::IdenticalSlowPath(
-    const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
-        eq_computations) const {
-  // Not yet supported.
-  return false;
-}
-
-std::unique_ptr<HloInstruction>
-HloHostComputeInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
-    HloCloneContext* context) const {
-  return absl::make_unique<HloHostComputeInstruction>(
-      shape, new_operands, channel_name_, cost_estimate_ns_);
-}
-
 HloPadInstruction::HloPadInstruction(const Shape& shape,
                                      HloInstruction* operand,
                                      HloInstruction* padding_value,
@@ -1948,8 +1908,8 @@ HloInstructionProto HloDynamicSliceInstruction::ToProto() const {
 
 std::vector<string> HloDynamicSliceInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {
-      StrCat("dynamic_slice_sizes={", Join(dynamic_slice_sizes(), ","), "}")};
+  return {StrCat("dynamic_slice_sizes={", StrJoin(dynamic_slice_sizes(), ","),
+                 "}")};
 }
 
 bool HloDynamicSliceInstruction::IdenticalSlowPath(
@@ -1985,17 +1945,17 @@ string HloGatherInstruction::GatherDimensionNumbersToString() const {
   CHECK(gather_dimension_numbers_ != nullptr);
   string offset_dims =
       StrCat("offset_dims={",
-             Join(gather_dimension_numbers_->offset_dims(), ","), "}");
-  string collapsed_slice_dims =
-      StrCat("collapsed_slice_dims={",
-             Join(gather_dimension_numbers_->collapsed_slice_dims(), ","), "}");
+             StrJoin(gather_dimension_numbers_->offset_dims(), ","), "}");
+  string collapsed_slice_dims = StrCat(
+      "collapsed_slice_dims={",
+      StrJoin(gather_dimension_numbers_->collapsed_slice_dims(), ","), "}");
   string start_index_map =
       StrCat("start_index_map={",
-             Join(gather_dimension_numbers_->start_index_map(), ","), "}");
+             StrJoin(gather_dimension_numbers_->start_index_map(), ","), "}");
   string index_vector_dim = StrCat(
       "index_vector_dim=", gather_dimension_numbers_->index_vector_dim());
 
-  return Join<std::initializer_list<string>>(
+  return StrJoin<std::initializer_list<string>>(
       {offset_dims, collapsed_slice_dims, start_index_map, index_vector_dim},
       ", ");
 }
@@ -2032,7 +1992,7 @@ HloInstructionProto HloGatherInstruction::ToProto() const {
 std::vector<string> HloGatherInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {GatherDimensionNumbersToString(),
-          StrCat("slice_sizes={", Join(gather_slice_sizes(), ","), "}")};
+          StrCat("slice_sizes={", StrJoin(gather_slice_sizes(), ","), "}")};
 }
 
 bool HloGatherInstruction::IdenticalSlowPath(
@@ -2071,20 +2031,20 @@ HloScatterInstruction::HloScatterInstruction(
 }
 
 string HloScatterInstruction::ScatterDimensionNumbersToString() const {
-  string update_window_dims =
-      StrCat("update_window_dims={",
-             Join(scatter_dimension_numbers().update_window_dims(), ","), "}");
+  string update_window_dims = StrCat(
+      "update_window_dims={",
+      StrJoin(scatter_dimension_numbers().update_window_dims(), ","), "}");
   string inserted_window_dims = StrCat(
       "inserted_window_dims={",
-      Join(scatter_dimension_numbers().inserted_window_dims(), ","), "}");
+      StrJoin(scatter_dimension_numbers().inserted_window_dims(), ","), "}");
   string scatter_dims_to_operand_dims = StrCat(
       "scatter_dims_to_operand_dims={",
-      Join(scatter_dimension_numbers().scatter_dims_to_operand_dims(), ","),
+      StrJoin(scatter_dimension_numbers().scatter_dims_to_operand_dims(), ","),
       "}");
   string index_vector_dim = StrCat(
       "index_vector_dim=", scatter_dimension_numbers().index_vector_dim());
 
-  return Join<std::initializer_list<string>>(
+  return StrJoin<std::initializer_list<string>>(
       {update_window_dims, inserted_window_dims, scatter_dims_to_operand_dims,
        index_vector_dim},
       ", ");

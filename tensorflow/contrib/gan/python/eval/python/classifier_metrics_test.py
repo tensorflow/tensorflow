@@ -335,7 +335,7 @@ class ClassifierMetricsTest(test.TestCase, parameterized.TestCase):
     mofid_op = classifier_metrics.mean_only_frechet_classifier_distance_from_activations(  # pylint: disable=line-too-long
         tf_pool_real_a, tf_pool_gen_a)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       actual_mofid = sess.run(mofid_op)
 
     expected_mofid = _expected_mean_only_fid(pool_real_a, pool_gen_a)
@@ -355,7 +355,7 @@ class ClassifierMetricsTest(test.TestCase, parameterized.TestCase):
     dofid_op = classifier_metrics.diagonal_only_frechet_classifier_distance_from_activations(  # pylint: disable=line-too-long
         tf_pool_real_a, tf_pool_gen_a)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       actual_dofid = sess.run(dofid_op)
 
     expected_dofid = _expected_diagonal_only_fid(pool_real_a, pool_gen_a)
@@ -377,7 +377,7 @@ class ClassifierMetricsTest(test.TestCase, parameterized.TestCase):
         test_pool_gen_a,
         classifier_fn=lambda x: x)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       actual_fid = sess.run(fid_op)
 
     expected_fid = _expected_fid(test_pool_real_a, test_pool_gen_a)
@@ -404,7 +404,7 @@ class ClassifierMetricsTest(test.TestCase, parameterized.TestCase):
           classifier_fn=lambda x: x))
 
     fids = []
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for fid_op in fid_ops:
         fids.append(sess.run(fid_op))
 
@@ -426,7 +426,7 @@ class ClassifierMetricsTest(test.TestCase, parameterized.TestCase):
     trace_sqrt_prod_op = _run_with_mock(classifier_metrics.trace_sqrt_product,
                                         cov_real, cov_gen)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # trace_sqrt_product: tsp
       actual_tsp = sess.run(trace_sqrt_prod_op)
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -196,8 +196,8 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
         AsInt64Slice(expected.shape().dimensions()), minor_to_major);
     TF_ASSIGN_OR_RETURN(auto actual,
                         ExecuteAndTransfer(computation, arguments, &layout));
-    verify_output(*actual, tensorflow::strings::StrCat(
-                               "Test with output layout: ",
+    verify_output(*actual,
+                  absl::StrCat("Test with output layout: ",
                                ShapeUtil::HumanStringWithLayout(layout)));
   } while (std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
   return Status::OK();
@@ -258,7 +258,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
             output_with_layout));
     string error_message = "Test with input layouts: ";
     for (const auto& str : layout_strings) {
-      tensorflow::strings::StrAppend(&error_message, str, " ");
+      absl::StrAppend(&error_message, str, " ");
     }
     verify_output(*actual, error_message);
     return Status::OK();
@@ -391,7 +391,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
 }
 
 void ClientLibraryTestBase::ComputeAndCompareR1U8(
-    XlaBuilder* builder, tensorflow::StringPiece expected,
+    XlaBuilder* builder, absl::string_view expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
   auto actual_status = ExecuteAndTransfer(builder, arguments);
   EXPECT_IS_OK(actual_status.status());

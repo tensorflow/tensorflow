@@ -211,6 +211,7 @@ cc_library(
         "transpose_conv.cc",
         "unidirectional_sequence_lstm.cc",
         "unidirectional_sequence_rnn.cc",
+        "unpack.cc",
     ],
     hdrs = [
         "padding.h",
@@ -1191,6 +1192,20 @@ tf_cc_test(
     name = "logical_test",
     size = "small",
     srcs = ["logical_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "unpack_test",
+    size = "small",
+    srcs = ["unpack_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",

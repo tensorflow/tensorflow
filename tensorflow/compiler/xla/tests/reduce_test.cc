@@ -32,6 +32,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
@@ -559,9 +560,9 @@ void PrintTo(const BoundsLayout& spec, std::ostream* os) {
   *os << tensorflow::strings::Printf(
       "R%luToR%lu%s_%s_Reduce%s", spec.bounds.size(),
       spec.bounds.size() - spec.reduce_dims.size(),
-      tensorflow::str_util::Join(spec.bounds, "x").c_str(),
-      tensorflow::str_util::Join(spec.layout, "").c_str(),
-      tensorflow::str_util::Join(spec.reduce_dims, "").c_str());
+      absl::StrJoin(spec.bounds, "x").c_str(),
+      absl::StrJoin(spec.layout, "").c_str(),
+      absl::StrJoin(spec.reduce_dims, "").c_str());
 }
 
 // Add-reduces a broadcasted scalar matrix among dimension 1 and 0.

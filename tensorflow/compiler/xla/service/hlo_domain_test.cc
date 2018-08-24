@@ -29,6 +29,11 @@ namespace xla {
 namespace {
 
 class HloDomainTest : public HloVerifiedTestBase {
+ public:
+  HloDomainTest()
+      : HloVerifiedTestBase(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false) {}
+
  protected:
   bool FindUserViaDomainPath(HloInstruction* instruction,
                              HloInstruction* operand) const {
@@ -46,9 +51,8 @@ class HloDomainTest : public HloVerifiedTestBase {
 
   // Checks whether there is a kDomain instruction in the edge between the
   // instruction and the operand.
-  bool HasDomainEdge(HloModule* module,
-                     tensorflow::StringPiece instruction_name,
-                     tensorflow::StringPiece operand_name) {
+  bool HasDomainEdge(HloModule* module, absl::string_view instruction_name,
+                     absl::string_view operand_name) {
     HloInstruction* instruction = FindInstruction(module, instruction_name);
     HloInstruction* operand = FindInstruction(module, operand_name);
     CHECK_NE(instruction, nullptr);
@@ -66,7 +70,7 @@ class HloDomainTest : public HloVerifiedTestBase {
     return false;
   }
 
-  StatusOr<HloModule*> ParseModule(tensorflow::StringPiece hlo_string) {
+  StatusOr<HloModule*> ParseModule(absl::string_view hlo_string) {
     HloModuleConfig config;
     config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
     ParseAndVerifyModule(hlo_string, config);
@@ -84,7 +88,7 @@ class OpNameMetadata : public DomainMetadata {
     return absl::make_unique<OpNameMetadata>(opname_);
   }
 
-  tensorflow::StringPiece Kind() const override { return KindName(); }
+  absl::string_view Kind() const override { return KindName(); }
 
   bool Matches(const DomainMetadata& other) const override {
     const OpNameMetadata* other_ptr =
@@ -98,25 +102,26 @@ class OpNameMetadata : public DomainMetadata {
 
   string ToString() const override { return opname_; }
 
-  static tensorflow::StringPiece KindName() { return "opname"; }
+  static absl::string_view KindName() { return "opname"; }
 
  private:
   string opname_;
 };
 
 // Creator function for OpNameMetadata domains.
-std::unique_ptr<HloInstruction> OpNameDomainCreator(HloInstruction* instruction,
-                                                    HloInstruction* operand) {
-  if (instruction->metadata().op_name() == operand->metadata().op_name()) {
+HloInstruction* OpNameDomainCreator(HloInstruction* instruction,
+                                    HloInstruction* root,
+                                    HloInstruction* operand) {
+  if (instruction->metadata().op_name() == root->metadata().op_name()) {
     return nullptr;
   }
   std::unique_ptr<DomainMetadata> operand_side_metadata =
-      absl::make_unique<OpNameMetadata>(operand->metadata().op_name());
+      absl::make_unique<OpNameMetadata>(root->metadata().op_name());
   std::unique_ptr<DomainMetadata> user_side_metadata =
       absl::make_unique<OpNameMetadata>(instruction->metadata().op_name());
-  return HloInstruction::CreateDomain(operand->shape(), operand,
-                                      std::move(operand_side_metadata),
-                                      std::move(user_side_metadata));
+  return operand->parent()->AddInstruction(HloInstruction::CreateDomain(
+      operand->shape(), operand, std::move(operand_side_metadata),
+      std::move(user_side_metadata)));
 }
 
 Status OpNameDomainNormalizer(const DomainMetadata::Domain& domain,
@@ -143,7 +148,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
-  HloDomainIsolator isolator(CreateShardingDomain);
+  HloDomainIsolator isolator(ShardingDomainCreator{});
   TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module));
   EXPECT_TRUE(isolator_changed);
 
@@ -185,7 +190,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
-  HloDomainIsolator isolator(CreateShardingDomain);
+  HloDomainIsolator isolator(ShardingDomainCreator{});
   TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module));
   EXPECT_TRUE(!isolator_changed);
 }
@@ -212,7 +217,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
-  HloDomainIsolator isolator(CreateShardingDomain);
+  HloDomainIsolator isolator(ShardingDomainCreator{});
   TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module));
   EXPECT_TRUE(isolator_changed);
 
@@ -249,7 +254,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
-  HloDomainIsolator isolator(CreateShardingDomain);
+  HloDomainIsolator isolator(ShardingDomainCreator{});
   TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module));
   EXPECT_FALSE(isolator_changed);
 }
@@ -303,7 +308,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
-  HloDomainIsolator sharding_isolator(CreateShardingDomain);
+  HloDomainIsolator sharding_isolator(ShardingDomainCreator{});
   TF_ASSERT_OK_AND_ASSIGN(bool sharding_isolator_changed,
                           sharding_isolator.Run(module));
   EXPECT_TRUE(sharding_isolator_changed);
@@ -357,7 +362,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
-  HloDomainIsolator isolator(CreateShardingDomain);
+  HloDomainIsolator isolator(ShardingDomainCreator{});
   TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module));
   EXPECT_TRUE(isolator_changed);
 
@@ -446,7 +451,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
 
-  HloDomainIsolator isolator(CreateShardingDomain);
+  HloDomainIsolator isolator(ShardingDomainCreator{});
   TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module));
   EXPECT_TRUE(isolator_changed);
 
@@ -505,7 +510,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
 
-  HloDomainIsolator isolator(CreateShardingDomain);
+  HloDomainIsolator isolator(ShardingDomainCreator{});
   TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module));
   EXPECT_TRUE(isolator_changed);
 
@@ -522,6 +527,65 @@ ENTRY entry {
   EXPECT_EQ(HloSharding::Tuple(tpl->shape(), {HloSharding::AssignDevice(1),
                                               HloSharding::AssignDevice(0)}),
             tpl->sharding());
+}
+
+TEST_F(HloDomainTest, MultiDomainMultiUser) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+ENTRY %entry (p0: (f32[4], f32[4])) -> (f32[4], f32[4], f32[4]) {
+  %p0 = (f32[4], f32[4]) parameter(0)
+  %a = f32[4]{0} get-tuple-element(%p0), index=0
+  %domain = f32[4] domain(%a),
+    domain={kind="sharding", entry={maximal device=1}, exit={maximal device=0}}
+  %b = f32[4] get-tuple-element(%p0), index=1
+  %domain.1 = f32[4] domain(%b),
+    domain={kind="sharding", entry={maximal device=1}, exit={maximal device=0}}
+  %c = f32[4] add(%domain, %domain.1), sharding={maximal device=1}
+  %domain.2 = f32[4] domain(%c),
+    domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
+  %d = f32[4] subtract(%domain, %c),
+    sharding={maximal device=1}, metadata={op_name="D"}
+  %domain.3 = f32[4] domain(%d),
+    domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
+  %e = f32[4] multiply(%c, %d),
+    sharding={maximal device=1}, metadata={op_name="D"}
+  %f = f32[4] add(f32[4]{0} %e, f32[4]{0} %c), sharding={maximal device=1}
+  %domain.4 = f32[4]{0} domain(%f),
+    domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
+  ROOT %g = (f32[4], f32[4], f32[4]) tuple(%domain.2, %domain.3, %domain.4)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
+  LOG(INFO) << "Original module:\n" << module->ToString();
+
+  HloDomainIsolator opname_isolator(OpNameDomainCreator);
+  TF_ASSERT_OK_AND_ASSIGN(bool opname_isolator_changed,
+                          opname_isolator.Run(module));
+  EXPECT_TRUE(opname_isolator_changed);
+
+  EXPECT_TRUE(HasDomainEdge(module, "c", "a"));
+  EXPECT_TRUE(HasDomainEdge(module, "c", "b"));
+  EXPECT_TRUE(HasDomainEdge(module, "d", "a"));
+  EXPECT_TRUE(HasDomainEdge(module, "d", "c"));
+  EXPECT_FALSE(HasDomainEdge(module, "e", "d"));
+
+  HloDomainRemover sharding_remover(ShardingMetadata::KindName(),
+                                    ShardingMetadata::NormalizeShardingDomain);
+  TF_ASSERT_OK_AND_ASSIGN(bool sharding_remover_changed,
+                          sharding_remover.Run(module));
+  EXPECT_TRUE(sharding_remover_changed);
+
+  HloDomainRemover opname_remover(OpNameMetadata::KindName(),
+                                  OpNameDomainNormalizer);
+  TF_ASSERT_OK_AND_ASSIGN(bool opname_remover_changed,
+                          opname_remover.Run(module));
+  EXPECT_TRUE(opname_remover_changed);
+
+  EXPECT_FALSE(HasDomainEdge(module, "c", "a"));
+  EXPECT_FALSE(HasDomainEdge(module, "c", "b"));
+  EXPECT_FALSE(HasDomainEdge(module, "d", "a"));
+  EXPECT_FALSE(HasDomainEdge(module, "d", "c"));
 }
 
 }  // namespace

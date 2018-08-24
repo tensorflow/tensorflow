@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_STRINGS_NUMBERS_H_
-#define TENSORFLOW_LIB_STRINGS_NUMBERS_H_
+#ifndef TENSORFLOW_CORE_LIB_STRINGS_NUMBERS_H_
+#define TENSORFLOW_CORE_LIB_STRINGS_NUMBERS_H_
 
 #include <string>
 
@@ -176,4 +176,4 @@ string HumanReadableElapsedTime(double seconds);
 }  // namespace strings
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_STRINGS_NUMBERS_H_
+#endif  // TENSORFLOW_CORE_LIB_STRINGS_NUMBERS_H_

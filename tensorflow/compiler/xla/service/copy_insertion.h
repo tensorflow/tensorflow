@@ -45,7 +45,7 @@ namespace xla {
 //       InstructionAliasSet::IsDistinct return true.
 class CopyInsertion : public HloPassInterface {
  public:
-  tensorflow::StringPiece name() const override { return "copy-insertion"; }
+  absl::string_view name() const override { return "copy-insertion"; }
 
   // fusion_can_share_buffer: backend specific function that decides whether a
   // fusion can share buffer with its operand.

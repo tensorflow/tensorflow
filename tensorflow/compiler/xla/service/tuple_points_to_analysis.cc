@@ -20,6 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -27,17 +29,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
 string BufferAlias::ToString() const {
-  return tensorflow::strings::StrCat("BufferAlias(", instruction_->name(), "[",
-                                     tensorflow::str_util::Join(index_, ","),
-                                     "])");
+  return absl::StrCat("BufferAlias(", instruction_->name(), "[",
+                      absl::StrJoin(index_, ","), "])");
 }
 
 std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias) {
@@ -496,8 +495,7 @@ StatusOr<const LogicalBuffer*> TuplePointsToAnalysis::GetBufferDefinedAt(
   if (buffers.size() != 1 || buffers[0]->instruction() != instruction) {
     return FailedPrecondition(
         "instruction %s does not define buffer at index {%s}",
-        instruction->name().c_str(),
-        tensorflow::str_util::Join(index, ",").c_str());
+        instruction->name().c_str(), absl::StrJoin(index, ",").c_str());
   }
   return buffers[0];
 }
@@ -563,8 +561,7 @@ string TuplePointsToAnalysis::ToString() const {
   for (const auto* computation : module_->MakeNonfusionComputations()) {
     const char* entry =
         computation == module_->entry_computation() ? "entry " : "";
-    tensorflow::strings::StrAppend(&output, entry, "computation ",
-                                   computation->name(), ":\n");
+    absl::StrAppend(&output, entry, "computation ", computation->name(), ":\n");
     for (const HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       InstructionToString(instruction, &output);
@@ -576,12 +573,11 @@ string TuplePointsToAnalysis::ToString() const {
     }
   }
 
-  tensorflow::strings::StrAppend(&output, "LogicalBuffers:\n");
+  absl::StrAppend(&output, "LogicalBuffers:\n");
   for (const auto& b : logical_buffer_analysis_->logical_buffers()) {
-    tensorflow::strings::StrAppend(&output, "  buffer ", b->ToString(), ":\n");
+    absl::StrAppend(&output, "  buffer ", b->ToString(), ":\n");
     for (const BufferAlias& alias : logical_buffer_aliases_.at(b->id())) {
-      tensorflow::strings::StrAppend(&output, "    alias ", alias.ToString(),
-                                     "\n");
+      absl::StrAppend(&output, "    alias ", alias.ToString(), "\n");
     }
   }
   return output;
@@ -590,20 +586,18 @@ string TuplePointsToAnalysis::ToString() const {
 void TuplePointsToAnalysis::InstructionToString(
     const HloInstruction* instruction, string* output) const {
   const string prefix = instruction->IsFused() ? "    " : "";
-  tensorflow::strings::StrAppend(output, prefix, "  instruction ",
-                                 instruction->ToShortString(), ":\n");
+  absl::StrAppend(output, prefix, "  instruction ",
+                  instruction->ToShortString(), ":\n");
   const PointsToSet& points_to_set = GetPointsToSet(instruction);
   points_to_set.ForEachElement([&prefix, &output](
                                    const ShapeIndex& index,
                                    const PointsToSet::BufferList& points_to) {
-    tensorflow::strings::StrAppend(
-        output, prefix, "    {", tensorflow::str_util::Join(index, ","), "}: ",
-        tensorflow::str_util::Join(
-            points_to, ", ",
-            [](string* out, const LogicalBuffer* source) {
-              out->append(source->ToString());
-            }),
-        "\n");
+    absl::StrAppend(output, prefix, "    {", absl::StrJoin(index, ","), "}: ",
+                    absl::StrJoin(points_to, ", ",
+                                  [](string* out, const LogicalBuffer* source) {
+                                    out->append(source->ToString());
+                                  }),
+                    "\n");
   });
 }
 

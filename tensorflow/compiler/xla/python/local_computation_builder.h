@@ -60,8 +60,7 @@ StatusOr<std::unique_ptr<Literal> > TransferFromOutfeedLocalReplica(
 class LocalShapedBuffer {
  public:
   static StatusOr<LocalShapedBuffer*> FromLiteral(
-      const Literal& argument,
-      const tensorflow::gtl::optional<Shape>& shape_with_layout);
+      const Literal& argument, const absl::optional<Shape>& shape_with_layout);
 
   LocalShapedBuffer(ScopedShapedBuffer shaped_buffer);
   const ScopedShapedBuffer* shaped_buffer() const;
@@ -120,7 +119,7 @@ class CompiledLocalComputation {
   // shapes_with_layout.
   StatusOr<std::unique_ptr<Literal> > Execute(
       const std::vector<Literal>& arguments,
-      const std::vector<tensorflow::gtl::optional<Shape> >& shapes_with_layout);
+      const std::vector<absl::optional<Shape> >& shapes_with_layout);
 
   LocalShapedBuffer* ExecuteWithShapedBuffers(
       tensorflow::gtl::ArraySlice<LocalShapedBuffer*> argument_handles);

@@ -272,7 +272,7 @@ class SaverUtilsTest(test.TestCase):
   def testCheckpointExists(self):
     for sharded in (False, True):
       for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
-        with self.test_session(graph=ops_lib.Graph()) as sess:
+        with self.session(graph=ops_lib.Graph()) as sess:
           unused_v = variables.Variable(1.0, name="v")
           variables.global_variables_initializer().run()
           saver = saver_module.Saver(sharded=sharded, write_version=version)
@@ -290,7 +290,7 @@ class SaverUtilsTest(test.TestCase):
   def testGetCheckpointMtimes(self):
     prefixes = []
     for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
-      with self.test_session(graph=ops_lib.Graph()) as sess:
+      with self.session(graph=ops_lib.Graph()) as sess:
         unused_v = variables.Variable(1.0, name="v")
         variables.global_variables_initializer().run()
         saver = saver_module.Saver(write_version=version)
@@ -304,7 +304,7 @@ class SaverUtilsTest(test.TestCase):
   def testRemoveCheckpoint(self):
     for sharded in (False, True):
       for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
-        with self.test_session(graph=ops_lib.Graph()) as sess:
+        with self.session(graph=ops_lib.Graph()) as sess:
           unused_v = variables.Variable(1.0, name="v")
           variables.global_variables_initializer().run()
           saver = saver_module.Saver(sharded=sharded, write_version=version)

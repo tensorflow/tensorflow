@@ -834,6 +834,11 @@ class _LoadStatus(object):
     pass
 
   @abc.abstractmethod
+  def assert_existing_objects_matched(self):
+    """Raises an exception unless existing Python objects have been matched."""
+    pass
+
+  @abc.abstractmethod
   def run_restore_ops(self, session=None):
     """Runs restore ops from the checkpoint. Requires a valid checkpoint."""
     pass
@@ -903,13 +908,11 @@ class CheckpointLoadStatus(_LoadStatus):
         or if there are any checkpointed values which have not been matched to
         Python objects.
     """
+    self.assert_existing_objects_matched()
     for node_id, node in enumerate(self._checkpoint.object_graph_proto.nodes):
       checkpointable = self._checkpoint.object_by_proto_id.get(node_id, None)
       if checkpointable is None:
         raise AssertionError("Unresolved object in checkpoint: %s" % (node,))
-      if checkpointable._update_uid < self._checkpoint.restore_uid:  # pylint: disable=protected-access
-        raise AssertionError(
-            "Object not assigned a value from checkpoint: %s" % (node,))
     if self._checkpoint.slot_restorations:
       # Sanity check; this collection should be clear if everything has been
       # restored.
@@ -920,6 +923,31 @@ class CheckpointLoadStatus(_LoadStatus):
           ("Unused attributes in these objects (the attributes exist in the "
            "checkpoint but not in the objects): %s") % (
                self._checkpoint.unused_attributes.items(),))
+    return self
+
+  def assert_existing_objects_matched(self):
+    """Asserts that checkpointable Python objects have been matched.
+
+    Note that this is a weaker assertion than `assert_consumed`. It will only
+    fail for existing Python objects which are (transitive) dependencies of the
+    root object and which do not have an entry in the checkpoint.
+
+    It will not fail, for example, if a `tf.keras.Layer` object has not yet been
+    built and so has not created any `tf.Variable` objects.
+
+    Returns:
+      `self` for chaining.
+
+    Raises:
+      AssertionError: If a Python object exists in the transitive dependencies
+        of the root object but does not have a value in the checkpoint.
+    """
+    for node_id, node in enumerate(self._checkpoint.object_graph_proto.nodes):
+      checkpointable = self._checkpoint.object_by_proto_id.get(node_id, None)
+      if (checkpointable is not None
+          and checkpointable._update_uid < self._checkpoint.restore_uid):  # pylint: disable=protected-access
+        raise AssertionError(
+            "Object not assigned a value from checkpoint: %s" % (node,))
     for checkpointable_object in list_objects(self._root_checkpointable):
       self._checkpoint.all_python_objects.add(checkpointable_object)
     unused_python_objects = (
@@ -929,7 +957,7 @@ class CheckpointLoadStatus(_LoadStatus):
       raise AssertionError(
           ("Some Python objects were not bound to checkpointed values, likely "
            "due to changes in the Python program: %s")
-          % (unused_python_objects,))
+          % (list(unused_python_objects),))
     return self
 
   def run_restore_ops(self, session=None):
@@ -987,6 +1015,11 @@ class InitializationOnlyStatus(_LoadStatus):
     self._root_checkpointable = root_checkpointable
 
   def assert_consumed(self):
+    """Assertion for consistency with `CheckpointLoadStatus`. Always fails."""
+    raise AssertionError(
+        "No checkpoint specified (save_path=None); nothing is being restored.")
+
+  def assert_existing_objects_matched(self):
     """Assertion for consistency with `CheckpointLoadStatus`. Always fails."""
     raise AssertionError(
         "No checkpoint specified (save_path=None); nothing is being restored.")
@@ -1064,6 +1097,15 @@ class NameBasedSaverStatus(_LoadStatus):
       if checkpointable._update_uid < self._checkpoint.restore_uid:
         raise AssertionError("Object not restored: %s" % (checkpointable,))
       # pylint: enable=protected-access
+    return self
+
+  def assert_existing_objects_matched(self):
+    """Raises an exception if currently created objects are unmatched."""
+    # For name-based checkpoints there's no object information in the
+    # checkpoint, so there's no distinction between
+    # assert_existing_objects_matched and assert_consumed (and both are less
+    # useful since we don't touch Python objects or Python state).
+    return self.assert_consumed()
 
   def _gather_saveable_objects(self):
     """Walk the object graph, using global names for SaveableObjects."""
@@ -1647,6 +1689,17 @@ class Checkpoint(tracking.Checkpointable):
           Python objects in the dependency graph with no values in the
           checkpoint. This method returns the status object, and so may be
           chained with `initialize_or_restore` or `run_restore_ops`.
+      -  `assert_existing_objects_matched()`:
+          Raises an exception if any existing Python objects in the dependency
+          graph are unmatched. Unlike `assert_consumed`, this assertion will
+          pass if values in the checkpoint have no corresponding Python
+          objects. For example a `tf.keras.Layer` object which has not yet been
+          built, and so has not created any variables, will pass this assertion
+          but fail `assert_consumed`. Useful when loading part of a larger
+          checkpoint into a new Python program, e.g. a training checkpoint with
+          a `tf.train.Optimizer` was saved but only the state required for
+          inference is being loaded. This method returns the status object, and
+          so may be chained with `initialize_or_restore` or `run_restore_ops`.
       - `initialize_or_restore(session=None)`:
           When graph building, runs variable initializers if `save_path` is
           `None`, but otherwise runs restore operations. If no `session` is
