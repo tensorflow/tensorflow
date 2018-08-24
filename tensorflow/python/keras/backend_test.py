@@ -1409,8 +1409,8 @@ class TestCTC(test.TestCase):
           np.array([seq_len_0], dtype=np.int32))
       # batch_size length vector of negative log probabilities
       log_prob_truth = np.array([
-          0.584855,  # output beam 0
-          0.389139  # output beam 1
+          -3.5821197,  # output beam 0
+          -3.777835    # output beam 1
       ], np.float32)[np.newaxis, :]
 
       decode_truth = [np.array([1, 0]), np.array([0, 1, 0])]
