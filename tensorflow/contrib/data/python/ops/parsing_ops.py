@@ -102,8 +102,6 @@ class _ParseExampleDataset(dataset_ops.Dataset):
     return self._output_classes
 
 
-# TODO(b/38416882): Properly export in the `tf.contrib.data` API when stable
-# or make private / remove.
 # TODO(b/111553342): add arguments names and example names as well.
 def parse_example_dataset(features, num_parallel_calls=1):
   """A transformation that parses `Example` protos into a `dict` of tensors.
