@@ -565,7 +565,7 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
         break;
       } else if (must_end) {
         return InvalidArgument("Expected end of tuple; got: \"%s\"",
-                               std::string(*s).c_str());
+                               string(*s).c_str());
       }
       shapes.emplace_back();
       TF_ASSIGN_OR_RETURN(shapes.back(), ParseShapeStringInternal(s));
@@ -594,7 +594,7 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
       if (!absl::SimpleAtoi(input, &element)) {
         return InvalidArgument(
             "Invalid s64 value in parsed shape string: \"%s\" in \"%s\"",
-            string(input).c_str(), std::string(*s).c_str());
+            string(input).c_str(), string(*s).c_str());
       }
       return element;
     };
@@ -649,7 +649,7 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
   }
 
   return InvalidArgument("Invalid shape string to parse: \"%s\"",
-                         std::string(*s).c_str());
+                         string(*s).c_str());
 }
 }  // namespace
 
@@ -657,7 +657,7 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
   TF_ASSIGN_OR_RETURN(Shape shape, ParseShapeStringInternal(&s));
   if (!s.empty()) {
     return InvalidArgument("Invalid shape string to parse: \"%s\"",
-                           std::string(s).c_str());
+                           string(s).c_str());
   }
   return shape;
 }
