@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_RESOURCE_OPERATION_TABLE_H_
 
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
