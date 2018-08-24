@@ -892,6 +892,49 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
                                  'all empty or contain only a root node'):
       est.experimental_feature_importances(normalize=True)
 
+  def testNegativeFeatureImportances(self):
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5)
+
+    # In order to generate a negative feature importances,
+    # We assign an invalid value -1 to tree_weights here.
+    tree_ensemble_text = """
+        trees {
+          nodes {
+            bucketized_split {
+              feature_id: 1
+              left_id: 1
+              right_id: 2
+            }
+            metadata {
+              gain: 5.0
+            }
+          }
+          nodes {
+            leaf {
+              scalar: -0.34
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 1.34
+            }
+          }
+        }
+        tree_weights: -1.0
+        """
+    self._create_fake_checkpoint_with_tree_ensemble_proto(
+        est, tree_ensemble_text)
+
+    with self.assertRaisesRegexp(AssertionError, 'non-negative'):
+      est.experimental_feature_importances(normalize=False)
+
+    with self.assertRaisesRegexp(AssertionError, 'non-negative'):
+      est.experimental_feature_importances(normalize=True)
+
   def testFeatureImportancesNamesForCategoricalColumn(self):
     categorical = feature_column.categorical_column_with_vocabulary_list(
         key='categorical', vocabulary_list=('bad', 'good', 'ok'))
@@ -1015,48 +1058,18 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(feature_names_expected, feature_names)
     self.assertAllClose([0.5, 0.2, 0.2, 0.1, 0.0, 0.0, 0.0, 0.0], importances)
 
-  def testNegativeFeatureImportances(self):
-    est = boosted_trees.BoostedTreesClassifier(
-        feature_columns=self._feature_columns,
-        n_batches_per_layer=1,
-        n_trees=1,
-        max_depth=5)
+  def testFeatureImportancesNamesForUnsupportedColumn(self):
+    numeric_col = feature_column.numeric_column(
+        'continuous', dtype=dtypes.float32)
 
-    # In order to generate a negative feature importances,
-    # We assign an invalid value -1 to tree_weights here.
-    tree_ensemble_text = """
-        trees {
-          nodes {
-            bucketized_split {
-              feature_id: 1
-              left_id: 1
-              right_id: 2
-            }
-            metadata {
-              gain: 5.0
-            }
-          }
-          nodes {
-            leaf {
-              scalar: -0.34
-            }
-          }
-          nodes {
-            leaf {
-              scalar: 1.34
-            }
-          }
-        }
-        tree_weights: -1.0
-        """
-    self._create_fake_checkpoint_with_tree_ensemble_proto(
-        est, tree_ensemble_text)
-
-    with self.assertRaisesRegexp(AssertionError, 'non-negative'):
-      est.experimental_feature_importances(normalize=False)
-
-    with self.assertRaisesRegexp(AssertionError, 'non-negative'):
-      est.experimental_feature_importances(normalize=True)
+    with self.assertRaisesRegexp(ValueError,
+        'only bucketized_column and indicator_column'):
+      _ = boosted_trees.BoostedTreesRegressor(
+          feature_columns=[numeric_col],
+          n_batches_per_layer=1,
+          n_trees=2,
+          learning_rate=1.0,
+          max_depth=1)
 
 
 class ModelFnTests(test_util.TensorFlowTestCase):
