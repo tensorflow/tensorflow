@@ -20,9 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/aot/embedded_protocol_buffers.h"
 #include "tensorflow/compiler/tf2xla/cpu_function_runtime.h"
-#include "tensorflow/compiler/tf2xla/str_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
@@ -158,7 +158,7 @@ Status AddRewritesForShape(int i, const xla::Shape& shape,
 // text-templating mechanism.
 string RewriteWithName(const string& name, string code,
                        const std::vector<std::pair<string, string>>& rewrites) {
-  str_util::ReplaceAllPairs(&code, rewrites);
+  absl::StrReplaceAll(rewrites, &code);
   return str_util::StringReplace(code, "{{NAME}}", name, /*replace_all=*/true);
 }
 
@@ -596,7 +596,7 @@ class {{CLASS}} : public tensorflow::XlaCompiledCpuFunction {
       {"{{NUM_BUFFERS}}", strings::StrCat(buffer_infos.size())},
       {"{{BUFFER_INFOS_AS_STRING}}",
        str_util::Join(buffer_infos_as_strings, ",\n")}};
-  str_util::ReplaceAllPairs(header, rewrites);
+  absl::StrReplaceAll(rewrites, header);
   return Status::OK();
 }
 
