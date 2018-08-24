@@ -389,8 +389,6 @@ class CheckpointManagerTest(test.TestCase):
     mock_time.time.return_value = first_time
     first_manager.save()
     state = checkpoint_management.get_checkpoint_state(directory)
-    self.assertEqual([first_time], state.all_model_checkpoint_timestamps)
-    self.assertEqual(3., state.last_preserved_timestamp)
     second_time = first_time + 3610.
     second_name = os.path.join(directory, "ckpt-2")
     mock_time.time.return_value = second_time
@@ -398,7 +396,6 @@ class CheckpointManagerTest(test.TestCase):
     state = checkpoint_management.get_checkpoint_state(directory)
     self.assertEqual([first_time, second_time],
                      state.all_model_checkpoint_timestamps)
-    self.assertEqual(3., state.last_preserved_timestamp)
     self.assertEqual([first_name, second_name], first_manager.checkpoints)
     self.assertEqual(second_name, first_manager.latest_checkpoint)
     del first_manager
