@@ -398,17 +398,49 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
           // We are currently processing a file, so try to read the next record.
           if (buffered_input_stream_) {
             const int64 current_pos = buffered_input_stream_->Tell();
-            DCHECK_GE(file_pos_limit_, 0);
-            if (current_pos < file_pos_limit_) {
+            if (dataset()->compression_type_ == "") {
+              DCHECK_GE(file_pos_limit_, 0);
+              if (current_pos < file_pos_limit_) {
+                string record;
+                TF_RETURN_IF_ERROR(buffered_input_stream_->ReadNBytes(
+                    dataset()->record_bytes_, &record));
+                // Produce the record as output.
+                Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
+                record_tensor.scalar<string>()() = record;
+                out_tensors->emplace_back(std::move(record_tensor));
+                *end_of_sequence = false;
+                return Status::OK();
+              }
+            } else {
               string record;
-              TF_RETURN_IF_ERROR(buffered_input_stream_->ReadNBytes(
-                  dataset()->record_bytes_, &record));
-              // Produce the record as output.
-              out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
-                                        TensorShape({}));
-              out_tensors->back().scalar<string>()() = record;
-              *end_of_sequence = false;
-              return Status::OK();
+              Status s = buffered_input_stream_->ReadNBytes(
+                  dataset()->record_bytes_, &record);
+              if (s.ok()) {
+                lookahead_cache_.append(record);
+                record = lookahead_cache_.substr(0, dataset()->record_bytes_);
+                lookahead_cache_ =
+                    lookahead_cache_.substr(dataset()->record_bytes_);
+                // Produce the record as output.
+                out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
+                                          TensorShape({}));
+                out_tensors->back().scalar<string>()() = record;
+                *end_of_sequence = false;
+                return Status::OK();
+              }
+              if (errors::IsOutOfRange(s) && !record.empty()) {
+                uint64 body_size =
+                    current_pos + record.size() -
+                    (dataset()->header_bytes_ + dataset()->footer_bytes_);
+                return errors::DataLoss(
+                    "Excluding the header (", dataset()->header_bytes_,
+                    " bytes) and footer (", dataset()->footer_bytes_,
+                    " bytes), input file \"",
+                    dataset()->filenames_[current_file_index_],
+                    "\" has body length ", body_size,
+                    " bytes, which is not an exact multiple of the record "
+                    "length (",
+                    dataset()->record_bytes_, " bytes).");
+              }
             }
 
             // We have reached the end of the current file, so maybe
@@ -425,30 +457,49 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
           }
 
           // Actually move on to next file.
-          uint64 file_size;
-          TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(
-              dataset()->filenames_[current_file_index_], &file_size));
-          file_pos_limit_ = file_size - dataset()->footer_bytes_;
+          if (dataset()->compression_type_ == "") {
+            uint64 file_size;
+            TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(
+                dataset()->filenames_[current_file_index_], &file_size));
+            file_pos_limit_ = file_size - dataset()->footer_bytes_;
 
-          uint64 body_size =
-              file_size - (dataset()->header_bytes_ + dataset()->footer_bytes_);
+            uint64 body_size = file_size - (dataset()->header_bytes_ +
+                                            dataset()->footer_bytes_);
 
-          if (body_size % dataset()->record_bytes_ != 0) {
-            return errors::InvalidArgument(
-                "Excluding the header (", dataset()->header_bytes_,
-                " bytes) and footer (", dataset()->footer_bytes_,
-                " bytes), input file \"",
-                dataset()->filenames_[current_file_index_],
-                "\" has body length ", body_size,
-                " bytes, which is not an exact multiple of the record length (",
-                dataset()->record_bytes_, " bytes).");
+            if (body_size % dataset()->record_bytes_ != 0) {
+              return errors::InvalidArgument(
+                  "Excluding the header (", dataset()->header_bytes_,
+                  " bytes) and footer (", dataset()->footer_bytes_,
+                  " bytes), input file \"",
+                  dataset()->filenames_[current_file_index_],
+                  "\" has body length ", body_size,
+                  " bytes, which is not an exact multiple of the record length "
+                  "(",
+                  dataset()->record_bytes_, " bytes).");
+            }
           }
           TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
               dataset()->filenames_[current_file_index_], &file_));
-          buffered_input_stream_.reset(new io::BufferedInputStream(
-              file_.get(), dataset()->buffer_size_));
+          if (dataset()->compression_type_ != "") {
+            const io::ZlibCompressionOptions zlib_options =
+                dataset()->compression_type_ == "ZLIB"
+                    ? io::ZlibCompressionOptions::DEFAULT()
+                    : io::ZlibCompressionOptions::GZIP();
+            file_stream_.reset(new io::RandomAccessInputStream(file_.get()));
+            buffered_input_stream_.reset(new io::ZlibInputStream(
+                file_stream_.get(), dataset()->buffer_size_,
+                dataset()->buffer_size_, zlib_options));
+          } else {
+            buffered_input_stream_.reset(new io::BufferedInputStream(
+                file_.get(), dataset()->buffer_size_));
+          }
           TF_RETURN_IF_ERROR(
               buffered_input_stream_->SkipNBytes(dataset()->header_bytes_));
+          lookahead_cache_.clear();
+          if (dataset()->compression_type_ != "") {
+            TF_RETURN_IF_ERROR(buffered_input_stream_->ReadNBytes(
+                dataset()->footer_bytes_, &lookahead_cache_));
+          }
         } while (true);
       }
 
@@ -488,15 +539,36 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
         buffered_input_stream_.reset();
         file_.reset();
         if (current_pos >= 0) {  // There was an active buffered_input_stream_.
-          uint64 file_size;
-          TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(
-              dataset()->filenames_[current_file_index_], &file_size));
-          file_pos_limit_ = file_size - dataset()->footer_bytes_;
+          if (dataset()->compression_type_ == "") {
+            uint64 file_size;
+            TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(
+                dataset()->filenames_[current_file_index_], &file_size));
+            file_pos_limit_ = file_size - dataset()->footer_bytes_;
+          }
           TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
               dataset()->filenames_[current_file_index_], &file_));
-          buffered_input_stream_.reset(new io::BufferedInputStream(
-              file_.get(), dataset()->buffer_size_));
-          TF_RETURN_IF_ERROR(buffered_input_stream_->SkipNBytes(current_pos));
+          if (dataset()->compression_type_ != "") {
+            const io::ZlibCompressionOptions zlib_options =
+                dataset()->compression_type_ == "ZLIB"
+                    ? io::ZlibCompressionOptions::DEFAULT()
+                    : io::ZlibCompressionOptions::GZIP();
+            file_stream_.reset(new io::RandomAccessInputStream(file_.get()));
+            buffered_input_stream_.reset(new io::ZlibInputStream(
+                file_stream_.get(), dataset()->buffer_size_,
+                dataset()->buffer_size_, zlib_options));
+          } else {
+            buffered_input_stream_.reset(new io::BufferedInputStream(
+                file_.get(), dataset()->buffer_size_));
+          }
+          lookahead_cache_.clear();
+          if (dataset()->compression_type_ == "") {
+            TF_RETURN_IF_ERROR(buffered_input_stream_->SkipNBytes(current_pos));
+          } else {
+            TF_RETURN_IF_ERROR(buffered_input_stream_->SkipNBytes(
+                current_pos - dataset()->footer_bytes_));
+            TF_RETURN_IF_ERROR(buffered_input_stream_->ReadNBytes(
+                dataset()->footer_bytes_, &lookahead_cache_));
+          }
         }
 
         return Status::OK();
@@ -507,9 +579,12 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
       size_t current_file_index_ GUARDED_BY(mu_) = 0;
       std::unique_ptr<RandomAccessFile> file_
           GUARDED_BY(mu_);  // must outlive buffered_input_stream_
-      std::unique_ptr<io::RandomAccessInputStream> buffered_input_stream_
+      std::unique_ptr<io::RandomAccessInputStream>
+          file_stream_;  // must outlive buffered_inputstream_
+      std::unique_ptr<io::InputStreamInterface> buffered_input_stream_
           GUARDED_BY(mu_);
       int64 file_pos_limit_ GUARDED_BY(mu_) = -1;
+      string lookahead_cache_ GUARDED_BY(mu_);
     };
 
     const std::vector<string> filenames_;
