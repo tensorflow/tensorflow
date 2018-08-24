@@ -753,14 +753,14 @@ TEST_F(MathGradTest, Div) {
   }
 }
 
-TEST_F(MathGradTest, UnsafeDiv) {
+TEST_F(MathGradTest, DivNoNan) {
   auto x = test::AsTensor<float>(
       {0.f, -3.f, -2.f, -1.f, 0.f, 1.f, 2.f, 3.f, 0.f}, TensorShape({3, 3}));
   auto y = test::AsTensor<float>({-10.f, 0.f, 10.f}, TensorShape({3, 1}));
   Tensor dx;
   Tensor dy;
   {
-    SymGrad("UnsafeDiv", x, y, &dx, &dy);
+    SymGrad("DivNoNan", x, y, &dx, &dy);
     {
       auto g = [](float x, float y) {
         if (y == 0.f) {
@@ -792,7 +792,7 @@ TEST_F(MathGradTest, UnsafeDiv) {
     }
   }
   {  // Swap x and y.
-    SymGrad("UnsafeDiv", y, x, &dy, &dx);
+    SymGrad("DivNoNan", y, x, &dy, &dx);
     {
       auto g = [](float x, float y) {
         if (y == 0.f) {

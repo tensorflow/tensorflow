@@ -40,7 +40,7 @@ We recommend that you join this list if you depend on TensorFlow in any way.
 
 ### Development Roadmap
 
-The @{$roadmap$Roadmap} summarizes plans for upcoming additions to TensorFlow.
+The [Roadmap](../community/roadmap.md) summarizes plans for upcoming additions to TensorFlow.
 
 ### Social Media
 
@@ -70,12 +70,12 @@ the [TensorFlow discuss mailing
 list](https://groups.google.com/a/tensorflow.org/d/forum/discuss).
 
 A number of other mailing lists exist, focused on different project areas, which
-can be found at @{$lists$TensorFlow Mailing Lists}.
+can be found at [TensorFlow Mailing Lists](../community/lists.md).
 
 ### User Groups
 
 To meet with like-minded people local to you, check out the many
-@{$groups$TensorFlow user groups} around the world.
+[TensorFlow user groups](../community/groups.md) around the world.
 
 
 ## Contributing To TensorFlow

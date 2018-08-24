@@ -163,6 +163,13 @@ class MultiGrpcChannelCache : public CachingGrpcChannelCache {
     }
   }
 
+  void ListWorkersInJob(const string& job_name,
+                        std::vector<string>* workers) override {
+    for (GrpcChannelCache* cache : caches_) {
+      cache->ListWorkersInJob(job_name, workers);
+    }
+  }
+
   string TranslateTask(const string& target) override {
     mutex_lock l(mu_);  // could use reader lock
     GrpcChannelCache* cache = gtl::FindPtrOrNull(target_caches_, target);
@@ -220,6 +227,13 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
     workers->reserve(workers->size() + host_ports_.size());
     for (const auto& id_host_port : host_ports_) {
       workers->emplace_back(MakeAddress(job_id_, id_host_port.first));
+    }
+  }
+
+  void ListWorkersInJob(const string& job_name,
+                        std::vector<string>* workers) override {
+    if (job_name == job_id_) {
+      ListWorkers(workers);
     }
   }
 

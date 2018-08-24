@@ -88,7 +88,7 @@ class SummariesTest(test.TestCase):
     summary_op = summary.merge_all()
 
     summary_writer = summary.FileWriter(output_dir)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       new_summary = sess.run(summary_op)
       summary_writer.add_summary(new_summary, 1)
       summary_writer.flush()

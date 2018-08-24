@@ -91,7 +91,8 @@ Status XlaTransferManager::TransferLiteralToDevice(
   const xla::ShapedBuffer& shaped_buffer = xla_tensor->shaped_buffer();
   VLOG(1) << "Transfer to device as literal: " << literal->ToString() << " "
           << shaped_buffer.ToString();
-  if (UseMultipleStreams()) {
+  if (UseMultipleStreams() && !transfer_manager_->CanShapedBufferBeAccessedNow(
+                                  stream_->parent(), shaped_buffer)) {
     // Initially wait for the compute stream so that memory allocations are
     // synchronized.
     host_to_device_stream_->ThenWaitFor(stream_.get());
@@ -123,11 +124,11 @@ void XlaTransferManager::TransferLiteralFromDevice(
   TensorReference ref(device_tensor);
   transfer_manager_->TransferLiteralFromDevice(
       device_to_host_stream_.get(), shaped_buffer, literal,
-      [=, &shaped_buffer, &literal](xla::Status status) {
+      [=, &shaped_buffer](xla::Status status) {
         ref.Unref();
         done([&]() -> Status {
-          VLOG(1) << "Transfer from device as literal: " << literal.ToString()
-                  << " " << shaped_buffer.ToString();
+          VLOG(1) << "Transfer from device as literal: "
+                  << shaped_buffer.ToString();
           return status;
         }());
       });

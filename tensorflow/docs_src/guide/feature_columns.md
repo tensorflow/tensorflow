@@ -5,7 +5,7 @@ intermediaries between raw data and Estimators. Feature columns are very rich,
 enabling you to transform a diverse range of raw data into formats that
 Estimators can use, allowing easy experimentation.
 
-In @{$premade_estimators$Premade Estimators}, we used the premade
+In [Premade Estimators](../guide/premade_estimators.md), we used the premade
 Estimator, `tf.estimator.DNNClassifier` to train a model to
 predict different types of Iris flowers from four input features. That example
 created only numerical feature columns (of type
@@ -534,7 +534,7 @@ embedding_column = tf.feature_column.embedding_column(
     dimension=embedding_dimensions)
 ```
 
-@{$guide/embedding$Embeddings} is a significant topic within machine
+[Embeddings](../guide/embedding.md) is a significant topic within machine
 learning. This information was just to get you started using them as feature
 columns.
 
@@ -559,7 +559,7 @@ As the following list indicates, not all Estimators permit all types of
 
 For more examples on feature columns, view the following:
 
-* The @{$low_level_intro#feature_columns$Low Level Introduction} demonstrates how
+* The [Low Level Introduction](../guide/low_level_intro.md#feature_columns) demonstrates how
   experiment directly with `feature_columns` using TensorFlow's low level APIs.
 * The [Estimator wide and deep learning tutorial](https://github.com/tensorflow/models/tree/master/official/wide_deep)
   solves a binary classification problem using `feature_columns` on a variety of

@@ -116,7 +116,7 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase):
                                       model_dir=self._base_dir,
                                       train_distribute=dist,
                                       eval_distribute=dist)
-    with self.test_session():
+    with self.cached_session():
       est_keras = keras_lib.model_to_estimator(
           keras_model=keras_model, config=config)
       before_eval_results = est_keras.evaluate(
@@ -139,7 +139,7 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase):
     config = run_config_lib.RunConfig(tf_random_seed=_RANDOM_SEED,
                                       model_dir=self._base_dir,
                                       train_distribute=dist)
-    with self.test_session():
+    with self.cached_session():
       est_keras = keras_lib.model_to_estimator(
           keras_model=keras_model, config=config)
       before_eval_results = est_keras.evaluate(
@@ -163,7 +163,7 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase):
     config = run_config_lib.RunConfig(tf_random_seed=_RANDOM_SEED,
                                       model_dir=self._base_dir,
                                       train_distribute=dist)
-    with self.test_session():
+    with self.cached_session():
       est_keras = keras_lib.model_to_estimator(keras_model=keras_model,
                                                config=config)
       with self.assertRaisesRegexp(ValueError,
@@ -178,7 +178,7 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase):
 class TestWithDistributionStrategy(test.TestCase):
 
   def test_validating_dataset_input_tensors_with_shape_mismatch(self):
-    with self.test_session():
+    with self.cached_session():
       strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:0',
                                                      '/device:CPU:0'])
       a = constant_op.constant([1, 2], shape=(1, 2))
@@ -197,7 +197,7 @@ class TestWithDistributionStrategy(test.TestCase):
               strategy, x, y)
 
   def test_validating_dataset_input_tensors_with_dtype_mismatch(self):
-    with self.test_session():
+    with self.cached_session():
       strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:0',
                                                      '/device:CPU:0'])
       a = constant_op.constant([1, 2], shape=(1, 2), dtype=dtypes.int32)
@@ -216,7 +216,7 @@ class TestWithDistributionStrategy(test.TestCase):
               strategy, x, y)
 
   def test_calling_model_on_same_dataset(self):
-    with self.test_session():
+    with self.cached_session():
       x = keras.layers.Input(shape=(3,), name='input')
       y = keras.layers.Dense(4, name='dense')(x)
       model = keras.Model(x, y)
@@ -242,7 +242,7 @@ class TestWithDistributionStrategy(test.TestCase):
       model.predict(dataset, steps=2)
 
   def test_fit_with_tuple_and_dict_dataset_inputs(self):
-    with self.test_session():
+    with self.cached_session():
       a = keras.layers.Input(shape=(3,), name='input_a')
       b = keras.layers.Input(shape=(3,), name='input_b')
 
@@ -283,7 +283,7 @@ class TestWithDistributionStrategy(test.TestCase):
       model.fit(dataset_dict, epochs=1, steps_per_epoch=2, verbose=1)
 
   def test_fit_eval_and_predict_methods_on_dataset(self):
-    with self.test_session():
+    with self.cached_session():
       x = keras.layers.Input(shape=(3,), name='input')
       y = keras.layers.Dense(4, name='dense')(x)
       model = keras.Model(x, y)
@@ -320,7 +320,7 @@ class TestWithDistributionStrategy(test.TestCase):
       def __call__(self, y_true, y_pred):
         return y_pred - y_true
 
-    with self.test_session():
+    with self.cached_session():
       x = keras.layers.Input(shape=(3,), name='input')
       y = keras.layers.Dense(4, name='dense')(x)
       model = keras.Model(x, y)
@@ -336,7 +336,7 @@ class TestWithDistributionStrategy(test.TestCase):
         model.compile(optimizer, loss, metrics=metrics, distribute=strategy)
 
   def test_unsupported_features(self):
-    with self.test_session():
+    with self.cached_session():
       x = keras.layers.Input(shape=(3,), name='input')
       y = keras.layers.Dense(4, name='dense')(x)
       model = keras.Model(x, y)
@@ -367,8 +367,8 @@ class TestWithDistributionStrategy(test.TestCase):
       # Test with sample weight.
       sample_weight = np.random.random((10,))
       with self.assertRaisesRegexp(
-          NotImplementedError, 'sample_weight is currently not supported when '
-                               'using DistributionStrategy.'):
+          NotImplementedError, '`sample_weight` is currently not supported '
+                               'when using DistributionStrategy.'):
         model.fit(
             dataset,
             epochs=1,
@@ -389,7 +389,7 @@ class TestWithDistributionStrategy(test.TestCase):
         model.predict(dataset, verbose=0)
 
   def test_calling_with_unsupported_predefined_callbacks(self):
-    with self.test_session():
+    with self.cached_session():
       x = keras.layers.Input(shape=(3,), name='input')
       y = keras.layers.Dense(4, name='dense')(x)
       model = keras.Model(x, y)
@@ -428,7 +428,7 @@ class TestWithDistributionStrategy(test.TestCase):
                   callbacks=[keras.callbacks.TensorBoard(histogram_freq=10)])
 
   def test_dataset_input_shape_validation(self):
-    with self.test_session():
+    with self.cached_session():
       x = keras.layers.Input(shape=(3,), name='input')
       y = keras.layers.Dense(4, name='dense')(x)
       model = keras.Model(x, y)
@@ -465,7 +465,7 @@ class TestWithDistributionStrategy(test.TestCase):
     # TODO(anjalisridhar): Modify this test to use Lambdas since we can compare
     # meaningful values. Currently we don't pass the learning phase if the
     # Lambda layer uses the learning phase.
-    with self.test_session():
+    with self.cached_session():
       x = keras.layers.Input(shape=(16,), name='input')
       y = keras.layers.Dense(16)(x)
       z = keras.layers.Dropout(0.9999)(y)
@@ -498,7 +498,7 @@ class TestWithDistributionStrategy(test.TestCase):
 class LossMaskingWithDistributionStrategyTest(test.TestCase):
 
   def test_masking(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       x = np.array([[[1], [1]], [[0], [0]]])
       model = keras.models.Sequential()
@@ -523,7 +523,7 @@ class LossMaskingWithDistributionStrategyTest(test.TestCase):
 class NormalizationLayerWithDistributionStrategyTest(test.TestCase):
 
   def test_batchnorm_correctness(self):
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       norm = keras.layers.BatchNormalization(input_shape=(10,), momentum=0.8)
       model.add(norm)
@@ -550,7 +550,7 @@ class NormalizationLayerWithDistributionStrategyTest(test.TestCase):
 class CorrectnessWithDistributionStrategyTest(test.TestCase):
 
   def test_correctness(self):
-    with self.test_session():
+    with self.cached_session():
       keras.backend.set_image_data_format('channels_last')
       num_samples = 10000
       x_train = np.random.rand(num_samples, 1)
@@ -565,8 +565,7 @@ class CorrectnessWithDistributionStrategyTest(test.TestCase):
       dataset_with = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
       dataset_with = dataset_with.batch(32)
       strategy = mirrored_strategy.MirroredStrategy(devices=['/device:CPU:0',
-                                                             '/device:GPU:0'],
-                                                    prefetch_on_device=False)
+                                                             '/device:GPU:0'])
 
       model.compile(loss=keras.losses.mean_squared_error,
                     optimizer=gradient_descent.GradientDescentOptimizer(0.5),

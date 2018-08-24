@@ -129,8 +129,8 @@ class TrainSpec(
 
     Args:
       input_fn: A function that provides input data for training as minibatches.
-        See @{$premade_estimators#create_input_functions} for more
-        information. The function should construct and return one of
+        See [Premade Estimators](https://tensorflow.org/guide/premade_estimators#create_input_functions)
+        for more information. The function should construct and return one of
         the following:
           * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
             tuple (features, labels) with same constraints as below.
@@ -193,8 +193,8 @@ class EvalSpec(
 
     Args:
       input_fn: A function that constructs the input data for evaluation.
-        See @{$premade_estimators#create_input_functions} for more
-        information. The function should construct and return one of
+        See [Premade Estimators](https://tensorflow.org/api_guides/premade_estimators#create_input_functions)
+        for more information. The function should construct and return one of
         the following:
           * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
             tuple (features, labels) with same constraints as below.
@@ -837,6 +837,13 @@ class _TrainingExecutor(object):
     if difference > 0:
       logging.info('Waiting %f secs before starting next eval run.', difference)
       time.sleep(difference)
+    elif (throttle_secs == 0 and
+          eval_result.status != _EvalStatus.EVALUATED):
+      # Prints a user-actionable warning to avoid unnecessary load on evaluator.
+      logging.warning(
+          'EvalSpec.throttle_secs is set as 0. This might overload the job '
+          'before finding (next) new checkpoint. Please consider to increase '
+          'it.')
 
     return (eval_result, should_early_stop)
 

@@ -19,12 +19,13 @@ limitations under the License.
 #include <map>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -81,7 +82,7 @@ class IrArray {
         }
       }
       CHECK_NE(index_type_, nullptr);
-      CHECK(c_all_of(multidim, [&](llvm::Value* v) {
+      CHECK(absl::c_all_of(multidim, [&](llvm::Value* v) {
         return index_type_ == v->getType();
       }));
     }
@@ -240,7 +241,7 @@ class IrArray {
   // The optional name is useful for debugging when looking at
   // the emitted LLVM IR.
   llvm::Value* EmitArrayElementAddress(const Index& index, llvm::IRBuilder<>* b,
-                                       tensorflow::StringPiece name = "") const;
+                                       absl::string_view name = "") const;
 
   // Attach metadata this IrArray instance knows about to "instruction".
   void AnnotateLoadStoreInstructionWithMetadata(
@@ -254,7 +255,7 @@ class IrArray {
   // The optional name is useful for debugging when looking at
   // the emitted LLVM IR.
   llvm::Value* EmitReadArrayElement(const Index& index, llvm::IRBuilder<>* b,
-                                    tensorflow::StringPiece name = "") const;
+                                    absl::string_view name = "") const;
 
   // Emit IR to write the given value to the array element at the given index.
   void EmitWriteArrayElement(const Index& index, llvm::Value* value,

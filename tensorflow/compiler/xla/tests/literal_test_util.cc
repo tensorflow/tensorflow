@@ -94,7 +94,7 @@ void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
 
 /* static */ ::testing::AssertionResult LiteralTestUtil::NearOrEqual(
     const LiteralSlice& expected, const LiteralSlice& actual,
-    const tensorflow::gtl::optional<ErrorSpec>& error) {
+    const absl::optional<ErrorSpec>& error) {
   if (error.has_value()) {
     VLOG(1) << "Expects near";
     return StatusToAssertion(literal_comparison::Near(

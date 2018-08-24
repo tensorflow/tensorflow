@@ -14,23 +14,24 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
+using absl::optional;
 using se::DeviceMemoryBase;
 using se::dnn::AlgorithmConfig;
 using se::dnn::AlgorithmDesc;
-using tensorflow::gtl::optional;
 
 class ScratchAllocator : public se::ScratchAllocator {
  public:
@@ -127,14 +128,14 @@ std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
 
 string AlgorithmToString(const AlgorithmDesc& algo) {
   if (algo.tensor_ops_enabled()) {
-    return tensorflow::strings::StrCat(algo.algo_id(), "+TC");
+    return absl::StrCat(algo.algo_id(), "+TC");
   }
-  return tensorflow::strings::StrCat(algo.algo_id());
+  return absl::StrCat(algo.algo_id());
 }
 
 string NumBytesToString(int64 bytes) {
-  return tensorflow::strings::StrCat(
-      tensorflow::strings::HumanReadableNumBytes(bytes), " (", bytes, "B)");
+  return absl::StrCat(tensorflow::strings::HumanReadableNumBytes(bytes), " (",
+                      bytes, "B)");
 }
 
 // Acquires a process-global lock on the device pointed to by the given
@@ -177,6 +178,12 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
     CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
     const Shape& output_shape, const Window& window,
     const ConvolutionDimensionNumbers& dnums, HloInstruction* instr) {
+  CHECK_EQ(input_shape.element_type(), filter_shape.element_type());
+  CHECK_EQ(input_shape.element_type(), output_shape.element_type());
+  // TODO(timshen): for now only check fp16. It can be expanded to other types,
+  // with some work on the HLO routines.
+  const bool cross_check_enabled = input_shape.element_type() == xla::F16;
+
   // Don't run this function concurrently on the same GPU.
   //
   // This is a bit of a hack and doesn't protect us against arbitrary concurrent
@@ -216,20 +223,64 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
                       input_output_allocator.AllocateBytes(
                           &stream, ShapeUtil::ByteSizeOf(output_shape)));
 
-  // Although we don't have evidence this matters, zero out the buffers before
-  // autotuning.  It's conceivable that using uninitialized memory as the inputs
-  // might affect performance if e.g. the inputs contain denormals, and this is
-  // easy enough.
-  TF_RETURN_IF_ERROR(stream.ThenMemZero(&input_buf, input_buf.size())
-                         .ThenMemZero(&filter_buf, filter_buf.size())
-                         .ThenMemZero(&output_buf, output_buf.size())
-                         .BlockHostUntilDone());
+  if (cross_check_enabled) {
+    // Broadcast a constant to the buffer, instead of zeroing the buffer. A
+    // non-zero constant is useful for the cross checking, because zero-inputs
+    // may not always reveal the bugs.
+    const auto initialize_f16 = [&stream](DeviceMemoryBase buffer) {
+      CHECK_EQ(0, (uintptr_t)buffer.opaque() % 4);
+      size_t left_over_bytes = buffer.size() % 4;
+      CHECK_EQ(0, left_over_bytes % 2);
+
+      constexpr float kBroadcastedConstant = 0.1f;
+      Eigen::half halfs[2] = {Eigen::half(kBroadcastedConstant),
+                              Eigen::half(kBroadcastedConstant)};
+      uint32 bits;
+      static_assert(sizeof(bits) == sizeof(halfs), "");
+      memcpy(&bits, halfs, sizeof(bits));
+
+      size_t aligned_size = buffer.size() / 4 * 4;
+      stream.ThenMemset32(&buffer, bits, aligned_size);
+
+      DeviceMemoryBase left_over(
+          static_cast<char*>(buffer.opaque()) + aligned_size, left_over_bytes);
+      stream.ThenMemcpy(&left_over, halfs, left_over_bytes);
+    };
+    initialize_f16(input_buf);
+    initialize_f16(filter_buf);
+    initialize_f16(output_buf);
+  } else {
+    // Although we don't have evidence this matters, zero out the buffers before
+    // autotuning.  It's conceivable that using uninitialized memory as the
+    // inputs might affect performance if e.g. the inputs contain denormals, and
+    // this is easy enough.
+    stream.ThenMemZero(&input_buf, input_buf.size())
+        .ThenMemZero(&filter_buf, filter_buf.size())
+        .ThenMemZero(&output_buf, output_buf.size());
+  }
+  TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+
+  DeviceMemoryBase* result_buf = [&] {
+    switch (kind) {
+      case CudnnConvKind::kBackwardFilter:
+        return &filter_buf;
+      case CudnnConvKind::kBackwardInput:
+        return &input_buf;
+      case CudnnConvKind::kForward:
+        return &output_buf;
+    }
+  }();
 
   const bool use_winograd_nonfused = ShouldIncludeWinogradNonfusedAlgo(
       input_shape, output_shape, dnums, stream_exec_);
   se::dnn::ProfileResult best_result;
   int64 best_result_bytes_used = 0;
 
+  optional<F16BufferComparator> comparator;
+  // Use the first algorithm that's supported as reference. There isn't a
+  // particular reason to use it, as any algorithm sufficies. It doesn't make
+  // this algorithm considered correct, though.
+  optional<AlgorithmDesc> first_algorithm;
   for (const AlgorithmDesc& alg :
        GetAlgorithms(kind, use_winograd_nonfused, stream_exec_)) {
     ScratchAllocator scratch_allocator(device_ordinal, allocator);
@@ -245,6 +296,42 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
             .ok();
 
     if (launch_ok && profile_result.is_valid()) {
+      const bool crash_on_checking_failure =
+          instr->GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_crash_on_verification_failures();
+      if (comparator.has_value()) {
+        StatusOr<bool> result = comparator->CompareEqual(
+            se::DeviceMemory<Eigen::half>(*result_buf));
+        if (!result.ok()) {
+          LOG(ERROR) << "Unable to compare "
+                     << AlgorithmToString(*first_algorithm) << " against "
+                     << AlgorithmToString(alg) << " for " << instr->ToString()
+                     << ": " << result.status();
+          CHECK(!crash_on_checking_failure);
+        } else if (!result.ValueOrDie()) {
+          LOG(ERROR) << "Results mismatch between different convolution "
+                        "algorithms. This is likely a bug in convolution, or "
+                        "an excessive loss of precision in convolution. "
+                     << instr->ToString() << " for "
+                     << AlgorithmToString(*first_algorithm) << " vs "
+                     << AlgorithmToString(alg);
+          CHECK(!crash_on_checking_failure);
+        }
+      } else if (cross_check_enabled) {
+        auto comp = F16BufferComparator::Create(
+            se::DeviceMemory<Eigen::half>(*result_buf), compiler_, allocator,
+            &stream);
+        if (comp.ok()) {
+          comparator.emplace(comp.ConsumeValueOrDie());
+          first_algorithm.emplace(alg);
+        } else {
+          LOG(ERROR) << "Fail to initialize buffer comparator: "
+                     << comp.status() << ", instruction: " << instr->ToString();
+          CHECK(!crash_on_checking_failure);
+        }
+      }
       int64 scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
       VLOG(3) << "Run of algorithm " << AlgorithmToString(alg)
               << " succeeded, taking " << profile_result.elapsed_time_in_ms()

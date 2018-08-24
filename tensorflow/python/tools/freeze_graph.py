@@ -59,7 +59,7 @@ from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 
 
-def _has_variables(sess):
+def _has_no_variables(sess):
   """Determines if the graph has any variables.
 
   Args:
@@ -168,7 +168,7 @@ def freeze_graph_with_def_protos(input_graph_def,
                 "the flag --input_saved_model_dir.")
           return -1
         # Models that have been frozen previously do not contain Variables.
-        elif _has_variables(sess):
+        elif _has_no_variables(sess):
           print("No variables were found in this model. It is likely the model "
                 "was frozen previously. You cannot freeze a graph twice.")
           return 0

@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/client/lib/pooling.h"
-#include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/conv_grad_size_util.h"
 
 namespace xla {
 
@@ -90,10 +90,8 @@ XlaOp ComputeSums(XlaOp operand, XlaOp init_value,
 // Creates a padding configuration out of spatial padding values.
 PaddingConfig MakeSpatialPaddingConfig(
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> spatial_padding,
-    tensorflow::gtl::ArraySlice<int64> kernel_size,
-    tensorflow::gtl::ArraySlice<int64> stride,
+    int num_spatial_dims, tensorflow::gtl::ArraySlice<int64> stride,
     const TensorFormat& data_format) {
-  const int num_spatial_dims = kernel_size.size() - 2;
   PaddingConfig padding_config;
   for (int i = 0; i < 2 + num_spatial_dims; ++i) {
     padding_config.add_dimensions();
@@ -107,6 +105,30 @@ PaddingConfig MakeSpatialPaddingConfig(
     padding_dimension->set_edge_padding_high(spatial_padding[i].second);
   }
   return padding_config;
+}
+
+XlaOp AvgPoolDivideByCount(
+    XlaOp pooled, tensorflow::gtl::ArraySlice<int64> input_size,
+    tensorflow::gtl::ArraySlice<int64> window_dimensions,
+    tensorflow::gtl::ArraySlice<int64> window_strides,
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+    PrimitiveType dtype, const TensorFormat& data_format,
+    bool counts_include_padding) {
+  if (counts_include_padding) {
+    // If counts include padding, all windows have the same number of elements
+    // contributing to each average. Divide by the window size everywhere to get
+    // the average.
+    int64 window_size =
+        std::accumulate(window_dimensions.begin(), window_dimensions.end(), 1,
+                        [](int64 a, int64 b) { return a * b; });
+    auto divisor = ConstantR0WithType(pooled.builder(), dtype, window_size);
+
+    return pooled / divisor;
+  } else {
+    return AvgPoolDivideByCountWithGeneralPadding(pooled, dtype, input_size,
+                                                  padding, window_dimensions,
+                                                  window_strides, data_format);
+  }
 }
 
 }  // namespace
@@ -137,25 +159,16 @@ XlaOp AvgPool(XlaOp operand, tensorflow::gtl::ArraySlice<int64> kernel_size,
     auto init_value = Zero(b, dtype);
     std::vector<int64> input_size(operand_shape.dimensions().begin(),
                                   operand_shape.dimensions().end());
-    auto padding_config =
-        MakeSpatialPaddingConfig(padding, kernel_size, stride, data_format);
+    const int num_dims = kernel_size.size();
+    const int num_spatial_dims = num_dims - 2;
+    auto padding_config = MakeSpatialPaddingConfig(padding, num_spatial_dims,
+                                                   stride, data_format);
     auto padded_operand = Pad(operand, Zero(b, dtype), padding_config);
     auto pooled = ComputeSums(padded_operand, init_value, kernel_size, stride,
                               data_format);
-    if (counts_include_padding) {
-      // If counts include padding, all windows have the same number of elements
-      // contributing to each average. Divide by the window size everywhere to
-      // get the average.
-      int64 window_size =
-          std::accumulate(kernel_size.begin(), kernel_size.end(), 1,
-                          [](int64 x, int64 y) { return x * y; });
-
-      auto divisor = ConstantR0WithType(b, dtype, window_size);
-      return pooled / divisor;
-    } else {
-      return AvgPoolDivideByCountWithGeneralPadding(
-          pooled, dtype, input_size, padding, kernel_size, stride, data_format);
-    }
+    return AvgPoolDivideByCount(pooled, input_size, kernel_size, stride,
+                                padding, dtype, data_format,
+                                counts_include_padding);
   });
 }
 
@@ -178,6 +191,103 @@ std::vector<std::pair<int64, int64>> MakeSpatialPadding(
   }
   return MakePadding(input_spatial_dimensions, kernel_size_spatial_dimensions,
                      stride_spatial_dimensions, padding);
+}
+
+XlaOp AvgPoolGrad(
+    XlaOp out_backprop, tensorflow::gtl::ArraySlice<int64> gradients_size,
+    tensorflow::gtl::ArraySlice<int64> kernel_size,
+    tensorflow::gtl::ArraySlice<int64> stride,
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> spatial_padding,
+    const TensorFormat& data_format, const bool counts_include_padding) {
+  XlaBuilder* b = out_backprop.builder();
+  return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    const int num_dims = kernel_size.size();
+
+    if (gradients_size.size() != num_dims) {
+      return tensorflow::errors::InvalidArgument("gradients must be ", num_dims,
+                                                 "-dimensional");
+    }
+
+    TF_ASSIGN_OR_RETURN(Shape out_backprop_xla_shape,
+                        b->GetShape(out_backprop));
+    if (out_backprop_xla_shape.dimensions().size() != num_dims) {
+      return tensorflow::errors::InvalidArgument("out_backprop must be ",
+                                                 num_dims, "-dimensional");
+    }
+
+    // We can think of average-pooling as:
+    // * a convolution with a kernel consisting entirely of 1s, where the
+    //   input feature and output feature are equal, and 0s everywhere else.
+    // * followed by dividing by the counts.
+    //
+    // This then gives us an algorithm to build the gradient:
+    // * divide out_backprop by the counts, followed by
+    // * Conv2DBackpropInput specialized for that kernel, which simplifies to
+    //   a Pad and a ReduceWindow.
+    //
+    // For an explanation of backpropagation for convolution, see the comments
+    // in third_party/tensorflow/core/kernels/conv_grad_ops.h
+
+    // TF filter shape is [ H, W, ..., inC, outC ]
+
+    // The input gradients are computed by a convolution of the output gradients
+    // and the filter, with some appropriate padding. See the comment at the top
+    // of conv_grad_ops.h for details.
+    PrimitiveType dtype = out_backprop_xla_shape.element_type();
+    auto out_backprop_div = AvgPoolDivideByCount(
+        out_backprop, gradients_size, kernel_size, stride, spatial_padding,
+        dtype, data_format, counts_include_padding);
+
+    // Pad the gradients in the spatial dimensions. We use the same padding
+    // as Conv2DBackpropInput.
+    PaddingConfig padding_config = MakeNoPaddingConfig(num_dims);
+    std::vector<int64> padded_gradients_size(gradients_size.begin(),
+                                             gradients_size.end());
+    // First, pad the output gradients the same way as the input. The additional
+    // padding will be removed as a last step before returning the input
+    // gradients.
+    const int num_spatial_dims = num_dims - 2;
+    for (int i = 0; i < num_spatial_dims; ++i) {
+      int dim = data_format.spatial_dimension(i);
+      padded_gradients_size[dim] +=
+          (spatial_padding[i].first + spatial_padding[i].second);
+    }
+    for (int i = 0; i < num_spatial_dims; ++i) {
+      int dim = data_format.spatial_dimension(i);
+      TF_ASSIGN_OR_RETURN(
+          SpatialDimensionOutputSizeAndPadding conv_backprop_spatial_dim,
+          ConvGradExtractAndVerifyDimension(
+              /*input_size=*/padded_gradients_size[dim],
+              /*filter_size=*/kernel_size[dim],
+              /*output_size=*/out_backprop_xla_shape.dimensions(dim),
+              /*dilation=*/1,
+              /*stride=*/stride[dim], /*padding=*/Padding::kValid));
+      auto* padding = padding_config.mutable_dimensions(dim);
+      padding->set_edge_padding_low(conv_backprop_spatial_dim.pad_before);
+      padding->set_edge_padding_high(conv_backprop_spatial_dim.pad_after);
+      padding->set_interior_padding(stride[dim] - 1);
+    }
+
+    auto zero = Zero(b, dtype);
+    auto padded_gradients = Pad(out_backprop_div, zero, padding_config);
+
+    // in_backprop = padded_gradients <conv> ones
+    std::vector<int64> ones(num_dims, 1LL);
+    auto in_backprop =
+        ReduceWindow(padded_gradients, Zero(b, dtype),
+                     CreateScalarAddComputation(dtype, b), kernel_size,
+                     /*window_strides=*/ones, Padding::kValid);
+    // The input padding doesn't contribute to the gradient, remove it.
+    std::vector<std::pair<int64, int64>> neg_spatial_padding;
+    neg_spatial_padding.reserve(spatial_padding.size());
+    for (const std::pair<int64, int64>& spatial_padding_dim : spatial_padding) {
+      neg_spatial_padding.emplace_back(-spatial_padding_dim.first,
+                                       -spatial_padding_dim.second);
+    }
+    auto remove_padding_config = MakeSpatialPaddingConfig(
+        neg_spatial_padding, num_spatial_dims, stride, data_format);
+    return Pad(in_backprop, zero, remove_padding_config);
+  });
 }
 
 }  // namespace xla

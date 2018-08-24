@@ -252,7 +252,7 @@ class DatasetSerializationTestBase(test.TestCase):
       init_op, get_next_op = self._get_iterator_ops_from_collection(
           ds_fn, sparse_tensors=sparse_tensors)
       get_next_op = remove_variants(get_next_op)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         self._restore(saver, sess)
         self._initialize(init_op, sess)
         for _ in range(num_outputs):
@@ -315,7 +315,7 @@ class DatasetSerializationTestBase(test.TestCase):
       _, get_next_op, saver = self._build_graph(
           ds_fn2, sparse_tensors=sparse_tensors)
       get_next_op = remove_variants(get_next_op)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         self._restore(saver, sess)
         for _ in range(num_outputs - break_point):
           actual.append(sess.run(get_next_op))
@@ -376,7 +376,7 @@ class DatasetSerializationTestBase(test.TestCase):
       get_next_op, saver = self._build_empty_graph(
           ds_fn, sparse_tensors=sparse_tensors)
       get_next_op = remove_variants(get_next_op)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         self._restore(saver, sess)
         for _ in range(num_outputs - break_point):
           actual.append(sess.run(get_next_op))
@@ -410,7 +410,7 @@ class DatasetSerializationTestBase(test.TestCase):
       init_op, get_next_op, saver = self._build_graph(
           ds_fn, sparse_tensors=sparse_tensors)
       get_next_op = remove_variants(get_next_op)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         self._initialize(init_op, sess)
         for _ in range(break_point):
           sess.run(get_next_op)
@@ -517,7 +517,7 @@ class DatasetSerializationTestBase(test.TestCase):
       with ops.Graph().as_default() as g:
         init_op, get_next_op, saver = get_ops()
         get_next_op = remove_variants(get_next_op)
-        with self.test_session(graph=g) as sess:
+        with self.session(graph=g) as sess:
           if ckpt_saved:
             if init_before_restore:
               self._initialize(init_op, sess)

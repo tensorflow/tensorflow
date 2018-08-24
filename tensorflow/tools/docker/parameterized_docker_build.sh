@@ -387,7 +387,7 @@ else # TF_DOCKER_BUILD_IS_DEVEL == 'yes'
         TF_DOCKER_BUILD_ARGS+=("--build-arg PIP=pip3")
         cp "${ORIG_DOCKERFILE}" "${DOCKERFILE}"
     else
-      if [[ "${TF_DOCKER_BUILD_TYPE}" != "mkl" ]]; then
+      if [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3.6" ]] && [[ "${TF_DOCKER_BUILD_TYPE}" != "mkl" ]]; then
         die "Python 3.6 build only supported for MKL builds."
       fi
       if sed -i -e 's/python-dev/python-dev python3-dev/g' "${DOCKERFILE}" && \

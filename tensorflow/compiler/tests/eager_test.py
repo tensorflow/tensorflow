@@ -101,7 +101,7 @@ class EagerTest(xla_test.XLATestCase):
       self.assertAllEqual(15, product)
 
     # Run some ops graphly
-    with context.graph_mode(), self.test_session() as sess:
+    with context.graph_mode(), self.cached_session() as sess:
       with self.test_scope():
         three = constant_op.constant(3)
         five = constant_op.constant(5)
@@ -443,7 +443,6 @@ class EagerFunctionTest(xla_test.XLATestCase):
       self.assertAllEqual((2, 3, 4), dz.shape.as_list())
 
   def testNestedDefun(self):
-    self.skipTest('Nested defuns do not work on TPU at the moment')
     with self.test_scope():
 
       @function.defun

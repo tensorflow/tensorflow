@@ -1576,6 +1576,26 @@ tensorflow::Status ConvertPackOperator(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertUnpackOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "Unpack");
+  auto op = absl::make_unique<UnpackOperator>();
+  const int num_inputs = GetInputsCount(node, tf_import_flags);
+  QCHECK_EQ(num_inputs, 1);
+  op->inputs.push_back(node.input(0));
+  op->num = GetIntAttr(node, "num");
+  op->axis = HasAttr(node, "axis") ? GetIntAttr(node, "axis") : 0;
+  op->dtype = ConvertDataType(toco::GetDataTypeAttr(node, "T"));
+
+  op->outputs.push_back(node.name());  // Implicit :0.
+  for (int i = 1; i < op->num; ++i) {
+    op->outputs.push_back(node.name() + ":" + std::to_string(i));
+  }
+  model->operators.emplace_back(std::move(op));
+  return tensorflow::Status::OK();
+}
+
 // Some TensorFlow ops only occur in graph cycles, representing
 // control flow. We do not currently support control flow, so we wouldn't
 // be able to fully support such graphs, including performing inference,
@@ -2020,6 +2040,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"TopK", ConvertTopKV2Operator},
       {"TopKV2", ConvertTopKV2Operator},
       {"Transpose", ConvertSimpleOperator<TransposeOperator, 2>},
+      {"Unpack", ConvertUnpackOperator},
   });
 }
 

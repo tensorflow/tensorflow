@@ -15,7 +15,8 @@
 # pylint: disable=g-short-docstring-punctuation
 """Asserts and Boolean Checks.
 
-See the @{$python/check_ops} guide.
+See the [Asserts and
+checks](https://tensorflow.org/api_guides/python/check_ops) guide.
 """
 
 from __future__ import absolute_import

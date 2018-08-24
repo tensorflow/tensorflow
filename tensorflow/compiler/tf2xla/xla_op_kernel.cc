@@ -99,6 +99,25 @@ Status XlaOpKernelContext::ConstantInput(int index,
       index, context_->input(index).shape().dim_sizes(), constant_literal);
 }
 
+static xla::StatusOr<int> InputIndex(XlaOpKernelContext* context,
+                                     StringPiece name) {
+  int start, stop;
+  TF_RETURN_IF_ERROR(context->op_kernel().InputRange(name, &start, &stop));
+  if (stop != start + 1) {
+    return errors::InvalidArgument("OpKernel used list-valued input name '",
+                                   name,
+                                   "' when single-valued input was "
+                                   "expected");
+  }
+  return start;
+}
+
+Status XlaOpKernelContext::ConstantInput(StringPiece name,
+                                         xla::Literal* constant_literal) {
+  TF_ASSIGN_OR_RETURN(int index, InputIndex(this, name));
+  return ConstantInput(index, constant_literal);
+}
+
 Status XlaOpKernelContext::ConstantInputReshaped(
     int index, gtl::ArraySlice<int64> new_dims,
     xla::Literal* constant_literal) {
@@ -246,6 +265,12 @@ Status XlaOpKernelContext::ConstantInputAsIntScalar(int index, int64* out) {
   return LiteralToInt64Scalar(literal, out);
 }
 
+Status XlaOpKernelContext::ConstantInputAsIntScalar(StringPiece name,
+                                                    int64* out) {
+  TF_ASSIGN_OR_RETURN(int index, InputIndex(this, name));
+  return ConstantInputAsIntScalar(index, out);
+}
+
 Status XlaOpKernelContext::ConstantInputAsFloatScalar(int index, double* out) {
   xla::Literal literal;
   TF_RETURN_IF_ERROR(ConstantInput(index, &literal));
@@ -280,6 +305,20 @@ Status XlaOpKernelContext::ConstantInputAsIntVector(int index,
   return LiteralToInt64Vector(literal, out);
 }
 
+Status XlaOpKernelContext::ConstantInputAsIntVector(StringPiece name,
+                                                    std::vector<int64>* out) {
+  TF_ASSIGN_OR_RETURN(int index, InputIndex(this, name));
+  return ConstantInputAsIntVector(index, out);
+}
+
+Status XlaOpKernelContext::ConstantInputReshapedToIntVector(
+    int index, std::vector<int64>* out) {
+  xla::Literal literal;
+  TF_RETURN_IF_ERROR(ConstantInputReshaped(
+      index, {InputShape(index).num_elements()}, &literal));
+  return LiteralToInt64Vector(literal, out);
+}
+
 Status XlaOpKernelContext::ConstantInputAsInt64Literal(int index,
                                                        xla::Literal* out) {
   xla::Literal literal;
@@ -303,6 +342,12 @@ Status XlaOpKernelContext::ConstantInputAsInt64Literal(int index,
           "Invalid argument to ConstantInputAsInt64Literal: ",
           xla::ShapeUtil::HumanString(literal.shape()));
   }
+}
+
+Status XlaOpKernelContext::ConstantInputAsInt64Literal(StringPiece name,
+                                                       xla::Literal* out) {
+  TF_ASSIGN_OR_RETURN(int index, InputIndex(this, name));
+  return ConstantInputAsInt64Literal(index, out);
 }
 
 // TODO(phawkins): validate that the dimensions form a valid shape, fail

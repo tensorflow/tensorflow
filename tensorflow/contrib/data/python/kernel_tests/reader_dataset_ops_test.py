@@ -43,7 +43,7 @@ class ReadBatchFeaturesTest(
     for batch_size in [1, 2]:
       for num_epochs in [1, 10]:
         with ops.Graph().as_default() as g:
-          with self.test_session(graph=g) as sess:
+          with self.session(graph=g) as sess:
             # Basic test: read from file 0.
             self.outputs = self.make_batch_feature(
                 filenames=self.test_filenames[0],
@@ -54,7 +54,7 @@ class ReadBatchFeaturesTest(
               self._next_actual_batch(sess)
 
         with ops.Graph().as_default() as g:
-          with self.test_session(graph=g) as sess:
+          with self.session(graph=g) as sess:
             # Basic test: read from file 1.
             self.outputs = self.make_batch_feature(
                 filenames=self.test_filenames[1],
@@ -65,7 +65,7 @@ class ReadBatchFeaturesTest(
               self._next_actual_batch(sess)
 
         with ops.Graph().as_default() as g:
-          with self.test_session(graph=g) as sess:
+          with self.session(graph=g) as sess:
             # Basic test: read from both files.
             self.outputs = self.make_batch_feature(
                 filenames=self.test_filenames,
@@ -104,7 +104,7 @@ class ReadBatchFeaturesTest(
     for batch_size in [1, 2]:
       # Test that shuffling with same seed produces the same result.
       with ops.Graph().as_default() as g:
-        with self.test_session(graph=g) as sess:
+        with self.session(graph=g) as sess:
           outputs1 = self.make_batch_feature(
               filenames=self.test_filenames[0],
               num_epochs=num_epochs,
@@ -125,7 +125,7 @@ class ReadBatchFeaturesTest(
 
       # Test that shuffling with different seeds produces a different order.
       with ops.Graph().as_default() as g:
-        with self.test_session(graph=g) as sess:
+        with self.session(graph=g) as sess:
           outputs1 = self.make_batch_feature(
               filenames=self.test_filenames[0],
               num_epochs=num_epochs,
@@ -152,7 +152,7 @@ class ReadBatchFeaturesTest(
       for reader_num_threads in [2, 4]:
         for parser_num_threads in [2, 4]:
           with ops.Graph().as_default() as g:
-            with self.test_session(graph=g) as sess:
+            with self.session(graph=g) as sess:
               self.outputs = self.make_batch_feature(
                   filenames=self.test_filenames,
                   num_epochs=num_epochs,
@@ -275,7 +275,7 @@ class MakeCsvDatasetTest(test.TestCase):
     filenames = self._setup_files(
         inputs, compression_type=kwargs.get("compression_type", None))
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         dataset = self._make_csv_dataset(
             filenames,
             batch_size=batch_size,
@@ -740,7 +740,7 @@ class MakeCsvDatasetTest(test.TestCase):
     total_records = 20
     for batch_size in [1, 2]:
       with ops.Graph().as_default() as g:
-        with self.test_session(graph=g) as sess:
+        with self.session(graph=g) as sess:
           # Test that shuffling with the same seed produces the same result
           dataset1 = self._make_csv_dataset(
               filenames,
@@ -771,7 +771,7 @@ class MakeCsvDatasetTest(test.TestCase):
               self.assertAllEqual(batch1[i], batch2[i])
 
       with ops.Graph().as_default() as g:
-        with self.test_session(graph=g) as sess:
+        with self.session(graph=g) as sess:
           # Test that shuffling with a different seed produces different results
           dataset1 = self._make_csv_dataset(
               filenames,
@@ -909,7 +909,7 @@ class MakeTFRecordDatasetTest(
       fn = None
 
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         outputs = readers.make_tf_record_dataset(
             file_pattern=file_pattern,
             num_epochs=num_epochs,
@@ -965,7 +965,7 @@ class MakeTFRecordDatasetTest(
   def _shuffle_test(self, batch_size, num_epochs, num_parallel_reads=1,
                     seed=None):
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         dataset = readers.make_tf_record_dataset(
             file_pattern=self.test_filenames,
             num_epochs=num_epochs,

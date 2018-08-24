@@ -17,9 +17,7 @@ limitations under the License.
 #include "jemalloc/jemalloc.h"
 #endif
 
-#ifdef TENSORFLOW_USE_ABSL
 #include "absl/base/internal/sysinfo.h"
-#endif
 
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
@@ -194,11 +192,7 @@ bool Snappy_Uncompress(const char* input, size_t length, char* output) {
 string Demangle(const char* mangled) { return mangled; }
 
 double NominalCPUFrequency() {
-#ifdef TENSORFLOW_USE_ABSL
   return absl::base_internal::NominalCPUFrequency();
-#else
-  return 1.0;
-#endif
 }
 
 int64 AvailableRam() {

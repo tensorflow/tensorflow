@@ -128,7 +128,8 @@ class CheckpointableDataStructure(base.CheckpointableBase):
            "stored in a List object. Got %s, which does not inherit from "
            "CheckpointableBase.") % (value,))
     if (isinstance(value, CheckpointableDataStructure)
-        or layer_utils.is_layer(value)):
+        or layer_utils.is_layer(value)
+        or layer_utils.has_weights(value)):
       # Check for object-identity rather than with __eq__ to avoid
       # de-duplicating empty container types. Automatically generated list
       # wrappers keep things like "[] == []" true, which means "[] in [[]]" is
@@ -149,14 +150,14 @@ class CheckpointableDataStructure(base.CheckpointableBase):
   def trainable_weights(self):
     return layer_utils.gather_trainable_weights(
         trainable=self.trainable,
-        sub_layers=self.layers,
+        sub_layers=self._layers,
         extra_variables=self._extra_variables)
 
   @property
   def non_trainable_weights(self):
     return layer_utils.gather_non_trainable_weights(
         trainable=self.trainable,
-        sub_layers=self.layers,
+        sub_layers=self._layers,
         extra_variables=self._extra_variables)
 
   @property
@@ -183,7 +184,8 @@ class CheckpointableDataStructure(base.CheckpointableBase):
     # have any inputs.
     aggregated = []
     for layer in self.layers:
-      aggregated += layer.updates
+      if hasattr(layer, "updates"):
+        aggregated += layer.updates
     return aggregated
 
   @property
@@ -191,7 +193,8 @@ class CheckpointableDataStructure(base.CheckpointableBase):
     """Aggregate losses from any `Layer` instances."""
     aggregated = []
     for layer in self.layers:
-      aggregated += layer.losses
+      if hasattr(layer, "losses"):
+        aggregated += layer.losses
     return aggregated
 
   def __hash__(self):

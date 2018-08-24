@@ -69,7 +69,7 @@ class ConditionalTransformedDistributionTest(
     return ds.ConditionalTransformedDistribution
 
   def testConditioning(self):
-    with self.test_session():
+    with self.cached_session():
       conditional_normal = ds.ConditionalTransformedDistribution(
           distribution=ds.Normal(loc=0., scale=1.),
           bijector=_ChooseLocation(loc=[-100., 100.]))

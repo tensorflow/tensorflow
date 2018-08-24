@@ -3047,6 +3047,39 @@ TEST_F(ConstantFoldingTest, TensorArraySize) {
   test::ExpectTensorEqual<int32>(tensors_expected[1], tensors_actual[1]);
 }
 
+TEST_F(ConstantFoldingTest, FoldingPreservesDenormalFlushing) {
+  // Multiplying min() with 0.1 gives a denormal without FTZ and zero with FTZ.
+  // Make sure constant folding behaves the same way as TensorFlow.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  Output a =
+      ops::Const(s.WithOpName("a"), std::numeric_limits<float>::min(), {1});
+  Output b = ops::Const(s.WithOpName("b"), 0.1f, {1});
+  Output c = ops::Mul(s.WithOpName("c"), a, b);
+
+  GrapplerItem item;
+  item.fetch.push_back("c");
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(1, output.node_size());
+
+  const NodeDef& node_d = output.node(0);
+  EXPECT_EQ("c", node_d.name());
+  EXPECT_EQ("Const", node_d.op());
+
+  std::vector<string> fetch = {"c"};
+  auto tensors_expected = EvaluateNodes(item.graph, fetch);
+  auto tensors = EvaluateNodes(output, fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

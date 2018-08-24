@@ -45,7 +45,7 @@ _allowed_symbols = [
     'clip_gradients_by_norm',
     'forward_features',
     'InMemoryEvaluatorHook',
-    'StopAtCheckpointStepHook',
+    'make_stop_at_checkpoint_step_hook',
     'logistic_regression_head',
     'multi_class_head',
     'multi_head',

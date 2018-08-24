@@ -16,9 +16,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -62,7 +62,8 @@ TEST_F(CpuNoAliasTest, Concat) {
 
   // Now that we have an HLO module, build an llvm_ir::AliasAnalysis for it.
   auto status_or_buffer_assn = BufferAssigner::Run(
-      hlo_module.get(), MakeUnique<DependencyHloOrdering>(hlo_module.get()),
+      hlo_module.get(),
+      absl::make_unique<DependencyHloOrdering>(hlo_module.get()),
       backend().compiler()->BufferSizeBytesFunction(),
       [](LogicalBuffer::Color) { return /*alignment=*/1; });
   ASSERT_EQ(status_or_buffer_assn.status(), Status::OK());

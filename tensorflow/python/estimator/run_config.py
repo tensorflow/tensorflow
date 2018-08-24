@@ -51,6 +51,7 @@ _DEFAULT_REPLACEABLE_LIST = [
     'device_fn',
     'protocol',
     'eval_distribute',
+    'experimental_distribute',
 ]
 
 _SAVE_CKPT_ERR = (
@@ -331,7 +332,8 @@ class RunConfig(object):
                train_distribute=None,
                device_fn=None,
                protocol=None,
-               eval_distribute=None):
+               eval_distribute=None,
+               experimental_distribute=None):
     """Constructs a RunConfig.
 
     All distributed training related properties `cluster_spec`, `is_chief`,
@@ -469,6 +471,9 @@ class RunConfig(object):
         `tf.contrib.distribute.DistributionStrategy`. If specified,
         then Estimator will distribute the user's model during evaluation,
         according to the policy specified by that strategy.
+      experimental_distribute: an optional
+        `tf.contrib.distribute.DistributeConfig` object specifying
+        DistributionStrategy-related configuration.
 
     Raises:
       ValueError: If both `save_checkpoints_steps` and `save_checkpoints_secs`
@@ -508,7 +513,8 @@ class RunConfig(object):
         train_distribute=train_distribute,
         device_fn=device_fn,
         protocol=protocol,
-        eval_distribute=eval_distribute)
+        eval_distribute=eval_distribute,
+        experimental_distribute=experimental_distribute)
 
     self._init_distributed_setting_from_environment_var(tf_config)
 
@@ -810,6 +816,7 @@ class RunConfig(object):
       - `device_fn`,
       - `protocol`.
       - `eval_distribute`,
+      - `experimental_distribute`,
 
     In addition, either `save_checkpoints_steps` or `save_checkpoints_secs`
     can be set (should not be both).

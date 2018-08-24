@@ -21,6 +21,7 @@ limitations under the License.
 #include <random>
 #include <string>
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -146,7 +146,7 @@ class LiteralTestUtil {
   // will be compared recursively.
   static ::testing::AssertionResult NearOrEqual(
       const LiteralSlice& expected, const LiteralSlice& actual,
-      const tensorflow::gtl::optional<ErrorSpec>& error) TF_MUST_USE_RESULT;
+      const absl::optional<ErrorSpec>& error) TF_MUST_USE_RESULT;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(LiteralTestUtil);

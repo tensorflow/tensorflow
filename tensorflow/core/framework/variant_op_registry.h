@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_VARIANT_OP_REGISTRY_H_
-#define TENSORFLOW_FRAMEWORK_VARIANT_OP_REGISTRY_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_VARIANT_OP_REGISTRY_H_
+#define TENSORFLOW_CORE_FRAMEWORK_VARIANT_OP_REGISTRY_H_
 
 #include <string>
 #include <unordered_set>
@@ -580,4 +580,4 @@ class UnaryVariantBinaryOpRegistration {
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_VARIANT_OP_REGISTRY_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_VARIANT_OP_REGISTRY_H_

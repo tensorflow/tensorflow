@@ -85,7 +85,6 @@ namespace xla {
   V(kAfterAll, "after-all", kHloOpcodeIsVariadic)            \
   V(kGetTupleElement, "get-tuple-element")                   \
   V(kGt, "greater-than", kHloOpcodeIsComparison)             \
-  V(kHostCompute, "host-compute")                            \
   V(kImag, "imag")                                           \
   V(kInfeed, "infeed")                                       \
   V(kIota, "iota")                                           \
@@ -156,7 +155,7 @@ enum HloOpcodeProperty {
 // Returns a string representation of the opcode.
 string HloOpcodeString(HloOpcode opcode);
 
-// Returns a string representation of the opcode.
+// Retrieves the opcode enum by name if the opcode exists.
 StatusOr<HloOpcode> StringToHloOpcode(const string& opcode_name);
 
 inline std::ostream& operator<<(std::ostream& os, HloOpcode opcode) {

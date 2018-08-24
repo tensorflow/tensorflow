@@ -65,7 +65,7 @@ class ListTest(converter_testing.TestCase):
 
     ns = {'special_functions': special_functions}
     with self.converted(test_fn, lists, ns) as result:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         tl = result.test_fn()
         r = list_ops.tensor_list_stack(tl, dtypes.int32)
         self.assertAllEqual(sess.run(r), [1, 2, 3])
@@ -88,7 +88,7 @@ class ListTest(converter_testing.TestCase):
     node = lists.transform(node, ctx)
 
     with self.compiled(node, ns, dtypes.int32) as result:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         ts, tl = result.test_fn()
         r = list_ops.tensor_list_stack(tl, dtypes.int32)
         self.assertAllEqual(sess.run(r), [1, 2])
@@ -122,7 +122,7 @@ class ListTest(converter_testing.TestCase):
     node = lists.transform(node, ctx)
 
     with self.compiled(node, {}, array_ops.stack, dtypes.int32) as result:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         self.assertAllEqual(sess.run(result.test_fn()), [1, 2, 3])
 
   # TODO(mdan): Add a test with tf.stack with axis kwarg.

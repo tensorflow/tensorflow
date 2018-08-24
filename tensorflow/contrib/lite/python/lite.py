@@ -41,7 +41,8 @@ from google.protobuf.message import DecodeError
 from tensorflow.contrib.lite.python import lite_constants as constants
 from tensorflow.contrib.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.contrib.lite.python.convert import tensor_name as _tensor_name
-from tensorflow.contrib.lite.python.convert import toco_convert
+from tensorflow.contrib.lite.python.convert import toco_convert  # pylint: disable=unused-import
+from tensorflow.contrib.lite.python.convert import toco_convert_impl as _toco_convert_impl
 from tensorflow.contrib.lite.python.convert import toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.contrib.lite.python.convert_saved_model import freeze_saved_model as _freeze_saved_model
 from tensorflow.contrib.lite.python.convert_saved_model import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
@@ -110,6 +111,7 @@ class TocoConverter(object):
 
   Example usage:
 
+    ```python
     # Converting a GraphDef from session.
     converter = lite.TocoConverter.from_session(sess, in_tensors, out_tensors)
     tflite_model = converter.convert()
@@ -124,6 +126,11 @@ class TocoConverter(object):
     # Converting a SavedModel.
     converter = lite.TocoConverter.from_saved_model(saved_model_dir)
     tflite_model = converter.convert()
+
+    # Converting a tf.keras model.
+    converter = lite.TocoConverter.from_keras_model_file(keras_model)
+    tflite_model = converter.convert()
+    ```
   """
 
   def __init__(self, graph_def, input_tensors, output_tensors):
@@ -354,7 +361,7 @@ class TocoConverter(object):
       quantized_stats = None
 
     # Converts model.
-    result = toco_convert(
+    result = _toco_convert_impl(
         input_data=self._graph_def,
         input_tensors=self._input_tensors,
         output_tensors=self._output_tensors,

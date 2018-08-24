@@ -190,7 +190,14 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        TF_RETURN_IF_ERROR(
+            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+        TF_RETURN_IF_ERROR(dataset()->captured_key_func_->Instantiate(ctx));
+        TF_RETURN_IF_ERROR(dataset()->captured_init_func_->Instantiate(ctx));
+        TF_RETURN_IF_ERROR(dataset()->captured_reduce_func_->Instantiate(ctx));
+        TF_RETURN_IF_ERROR(
+            dataset()->captured_finalize_func_->Instantiate(ctx));
+        return Status::OK();
       }
 
       Status GetNextInternal(IteratorContext* ctx,

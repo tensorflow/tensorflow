@@ -138,7 +138,7 @@ for current_batch_of_words in words_in_dataset:
 ### Inputs
 
 The word IDs will be embedded into a dense representation (see the
-@{$word2vec$Vector Representations Tutorial}) before feeding to
+[Vector Representations Tutorial](../../tutorials/representation/word2vec.md)) before feeding to
 the LSTM. This allows the model to efficiently represent the knowledge about
 particular words. It is also easy to write:
 

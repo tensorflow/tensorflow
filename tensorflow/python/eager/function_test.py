@@ -211,6 +211,18 @@ class FunctionTest(test.TestCase):
     random_seed.set_random_seed(1)
     self.assertAllEqual(f(), x)
 
+  def testSymGradGatherNd(self):
+    with ops.Graph().as_default(), self.test_session() as sess:
+
+      @function.defun
+      def f(x):
+        return array_ops.gather_nd(x, [[0]])
+
+      c = constant_op.constant([[2.]])
+      f_c = f(c)
+      g, = gradients_impl.gradients(f_c, c)
+      self.assertAllEqual(sess.run(g), [[1.0]])
+
   def testNestedInputsDefunOpGraphMode(self):
     matmul = function.defun(math_ops.matmul)
 
@@ -345,6 +357,47 @@ class FunctionTest(test.TestCase):
       return v.read_value()
 
     self.assertEqual(3.0, float(test_assign_add()))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorInitializationInFunctionRaisesError(self):
+    error_msg = ('Tensor-typed variable initializers must either be '
+                 'wrapped in an init_scope or callable.*')
+
+    @function.defun
+    def tensor_init():
+      with self.assertRaisesRegexp(ValueError, error_msg):
+        resource_variable_ops.ResourceVariable(constant_op.constant(2.0))
+
+    tensor_init()
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCallableTensorInitializationInFunction(self):
+
+    @function.defun
+    def tensor_init():
+      v = resource_variable_ops.ResourceVariable(
+          lambda: constant_op.constant(2.0))
+      return v.read_value()
+
+    value = tensor_init()
+    if not context.executing_eagerly():
+      self.evaluate(variables.global_variables_initializer())
+    self.assertEqual(self.evaluate(value), 2.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInitScopeTensorInitializationInFunction(self):
+
+    @function.defun
+    def tensor_init():
+      with ops.init_scope():
+        const = constant_op.constant(2.0)
+      v = resource_variable_ops.ResourceVariable(const)
+      return v.read_value()
+
+    value = tensor_init()
+    if not context.executing_eagerly():
+      self.evaluate(variables.global_variables_initializer())
+    self.assertEqual(self.evaluate(value), 2.0)
 
   def testDefunShapeInferenceWithCapturedResourceVariable(self):
     v = resource_variable_ops.ResourceVariable([[1, 2], [3, 4]])
@@ -966,39 +1019,86 @@ class FunctionTest(test.TestCase):
       config=config_pb2.ConfigProto(device_count={'CPU': 4}))
   def testDeviceAnnotationsRespected(self):
 
-    @function.defun
     def multi_device_fn():
       with ops.device('/cpu:0'):
-        s1 = iterator_ops.Iterator.from_structure(
+        s0 = iterator_ops.Iterator.from_structure(
             (dtypes.float32,)).string_handle()
       with ops.device('/cpu:1'):
-        s2 = iterator_ops.Iterator.from_structure(
+        s1 = iterator_ops.Iterator.from_structure(
             (dtypes.float32,)).string_handle()
       with ops.device('/cpu:2'):
-        s3 = iterator_ops.Iterator.from_structure(
+        s2 = iterator_ops.Iterator.from_structure(
             (dtypes.float32,)).string_handle()
-      with ops.device(''):
-        # TODO(akshayka): This is unfortunate and brittle. It prevents
-        # `Iterator.from_structure` from assigning the iterator op to 'cpu:0'.
-        #  Remove this hack once we have a way of obtaining metadata about
-        #  function execution.
-        s4 = iterator_ops.Iterator.from_structure(
-            (dtypes.float32,)).string_handle()
-      return s1, s2, s3, s4
+      s3 = iterator_ops.Iterator.from_structure(
+          (dtypes.float32,)).string_handle()
+      return s0, s1, s2, s3
+
+    defined = function.defun(multi_device_fn)
+    outputs = self.evaluate(defined())
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+    self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
+    self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
+    self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
 
     with ops.device('/cpu:3'):
-      outputs = self.evaluate(multi_device_fn())
+      outputs = self.evaluate(defined())
+    self.assertEqual(len(defined._arguments_to_functions), 2)
     self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
     self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
     self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
     self.assertIn(compat.as_bytes('CPU:3'), outputs[3])
 
-    with ops.device('/cpu:0'):
-      outputs = self.evaluate(multi_device_fn())
-    self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
-    self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
-    self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
-    self.assertIn(compat.as_bytes('CPU:0'), outputs[3])
+    # This should retrieve the call-site-device agnostic function
+    defined()
+    self.assertEqual(len(defined._arguments_to_functions), 2)
+
+    # And this should retrieve the function created for '/cpu:3'
+    with ops.device('/cpu:3'):
+      defined()
+    self.assertEqual(len(defined._arguments_to_functions), 2)
+
+  @test_util.run_in_graph_and_eager_modes(
+      config=config_pb2.ConfigProto(device_count={'CPU': 2}))
+  def testCallingGraphFunctionOnIncompatibleDeviceRaisesError(self):
+
+    def func():
+      return constant_op.constant(0)
+
+    with ops.device('cpu:0'):
+      cpu_graph_function = function.make_defun_op(func)
+
+    with ops.device('cpu:0'):
+      self.assertEqual(
+          self.evaluate(cpu_graph_function()), self.evaluate(func()))
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        'The current device stack does not match the device stack under '
+        'which the TensorFlow function \'.*func.*\' was created.\n'
+        'Current device stack: .*\n.*func.* device stack.*'):
+      with ops.device('cpu:1'):
+        cpu_graph_function()
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        'The current device stack does not match the device stack under '
+        'which the TensorFlow function \'.*func.*\' was created.\n'
+        'Current device stack: .*\n.*func.* device stack.*'):
+      with ops.device(None):
+        cpu_graph_function()
+
+    default_graph_function = function.make_defun_op(func)
+
+    self.assertEqual(
+        self.evaluate(default_graph_function()), self.evaluate(func()))
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        'The current device stack does not match the device stack under '
+        'which the TensorFlow function \'.*func.*\' was created.\n'
+        'Current device stack: .*\n.*func.* device stack.*'):
+      with ops.device('cpu:1'):
+        default_graph_function()
 
   def testVariablesAreTracked(self):
     v = resource_variable_ops.ResourceVariable(1.0)
@@ -1027,18 +1127,23 @@ class FunctionTest(test.TestCase):
 
     defined = function.defun(func)
     defined(0, baz=20)
+
+    def cache_keys():
+      """Sanitizes cache keys of non-input metadata."""
+      return tuple(key[:3] for key in defined._arguments_to_functions)
+
     # `True` corresponds to the fact that we're executing eagerly
-    self.assertIn((0, 1, 20, True), defined._arguments_to_functions)
+    self.assertIn((0, 1, 20), cache_keys())
 
     defined(1)  # bar=1, baz=2
-    self.assertIn((1, 1, 2, True), defined._arguments_to_functions)
+    self.assertIn((1, 1, 2), cache_keys())
 
     # This matches the previous call.
     defined(foo=1)
     self.assertEqual(len(defined._arguments_to_functions), 2)
 
     defined(1, 2, 3)
-    self.assertIn((1, 2, 3, True), defined._arguments_to_functions)
+    self.assertIn((1, 2, 3), cache_keys())
 
     # This matches the previous call.
     defined(1, bar=2, baz=3)

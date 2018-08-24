@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/executable.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -76,8 +77,8 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
   std::unique_ptr<HloExecutionProfile> profile_ptr =
       module_config().debug_options().xla_hlo_profile() &&
               hlo_profiling_enabled()
-          ? MakeUnique<HloExecutionProfile>(&hlo_profile_printer_data(),
-                                            &hlo_profile_index_map())
+          ? absl::make_unique<HloExecutionProfile>(&hlo_profile_printer_data(),
+                                                   &hlo_profile_index_map())
           : nullptr;
 
   StatusOr<ScopedShapedBuffer> return_value =

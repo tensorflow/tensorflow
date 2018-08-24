@@ -28,21 +28,21 @@ using ::testing::ElementsAre;
 class DelegateTest : public testing::EagerModelTest {
  public:
   DelegateTest() {
-    // The delegate needs to be constructed before the interpreter because the
-    // interpreter references data contained in the delegate.
-    delegate_.reset(new EagerDelegate());
+    delegate_ = EagerDelegate::Create();
     interpreter_.reset(new Interpreter(&error_reporter_));
   }
 
   ~DelegateTest() override {
     // The delegate needs to be destructed after the interpreter because the
     // interpreter references data contained in the delegate.
-    delete interpreter_.release();
-    delete delegate_.release();
+    interpreter_.reset();
+    delegate_.reset();
   }
 
   void ConfigureDelegate() {
-    CHECK(delegate_->Apply(interpreter_.get()) == kTfLiteOk);
+    ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(
+                  delegate_.get(), /*allow_dynamic_tensors=*/true),
+              kTfLiteOk);
   }
 
  private:

@@ -558,7 +558,7 @@ m.result()  # => 5.5
 
 #### Summaries and TensorBoard
 
-@{$summaries_and_tensorboard$TensorBoard} is a visualization tool for
+[TensorBoard](../guide/summaries_and_tensorboard.md) is a visualization tool for
 understanding, debugging and optimizing the model training process. It uses
 summary events that are written while executing the program.
 

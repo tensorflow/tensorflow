@@ -18,36 +18,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import json
-import os
-
 from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_ops_lib
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import values
-from tensorflow.core.protobuf import cluster_pb2
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribute as distribute_lib
-from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 
 _LOCAL_CPU = "/device:CPU:0"
 _LOCAL_GPU_0 = "/device:GPU:0"
-
-
-def _normalize_cluster_spec(cluster_spec):
-  """Makes `cluster_spec` into a `ClusterSpec` object."""
-  if isinstance(cluster_spec, (dict, cluster_pb2.ClusterDef)):
-    return server_lib.ClusterSpec(cluster_spec)
-  elif not isinstance(cluster_spec, server_lib.ClusterSpec):
-    raise ValueError(
-        "`cluster_spec' should be dict or a `tf.train.ClusterSpec` or a "
-        "`tf.train.ClusterDef` object")
-  return cluster_spec
 
 
 # TODO(yuefengz): maybe cache variables on local CPU.
@@ -70,7 +56,11 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   assigned to.
 
   This class assumes between-graph replication will be used and works on a graph
-  for a particular worker.
+  for a particular worker. Note that each graph and worker is independent.
+  This means that while each worker will synchronously compute a single gradient
+  update across all GPUs, updates between workers proceed asynchronously.
+  Operations that occur only on the first tower (such as incrementing the global
+  step), will occur on the first tower *of every worker*.
 
   It is expected to call `call_for_each_tower(fn, *args, **kwargs)` for any
   operations which potentially can be replicated across towers (i.e. multiple
@@ -88,7 +78,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   3) It is also not recommended to open a colocation scope (i.e. calling
   `tf.colocate_with`) under the strategy's scope. For colocating variables,
   use `distribution.colocate_vars_with` instead. Colocation of ops will possibly
-  create conflicts of device assignement.
+  create conflicts of device assignment.
   """
 
   def __init__(self,
@@ -96,7 +86,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
                cluster_spec=None,
                task_type=None,
                task_id=None):
-    """Initiailizes this strategy.
+    """Initializes this strategy.
 
     Args:
       num_gpus_per_worker: number of local GPUs or GPUs per worker.
@@ -108,7 +98,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     super(ParameterServerStrategy, self).__init__()
     self._num_gpus_per_worker = num_gpus_per_worker
     if cluster_spec:
-      cluster_spec = _normalize_cluster_spec(cluster_spec)
+      cluster_spec = multi_worker_util.normalize_cluster_spec(cluster_spec)
     self._cluster_spec = cluster_spec
 
     # We typically don't need to do all-reduce in this strategy.
@@ -216,6 +206,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     else:
       self._default_device = self._worker_device
 
+    self._is_chief = cluster_spec is None or multi_worker_util.is_chief(
+        cluster_spec, task_type, task_id)
+
   def distribute_dataset(self, dataset_fn):
     """Distributes the dataset to each local GPU."""
     return values.PerDeviceDataset(
@@ -229,14 +222,30 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   # TODO(yuefengz): not all ops in device_setter.STANDARD_PS_OPS will go through
   # this creator, such as "MutableHashTable".
   def _create_variable(self, next_creator, *args, **kwargs):
+    if self.num_towers > 1:
+      aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
+      if aggregation not in (
+          vs.VariableAggregation.NONE,
+          vs.VariableAggregation.SUM,
+          vs.VariableAggregation.MEAN
+      ):
+        raise ValueError("Invalid variable aggregation mode: " + aggregation +
+                         " for variable: " + kwargs["name"])
+
+      def var_creator(*args, **kwargs):
+        v = next_creator(*args, **kwargs)
+        return values.AggregatingVariable(v, aggregation)
+    else:
+      var_creator = next_creator
+
     if "colocate_with" in kwargs:
       with ops.device(None):
         with ops.colocate_with(kwargs["colocate_with"]):
-          return next_creator(*args, **kwargs)
+          return var_creator(*args, **kwargs)
 
     with ops.colocate_with(None, ignore_existing=True):
       with ops.device(self._variable_device):
-        return next_creator(*args, **kwargs)
+        return var_creator(*args, **kwargs)
 
   def _call_for_each_tower(self, fn, *args, **kwargs):
     # pylint: disable=protected-access
@@ -258,7 +267,6 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
       # pylint: disable=protected-access
       return mirrored_strategy._reduce_non_distributed_value(
           self, aggregation, value, destinations)
-
     return self._cross_tower_ops.reduce(
         aggregation, value, destinations=destinations)
 
@@ -291,6 +299,8 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     return nest.map_structure(_select_fn, structured)
 
   def _update(self, var, fn, *args, **kwargs):
+    if isinstance(var, values.AggregatingVariable):
+      var = var.get()
     if not isinstance(var, resource_variable_ops.ResourceVariable):
       raise ValueError(
           "You can not update `var` %r. It must be a Variable." % var)
@@ -319,26 +329,31 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     # No need to distinguish between normal variables and tower-local variables.
     return array_ops.identity(var)
 
-  def configure(self, session_config=None):
+  def configure(self,
+                session_config=None,
+                cluster_spec=None,
+                task_type=None,
+                task_id=None):
+    """Configures the strategy class.
+
+    The strategy object will be re-initialized if `cluster_spec` is given but
+    was not passed in the constructor.
+
+    Args:
+      session_config: not used currently.
+      cluster_spec: a dict, ClusterDef or ClusterSpec object specifying the
+        cluster configurations.
+      task_type: the current task type.
+      task_id: the current task id.
+    """
     del session_config
-
-    # Use TF_CONFIG to get the cluster spec and the current job.
-    tf_config = json.loads(os.environ.get("TF_CONFIG", "{}"))
-    cluster_spec = _normalize_cluster_spec(tf_config.get("cluster", {}))
-
-    task_env = tf_config.get("task", {})
-    if task_env:
-      task_type = task_env.get("type", "worker")
-      task_id = int(task_env.get("index", "0"))
-    else:
-      task_type = "worker"
-      task_id = None
 
     # Set the devices if cluster_spec is defined in TF_CONFIG but not passed in
     # the constructor.
     if not self._cluster_spec and cluster_spec:
-      self._cluster_spec = cluster_spec
-      self._initialize_devices(self._num_gpus_per_worker, cluster_spec,
+      self._cluster_spec = multi_worker_util.normalize_cluster_spec(
+          cluster_spec)
+      self._initialize_devices(self._num_gpus_per_worker, self._cluster_spec,
                                task_type, task_id)
 
   @property
@@ -356,3 +371,19 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
 
   def non_slot_devices(self, var_list):
     return min(var_list, key=lambda x: x.name)
+
+  @property
+  def between_graph(self):
+    return True
+
+  @property
+  def should_init(self):
+    return self._is_chief
+
+  @property
+  def should_checkpoint(self):
+    return self._is_chief
+
+  @property
+  def should_save_summary(self):
+    return self._is_chief

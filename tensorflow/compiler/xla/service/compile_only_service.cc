@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -76,9 +76,9 @@ CompileOnlyService::CompileAheadOfTime(
     if (!directory_path.empty()) {
       HloSnapshot hlo_snapshot;
       *hlo_snapshot.mutable_hlo()->mutable_hlo_module() = instance.computation;
-      string filename = tensorflow::strings::StrCat(
-          "computation_", instance.computation.id(), "__",
-          instance.computation.entry_computation_name());
+      string filename =
+          absl::StrCat("computation_", instance.computation.id(), "__",
+                       instance.computation.entry_computation_name());
       const string& per_host_path = tensorflow::io::JoinPath(
           directory_path, tensorflow::port::Hostname());
 

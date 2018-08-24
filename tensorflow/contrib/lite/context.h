@@ -29,9 +29,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_CONTEXT_H_
 #define TENSORFLOW_CONTRIB_LITE_CONTEXT_H_
 
-#if defined(_MSC_VER)
-#include <complex.h>
-#endif
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -49,7 +46,8 @@ typedef enum { kTfLiteOk = 0, kTfLiteError = 1 } TfLiteStatus;
 typedef enum {
   kTfLiteEigenContext = 0,     // include eigen_support.h to use.
   kTfLiteGemmLowpContext = 1,  // include gemm_support.h to use.
-  kTfLiteMaxExternalContexts = 2
+  kTfLiteEdgeTpuContext = 2,   // Placeholder for Edge TPU support.
+  kTfLiteMaxExternalContexts = 3
 } TfLiteExternalContextType;
 
 // An external context is a collection of information unrelated to the TF Lite
@@ -152,6 +150,11 @@ void TfLiteIntArrayFree(TfLiteIntArray* v);
     }                                      \
   } while (0)
 
+// Single-precision complex data type compatible with the C99 definition.
+typedef struct {
+  float re, im;  // real and imaginary parts, respectively.
+} TfLiteComplex64;
+
 // Types supported by tensor
 typedef enum {
   kTfLiteNoType = 0,
@@ -183,11 +186,7 @@ typedef union {
   uint8_t* uint8;
   bool* b;
   int16_t* i16;
-#if defined(_MSC_VER)
-  _Fcomplex* c64;
-#else
-  _Complex float* c64;
-#endif
+  TfLiteComplex64* c64;
 } TfLitePtrUnion;
 
 // Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped

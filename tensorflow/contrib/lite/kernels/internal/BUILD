@@ -293,7 +293,6 @@ cc_library(
         ":round",
         ":strided_slice_logic",
         ":types",
-        "//third_party/eigen3",
         "@gemmlowp",
         "//tensorflow/contrib/lite:builtin_op_data",
     ] + select({
@@ -324,7 +323,6 @@ cc_library(
         ":round",
         ":strided_slice_logic",
         ":types",
-        "//third_party/eigen3",
         "@gemmlowp",
         "//tensorflow/contrib/lite:builtin_op_data",
     ] + select({

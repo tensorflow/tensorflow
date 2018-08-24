@@ -74,10 +74,9 @@ class DistributedCollectiveAllReduceStrategyTest(
 
   def _get_test_object(self, task_type, task_id, num_gpus=0):
     distribution = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
-        num_gpus_per_worker=num_gpus,
-        cluster_spec=self._cluster_spec,
-        task_type=task_type,
-        task_id=task_id)
+        num_gpus_per_worker=num_gpus)
+    distribution.configure(
+        cluster_spec=self._cluster_spec, task_type=task_type, task_id=task_id)
     collective_keys = cross_tower_utils.CollectiveKeys(
         group_key_start=10 * num_gpus +
         DistributedCollectiveAllReduceStrategyTest.collective_key_base,

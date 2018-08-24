@@ -22,6 +22,7 @@ import collections
 import copy
 import random
 import threading
+import weakref
 
 import numpy as np
 
@@ -40,6 +41,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
@@ -56,6 +58,33 @@ class TestUtilTest(test_util.TensorFlowTestCase):
 
     self.assertRaises(ValueError, test_util.assert_ops_in_graph,
                       {"hello": "Variable"}, ops.get_default_graph())
+
+  def test_session_functions(self):
+    with self.test_session() as sess:
+      sess_ref = weakref.ref(sess)
+      with self.cached_session(graph=None, config=None) as sess2:
+        # We make sure that sess2 is sess.
+        assert sess2 is sess
+        # We make sure we raise an exception if we use cached_session with
+        # different values.
+        with self.assertRaises(ValueError):
+          with self.cached_session(graph=ops.Graph()) as sess2:
+            pass
+        with self.assertRaises(ValueError):
+          with self.cached_session(use_gpu=True) as sess2:
+            pass
+        with self.assertRaises(ValueError):
+          with self.cached_session(force_gpu=True) as sess2:
+            pass
+    # We make sure that test_session will cache the session even after the
+    # with scope.
+    assert not sess_ref()._closed
+    with self.session() as unique_sess:
+      unique_sess_ref = weakref.ref(unique_sess)
+      with self.session() as sess2:
+        assert sess2 is not unique_sess
+    # We make sure the session is closed when we leave the with statement.
+    assert unique_sess_ref()._closed
 
   def test_assert_equal_graph_def(self):
     with ops.Graph().as_default() as g:
@@ -664,6 +693,22 @@ class TestUtilTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(modes[0:2], ["setup_graph", "run_graph"])
     self.assertEqual(modes[2:], ["setup_eager", "run_eager"])
+
+
+# Its own test case to reproduce variable sharing issues which only pop up when
+# setUp() is overridden and super() is not called.
+class GraphAndEagerNoVariableSharing(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    pass  # Intentionally does not call TensorFlowTestCase's super()
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_no_variable_sharing(self):
+    variable_scope.get_variable(
+        name="step_size",
+        initializer=np.array(1e-5, np.float32),
+        use_resource=True,
+        trainable=False)
 
 
 class GarbageCollectionTest(test_util.TensorFlowTestCase):
