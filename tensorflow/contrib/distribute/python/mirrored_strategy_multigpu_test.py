@@ -1271,7 +1271,8 @@ class MultiWorkerMirroredStrategyTest(
     return strategy
 
   def testMinimizeLossGraph(self):
-    self._test_minimize_loss_graph(self._get_distribution_strategy())
+    self._test_minimize_loss_graph(self._get_distribution_strategy(),
+                                   learning_rate=0.05)
 
 
 class MultiWorkerMirroredStrategyTestWithChief(
@@ -1288,7 +1289,7 @@ class MultiWorkerMirroredStrategyTestWithChief(
   def testMinimizeLossGraph(self):
     strategy = mirrored_strategy.MirroredStrategy(num_gpus=context.num_gpus())
     strategy.configure(cluster_spec=self._cluster_spec)
-    self._test_minimize_loss_graph(strategy)
+    self._test_minimize_loss_graph(strategy, learning_rate=0.05)
 
 
 if __name__ == "__main__":
