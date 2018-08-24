@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <limits>
+#include <string>
 
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -93,6 +94,15 @@ bool IsPopOpsCall(const xla::HloComputation* comp, const std::string& postfix) {
 bool IsPopOpsCall(const xla::HloInstruction* inst, const std::string& postfix) {
   return inst->opcode() == xla::HloOpcode::kCall &&
          IsPopOpsCall(inst->to_apply(), postfix);
+}
+
+bool UseSyntheticData() {
+  if (const char* env_c = std::getenv("TF_POPLAR_USE_SYNTHETIC_DATA")) {
+    std::string env(env_c);
+    std::transform(env.begin(), env.end(), env.begin(), ::tolower);
+    return env == "true";
+  }
+  return false;
 }
 
 }  // namespace poplarplugin

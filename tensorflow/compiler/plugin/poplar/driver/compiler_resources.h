@@ -20,11 +20,14 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_RESOURCES_H_
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/driver/convolution_classifier.h"
+#include "tensorflow/compiler/plugin/poplar/driver/graph_caching_util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_subcomputation.h"
 
 #include <poplin/Convolution.hpp>
 #include <poplin/MatMul.hpp>
 #include <poprand/RandomGen.hpp>
+#include <poputil/GraphFunction.hpp>
 
 namespace xla {
 namespace poplarplugin {
@@ -43,6 +46,10 @@ struct CompilerResources {
   poplin::matmul::PlanningCache dot_cache;
 
   poprand::Random random;
+
+  graph_caching_util::ConvolutionGraphCache conv_graph_cache;
+
+  graph_caching_util::BwdWeightGraphCache bwd_weight_graph_cache;
 
   CompilerResources(uint64 seed, poprand::RandomGenMode mode)
       : random(mode, seed) {}

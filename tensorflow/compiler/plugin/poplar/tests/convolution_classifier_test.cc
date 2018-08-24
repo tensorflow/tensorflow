@@ -196,15 +196,15 @@ HloModule top
 
   for (auto it : annotations.classification_map) {
     if (it.first->name() == "call.2.clone") {
-      EXPECT_EQ(it.second, ClassificationType::BACKPROP_INPUT);
+      EXPECT_EQ(it.second, ConvClassificationType::BACKPROP_INPUT);
     } else if (it.first->name() == "convolution.19.17.clone") {
-      EXPECT_EQ(it.second, ClassificationType::FORWARD);
+      EXPECT_EQ(it.second, ConvClassificationType::FORWARD);
     } else if (it.first->name() == "convolution.19.14.clone") {
-      EXPECT_EQ(it.second, ClassificationType::FORWARD);
+      EXPECT_EQ(it.second, ConvClassificationType::FORWARD);
     } else if (it.first->name() == "convolution.19.66.clone") {
-      EXPECT_EQ(it.second, ClassificationType::BACKPROP_FILTER);
+      EXPECT_EQ(it.second, ConvClassificationType::BACKPROP_FILTER);
     } else if (it.first->name() == "convolution.19.86.clone") {
-      EXPECT_EQ(it.second, ClassificationType::BACKPROP_FILTER);
+      EXPECT_EQ(it.second, ConvClassificationType::BACKPROP_FILTER);
     } else {
       // Should not have missing convolutions
       EXPECT_EQ(1, 0);
@@ -310,9 +310,9 @@ TEST_F(ConvolutionClassifierTest, SingleConvTraining) {
 
   for (auto it : annotations.classification_map) {
     if (it.first->name() == "convolution.7.51.clone") {
-      EXPECT_EQ(it.second, ClassificationType::BACKPROP_FILTER);
+      EXPECT_EQ(it.second, ConvClassificationType::BACKPROP_FILTER);
     } else if (it.first->name() == "convolution.7.13.clone") {
-      EXPECT_EQ(it.second, ClassificationType::FORWARD);
+      EXPECT_EQ(it.second, ConvClassificationType::FORWARD);
     } else {
       // Should not have missing convolutions
       EXPECT_EQ(1, 0);
@@ -417,15 +417,15 @@ ENTRY %cluster_1 {
 
   for (auto it : annotations.classification_map) {
     if (it.first->name() == "dot.9.9") {
-      EXPECT_EQ(it.second, ClassificationType::FORWARD);
+      EXPECT_EQ(it.second, ConvClassificationType::FORWARD);
     } else if (it.first->name() == "dot.9.13") {
-      EXPECT_EQ(it.second, ClassificationType::FORWARD);
+      EXPECT_EQ(it.second, ConvClassificationType::FORWARD);
     } else if (it.first->name() == "dot.9.36") {
-      EXPECT_EQ(it.second, ClassificationType::BACKPROP_FILTER);
+      EXPECT_EQ(it.second, ConvClassificationType::BACKPROP_FILTER);
     } else if (it.first->name() == "dot.9.38") {
-      EXPECT_EQ(it.second, ClassificationType::BACKPROP_INPUT);
+      EXPECT_EQ(it.second, ConvClassificationType::BACKPROP_INPUT);
     } else if (it.first->name() == "dot.9.47") {
-      EXPECT_EQ(it.second, ClassificationType::BACKPROP_FILTER);
+      EXPECT_EQ(it.second, ConvClassificationType::BACKPROP_FILTER);
     } else {
       // Should not have missing convolutions
       EXPECT_EQ(1, 0);
@@ -491,9 +491,9 @@ ENTRY %cluster_9 {
 
   for (auto it : annotations.classification_map) {
     if (it.first->name() == "dot.17.12") {
-      EXPECT_EQ(it.second, ClassificationType::INFERENCE);
+      EXPECT_EQ(it.second, ConvClassificationType::INFERENCE);
     } else if (it.first->name() == "dot.17.6") {
-      EXPECT_EQ(it.second, ClassificationType::INFERENCE);
+      EXPECT_EQ(it.second, ConvClassificationType::INFERENCE);
     } else {
       // Should not have missing convolutions
       EXPECT_EQ(1, 0);

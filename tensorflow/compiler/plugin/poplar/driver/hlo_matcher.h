@@ -51,11 +51,19 @@ struct HloMatcherNode {
   std::vector<unsigned int> operands;
 };
 
+struct InstructionIndex {
+  HloInstruction* inst;
+  int64 op_idx;
+};
+
+using Trace = std::vector<InstructionIndex>;
+
 struct HloMatcherMatched {
   HloComputation* computation;
   bool ok;
   std::vector<HloInstruction*> instructions;
-  std::vector<std::pair<HloInstruction*, int64>> parameters;
+  std::map<const HloInstruction*, std::vector<int64>> inst_parameters;
+  std::vector<Trace> replacement_traces;
 };
 
 struct FusedGraphInfo {
@@ -79,13 +87,15 @@ using ReplacedInstructions = std::vector<HloInstruction*>;
 
 struct OutlinedInfo {
   HloInstruction* call_to_outlined_computation;
-  ReplacedInstructions removed_instructions;
+  ReplacedInstructions removed_or_modified_instructions;
 };
 
 class HloMatcher : public HloPassInterface {
  public:
+  // By default never look through associative ops
   HloMatcher(const std::vector<HloMatcherPattern>& patterns,
-             struct CompilerAnnotations& annotations, bool root_only);
+             struct CompilerAnnotations& annotations, bool root_only,
+             unsigned look_through_max_level = 0);
 
   ~HloMatcher() override = default;
 
@@ -125,8 +135,12 @@ class HloMatcher : public HloPassInterface {
   bool MatchPattern(HloInstruction* inst, const HloMatcherPattern& pattern,
                     HloMatcherMatched& match);
   void AddMatch(unsigned pattern, const HloMatcherMatched& match);
+  StatusOr<Trace> FindNextMatchingOp(HloInstruction* user, HloInstruction* inst,
+                                     const HloOpcode desiredOpcode);
+  std::set<HloInstruction*> ReorderGraph(const HloMatcherMatched& matched);
 
   bool root_computation_only_;
+  unsigned look_through_max_depth_;
 
   // A map of instructions in the computation to matches. When replacing
   // instructions due to one match, other matches which contain the instruction

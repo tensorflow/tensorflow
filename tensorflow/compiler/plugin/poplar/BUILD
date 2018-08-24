@@ -48,7 +48,6 @@ cc_library(
         "driver/inplace_finder.cc",
         "driver/inplace_instructions.cc",
         "driver/matcher_predicates.cc",
-        "driver/outliner.cc",
         "driver/scheduler.cc",
         "driver/single_hlo_matcher.cc",
         "driver/update_op_dependencies.cc",
@@ -75,7 +74,6 @@ cc_library(
         "driver/inplace_finder.h",
         "driver/inplace_instructions.h",
         "driver/matcher_predicates.h",
-        "driver/outliner.h",
         "driver/scheduler.h",
         "driver/single_hlo_matcher.h",
         "driver/update_op_dependencies.h",
@@ -104,6 +102,7 @@ cc_library(
         "driver/conv_op.cc",
         "driver/executable.cc",
         "driver/executor.cc",
+        "driver/graph_caching_util.cc",
         "driver/map_ops.cc",
         "driver/math_ops.cc",
         "driver/op_util.cc",
@@ -127,6 +126,7 @@ cc_library(
         "driver/conversions.h",
         "driver/executable.h",
         "driver/executor.h",
+        "driver/graph_caching_util.h",
         "driver/ops.h",
         "driver/platform.h",
         "driver/platform_id.h",
@@ -307,16 +307,6 @@ tf_cc_test(
     name = "inplace_test",
     srcs = ["tests/inplace_test.cc"],
     size = "small",
-    deps = [
-        ":optimizers",
-        "//tensorflow/compiler/xla/service:hlo_matchers",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-    ],
-)
-
-tf_cc_test(
-    name = "outliner_test",
-    srcs = ["tests/outliner_test.cc"],
     deps = [
         ":optimizers",
         "//tensorflow/compiler/xla/service:hlo_matchers",
@@ -741,6 +731,22 @@ py_test(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "cache_conv_test",
+    size = "medium",
+    srcs = ["tests/cache_conv_test.py"],
+    deps = [
+        ":ipu_ops",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -759,7 +765,6 @@ test_suite(
         "allocation_finder_test",
         "batch_norm_test",
         "tensor_array_test",
-        "outliner_test",
         "hlo_hash_test",
         "hlo_matcher_test",
         "fuse_ops_test",
@@ -779,6 +784,7 @@ test_suite(
         "casts_elimination_test",
         "update_op_dependencies_test",
         "fuse_wide_const_test",
+        "cache_conv_test",
     ],
 )
 
@@ -815,6 +821,7 @@ test_suite(
         "casts_elimination_test",
         "update_op_dependencies_test",
         "fuse_wide_const_test",
+        "cache_conv_test",
     ],
 )
 

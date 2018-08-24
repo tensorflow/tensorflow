@@ -507,19 +507,16 @@ StatusOr<poplar::program::Program> CreateReluOp(poplar::Graph& graph,
                                                 const HloInstruction* inst,
                                                 const xla::Shape& output_shape,
                                                 TensorMap& tensor_map) {
-  poplar::Tensor t;
-  TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0));
-
   poplar::program::Sequence seq;
-  poplar::Tensor out = graph.clone(t, GetDebugName(inst));
+  poplar::Tensor t;
+  TF_ASSIGN_OR_RETURN(t, GetInplaceOutputTensor(graph, res, seq, inst,
+                                                output_shape, tensor_map));
+  popnn::relu(graph, t, seq, GetDebugName(inst));
 
-  seq.add(poplar::program::Copy(t, out));
-  popnn::relu(graph, out, seq, GetDebugName(inst));
-
-  TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
+  TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
   TF_CHECK_OK(
-      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
+      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, t).status());
 
   return seq;
 }
@@ -549,19 +546,17 @@ StatusOr<poplar::program::Program> CreateReluGradOp(
 StatusOr<poplar::program::Program> CreateSigmoidOp(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
-  poplar::Tensor t;
-  TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0));
-
   poplar::program::Sequence seq;
-  poplar::Tensor out = graph.clone(t, GetDebugName(inst));
+  poplar::Tensor t;
+  TF_ASSIGN_OR_RETURN(t, GetInplaceOutputTensor(graph, res, seq, inst,
+                                                output_shape, tensor_map));
 
-  seq.add(poplar::program::Copy(t, out));
-  popnn::sigmoid(graph, out, seq, GetDebugName(inst));
+  popnn::sigmoid(graph, t, seq, GetDebugName(inst));
 
-  TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
+  TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
   TF_CHECK_OK(
-      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
+      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, t).status());
 
   return seq;
 }

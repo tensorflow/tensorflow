@@ -14,7 +14,7 @@ bool IsForward(const HloInstruction *inst,
     return false;
   }
   auto type = annotations.classification_map.at(inst);
-  return type == ClassificationType::FORWARD;
+  return type == ConvClassificationType::FORWARD;
 }
 
 bool IsBackpropInput(const HloInstruction *inst,
@@ -23,7 +23,7 @@ bool IsBackpropInput(const HloInstruction *inst,
     return false;
   }
   auto type = annotations.classification_map.at(inst);
-  return type == ClassificationType::BACKPROP_INPUT;
+  return type == ConvClassificationType::BACKPROP_INPUT;
 }
 
 bool IsBackpropFilter(const HloInstruction *inst,
@@ -32,7 +32,7 @@ bool IsBackpropFilter(const HloInstruction *inst,
     return false;
   }
   auto type = annotations.classification_map.at(inst);
-  return type == ClassificationType::BACKPROP_FILTER;
+  return type == ConvClassificationType::BACKPROP_FILTER;
 }
 
 }  // namespace poplarplugin

@@ -16,9 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_EXPRESSION_OUTLINER_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_EXPRESSION_OUTLINER_H_
 
-#include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
-
-#include <set>
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 
@@ -31,7 +30,7 @@ class InplaceInstructions;
 // Extract elementwise ops into a called sub-graph
 // (must come after InplaceFinder)
 
-class ExpressionOutliner : public HloMatcher {
+class ExpressionOutliner : public HloPassInterface {
  public:
   ExpressionOutliner(struct CompilerAnnotations& annotations);
 
@@ -39,10 +38,10 @@ class ExpressionOutliner : public HloMatcher {
 
   tensorflow::StringPiece name() const override { return "expression-outline"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  StatusOr<bool> Run(HloModule* module);
 
  private:
-  unsigned ReplaceNodes() override { return 0; };
+  struct CompilerAnnotations& annotations_;
 };
 
 }  // namespace poplarplugin
