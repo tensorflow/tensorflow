@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
     floats.push_back(value);
   }
 
-  tensorflow::StringPiece content(
+  tensorflow::StringPiece content(  // non-absl ok
       tensorflow::bit_cast<const char*>(floats.data()),
       floats.size() * sizeof(float));
   TF_CHECK_OK(tensorflow::WriteStringToFile(tensorflow::Env::Default(),
