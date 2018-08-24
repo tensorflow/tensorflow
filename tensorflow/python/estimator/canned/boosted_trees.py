@@ -204,6 +204,9 @@ def _generate_feature_name_mapping(sorted_feature_columns):
 
   Returns:
     feature_name_mapping: a list of feature names indexed by the feature ids.
+
+  Raises:
+    ValueError: when unsupported features/columns are tried.
   """
   names = []
   for column in sorted_feature_columns:
@@ -221,8 +224,12 @@ def _generate_feature_name_mapping(sorted_feature_columns):
       else:
         for num in range(categorical_column._num_buckets):  # pylint:disable=protected-access
           names.append('{}:{}'.format(column.name, num))
-    else:
+    elif isinstance(column, feature_column_lib._BucketizedColumn):
       names.append(column.name)
+    else:
+      raise ValueError(
+          'For now, only bucketized_column and indicator_column is supported '
+          'but got: {}'.format(column))
   return names
 
 
