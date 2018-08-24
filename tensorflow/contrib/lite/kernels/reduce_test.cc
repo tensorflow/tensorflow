@@ -338,6 +338,33 @@ TEST(DynamicUint8MeanOpTest, KeepDims) {
       ElementsAreArray(ArrayFloatNear({9.2815, 0.3695}, kQuantizedTolerance)));
 }
 
+TEST(DynamicUint8MeanOpTest, QuantizedScalar) {
+  float kQuantizedTolerance = GetTolerance(-10.0, 12.0);
+  std::vector<float> data = {0.643};
+  MeanOpDynamicModel m({TensorType_UINT8, {}, 0.0, 1.0},
+                       {TensorType_UINT8, {}, -10.0, 12.0},
+                       {TensorType_INT32, {1}}, true);
+  std::vector<int> axis = {0};
+  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear({0.643}, kQuantizedTolerance)));
+}
+
+TEST(ConstUint8MeanOpTest, QuantizedKeepDims) {
+  float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
+  std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
+  MeanOpConstModel m({TensorType_UINT8, {3, 2}, 0.0, 1.0},
+                     {TensorType_UINT8, {3}, -5.0, 5.0}, {1}, {1}, true);
+  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
+  EXPECT_THAT(
+      m.GetDequantizedOutput(),
+      ElementsAreArray(ArrayFloatNear({0.3, 0.35, 0.55}, kQuantizedTolerance)));
+}
+
 // Tests for reduce_sum
 
 TEST(ConstFloatSumOpTest, NotKeepDims) {
