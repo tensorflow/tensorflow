@@ -81,11 +81,12 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     self._tpu_metadata = get_tpu_system_metadata(self._tpu_cluster_resolver)
     self._num_cores_override = num_cores
 
-    # TODO(priyag): This should not be hardcoded here.
-    self._host = '/device:CPU:0'
     # TODO(sourabhbajaj): Remove this once performance of running one step
     # at a time is comparable to multiple steps.
     self.steps_per_run = steps_per_run
+
+    # TODO(frankchn): This should not be hardcoded here for pod purposes.
+    self._host = self.tpu_host_cpu_device(0)
 
   def distribute_dataset(self, dataset_fn):
     # TODO(priyag): Perhaps distribute across cores here.
@@ -263,3 +264,9 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
   @property
   def num_towers(self):
     return self._num_cores_override or self._tpu_metadata.num_cores
+
+  def tpu_host_cpu_device(self, host_id):
+    if self._tpu_cluster_resolver.get_master() in ('', 'local'):
+      return '/replica:0/task:0/device:CPU:0'
+    return '/job:%s/task:%d/device:CPU:0' % ('tpu_worker', host_id)
+
