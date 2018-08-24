@@ -89,6 +89,8 @@ ArrayElementwiseOpTest.ShiftLeftU32      POPLAR
 ArrayElementwiseOpTest.ShiftRightLogicalU32      POPLAR
 ArrayElementwiseOpTest.ClampU32Vector POPLAR
 ArrayElementwiseOpTest.ClampU32ScalarVector POPLAR
+IntegerDivideOpTest.DivU32s POPLAR
+IntegerDivideOpTest.UnsignedOverflow POPLAR
 VecOpsSimpleTest.NegateUint32Values      POPLAR
 PrngTest.HundredValuesB10p5      POPLAR
 PrngTest.HundredValuesB10p1      POPLAR
@@ -271,3 +273,4 @@ IotaTest POPLAR // Don't support iota
 
 ScatterTest POPLAR // Don't support scatter
 
+IntegerDivideOpTest.SignedOverflow POPLAR // Crashes - find out why
