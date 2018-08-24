@@ -99,7 +99,7 @@ class HloMatcher : public HloPassInterface {
 
   ~HloMatcher() override = default;
 
-  tensorflow::StringPiece name() const override { return "matcher"; }
+  absl::string_view name() const override { return "matcher"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 

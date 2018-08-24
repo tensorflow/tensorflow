@@ -133,8 +133,6 @@ class BaseVisitor : public DfsHloVisitor {
 
   Status HandleFft(HloInstruction* inst) override;
 
-  Status HandleHostCompute(HloInstruction* inst) override;
-
   Status HandleGather(HloInstruction* inst) override;
 
   Status HandleAfterAll(HloInstruction* inst) override;

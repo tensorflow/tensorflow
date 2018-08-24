@@ -36,7 +36,7 @@ class UpdateOpDependenctOrdering : public HloPassInterface {
 
   ~UpdateOpDependenctOrdering() override = default;
 
-  tensorflow::StringPiece name() const override {
+  absl::string_view name() const override {
     return "update-op-dependencies";
   }
 

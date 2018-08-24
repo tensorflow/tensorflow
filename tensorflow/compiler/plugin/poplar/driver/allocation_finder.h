@@ -53,7 +53,7 @@ class AllocationFinder : public HloPassInterface {
 
   ~AllocationFinder() = default;
 
-  tensorflow::StringPiece name() const override { return "allocation-finder"; }
+  absl::string_view name() const override { return "allocation-finder"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 

@@ -25,7 +25,7 @@ namespace poplarplugin {
 // operation, then merge with the calling computation.
 class ComputationFlattener : public HloPassInterface {
  public:
-  tensorflow::StringPiece name() const override { return "ipu-flattener"; }
+  absl::string_view name() const override { return "ipu-flattener"; }
 
   StatusOr<bool> Run(HloModule *module) override;
 };

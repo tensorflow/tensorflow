@@ -33,7 +33,7 @@ class WideConstFinder : public HloPassInterface {
 
   ~WideConstFinder() override = default;
 
-  tensorflow::StringPiece name() const override { return "wide-const-finder"; }
+  absl::string_view name() const override { return "wide-const-finder"; }
 
   StatusOr<bool> Run(HloModule *module) override;
 };

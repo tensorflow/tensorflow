@@ -36,7 +36,7 @@ class WhileLoopConditionSimplify : public HloPassInterface {
 
   ~WhileLoopConditionSimplify() override = default;
 
-  tensorflow::StringPiece name() const override {
+  absl::string_view name() const override {
     return "while-loop-condition-simplify";
   }
 

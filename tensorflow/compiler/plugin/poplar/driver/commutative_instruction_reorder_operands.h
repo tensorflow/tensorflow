@@ -30,7 +30,7 @@ class CommutativeInstructionReorderOperands : public HloPassInterface {
 
   ~CommutativeInstructionReorderOperands() override = default;
 
-  tensorflow::StringPiece name() const override {
+  absl::string_view name() const override {
     return "commutative-instruction-reorder-operands";
   }
 

@@ -31,7 +31,7 @@ class FuseOpsEarly : public SingleHloMatcher {
 
   ~FuseOpsEarly() override = default;
 
-  tensorflow::StringPiece name() const override { return "poplar-fuse-early"; }
+  absl::string_view name() const override { return "poplar-fuse-early"; }
 };
 
 }  // namespace poplarplugin

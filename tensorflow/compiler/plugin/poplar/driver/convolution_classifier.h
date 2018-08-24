@@ -58,7 +58,7 @@ class ConvolutionClassifier : public HloPassInterface {
 
   ~ConvolutionClassifier() = default;
 
-  tensorflow::StringPiece name() const override {
+  absl::string_view name() const override {
     return "convolution-classifier";
   }
 

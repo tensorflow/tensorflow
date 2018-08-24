@@ -255,4 +255,5 @@ def generate_backend_test_macros(backends=[]):
             "//tensorflow/core:lib",
             "//tensorflow/core:regexp_internal",
             "//tensorflow/core:test",
+            "@com_google_absl//absl/strings",
         ])

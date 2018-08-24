@@ -45,7 +45,7 @@ class InplaceFinder : public HloPassInterface {
 
   ~InplaceFinder() = default;
 
-  tensorflow::StringPiece name() const override { return "inplace-finder"; }
+  absl::string_view name() const override { return "inplace-finder"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 

@@ -36,7 +36,7 @@ class ExpressionOutliner : public HloPassInterface {
 
   ~ExpressionOutliner() override = default;
 
-  tensorflow::StringPiece name() const override { return "expression-outline"; }
+  absl::string_view name() const override { return "expression-outline"; }
 
   StatusOr<bool> Run(HloModule* module);
 
