@@ -234,6 +234,12 @@ public:
     return ConstOpPointer<OpClass>(OpClass(isMatch ? this : nullptr));
   }
 
+  /// The is methods return true if the operation is a typed op (like DimOp) of
+  /// of the given class.
+  template <typename OpClass> bool is() const {
+    return OpClass::isClassFor(this);
+  }
+
   enum class OperationKind { Instruction, Statement };
   // This is used to implement the dynamic casting logic, but you shouldn't
   // call it directly.  Use something like isa<OperationInst>(someOp) instead.

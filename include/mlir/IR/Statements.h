@@ -22,16 +22,16 @@
 #ifndef MLIR_IR_STATEMENTS_H
 #define MLIR_IR_STATEMENTS_H
 
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLValue.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/IR/Statement.h"
 #include "mlir/IR/StmtBlock.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/Support/TrailingObjects.h"
 
 namespace mlir {
+class AffineMap;
+class AffineBound;
 
 /// Operation statements represent operations inside ML functions.
 class OperationStmt final
@@ -55,7 +55,7 @@ public:
   using Statement::getLoc;
 
   /// Check if this statement is a return statement.
-  bool isReturn() const { return getName().str() == "return"; }
+  bool isReturn() const;
 
   //===--------------------------------------------------------------------===//
   // Operands
@@ -111,11 +111,6 @@ public:
   const StmtOperand &getStmtOperand(unsigned idx) const {
     return getStmtOperands()[idx];
   }
-
-  /// This drops all operand uses from this instruction, which is an essential
-  /// step in breaking cyclic dependences between references when they are to
-  /// be deleted.
-  void dropAllReferences();
 
   //===--------------------------------------------------------------------===//
   // Results
@@ -203,31 +198,114 @@ private:
 /// For statement represents an affine loop nest.
 class ForStmt : public Statement, public MLValue, public StmtBlock {
 public:
-  // TODO: lower and upper bounds should be affine maps with
-  // dimension and symbol use lists.
-  explicit ForStmt(Attribute *location, AffineConstantExpr *lowerBound,
-                   AffineConstantExpr *upperBound, int64_t step,
-                   MLIRContext *context);
+  static ForStmt *create(Attribute *location, ArrayRef<MLValue *> lbOperands,
+                         AffineMap *lbMap, ArrayRef<MLValue *> ubOperands,
+                         AffineMap *ubMap, int64_t step, MLIRContext *context);
 
   ~ForStmt() {
-    // Loop bounds and step are immortal objects and don't need to be deleted.
-
     // Explicitly erase statements instead of relying of 'StmtBlock' destructor
     // since child statements need to be destroyed before the MLValue that this
-    // for stmt represents is destroyed.
+    // for stmt represents is destroyed. Affine maps are immortal objects and
+    // don't need to be deleted.
     clear();
   }
 
   /// Resolve base class ambiguity.
   using Statement::findFunction;
 
-  AffineConstantExpr *getLowerBound() const { return lowerBound; }
-  AffineConstantExpr *getUpperBound() const { return upperBound; }
+  /// Operand iterators.
+  using operand_iterator = OperandIterator<ForStmt, MLValue>;
+  using const_operand_iterator = OperandIterator<const ForStmt, const MLValue>;
+
+  /// Operand iterator range.
+  using operand_range = llvm::iterator_range<operand_iterator>;
+  using const_operand_range = llvm::iterator_range<const_operand_iterator>;
+
+  //===--------------------------------------------------------------------===//
+  // Bounds and step
+  //===--------------------------------------------------------------------===//
+
+  /// Returns information about the lower bound as a single object.
+  const AffineBound getLowerBound() const;
+
+  /// Returns information about the upper bound as a single object.
+  const AffineBound getUpperBound() const;
+
+  /// Returns loop step.
   int64_t getStep() const { return step; }
 
-  void setLowerBound(AffineConstantExpr *lb) { lowerBound = lb; }
-  void setUpperBound(AffineConstantExpr *ub) { upperBound = ub; }
-  void setStep(unsigned s) { step = s; }
+  /// Returns affine map for the lower bound.
+  AffineMap *getLowerBoundMap() const { return lbMap; }
+  /// Returns affine map for the upper bound.
+  AffineMap *getUpperBoundMap() const { return ubMap; }
+
+  /// Set lower bound.
+  void setLowerBound(ArrayRef<MLValue *> operands, AffineMap *map);
+  /// Set upper bound.
+  void setUpperBound(ArrayRef<MLValue *> operands, AffineMap *map);
+  /// Set loop step.
+  void setStep(int64_t step) { this->step = step; }
+
+  /// Returns true if the lower bound is constant.
+  bool hasConstantLowerBound() const;
+  /// Returns true if the upper bound is constant.
+  bool hasConstantUpperBound() const;
+  /// Returns true if both bounds are constant.
+  bool hasConstantBounds() const {
+    return hasConstantLowerBound() && hasConstantUpperBound();
+  }
+  /// Returns the value of the constant lower bound.
+  /// Fails assertion if the bound is non-constant.
+  int64_t getConstantLowerBound() const;
+  /// Returns the value of the constant upper bound.
+  /// Fails assertion if the bound is non-constant.
+  int64_t getConstantUpperBound() const;
+  /// Sets the lower bound to the given constant value.
+  void setConstantLowerBound(int64_t value);
+  /// Sets the upper bound to the given constant value.
+  void setConstantUpperBound(int64_t value);
+
+  //===--------------------------------------------------------------------===//
+  // Operands
+  //===--------------------------------------------------------------------===//
+
+  unsigned getNumOperands() const { return operands.size(); }
+
+  MLValue *getOperand(unsigned idx) { return getStmtOperand(idx).get(); }
+  const MLValue *getOperand(unsigned idx) const {
+    return getStmtOperand(idx).get();
+  }
+  void setOperand(unsigned idx, MLValue *value) {
+    getStmtOperand(idx).set(value);
+  }
+
+  operand_iterator operand_begin() { return operand_iterator(this, 0); }
+  operand_iterator operand_end() {
+    return operand_iterator(this, getNumOperands());
+  }
+
+  const_operand_iterator operand_begin() const {
+    return const_operand_iterator(this, 0);
+  }
+  const_operand_iterator operand_end() const {
+    return const_operand_iterator(this, getNumOperands());
+  }
+
+  ArrayRef<StmtOperand> getStmtOperands() const { return operands; }
+  MutableArrayRef<StmtOperand> getStmtOperands() { return operands; }
+  StmtOperand &getStmtOperand(unsigned idx) { return getStmtOperands()[idx]; }
+  const StmtOperand &getStmtOperand(unsigned idx) const {
+    return getStmtOperands()[idx];
+  }
+  // TODO: provide iterators for the lower and upper bound operands
+  // if the current access via getLowerBound(), getUpperBound() is too slow.
+
+  //===--------------------------------------------------------------------===//
+  // Other
+  //===--------------------------------------------------------------------===//
+
+  /// Return the context this operation is associated with.
+  MLIRContext *getContext() const { return getType()->getContext(); }
 
   using Statement::dump;
   using Statement::print;
@@ -249,11 +327,63 @@ public:
   }
 
 private:
-  // TODO(shpeisman): please name the ForStmt's bounds encapsulating
-  // an affinemap and its operands as AffineBound.
-  AffineConstantExpr *lowerBound;
-  AffineConstantExpr *upperBound;
+  // Affine map for the lower bound.
+  AffineMap *lbMap;
+  // Affine map for the upper bound.
+  AffineMap *ubMap;
+  // Constant step.
   int64_t step;
+  // Operands for the lower and upper bounds.
+  std::vector<StmtOperand> operands;
+
+  explicit ForStmt(Attribute *location, unsigned numOperands, AffineMap *lbMap,
+                   AffineMap *ubMap, int64_t step, MLIRContext *context);
+};
+
+/// AffineBound represents a lower or upper bound in the for statement.
+/// This class does not own the underlying operands. Instead, it refers
+/// to the operands stored in the ForStmt. It's life span should not exceed
+/// that of the for statement it refers to.
+class AffineBound {
+public:
+  const ForStmt *getOwner() const { return &stmt; }
+  AffineMap *getMap() const { return map; }
+
+  unsigned getNumOperands() const { return opEnd - opStart; }
+  const MLValue *getOperand(unsigned idx) const {
+    return stmt.getOperand(opStart + idx);
+  }
+  const StmtOperand &getStmtOperand(unsigned idx) const {
+    return stmt.getStmtOperand(opStart + idx);
+  }
+
+  using operand_iterator = ForStmt::const_operand_iterator;
+  using operand_range = ForStmt::const_operand_range;
+
+  operand_iterator operand_begin() const {
+    return operand_iterator(&stmt, opStart);
+  }
+  operand_iterator operand_end() const {
+    return operand_iterator(&stmt, opEnd);
+  }
+
+  operand_range getOperands() const { return {operand_begin(), operand_end()}; }
+  ArrayRef<StmtOperand> getStmtOperands() const {
+    auto ops = stmt.getStmtOperands();
+    return ArrayRef<StmtOperand>(ops.begin() + opStart, ops.begin() + opEnd);
+  }
+
+private:
+  const ForStmt &stmt;
+  unsigned opStart, opEnd;
+  AffineMap *map;
+
+  AffineBound(const ForStmt &stmt, const unsigned opStart, const unsigned opEnd,
+              const AffineMap *map)
+      : stmt(stmt), opStart(opStart), opEnd(opEnd),
+        map(const_cast<AffineMap *>(map)) {}
+
+  friend class ForStmt;
 };
 
 /// An if clause represents statements contained within a then or an else clause

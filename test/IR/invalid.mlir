@@ -169,7 +169,7 @@ mlfunc @incomplete_for() {
 // -----
 
 mlfunc @nonconstant_step(%1 : i32) {
-  for %2 = 1 to 5 step %1 { // expected-error {{expected non-negative integer for now}}
+  for %2 = 1 to 5 step %1 { // expected-error {{expected integer}}
 
 // -----
 
@@ -413,5 +413,131 @@ bb0:
 cfgfunc @undefined_function() {
 bb0:
   %x = constant @bar : (i32) -> ()  // expected-error {{reference to undefined function 'bar'}}
+  return
+}
+
+// -----
+
+#map1 = (i)[j] -> (i+j)
+
+mlfunc @bound_symbol_mismatch(%N : affineint) {
+  for %i = #map1(%N) to 100 {
+  // expected-error@-1 {{symbol operand count and affine map symbol count must match}}
+  }
+  return
+}
+
+// -----
+
+#map1 = (i)[j] -> (i+j)
+
+mlfunc @bound_dim_mismatch(%N : affineint) {
+  for %i = #map1(%N, %N)[%N] to 100 {
+  // expected-error@-1 {{dim operand count and affine map dim count must match}}
+  }
+  return
+}
+
+// -----
+
+#map1 = (i)[j] -> (i+j)
+
+mlfunc @invalid_dim_nested(%N : affineint) {
+  for %i = 1 to 100 {
+    %a = "foo"(%N) : (affineint)->(affineint)
+    for %j = 1 to #map1(%a)[%i] {
+    // expected-error@-1 {{value '%a' cannot be used as dimension id}}
+    }
+  }
+  return
+}
+
+// -----
+
+#map1 = (i)[j] -> (i+j)
+
+mlfunc @invalid_dim_affine_apply(%N : affineint) {
+  for %i = 1 to 100 {
+    %a = "foo"(%N) : (affineint)->(affineint)
+    %w = affine_apply (i)->(i+1) (%a)
+    for %j = 1 to #map1(%w)[%i] {
+    // expected-error@-1 {{value '%w' cannot be used as dimension id}}
+    }
+  }
+  return
+}
+
+// -----
+
+#map1 = (i)[j] -> (i+j)
+
+mlfunc @invalid_symbol_iv(%N : affineint) {
+  for %i = 1 to 100 {
+    %a = "foo"(%N) : (affineint)->(affineint)
+    for %j = 1 to #map1(%N)[%i] {
+    // expected-error@-1 {{value '%i' cannot be used as symbol}}
+    }
+  }
+  return
+}
+
+// -----
+
+#map1 = (i)[j] -> (i+j)
+
+mlfunc @invalid_symbol_nested(%N : affineint) {
+  for %i = 1 to 100 {
+    %a = "foo"(%N) : (affineint)->(affineint)
+    for %j = 1 to #map1(%N)[%a] {
+    // expected-error@-1 {{value '%a' cannot be used as symbol}}
+    }
+  }
+  return
+}
+
+// -----
+
+#map1 = (i)[j] -> (i+j)
+
+mlfunc @invalid_symbol_affine_apply(%N : affineint) {
+  for %i = 1 to 100 {
+    %w = affine_apply (i)->(i+1) (%i)
+    for %j = 1 to #map1(%i)[%w] {
+    // expected-error@-1 {{value '%w' cannot be used as symbol}}
+    }
+  }
+  return
+}
+
+// -----
+
+mlfunc @large_bound() {
+  for %i = 1 to 9223372036854775810 {
+  // expected-error@-1 {{bound or step is too large for affineint}}
+  }
+  return
+}
+
+// -----
+
+mlfunc @max_in_upper_bound(%N : affineint) {
+  for %i = 1 to max (i)->(N, 100) { //expected-error {{expected SSA operand}}
+  }
+  return
+}
+
+// -----
+
+mlfunc @step_typo() {
+  for %i = 1 to 100 step -- 1 { //expected-error {{expected integer}}
+  }
+  return
+}
+
+// -----
+
+mlfunc @invalid_bound_map(%N : i32) {
+  for %i = 1 to (i)->(j)(%N) { //expected-error {{use of undeclared identifier}}
+  }
   return
 }

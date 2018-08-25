@@ -107,6 +107,14 @@ public:
                             ArrayRef<AffineExpr *> constraints,
                             ArrayRef<bool> isEq);
 
+  // Special cases of affine maps and integer sets
+  // One constant result: () -> (val).
+  AffineMap *getConstantMap(int64_t val);
+  // One dimension id identity map: (i) -> (i).
+  AffineMap *getDimIdentityMap();
+  // One symbol identity map: ()[s] -> (s).
+  AffineMap *getSymbolIdentityMap();
+
   // TODO: Helpers for affine map/exprs, etc.
 protected:
   MLIRContext *context;
@@ -266,14 +274,12 @@ public:
 
   /// Set the insertion point to the start of the specified block.
   void setInsertionPointToStart(StmtBlock *block) {
-    this->block = block;
-    insertPoint = block->begin();
+    setInsertionPoint(block, block->begin());
   }
 
   /// Set the insertion point to the end of the specified block.
   void setInsertionPointToEnd(StmtBlock *block) {
-    this->block = block;
-    insertPoint = block->end();
+    setInsertionPoint(block, block->end());
   }
 
   /// Get the current insertion point of the builder.
@@ -305,10 +311,14 @@ public:
     return cloneStmt;
   }
 
-  // Creates for statement. When step is not specified, it is set to 1.
-  ForStmt *createFor(Attribute *location, AffineConstantExpr *lowerBound,
-                     AffineConstantExpr *upperBound, int64_t step = 1);
+  /// Create a 'for' statement with bounds that may involve MLValue operands.
+  /// When step is not specified, it is set to 1.
+  ForStmt *createFor(Attribute *location, ArrayRef<MLValue *> lbOperands,
+                     AffineMap *lbMap, ArrayRef<MLValue *> ubOperands,
+                     AffineMap *ubMap, int64_t step = 1);
 
+  /// Create if statement.
+  /// TODO: pass operands.
   IfStmt *createIf(Attribute *location, IntegerSet *condition);
 
 private:

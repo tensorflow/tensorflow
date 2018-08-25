@@ -152,6 +152,29 @@ const char *AffineApplyOp::verify() const {
   return nullptr;
 }
 
+// The result of the affine apply operation can be used as a dimension id if it
+// is a CFG value or if it is an MLValue, and all the operands are valid
+// dimension ids.
+bool AffineApplyOp::isValidDim() const {
+  for (auto *op : getOperands()) {
+    if (auto *v = dyn_cast<MLValue>(op))
+      if (!v->isValidDim())
+        return false;
+  }
+  return true;
+}
+
+// The result of the affine apply operation can be used as a symbol if it is
+// a CFG value or if it is an MLValue, and all the operands are symbols.
+bool AffineApplyOp::isValidSymbol() const {
+  for (auto *op : getOperands()) {
+    if (auto *v = dyn_cast<MLValue>(op))
+      if (!v->isValidSymbol())
+        return false;
+  }
+  return true;
+}
+
 //===----------------------------------------------------------------------===//
 // AllocOp
 //===----------------------------------------------------------------------===//

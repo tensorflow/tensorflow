@@ -19,6 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/CFGFunction.h"
@@ -128,8 +129,10 @@ void LoopUnroll::runOnMLFunction(MLFunction *f) {
     ShortLoopGatherer(unsigned minTripCount) : minTripCount(minTripCount) {}
 
     void visitForStmt(ForStmt *forStmt) {
-      auto lb = forStmt->getLowerBound()->getValue();
-      auto ub = forStmt->getUpperBound()->getValue();
+      if (!forStmt->hasConstantBounds())
+        return;
+      auto lb = forStmt->getConstantLowerBound();
+      auto ub = forStmt->getConstantUpperBound();
       auto step = forStmt->getStep();
 
       if ((ub - lb) / step + 1 <= minTripCount)
@@ -174,18 +177,19 @@ bool LoopUnroll::runOnForStmt(ForStmt *forStmt) {
   return loopUnrollByFactor(forStmt, 4);
 }
 
-// Unrolls this loop completely.
+// Unrolls this loop completely. Fails assertion if loop bounds are
+// non-constant.
 bool LoopUnroll::loopUnrollFull(ForStmt *forStmt) {
-  auto lb = forStmt->getLowerBound()->getValue();
-  auto ub = forStmt->getUpperBound()->getValue();
+  auto lb = forStmt->getConstantLowerBound();
+  auto ub = forStmt->getConstantUpperBound();
   auto step = forStmt->getStep();
 
-  // Builder to add constants need for the unrolled iterator.
+  // Builder to add constants needed for the unrolled iterator.
   auto *mlFunc = forStmt->findFunction();
   MLFuncBuilder funcTopBuilder(&mlFunc->front());
 
   // Builder to insert the unrolled bodies.  We insert right after the
-  /// ForStmt we're unrolling.
+  // ForStmt we're unrolling.
   MLFuncBuilder builder(forStmt->getBlock(), ++StmtBlock::iterator(forStmt));
 
   // Unroll the contents of 'forStmt'.
@@ -218,8 +222,11 @@ bool LoopUnroll::loopUnrollByFactor(ForStmt *forStmt, unsigned unrollFactor) {
   if (unrollFactor == 1 || forStmt->getStatements().empty())
     return false;
 
-  auto lb = forStmt->getLowerBound()->getValue();
-  auto ub = forStmt->getUpperBound()->getValue();
+  if (!forStmt->hasConstantBounds())
+    return false;
+
+  auto lb = forStmt->getConstantLowerBound();
+  auto ub = forStmt->getConstantUpperBound();
   auto step = forStmt->getStep();
 
   int64_t tripCount = (int64_t)ceilf((ub - lb + 1) / (float)step);
@@ -234,16 +241,16 @@ bool LoopUnroll::loopUnrollByFactor(ForStmt *forStmt, unsigned unrollFactor) {
     DenseMap<const MLValue *, MLValue *> operandMap;
     MLFuncBuilder builder(forStmt->getBlock(), ++StmtBlock::iterator(forStmt));
     auto *cleanupForStmt = cast<ForStmt>(builder.clone(*forStmt, operandMap));
-    cleanupForStmt->setLowerBound(builder.getConstantExpr(
-        lb + (tripCount - tripCount % unrollFactor) * step));
+    cleanupForStmt->setConstantLowerBound(
+        lb + (tripCount - tripCount % unrollFactor) * step);
   }
 
   // Builder to insert unrolled bodies right after the last statement in the
   // body of 'forStmt'.
   MLFuncBuilder builder(forStmt, StmtBlock::iterator(forStmt->end()));
   forStmt->setStep(step * unrollFactor);
-  forStmt->setUpperBound(builder.getConstantExpr(
-      lb + (tripCount - tripCount % unrollFactor - 1) * step));
+  forStmt->setConstantUpperBound(
+      lb + (tripCount - tripCount % unrollFactor - 1) * step);
 
   // Keep a pointer to the last statement in the original block so that we know
   // what to clone (since we are doing this in-place).

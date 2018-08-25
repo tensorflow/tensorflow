@@ -75,10 +75,16 @@ public:
   static void build(Builder *builder, OperationState *result, AffineMap *map,
                     ArrayRef<SSAValue *> operands);
 
-  // Returns the affine map to be applied by this operation.
+  /// Returns the affine map to be applied by this operation.
   AffineMap *getAffineMap() const {
     return getAttrOfType<AffineMapAttr>("map")->getValue();
   }
+
+  /// Returns true if the result of this operation can be used as dimension id.
+  bool isValidDim() const;
+
+  /// Returns true if the result of this operation is a symbol.
+  bool isValidSymbol() const;
 
   static StringRef getOperationName() { return "affine_apply"; }
 

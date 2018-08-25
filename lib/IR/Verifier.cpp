@@ -372,6 +372,7 @@ struct MLFuncVerifier : public Verifier, public StmtWalker<MLFuncVerifier> {
 
     // TODO: check that operation is not a return statement unless it's
     // the last one in the function.
+    // TODO: check that loop bounds are properly formed.
     if (verifyReturn())
       return true;
 
@@ -409,23 +410,20 @@ bool MLFuncVerifier::verifyDominance() {
       liveValues.insert(forStmt, true);
 
     for (auto &stmt : block) {
-      // TODO: For and If will eventually have operands, we need to check them.
-      // When this happens, Statement should have a general getOperands() method
-      // we can use here first.
-      if (auto *opStmt = dyn_cast<OperationStmt>(&stmt)) {
-        // Verify that each of the operands are live.
-        unsigned operandNo = 0;
-        for (auto *opValue : opStmt->getOperands()) {
-          if (!liveValues.count(opValue)) {
-            opStmt->emitError("operand #" + Twine(operandNo) +
-                              " does not dominate this use");
-            if (auto *useStmt = opValue->getDefiningStmt())
-              useStmt->emitNote("operand defined here");
-            return true;
-          }
-          ++operandNo;
+      // Verify that each of the operands are live.
+      unsigned operandNo = 0;
+      for (auto *opValue : stmt.getOperands()) {
+        if (!liveValues.count(opValue)) {
+          stmt.emitError("operand #" + Twine(operandNo) +
+                         " does not dominate this use");
+          if (auto *useStmt = opValue->getDefiningStmt())
+            useStmt->emitNote("operand defined here");
+          return true;
         }
+        ++operandNo;
+      }
 
+      if (auto *opStmt = dyn_cast<OperationStmt>(&stmt)) {
         // Operations define values, add them to the hash table.
         for (auto *result : opStmt->getResults())
           liveValues.insert(result, true);

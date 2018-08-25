@@ -198,7 +198,7 @@ public:
     return getInstOperand(idx).get();
   }
   void setOperand(unsigned idx, CFGValue *value) {
-    return getInstOperand(idx).set(value);
+    getInstOperand(idx).set(value);
   }
 
   // Support non-const operand iteration.
@@ -235,6 +235,13 @@ public:
   }
   MutableArrayRef<InstOperand> getInstOperands() {
     return {getTrailingObjects<InstOperand>(), numOperands};
+  }
+  // Accessors to InstOperand. Without these methods invoking getInstOperand()
+  // calls Instruction::getInstOperands() resulting in execution of
+  // an unnecessary switch statement.
+  InstOperand &getInstOperand(unsigned idx) { return getInstOperands()[idx]; }
+  const InstOperand &getInstOperand(unsigned idx) const {
+    return getInstOperands()[idx];
   }
 
   //===--------------------------------------------------------------------===//

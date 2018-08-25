@@ -55,6 +55,13 @@ public:
   /// dimensional identifiers.
   bool isIdentity() const;
 
+  /// Returns true if this affine map is a single result constant function.
+  bool isSingleConstant() const;
+
+  /// Returns the constant value that is the result of this map.
+  /// This methods asserts that the map has a single constant result.
+  int64_t getSingleConstantValue() const;
+
   // Prints affine map to 'os'.
   void print(raw_ostream &os) const;
   void dump() const;
@@ -62,10 +69,13 @@ public:
   unsigned getNumDims() const { return numDims; }
   unsigned getNumSymbols() const { return numSymbols; }
   unsigned getNumResults() const { return numResults; }
+  unsigned getNumOperands() const { return numDims + numSymbols; }
 
   ArrayRef<AffineExpr *> getResults() const {
     return ArrayRef<AffineExpr *>(results, numResults);
   }
+
+  AffineExpr *getResult(unsigned idx) const { return results[idx]; }
 
   ArrayRef<AffineExpr *> getRangeSizes() const {
     return rangeSizes ? ArrayRef<AffineExpr *>(rangeSizes, numResults)

@@ -22,6 +22,8 @@
 #ifndef MLIR_IR_STATEMENT_H
 #define MLIR_IR_STATEMENT_H
 
+#include "mlir/IR/MLValue.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
@@ -32,7 +34,6 @@ class MLFunction;
 class StmtBlock;
 class ForStmt;
 class MLIRContext;
-class MLValue;
 
 /// Statement is a basic unit of execution within an ML function.
 /// Statements can be nested within for and if statements effectively
@@ -68,7 +69,7 @@ public:
   /// them alone if no entry is present).  Replaces references to cloned
   /// sub-statements to the corresponding statement that is copied, and adds
   /// those mappings to the map.
-  Statement *clone(OperandMapTy &operandMapping, MLIRContext *context) const;
+  Statement *clone(OperandMapTy &operandMap, MLIRContext *context) const;
 
   /// Returns the statement block that contains this statement.
   StmtBlock *getBlock() const { return block; }
@@ -90,6 +91,55 @@ public:
 
   void print(raw_ostream &os) const;
   void dump() const;
+
+  //===--------------------------------------------------------------------===//
+  // Operands
+  //===--------------------------------------------------------------------===//
+
+  unsigned getNumOperands() const;
+
+  MLValue *getOperand(unsigned idx);
+  const MLValue *getOperand(unsigned idx) const;
+  void setOperand(unsigned idx, MLValue *value);
+
+  // Support non-const operand iteration.
+  using operand_iterator = OperandIterator<Statement, MLValue>;
+
+  operand_iterator operand_begin() { return operand_iterator(this, 0); }
+
+  operand_iterator operand_end() {
+    return operand_iterator(this, getNumOperands());
+  }
+
+  llvm::iterator_range<operand_iterator> getOperands() {
+    return {operand_begin(), operand_end()};
+  }
+
+  // Support const operand iteration.
+  using const_operand_iterator =
+      OperandIterator<const Statement, const MLValue>;
+
+  const_operand_iterator operand_begin() const {
+    return const_operand_iterator(this, 0);
+  }
+
+  const_operand_iterator operand_end() const {
+    return const_operand_iterator(this, getNumOperands());
+  }
+
+  llvm::iterator_range<const_operand_iterator> getOperands() const {
+    return {operand_begin(), operand_end()};
+  }
+
+  MutableArrayRef<StmtOperand> getStmtOperands();
+  ArrayRef<StmtOperand> getStmtOperands() const {
+    return const_cast<Statement *>(this)->getStmtOperands();
+  }
+
+  StmtOperand &getStmtOperand(unsigned idx) { return getStmtOperands()[idx]; }
+  const StmtOperand &getStmtOperand(unsigned idx) const {
+    return getStmtOperands()[idx];
+  }
 
   /// Emit an error about fatal conditions with this operation, reporting up to
   /// any diagnostic handlers that may be listening.  NOTE: This may terminate

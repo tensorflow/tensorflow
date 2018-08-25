@@ -2183,7 +2183,11 @@ private:
   MLFuncBuilder builder;
 
   ParseResult parseForStmt();
-  AffineConstantExpr *parseIntConstant();
+  ParseResult parseIntConstant(int64_t &val);
+  ParseResult parseDimAndSymbolList(SmallVectorImpl<MLValue *> &operands,
+                                    const AffineMap *map);
+  ParseResult parseBound(SmallVectorImpl<MLValue *> &operands, AffineMap *&map,
+                         bool isLower);
   ParseResult parseIfStmt();
   ParseResult parseElseClause(IfClause *elseClause);
   IntegerSet *parseCondition();
@@ -2221,30 +2225,30 @@ ParseResult MLFunctionParser::parseForStmt() {
   if (parseToken(Token::equal, "expected '='"))
     return ParseFailure;
 
-  // Parse loop bounds.
-  AffineConstantExpr *lowerBound = parseIntConstant();
-  if (!lowerBound)
+  // Parse lower bound.
+  SmallVector<MLValue *, 4> lbOperands;
+  AffineMap *lbMap = nullptr;
+  if (parseBound(lbOperands, lbMap, /*isLower*/ true))
     return ParseFailure;
 
   if (parseToken(Token::kw_to, "expected 'to' between bounds"))
     return ParseFailure;
 
-  AffineConstantExpr *upperBound = parseIntConstant();
-  if (!upperBound)
+  // Parse upper bound.
+  SmallVector<MLValue *, 4> ubOperands;
+  AffineMap *ubMap = nullptr;
+  if (parseBound(ubOperands, ubMap, /*isLower*/ false))
     return ParseFailure;
 
   // Parse step.
   int64_t step = 1;
-  if (consumeIf(Token::kw_step)) {
-    AffineConstantExpr *stepExpr = parseIntConstant();
-    if (!stepExpr)
-      return ParseFailure;
-    step = stepExpr->getValue();
-  }
+  if (consumeIf(Token::kw_step) && parseIntConstant(step))
+    return ParseFailure;
 
   // Create for statement.
-  ForStmt *forStmt = builder.createFor(getEncodedSourceLocation(loc),
-                                       lowerBound, upperBound, step);
+  ForStmt *forStmt =
+      builder.createFor(getEncodedSourceLocation(loc), lbOperands, lbMap,
+                        ubOperands, ubMap, step);
 
   // Create SSA value definition for the induction variable.
   if (addDefinition({inductionVariableName, 0, loc}, forStmt))
@@ -2258,22 +2262,139 @@ ParseResult MLFunctionParser::parseForStmt() {
 
   // Reset insertion point to the current block.
   builder.setInsertionPointToEnd(forStmt->getBlock());
+
   return ParseSuccess;
 }
 
-// This method is temporary workaround to parse simple loop bounds and
-// step.
-// TODO: remove this method once it's no longer used.
-AffineConstantExpr *MLFunctionParser::parseIntConstant() {
-  if (getToken().isNot(Token::integer))
-    return (emitError("expected non-negative integer for now"), nullptr);
+/// Parse integer constant as affine constant expression.
+ParseResult MLFunctionParser::parseIntConstant(int64_t &val) {
+  bool negate = consumeIf(Token::minus);
 
-  auto val = getToken().getUInt64IntegerValue();
-  if (!val.hasValue() || (int64_t)val.getValue() < 0) {
-    return (emitError("constant too large for affineint"), nullptr);
+  if (getToken().isNot(Token::integer))
+    return emitError("expected integer");
+
+  auto uval = getToken().getUInt64IntegerValue();
+
+  if (!uval.hasValue() || (int64_t)uval.getValue() < 0) {
+    return emitError("bound or step is too large for affineint");
   }
-  consumeToken(Token::integer);
-  return builder.getConstantExpr((int64_t)val.getValue());
+
+  val = (int64_t)uval.getValue();
+  if (negate)
+    val = -val;
+  consumeToken();
+
+  return ParseSuccess;
+}
+
+/// Dimensions and symbol use list.
+///
+/// dim-use-list ::= `(` ssa-use-list? `)`
+/// symbol-use-list ::= `[` ssa-use-list? `]`
+/// dim-and-symbol-use-list ::= dim-use-list symbol-use-list?
+///
+ParseResult
+MLFunctionParser::parseDimAndSymbolList(SmallVectorImpl<MLValue *> &operands,
+                                        const AffineMap *map) {
+  if (parseToken(Token::l_paren, "expected '('"))
+    return ParseFailure;
+
+  SmallVector<SSAUseInfo, 4> opInfo;
+  parseOptionalSSAUseList(opInfo);
+
+  if (parseToken(Token::r_paren, "expected ')'"))
+    return ParseFailure;
+
+  if (map->getNumDims() != opInfo.size())
+    return emitError("dim operand count and affine map dim count must match");
+
+  if (consumeIf(Token::l_square)) {
+    parseOptionalSSAUseList(opInfo);
+    if (parseToken(Token::r_square, "expected ']'"))
+      return ParseFailure;
+  }
+
+  if (map->getNumOperands() != opInfo.size())
+    return emitError(
+        "symbol operand count and affine map symbol count must match");
+
+  // Resolve SSA uses.
+  Type *affineIntType = builder.getAffineIntType();
+  unsigned numDims = map->getNumDims();
+  for (unsigned i = 0, e = opInfo.size(); i != e; ++i) {
+    SSAValue *sval = resolveSSAUse(opInfo[i], affineIntType);
+    if (!sval)
+      return ParseFailure;
+
+    auto *v = cast<MLValue>(sval);
+    if (i < numDims && !v->isValidDim())
+      return emitError(opInfo[i].loc, "value '" + opInfo[i].name.str() +
+                                          "' cannot be used as dimension id");
+    if (i >= numDims && !v->isValidSymbol())
+      return emitError(opInfo[i].loc, "value '" + opInfo[i].name.str() +
+                                          "' cannot be used as symbol");
+    operands.push_back(v);
+  }
+
+  return ParseSuccess;
+}
+
+// Loop bound.
+///
+///  lower-bound ::= `max`? affine-map dim-and-symbol-use-list | shorthand-bound
+///  upper-bound ::= `min`? affine-map dim-and-symbol-use-list | shorthand-bound
+///  shorthand-bound ::= ssa-id | `-`? integer-literal
+///
+ParseResult MLFunctionParser::parseBound(SmallVectorImpl<MLValue *> &operands,
+                                         AffineMap *&map, bool isLower) {
+  // 'min' / 'max' prefixes are syntactic sugar. Ignore them.
+  if (isLower)
+    consumeIf(Token::kw_max);
+  else
+    consumeIf(Token::kw_min);
+
+  // Parse full form - affine map followed by dim and symbol list.
+  if (getToken().isAny(Token::hash_identifier, Token::l_paren)) {
+    map = parseAffineMapReference();
+    if (!map)
+      return ParseFailure;
+
+    if (parseDimAndSymbolList(operands, map))
+      return ParseFailure;
+    return ParseSuccess;
+  }
+
+  // Parse shorthand form.
+  if (getToken().isAny(Token::minus, Token::integer)) {
+    int64_t val;
+    if (!parseIntConstant(val)) {
+      map = builder.getConstantMap(val);
+      return ParseSuccess;
+    }
+    return ParseFailure;
+  }
+
+  // Parse ssa-id as identity map.
+  SSAUseInfo opInfo;
+  if (parseSSAUse(opInfo))
+    return ParseFailure;
+
+  // TODO: improve error message when SSA value is not an affine integer.
+  // Currently it is 'use of value ... expects different type than prior uses'
+  if (auto *value = resolveSSAUse(opInfo, builder.getAffineIntType()))
+    operands.push_back(cast<MLValue>(value));
+  else
+    return ParseFailure;
+
+  // Create an identity map using dim id for an induction variable and
+  // symbol otherwise. This representation is optimized for storage.
+  // Analysis passes may expand it into a multi-dimensional map if desired.
+  if (isa<ForStmt>(operands[0]))
+    map = builder.getDimIdentityMap();
+  else
+    map = builder.getSymbolIdentityMap();
+
+  return ParseSuccess;
 }
 
 /// Parse condition.

@@ -15,6 +15,24 @@
 // CHECK-DAG: #map{{[0-9]+}} = (d0, d1, d2) -> (d2, d1, d0)
 #map4 = (d0, d1, d2) -> (d2, d1, d0)
 
+// CHECK-DAG: #map{{[0-9]+}} = ()[s0] -> (0, s0 - 1)
+#inline_map_minmax_loop1 = ()[s0] -> (0, s0 - 1)
+
+// CHECK-DAG: #map{{[0-9]+}} = ()[s0] -> (100, s0 + 1)
+#inline_map_minmax_loop2 = ()[s0] -> (100, s0 + 1)
+
+// CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0 + d1, s0 + 1)
+#inline_map_loop_bounds1 = (d0, d1)[s0] -> (d0 + d1, s0 + 1)
+
+// CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0 + d1 + s0)
+#bound_map1 = (i, j)[s] -> (i + j + s)
+
+// CHECK: #map{{[0-9]+}} = (d0, d1) -> (d0 + d1)
+#inline_map_loop_bounds2 = (d0, d1) -> (d0 + d1)
+
+// CHECK: #map{{[0-9]+}} = (d0)[s0] -> (d0 + s0, d0 - s0)
+#bound_map2 = (i)[s] -> (i + s, i - s)
+
 // CHECK-DAG: @@set0 = (d0)[s0] : (d0 >= 0, d0 * -1 + s0 >= 0, s0 - 5 == 0)
 @@set0 = (i)[N] : (i >= 0, -i + N >= 0, N - 5 == 0)
 
@@ -169,6 +187,56 @@ mlfunc @complex_loops() {
   return                    // CHECK:   return
 }                           // CHECK: }
 
+// CHECK: mlfunc @triang_loop(%arg0 : affineint, %arg1 : memref<?x?xi32>) {
+mlfunc @triang_loop(%arg0 : affineint, %arg1 : memref<?x?xi32>) {
+  %c = constant 0 : i32       // CHECK: %c0_i32 = constant 0 : i32
+  for %i0 = 1 to %arg0 {      // CHECK: for %i0 = 1 to %arg0 {
+    for %i1 = %i0 to %arg0 {  // CHECK:   for %i1 = %i0 to %arg0 {
+      store %c, %arg1[%i0, %i1] : memref<?x?xi32>  // CHECK: store %c0_i32, %arg1[%i0, %i1]
+    }          // CHECK:     }
+  }            // CHECK:   }
+  return       // CHECK:   return
+}              // CHECK: }
+
+// CHECK: mlfunc @minmax_loop(%arg0 : affineint, %arg1 : affineint, %arg2 : memref<100xf32>) {
+mlfunc @minmax_loop(%arg0 : affineint, %arg1 : affineint, %arg2 : memref<100xf32>) {
+  // CHECK: for %i0 = max #map{{.*}}()[%arg0] to min #map{{.*}}()[%arg1] {
+  for %i0 = max()[s]->(0,s-1)()[%arg0] to min()[s]->(100,s+1)()[%arg1] {
+    // CHECK: "foo"(%arg2, %i0) : (memref<100xf32>, affineint) -> ()
+    "foo"(%arg2, %i0) : (memref<100xf32>, affineint) -> ()
+  }      // CHECK:   }
+  return // CHECK:   return
+}        // CHECK: }
+
+// CHECK-LABEL: mlfunc @loop_bounds(%arg0 : affineint) {
+mlfunc @loop_bounds(%N : affineint) {
+  // CHECK: %0 = "foo"(%arg0) : (affineint) -> affineint
+  %s = "foo"(%N) : (affineint) -> affineint
+  // CHECK: for %i0 = %0 to %arg0
+  for %i = %s to %N {
+    // CHECK: for %i1 = %i0 to 0 step -1
+    for %j = %i to 0 step -1 {
+       // CHECK: %1 = affine_apply #map{{.*}}(%i0, %i1)[%0]
+       %w = affine_apply(d0, d1)[s0] -> (d0+d1, s0+1) (%i, %j) [%s]
+       // CHECK: for %i2 = #map{{.*}}(%1#0, %i0)[%arg0] to #map{{.*}}(%1#1, %i1)[%0] {
+       for %k = #bound_map1 (%w#0, %i)[%N] to (i, j)[s] -> (i + j + s) (%w#1, %j)[%s] {
+          // CHECK: "foo"(%i0, %i1, %i2) : (affineint, affineint, affineint) -> ()
+          "foo"(%i, %j, %k) : (affineint, affineint, affineint)->()
+          // CHECK: %c30 = constant 30 : affineint
+          %c = constant 30 : affineint
+          // CHECK: %2 = affine_apply #map{{.*}}(%arg0, %c30)
+          %u = affine_apply (d0, d1)->(d0+d1) (%N, %c)
+          // CHECK: for %i3 = max #map{{.*}}(%i0)[%2] to min #map{{.*}}(%i2)[%c30] {
+          for %l = max #bound_map2(%i)[%u] to min #bound_map2(%k)[%c] {
+            // CHECK: "bar"(%i3) : (affineint) -> ()
+            "bar"(%l) : (affineint) -> ()
+          } // CHECK:           }
+       }    // CHECK:         }
+     }      // CHECK:       }
+  }         // CHECK:     }
+  return    // CHECK:   return
+}           // CHECK: }
+
 // CHECK-LABEL: mlfunc @ifstmt(%arg0 : i32) {
 mlfunc @ifstmt(%N: i32) {
   for %i = 1 to 10 {    // CHECK   for %i0 = 1 to 10 {
@@ -181,7 +249,7 @@ mlfunc @ifstmt(%N: i32) {
       // CHECK: %c1 = constant 1 : affineint
       %u = constant 1 : affineint
       // CHECK: %2 = affine_apply #map{{.*}}(%i0, %i0)[%c1]
-      %w = affine_apply (d0,d1)[s0] -> (d0+d1+1) (%i, %i) [%u] 
+      %w = affine_apply (d0,d1)[s0] -> (d0+d1+s0) (%i, %i) [%u]
     } else {            // CHECK     } else {
       %v = constant 3 : i32 // %c3_i32 = constant 3 : i32
     }       // CHECK     }

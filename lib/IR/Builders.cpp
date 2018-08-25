@@ -163,6 +163,18 @@ IntegerSet *Builder::getIntegerSet(unsigned dimCount, unsigned symbolCount,
   return IntegerSet::get(dimCount, symbolCount, constraints, isEq, context);
 }
 
+AffineMap *Builder::getConstantMap(int64_t val) {
+  return AffineMap::get(0, 0, getConstantExpr(val), {}, context);
+}
+
+AffineMap *Builder::getDimIdentityMap() {
+  return AffineMap::get(1, 0, getDimExpr(0), {}, context);
+}
+
+AffineMap *Builder::getSymbolIdentityMap() {
+  return AffineMap::get(0, 1, getSymbolExpr(0), {}, context);
+}
+
 //===----------------------------------------------------------------------===//
 // CFG function elements.
 //===----------------------------------------------------------------------===//
@@ -216,10 +228,12 @@ OperationStmt *MLFuncBuilder::createOperation(const OperationState &state) {
 }
 
 ForStmt *MLFuncBuilder::createFor(Attribute *location,
-                                  AffineConstantExpr *lowerBound,
-                                  AffineConstantExpr *upperBound,
-                                  int64_t step) {
-  auto *stmt = new ForStmt(location, lowerBound, upperBound, step, context);
+                                  ArrayRef<MLValue *> lbOperands,
+                                  AffineMap *lbMap,
+                                  ArrayRef<MLValue *> ubOperands,
+                                  AffineMap *ubMap, int64_t step) {
+  auto *stmt = ForStmt::create(location, lbOperands, lbMap, ubOperands, ubMap,
+                               step, context);
   block->getStatements().insert(insertPoint, stmt);
   return stmt;
 }

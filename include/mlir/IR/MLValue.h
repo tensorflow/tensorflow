@@ -45,6 +45,11 @@ using StmtOperand = IROperandImpl<MLValue, Statement>;
 /// MLValue is the base class for SSA values in ML functions.
 class MLValue : public SSAValueImpl<StmtOperand, MLValueKind> {
 public:
+  /// Returns true if this MLValue can be used as a dimension id.
+  bool isValidDim() const;
+  /// Returns true if this MLValue can be used as a symbol.
+  bool isValidSymbol() const;
+
   static bool classof(const SSAValue *value) {
     switch (value->getKind()) {
     case SSAValueKind::MLFuncArgument:
@@ -96,7 +101,7 @@ public:
   OperationStmt *getOwner() { return owner; }
   const OperationStmt *getOwner() const { return owner; }
 
-  /// Return the number of this result.
+  /// Returns the number of this result.
   unsigned getResultNumber() const;
 
 private:
