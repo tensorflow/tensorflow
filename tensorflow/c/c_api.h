@@ -1069,19 +1069,19 @@ TF_CAPI_EXPORT extern void TF_OperationToNodeDef(TF_Operation* oper,
 typedef struct TF_WhileParams {
   // The number of inputs to the while loop, i.e. the number of loop variables.
   // This is the size of cond_inputs, body_inputs, and body_outputs.
-  const int ninputs;
+  int ninputs;
 
   // The while condition graph. The inputs are the current values of the loop
   // variables. The output should be a scalar boolean.
-  TF_Graph* const cond_graph;
-  const TF_Output* const cond_inputs;
-  TF_Output cond_output;
+  const TF_Graph* cond_graph;
+  const TF_Output* cond_inputs;
+  TF_Output         cond_output;
 
   // The loop body graph. The inputs are the current values of the loop
   // variables. The outputs are the updated values of the loop variables.
-  TF_Graph* const body_graph;
-  const TF_Output* const body_inputs;
-  TF_Output* const body_outputs;
+  const TF_Graph* body_graph;
+  const TF_Output* body_inputs;
+  const TF_Output*  body_outputs;
 
   // Unique null-terminated name for this while loop. This is used as a prefix
   // for created operations.
