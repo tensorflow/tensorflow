@@ -309,6 +309,9 @@ public:
   template <typename ConcreteType>
   class Impl : public TraitBase<ConcreteType, AtLeastNOperands<N>::Impl> {
   public:
+    unsigned getNumOperands() const {
+      return this->getOperation()->getNumOperands();
+    }
     const SSAValue *getOperand(unsigned i) const {
       return this->getOperation()->getOperand(i);
     }

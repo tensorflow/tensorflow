@@ -166,8 +166,11 @@ public:
     block->getOperations().insert(insertPoint, opInst);
   }
 
-  // Add new basic block and set the insertion point to the end of it.
-  BasicBlock *createBlock();
+  /// Add new basic block and set the insertion point to the end of it.  If an
+  /// 'insertBefore' basic block is passed, the block will be placed before the
+  /// specified block.  If not, the block will be appended to the end of the
+  /// current function.
+  BasicBlock *createBlock(BasicBlock *insertBefore = nullptr);
 
   /// Create an operation given the fields represented as an OperationState.
   OperationInst *createOperation(const OperationState &state);
@@ -195,8 +198,9 @@ public:
     return insertTerminator(ReturnInst::create(location, operands));
   }
 
-  BranchInst *createBranch(Attribute *location, BasicBlock *dest) {
-    return insertTerminator(BranchInst::create(location, dest));
+  BranchInst *createBranch(Attribute *location, BasicBlock *dest,
+                           ArrayRef<CFGValue *> operands = {}) {
+    return insertTerminator(BranchInst::create(location, dest, operands));
   }
 
   CondBranchInst *createCondBranch(Attribute *location, CFGValue *condition,

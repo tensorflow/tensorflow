@@ -43,9 +43,6 @@ public:
     return function;
   }
 
-  /// Unlink this BasicBlock from its CFGFunction and delete it.
-  void eraseFromFunction();
-
   //===--------------------------------------------------------------------===//
   // Block arguments management
   //===--------------------------------------------------------------------===//
@@ -171,6 +168,28 @@ public:
   succ_iterator succ_begin();
   succ_iterator succ_end();
   llvm::iterator_range<succ_iterator> getSuccessors();
+
+  //===--------------------------------------------------------------------===//
+  // Manipulators
+  //===--------------------------------------------------------------------===//
+
+  /// Unlink this BasicBlock from its CFGFunction and delete it.
+  void eraseFromFunction();
+
+  /// Split the basic block into two basic blocks before the specified
+  /// instruction or iterator.
+  ///
+  /// Note that all instructions BEFORE the specified iterator stay as part of
+  /// the original basic block, an unconditional branch is added to the original
+  /// block (going to the new block), and the rest of the instructions in the
+  /// original block are moved to the new BB, including the old terminator.  The
+  /// newly formed BasicBlock is returned.
+  ///
+  /// This function invalidates the specified iterator.
+  BasicBlock *splitBasicBlock(iterator splitBefore);
+  BasicBlock *splitBasicBlock(OperationInst *splitBeforeInst) {
+    return splitBasicBlock(iterator(splitBeforeInst));
+  }
 
   void print(raw_ostream &os) const;
   void dump() const;

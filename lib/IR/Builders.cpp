@@ -167,10 +167,20 @@ IntegerSet *Builder::getIntegerSet(unsigned dimCount, unsigned symbolCount,
 // CFG function elements.
 //===----------------------------------------------------------------------===//
 
-// Basic block.
-BasicBlock *CFGFuncBuilder::createBlock() {
+/// Add new basic block and set the insertion point to the end of it.  If an
+/// 'insertBefore' basic block is passed, the block will be placed before the
+/// specified block.  If not, the block will be appended to the end of the
+/// current function.
+BasicBlock *CFGFuncBuilder::createBlock(BasicBlock *insertBefore) {
   BasicBlock *b = new BasicBlock();
-  function->push_back(b);
+
+  // If we are supposed to insert before a specific block, do so, otherwise add
+  // the block to the end of the function.
+  if (insertBefore)
+    function->getBlocks().insert(CFGFunction::iterator(insertBefore), b);
+  else
+    function->push_back(b);
+
   setInsertionPoint(b);
   return b;
 }

@@ -29,12 +29,6 @@ BasicBlock::~BasicBlock() {
   arguments.clear();
 }
 
-/// Unlink this BasicBlock from its CFGFunction and delete it.
-void BasicBlock::eraseFromFunction() {
-  assert(getFunction() && "BasicBlock has no parent");
-  getFunction()->getBlocks().erase(this);
-}
-
 //===----------------------------------------------------------------------===//
 // Argument list management.
 //===----------------------------------------------------------------------===//
@@ -61,6 +55,7 @@ auto BasicBlock::addArguments(ArrayRef<Type *> types)
 //===----------------------------------------------------------------------===//
 
 void BasicBlock::setTerminator(TerminatorInst *inst) {
+  assert((!inst || !inst->block) && "terminator already inserted into a block");
   // If we already had a terminator, abandon it.
   if (terminator)
     terminator->block = nullptr;
@@ -134,4 +129,45 @@ transferNodesFromList(ilist_traits<BasicBlock> &otherList,
   // Update the 'function' member of each BasicBlock.
   for (; first != last; ++first)
     first->function = curParent;
+}
+
+//===----------------------------------------------------------------------===//
+// Manipulators
+//===----------------------------------------------------------------------===//
+
+/// Unlink this BasicBlock from its CFGFunction and delete it.
+void BasicBlock::eraseFromFunction() {
+  assert(getFunction() && "BasicBlock has no parent");
+  getFunction()->getBlocks().erase(this);
+}
+
+/// Split the basic block into two basic blocks before the specified
+/// instruction or iterator.
+///
+/// Note that all instructions BEFORE the specified iterator stay as part of
+/// the original basic block, an unconditional branch is added to the original
+/// block (going to the new block), and the rest of the instructions in the
+/// original block are moved to the new BB, including the old terminator.  The
+/// newly formed BasicBlock is returned.
+///
+/// This function invalidates the specified iterator.
+BasicBlock *BasicBlock::splitBasicBlock(iterator splitBefore) {
+  // Start by creating a new basic block, and insert it immediate after this
+  // one in the containing function.
+  auto newBB = new BasicBlock();
+  getFunction()->getBlocks().insert(++CFGFunction::iterator(this), newBB);
+
+  // Create an unconditional branch to the new block, and move our terminator
+  // to the new block.
+  auto *branchLoc =
+      splitBefore == end() ? getTerminator()->getLoc() : splitBefore->getLoc();
+  auto oldTerm = getTerminator();
+  setTerminator(BranchInst::create(branchLoc, newBB));
+  newBB->setTerminator(oldTerm);
+
+  // Move all of the operations from the split point to the end of the function
+  // into the new block.
+  newBB->getOperations().splice(newBB->end(), getOperations(), splitBefore,
+                                end());
+  return newBB;
 }

@@ -360,8 +360,9 @@ protected:
 /// and may pass basic block arguments to the successor.
 class BranchInst : public TerminatorInst {
 public:
-  static BranchInst *create(Attribute *location, BasicBlock *dest) {
-    return new BranchInst(location, dest);
+  static BranchInst *create(Attribute *location, BasicBlock *dest,
+                            ArrayRef<CFGValue *> operands = {}) {
+    return new BranchInst(location, dest, operands);
   }
   ~BranchInst() {}
 
@@ -392,7 +393,8 @@ public:
   }
 
 private:
-  explicit BranchInst(Attribute *location, BasicBlock *dest);
+  explicit BranchInst(Attribute *location, BasicBlock *dest,
+                      ArrayRef<CFGValue *> operands);
 
   BasicBlockOperand dest;
   std::vector<InstOperand> operands;

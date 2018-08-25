@@ -314,8 +314,11 @@ ReturnInst::~ReturnInst() {
 // BranchInst
 //===----------------------------------------------------------------------===//
 
-BranchInst::BranchInst(Attribute *location, BasicBlock *dest)
-    : TerminatorInst(Kind::Branch, location), dest(this, dest) {}
+BranchInst::BranchInst(Attribute *location, BasicBlock *dest,
+                       ArrayRef<CFGValue *> operands)
+    : TerminatorInst(Kind::Branch, location), dest(this, dest) {
+  addOperands(operands);
+}
 
 void BranchInst::setDest(BasicBlock *block) { dest.set(block); }
 
