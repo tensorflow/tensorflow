@@ -110,10 +110,10 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "constant_folding_test",
     srcs = ["constant_folding_test.cc"],
-    shard_count = 5,
+    tags = ["requires-gpu-sm35"],
     deps = [
         ":constant_folding",
         "//tensorflow/cc:cc_ops",
