@@ -116,12 +116,17 @@ Status MapAndFilterFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     const auto& fun = filter_node->attr().at("predicate");
     const FunctionDef* filter_func = function_library.Find(fun.func().name());
     if (!fusion_utils::CanCompose(map_func->signature(),
-                                  filter_func->signature()))
+                                  filter_func->signature())) {
+      VLOG(1) << "Can't fuse map and filter because the output signature of "
+                 "the map function does not match the input signature of the "
+                 "filter function\n";
       return nullptr;
+    }
     return fusion_utils::FuseFunctions(
         *map_func, *filter_func, "fused_map_and_filter_function",
         fusion_utils::CombineSignature, fusion_utils::ComposeInput,
-        fusion_utils::CombineOutput, output->mutable_library());
+        fusion_utils::CombineOutput, fusion_utils::MergeNodes,
+        output->mutable_library());
   };
 
   for (const NodeDef& node : sorted_old_graph.node()) {

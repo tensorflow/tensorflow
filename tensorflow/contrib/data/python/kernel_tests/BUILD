@@ -246,6 +246,25 @@ py_test(
 )
 
 py_test(
+    name = "filter_dataset_op_test",
+    size = "medium",
+    srcs = ["filter_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/ops:optimization",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "map_defun_op_test",
     size = "small",
     srcs = ["map_defun_op_test.py"],

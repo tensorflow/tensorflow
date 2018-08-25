@@ -161,6 +161,64 @@ class MapAndFilterFusionTest(test.TestCase, parameterized.TestCase):
 
     self._testMapAndFilter(dataset, function, predicate)
 
+  @staticmethod
+  def filter_functions():
+    take_all = lambda x: constant_op.constant(True)
+    is_zero = lambda x: math_ops.equal(x, 0)
+    greater = lambda x: math_ops.greater(x + 5, 0)
+
+    tests = []
+    filters = [take_all, is_zero, greater]
+    identity = lambda x: x
+    for x, predicate_1 in enumerate(filters):
+      for y, predicate_2 in enumerate(filters):
+        tests.append(("mixed_{}_{}".format(x, y), identity,
+                      [predicate_1, predicate_2]))
+        for z, predicate_3 in enumerate(filters):
+          tests.append(("mixed_{}_{}_{}".format(x, y, z), identity,
+                        [predicate_1, predicate_2, predicate_3]))
+
+    take_all_multiple = lambda x, y: constant_op.constant(True)
+    # Multi output
+    tests.append(("multiOne", lambda x: (x, x),
+                  [take_all_multiple, take_all_multiple]))
+    tests.append(("multiTwo", lambda x: (x, 2), [
+        take_all_multiple,
+        lambda x, y: math_ops.equal(x * math_ops.cast(y, dtypes.int64), 0)
+    ]))
+    return tuple(tests)
+
+  @parameterized.named_parameters(*filter_functions.__func__())
+  def testFilterFusion(self, map_function, predicates):
+    dataset = dataset_ops.Dataset.range(5).apply(
+        optimization.assert_next(["Map", "Filter",
+                                  "Prefetch"])).map(map_function)
+    for predicate in predicates:
+      dataset = dataset.filter(predicate)
+
+    dataset = dataset.prefetch(0).apply(
+        optimization.optimize(["filter_fusion"]))
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next()
+    with self.test_session() as sess:
+      for x in range(5):
+        r = map_function(x)
+        filtered = False
+        for predicate in predicates:
+          if isinstance(r, tuple):
+            b = predicate(*r)  # Pass tuple as multiple arguments.
+          else:
+            b = predicate(r)
+          if not sess.run(b):
+            filtered = True
+            break
+
+        if not filtered:
+          result = sess.run(get_next)
+          self.assertAllEqual(r, result)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
 
 if __name__ == "__main__":
   test.main()
