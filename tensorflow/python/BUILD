@@ -134,6 +134,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/compat",
         "//tensorflow/python/data",
+        "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras",
         "//tensorflow/python/ops/distributions",

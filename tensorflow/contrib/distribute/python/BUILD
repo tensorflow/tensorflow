@@ -452,6 +452,32 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "estimator_training_test",
+    size = "large",
+    srcs = ["estimator_training_test.py"],
+    additional_deps = [
+        ":combinations",
+        ":mirrored_strategy",
+        ":multi_worker_test_base",
+        ":parameter_server_strategy",
+        "//third_party/py/numpy",
+        "//tensorflow/contrib/optimizer_v2:training",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/feature_column",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
+    ],
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
+    ],
+)
+
 py_library(
     name = "single_loss_example",
     srcs = ["single_loss_example.py"],
