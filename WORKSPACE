@@ -86,3 +86,9 @@ new_local_repository(
     build_file = "//third_party/ngraph:ngraph.BUILD",
 )
 
+new_local_repository(
+    name = "ngraph_tf",
+    path = "/nfs/site/home/avijitch/workspace/tf-upstream/ngraph-tf",
+    build_file = "//third_party/ngraph:ngraph_tf.BUILD",
+)
+
