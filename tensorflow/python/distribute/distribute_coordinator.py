@@ -311,7 +311,11 @@ def _run_single_worker(worker_fn,
                        worker_barrier=None):
   """Runs a single worker by calling `worker_fn` under context."""
   strategy = copy.deepcopy(strategy)
-  strategy.configure(session_config, cluster_spec, task_type, task_id)
+  # If there is an EVALUATOR task, we run single-machine eval on that task.
+  if task_type == _TaskType.EVALUATOR:
+    strategy.configure(session_config)
+  else:
+    strategy.configure(session_config, cluster_spec, task_type, task_id)
   context = _WorkerContext(
       strategy,
       cluster_spec,
@@ -340,14 +344,14 @@ def _run_std_server(cluster_spec=None,
   return server
 
 
-def _run_between_graph_client(worker_fn, strategy, cluster_spec, session_config,
-                              rpc_layer):
+def _run_between_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
+                              cluster_spec, session_config, rpc_layer):
   """Runs a standalone client for between-graph replication."""
   eval_thread = None
   if _TaskType.EVALUATOR in cluster_spec.jobs:
     eval_thread = threading.Thread(
         target=_run_single_worker,
-        args=(worker_fn, strategy, cluster_spec, _TaskType.EVALUATOR, 0,
+        args=(eval_fn, eval_strategy, None, _TaskType.EVALUATOR, 0,
               session_config),
         kwargs={
             "rpc_layer": rpc_layer,
@@ -378,14 +382,14 @@ def _run_between_graph_client(worker_fn, strategy, cluster_spec, session_config,
     eval_thread.join()
 
 
-def _run_in_graph_client(worker_fn, strategy, cluster_spec, session_config,
-                         rpc_layer):
+def _run_in_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
+                         cluster_spec, session_config, rpc_layer):
   """Runs a standalone client for in-graph replication."""
   eval_thread = None
   if _TaskType.EVALUATOR in cluster_spec.jobs:
     eval_thread = threading.Thread(
         target=_run_single_worker,
-        args=(worker_fn, strategy, cluster_spec, _TaskType.EVALUATOR, 0,
+        args=(eval_fn, eval_strategy, cluster_spec, _TaskType.EVALUATOR, 0,
               session_config),
         kwargs={
             "rpc_layer": rpc_layer,
@@ -408,6 +412,8 @@ def _run_in_graph_client(worker_fn, strategy, cluster_spec, session_config,
 # is the special task when we support cluster_spec propagation.
 def run_distribute_coordinator(worker_fn,
                                strategy,
+                               eval_fn=None,
+                               eval_strategy=None,
                                mode=CoordinatorMode.STANDALONE_CLIENT,
                                cluster_spec=None,
                                task_type=None,
@@ -488,10 +494,12 @@ def run_distribute_coordinator(worker_fn,
   If `cluster_spec` is not given in any format, it becomes local training and
   this coordinator will connect to a local session.
 
-  For evaluation, if "evaluator" exist in the cluster_spec, a separate thread
-  will be created with its `task_type` set to "evaluator". If "evaluator" is not
-  set in the cluster_spec, it entirely depends on the `worker_fn` for how to do
-  evaluation.
+  For evaluation, if "evaluator" exists in the cluster_spec, a separate thread
+  will be created to call `eval_fn` with its `task_type` set to "evaluator". If
+  `eval_fn` is not defined, fall back to `worker_fn`. This implies that
+  evaluation will be done on a single machine if there is an "evaluator" task.
+  If "evaluator" doesn't exit in the cluster_spec, it entirely depends on the
+  `worker_fn` for how to do evaluation.
 
   Args:
     worker_fn: the function to be called. The function should accept a
@@ -501,6 +509,8 @@ def run_distribute_coordinator(worker_fn,
       run between-graph replicated training or not, whether to run init ops,
       etc. This object will also be configured given `session_config`,
       `cluster_spc`, `task_type` and `task_id`.
+    eval_fn: optional function for "evaluator" task.
+    eval_strategy: optional DistributionStrategy object for "evaluator" task.
     mode: in which mode this distribute coordinator runs.
     cluster_spec: a dict, ClusterDef or ClusterSpec specifying servers and roles
       in a cluster. If not set or empty, fall back to local training.
@@ -535,16 +545,22 @@ def run_distribute_coordinator(worker_fn,
     # `mode` is ignored in the local case.
     _run_single_worker(worker_fn, strategy, None, None, None, session_config,
                        rpc_layer)
+    if eval_fn:
+      _run_single_worker(eval_fn, eval_strategy or strategy, None, None, None,
+                         session_config, rpc_layer)
   elif mode == CoordinatorMode.STANDALONE_CLIENT:
+    eval_fn = eval_fn or worker_fn
+    eval_strategy = eval_strategy or strategy
+
     # The client must know the cluster but servers in the cluster don't have to
     # know the client.
     if task_type in [_TaskType.CLIENT, None]:
       if strategy.between_graph:
-        _run_between_graph_client(worker_fn, strategy, cluster_spec,
-                                  session_config, rpc_layer)
+        _run_between_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
+                                  cluster_spec, session_config, rpc_layer)
       else:
-        _run_in_graph_client(worker_fn, strategy, cluster_spec, session_config,
-                             rpc_layer)
+        _run_in_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
+                             cluster_spec, session_config, rpc_layer)
     else:
       # If not a client job, run the standard server.
       server = _run_std_server(
@@ -553,6 +569,9 @@ def run_distribute_coordinator(worker_fn,
   else:
     if mode != CoordinatorMode.INDEPENDENT_WORKER:
       raise ValueError("Unexpected coordinator mode: %r" % mode)
+
+    eval_fn = eval_fn or worker_fn
+    eval_strategy = eval_strategy or strategy
 
     # Every one starts a standard server.
     server = _run_std_server(
@@ -572,8 +591,8 @@ def run_distribute_coordinator(worker_fn,
         else:
           server.join()
     elif task_type == _TaskType.EVALUATOR:
-      _run_single_worker(worker_fn, strategy, cluster_spec, task_type, task_id,
-                         session_config, rpc_layer)
+      _run_single_worker(eval_fn, eval_strategy, cluster_spec, task_type,
+                         task_id, session_config, rpc_layer)
     else:
       if task_type != _TaskType.PS:
         raise ValueError("Unexpected task_type: %r" % task_type)
