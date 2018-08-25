@@ -427,6 +427,8 @@ def embedding_lookup_sparse(params,
 
     embeddings = embedding_lookup(
         params, ids, partition_strategy=partition_strategy, max_norm=max_norm)
+    if embeddings.dtype in (dtypes.float16, dtypes.bfloat16):
+      embeddings = math_ops.to_float(embeddings)
     if not ignore_weights:
       weights = sp_weights.values
       if weights.dtype != embeddings.dtype:
