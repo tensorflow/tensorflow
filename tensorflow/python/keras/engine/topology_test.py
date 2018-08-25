@@ -42,6 +42,34 @@ except ImportError:
 
 class TopologyConstructionTest(test.TestCase):
 
+  def test_add_variable_supports_TensorShape(self):
+
+    class MyLayer(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.a = self.add_variable(
+            'a',
+            tensor_shape.TensorShape([1, 2]),
+            'float32')
+        self.b = self.add_variable(
+            'b',
+            tensor_shape.TensorShape([1, 4]),
+            'int32')
+        self.built = True
+
+      def call(self, inputs):
+        return inputs
+
+    x1 = input_layer_lib.Input(shape=(1,))
+    # Github issue #21838:
+    # Won't raise exception here when constructing.
+    layer = MyLayer()
+    _ = layer.apply(x1)
+    self.assertEqual(layer.a.get_shape(),
+                     tensor_shape.TensorShape([1, 2]))
+    self.assertEqual(layer.b.get_shape(),
+                     tensor_shape.TensorShape([1, 4]))
+
   def test_get_updates(self):
 
     class MyLayer(keras.layers.Layer):
