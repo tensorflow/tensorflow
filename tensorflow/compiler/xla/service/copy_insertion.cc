@@ -957,16 +957,11 @@ Status CopyInsertion::AddCopiesToResolveInterference(HloModule* module) {
   return Status::OK();
 }
 
-// Add copies to address special constraints on the roots of computations not
-// related to live range interference:
-//
-//    (1) Entry computation root must be unambiguous and distinct.
-//
-//    (2) Any computation called by a kCall instruction must have an
-//        unambiguous root.
-//
-//    (3) Constants and parameters cannot be live out of the entry computation
-//
+Status CopyInsertion::AddSpecialCaseCopies(HloModule* module) {
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+  return AddSpecialCaseCopies(*call_graph, module);
+}
+
 Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
                                            HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
@@ -1062,15 +1057,6 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
     for (HloInstruction* user : users) {
       TF_RETURN_IF_ERROR(instruction->ReplaceUseWith(user, deep_copy));
     }
-    // Special case copies are not eligible for later copy elision passes.
-    indices_to_copy.ForEachElement([&](const ShapeIndex& index, bool has_copy) {
-      if (has_copy) {
-        HloInstruction* copy = *copies_added.mutable_element(index);
-        if (copy != nullptr) {
-          copy->SetCopyElisionAllowed(false);
-        }
-      }
-    });
     if (instruction == instruction->parent()->root_instruction()) {
       instruction->parent()->set_root_instruction(deep_copy);
     }
@@ -1078,10 +1064,10 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
   return Status::OK();
 }
 
-Status CopyInsertion::VerifyNoLiveRangeInterference(HloModule* module) {
+Status CopyInsertion::VerifyNoLiveRangeInterference(const HloOrdering& ordering,
+                                                    HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, fusion_can_share_buffer_));
-  DependencyHloOrdering ordering(module);
   TF_RET_CHECK(!alias_analysis->HasLiveRangeInterference(ordering));
   return Status::OK();
 }
@@ -1098,8 +1084,7 @@ Status CopyInsertion::RemoveUnnecessaryCopies(const HloOrdering& ordering,
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() == HloOpcode::kCopy &&
-          instruction->CopyElisionAllowed()) {
+      if (instruction->opcode() == HloOpcode::kCopy) {
         TF_RETURN_IF_ERROR(copy_remover.TryElideCopy(instruction).status());
       }
     }
@@ -1165,10 +1150,10 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
   TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
   TF_RETURN_IF_ERROR(dce.Run(module).status());
 
-  TF_DCHECK_OK(VerifyNoLiveRangeInterference(module));
+  DependencyHloOrdering dep_ordering(module);
+  TF_DCHECK_OK(VerifyNoLiveRangeInterference(dep_ordering, module));
 
-  DependencyHloOrdering ordering(module);
-  TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(ordering, module));
+  TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(dep_ordering, module));
 
   TF_RETURN_IF_ERROR(AddSpecialCaseCopies(*call_graph, module));
 
@@ -1176,7 +1161,8 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
 
   TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
   TF_RETURN_IF_ERROR(dce.Run(module).status());
-  TF_DCHECK_OK(VerifyNoLiveRangeInterference(module));
+  TF_DCHECK_OK(
+      VerifyNoLiveRangeInterference(DependencyHloOrdering(module), module));
 
   MaybeDumpModule("after copy insertion", *module);
 
