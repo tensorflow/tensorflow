@@ -366,11 +366,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     )
 
     PROTOBUF_urls =[
-        "https://mirror.bazel.build/github.com/google/protobuf/archive/fe2eef4bf414ebb352cf11bcec633f1fd46ec876.tar.gz",
-        "https://github.com/google/protobuf/archive/fe2eef4bf414ebb352cf11bcec633f1fd46ec876.tar.gz",
+        "https://mirror.bazel.build/github.com/google/protobuf/archive/v3.6.0.tar.gz",
+        "https://github.com/google/protobuf/archive/v3.6.0.tar.gz",
     ]
-    PROTOBUF_sha256 = "b91b0ac9907af983877c960809dcad7a6dc8e4b06e34d32b7d66a12b9ea1fa17"
-    PROTOBUF_strip_prefix = "protobuf-fe2eef4bf414ebb352cf11bcec633f1fd46ec876"
+    PROTOBUF_sha256 = "50a5753995b3142627ac55cfd496cebc418a2e575ca0236e29033c67bd5665f4"
+    PROTOBUF_strip_prefix = "protobuf-3.6.0"
 
     tf_http_archive(
         name = "protobuf_archive",
@@ -394,16 +394,6 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         urls = PROTOBUF_urls,
         sha256 = PROTOBUF_sha256,
         strip_prefix = PROTOBUF_strip_prefix,
-    )
-
-    tf_http_archive(
-        name = "bazel_skylib",
-        urls = [
-            "https://mirror.bazel.build/github.com/bazelbuild/bazel-skylib/archive/2169ae1c374aab4a09aa90e65efe1a3aad4e279b.tar.gz",
-            "https://github.com/bazelbuild/bazel-skylib/archive/2169ae1c374aab4a09aa90e65efe1a3aad4e279b.tar.gz"
-            ],
-        sha256 = "bbccf674aa441c266df9894182d80de104cabd19be98be002f6d478aaa31574d",
-        strip_prefix = "bazel-skylib-2169ae1c374aab4a09aa90e65efe1a3aad4e279b",
     )
 
     tf_http_archive(
