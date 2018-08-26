@@ -23,7 +23,6 @@
 #define MLIR_IR_STMTBLOCK_H
 
 #include "mlir/IR/Statement.h"
-#include "mlir/Support/LLVM.h"
 
 namespace mlir {
 class MLFunction;

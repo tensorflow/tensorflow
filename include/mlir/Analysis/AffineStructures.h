@@ -36,6 +36,7 @@ class AffineMap;
 class IntegerSet;
 class MLIRContext;
 class MLValue;
+class HyperRectangularSet;
 
 /// A mutable affine map. Its affine expressions are however unique.
 struct MutableAffineMap {
@@ -55,9 +56,17 @@ struct MutableIntegerSet {
 public:
   explicit MutableIntegerSet(IntegerSet *set);
 
+  /// Create a universal set (no constraints).
+  explicit MutableIntegerSet(unsigned numDims, unsigned numSymbols);
+
   unsigned getNumDims() const { return numDims; }
   unsigned getNumSymbols() const { return numSymbols; }
   unsigned getNumConstraints() const { return constraints.size(); }
+
+  void clear() {
+    constraints.clear();
+    eqFlags.clear();
+  }
 
 private:
   unsigned numDims;
@@ -188,6 +197,8 @@ public:
     equalities.reserve(numReservedIds * numReservedEqualities);
     inequalities.reserve(numReservedIds * numReservedInequalities);
   }
+
+  explicit FlatAffineConstraints(const HyperRectangularSet &set);
 
   /// Create a flat affine constraint system from an AffineValueMap or a list of
   /// these. The constructed system will only include equalities.

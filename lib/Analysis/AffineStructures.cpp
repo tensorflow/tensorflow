@@ -40,13 +40,17 @@ MutableIntegerSet::MutableIntegerSet(IntegerSet *set)
   // TODO(bondhugula)
 }
 
+// Universal set.
+MutableIntegerSet::MutableIntegerSet(unsigned numDims, unsigned numSymbols)
+    : numDims(numDims), numSymbols(numSymbols) {}
+
 AffineValueMap::AffineValueMap(const AffineApplyOp &op)
     : map(op.getAffineMap()) {
   // TODO: pull operands and results in.
 }
 
 bool AffineValueMap::isMultipleOf(unsigned idx, int64_t factor) const {
-  /* Check if the (first result expr) % factor becomes 0. */
+  // Check if the (first result expr) % factor becomes 0.
   if (auto *expr = dyn_cast<AffineConstantExpr>(AffineBinaryOpExpr::get(
           AffineExpr::Kind::Mod, map.getResult(idx),
           AffineConstantExpr::get(factor, context), context)))
@@ -54,6 +58,7 @@ bool AffineValueMap::isMultipleOf(unsigned idx, int64_t factor) const {
 
   // TODO(bondhugula): use FlatAffineConstraints to complete this.
   assert(0 && "isMultipleOf implementation incomplete");
+  return false;
 }
 
 AffineValueMap::~AffineValueMap() {}
