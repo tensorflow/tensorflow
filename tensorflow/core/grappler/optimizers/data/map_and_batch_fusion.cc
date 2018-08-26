@@ -104,8 +104,8 @@ Status MapAndBatchFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
 
     // Use a more descriptive variable name now that we know the node type.
     const NodeDef& batch_node = node;
-    GraphView::InputPort input_port = graph.GetInputPort(batch_node.name(), 0);
-    NodeDef* node2 = graph.GetRegularFanin(input_port).node;
+    NodeDef* node2 = graph_utils::GetInputNode(batch_node, graph);
+
     if (node2->op() != "MapDataset" && node2->op() != "ParallelMapDataset") {
       continue;
     }

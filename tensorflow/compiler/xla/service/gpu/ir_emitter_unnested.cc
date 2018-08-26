@@ -21,6 +21,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 
+#include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
@@ -29,7 +34,6 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
@@ -77,7 +81,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -85,13 +88,13 @@ namespace gpu {
 
 namespace {
 
+using absl::InlinedVector;
+using absl::nullopt;
+using absl::optional;
+using absl::StrCat;
 using llvm_ir::IrArray;
 using llvm_ir::IrName;
 using tensorflow::gtl::ArraySlice;
-using tensorflow::gtl::InlinedVector;
-using tensorflow::gtl::nullopt;
-using tensorflow::gtl::optional;
-using tensorflow::strings::StrCat;
 
 // If a dimensions is smaller than this, untiled transposition may be more
 // efficient.
@@ -314,13 +317,13 @@ llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo, int64 launch_size,
   };
 
   // Check the size of input tensors
-  if (!c_all_of(unnested_hlo->operands(), hlo_shape_in_range)) {
+  if (!absl::c_all_of(unnested_hlo->operands(), hlo_shape_in_range)) {
     return i64_ty;
   }
 
   // Check the size of the internal result tensors
   if (unnested_hlo->opcode() == HloOpcode::kFusion) {
-    if (!c_all_of(
+    if (!absl::c_all_of(
             unnested_hlo->fused_instructions_computation()->instructions(),
             hlo_shape_in_range)) {
       return i64_ty;
@@ -383,7 +386,7 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
     int64 feature_index_value = feature_index->literal().Get<int64>({});
 
     thunk_sequence_->emplace_back(
-        MakeUnique<CudnnBatchNormForwardInferenceThunk>(
+        absl::make_unique<CudnnBatchNormForwardInferenceThunk>(
             /*operand=*/GetAllocationSlice(*custom_call->operand(0)),
             /*scale=*/GetAllocationSlice(*custom_call->operand(1)),
             /*offset=*/GetAllocationSlice(*custom_call->operand(2)),
@@ -413,7 +416,7 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
     auto output_mean = assn.GetUniqueSlice(custom_call, {1}).ValueOrDie();
     auto output_inv_stddev = assn.GetUniqueSlice(custom_call, {2}).ValueOrDie();
     thunk_sequence_->emplace_back(
-        MakeUnique<CudnnBatchNormForwardTrainingThunk>(
+        absl::make_unique<CudnnBatchNormForwardTrainingThunk>(
             /*operand=*/GetAllocationSlice(*custom_call->operand(0)),
             /*scale=*/GetAllocationSlice(*custom_call->operand(1)),
             /*offset=*/GetAllocationSlice(*custom_call->operand(2)),
@@ -443,19 +446,20 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
     auto output_grad_scale = assn.GetUniqueSlice(custom_call, {1}).ValueOrDie();
     auto output_grad_offset =
         assn.GetUniqueSlice(custom_call, {2}).ValueOrDie();
-    thunk_sequence_->emplace_back(MakeUnique<CudnnBatchNormBackwardThunk>(
-        /*operand=*/GetAllocationSlice(*custom_call->operand(0)),
-        /*scale=*/GetAllocationSlice(*custom_call->operand(1)),
-        /*mean=*/GetAllocationSlice(*custom_call->operand(2)),
-        /*inv_stddev=*/GetAllocationSlice(*custom_call->operand(3)),
-        /*grad_output=*/GetAllocationSlice(*custom_call->operand(4)),
-        /*epsilon=*/epsilon_value,
-        /*feature_index=*/feature_index_value,
-        /*output_grad_data=*/output_grad_data,
-        /*output_grad_scale=*/output_grad_scale,
-        /*output_grad_offset=*/output_grad_offset,
-        /*output_tuple=*/GetAllocationSlice(*custom_call),
-        /*hlo=*/custom_call));
+    thunk_sequence_->emplace_back(
+        absl::make_unique<CudnnBatchNormBackwardThunk>(
+            /*operand=*/GetAllocationSlice(*custom_call->operand(0)),
+            /*scale=*/GetAllocationSlice(*custom_call->operand(1)),
+            /*mean=*/GetAllocationSlice(*custom_call->operand(2)),
+            /*inv_stddev=*/GetAllocationSlice(*custom_call->operand(3)),
+            /*grad_output=*/GetAllocationSlice(*custom_call->operand(4)),
+            /*epsilon=*/epsilon_value,
+            /*feature_index=*/feature_index_value,
+            /*output_grad_data=*/output_grad_data,
+            /*output_grad_scale=*/output_grad_scale,
+            /*output_grad_offset=*/output_grad_offset,
+            /*output_tuple=*/GetAllocationSlice(*custom_call),
+            /*hlo=*/custom_call));
     return Status::OK();
   }
 
@@ -475,7 +479,7 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
     const auto& target = custom_call->custom_call_target();
     std::unique_ptr<ConvolutionThunk> thunk;
     if (target == kCudnnConvForwardCallTarget) {
-      thunk = MakeUnique<ConvolutionThunk>(
+      thunk = absl::make_unique<ConvolutionThunk>(
           CudnnConvKind::kForward,
           /*input_buffer=*/lhs_slice,
           /*filter_buffer=*/rhs_slice,
@@ -489,7 +493,7 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
           backend_config.algorithm(), backend_config.tensor_ops_enabled(),
           custom_call);
     } else if (target == kCudnnConvBackwardInputCallTarget) {
-      thunk = MakeUnique<ConvolutionThunk>(
+      thunk = absl::make_unique<ConvolutionThunk>(
           CudnnConvKind::kBackwardInput,
           /*input_buffer=*/conv_result_slice,
           /*filter_buffer=*/rhs_slice,
@@ -503,7 +507,7 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
           backend_config.algorithm(), backend_config.tensor_ops_enabled(),
           custom_call);
     } else if (target == kCudnnConvBackwardFilterCallTarget) {
-      thunk = MakeUnique<ConvolutionThunk>(
+      thunk = absl::make_unique<ConvolutionThunk>(
           CudnnConvKind::kBackwardFilter,
           /*input_buffer=*/lhs_slice,
           /*filter_buffer=*/conv_result_slice,
@@ -576,7 +580,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
         thunks.push_back(
             BuildKernelThunk(fusion, /*implements_whole_instruction=*/false));
         thunk_sequence_->emplace_back(
-            MakeUnique<SequentialThunk>(std::move(thunks), fusion));
+            absl::make_unique<SequentialThunk>(std::move(thunks), fusion));
         std::vector<IrArray> parameter_arrays;
         for (HloInstruction* operand : fusion->operands()) {
           parameter_arrays.push_back(GetIrArray(*operand, *fusion));
@@ -798,8 +802,7 @@ Status IrEmitterUnnested::EmitReductionToScalar(
   // //     RoundUpToNextMultipleOf(Ceil(num_elems / kTileSize), warpSize),
   // //
   // // and threads_per_block is a multiple of warpSize.
-  // reduce_kernel<<<num_blocks, threads_per_block>>>();
-  //
+  // reduce_kernel  //
   auto loop_body_emitter = [=](const IrArray::Index& tile_index) -> Status {
     const int num_reduces = reducers.size();
     llvm::Type* element_ir_type =
@@ -1718,7 +1721,7 @@ Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
     thunks.push_back(
         BuildKernelThunk(reduce, /*implements_whole_instruction=*/false));
     thunk_sequence_->emplace_back(
-        MakeUnique<SequentialThunk>(std::move(thunks), reduce));
+        absl::make_unique<SequentialThunk>(std::move(thunks), reduce));
 
     return EmitReductionToVector(
         reduce, input->shape(), {[&](const IrArray::Index& index) {
@@ -1738,7 +1741,7 @@ Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
 
 Status IrEmitterUnnested::HandleTuple(HloInstruction* tuple) {
   bool all_tuple_elements_have_buffer =
-      c_all_of(tuple->operands(), [&](HloInstruction* tuple_element) {
+      absl::c_all_of(tuple->operands(), [&](HloInstruction* tuple_element) {
         return ir_emitter_context_->buffer_assignment()
             .GetUniqueTopLevelSlice(tuple_element)
             .ok();
@@ -1760,7 +1763,7 @@ Status IrEmitterUnnested::HandleTuple(HloInstruction* tuple) {
     for (const HloInstruction* tuple_element : tuple->operands()) {
       tuple_element_buffers.push_back(GetAllocationSlice(*tuple_element));
     }
-    thunk_sequence_->emplace_back(MakeUnique<TupleThunk>(
+    thunk_sequence_->emplace_back(absl::make_unique<TupleThunk>(
         tuple_element_buffers, GetAllocationSlice(*tuple), tuple));
     return Status::OK();
   }
@@ -1792,8 +1795,8 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
   thunks.push_back(std::move(initializer_thunk));
   thunks.push_back(BuildKernelThunk(select_and_scatter,
                                     /*implements_whole_instruction=*/false));
-  thunk_sequence_->emplace_back(
-      MakeUnique<SequentialThunk>(std::move(thunks), select_and_scatter));
+  thunk_sequence_->emplace_back(absl::make_unique<SequentialThunk>(
+      std::move(thunks), select_and_scatter));
 
   // TODO(b/31410564): Implement dilation rate for select-and-scatter.
   if (window_util::HasDilation(window)) {
@@ -2018,7 +2021,7 @@ Status IrEmitterUnnested::HandleRng(HloInstruction* rng) {
   thunks.push_back(std::move(rng_thunk));
   thunks.push_back(std::move(increment_seed_thunk));
   thunk_sequence_->emplace_back(
-      MakeUnique<SequentialThunk>(std::move(thunks), rng));
+      absl::make_unique<SequentialThunk>(std::move(thunks), rng));
 
   return Status::OK();
 }
@@ -2043,7 +2046,7 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   auto values_destination = GetAllocationSlice(*sort, values_shape_index);
 
   if (keys_destination != GetAllocationSlice(*keys)) {
-    thunks.push_back(MakeUnique<DeviceToDeviceCopyThunk>(
+    thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
         /*source_address=*/GetAllocationSlice(*keys),
         /*destination_buffer=*/keys_destination,
         /*mem_size=*/ShapeUtil::ByteSizeOf(keys->shape()), nullptr));
@@ -2051,7 +2054,7 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   if (values != nullptr && values_destination != GetAllocationSlice(*values)) {
     // TODO(b/26783907): Figure out why we never seem to share buffers for
     // key/value sort.
-    thunks.push_back(MakeUnique<DeviceToDeviceCopyThunk>(
+    thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
         /*source_address=*/GetAllocationSlice(*values),
         /*destination_buffer=*/values_destination,
         /*mem_size=*/ShapeUtil::ByteSizeOf(values->shape()), nullptr));
@@ -2095,15 +2098,15 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
 
       TF_RETURN_IF_ERROR(llvm_ir::EmitSortInPlace(
           dimension_to_sort, GetIrArray(*sort, *sort, keys_shape_index),
-          values != nullptr ? tensorflow::gtl::make_optional<IrArray>(
+          values != nullptr ? absl::make_optional<IrArray>(
                                   GetIrArray(*sort, *sort, values_shape_index))
-                            : tensorflow::gtl::nullopt,
+                            : absl::nullopt,
           IrName(sort), xor_mask, &b_, &launch_dimensions));
     }
   }
 
   thunk_sequence_->emplace_back(
-      MakeUnique<SequentialThunk>(std::move(thunks), sort));
+      absl::make_unique<SequentialThunk>(std::move(thunks), sort));
   return Status::OK();
 }
 
@@ -2130,7 +2133,7 @@ Status IrEmitterUnnested::HandleCrossReplicaSum(HloInstruction* crs) {
   if (crs->operand_count() == 1) {
     CHECK(ShapeUtil::IsArray(crs->operand(0)->shape()))
         << "Operands to cross-replica-sum must be arrays: " << crs->ToString();
-    thunk_sequence_->push_back(MakeUnique<DeviceToDeviceCopyThunk>(
+    thunk_sequence_->push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
         /*source_address=*/GetAllocationSlice(*crs->operand(0)),
         /*destination_buffer=*/GetAllocationSlice(*crs),
         /*mem_size=*/ShapeUtil::ByteSizeOf(crs->shape()), crs));
@@ -2145,17 +2148,17 @@ Status IrEmitterUnnested::HandleCrossReplicaSum(HloInstruction* crs) {
     tuple_element_buffers.push_back(ir_emitter_context_->buffer_assignment()
                                         .GetUniqueSlice(crs, {i})
                                         .ValueOrDie());
-    thunks.push_back(MakeUnique<DeviceToDeviceCopyThunk>(
+    thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
         /*source_address=*/GetAllocationSlice(*crs->operand(i)),
         /*destination_buffer=*/tuple_element_buffers.back(),
         /*mem_size=*/ShapeUtil::ByteSizeOf(crs->operand(i)->shape()), nullptr));
   }
 
   // Output a tuple of the buffers above.
-  thunks.push_back(MakeUnique<TupleThunk>(tuple_element_buffers,
-                                          GetAllocationSlice(*crs), nullptr));
+  thunks.push_back(absl::make_unique<TupleThunk>(
+      tuple_element_buffers, GetAllocationSlice(*crs), nullptr));
   thunk_sequence_->push_back(
-      MakeUnique<SequentialThunk>(std::move(thunks), crs));
+      absl::make_unique<SequentialThunk>(std::move(thunks), crs));
   return Status::OK();
 }
 
@@ -2305,7 +2308,7 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
   for (const auto& kv : hlo_slices) {
     buffers_needed.insert(kv.second.first.allocation());
   }
-  tensorflow::gtl::optional<const BufferAllocation*> temp_buffer;
+  absl::optional<const BufferAllocation*> temp_buffer;
   for (const BufferAllocation& alloc : buffer_assn.Allocations()) {
     if (alloc.IsPreallocatedTempBuffer()) {
       if (!temp_buffer.has_value()) {
@@ -2322,10 +2325,10 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
   // We'll pass a pointer to each of the elements of `buffers` to our kernel, in
   // this order.
   std::vector<const BufferAllocation*> non_constant_buffers;
-  c_copy_if(buffers_needed, std::back_inserter(non_constant_buffers),
-            [](const BufferAllocation* allocation) {
-              return !allocation->is_constant();
-            });
+  absl::c_copy_if(buffers_needed, std::back_inserter(non_constant_buffers),
+                  [](const BufferAllocation* allocation) {
+                    return !allocation->is_constant();
+                  });
 
   std::sort(non_constant_buffers.begin(), non_constant_buffers.end(),
             [](const BufferAllocation* a, const BufferAllocation* b) {
@@ -2389,7 +2392,7 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
         llvm::ConstantPointerNull::get(b_.getInt8PtrTy()));
   }
 
-  return MakeUnique<KernelThunk>(
+  return absl::make_unique<KernelThunk>(
       non_constant_buffers, llvm_ir::AsString(kernel->getName()),
       implements_whole_instruction ? inst : nullptr, unroll_factor);
 }
@@ -2398,7 +2401,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildHostToDeviceCopyThunk(
     const HloInstruction* inst) {
   const HloInstruction* operand = inst->operand(0);
   CHECK_EQ(HloOpcode::kConstant, operand->opcode());
-  return MakeUnique<HostToDeviceCopyThunk>(
+  return absl::make_unique<HostToDeviceCopyThunk>(
       /*source_address=*/operand->literal().untyped_data(),
       /*destination_buffer=*/GetAllocationSlice(*inst),
       /*mem_size=*/
@@ -2410,7 +2413,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildHostToDeviceCopyThunk(
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildDeviceToDeviceCopyThunk(
     const HloInstruction* inst) {
   const HloInstruction* operand = inst->operand(0);
-  return MakeUnique<DeviceToDeviceCopyThunk>(
+  return absl::make_unique<DeviceToDeviceCopyThunk>(
       /*source_address=*/GetAllocationSlice(*operand),
       /*destination_buffer=*/GetAllocationSlice(*inst),
       /*mem_size=*/
@@ -2430,7 +2433,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildInfeedThunk(
                      .GetUniqueSlice(inst, index)
                      .ConsumeValueOrDie();
       });
-  return MakeUnique<InfeedThunk>(slices, inst);
+  return absl::make_unique<InfeedThunk>(slices, inst);
 }
 
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildOutfeedThunk(
@@ -2447,7 +2450,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildOutfeedThunk(
           *slice = status_or_slice.ConsumeValueOrDie();
         }
       });
-  return MakeUnique<OutfeedThunk>(std::move(slices), inst);
+  return absl::make_unique<OutfeedThunk>(std::move(slices), inst);
 }
 
 namespace {
@@ -2470,7 +2473,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
   if (inst->opcode() == HloOpcode::kDot) {
     const HloInstruction* lhs = inst->operand(0);
     const HloInstruction* rhs = inst->operand(1);
-    return MakeUnique<GemmThunk>(
+    return absl::make_unique<GemmThunk>(
         GetAllocationSlice(*lhs),   // The buffer assigned to LHS.
         GetAllocationSlice(*rhs),   // The buffer assigned to RHS.
         GetAllocationSlice(*inst),  // The output buffer.
@@ -2512,7 +2515,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
     const HloInstruction* rhs =
         inst->operand(rhs_parameter->parameter_number());
 
-    return MakeUnique<GemmThunk>(
+    return absl::make_unique<GemmThunk>(
         GetAllocationSlice(*lhs),   // The buffer assigned to LHS.
         GetAllocationSlice(*rhs),   // The buffer assigned to RHS.
         GetAllocationSlice(*inst),  // The output buffer.
@@ -2529,11 +2532,12 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildFftThunk(
     const HloInstruction* inst) {
   const HloInstruction* operand = inst->operand(0);
-  return MakeUnique<FftThunk>(inst->fft_type(), inst->fft_length(),
-                              /*input_buffer=*/GetAllocationSlice(*operand),
-                              /*output_buffer=*/GetAllocationSlice(*inst),
-                              /*input_shape=*/operand->shape(),
-                              /*output_shape=*/inst->shape(), inst);
+  return absl::make_unique<FftThunk>(
+      inst->fft_type(), inst->fft_length(),
+      /*input_buffer=*/GetAllocationSlice(*operand),
+      /*output_buffer=*/GetAllocationSlice(*inst),
+      /*input_shape=*/operand->shape(),
+      /*output_shape=*/inst->shape(), inst);
 }
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
@@ -2582,9 +2586,9 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
     // MemzeroThunk.
     ArraySlice<uint8> literal_bytes(
         reinterpret_cast<const uint8*>(literal.untyped_data()), num_bytes);
-    if (c_all_of(literal_bytes, [](uint8 byte) { return byte == 0; })) {
-      return {
-          MakeUnique<MemzeroThunk>(GetAllocationSlice(*hlo, index), nullptr)};
+    if (absl::c_all_of(literal_bytes, [](uint8 byte) { return byte == 0; })) {
+      return {absl::make_unique<MemzeroThunk>(GetAllocationSlice(*hlo, index),
+                                              nullptr)};
     }
 
     // If the literal is 8 or 16 bits wide, we can emit a 32-bit memset by
@@ -2601,7 +2605,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
         memcpy(&pattern16, literal_bytes.data(), sizeof(pattern16));
       }
       uint32 pattern32 = uint32{pattern16} | (uint32{pattern16} << 16);
-      return {MakeUnique<Memset32BitValueThunk>(
+      return {absl::make_unique<Memset32BitValueThunk>(
           pattern32, GetAllocationSlice(*hlo, index), nullptr)};
     }
 
@@ -2612,7 +2616,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
                literal_bytes.size() - 4) == 0) {
       uint32 word;
       memcpy(&word, literal_bytes.data(), sizeof(word));
-      return {MakeUnique<Memset32BitValueThunk>(
+      return {absl::make_unique<Memset32BitValueThunk>(
           word, GetAllocationSlice(*hlo, index), nullptr)};
     }
   }
@@ -2764,7 +2768,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildWhileThunk(
                                     ir_emitter_context_);
   TF_CHECK_OK(body->Accept(&ir_emitter_body));
 
-  return MakeUnique<WhileThunk>(
+  return absl::make_unique<WhileThunk>(
       GetAllocationSlice(*condition->root_instruction()),  // cond result
       ir_emitter_condition.ConsumeThunkSequence(),
       ir_emitter_body.ConsumeThunkSequence(), hlo);
@@ -2782,8 +2786,8 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildForThunk(
                                     ir_emitter_context_);
   TF_CHECK_OK(body->Accept(&ir_emitter_body));
 
-  return MakeUnique<ForThunk>(loop_limit,
-                              ir_emitter_body.ConsumeThunkSequence(), hlo);
+  return absl::make_unique<ForThunk>(
+      loop_limit, ir_emitter_body.ConsumeThunkSequence(), hlo);
 }
 
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildConditionalThunk(
@@ -2803,7 +2807,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConditionalThunk(
                                      ir_emitter_context_);
   TF_CHECK_OK(false_computation->Accept(&ir_emitter_false));
 
-  return MakeUnique<ConditionalThunk>(
+  return absl::make_unique<ConditionalThunk>(
       GetAllocationSlice(*hlo->operand(0)),
       GetAllocationSlice(*hlo->operand(1)),
       GetAllocationSlice(*hlo->operand(2)),
@@ -3105,7 +3109,7 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
         CeilOfRatio<int64>(output_dims_in_tiles[i], kTileSize);
   }
   const int64 num_tiles =
-      c_accumulate(output_dims_in_tiles, 1, std::multiplies<int64>());
+      absl::c_accumulate(output_dims_in_tiles, 1, std::multiplies<int64>());
   LaunchDimensions launch_dimensions(num_tiles, kThreadsPerTile);
 
   llvm::Type* index_ty =

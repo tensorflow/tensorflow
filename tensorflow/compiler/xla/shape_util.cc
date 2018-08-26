@@ -22,6 +22,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/overflow_util.h"
@@ -30,26 +38,22 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/regexp.h"
 
 namespace xla {
 
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
+using absl::StrAppend;
+using absl::StrCat;
 
 string ShapeIndex::ToString() const { return ShapeIndexView(*this).ToString(); }
 
 string ShapeIndexView::ToString() const {
-  return StrCat("{", tensorflow::str_util::Join(indices_, ","), "}");
+  return StrCat("{", absl::StrJoin(indices_, ","), "}");
 }
 
 bool ShapeIndexView::operator==(const ShapeIndexView& other) const {
@@ -449,14 +453,14 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 namespace {
 
 // Class to memoize the computation of
-//   tensorflow::str_util::Lowercase(PrimitiveType_Name(p))
+//   absl::AsciiStrToLower(PrimitiveType_Name(p))
 // for all PrimitiveType values "p"
 class PrimitiveTypeNameGenerator {
  public:
   PrimitiveTypeNameGenerator() {
     for (int i = 0; i < PrimitiveType_ARRAYSIZE; i++) {
       if (PrimitiveType_IsValid(i)) {
-        lowercase_name_[i] = tensorflow::str_util::Lowercase(
+        lowercase_name_[i] = absl::AsciiStrToLower(
             PrimitiveType_Name(static_cast<PrimitiveType>(i)));
       }
     }
@@ -507,7 +511,7 @@ StatusOr<PrimitiveType> StringToPrimitiveType(const string& name) {
     return text;
   }
   return StrCat(LowercasePrimitiveTypeName(shape.element_type()), "[",
-                tensorflow::str_util::Join(shape.dimensions(), ","), "]");
+                absl::StrJoin(shape.dimensions(), ","), "]");
 }
 
 /* static */ string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
@@ -543,30 +547,30 @@ StatusOr<PrimitiveType> StringToPrimitiveType(const string& name) {
                                     : "(unknown)",
                                 ": ", HumanString(shape)));
   }
-  return StrCat("(", tensorflow::str_util::Join(parameters, ", "), ") -> ",
+  return StrCat("(", absl::StrJoin(parameters, ", "), ") -> ",
                 HumanString(program_shape.result()));
 }
 
 namespace {
 // Parses shapes with simple recursive descent structure -- consumes from the
 // front of s and passes that view recursively as required.
-StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
-  tensorflow::str_util::RemoveLeadingWhitespace(s);
+StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
+  *s = StripLeadingAsciiWhitespace(*s);
 
-  if (tensorflow::str_util::ConsumePrefix(s, "(")) {  // Tuple.
+  if (absl::ConsumePrefix(s, "(")) {  // Tuple.
     std::vector<Shape> shapes;
     bool must_end = false;
     while (true) {
-      if (tensorflow::str_util::ConsumePrefix(s, ")")) {
+      if (absl::ConsumePrefix(s, ")")) {
         break;
       } else if (must_end) {
         return InvalidArgument("Expected end of tuple; got: \"%s\"",
-                               std::string(*s).c_str());
+                               string(*s).c_str());
       }
       shapes.emplace_back();
       TF_ASSIGN_OR_RETURN(shapes.back(), ParseShapeStringInternal(s));
-      tensorflow::str_util::RemoveLeadingWhitespace(s);
-      must_end = !tensorflow::str_util::ConsumePrefix(s, ",");
+      *s = StripLeadingAsciiWhitespace(*s);
+      must_end = !absl::ConsumePrefix(s, ",");
     }
     return ShapeUtil::MakeTupleShape(shapes);
   }
@@ -575,9 +579,9 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   string dimensions_string;
   string format_string;
   string layout_string;
-  // tensorflow::StringPiece is not compatible with internal RE2 StringPiece, so
+  // absl::string_view is not compatible with internal RE2 StringPiece, so
   // we convert in to the RE2-consumable type and then consume the corresponding
-  // amount from our StringPiece type.
+  // amount from our string_view type.
   static LazyRE2 shape_pattern = {
       "^(\\w*\\d*)\\[([\\d,]*)\\](?:\\s*(dense|sparse)?\\s*{([\\d,]+)})?"};
   tensorflow::RegexpStringPiece s_consumable(s->data(), s->size());
@@ -585,12 +589,12 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
                    &dimensions_string, &format_string, &layout_string)) {
     size_t consumed = s->size() - s_consumable.size();
     s->remove_prefix(consumed);
-    auto string_to_int64 = [&s](const string& input) -> StatusOr<int64> {
+    auto string_to_int64 = [&s](absl::string_view input) -> StatusOr<int64> {
       int64 element;
-      if (!tensorflow::strings::safe_strto64(input.c_str(), &element)) {
+      if (!absl::SimpleAtoi(input, &element)) {
         return InvalidArgument(
             "Invalid s64 value in parsed shape string: \"%s\" in \"%s\"",
-            input.c_str(), std::string(*s).c_str());
+            string(input).c_str(), string(*s).c_str());
       }
       return element;
     };
@@ -598,7 +602,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
     auto comma_list_to_int64s =
         [string_to_int64](const string& input) -> StatusOr<std::vector<int64>> {
       std::vector<int64> results;
-      for (const string& piece : tensorflow::str_util::Split(input, ',')) {
+      for (const auto& piece : absl::StrSplit(input, ',', absl::SkipEmpty())) {
         TF_ASSIGN_OR_RETURN(int64 element, string_to_int64(piece));
         results.push_back(element);
       }
@@ -645,16 +649,15 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   }
 
   return InvalidArgument("Invalid shape string to parse: \"%s\"",
-                         std::string(*s).c_str());
+                         string(*s).c_str());
 }
 }  // namespace
 
-/* static */ StatusOr<Shape> ShapeUtil::ParseShapeString(
-    tensorflow::StringPiece s) {
+/* static */ StatusOr<Shape> ShapeUtil::ParseShapeString(absl::string_view s) {
   TF_ASSIGN_OR_RETURN(Shape shape, ParseShapeStringInternal(&s));
   if (!s.empty()) {
     return InvalidArgument("Invalid shape string to parse: \"%s\"",
-                           std::string(s).c_str());
+                           string(s).c_str());
   }
   return shape;
 }
@@ -1014,12 +1017,13 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
 }
 
 /* static */ int64 ShapeUtil::GetLeafCount(const Shape& shape) {
+  if (!IsTuple(shape)) {
+    return 1;
+  }
   int64 count = 0;
-  ForEachSubshape(shape, [&](const Shape&, const ShapeIndex& index) {
-    if (IsLeafIndex(shape, index)) {
-      ++count;
-    }
-  });
+  for (const Shape& subshape : shape.tuple_shapes()) {
+    count += GetLeafCount(subshape);
+  }
   return count;
 }
 
@@ -1171,8 +1175,7 @@ Status ForEachMutableSubshapeHelper(
     CHECK(TransposeIsBitcast(shape, new_shape, InversePermutation(permutation)))
         << "shape=" << HumanStringWithLayout(shape)
         << ", new_shape=" << HumanStringWithLayout(new_shape)
-        << ", permutation={" << tensorflow::str_util::Join(permutation, ",")
-        << "}";
+        << ", permutation={" << absl::StrJoin(permutation, ",") << "}";
   }
   return new_shape;
 }
@@ -1459,7 +1462,7 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
          check_input_unit_indices(output_shape, input_shape);
 }
 
-/* static */ tensorflow::gtl::optional<Shape> ShapeUtil::AlignLayouts(
+/* static */ absl::optional<Shape> ShapeUtil::AlignLayouts(
     const Shape& input_shape, const Shape& output_shape) {
   CHECK(IsArray(input_shape));
   CHECK(IsArray(output_shape));
@@ -1498,7 +1501,7 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     if (input_dimension_product < output_dimension_product ||
         j == output_rank) {
       if (i == input_rank) {
-        return tensorflow::gtl::nullopt;
+        return absl::nullopt;
       }
       dimension_to_alignment_index[i] = alignment.size() - 1;
       input_dimension_product *= input_shape.dimensions(i);
@@ -1509,7 +1512,7 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     }
   }
   if (input_dimension_product != output_dimension_product) {
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
   // We also need to store an end element so that we know where the last
   // alignment part ends.
@@ -1553,7 +1556,7 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     for (int64 j = 0; j < num_non_trivial_dimensions_in_alignment_part;
          ++i, ++j) {
       if (i == input_rank) {
-        return tensorflow::gtl::nullopt;
+        return absl::nullopt;
       }
       // Skip trivial dimensions with a bound of 1.
       if (input_shape.dimensions(input_dimension_numbers[i]) == 1) {
@@ -1566,7 +1569,7 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
       if (dimension_to_alignment_index[input_dimension_numbers[i]] !=
               current_alignment_index ||
           input_dimension_numbers[i] > current_dimension_number) {
-        return tensorflow::gtl::nullopt;
+        return absl::nullopt;
       }
       current_dimension_number = input_dimension_numbers[i];
     }

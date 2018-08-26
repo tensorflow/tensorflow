@@ -28,7 +28,7 @@ from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -699,13 +699,13 @@ class TFOptimizer(Optimizer, checkpointable.CheckpointableBase):
       self.iterations = K.variable(0, dtype='int64', name='iterations')
 
   def apply_gradients(self, grads):
-    self.optimizer.apply_gradients(grads)
+    self.optimizer.apply_gradients(grads, global_step=self.iterations)
 
   def get_grads(self, loss, params):
     return self.optimizer.compute_gradients(loss, params)
 
   def get_updates(self, loss, params):
-    if distribute_lib.has_distribution_strategy():
+    if distribution_strategy_context.has_distribution_strategy():
       self.updates = []
 
       if not params:
@@ -813,7 +813,9 @@ def get(identifier):
   """
   # Wrap TF optimizer instances
   if isinstance(identifier, tf_optimizer_module.Optimizer):
-    return TFOptimizer(identifier)
+    opt = TFOptimizer(identifier)
+    K.track_tf_optimizer(opt)
+    return opt
   if isinstance(identifier, dict):
     return deserialize(identifier)
   elif isinstance(identifier, six.string_types):

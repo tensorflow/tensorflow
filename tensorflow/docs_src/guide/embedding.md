@@ -78,7 +78,7 @@ Embeddings can be trained in many network types, and with various loss
 functions and data sets. For example, one could use a recurrent neural network
 to predict the next word from the previous one given a large corpus of
 sentences, or one could train two networks to do multi-lingual translation.
-These methods are described in the @{$word2vec$Vector Representations of Words}
+These methods are described in the [Vector Representations of Words](../tutorials/representation/word2vec.md)
 tutorial.
 
 ## Visualizing Embeddings

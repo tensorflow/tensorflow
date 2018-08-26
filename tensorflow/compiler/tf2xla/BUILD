@@ -39,6 +39,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -88,6 +89,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -211,6 +213,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,
 )
@@ -220,13 +223,11 @@ cc_library(
     srcs = [
         "literal_util.cc",
         "shape_util.cc",
-        "str_util.cc",
         "type_util.cc",
     ],
     hdrs = [
         "literal_util.h",
         "shape_util.h",
-        "str_util.h",
         "type_util.h",
     ],
     visibility = [":friends"],
@@ -255,6 +256,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -287,6 +289,7 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -305,6 +308,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -372,19 +376,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cc_test(
-    name = "str_util_test",
-    srcs = [
-        "str_util_test.cc",
-    ],
-    deps = [
-        ":common",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -443,21 +435,96 @@ cc_library(
 )
 
 cc_library(
-    name = "functionalize_control_flow",
-    srcs = ["functionalize_control_flow.cc"],
-    hdrs = ["functionalize_control_flow.h"],
+    name = "functionalize_control_flow_util",
+    srcs = [
+        "functionalize_control_flow_util.cc",
+    ],
+    hdrs = [
+        "functionalize_control_flow_util.h",
+    ],
     deps = [
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "functionalize_cond",
+    srcs = [
+        "functionalize_cond.cc",
+    ],
+    hdrs = [
+        "functionalize_cond.h",
+    ],
+    deps = [
+        ":functionalize_control_flow_util",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:union_find",
         "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "functionalize_control_flow",
+    srcs = [
+        "functionalize_control_flow.cc",
+    ],
+    hdrs = [
+        "functionalize_control_flow.h",
+    ],
+    deps = [
+        ":functionalize_cond",
+        ":functionalize_control_flow_util",
+        ":functionalize_while",
+        ":tf2xla_util",
+        "//tensorflow/compiler/jit:union_find",
+        "//tensorflow/compiler/tf2xla:dump_graph",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "functionalize_while",
+    srcs = [
+        "functionalize_while.cc",
+    ],
+    hdrs = [
+        "functionalize_while.h",
+    ],
+    deps = [
+        ":functionalize_control_flow_util",
+        ":tf2xla_util",
+        "//tensorflow/compiler/jit:union_find",
+        "//tensorflow/compiler/tf2xla:dump_graph",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -485,6 +552,32 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "functionalize_cond_test",
+    srcs = ["functionalize_cond_test.cc"],
+    deps = [
+        ":functionalize_cond",
+        ":functionalize_control_flow",
+        ":test_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:resource_variable_ops",
+        "//tensorflow/compiler/tf2xla/cc:xla_ops",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:resource_variable_ops_op_lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 cc_library(
     name = "test_util",
     testonly = 1,
@@ -506,5 +599,32 @@ tf_cc_test(
         ":xla_compiler",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "resource_operation_table",
+    srcs = ["resource_operation_table.cc"],
+    hdrs = ["resource_operation_table.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+tf_cc_test(
+    name = "resource_operation_table_test",
+    srcs = ["resource_operation_table_test.cc"],
+    deps = [
+        ":resource_operation_table",
+        ":xla_compiler",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ],
 )

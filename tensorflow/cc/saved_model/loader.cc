@@ -182,7 +182,7 @@ Status RunRestore(const RunOptions& run_options, const string& export_dir,
   variables_path_tensor.scalar<string>()() = variables_path;
 
   std::vector<std::pair<string, Tensor>> inputs = {
-      {variable_filename_const_op_name.ToString(), variables_path_tensor}};
+      {string(variable_filename_const_op_name), variables_path_tensor}};
 
   AddAssetsTensorsToInputs(export_dir, asset_file_defs, &inputs);
 

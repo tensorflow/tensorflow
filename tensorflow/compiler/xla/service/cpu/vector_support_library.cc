@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/vector_support_library.h"
 
+#include "absl/algorithm/container.h"
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -422,8 +423,8 @@ TileVariable::TileVariable(VectorSupportLibrary* vector_support,
 
 std::vector<llvm::Value*> TileVariable::Get() const {
   std::vector<llvm::Value*> result;
-  c_transform(storage_, std::back_inserter(result),
-              [&](VectorVariable vect_var) { return vect_var.Get(); });
+  absl::c_transform(storage_, std::back_inserter(result),
+                    [&](VectorVariable vect_var) { return vect_var.Get(); });
   return result;
 }
 

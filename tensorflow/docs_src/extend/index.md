@@ -3,16 +3,16 @@
 This section explains how developers can add functionality to TensorFlow's
 capabilities. Begin by reading the following architectural overview:
 
-  * @{$architecture$TensorFlow Architecture}
+  * [TensorFlow Architecture](../extend/architecture.md)
 
 The following guides explain how to extend particular aspects of
 TensorFlow:
 
-  * @{$adding_an_op$Adding a New Op}, which explains how to create your own
+  * [Adding a New Op](../extend/adding_an_op.md), which explains how to create your own
     operations.
-  * @{$add_filesys$Adding a Custom Filesystem Plugin}, which explains how to
+  * [Adding a Custom Filesystem Plugin](../extend/add_filesys.md), which explains how to
     add support for your own shared or distributed filesystem.
-  * @{$new_data_formats$Custom Data Readers}, which details how to add support
+  * [Custom Data Readers](../extend/new_data_formats.md), which details how to add support
     for your own file and record formats.
 
 Python is currently the only language supported by TensorFlow's API stability
@@ -24,11 +24,11 @@ plus community support for [Haskell](https://github.com/tensorflow/haskell) and
 develop TensorFlow features in a language other than these languages, read the
 following guide:
 
-  * @{$language_bindings$TensorFlow in Other Languages}
+  * [TensorFlow in Other Languages](../extend/language_bindings.md)
 
 To create tools compatible with TensorFlow's model format, read the following
 guide:
 
-  * @{$tool_developers$A Tool Developer's Guide to TensorFlow Model Files}
+  * [A Tool Developer's Guide to TensorFlow Model Files](../extend/tool_developers/index.md)
 
 

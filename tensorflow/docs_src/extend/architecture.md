@@ -7,8 +7,8 @@ learning models and system-level optimizations.
 This document describes the system architecture that makes this
 combination of scale and flexibility possible. It assumes that you have basic familiarity
 with TensorFlow programming concepts such as the computation graph, operations,
-and sessions. See @{$guide/low_level_intro$this document} for an introduction to
-these topics. Some familiarity with @{$distributed$distributed TensorFlow}
+and sessions. See [this document](../guide/low_level_intro.md) for an introduction to
+these topics. Some familiarity with [distributed TensorFlow](../deploy/distributed.md)
 will also be helpful.
 
 This document is for developers who want to extend TensorFlow in some way not
@@ -199,7 +199,7 @@ Many of the operation kernels are implemented using Eigen::Tensor, which uses
 C++ templates to generate efficient parallel code for multicore CPUs and GPUs;
 however, we liberally use libraries like cuDNN where a more efficient kernel
 implementation is possible. We have also implemented
-@{$quantization$quantization}, which enables
+[quantization](../performance/quantization.md), which enables
 faster inference in environments such as mobile devices and high-throughput
 datacenter applications, and use the
 [gemmlowp](https://github.com/google/gemmlowp) low-precision matrix library to
@@ -209,7 +209,7 @@ If it is difficult or inefficient to represent a subcomputation as a composition
 of operations, users can register additional kernels that provide an efficient
 implementation written in C++. For example, we recommend registering your own
 fused kernels for some performance critical operations, such as the ReLU and
-Sigmoid activation functions and their corresponding gradients. The @{$xla$XLA Compiler} has an
+Sigmoid activation functions and their corresponding gradients. The [XLA Compiler](../performance/xla/index.md) has an
 experimental implementation of automatic kernel fusion.
 
 ### Code

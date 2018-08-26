@@ -14,15 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/while_util.h"
+#include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 
-using tensorflow::strings::StrCat;
+using absl::StrCat;
 
 static StatusOr<HloComputation*> WidenWhileCondition(
     HloComputation* narrow_condition, const Shape& wide_shape) {
@@ -206,7 +207,7 @@ static StatusOr<HloInstruction*> MakeInitTupleFromInitValues(
   HloInstruction* zero = computation->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
   init_values_with_indvar.push_back(zero);
-  c_copy(init_values, std::back_inserter(init_values_with_indvar));
+  absl::c_copy(init_values, std::back_inserter(init_values_with_indvar));
   return computation->AddInstruction(
       HloInstruction::CreateTuple(init_values_with_indvar));
 }
@@ -215,8 +216,9 @@ static Shape MakeLoopStateShape(const WhileUtil::LoopStateTy& init_values) {
   std::vector<Shape> loop_state_shape_components;
   loop_state_shape_components.reserve(init_values.size() + 1);
   loop_state_shape_components.push_back(ShapeUtil::MakeShape(S32, {}));
-  c_transform(init_values, std::back_inserter(loop_state_shape_components),
-              [](HloInstruction* instr) { return instr->shape(); });
+  absl::c_transform(init_values,
+                    std::back_inserter(loop_state_shape_components),
+                    [](HloInstruction* instr) { return instr->shape(); });
   return ShapeUtil::MakeTupleShape(loop_state_shape_components);
 }
 

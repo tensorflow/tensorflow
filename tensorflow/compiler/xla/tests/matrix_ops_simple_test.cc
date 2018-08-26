@@ -17,12 +17,13 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -133,7 +134,7 @@ class TestLinspaceMaxParametric
     float from = -128.0, to = 256.0;
     std::unique_ptr<Array2D<T>> alhs =
         MakeLinspaceArray2D<T>(from, to, rows, cols);
-    auto arhs = MakeUnique<Array2D<T>>(rows, cols, static_cast<T>(1.0f));
+    auto arhs = absl::make_unique<Array2D<T>>(rows, cols, static_cast<T>(1.0f));
 
     XlaBuilder builder(
         tensorflow::strings::Printf("max_%lldx%lld_linspace", rows, cols));
@@ -158,7 +159,7 @@ class TestLinspaceMaxParametric
 string PrintTestLinspaceMaxParam(
     const ::testing::TestParamInfo<TestLinspaceMaxParam>& test_param) {
   const TestLinspaceMaxParam& param = test_param.param;
-  return tensorflow::strings::StrCat(param.rows, "r", param.cols, "c");
+  return absl::StrCat(param.rows, "r", param.cols, "c");
 }
 
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16

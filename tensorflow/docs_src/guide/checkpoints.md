@@ -9,13 +9,13 @@ Estimators. TensorFlow provides two model formats:
     the model.
 
 This document focuses on checkpoints. For details on `SavedModel`, see the
-@{$saved_model$Saving and Restoring} guide.
+[Saving and Restoring](../guide/saved_model.md) guide.
 
 
 ## Sample code
 
 This document relies on the same
-[Iris classification example](https://github.com/tensorflow/models/blob/master/samples/core/get_started/premade_estimator.py) detailed in @{$premade_estimators$Getting Started with TensorFlow}.
+[Iris classification example](https://github.com/tensorflow/models/blob/master/samples/core/get_started/premade_estimator.py) detailed in [Getting Started with TensorFlow](../guide/premade_estimators.md).
 To download and access the example, invoke the following two commands:
 
 ```shell
@@ -160,7 +160,7 @@ checkpoint to the `model_dir`. Each subsequent call to the Estimator's
 1.  The Estimator builds the model's
     [graph](https://developers.google.com/machine-learning/glossary/#graph)
     by running the `model_fn()`.  (For details on the `model_fn()`, see
-    @{$custom_estimators$Creating Custom Estimators.})
+    [Creating Custom Estimators.](../guide/custom_estimators.md))
 2.  The Estimator initializes the weights of the new model from the data
     stored in the most recent checkpoint.
 
@@ -231,7 +231,7 @@ This separation will keep your checkpoints recoverable.
 Checkpoints provide an easy automatic mechanism for saving and restoring
 models created by Estimators.
 
-See the @{$saved_model$Saving and Restoring} guide for details about:
+See the [Saving and Restoring](../guide/saved_model.md) guide for details about:
 
 *   Saving and restoring models using low-level TensorFlow APIs.
 *   Exporting and importing models in the SavedModel format, which is a

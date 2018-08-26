@@ -18,7 +18,7 @@ tutorial walks through the code in greater detail.
 
 To understand this overview it will help to have some familiarity
 with basic machine learning concepts, and also with
-@{$premade_estimators$Estimators}.
+[Estimators](../../guide/premade_estimators.md).
 
 [TOC]
 
@@ -175,7 +175,7 @@ the data itself. You provide the data through an input function.
 The input function must return a dictionary of tensors. Each key corresponds to
 the name of a `FeatureColumn`. Each key's value is a tensor containing the
 values of that feature for all data instances. See
-@{$premade_estimators#input_fn} for a
+[Premade Estimators](../../guide/premade_estimators.md#input_fn) for a
 more comprehensive look at input functions, and `input_fn` in the
 [wide and deep learning tutorial](https://github.com/tensorflow/models/tree/master/official/wide_deep)
 for an example implementation of an input function.

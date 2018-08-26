@@ -8,6 +8,8 @@ message Profile {
   Node by_category = 1;
   // Root of a profile broken down by program structure.
   Node by_program_structure = 2;
+  // Per program profile, indexed by hlo module name of the program.
+  map<string, Node> per_program = 3;
 }
 
 // An entry in the profile tree. (An instruction, or set of instructions).

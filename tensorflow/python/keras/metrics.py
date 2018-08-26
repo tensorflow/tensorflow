@@ -55,9 +55,10 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import weights_broadcast_ops
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
 
 
 def check_is_tensor_or_operation(x, name):
@@ -111,7 +112,7 @@ def result_wrapper(result_fn):
 
   def decorated(metric_obj, *args):
     """Decorated function with merge_call."""
-    tower_context = distribute_lib.get_tower_context()
+    tower_context = distribution_strategy_context.get_tower_context()
     if tower_context is None:  # if in cross tower context already
       result_t = result_fn(*args)
     else:
@@ -241,7 +242,7 @@ class Metric(Layer):
 
   ```python
   m = SomeMetric(...)
-  init_op = tf.global_variables_initializer()  # Initialize variables
+  init_op = tf.variables_initializer(m.variables)  # Initialize variables
   with tf.Session() as sess:
     sess.run(init_op)
     for input in ...:
@@ -388,6 +389,7 @@ class Metric(Layer):
     return cls(**config)
 
   ### For use by subclasses ###
+  @doc_controls.for_subclass_implementers
   def add_weight(self,
                  name,
                  shape=(),
@@ -401,6 +403,7 @@ class Metric(Layer):
         dtype=self._dtype,
         trainable=False,
         initializer=initializer,
+        collections=[],
         synchronization=synchronization,
         aggregation=aggregation)
 

@@ -208,6 +208,8 @@ Status XlaFusionOptimizer::Optimize(grappler::Cluster* cluster,
 
   GraphCycles cycles;
   TF_RETURN_IF_ERROR(CreateCycleDetectionGraph(&graph, &cycles));
+  TF_RETURN_IF_ERROR(AdjustCycleDetectionGraphForResourceOps(
+      &graph, &graph.flib_def(), /*resource_ops_to_ignore=*/{}, &cycles));
 
   // TODO(hpucha): Make clustering more robust. There are two known issues that
   // we need to mitigate: (a) Non-resource variables can cause deadlocks

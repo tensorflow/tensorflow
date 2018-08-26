@@ -18,8 +18,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -76,7 +77,7 @@ void ShapedBuffer::clear() {
 }
 
 string ShapedBuffer::ToString() const {
-  string s = tensorflow::strings::StrCat(
+  string s = absl::StrCat(
       "ShapedBuffer(", platform_->Name(), ":", device_ordinal(),
       "), on-host shape=" + ShapeUtil::HumanStringWithLayout(on_host_shape()),
       ", on-device shape=" +

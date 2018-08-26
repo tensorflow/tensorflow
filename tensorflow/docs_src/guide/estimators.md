@@ -84,7 +84,7 @@ of the following four steps:
            ...  # manipulate dataset, extracting the feature dict and the label
            return feature_dict, label
 
-    (See @{$guide/datasets} for full details.)
+    (See [Importing Data](../guide/datasets.md) for full details.)
 
 2.  **Define the feature columns.** Each `tf.feature_column`
     identifies a feature name, its type, and any input pre-processing.
@@ -136,7 +136,7 @@ The heart of every Estimator--whether pre-made or custom--is its
 evaluation, and prediction. When you are using a pre-made Estimator,
 someone else has already implemented the model function. When relying
 on a custom Estimator, you must write the model function yourself. A
-@{$custom_estimators$companion document}
+[companion document](../guide/custom_estimators.md)
 explains how to write the model function.
 
 

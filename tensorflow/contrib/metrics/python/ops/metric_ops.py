@@ -2532,7 +2532,8 @@ def sparse_recall_at_top_k(labels,
         name=name_scope)
 
 
-def _compute_recall_at_precision(tp, fp, fn, precision, name):
+def _compute_recall_at_precision(tp, fp, fn, precision, name,
+                                 strict_mode=False):
   """Helper function to compute recall at a given `precision`.
 
   Args:
@@ -2541,17 +2542,42 @@ def _compute_recall_at_precision(tp, fp, fn, precision, name):
     fn: The number of false negatives.
     precision: The precision for which the recall will be calculated.
     name: An optional variable_scope name.
+    strict_mode: If true and there exists a threshold where the precision is
+      no smaller than the target precision, return the corresponding recall at
+      the threshold. Otherwise, return 0. If false, find the threshold where the
+      precision is closest to the target precision and return the recall at the
+      threshold.
 
   Returns:
     The recall at a given `precision`.
   """
   precisions = math_ops.div(tp, tp + fp + _EPSILON)
-  tf_index = math_ops.argmin(
-      math_ops.abs(precisions - precision), 0, output_type=dtypes.int32)
+  if not strict_mode:
+    tf_index = math_ops.argmin(
+        math_ops.abs(precisions - precision), 0, output_type=dtypes.int32)
+    # Now, we have the implicit threshold, so compute the recall:
+    return math_ops.div(tp[tf_index], tp[tf_index] + fn[tf_index] + _EPSILON,
+                        name)
+  else:
+    # We aim to find the threshold where the precision is minimum but no smaller
+    # than the target precision.
+    # The rationale:
+    # 1. Compute the difference between precisions (by different thresholds) and
+    #   the target precision.
+    # 2. Take the reciprocal of the values by the above step. The intention is
+    #   to make the positive values rank before negative values and also the
+    #   smaller positives rank before larger positives.
+    tf_index = math_ops.argmax(
+        math_ops.div(1.0, precisions - precision + _EPSILON),
+        0,
+        output_type=dtypes.int32)
 
-  # Now, we have the implicit threshold, so compute the recall:
-  return math_ops.div(tp[tf_index], tp[tf_index] + fn[tf_index] + _EPSILON,
-                      name)
+    def _return_good_recall():
+      return math_ops.div(tp[tf_index], tp[tf_index] + fn[tf_index] + _EPSILON,
+                          name)
+
+    return control_flow_ops.cond(precisions[tf_index] >= precision,
+                                 _return_good_recall, lambda: .0)
 
 
 def recall_at_precision(labels,
@@ -2561,7 +2587,8 @@ def recall_at_precision(labels,
                         num_thresholds=200,
                         metrics_collections=None,
                         updates_collections=None,
-                        name=None):
+                        name=None,
+                        strict_mode=False):
   """Computes `recall` at `precision`.
 
   The `recall_at_precision` function creates four local variables,
@@ -2593,6 +2620,11 @@ def recall_at_precision(labels,
     updates_collections: An optional list of collections that `update_op` should
       be added to.
     name: An optional variable_scope name.
+    strict_mode: If true and there exists a threshold where the precision is
+      above the target precision, return the corresponding recall at the
+      threshold. Otherwise, return 0. If false, find the threshold where the
+      precision is closest to the target precision and return the recall at the
+      threshold.
 
   Returns:
     recall: A scalar `Tensor` representing the recall at the given
@@ -2621,10 +2653,11 @@ def recall_at_precision(labels,
         predictions, labels, thresholds, weights)
 
     recall = _compute_recall_at_precision(values['tp'], values['fp'],
-                                          values['fn'], precision, 'value')
+                                          values['fn'], precision, 'value',
+                                          strict_mode)
     update_op = _compute_recall_at_precision(update_ops['tp'], update_ops['fp'],
                                              update_ops['fn'], precision,
-                                             'update_op')
+                                             'update_op', strict_mode)
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, recall)

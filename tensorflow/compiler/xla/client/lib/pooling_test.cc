@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/client/lib/pooling.h"
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -22,7 +23,7 @@ namespace xla {
 namespace {
 
 TensorFormat MakeNCHWFormat(int num_spatial_dims) {
-  tensorflow::gtl::InlinedVector<int64, 4> spatial_dimensions;
+  absl::InlinedVector<int64, 4> spatial_dimensions;
   for (int i = 0; i < num_spatial_dims; ++i) {
     spatial_dimensions.push_back(i + 2);
   }
@@ -179,6 +180,110 @@ XLA_TEST_F(PoolingTest,
 
   ComputeAndCompareR4<float>(&builder, {{{{1.5, 3, 4.5}, {3, 3, 3}}}}, {},
                              error_spec_);
+}
+
+XLA_TEST_F(PoolingTest, AvgPool2DGradNoPadding) {
+  XlaBuilder builder(TestName());
+  for (bool counts_include_padding : {false, true}) {
+    XlaOp out_backprop = ConstantR4FromArray4D<float>(&builder, {{{{1.}}}});
+    auto data_format = MakeNCHWFormat(2);
+    auto kernel_size = ExpandWithBatchAndFeatureDimensions({2, 2}, data_format);
+    auto stride = ExpandWithBatchAndFeatureDimensions({2, 2}, data_format);
+    AvgPoolGrad(out_backprop, {1, 1, 3, 3}, kernel_size, stride,
+                {{0, 0}, {0, 0}}, MakeNCHWFormat(2),
+                /*counts_include_padding=*/counts_include_padding);
+    // Without padding, counts_include_padding makes no difference.
+    ComputeAndCompareR4<float>(
+        &builder, {{{{0.25, 0.25, 0.}, {0.25, 0.25, 0.}, {0., 0., 0.}}}}, {},
+        error_spec_);
+  }
+}
+
+XLA_TEST_F(PoolingTest, AvgPool2DGradNoPaddingWithStride) {
+  XlaBuilder builder(TestName());
+  for (bool counts_include_padding : {false, true}) {
+    XlaOp out_backprop =
+        ConstantR4FromArray4D<float>(&builder, {{{{1., 1.}, {1., 1.}}}});
+    auto data_format = MakeNCHWFormat(2);
+    auto kernel_size = ExpandWithBatchAndFeatureDimensions({2, 2}, data_format);
+    auto stride = ExpandWithBatchAndFeatureDimensions({1, 1}, data_format);
+    AvgPoolGrad(out_backprop, {1, 1, 3, 3}, kernel_size, stride,
+                {{0, 0}, {0, 0}}, MakeNCHWFormat(2),
+                /*counts_include_padding=*/counts_include_padding);
+    // Without padding, counts_include_padding makes no difference.
+    ComputeAndCompareR4<float>(
+        &builder, {{{{0.25, 0.5, 0.25}, {0.5, 1., 0.5}, {0.25, 0.5, 0.25}}}},
+        {}, error_spec_);
+  }
+}
+
+XLA_TEST_F(PoolingTest, AvgPool2DGradWithPadding) {
+  XlaBuilder builder(TestName());
+
+  XlaOp out_backprop =
+      ConstantR4FromArray4D<float>(&builder, {{{{1., 1.}, {1., 1.}}}});
+  auto data_format = MakeNCHWFormat(2);
+  auto kernel_size = ExpandWithBatchAndFeatureDimensions({2, 2}, data_format);
+  auto stride = ExpandWithBatchAndFeatureDimensions({2, 2}, data_format);
+  AvgPoolGrad(out_backprop, {1, 1, 3, 3}, kernel_size, stride, {{1, 1}, {1, 1}},
+              MakeNCHWFormat(2),
+              /*counts_include_padding=*/true);
+  ComputeAndCompareR4<float>(
+      &builder,
+      {{{{0.25, 0.25, 0.25}, {0.25, 0.25, 0.25}, {0.25, 0.25, 0.25}}}}, {},
+      error_spec_);
+}
+
+XLA_TEST_F(PoolingTest, AvgPool2DGradWithPaddingCountNotIncludePadding) {
+  XlaBuilder builder(TestName());
+
+  XlaOp out_backprop =
+      ConstantR4FromArray4D<float>(&builder, {{{{1., 1.}, {1., 1.}}}});
+  auto data_format = MakeNCHWFormat(2);
+  auto kernel_size = ExpandWithBatchAndFeatureDimensions({2, 2}, data_format);
+  auto stride = ExpandWithBatchAndFeatureDimensions({2, 2}, data_format);
+  AvgPoolGrad(out_backprop, {1, 1, 3, 3}, kernel_size, stride, {{1, 1}, {1, 1}},
+              MakeNCHWFormat(2), false);
+  ComputeAndCompareR4<float>(
+      &builder, {{{{1., 0.5, 0.5}, {0.5, 0.25, 0.25}, {0.5, 0.25, 0.25}}}}, {},
+      error_spec_);
+}
+
+XLA_TEST_F(PoolingTest, AvgPool2DGradWithPaddingCountWithStride) {
+  XlaBuilder builder(TestName());
+
+  XlaOp out_backprop =
+      ConstantR4FromArray4D<float>(&builder, {{{{1., 1., 1., 1.},
+                                                {1., 1., 1., 1.},
+                                                {1., 1., 1., 1.},
+                                                {1., 1., 1., 1.}}}});
+  auto data_format = MakeNCHWFormat(2);
+  auto kernel_size = ExpandWithBatchAndFeatureDimensions({2, 2}, data_format);
+  auto stride = ExpandWithBatchAndFeatureDimensions({1, 1}, data_format);
+  AvgPoolGrad(out_backprop, {1, 1, 3, 3}, kernel_size, stride, {{1, 1}, {1, 1}},
+              MakeNCHWFormat(2), true);
+  ComputeAndCompareR4<float>(&builder,
+                             {{{{1., 1., 1.}, {1., 1., 1.}, {1., 1., 1.}}}}, {},
+                             error_spec_);
+}
+
+XLA_TEST_F(PoolingTest,
+           AvgPool2DGradWithPaddingCountWithStrideNotIncludePadding) {
+  XlaBuilder builder(TestName());
+
+  XlaOp out_backprop =
+      ConstantR4FromArray4D<float>(&builder, {{{{1., 1., 1., 1.},
+                                                {1., 1., 1., 1.},
+                                                {1., 1., 1., 1.},
+                                                {1., 1., 1., 1.}}}});
+  auto data_format = MakeNCHWFormat(2);
+  auto kernel_size = ExpandWithBatchAndFeatureDimensions({2, 2}, data_format);
+  auto stride = ExpandWithBatchAndFeatureDimensions({1, 1}, data_format);
+  AvgPoolGrad(out_backprop, {1, 1, 3, 3}, kernel_size, stride, {{1, 1}, {1, 1}},
+              MakeNCHWFormat(2), false);
+  ComputeAndCompareR4<float>(
+      &builder, {{{{2.25, 1.5, 2.25}, {1.5, 1., 1.5}, {2.25, 1.5, 2.25}}}}, {},
+      error_spec_);
 }
 
 }  // namespace

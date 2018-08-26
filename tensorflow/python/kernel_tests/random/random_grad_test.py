@@ -49,7 +49,7 @@ class AddLeadingUnitDimensionsTest(test.TestCase):
     x = array_ops.placeholder(dtypes.float32)
     num_dimensions = array_ops.placeholder(dtypes.int32)
     ret = random_grad.add_leading_unit_dimensions(x, num_dimensions)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       ret_val = sess.run(ret, {x: np.ones([2, 2]), num_dimensions: 2})
     self.assertAllEqual(ret_val.shape, [1, 1, 2, 2])
 
@@ -99,7 +99,7 @@ class RandomGammaGradTest(test.TestCase):
 
     alpha_val = np.ones([1, 2])
     beta_val = np.ones([2, 1])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       grads_alpha_val, grads_beta_val = sess.run(
           [grads_alpha, grads_beta],
           {alpha: alpha_val, beta: beta_val, shape: [2, 1]})

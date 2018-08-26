@@ -26,11 +26,6 @@ namespace tflite {
 
 namespace reference_ops {
 
-inline RuntimeShape DimsToShape(const tflite::Dims<4>& dims) {
-  return RuntimeShape(
-      {dims.sizes[3], dims.sizes[2], dims.sizes[1], dims.sizes[0]});
-}
-
 template <FusedActivationFunctionType Ac>
 void L2Normalization(const float* input_data, const Dims<4>& input_dims,
                      float* output_data, const Dims<4>& output_dims) {
@@ -47,20 +42,20 @@ inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
 
 inline void Relu(const float* input_data, const Dims<4>& input_dims,
                  float* output_data, const Dims<4>& output_dims) {
-  Relu(input_data, DimsToShape(input_dims), output_data,
-       DimsToShape(output_dims));
+  Relu(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+       output_data);
 }
 
 inline void Relu1(const float* input_data, const Dims<4>& input_dims,
                   float* output_data, const Dims<4>& output_dims) {
-  Relu1(input_data, DimsToShape(input_dims), output_data,
-        DimsToShape(output_dims));
+  Relu1(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+        output_data);
 }
 
 inline void Relu6(const float* input_data, const Dims<4>& input_dims,
                   float* output_data, const Dims<4>& output_dims) {
-  Relu6(input_data, DimsToShape(input_dims), output_data,
-        DimsToShape(output_dims));
+  Relu6(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+        output_data);
 }
 
 template <FusedActivationFunctionType Ac>
@@ -316,6 +311,37 @@ inline void AveragePool(const float* input_data, const Dims<4>& input_dims,
               DimsToShape(output_dims), output_data);
 }
 
+inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
+                         int32 input1_offset, const uint8* input2_data,
+                         const Dims<4>& input2_dims, int32 input2_offset,
+                         int32 output_offset, int32 output_multiplier,
+                         int output_shift, int32 output_activation_min,
+                         int32 output_activation_max, uint8* output_data,
+                         const Dims<4>& output_dims) {
+  BroadcastMul4DSlow(
+      input1_data, input1_dims, input1_offset, input2_data, input2_dims,
+      input2_offset, output_offset, output_multiplier,
+      //
+      kReverseShift * output_shift,
+      //
+      output_activation_min, output_activation_max, output_data, output_dims);
+}
+
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac>
+inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
+                         int32 input1_offset, const uint8* input2_data,
+                         const Dims<4>& input2_dims, int32 input2_offset,
+                         int32 output_offset, int32 output_multiplier,
+                         int output_shift, int32 output_activation_min,
+                         int32 output_activation_max, uint8* output_data,
+                         const Dims<4>& output_dims) {
+  BroadcastMul(input1_data, input1_dims, input1_offset, input2_data,
+               input2_dims, input2_offset, output_offset, output_multiplier,
+               output_shift, output_activation_min, output_activation_max,
+               output_data, output_dims);
+}
+
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
 void AveragePool(const float* input_data, const Dims<4>& input_dims,
@@ -557,8 +583,8 @@ inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
 
 inline void Logistic(const float* input_data, const Dims<4>& input_dims,
                      float* output_data, const Dims<4>& output_dims) {
-  Logistic(input_data, DimsToShape(input_dims), output_data,
-           DimsToShape(output_dims));
+  Logistic(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+           output_data);
 }
 
 inline void Logistic(const uint8* input_data, const Dims<4>& input_dims,
@@ -572,14 +598,14 @@ inline void Logistic(const uint8* input_data, const Dims<4>& input_dims,
 
 inline void Logistic(const int16* input_data, const Dims<4>& input_dims,
                      int16* output_data, const Dims<4>& output_dims) {
-  Logistic(input_data, DimsToShape(input_dims), output_data,
-           DimsToShape(output_dims));
+  Logistic(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+           output_data);
 }
 
 inline void Tanh(const float* input_data, const Dims<4>& input_dims,
                  float* output_data, const Dims<4>& output_dims) {
-  Tanh(input_data, DimsToShape(input_dims), output_data,
-       DimsToShape(output_dims));
+  Tanh(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+       output_data);
 }
 
 inline void Tanh(const uint8* input_data, const Dims<4>& input_dims,

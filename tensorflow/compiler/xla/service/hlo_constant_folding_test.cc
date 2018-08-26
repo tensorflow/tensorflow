@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -200,6 +201,46 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
         matched = matched && (value == literal_clone->Get<NativeT>(rindexes));
       });
   EXPECT_TRUE(matched);
+}
+
+const char* const kConstantFoldReduce = R"(
+  HloModule ConstantFoldReduce
+
+  add {
+    a = s32[] parameter(0)
+    b = s32[] parameter(1)
+    ROOT add = s32[] add(a, b)
+  }
+
+  ENTRY r {
+    x = s32[3] constant({1, 2, 3})
+    init = s32[] constant(0)
+    ROOT reduce = s32[] reduce(x, init), dimensions={0}, to_apply=add
+  })";
+
+TEST_F(HloConstantFoldingTest, ConstantFoldReduce) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(kConstantFoldReduce));
+  HloConstantFolding const_folder;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
+  EXPECT_TRUE(result);
+
+  EXPECT_EQ(6, module->entry_computation()
+                   ->root_instruction()
+                   ->literal()
+                   .GetFirstElement<int32>());
+}
+
+TEST_F(HloConstantFoldingTest, ConstantFoldReduceNoLayout) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(kConstantFoldReduce));
+  HloInstruction* add = module->computations().begin()->root_instruction();
+  LayoutUtil::ClearLayout(add->mutable_shape());
+  HloConstantFolding const_folder;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
+  EXPECT_FALSE(result);
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(), op::Reduce());
 }
 
 }  // namespace

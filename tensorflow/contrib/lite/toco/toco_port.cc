@@ -138,13 +138,15 @@ namespace port {
 #define close _close
 #define open _open
 #define read _read
-#define O_RDONLY _O_RDONLY
-#define O_CREAT _O_CREAT
-#define O_WRONLY _O_WRONLY
-// Windows does not support the same set of file permissions as other platforms.
+// Windows does not support the same set of file permissions as other platforms,
+// and also requires an explicit flag for binary file read/write support.
 constexpr int kFileCreateMode = _S_IREAD | _S_IWRITE;
+constexpr int kFileReadFlags = _O_RDONLY | _O_BINARY;
+constexpr int kFileWriteFlags = _O_WRONLY | _O_BINARY | _O_CREAT;
 #else
 constexpr int kFileCreateMode = 0664;
+constexpr int kFileReadFlags = O_RDONLY;
+constexpr int kFileWriteFlags = O_CREAT | O_WRONLY;
 #endif  // _WIN32
 
 static bool port_initialized = false;
@@ -197,7 +199,7 @@ tensorflow::Status GetContents(const string& path, string* output,
                                const file::Options& options) {
   output->clear();
 
-  int fd = open(path.c_str(), O_RDONLY);
+  int fd = open(path.c_str(), kFileReadFlags);
   if (fd == -1) {
     return tensorflow::errors::NotFound("can't open() for read");
   }
@@ -226,7 +228,7 @@ tensorflow::Status GetContents(const string& path, string* output,
 
 tensorflow::Status SetContents(const string& filename, const string& contents,
                                const file::Options& options) {
-  int fd = open(filename.c_str(), O_WRONLY | O_CREAT, kFileCreateMode);
+  int fd = open(filename.c_str(), kFileWriteFlags, kFileCreateMode);
   if (fd == -1) {
     return tensorflow::errors::Internal("can't open() for write");
   }

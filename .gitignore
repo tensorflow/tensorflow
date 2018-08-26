@@ -14,6 +14,7 @@ __pycache__
 *.swp
 .vscode/
 cmake_build/
+tensorflow/contrib/cmake/_build/
 .idea/**
 /build/
 [Bb]uild/
@@ -30,6 +31,7 @@ Podfile.lock
 xcuserdata/**
 /api_init_files_list.txt
 /estimator_api_init_files_list.txt
+*.whl
 
 # Android
 .gradle

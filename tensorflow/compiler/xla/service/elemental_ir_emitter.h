@@ -65,6 +65,21 @@ class ElementalIrEmitter {
   virtual StatusOr<llvm::Value*> EmitComplexUnaryOp(
       const HloInstruction* op, llvm::Value* operand_value) const;
 
+  llvm::Value* IsZero(llvm::Value* v) const;
+  llvm::Value* IsIntMinDivisionOverflow(llvm::Value* lhs,
+                                        llvm::Value* rhs) const;
+  llvm::Value* GetZero(llvm::Type* type) const;
+  llvm::Value* GetOne(llvm::Type* type) const;
+  llvm::Value* GetIntSMin(llvm::Type* type) const;
+  llvm::Value* GetMinusOne(llvm::Type* type) const;
+  llvm::Value* Select(llvm::Value* cond, llvm::Value* if_true,
+                      llvm::Value* if_false) const;
+
+  llvm::Value* EmitIntegerDivide(llvm::Value* lhs, llvm::Value* rhs,
+                                 bool is_signed) const;
+  llvm::Value* EmitIntegerRemainder(llvm::Value* lhs, llvm::Value* rhs,
+                                    bool is_signed) const;
+
   virtual StatusOr<llvm::Value*> EmitIntegerBinaryOp(const HloInstruction* op,
                                                      llvm::Value* lhs_value,
                                                      llvm::Value* rhs_value,

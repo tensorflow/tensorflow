@@ -21,6 +21,10 @@ limitations under the License.
 #include <set>
 #include <string>
 
+#include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -28,28 +32,24 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 
-using tensorflow::str_util::Join;
-using tensorflow::strings::Printf;
-
 namespace xla {
-
 namespace {
+
+using absl::StrJoin;
+using tensorflow::strings::Printf;
 
 // Returns true if no element is present in slice more than once.
 bool AllUnique(tensorflow::gtl::ArraySlice<int64> slice) {
   return std::set<int64>(slice.begin(), slice.end()).size() == slice.size();
 }
 
-Status ExpectArray(const Shape& shape, tensorflow::StringPiece op_type) {
+Status ExpectArray(const Shape& shape, absl::string_view op_type) {
   if (!ShapeUtil::IsArray(shape)) {
     return InvalidArgument("Expected array argument for %s, but got %s.",
                            std::string(op_type).c_str(),
@@ -233,10 +233,12 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   switch (opcode) {
     case HloOpcode::kFloor:
     case HloOpcode::kCeil:
+    case HloOpcode::kRoundNearestAfz:
       if (!ShapeUtil::ElementIsFloating(shape)) {
         return InvalidArgument(
-            "Expected element type in shape to be floating for floor/ceil "
-            "operation; got %s.",
+            "Expected element type in shape to be floating for %s operation; "
+            "got %s.",
+            HloOpcodeString(opcode).c_str(),
             PrimitiveType_Name(shape.element_type()).c_str());
       }
       return shape;
@@ -250,8 +252,9 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
       if (!ShapeUtil::ElementIsFloating(shape) &&
           !ShapeUtil::ElementIsComplex(shape)) {
         return InvalidArgument(
-            "Expected element type in shape to be floating or complex for "
-            "sin/cos/exp/log/tanh operation; got %s.",
+            "Expected element type in shape to be floating or complex for %s "
+            "operation; got %s.",
+            HloOpcodeString(opcode).c_str(),
             PrimitiveType_Name(shape.element_type()).c_str());
       }
       return shape;
@@ -264,19 +267,51 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
       } else {
         return InvalidArgument(
             "Expected element type in shape to be floating or complex for "
-            "real/imag operation; got %s.",
+            "%s operation; got %s.",
+            HloOpcodeString(opcode).c_str(),
             PrimitiveType_Name(shape.element_type()).c_str());
       }
     case HloOpcode::kAbs:
       if (ShapeUtil::ElementIsComplex(shape)) {
         return ShapeUtil::ChangeElementType(
             shape, primitive_util::ComplexComponentType(shape.element_type()));
+      } else if (ShapeUtil::ElementIsSigned(shape)) {
+        return shape;
+      } else {
+        return InvalidArgument(
+            "Expected element type in shape to be floating or complex for "
+            "%s operation; got %s.",
+            HloOpcodeString(opcode).c_str(),
+            PrimitiveType_Name(shape.element_type()).c_str());
+      }
+    case HloOpcode::kClz:
+      if (!ShapeUtil::ElementIsIntegral(shape)) {
+        return InvalidArgument(
+            "Expected an integral element type in argument to Clz "
+            "operation; got %s.",
+            PrimitiveType_Name(shape.element_type()).c_str());
       }
       return shape;
-    case HloOpcode::kClz:
     case HloOpcode::kNegate:
-    case HloOpcode::kRoundNearestAfz:
+      if (!ShapeUtil::ElementIsIntegral(shape) &&
+          !ShapeUtil::ElementIsFloating(shape) &&
+          !ShapeUtil::ElementIsComplex(shape)) {
+        return InvalidArgument(
+            "Expected element type in shape to be integral, floating or "
+            "complex for %s operation; got %s.",
+            HloOpcodeString(opcode).c_str(),
+            PrimitiveType_Name(shape.element_type()).c_str());
+      }
+      return shape;
     case HloOpcode::kSign:
+      if (!ShapeUtil::ElementIsSigned(shape) &&
+          !ShapeUtil::ElementIsComplex(shape)) {
+        return InvalidArgument(
+            "Expected element type in shape to be signed or complex for "
+            "%s operation; got %s.",
+            HloOpcodeString(opcode).c_str(),
+            PrimitiveType_Name(shape.element_type()).c_str());
+      }
       return shape;
 
     case HloOpcode::kNot:
@@ -878,16 +913,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       "inferring shape for <%s>(%s, %s) with broadcast_dimensions={%s}",
       HloOpcodeString(opcode).c_str(), ShapeUtil::HumanString(lhs).c_str(),
       ShapeUtil::HumanString(rhs).c_str(),
-      Join(broadcast_dimensions, ", ").c_str());
+      StrJoin(broadcast_dimensions, ", ").c_str());
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
 
-  TF_RETURN_IF_ERROR(
-      ExpectArray(lhs, tensorflow::strings::StrCat("lhs of binary operation ",
-                                                   HloOpcodeString(opcode))));
-  TF_RETURN_IF_ERROR(
-      ExpectArray(rhs, tensorflow::strings::StrCat("rhs of binary operation ",
-                                                   HloOpcodeString(opcode))));
+  TF_RETURN_IF_ERROR(ExpectArray(
+      lhs, absl::StrCat("lhs of binary operation ", HloOpcodeString(opcode))));
+  TF_RETURN_IF_ERROR(ExpectArray(
+      rhs, absl::StrCat("rhs of binary operation ", HloOpcodeString(opcode))));
   switch (opcode) {
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
@@ -1058,7 +1091,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     return InvalidArgument(
         "Map operation requires all operands to have the same shape; got: "
         "%s.",
-        Join(pieces, ", ").c_str());
+        StrJoin(pieces, ", ").c_str());
   }
 
   // Check that dimensions.size == arg_shape.dimensions_size() (we currently
@@ -1075,7 +1108,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     if (dimensions[i] != i) {
       return InvalidArgument(
           "Map requires monotonically increasing dimension numbers; got: %s.",
-          Join(dimensions, ", ").c_str());
+          StrJoin(dimensions, ", ").c_str());
     }
   }
 
@@ -1530,7 +1563,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
 /* static */ StatusOr<Shape> ShapeInference::InferConvolveShape(
     const Shape& lhs, const Shape& rhs, const Window& window,
-    const ConvolutionDimensionNumbers& dnums) {
+    const ConvolutionDimensionNumbers& dnums, int64 feature_group_count) {
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of convolution"));
   TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of convolution"));
 
@@ -1640,12 +1673,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   const int64 kernel_output_features =
       rhs.dimensions(dnums.kernel_output_feature_dimension());
 
-  if (input_features != kernel_input_features) {
+  if (input_features != kernel_input_features * feature_group_count) {
     return InvalidArgument(
         "Expected LHS feature dimension (value %lld) to match RHS "
-        "input feature dimension (value %lld); got <conv>(%s, %s)\n"
+        "input feature dimension * feature_group_count (value %lld); "
+        "got <conv>(%s, %s)\n"
         "Dimension numbers: {%s}.",
-        input_features, kernel_input_features,
+        input_features, kernel_input_features * feature_group_count,
         ShapeUtil::HumanString(lhs).c_str(),
         ShapeUtil::HumanString(rhs).c_str(), dnums.DebugString().c_str());
   }
@@ -1975,14 +2009,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         "%s in slice operation; argument shape: %s; starts: {%s}; limits: "
         "{%s}; strides: {%s}.",
         message.c_str(), ShapeUtil::HumanString(arg).c_str(),
-        Join(starts, ",").c_str(), Join(limits, ",").c_str(),
-        Join(strides, ",").c_str());
+        StrJoin(starts, ",").c_str(), StrJoin(limits, ",").c_str(),
+        StrJoin(strides, ",").c_str());
   };
   TF_RETURN_IF_ERROR(ExpectArray(arg, "operand of slice"));
   VLOG(2) << tensorflow::strings::Printf(
       "slicing shape %s starts={%s} limits={%s}",
-      ShapeUtil::HumanString(arg).c_str(), Join(starts, ", ").c_str(),
-      Join(limits, ", ").c_str());
+      ShapeUtil::HumanString(arg).c_str(), StrJoin(starts, ", ").c_str(),
+      StrJoin(limits, ", ").c_str());
 
   if (starts.size() != limits.size()) {
     return error(Printf("slice start and limit sizes differ: %zu vs %zu",
@@ -2045,7 +2079,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       "slicing shape %s at dynamic start_indices %s with slice_sizes={%s}",
       ShapeUtil::HumanString(operand_shape).c_str(),
       ShapeUtil::HumanString(start_indices_shape).c_str(),
-      Join(slice_sizes, ", ").c_str());
+      StrJoin(slice_sizes, ", ").c_str());
 
   if (ShapeUtil::Rank(start_indices_shape) != 1) {
     return InvalidArgument(
@@ -2342,7 +2376,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     return InvalidArgument(
         "Reshape dimensions [%s] are not a permutation of the operand "
         "dimensions (operand shape is %s).",
-        Join(dimensions, ",").c_str(), ShapeUtil::HumanString(operand).c_str());
+        StrJoin(dimensions, ",").c_str(),
+        ShapeUtil::HumanString(operand).c_str());
   }
 
   return inferred_shape;
@@ -2462,8 +2497,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   if (arg_shapes.size() != to_apply.parameters_size()) {
     string computation_signature = ShapeUtil::HumanString(to_apply);
     string argument_shapes =
-        Join(arg_shapes, ", ", [](string* out, const Shape* shape) {
-          tensorflow::strings::StrAppend(out, ShapeUtil::HumanString(*shape));
+        StrJoin(arg_shapes, ", ", [](string* out, const Shape* shape) {
+          absl::StrAppend(out, ShapeUtil::HumanString(*shape));
         });
     return InvalidArgument(
         "Call applied function arity must match number of arguments; got: "
@@ -2491,201 +2526,199 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
 static Status ValidateGatherDimensionNumbers(
     const Shape& input_shape,
-    tensorflow::gtl::ArraySlice<int64> gather_indices_shape,
+    tensorflow::gtl::ArraySlice<int64> start_indices_shape,
     const GatherDimensionNumbers& dim_numbers) {
-  if (!c_is_sorted(dim_numbers.output_window_dims())) {
+  if (!absl::c_is_sorted(dim_numbers.offset_dims())) {
     return InvalidArgument(
         "Output window dimensions in gather op must be ascending; got: %s.",
-        Join(dim_numbers.output_window_dims(), ", ").c_str());
+        StrJoin(dim_numbers.offset_dims(), ", ").c_str());
   }
 
-  if (c_adjacent_find(dim_numbers.output_window_dims()) !=
-      dim_numbers.output_window_dims().end()) {
+  if (absl::c_adjacent_find(dim_numbers.offset_dims()) !=
+      dim_numbers.offset_dims().end()) {
     return InvalidArgument(
         "Output window dimensions in gather op must not repeat; got: %s.",
-        Join(dim_numbers.output_window_dims(), ", ").c_str());
+        StrJoin(dim_numbers.offset_dims(), ", ").c_str());
   }
 
-  const int64 output_window_dim_count = dim_numbers.output_window_dims_size();
+  const int64 output_offset_dim_count = dim_numbers.offset_dims_size();
   const int64 output_shape_rank =
-      output_window_dim_count + gather_indices_shape.size() - 1;
+      output_offset_dim_count + start_indices_shape.size() - 1;
 
-  for (int i = 0; i < dim_numbers.output_window_dims_size(); ++i) {
-    int64 window_index = dim_numbers.output_window_dims(i);
-    if (window_index < 0 || window_index >= output_shape_rank) {
+  for (int i = 0; i < dim_numbers.offset_dims_size(); ++i) {
+    int64 offset_dim = dim_numbers.offset_dims(i);
+    if (offset_dim < 0 || offset_dim >= output_shape_rank) {
       return InvalidArgument(
-          "Window index %d in gather op is out of bounds; got %lld, but should "
+          "Offset dimension %d in gather op is out of bounds; got %lld, but "
+          "should "
           "have been in [0,%lld).",
-          i, window_index, output_shape_rank);
+          i, offset_dim, output_shape_rank);
     }
   }
 
-  if (dim_numbers.gather_dims_to_operand_dims_size() !=
-      gather_indices_shape[dim_numbers.index_vector_dim()]) {
+  if (dim_numbers.start_index_map_size() !=
+      start_indices_shape[dim_numbers.index_vector_dim()]) {
     return InvalidArgument(
-        "Gather op has %d elements in gather_dims_to_operand_dims and the "
-        "bound of dimension index_vector_dim=%lld of gather_indices is "
+        "Gather op has %d elements in start_index_map and the "
+        "bound of dimension index_vector_dim=%lld of start_indices is "
         "%lld. These two numbers must be equal.",
-        dim_numbers.gather_dims_to_operand_dims_size(),
-        dim_numbers.index_vector_dim(),
-        gather_indices_shape[dim_numbers.index_vector_dim()]);
+        dim_numbers.start_index_map_size(), dim_numbers.index_vector_dim(),
+        start_indices_shape[dim_numbers.index_vector_dim()]);
   }
 
-  for (int i = 0; i < dim_numbers.gather_dims_to_operand_dims_size(); i++) {
-    int64 gather_dim_to_input_dim = dim_numbers.gather_dims_to_operand_dims(i);
-    if (gather_dim_to_input_dim < 0 ||
-        gather_dim_to_input_dim >= input_shape.dimensions_size()) {
+  for (int i = 0; i < dim_numbers.start_index_map_size(); i++) {
+    int64 operand_dim_for_start_index_i = dim_numbers.start_index_map(i);
+    if (operand_dim_for_start_index_i < 0 ||
+        operand_dim_for_start_index_i >= input_shape.dimensions_size()) {
       return InvalidArgument(
-          "Invalid gather_dims_to_operand_dims mapping; domain is [0, %d), "
-          "got: %d->%lld.",
-          input_shape.dimensions_size(), i, gather_dim_to_input_dim);
+          "Invalid start_index_map; domain is [0, %d), got: %d->%lld.",
+          input_shape.dimensions_size(), i, operand_dim_for_start_index_i);
     }
   }
 
-  std::vector<int64> sorted_gather_dims_to_operand_dims(
-      dim_numbers.gather_dims_to_operand_dims().begin(),
-      dim_numbers.gather_dims_to_operand_dims().end());
+  std::vector<int64> sorted_start_index_map(
+      dim_numbers.start_index_map().begin(),
+      dim_numbers.start_index_map().end());
 
-  c_sort(sorted_gather_dims_to_operand_dims);
+  absl::c_sort(sorted_start_index_map);
 
-  if (c_adjacent_find(sorted_gather_dims_to_operand_dims) !=
-      sorted_gather_dims_to_operand_dims.end()) {
+  if (absl::c_adjacent_find(sorted_start_index_map) !=
+      sorted_start_index_map.end()) {
     return InvalidArgument(
-        "Repeated dimensions are not allowed in gather_dims_to_operand_dims; "
+        "Repeated dimensions are not allowed in start_index_map; "
         "got: %s.",
-        Join(dim_numbers.gather_dims_to_operand_dims(), ", ").c_str());
+        StrJoin(dim_numbers.start_index_map(), ", ").c_str());
   }
 
-  for (int64 elided_dim : dim_numbers.elided_window_dims()) {
-    if (elided_dim < 0 || elided_dim >= input_shape.dimensions_size()) {
+  for (int64 collapsed_dim : dim_numbers.collapsed_slice_dims()) {
+    if (collapsed_dim < 0 || collapsed_dim >= input_shape.dimensions_size()) {
       return InvalidArgument(
-          "Invalid elided_window_dims set in gather op; valid range is [0, "
+          "Invalid collapsed_slice_dims set in gather op; valid range is [0, "
           "%d), got: %lld.",
-          input_shape.dimensions_size(), elided_dim);
+          input_shape.dimensions_size(), collapsed_dim);
     }
   }
 
-  if (!c_is_sorted(dim_numbers.elided_window_dims())) {
+  if (!absl::c_is_sorted(dim_numbers.collapsed_slice_dims())) {
     return InvalidArgument(
-        "elided_window_dims in gather op must be sorted; got: %s",
-        Join(dim_numbers.elided_window_dims(), ", ").c_str());
+        "collapsed_slice_dims in gather op must be sorted; got: %s",
+        StrJoin(dim_numbers.collapsed_slice_dims(), ", ").c_str());
   }
 
-  if (c_adjacent_find(dim_numbers.elided_window_dims()) !=
-      dim_numbers.elided_window_dims().end()) {
+  if (absl::c_adjacent_find(dim_numbers.collapsed_slice_dims()) !=
+      dim_numbers.collapsed_slice_dims().end()) {
     return InvalidArgument(
-        "Repeated dimensions not allowed in elided_window_dims in gather op; "
+        "Repeated dimensions not allowed in collapsed_slice_dims in gather op; "
         "got: %s.",
-        Join(dim_numbers.elided_window_dims(), ", ").c_str());
+        StrJoin(dim_numbers.collapsed_slice_dims(), ", ").c_str());
   }
 
   return Status::OK();
 }
 
 /*static*/ StatusOr<Shape> ShapeInference::InferGatherShape(
-    const Shape& input_shape, const Shape& gather_indices_shape,
+    const Shape& input_shape, const Shape& start_indices_shape,
     const GatherDimensionNumbers& gather_dim_numbers,
-    tensorflow::gtl::ArraySlice<int64> window_bounds) {
+    tensorflow::gtl::ArraySlice<int64> slice_sizes) {
   TF_RETURN_IF_ERROR(
       ExpectArray(input_shape, "input tensor operand gather op"));
   TF_RETURN_IF_ERROR(
-      ExpectArray(gather_indices_shape, "gather indices operand of gather op"));
+      ExpectArray(start_indices_shape, "gather indices operand of gather op"));
 
-  if (!ShapeUtil::ElementIsIntegral(gather_indices_shape)) {
+  if (!ShapeUtil::ElementIsIntegral(start_indices_shape)) {
     return InvalidArgument(
         "Gather indices parameter must be an integral tensor; got %s.",
-        ShapeUtil::HumanString(gather_indices_shape).c_str());
+        ShapeUtil::HumanString(start_indices_shape).c_str());
   }
 
   // We implicitly reshape gather indices of shape P[A,B,C] to P[A,B,C,1] if
   // index_vector_dim is rank(P).  The bounds of this expanded shape is
-  // stored in expanded_gather_indices_shape.
+  // stored in expanded_start_indices_shape.
 
-  if (gather_indices_shape.dimensions_size() <
+  if (start_indices_shape.dimensions_size() <
           gather_dim_numbers.index_vector_dim() ||
       gather_dim_numbers.index_vector_dim() < 0) {
     return InvalidArgument(
-        "Gather index leaf dimension must be within [0, rank(gather_indices) + "
-        "1). rank(gather_indices) is %d and gather index leaf dimension is "
+        "Gather index leaf dimension must be within [0, rank(start_indices) + "
+        "1). rank(start_indices) is %d and gather index leaf dimension is "
         "%lld.",
-        gather_indices_shape.dimensions_size(),
+        start_indices_shape.dimensions_size(),
         gather_dim_numbers.index_vector_dim());
   }
 
-  std::vector<int64> expanded_gather_indices_shape;
-  expanded_gather_indices_shape.reserve(gather_indices_shape.dimensions_size());
-  c_copy(gather_indices_shape.dimensions(),
-         std::back_inserter(expanded_gather_indices_shape));
-  if (expanded_gather_indices_shape.size() ==
+  std::vector<int64> expanded_start_indices_shape;
+  expanded_start_indices_shape.reserve(start_indices_shape.dimensions_size());
+  absl::c_copy(start_indices_shape.dimensions(),
+               std::back_inserter(expanded_start_indices_shape));
+  if (expanded_start_indices_shape.size() ==
       gather_dim_numbers.index_vector_dim()) {
-    expanded_gather_indices_shape.push_back(1);
+    expanded_start_indices_shape.push_back(1);
   }
 
   TF_RETURN_IF_ERROR(ValidateGatherDimensionNumbers(
-      input_shape, expanded_gather_indices_shape, gather_dim_numbers));
+      input_shape, expanded_start_indices_shape, gather_dim_numbers));
 
-  if (window_bounds.size() != input_shape.dimensions_size()) {
+  if (slice_sizes.size() != input_shape.dimensions_size()) {
     return InvalidArgument(
-        "Gather op must have one window bound for every input dimension; got: "
-        "len(window_bounds)=%lu, input_shape.rank=%d.",
-        window_bounds.size(), input_shape.dimensions_size());
+        "Gather op must have one slice size for every input dimension; got: "
+        "len(slice_sizes)=%lu, input_shape.rank=%d.",
+        slice_sizes.size(), input_shape.dimensions_size());
   }
 
-  if (window_bounds.size() !=
-      gather_dim_numbers.output_window_dims_size() +
-          gather_dim_numbers.elided_window_dims_size()) {
+  if (slice_sizes.size() !=
+      gather_dim_numbers.offset_dims_size() +
+          gather_dim_numbers.collapsed_slice_dims_size()) {
     return InvalidArgument(
-        "All components of the window index in a gather op must either be a "
-        "output window index or explicitly elided; got len(window_bounds)=%lu, "
-        "output_window_bounds=%s, elided_window_bounds=%s.",
-        window_bounds.size(),
-        Join(gather_dim_numbers.output_window_dims(), ",").c_str(),
-        Join(gather_dim_numbers.elided_window_dims(), ",").c_str());
+        "All components of the offset index in a gather op must either be a "
+        "offset dimension or explicitly collapsed; got len(slice_sizes)=%lu, "
+        "output_slice_sizes=%s, collapsed_slice_dims=%s.",
+        slice_sizes.size(),
+        StrJoin(gather_dim_numbers.offset_dims(), ",").c_str(),
+        StrJoin(gather_dim_numbers.collapsed_slice_dims(), ",").c_str());
   }
 
-  for (int i = 0; i < window_bounds.size(); i++) {
-    int64 window_bound = window_bounds[i];
-    int64 corresponding_input_bound = input_shape.dimensions(i);
-    if (window_bound < 0 || window_bound > corresponding_input_bound) {
+  for (int i = 0; i < slice_sizes.size(); i++) {
+    int64 slice_size = slice_sizes[i];
+    int64 corresponding_input_size = input_shape.dimensions(i);
+    if (slice_size < 0 || slice_size > corresponding_input_size) {
       return InvalidArgument(
-          "Window bound at index %d in gather op is out of range, must be "
-          "within "
-          "[0, %lld), got %lld.",
-          i, corresponding_input_bound + 1, window_bound);
+          "Slice size at index %d in gather op is out of range, must be "
+          "within [0, %lld), got %lld.",
+          i, corresponding_input_size + 1, slice_size);
     }
   }
 
-  for (int i = 0; i < gather_dim_numbers.elided_window_dims_size(); i++) {
-    if (window_bounds[gather_dim_numbers.elided_window_dims(i)] != 1) {
+  for (int i = 0; i < gather_dim_numbers.collapsed_slice_dims_size(); i++) {
+    if (slice_sizes[gather_dim_numbers.collapsed_slice_dims(i)] != 1) {
       return InvalidArgument(
-          "Gather op can only elide window indices with bound 1, but bound is "
+          "Gather op can only collapse slice dims with bound 1, but bound is "
           "%lld for index %lld at position %d.",
-          window_bounds[gather_dim_numbers.elided_window_dims(i)],
-          gather_dim_numbers.elided_window_dims(i), i);
+          slice_sizes[gather_dim_numbers.collapsed_slice_dims(i)],
+          gather_dim_numbers.collapsed_slice_dims(i), i);
     }
   }
 
-  int64 result_rank = gather_dim_numbers.output_window_dims_size() +
-                      (expanded_gather_indices_shape.size() - 1);
-  int64 window_dims_seen = 0;
+  int64 result_rank = gather_dim_numbers.offset_dims_size() +
+                      (expanded_start_indices_shape.size() - 1);
+  int64 offset_dims_seen = 0;
   int64 gather_dims_seen = 0;
   std::vector<int64> output_dim_bounds;
   output_dim_bounds.reserve(result_rank);
   for (int64 i = 0; i < result_rank; i++) {
     int64 current_bound;
     bool is_window_index =
-        c_binary_search(gather_dim_numbers.output_window_dims(), i);
+        absl::c_binary_search(gather_dim_numbers.offset_dims(), i);
     if (is_window_index) {
-      while (c_binary_search(gather_dim_numbers.elided_window_dims(),
-                             window_dims_seen)) {
-        window_dims_seen++;
+      while (absl::c_binary_search(gather_dim_numbers.collapsed_slice_dims(),
+                                   offset_dims_seen)) {
+        offset_dims_seen++;
       }
-      current_bound = window_bounds[window_dims_seen++];
+      current_bound = slice_sizes[offset_dims_seen++];
     } else {
       if (gather_dims_seen == gather_dim_numbers.index_vector_dim()) {
         gather_dims_seen++;
       }
-      current_bound = expanded_gather_indices_shape[gather_dims_seen++];
+      current_bound = expanded_start_indices_shape[gather_dims_seen++];
     }
 
     output_dim_bounds.push_back(current_bound);
@@ -2701,16 +2734,16 @@ Status ValidateScatterDimensionNumbers(
     tensorflow::gtl::ArraySlice<int64> scatter_indices_shape,
     const Shape& updates_shape, const ScatterDimensionNumbers& dim_numbers) {
   // Validate update_window_dims in ScatterDimensionNumbers.
-  if (!c_is_sorted(dim_numbers.update_window_dims())) {
+  if (!absl::c_is_sorted(dim_numbers.update_window_dims())) {
     return InvalidArgument(
         "update_window_dims in scatter op must be sorted; got: %s.",
-        Join(dim_numbers.update_window_dims(), ", ").c_str());
+        StrJoin(dim_numbers.update_window_dims(), ", ").c_str());
   }
-  if (c_adjacent_find(dim_numbers.update_window_dims()) !=
+  if (absl::c_adjacent_find(dim_numbers.update_window_dims()) !=
       dim_numbers.update_window_dims().end()) {
     return InvalidArgument(
         "update_window_dims in scatter op must not repeat; got: %s.",
-        Join(dim_numbers.update_window_dims(), ", ").c_str());
+        StrJoin(dim_numbers.update_window_dims(), ", ").c_str());
   }
   const int64 updates_rank = ShapeUtil::Rank(updates_shape);
   for (int64 window_dim : dim_numbers.update_window_dims()) {
@@ -2723,16 +2756,16 @@ Status ValidateScatterDimensionNumbers(
   }
 
   // Validate inserted_window_dims in ScatterDimensionNumbers.
-  if (!c_is_sorted(dim_numbers.inserted_window_dims())) {
+  if (!absl::c_is_sorted(dim_numbers.inserted_window_dims())) {
     return InvalidArgument(
         "inserted_window_dims in scatter op must be sorted; got: %s.",
-        Join(dim_numbers.inserted_window_dims(), ", ").c_str());
+        StrJoin(dim_numbers.inserted_window_dims(), ", ").c_str());
   }
-  if (c_adjacent_find(dim_numbers.inserted_window_dims()) !=
+  if (absl::c_adjacent_find(dim_numbers.inserted_window_dims()) !=
       dim_numbers.inserted_window_dims().end()) {
     return InvalidArgument(
         "inserted_window_dims in scatter op must not repeat; got: %s.",
-        Join(dim_numbers.inserted_window_dims(), ", ").c_str());
+        StrJoin(dim_numbers.inserted_window_dims(), ", ").c_str());
   }
   for (int64 inserted_dim : dim_numbers.inserted_window_dims()) {
     if (inserted_dim < 0 || inserted_dim >= operand_shape.dimensions_size()) {
@@ -2768,13 +2801,13 @@ Status ValidateScatterDimensionNumbers(
   std::vector<int64> sorted_scatter_dims_to_operand_dims(
       dim_numbers.scatter_dims_to_operand_dims().begin(),
       dim_numbers.scatter_dims_to_operand_dims().end());
-  c_sort(sorted_scatter_dims_to_operand_dims);
-  if (c_adjacent_find(sorted_scatter_dims_to_operand_dims) !=
+  absl::c_sort(sorted_scatter_dims_to_operand_dims);
+  if (absl::c_adjacent_find(sorted_scatter_dims_to_operand_dims) !=
       sorted_scatter_dims_to_operand_dims.end()) {
     return InvalidArgument(
         "Repeated dimensions not allowed in scatter_dims_to_operand_dims; "
         "got: %s.",
-        Join(dim_numbers.scatter_dims_to_operand_dims(), ", ").c_str());
+        StrJoin(dim_numbers.scatter_dims_to_operand_dims(), ", ").c_str());
   }
 
   return Status::OK();
@@ -2836,32 +2869,32 @@ Status ValidateScatterDimensionNumbers(
       scatter_dim_numbers));
 
   int64 inserted_dims_seen = 0;
-  std::vector<int64> max_update_window_bounds;
+  std::vector<int64> max_update_slice_sizes;
   for (int i = 0; i < operand_shape.dimensions_size(); ++i) {
     if (inserted_dims_seen < scatter_dim_numbers.inserted_window_dims_size() &&
         scatter_dim_numbers.inserted_window_dims(inserted_dims_seen) == i) {
       ++inserted_dims_seen;
     } else {
-      max_update_window_bounds.push_back(operand_shape.dimensions(i));
+      max_update_slice_sizes.push_back(operand_shape.dimensions(i));
     }
   }
   for (int i = 0; i < scatter_dim_numbers.update_window_dims_size(); ++i) {
     auto update_window_dim = scatter_dim_numbers.update_window_dims(i);
     if (updates_shape.dimensions(update_window_dim) >
-        max_update_window_bounds[i]) {
+        max_update_slice_sizes[i]) {
       return InvalidArgument(
           "Bounds of the window dimensions of updates must not exceed the "
           "bounds of the corresponding dimensions of operand. For dimension "
           "%lld, updates bound is %lld, operand bound is %lld.",
           update_window_dim, updates_shape.dimensions(update_window_dim),
-          max_update_window_bounds[i]);
+          max_update_slice_sizes[i]);
     }
   }
 
   int64 scatter_dims_seen = 0;
   for (int64 i = 0; i < ShapeUtil::Rank(updates_shape); ++i) {
     bool is_update_window_dim =
-        c_binary_search(scatter_dim_numbers.update_window_dims(), i);
+        absl::c_binary_search(scatter_dim_numbers.update_window_dims(), i);
     if (is_update_window_dim) {
       continue;
     }

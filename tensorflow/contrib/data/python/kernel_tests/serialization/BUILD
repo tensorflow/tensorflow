@@ -318,6 +318,19 @@ py_test(
 )
 
 py_test(
+    name = "parse_example_dataset_serialization_test",
+    size = "medium",
+    srcs = ["parse_example_dataset_serialization_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":dataset_serialization_test_base",
+        "//tensorflow/contrib/data/python/kernel_tests:reader_dataset_ops_test_base",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
     name = "prefetch_dataset_serialization_test",
     size = "small",
     srcs = ["prefetch_dataset_serialization_test.py"],

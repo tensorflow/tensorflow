@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_DEVICE_SET_H_
-#define TENSORFLOW_COMMON_RUNTIME_DEVICE_SET_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_SET_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_SET_H_
 
 #include <memory>
 #include <unordered_map>
@@ -86,4 +86,4 @@ class DeviceSet {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_DEVICE_SET_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_SET_H_

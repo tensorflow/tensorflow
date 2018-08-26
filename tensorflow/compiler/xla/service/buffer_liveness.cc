@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -89,13 +89,13 @@ string BufferLiveness::ToString() const {
     pieces.push_back(
         tensorflow::strings::Printf("  %s", buffer->ToString().c_str()));
   }
-  return tensorflow::str_util::Join(pieces, "\n");
+  return absl::StrJoin(pieces, "\n");
 }
 
 bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
                                                 const LogicalBuffer& b) const {
-  TF_CHECK_OK(points_to_analysis_->VerifyBuffer(a));
-  TF_CHECK_OK(points_to_analysis_->VerifyBuffer(b));
+  TF_DCHECK_OK(points_to_analysis_->VerifyBuffer(a));
+  TF_DCHECK_OK(points_to_analysis_->VerifyBuffer(b));
 
   if (!hlo_ordering_->ExecutesBefore(a.instruction(), b.instruction())) {
     return false;

@@ -85,6 +85,43 @@ StatusOr<std::vector<const HloInstruction*>> ScheduleOneComputation(
     const HloComputation& computation,
     const LogicalBuffer::SizeFunction& size_function);
 
+// Transforms the given schedule such that it is (again) a valid schedule for
+// the module. This is used to update a schedule after the HLO module has been
+// transformed in some way. In general, the only transformations to the module
+// for which a schedule can be updated is the addition or removal of
+// instructions to/from the module. Updating the schedule after new dependencies
+// between existing instructions in the module is not supported and may result
+// in an error status returned.
+//
+// Instructions in the module which also exist in the given schedule will remain
+// in the same order in the updated schedule. Instructions which exist in the
+// module but not in the given schedule will be placed as early as possible in
+// the updated schedule.
+//
+// 'id_sequence' is a mirror of the given schedule 'sequence' but with
+// HloInstruction ids rather than HloInstruction pointers. This should be
+// constructed using ComputeIdSchedule below after the schedule is constructed
+// but before the HLO module is transformed.
+Status UpdateSchedule(
+    const HloModule& module,
+    const tensorflow::gtl::FlatMap<const HloComputation*, std::vector<int>>&
+        id_sequence,
+    SequentialHloOrdering::HloModuleSequence* sequence);
+
+// Constructs a copy of the given schedule but with HloInstruction unique ids
+// rather than HloInstruction pointers. This is necessary for updating a
+// schedule as HloInstruction points in the schedule may become invalid if
+// instructions are removed from the module. Used by UpdateSchedule above..
+// TODO(b/113175018): Remove this function when HLO schedule is its own class.
+tensorflow::gtl::FlatMap<const HloComputation*, std::vector<int>>
+ComputeIdSchedule(const SequentialHloOrdering::HloModuleSequence& sequence);
+
+// Verifies that the given schedule is valid for the given module. Specifically,
+// the schedule contains exactly the instructions in the module and every
+// dependency in the module is satisfied in the schedule.
+Status VerifySchedule(const HloModule& module,
+                      const SequentialHloOrdering::HloModuleSequence& sequence);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SCHEDULING_H_

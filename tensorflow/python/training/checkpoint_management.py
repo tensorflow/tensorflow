@@ -33,7 +33,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
+from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -508,7 +510,10 @@ class CheckpointManager(object):
       max_to_keep: An integer, the number of checkpoints to keep. Unless
         preserved by `keep_checkpoint_every_n_hours`, checkpoints will be
         deleted from the active set, oldest first, until only `max_to_keep`
-        checkpoints remain.
+        checkpoints remain. If `None`, no checkpoints are deleted and everything
+        stays in the active set. Note that `max_to_keep=None` will keep all
+        checkpoint paths in memory and in the checkpoint state protocol buffer
+        on disk.
       keep_checkpoint_every_n_hours: Upon removal from the active set, a
         checkpoint will be preserved if it has been at least
         `keep_checkpoint_every_n_hours` since the last preserved checkpoint. The
@@ -519,9 +524,10 @@ class CheckpointManager(object):
     """
     self._checkpoint = checkpoint
     self._save_counter_assign = None
-    if not max_to_keep or max_to_keep < 0:
+    if max_to_keep is not None and max_to_keep <= 0:
       raise ValueError(
-          "Expected a positive integer for `max_to_max_to_keep`, got %d."
+          ("Expected a positive integer or `None` for `max_to_max_to_keep`, "
+           "got %d.")
           % (max_to_keep,))
     self._max_to_keep = max_to_keep
     self._keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
@@ -532,7 +538,9 @@ class CheckpointManager(object):
     self._maybe_delete = collections.OrderedDict()
     if recovered_state is None:
       self._latest_checkpoint = None
-      self._last_preserved_timestamp = current_clock
+      # Set the clock back slightly to avoid race conditions when quckly
+      # re-creating a CheckpointManager.
+      self._last_preserved_timestamp = current_clock - 1.
     else:
       self._latest_checkpoint = recovered_state.model_checkpoint_path
       self._last_preserved_timestamp = recovered_state.last_preserved_timestamp
@@ -584,6 +592,10 @@ class CheckpointManager(object):
 
   def _sweep(self):
     """Deletes or preserves managed checkpoints."""
+    if not self._max_to_keep:
+      # Does not update self._last_preserved_timestamp, since everything is kept
+      # in the active set.
+      return
     while len(self._maybe_delete) > self._max_to_keep:
       filename, timestamp = self._maybe_delete.popitem(last=False)
       # Even if we're keeping this checkpoint due to
@@ -622,13 +634,19 @@ class CheckpointManager(object):
     """
     return self._checkpoint_prefix
 
-  def save(self, session=None):
+  def save(self, session=None, checkpoint_number=None):
     """Creates a new checkpoint and manages it.
 
     Args:
       session: The session to evaluate variables in. Ignored when executing
         eagerly. If not provided when graph building, the default session is
         used.
+      checkpoint_number: An optional integer, or an integer-dtype `Variable` or
+        `Tensor`, used to number the checkpoint. If `None` (default),
+        checkpoints are numbered using `checkpoint.save_counter`. Even if
+        `checkpoint_number` is provided, `save_counter` is still incremented. A
+        user-provided `checkpoint_number` is not incremented even if it is a
+        `Variable`.
 
     Returns:
       The path to the new checkpoint. It is also recorded in the `checkpoints`
@@ -639,7 +657,6 @@ class CheckpointManager(object):
     if context.executing_eagerly():
       save_counter = self._checkpoint.save_counter
       save_counter.assign_add(1)
-      checkpoint_number = save_counter.numpy()
     else:
       if session is None:
         session = ops.get_default_session()
@@ -653,8 +670,13 @@ class CheckpointManager(object):
       with variable_scope.variable_creator_scope(_initializing_creator):
         save_counter = self._checkpoint.save_counter
       if self._save_counter_assign is None:
-        self._save_counter_assign = save_counter.assign_add(1, read_value=True)
-      checkpoint_number = session.run(self._save_counter_assign)
+        self._save_counter_assign = save_counter.assign_add(1, read_value=False)
+      session.run(self._save_counter_assign)
+    if checkpoint_number is None:
+      checkpoint_number = save_counter
+    if not isinstance(checkpoint_number, compat.integral_types):
+      checkpoint_number = training_util.global_step(
+          sess=session, global_step_tensor=checkpoint_number)
     prefix = "%s-%d" % (self._prefix, checkpoint_number)
     save_path = self._checkpoint.write(prefix)
     timestamp = time.time()

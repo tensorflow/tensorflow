@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import collections
 import copy
-import os
 import re
 import sys
 import threading
@@ -67,7 +66,7 @@ from tensorflow.python.util.tf_export import tf_export
 # Temporary global switches determining if we should enable the work-in-progress
 # calls to the C API. These will be removed once all functionality is supported.
 _USE_C_API = True
-_USE_C_SHAPES = os.getenv("TF_C_API_GRAPH_CONSTRUCTION_SHAPES", "1") != "0"
+_USE_C_SHAPES = True
 
 
 def tensor_id(tensor):
@@ -752,6 +751,9 @@ class _EagerTensorBase(Tensor):
 
   def __format__(self, format_spec):
     return self.numpy().__format__(format_spec)
+
+  def __reduce__(self):
+    return (convert_to_tensor, (self.numpy(),))
 
   def _numpy(self):
     raise NotImplementedError()
@@ -2856,19 +2858,11 @@ class Graph(object):
 
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
-    if self._use_c_api_hack():
-      self._scoped_c_graph = c_api_util.ScopedTFGraph()
-      # The C API requires all ops to have shape functions. Disable this
-      # requirement (many custom ops do not have shape functions, and we don't
-      # want to break these existing cases).
-      c_api.SetRequireShapeInferenceFns(self._c_graph, False)
-    else:
-      self._scoped_c_graph = None
-
-  # TODO(apassos) remove once the C API is used by default.
-  def _use_c_api_hack(self):
-    """Temporary hack; can be overridden to force C API usage."""
-    return _USE_C_API
+    self._scoped_c_graph = c_api_util.ScopedTFGraph()
+    # The C API requires all ops to have shape functions. Disable this
+    # requirement (many custom ops do not have shape functions, and we don't
+    # want to break these existing cases).
+    c_api.SetRequireShapeInferenceFns(self._c_graph, False)
 
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
@@ -3118,7 +3112,7 @@ class Graph(object):
     Returns:
       bool indicating whether or not 'name' is registered in function library.
     """
-    return name in self._functions
+    return compat.as_str(name) in self._functions
 
   def _get_function(self, name):
     """Returns the function definition for 'name'.
@@ -3128,7 +3122,7 @@ class Graph(object):
     Returns:
       The function def proto.
     """
-    return self._functions.get(name, None)
+    return self._functions.get(compat.as_str(name), None)
 
   def _add_function(self, function):
     """Adds a function to the graph.
@@ -3164,7 +3158,7 @@ class Graph(object):
     c_api.TF_GraphCopyFunction(self._c_graph, function._c_func.func, gradient)
     # pylint: enable=protected-access
 
-    self._functions[name] = function
+    self._functions[compat.as_str(name)] = function
 
     # Need a new-enough consumer to support the functions we add to the graph.
     if self._graph_def_versions.min_consumer < 12:
@@ -4860,6 +4854,18 @@ class Graph(object):
     else:
       self._graph_control_dependencies_stack = control_dependencies
 
+  @property
+  def _distribution_strategy_stack(self):
+    """A stack to maintain distribution strategy context for each thread."""
+    if not hasattr(self._thread_local, "_distribution_strategy_stack"):
+      self._thread_local._distribution_strategy_stack = []  # pylint: disable=protected-access
+    return self._thread_local._distribution_strategy_stack  # pylint: disable=protected-access
+
+  @_distribution_strategy_stack.setter
+  def _distribution_strategy_stack(self, _distribution_strategy_stack):
+    self._thread_local._distribution_strategy_stack = (  # pylint: disable=protected-access
+        _distribution_strategy_stack)
+
   def _mutation_lock(self):
     """Returns a lock to guard code that creates & mutates ops.
 
@@ -5770,6 +5776,38 @@ class GraphKeys(object):
                         "GLOBAL_VARIABLES instead; VARIABLES will be removed "
                         "after 2017-03-02.", 1)
     return cls.GLOBAL_VARIABLES
+
+
+def dismantle_graph(graph):
+  """Cleans up reference cycles from a `Graph`.
+
+  Helpful for making sure the garbage collector doesn't need to run after a
+  temporary `Graph` is no longer needed.
+
+  Args:
+    graph: A `Graph` object to destroy. Neither it nor any of its ops are usable
+      after this function runs.
+  """
+  # pylint: disable=protected-access
+  # OrderedDict, constructed on Graph creation, makes a simple reference loop
+  # and hides it in an __attribute in some Python versions. We don't need to
+  # throw an error if we can't find it, but if we do find it we can break the
+  # loop to avoid creating work for the garbage collector.
+  graph_operations = graph.get_operations()
+  problematic_cycle = graph._functions.__dict__.get("_OrderedDict__root", None)
+  # pylint: enable=protected-access
+  if problematic_cycle:
+    try:
+      del problematic_cycle[0][:]
+    except TypeError:
+      # This is probably not one of the problematic Python versions. Continue
+      # with the rest of our cleanup.
+      pass
+  # Now clean up Operation<->Graph reference cycles by clearing all of the
+  # attributes for the Graph and its ops.
+  for op in graph_operations:
+    op.__dict__ = {}
+  graph.__dict__ = {}
 
 
 @tf_export("add_to_collection")

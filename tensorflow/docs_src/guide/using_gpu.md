@@ -211,5 +211,5 @@ AddN: /job:localhost/replica:0/task:0/cpu:0
  [  98.  128.]]
 ```
 
-The @{$deep_cnn$cifar10 tutorial} is a good example
+The [cifar10 tutorial](../tutorials/images/deep_cnn.md) is a good example
 demonstrating how to do training with multiple GPUs.

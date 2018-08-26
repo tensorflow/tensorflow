@@ -65,8 +65,7 @@ inline bool CanEmitFusedDynamicUpdateSliceInPlace(
 // modify the input/output buffer without touching any of the other elements.
 Status EmitDynamicUpdateSliceInPlace(
     tensorflow::gtl::ArraySlice<IrArray> operand_arrays,
-    const IrArray& output_array, tensorflow::StringPiece name,
-    llvm::IRBuilder<>* b);
+    const IrArray& output_array, absl::string_view name, llvm::IRBuilder<>* b);
 
 // Given a loop-fusion node whose root is a dynamic-update-slice op whose
 // array-to-be-updated and output share the same buffer slice, emits

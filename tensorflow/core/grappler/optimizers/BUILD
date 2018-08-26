@@ -110,10 +110,10 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "constant_folding_test",
     srcs = ["constant_folding_test.cc"],
-    shard_count = 5,
+    tags = ["requires-gpu-sm35"],
     deps = [
         ":constant_folding",
         "//tensorflow/cc:cc_ops",
@@ -827,11 +827,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:op_types",
-        "//tensorflow/core/grappler:utils",
-        "//tensorflow/core/grappler/clusters:cluster",
-        "//tensorflow/core/grappler/costs:graph_properties",
     ],
 )
 

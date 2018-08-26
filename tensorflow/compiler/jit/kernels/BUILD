@@ -29,16 +29,3 @@ cc_library(
     ],
     alwayslink = 1,
 )
-
-cc_library(
-    name = "parallel_check_op",
-    srcs = ["parallel_check_op.cc"],
-    visibility = ["//tensorflow/compiler/jit:friends"],
-    deps = [
-        "//tensorflow/compiler/jit/legacy_flags:parallel_check_op_flags",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-    alwayslink = 1,
-)

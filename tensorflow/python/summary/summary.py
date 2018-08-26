@@ -15,7 +15,7 @@
 
 """Tensor summaries for exporting information about a model.
 
-See the @{$python/summary} guide.
+See the [Summary](https://tensorflow.org/api_guides/python/summary) guide.
 """
 
 from __future__ import absolute_import
@@ -268,7 +268,7 @@ def merge(inputs, collections=None, name=None):
   @compatibility(eager)
   Not compatible with eager execution. To write TensorBoard
   summaries under eager execution, use `tf.contrib.summary` instead.
-  @end_compatbility
+  @end_compatibility
   """
   # pylint: enable=line-too-long
   if _context.executing_eagerly():
@@ -304,7 +304,7 @@ def merge_all(key=_ops.GraphKeys.SUMMARIES, scope=None, name=None):
   @compatibility(eager)
   Not compatible with eager execution. To write TensorBoard
   summaries under eager execution, use `tf.contrib.summary` instead.
-  @end_compatbility
+  @end_compatibility
   """
   if _context.executing_eagerly():
     raise RuntimeError(
@@ -336,7 +336,7 @@ def get_summary_description(node_def):
   @compatibility(eager)
   Not compatible with eager execution. To write TensorBoard
   summaries under eager execution, use `tf.contrib.summary` instead.
-  @end_compatbility
+  @end_compatibility
   """
 
   if node_def.op != 'TensorSummary':

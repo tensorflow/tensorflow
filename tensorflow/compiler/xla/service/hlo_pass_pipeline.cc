@@ -17,22 +17,22 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
-
 namespace xla {
-
 namespace {
+
+using absl::StrAppend;
+using absl::StrCat;
+
 void DumpModuleGraph(const HloModule& module, const string& message) {
   hlo_graph_dumper::MaybeDumpHloModule(module, message);
   VLOG(3) << "HLO " << message << ":";
@@ -68,7 +68,7 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
                                                    repeated_field.end());
   if (!disabled_passes.empty()) {
     VLOG(1) << "Passes disabled by --xla_disable_hlo_passes: "
-            << tensorflow::str_util::Join(disabled_passes, ", ");
+            << absl::StrJoin(disabled_passes, ", ");
   }
 
   auto run_invariant_checkers = [this,

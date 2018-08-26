@@ -31,7 +31,7 @@ class BFloat16Normalization : public HloPassInterface {
       : bfloat16_support_(bfloat16_support) {}
 
   ~BFloat16Normalization() override = default;
-  tensorflow::StringPiece name() const override { return "bf16-normalization"; }
+  absl::string_view name() const override { return "bf16-normalization"; }
 
   // Run BF16 normalization on the given computation. Returns whether the
   // computation was changed.
@@ -54,7 +54,7 @@ class BFloat16MixedPrecisionRemoval : public HloPassInterface {
 
   ~BFloat16MixedPrecisionRemoval() override = default;
 
-  tensorflow::StringPiece name() const override {
+  absl::string_view name() const override {
     return "bf16-mixed-precision-removal";
   }
 

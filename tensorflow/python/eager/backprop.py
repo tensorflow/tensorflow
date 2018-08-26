@@ -34,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -180,10 +181,10 @@ def implicit_val_and_grad(f):
   ```
 
   Args:
-   f: function to be differentiated. If `f` returns a scalar, this scalar will
-     be differentiated. If `f` returns a tensor or list of tensors, by default
-     a scalar will be computed by adding all their values to produce a single
-     scalar.
+    f: function to be differentiated. If `f` returns a scalar, this scalar will
+      be differentiated. If `f` returns a tensor or list of tensors, by default
+      a scalar will be computed by adding all their values to produce a single
+      scalar.
 
   Returns:
     A function which, when called, returns a tuple pair.
@@ -255,10 +256,10 @@ def implicit_grad(f):
   ```
 
   Args:
-   f: function to be differentiated. If `f` returns a scalar, this scalar will
-     be differentiated. If `f` returns a tensor or list of tensors, by default
-     a scalar will be computed by adding all their values to produce a single
-     scalar.
+    f: function to be differentiated. If `f` returns a scalar, this scalar will
+      be differentiated. If `f` returns a tensor or list of tensors, by default
+      a scalar will be computed by adding all their values to produce a single
+      scalar.
 
   Returns:
     A function which, when called, returns a list of (gradient, variable) pairs.
@@ -343,24 +344,24 @@ def gradients_function(f, params=None):
   Note that only tensors with real or complex dtypes are differentiable.
 
   Args:
-   f: function to be differentiated. If `f` returns a scalar, this scalar will
-     be differentiated. If `f` returns a tensor or list of tensors, by default
-     a scalar will be computed by adding all their values to produce a single
-     scalar. If desired, the tensors can be elementwise multiplied by the
-     tensors passed as the `dy` keyword argument to the returned gradient
-     function.
-   params: list of parameter names of f or list of integers indexing the
-     parameters with respect to which we'll differentiate. Passing None
-     differentiates with respect to all parameters.
+    f: function to be differentiated. If `f` returns a scalar, this scalar will
+      be differentiated. If `f` returns a tensor or list of tensors, by default
+      a scalar will be computed by adding all their values to produce a single
+      scalar. If desired, the tensors can be elementwise multiplied by the
+      tensors passed as the `dy` keyword argument to the returned gradient
+      function.
+    params: list of parameter names of f or list of integers indexing the
+      parameters with respect to which we'll differentiate. Passing None
+      differentiates with respect to all parameters.
 
   Returns:
     function which, when called, returns the value of f and the gradient
-    of f with respect to all of `params`. The function takes an extra optional
-    keyword argument "dy". Setting it allows computation of vector jacobian
+    of `f` with respect to all of `params`. The function takes an extra optional
+    keyword argument `dy`. Setting it allows computation of vector jacobian
     products for vectors other than the vector of ones.
 
   Raises:
-   ValueError: if the params are not all strings or all integers.
+    ValueError: if the params are not all strings or all integers.
   """
 
   def decorated(*args, **kwds):
@@ -440,23 +441,24 @@ def val_and_grad_function(f, params=None):
   ```
 
   Args:
-   f: function to be differentiated. If `f` returns a scalar, this scalar will
-     be differentiated. If `f` returns a tensor or list of tensors, by default
-     a scalar will be computed by adding all their values to produce a single
-     scalar. If desired, the tensors can be elementwise multiplied by the
-     tensors passed as the `dy` keyword argument to the returned gradient
-     function.
-   params: list of parameter names of f or list of integers indexing the
-     parameters with respect to which we'll differentiate. Passing `None`
-     differentiates with respect to all parameters.
+    f: function to be differentiated. If `f` returns a scalar, this scalar will
+      be differentiated. If `f` returns a tensor or list of tensors, by default
+      a scalar will be computed by adding all their values to produce a single
+      scalar. If desired, the tensors can be elementwise multiplied by the
+      tensors passed as the `dy` keyword argument to the returned gradient
+      function.
+    params: list of parameter names of f or list of integers indexing the
+      parameters with respect to which we'll differentiate. Passing `None`
+      differentiates with respect to all parameters.
 
-  Returns: function which, when called, returns the value of f and the gradient
-   of f with respect to all of `params`. The function takes an extra optional
-   keyword argument "dy". Setting it allows computation of vector jacobian
-   products for vectors other than the vector of ones.
+  Returns:
+    function which, when called, returns the value of f and the gradient
+    of f with respect to all of `params`. The function takes an extra optional
+    keyword argument "dy". Setting it allows computation of vector jacobian
+    products for vectors other than the vector of ones.
 
   Raises:
-   ValueError: if the params are not all strings or all integers.
+    ValueError: if the params are not all strings or all integers.
   """
 
   def decorated(*args, **kwds):
@@ -557,7 +559,7 @@ def _aggregate_grads(gradients):
   if len(gradients) == 1:
     return gradients[0]
   if all([isinstance(g, ops.Tensor) for g in gradients]):
-    return math_ops.add_n(gradients)
+    return gen_math_ops.add_n(gradients)
   else:
     assert all([isinstance(g, (ops.Tensor, ops.IndexedSlices))
                 for g in gradients])
@@ -592,7 +594,9 @@ def _num_elements(grad):
 
 
 def _fast_fill(value, shape, dtype):
-  return array_ops.fill(shape, constant_op.constant(value, dtype=dtype))
+  return array_ops.fill(
+      constant_op.constant(shape, dtype=dtypes.int32),
+      constant_op.constant(value, dtype=dtype))
 
 
 def _zeros(shape, dtype):

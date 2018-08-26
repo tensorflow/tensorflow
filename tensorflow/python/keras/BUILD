@@ -140,6 +140,7 @@ py_library(
         ":backend",
         "//tensorflow/python/data",
         "//tensorflow/python/training/checkpointable:data_structures",
+        "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
     ],
 )
@@ -399,7 +400,7 @@ py_test(
 
 py_test(
     name = "local_test",
-    size = "medium",
+    size = "large",
     srcs = ["layers/local_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -625,6 +626,19 @@ cuda_py_test(
 )
 
 py_test(
+    name = "conv_utils_test",
+    size = "small",
+    srcs = ["utils/conv_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
     name = "image_test",
     size = "medium",
     srcs = ["preprocessing/image_test.py"],
@@ -675,7 +689,7 @@ py_test(
 
 py_test(
     name = "training_test",
-    size = "large",
+    size = "enormous",
     srcs = ["engine/training_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],

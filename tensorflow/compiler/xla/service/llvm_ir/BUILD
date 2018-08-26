@@ -38,6 +38,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:logical_buffer",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
         "@llvm//:core",
     ],
 )
@@ -69,6 +70,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
         "@llvm//:core",
         "@llvm//:support",
         "@llvm//:target",
@@ -88,6 +90,8 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
         "@llvm//:core",
     ],
 )
@@ -103,6 +107,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
         "@llvm//:core",
     ],
 )
@@ -133,9 +138,7 @@ cc_library(
         ":llvm_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
         "@llvm//:core",
@@ -193,6 +196,8 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:parallel_loop_emitter",
         "//tensorflow/compiler/xla/service/gpu:partition_assignment",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
         "@llvm//:core",
     ],
 )
@@ -219,7 +224,7 @@ cc_library(
     deps = [
         ":llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
-        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
         "@llvm//:core",
     ],
 )
@@ -230,6 +235,7 @@ cc_library(
     hdrs = ["buffer_assignment_util.h"],
     deps = [
         "//tensorflow/compiler/xla/service:buffer_assignment",
+        "@com_google_absl//absl/strings",
     ],
 )
 
