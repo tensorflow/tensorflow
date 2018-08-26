@@ -7,16 +7,17 @@
 #map1 = (i, j)[s0] -> (i, j)
 
 // CHECK: #map{{[0-9]+}} = () -> (0)
-// A map may have 0 inputs. However, an affine_apply always takes at least one input.
+// A map may have 0 inputs.
+// However, an affine_apply always takes at least one input.
 #map2 = () -> (0)
 
-// All three maps are unique'd as one map and so there
-// should be only one output.
+// All the maps in the following block are equivalent and are unique'd as one
+// map. Therefore there should be only one output and we explicitly CHECK-NOT
+// for the others.
 // CHECK: #map{{[0-9]+}} = (d0, d1) -> (d0 + 1, d1 * 4 + 2)
 #map3  = (i, j) -> (i+1, 4*j + 2)
-// CHECK-EMPTY
+// CHECK-NOT: #map3{{[a-z]}}
 #map3a = (i, j) -> (1+i, 4*j + 2)
-// CHECK-EMPTY
 #map3b = (i, j) -> (2 + 3 - 2*2 + i, 4*j + 2)
 #map3c = (i, j) -> (i +1 + 0, 4*j + 2)
 #map3d = (i, j) -> (i + 3 + 2 - 4, 4*j + 2)
