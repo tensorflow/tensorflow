@@ -672,6 +672,14 @@ class RNN(Layer):
     # note that the .build() method of subclasses MUST define
     # self.input_spec and self.state_spec with complete input shapes.
     if isinstance(inputs, list):
+      # get initial_state from full input spec
+      # as they could be copied to multiple GPU.
+      if self._num_constants is None:
+        initial_state = inputs[1:]
+      else:
+        initial_state = inputs[1:-self._num_constants]
+      if len(initial_state) == 0:
+        initial_state = None
       inputs = inputs[0]
     if initial_state is not None:
       pass
