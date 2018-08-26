@@ -475,6 +475,7 @@ if (tensorflow_ENABLE_GPU)
     ${CUDA_TOOLKIT_TARGET_DIR}/include/cufft.h
     ${CUDA_TOOLKIT_TARGET_DIR}/include/curand.h
     ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_runtime_api.h
+    ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_fp16.h
     ${CUDNN_INCLUDE}/cudnn.h
     DESTINATION ${tensorflow_source_dir}/third_party/gpus/cuda/include
   )
