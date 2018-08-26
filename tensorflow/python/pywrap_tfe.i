@@ -105,10 +105,16 @@ limitations under the License.
   }
 }
 
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
 %typemap(in) const char* serialized_function_def {
   $1 = const_cast<char*>(TFE_GetPythonString($input));
 }
 
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
 %typemap(in) const char* device_name {
   if ($input == Py_None) {
     $1 = nullptr;
@@ -117,6 +123,9 @@ limitations under the License.
   }
 }
 
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
 %typemap(in) const char* op_name {
   $1 = const_cast<char*>(TFE_GetPythonString($input));
 }
