@@ -15,13 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace xla {
 
-using ::tensorflow::str_util::Join;
-using ::tensorflow::strings::StrCat;
+using absl::StrCat;
+using absl::StrJoin;
 
 HloSharding HloSharding::AssignDevice(int64 device_id) {
   return HloSharding(device_id);
@@ -71,12 +72,9 @@ HloSharding HloSharding::SingleTuple(const Shape& tuple_shape,
                                      const HloSharding& sharding) {
   CHECK(ShapeUtil::IsTuple(tuple_shape)) << ShapeUtil::HumanString(tuple_shape);
   CHECK(!sharding.IsTuple()) << sharding.ToString();
-  int64 leaf_count = ShapeUtil::GetLeafCount(tuple_shape);
+  int64 leaf_count = RequiredLeaves(tuple_shape);
   std::vector<HloSharding> flattened_list;
-  flattened_list.reserve(leaf_count);
-  for (int64 i = 0; i < leaf_count; ++i) {
-    flattened_list.push_back(sharding);
-  }
+  flattened_list.resize(leaf_count, sharding);
   return HloSharding(flattened_list);
 }
 
@@ -92,7 +90,7 @@ string HloSharding::ToString() const {
     for (const HloSharding& element : tuple_elements_) {
       parts.push_back(element.ToString());
     }
-    return StrCat("{", tensorflow::str_util::Join(parts, ", "), "}");
+    return StrCat("{", absl::StrJoin(parts, ", "), "}");
   }
 
   if (replicated_) {
@@ -101,8 +99,8 @@ string HloSharding::ToString() const {
     return StrCat(
         "{maximal device=", static_cast<int64>(*tile_assignment_.begin()), "}");
   } else {
-    return StrCat("{devices=[", Join(tile_assignment_.dimensions(), ","), "]",
-                  Join(tile_assignment_, ","), "}");
+    return StrCat("{devices=[", StrJoin(tile_assignment_.dimensions(), ","),
+                  "]", StrJoin(tile_assignment_, ","), "}");
   }
 }
 
@@ -244,16 +242,16 @@ StatusOr<HloSharding> HloSharding::GetTupleSharding(const Shape& shape) const {
   return Tuple(ShapeTree<HloSharding>(shape, *this));
 }
 
-tensorflow::gtl::optional<int64> HloSharding::UniqueDevice() const {
+absl::optional<int64> HloSharding::UniqueDevice() const {
   if (IsTuple()) {
     if (tuple_elements_.empty()) {
-      return tensorflow::gtl::nullopt;
+      return absl::nullopt;
     }
-    tensorflow::gtl::optional<int64> unique_device;
+    absl::optional<int64> unique_device;
     for (auto& tuple_sharding : tuple_elements_) {
       auto device = tuple_sharding.UniqueDevice();
       if (!device || (unique_device && *device != *unique_device)) {
-        return tensorflow::gtl::nullopt;
+        return absl::nullopt;
       }
       unique_device = device;
     }
@@ -262,7 +260,7 @@ tensorflow::gtl::optional<int64> HloSharding::UniqueDevice() const {
   if (!replicated_ && maximal_) {
     return static_cast<int64>(*tile_assignment_.begin());
   }
-  return tensorflow::gtl::nullopt;
+  return absl::nullopt;
 }
 
 int64 HloSharding::GetUniqueDevice() const {
@@ -439,21 +437,20 @@ HloSharding HloSharding::GetSubSharding(const Shape& shape,
                                        : sub_shape_tree.element(ShapeIndex({}));
 }
 
-tensorflow::gtl::optional<HloSharding> HloSharding::ExtractSingleSharding()
-    const {
+absl::optional<HloSharding> HloSharding::ExtractSingleSharding() const {
   if (!IsTuple()) {
     return *this;
   }
   for (int64 i = 1; i < tuple_elements_.size(); ++i) {
     if (tuple_elements_[0] != tuple_elements_[i]) {
-      return tensorflow::gtl::optional<HloSharding>();
+      return absl::nullopt;
     }
   }
   return tuple_elements_.front();
 }
 
 size_t HloSharding::Hash() const {
-  if (!tuple_) {
+  if (tuple_) {
     size_t h = 0;
     for (const auto& element : tuple_elements_) {
       h = tensorflow::Hash64Combine(h, element.Hash());

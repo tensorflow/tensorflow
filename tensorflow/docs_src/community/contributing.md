@@ -25,12 +25,12 @@ guidelines](https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md
 [developers@tensorflow.org](https://groups.google.com/a/tensorflow.org/d/forum/developers)
 mailing list, to coordinate and discuss with others contributing to TensorFlow.
 
-* For coding style conventions, read the @{$style_guide$TensorFlow Style Guide}.
+* For coding style conventions, read the [TensorFlow Style Guide](../community/style_guide.md).
 
-* Finally, review @{$documentation$Writing TensorFlow Documentation}, which
+* Finally, review [Writing TensorFlow Documentation](../community/documentation.md), which
   explains documentation conventions.
 
-You may also wish to review our guide to @{$benchmarks$defining and running benchmarks}.
+You may also wish to review our guide to [defining and running benchmarks](../community/benchmarks.md).
 
 ## Special Interest Groups
 

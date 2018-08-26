@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/core/platform/logging.h"
@@ -32,7 +32,7 @@ std::unique_ptr<HloModule> GpuCodegenTest::CreateNewModuleWithFTZ(bool ftz) {
   debug_options.add_xla_disable_hlo_passes("constant_folding");
   config.set_debug_options(debug_options);
 
-  return MakeUnique<HloModule>(TestName(), config);
+  return absl::make_unique<HloModule>(TestName(), config);
 }
 
 void GpuCodegenTest::CompileAndVerifyPtx(std::unique_ptr<HloModule> hlo_module,

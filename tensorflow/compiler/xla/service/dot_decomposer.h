@@ -29,7 +29,7 @@ class DotDecomposer : public HloPassInterface {
   DotDecomposer(bool decompose_batch_dot = true)
       : decompose_batch_dot_(decompose_batch_dot) {}
   ~DotDecomposer() = default;
-  tensorflow::StringPiece name() const override { return "dot_decomposer"; }
+  absl::string_view name() const override { return "dot_decomposer"; }
 
   // Run DotDecomposer pass on computations in 'module'.
   // Returns whether the 'module' was changed.

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPS_H_
-#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPS_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPTIMIZED_OPS_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPTIMIZED_OPS_H_
 
 #include <assert.h>
 #include <stdint.h>
@@ -47,6 +47,7 @@ using reference_ops::BroadcastGreater;
 using reference_ops::BroadcastGreaterEqual;
 using reference_ops::BroadcastLess;
 using reference_ops::BroadcastLessEqual;
+using reference_ops::BroadcastMul4DSlow;
 using reference_ops::BroadcastSub4DSlow;
 using reference_ops::Concatenation;
 using reference_ops::DepthConcatenation;
@@ -74,6 +75,11 @@ using reference_ops::Transpose;
 //
 // Used mainly to convert from old-style shifts (right) to new-style (left).
 static constexpr int kReverseShift = -1;
+
+inline RuntimeShape DimsToShape(const tflite::Dims<4>& dims) {
+  return RuntimeShape(
+      {dims.sizes[3], dims.sizes[2], dims.sizes[1], dims.sizes[0]});
+}
 
 // Make a local VectorMap typedef allowing to map a float array
 // as a Eigen vector expression. The std::conditional here is to
@@ -313,6 +319,7 @@ inline void AddBiasAndEvalActivationFunction(const float* bias_data,
 #endif
 }
 
+// Note: This to be converted to RuntimeShapes along with Conv.
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
 void AddBiasAndEvalActivationFunction(const float* bias_data,
@@ -1978,12 +1985,12 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
                  int32 input_offset, const uint8* filter_data,
                  const Dims<4>& filter_dims, int32 filter_offset,
                  const int32* bias_data, const Dims<4>& bias_dims,
-                 int stride_width, int stride_height, int pad_width,
-                 int pad_height, int32 output_offset, int32 output_multiplier,
-                 int output_shift, int32 output_activation_min,
-                 int32 output_activation_max, uint8* output_data,
-                 const Dims<4>& output_dims, uint8* im2col_data,
-                 const Dims<4>& im2col_dims,
+                 int stride_width, int stride_height, int dilation_width_factor,
+                 int dilation_height_factor, int pad_width, int pad_height,
+                 int32 output_offset, int32 output_multiplier, int output_shift,
+                 int32 output_activation_min, int32 output_activation_max,
+                 uint8* output_data, const Dims<4>& output_dims,
+                 uint8* im2col_data, const Dims<4>& im2col_dims,
                  gemmlowp::GemmContext* gemm_context) {
   gemmlowp::ScopedProfilingLabel label("Conv/8bit");
 
@@ -1995,9 +2002,22 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
   const Dims<4>* gemm_input_dims = nullptr;
   const int filter_width = ArraySize(filter_dims, 1);
   const int filter_height = ArraySize(filter_dims, 2);
+  const bool need_dilated_im2col =
+      dilation_width_factor != 1 || dilation_height_factor != 1;
   const bool need_im2col = stride_width != 1 || stride_height != 1 ||
                            filter_width != 1 || filter_height != 1;
-  if (need_im2col) {
+  if (need_dilated_im2col) {
+    TFLITE_DCHECK(im2col_data);
+    const int input_zero_point = -input_offset;
+    TFLITE_DCHECK_GE(input_zero_point, 0);
+    TFLITE_DCHECK_LE(input_zero_point, 255);
+    DilatedIm2col(input_data, input_dims, filter_dims, stride_width,
+                  stride_height, dilation_width_factor, dilation_height_factor,
+                  pad_width, pad_height, output_dims, input_zero_point,
+                  im2col_data);
+    gemm_input_data = im2col_data;
+    gemm_input_dims = &im2col_dims;
+  } else if (need_im2col) {
     TFLITE_DCHECK(im2col_data);
     const int input_zero_point = -input_offset;
     TFLITE_DCHECK_GE(input_zero_point, 0);
@@ -2053,6 +2073,24 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
       input_offset, output_pipeline);
 }
 
+inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
+                 int32 input_offset, const uint8* filter_data,
+                 const Dims<4>& filter_dims, int32 filter_offset,
+                 const int32* bias_data, const Dims<4>& bias_dims,
+                 int stride_width, int stride_height, int pad_width,
+                 int pad_height, int32 output_offset, int32 output_multiplier,
+                 int output_shift, int32 output_activation_min,
+                 int32 output_activation_max, uint8* output_data,
+                 const Dims<4>& output_dims, uint8* im2col_data,
+                 const Dims<4>& im2col_dims,
+                 gemmlowp::GemmContext* gemm_context) {
+  Conv(input_data, input_dims, input_offset, filter_data, filter_dims,
+       filter_offset, bias_data, bias_dims, stride_width, stride_height, 1, 1,
+       pad_width, pad_height, output_offset, output_multiplier, output_shift,
+       output_activation_min, output_activation_max, output_data, output_dims,
+       im2col_data, im2col_dims, gemm_context);
+}
+
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
 inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
@@ -2103,38 +2141,6 @@ void Conv(const uint8* input_data, const Dims<4>& input_dims,
        pad_height, output_offset, output_multiplier, output_shift,
        output_activation_min, output_activation_max, output_data, output_dims,
        im2col_data, im2col_dims, gemm_context);
-}
-
-template <typename T>
-inline void DepthToSpace(const T* input_data, const Dims<4>& input_dims,
-                         int block_size, T* output_data,
-                         const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("DepthToSpace");
-
-  const int input_depth = ArraySize(input_dims, 0);
-  const int input_width = ArraySize(input_dims, 1);
-  const int input_height = ArraySize(input_dims, 2);
-
-  const int output_depth = ArraySize(output_dims, 0);
-  const int batch_size = ArraySize(output_dims, 3);
-
-  // Number of continuous values that we can copy in one interation.
-  const int stride = block_size * output_depth;
-
-  for (int batch = 0; batch < batch_size; ++batch) {
-    for (int in_h = 0; in_h < input_height; ++in_h) {
-      const T* input_ptr = input_data + Offset(input_dims, 0, 0, in_h, batch);
-      for (int offset_h = 0; offset_h < block_size; ++offset_h) {
-        const T* src = input_ptr;
-        for (int in_w = 0; in_w < input_width; ++in_w) {
-          memcpy(output_data, src, stride * sizeof(T));
-          output_data += stride;
-          src += input_depth;
-        }
-        input_ptr += stride;
-      }
-    }
-  }
 }
 
 // legacy, for compatibility with old checked-in code
@@ -2212,25 +2218,87 @@ void ConvAsGemm(const uint8* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
-inline void SpaceToDepth(const T* input_data, const Dims<4>& input_dims,
-                         int block_size, T* output_data,
-                         const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("SpaceToDepth");
+inline void DepthToSpace(const tflite::DepthToSpaceParams& op_params,
+                         const RuntimeShape& unextended_input_shape,
+                         const T* input_data,
+                         const RuntimeShape& unextended_output_shape,
+                         T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("DepthToSpace");
 
-  const int output_depth = ArraySize(output_dims, 0);
-  const int output_width = ArraySize(output_dims, 1);
-  const int output_height = ArraySize(output_dims, 2);
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
-  const int input_depth = ArraySize(input_dims, 0);
-  const int batch_size = ArraySize(input_dims, 3);
+  const int input_depth = input_shape.Dims(3);
+  const int input_width = input_shape.Dims(2);
+  const int input_height = input_shape.Dims(1);
+
+  const int output_depth = output_shape.Dims(3);
+  const int batch_size = output_shape.Dims(0);
 
   // Number of continuous values that we can copy in one interation.
-  const int stride = block_size * input_depth;
+  const int stride = op_params.block_size * output_depth;
+
+  for (int batch = 0; batch < batch_size; ++batch) {
+    for (int in_h = 0; in_h < input_height; ++in_h) {
+      const T* input_ptr = input_data + Offset(input_shape, batch, in_h, 0, 0);
+      for (int offset_h = 0; offset_h < op_params.block_size; ++offset_h) {
+        const T* src = input_ptr;
+        for (int in_w = 0; in_w < input_width; ++in_w) {
+          memcpy(output_data, src, stride * sizeof(T));
+          output_data += stride;
+          src += input_depth;
+        }
+        input_ptr += stride;
+      }
+    }
+  }
+}
+
+// Legacy Dims<4>.
+template <typename T>
+inline void DepthToSpace(const T* input_data, const Dims<4>& input_dims,
+                         int block_size, T* output_data,
+                         const Dims<4>& output_dims) {
+  tflite::DepthToSpaceParams op_params;
+  op_params.block_size = block_size;
+
+  DepthToSpace(op_params, DimsToShape(input_dims), input_data,
+               DimsToShape(output_dims), output_data);
+}
+
+template <typename T>
+inline void SpaceToDepth(const tflite::SpaceToDepthParams& op_params,
+                         const RuntimeShape& unextended_input_shape,
+                         const T* input_data,
+                         const RuntimeShape& unextended_output_shape,
+                         T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("SpaceToDepth");
+
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
+  const int output_depth = output_shape.Dims(3);
+  const int output_width = output_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+
+  const int input_depth = input_shape.Dims(3);
+  const int batch_size = input_shape.Dims(0);
+
+  // Number of continuous values that we can copy in one interation.
+  const int stride = op_params.block_size * input_depth;
 
   for (int batch = 0; batch < batch_size; ++batch) {
     for (int out_h = 0; out_h < output_height; ++out_h) {
-      T* output_ptr = output_data + Offset(output_dims, 0, 0, out_h, batch);
-      for (int offset_h = 0; offset_h < block_size; ++offset_h) {
+      T* output_ptr = output_data + Offset(output_shape, batch, out_h, 0, 0);
+      for (int offset_h = 0; offset_h < op_params.block_size; ++offset_h) {
         T* dst = output_ptr;
         for (int out_w = 0; out_w < output_width; ++out_w) {
           memcpy(dst, input_data, stride * sizeof(T));
@@ -2241,6 +2309,18 @@ inline void SpaceToDepth(const T* input_data, const Dims<4>& input_dims,
       }
     }
   }
+}
+
+// Legacy Dims<4>.
+template <typename T>
+inline void SpaceToDepth(const T* input_data, const Dims<4>& input_dims,
+                         int block_size, T* output_data,
+                         const Dims<4>& output_dims) {
+  tflite::SpaceToDepthParams op_params;
+  op_params.block_size = block_size;
+
+  SpaceToDepth(op_params, DimsToShape(input_dims), input_data,
+               DimsToShape(output_dims), output_data);
 }
 
 template <FusedActivationFunctionType Ac>
@@ -2290,8 +2370,8 @@ void GlobalBatchNormalization(const float* input_data,
   }
 }
 
-inline void Relu(const float* input_data, const RuntimeShape& input_shape,
-                 float* output_data, const RuntimeShape& output_shape) {
+inline void Relu(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Relu (not fused)");
 
   const auto input = MapAsVector(input_data, input_shape);
@@ -2904,66 +2984,223 @@ void BroadcastMul(const T* input1_data, const Dims<4>& input1_dims,
                output_dims);
 }
 
-inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
-                         int32 input1_offset, const uint8* input2_data,
-                         const Dims<4>& input2_dims, int32 input2_offset,
-                         int32 output_offset, int32 output_multiplier,
-                         int output_shift, int32 output_activation_min,
-                         int32 output_activation_max, uint8* output_data,
-                         const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastMul/8bit");
+// Element-wise mul that can often be used for inner loop of broadcast Mul as
+// well as the non-broadcast Mul.
+inline void MulElementwise(int size, const ArithmeticParams& params,
+                           const uint8* input1_data, const uint8* input2_data,
+                           uint8* output_data) {
+  int i = 0;
+  TFLITE_DCHECK_GT(params.input1_offset, -256);
+  TFLITE_DCHECK_LT(params.input1_offset, 256);
+  TFLITE_DCHECK_GT(params.input2_offset, -256);
+  TFLITE_DCHECK_LT(params.input2_offset, 256);
+  TFLITE_DCHECK_GT(params.output_offset, -256);
+  TFLITE_DCHECK_LT(params.output_offset, 256);
+#ifdef USE_NEON
+  const auto input1_offset_vector = vdupq_n_s16(params.input1_offset);
+  const auto input2_offset_vector = vdupq_n_s16(params.input2_offset);
+  const auto output_offset_vector = vdupq_n_s16(params.output_offset);
+  const auto output_activation_min_vector =
+      vdup_n_u8(params.quantized_activation_min);
+  const auto output_activation_max_vector =
+      vdup_n_u8(params.quantized_activation_max);
+  for (; i <= size - 8; i += 8) {
+    // We load / store 8 at a time, multiplying as two sets of 4 int32s.
+    const auto input1_val_original = vld1_u8(input1_data + i);
+    const auto input2_val_original = vld1_u8(input2_data + i);
+    const auto input1_val_s16 =
+        vreinterpretq_s16_u16(vmovl_u8(input1_val_original));
+    const auto input2_val_s16 =
+        vreinterpretq_s16_u16(vmovl_u8(input2_val_original));
+    const auto input1_val = vaddq_s16(input1_val_s16, input1_offset_vector);
+    const auto input2_val = vaddq_s16(input2_val_s16, input2_offset_vector);
 
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
+    const auto input1_val_low = vget_low_s16(input1_val);
+    const auto input1_val_high = vget_high_s16(input1_val);
+    const auto input2_val_low = vget_low_s16(input2_val);
+    const auto input2_val_high = vget_high_s16(input2_val);
 
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest stride,
-  // typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for the
-  // best cache behavior.
-  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
-    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
-      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
-        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
-          const int32 input1_val =
-              input1_offset + input1_data[SubscriptToIndex(desc1, c, x, y, b)];
-          const int32 input2_val =
-              input2_offset + input2_data[SubscriptToIndex(desc2, c, x, y, b)];
-          const int32 unclamped_result =
-              output_offset + MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                                  input1_val * input2_val, output_multiplier,
-                                  kReverseShift * output_shift);
-          const int32 clamped_output =
-              std::min(output_activation_max,
-                       std::max(output_activation_min, unclamped_result));
-          output_data[Offset(output_dims, c, x, y, b)] =
-              static_cast<uint8>(clamped_output);
-        }
-      }
-    }
+    auto p1 = vmull_s16(input2_val_low, input1_val_low);
+    auto p2 = vmull_s16(input2_val_high, input1_val_high);
+
+    p1 = vqrdmulhq_n_s32(p1, params.output_multiplier);
+    p2 = vqrdmulhq_n_s32(p2, params.output_multiplier);
+    using gemmlowp::RoundingDivideByPOT;
+    p1 = RoundingDivideByPOT(p1, -params.output_shift);
+    p2 = RoundingDivideByPOT(p2, -params.output_shift);
+
+    const auto p1_narrowed = vmovn_s32(p1);
+    const auto p2_narrowed = vmovn_s32(p2);
+    const auto p =
+        vaddq_s16(vcombine_s16(p1_narrowed, p2_narrowed), output_offset_vector);
+    const auto clamped =
+        vmax_u8(output_activation_min_vector,
+                vmin_u8(output_activation_max_vector, vqmovun_s16(p)));
+    vst1_u8(output_data + i, clamped);
+  }
+#endif  // NEON
+
+  for (; i < size; ++i) {
+    const int32 input1_val = params.input1_offset + input1_data[i];
+    const int32 input2_val = params.input2_offset + input2_data[i];
+    const int32 unclamped_result =
+        params.output_offset +
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(input1_val * input2_val,
+                                                       params.output_multiplier,
+                                                       params.output_shift);
+    const int32 clamped_output =
+        std::min(params.quantized_activation_max,
+                 std::max(params.quantized_activation_min, unclamped_result));
+    output_data[i] = static_cast<uint8>(clamped_output);
   }
 }
 
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
-                         int32 input1_offset, const uint8* input2_data,
-                         const Dims<4>& input2_dims, int32 input2_offset,
-                         int32 output_offset, int32 output_multiplier,
-                         int output_shift, int32 output_activation_min,
-                         int32 output_activation_max, uint8* output_data,
-                         const Dims<4>& output_dims) {
-  BroadcastMul(input1_data, input1_dims, input1_offset, input2_data,
-               input2_dims, input2_offset, output_offset, output_multiplier,
-               output_shift, output_activation_min, output_activation_max,
-               output_data, output_dims);
+// Broadcast mul that can often be used for inner loop of broadcast Mul.
+inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
+                               const uint8 broadcast_value,
+                               const uint8* input2_data, uint8* output_data) {
+  const int16 input1_val = params.input1_offset + broadcast_value;
+
+  int i = 0;
+  TFLITE_DCHECK_GT(params.input1_offset, -256);
+  TFLITE_DCHECK_LT(params.input1_offset, 256);
+  TFLITE_DCHECK_GT(params.input2_offset, -256);
+  TFLITE_DCHECK_LT(params.input2_offset, 256);
+  TFLITE_DCHECK_GT(params.output_offset, -256);
+  TFLITE_DCHECK_LT(params.output_offset, 256);
+#ifdef USE_NEON
+  const auto input2_offset_vector = vdupq_n_s16(params.input2_offset);
+  const auto output_offset_vector = vdupq_n_s16(params.output_offset);
+  const auto output_activation_min_vector =
+      vdup_n_u8(params.quantized_activation_min);
+  const auto output_activation_max_vector =
+      vdup_n_u8(params.quantized_activation_max);
+  for (; i <= size - 8; i += 8) {
+    // We load / store 8 at a time, multiplying as two sets of 4 int32s.
+    const auto input2_val_original = vld1_u8(input2_data + i);
+    const auto input2_val_s16 =
+        vreinterpretq_s16_u16(vmovl_u8(input2_val_original));
+    const auto input2_val = vaddq_s16(input2_val_s16, input2_offset_vector);
+
+    const auto input2_val_low = vget_low_s16(input2_val);
+    const auto input2_val_high = vget_high_s16(input2_val);
+
+    auto p1 = vmull_n_s16(input2_val_low, input1_val);
+    auto p2 = vmull_n_s16(input2_val_high, input1_val);
+
+    p1 = vqrdmulhq_n_s32(p1, params.output_multiplier);
+    p2 = vqrdmulhq_n_s32(p2, params.output_multiplier);
+    using gemmlowp::RoundingDivideByPOT;
+    p1 = RoundingDivideByPOT(p1, -params.output_shift);
+    p2 = RoundingDivideByPOT(p2, -params.output_shift);
+
+    const auto p1_narrowed = vmovn_s32(p1);
+    const auto p2_narrowed = vmovn_s32(p2);
+    const auto p =
+        vaddq_s16(vcombine_s16(p1_narrowed, p2_narrowed), output_offset_vector);
+    const auto clamped =
+        vmax_u8(output_activation_min_vector,
+                vmin_u8(output_activation_max_vector, vqmovun_s16(p)));
+    vst1_u8(output_data + i, clamped);
+  }
+#endif  // NEON
+
+  for (; i < size; ++i) {
+    const int32 input2_val = params.input2_offset + input2_data[i];
+    const int32 unclamped_result =
+        params.output_offset +
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(input1_val * input2_val,
+                                                       params.output_multiplier,
+                                                       params.output_shift);
+    const int32 clamped_output =
+        std::min(params.quantized_activation_max,
+                 std::max(params.quantized_activation_min, unclamped_result));
+    output_data[i] = static_cast<uint8>(clamped_output);
+  }
+}
+
+inline void Mul(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape, const uint8* input1_data,
+                const RuntimeShape& input2_shape, const uint8* input2_data,
+                const RuntimeShape& output_shape, uint8* output_data) {
+  TFLITE_DCHECK_LE(params.quantized_activation_min,
+                   params.quantized_activation_max);
+  gemmlowp::ScopedProfilingLabel label("Mul/8bit");
+  const int flat_size =
+      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+
+  MulElementwise(flat_size, params, input1_data, input2_data, output_data);
+}
+
+inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
+                                 const RuntimeShape& unswitched_input1_shape,
+                                 const uint8* unswitched_input1_data,
+                                 const RuntimeShape& unswitched_input2_shape,
+                                 const uint8* unswitched_input2_data,
+                                 const RuntimeShape& output_shape,
+                                 uint8* output_data) {
+  gemmlowp::ScopedProfilingLabel label("BroadcastMulFivefold/8bit");
+
+  ArithmeticParams switched_params = unswitched_params;
+  switched_params.input1_offset = unswitched_params.input2_offset;
+  switched_params.input2_offset = unswitched_params.input1_offset;
+
+  const bool use_unswitched =
+      unswitched_params.broadcast_category ==
+      tflite::BroadcastableOpCategory::kFirstInputBroadcastsFast;
+
+  const ArithmeticParams& params =
+      use_unswitched ? unswitched_params : switched_params;
+  const uint8* input1_data =
+      use_unswitched ? unswitched_input1_data : unswitched_input2_data;
+  const uint8* input2_data =
+      use_unswitched ? unswitched_input2_data : unswitched_input1_data;
+
+  // Fivefold nested loops. The second input resets its position for each
+  // iteration of the second loop. The first input resets its position at the
+  // beginning of the fourth loop. The innermost loop is an elementwise Mul of
+  // sections of the arrays.
+  uint8* output_data_ptr = output_data;
+  const uint8* input1_data_ptr = input1_data;
+  const uint8* input2_data_reset = input2_data;
+  int y0 = params.broadcast_shape[0];
+  int y1 = params.broadcast_shape[1];
+  int y2 = params.broadcast_shape[2];
+  int y3 = params.broadcast_shape[3];
+  int y4 = params.broadcast_shape[4];
+  if (y4 > 1) {
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const uint8* input2_data_ptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          for (int i3 = 0; i3 < y3; ++i3) {
+            MulElementwise(y4, params, input1_data_ptr, input2_data_ptr,
+                           output_data_ptr);
+            input2_data_ptr += y4;
+            output_data_ptr += y4;
+          }
+          input1_data_ptr += y4;
+        }
+      }
+      input2_data_reset = input2_data_ptr;
+    }
+  } else {
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const uint8* input2_data_ptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          MulSimpleBroadcast(y3, params, *input1_data_ptr, input2_data_ptr,
+                             output_data_ptr);
+          input2_data_ptr += y3;
+          output_data_ptr += y3;
+          ++input1_data_ptr;
+        }
+      }
+      input2_data_reset = input2_data_ptr;
+    }
+  }
 }
 
 // TODO(jiawen): We can implement BroadcastDiv on buffers of arbitrary
@@ -4350,8 +4587,8 @@ inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Logistic(const float* input_data, const RuntimeShape& input_shape,
-                     float* output_data, const RuntimeShape& output_shape) {
+inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
+                     const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Logistic");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
@@ -4496,8 +4733,8 @@ inline void Logistic(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Logistic(const int16* input_data, const RuntimeShape& input_shape,
-                     int16* output_data, const RuntimeShape& output_shape) {
+inline void Logistic(const RuntimeShape& input_shape, const int16* input_data,
+                     const RuntimeShape& output_shape, int16* output_data) {
   gemmlowp::ScopedProfilingLabel label("Logistic/Int16");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
@@ -4556,8 +4793,14 @@ inline void Logistic(const int16* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Tanh(const float* input_data, const RuntimeShape& input_shape,
-                 float* output_data, const RuntimeShape& output_shape) {
+// Legacy version.
+inline void Logistic(const int16* input_data, const RuntimeShape& input_shape,
+                     int16* output_data, const RuntimeShape& output_shape) {
+  Logistic(input_shape, input_data, output_shape, output_data);
+}
+
+inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Tanh");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
@@ -4820,12 +5063,19 @@ inline void Cast(const SrcT* input_data, const Dims<4>& input_dims,
   output_map.array() = input_map.array().template cast<DstT>();
 }
 
+inline void Floor(const RuntimeShape& input_shape, const float* input_data,
+                  const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Floor");
+  auto input_map = MapAsVector(input_data, input_shape);
+  auto output_map = MapAsVector(output_data, output_shape);
+  output_map.array() = Eigen::floor(input_map.array());
+}
+
+// Legacy Dims<4> version.
 inline void Floor(const float* input_data, const Dims<4>& input_dims,
                   float* output_data, const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("Floor");
-  auto input_map = MapAsVector(input_data, input_dims);
-  auto output_map = MapAsVector(output_data, output_dims);
-  output_map.array() = Eigen::floor(input_map.array());
+  Floor(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+        output_data);
 }
 
 #ifdef USE_NEON
@@ -4927,12 +5177,14 @@ inline void ResizeBilinearKernel(const float* input_ptr, int32 depth,
 
 inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
                                     int32 x, int32 y, int32 depth, int32 batch,
+                                    const RuntimeShape& input_shape,
                                     const float* input_data,
-                                    const Dims<4>& input_dims,
-                                    float* output_data,
-                                    const Dims<4>& output_dims) {
-  const int32 input_width = ArraySize(input_dims, 1);
-  const int32 output_width = ArraySize(output_dims, 1);
+                                    const RuntimeShape& output_shape,
+                                    float* output_data) {
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+  const int32 input_width = input_shape.Dims(2);
+  const int32 output_width = output_shape.Dims(2);
 
   const int32 input_x_offset = (x1 - x0) * depth;
   const int32 input_y_offset = (y1 - y0) * depth * input_width;
@@ -4940,7 +5192,6 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
   const int32 output_y_offset = depth * output_width;
 
 #ifdef USE_NEON
-  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
   TFLITE_DCHECK(x1 >= x0);
   TFLITE_DCHECK(y1 >= y0);
 
@@ -4950,7 +5201,7 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
     const float* input_ptr = nullptr;
 
     float32x4x2_t x0y0;
-    input_ptr = &input_data[Offset(input_dims, ic, x0, y0, batch)];
+    input_ptr = &input_data[Offset(input_shape, batch, y0, x0, ic)];
     x0y0.val[0] = vld1q_f32(input_ptr);
     x0y0.val[1] = vld1q_f32(input_ptr + 4);
 
@@ -4970,7 +5221,7 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
     x1y1.val[1] = vld1q_f32(input_ptr + 4);
 
     // Top left corner.
-    float* output_ptr = &output_data[Offset(output_dims, ic, x, y, batch)];
+    float* output_ptr = &output_data[Offset(output_shape, batch, y, x, ic)];
     vst1q_f32(output_ptr, x0y0.val[0]);
     vst1q_f32(output_ptr + 4, x0y0.val[1]);
 
@@ -5009,14 +5260,15 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
   }
   // Handle 4 input channels at a time.
   for (; ic <= depth - 4; ic += 4) {
-    const float* input_ptr = &input_data[Offset(input_dims, ic, x0, y0, batch)];
+    const float* input_ptr =
+        &input_data[Offset(input_shape, batch, y0, x0, ic)];
     float32x4_t x0y0 = vld1q_f32(input_ptr);
     float32x4_t x1y0 = vld1q_f32(input_ptr + input_x_offset);
     float32x4_t x0y1 = vld1q_f32(input_ptr + input_y_offset);
     float32x4_t x1y1 = vld1q_f32(input_ptr + input_x_offset + input_y_offset);
 
     // Top left corner.
-    float* output_ptr = &output_data[Offset(output_dims, ic, x, y, batch)];
+    float* output_ptr = &output_data[Offset(output_shape, batch, y, x, ic)];
     vst1q_f32(output_ptr, x0y0);
 
     // Top right corner.
@@ -5040,7 +5292,7 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
   }
   // Handle one input channel at a time.
   for (; ic < depth; ic++) {
-    const int32 input_offset = Offset(input_dims, ic, x0, y0, batch);
+    const int32 input_offset = Offset(input_shape, batch, y0, x0, ic);
 
     float x0y0 = input_data[input_offset];
     float x1y0 = input_data[input_offset + input_x_offset];
@@ -5048,7 +5300,7 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
     float x1y1 = input_data[input_offset + input_x_offset + input_y_offset];
 
     // Top left corner.
-    const int32 output_offset = Offset(output_dims, ic, x, y, batch);
+    const int32 output_offset = Offset(output_shape, batch, y, x, ic);
     output_data[output_offset] = x0y0;
 
     // Top right corner.
@@ -5064,7 +5316,7 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
   }
 #else
   for (int ch = 0; ch < depth; ch++) {
-    const int32 input_offset = Offset(input_dims, ch, x0, y0, batch);
+    const int32 input_offset = Offset(input_shape, batch, y0, x0, ch);
 
     float x0y0 = input_data[input_offset];
     float x1y0 = input_data[input_offset + input_x_offset];
@@ -5072,7 +5324,7 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
     float x1y1 = input_data[input_offset + input_x_offset + input_y_offset];
 
     // Top left corner.
-    const int32 output_offset = Offset(output_dims, ch, x, y, batch);
+    const int32 output_offset = Offset(output_shape, batch, y, x, ch);
     output_data[output_offset] = x0y0;
 
     // Top right corner.
@@ -5089,31 +5341,30 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
 #endif
 }
 
-inline void ResizeBilinear2x2(const float* input_data,
-                              const Dims<4>& input_dims, float* output_data,
-                              const Dims<4>& output_dims, int32 batches,
-                              int32 input_height, int32 input_width,
-                              int32 depth, int32 output_height,
-                              int32 output_width) {
+inline void ResizeBilinear2x2(int32 batches, int32 input_height,
+                              int32 input_width, int32 depth,
+                              int32 output_height, int32 output_width,
+                              const RuntimeShape& input_shape,
+                              const float* input_data,
+                              const RuntimeShape& output_shape,
+                              float* output_data) {
   for (int b = 0; b < batches; b++) {
     for (int y0 = 0, y = 0; y <= output_height - 2; y += 2, y0++) {
       for (int x0 = 0, x = 0; x <= output_width - 2; x += 2, x0++) {
         int32 x1 = std::min(x0 + 1, input_width - 1);
         int32 y1 = std::min(y0 + 1, input_height - 1);
-        ResizeBilinearKernel2x2(x0, x1, y0, y1, x, y, depth, b, input_data,
-                                input_dims, output_data, output_dims);
+        ResizeBilinearKernel2x2(x0, x1, y0, y1, x, y, depth, b, input_shape,
+                                input_data, output_shape, output_data);
       }
     }
   }
 }
 
-inline void ResizeBilinearGeneric(const float* input_data,
-                                  const Dims<4>& input_dims, float* output_data,
-                                  const Dims<4>& output_dims, int32 batches,
-                                  int32 input_height, int32 input_width,
-                                  int32 depth, int32 output_height,
-                                  int32 output_width, float height_scale,
-                                  float width_scale) {
+inline void ResizeBilinearGeneric(
+    int32 batches, int32 input_height, int32 input_width, int32 depth,
+    int32 output_height, int32 output_width, float height_scale,
+    float width_scale, const RuntimeShape& input_shape, const float* input_data,
+    const RuntimeShape& output_shape, float* output_data) {
   memset(output_data, 0,
          batches * output_height * output_width * depth * sizeof(float));
 
@@ -5130,22 +5381,22 @@ inline void ResizeBilinearGeneric(const float* input_data,
         float* output_ptr = &output_data[output_offset];
 
         // Run kernel on the 4 corners of the bilinear resize algorithm.
-        int32 input_offset = Offset(input_dims, 0, x0, y0, b);
+        int32 input_offset = Offset(input_shape, b, y0, x0, 0);
         float scale = (1 - (input_y - y0)) * (1 - (input_x - x0));
         const float* input_ptr = &input_data[input_offset];
         ResizeBilinearKernel(input_ptr, depth, scale, output_ptr);
 
-        input_offset = Offset(input_dims, 0, x1, y0, b);
+        input_offset = Offset(input_shape, b, y0, x1, 0);
         scale = (1 - (input_y - y0)) * (input_x - x0);
         input_ptr = &input_data[input_offset];
         ResizeBilinearKernel(input_ptr, depth, scale, output_ptr);
 
-        input_offset = Offset(input_dims, 0, x0, y1, b);
+        input_offset = Offset(input_shape, b, y1, x0, 0);
         scale = (input_y - y0) * (1 - (input_x - x0));
         input_ptr = &input_data[input_offset];
         ResizeBilinearKernel(input_ptr, depth, scale, output_ptr);
 
-        input_offset = Offset(input_dims, 0, x1, y1, b);
+        input_offset = Offset(input_shape, b, y1, x1, 0);
         scale = (input_y - y0) * (input_x - x0);
         input_ptr = &input_data[input_offset];
         ResizeBilinearKernel(input_ptr, depth, scale, output_ptr);
@@ -5158,10 +5409,10 @@ inline void ResizeBilinearGeneric(const float* input_data,
 
 template <typename T>
 inline void ResizeBilinearGenericSmallChannel(
-    const T* input_data, const Dims<4>& input_dims, T* output_data,
-    const Dims<4>& output_dims, int32 batches, int32 input_height,
-    int32 input_width, int32 depth, int32 output_height, int32 output_width,
-    float height_scale, float width_scale) {
+    int32 batches, int32 input_height, int32 input_width, int32 depth,
+    int32 output_height, int32 output_width, float height_scale,
+    float width_scale, const RuntimeShape& input_shape, const T* input_data,
+    const RuntimeShape& output_shape, T* output_data) {
   memset(output_data, 0,
          batches * output_height * output_width * depth * sizeof(T));
 
@@ -5176,9 +5427,10 @@ inline void ResizeBilinearGenericSmallChannel(
         int32 x0 = static_cast<int32>(input_x);
         int32 x1 = std::min(x0 + 1, input_width - 1);
 
-        int32 input_offset[4] = {
-            Offset(input_dims, 0, x0, y0, b), Offset(input_dims, 0, x1, y0, b),
-            Offset(input_dims, 0, x0, y1, b), Offset(input_dims, 0, x1, y1, b)};
+        int32 input_offset[4] = {Offset(input_shape, b, y0, x0, 0),
+                                 Offset(input_shape, b, y0, x1, 0),
+                                 Offset(input_shape, b, y1, x0, 0),
+                                 Offset(input_shape, b, y1, x1, 0)};
         float scale[4] = {(1 - (input_y - y0)) * (1 - (input_x - x0)),
                           (1 - (input_y - y0)) * (input_x - x0),
                           (input_y - y0) * (1 - (input_x - x0)),
@@ -5196,79 +5448,123 @@ inline void ResizeBilinearGenericSmallChannel(
   }
 }
 
+inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
+                           const RuntimeShape& unextended_input_shape,
+                           const float* input_data,
+                           const RuntimeShape& unextended_output_size_shape,
+                           const int32* output_size_data,
+                           const RuntimeShape& unextended_output_shape,
+                           float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("ResizeBilinear");
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_size_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  RuntimeShape output_size_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_size_shape);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
+  int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
+  int32 input_height = input_shape.Dims(1);
+  int32 input_width = input_shape.Dims(2);
+  int32 depth = MatchingDim(input_shape, 3, output_shape, 3);
+
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(0), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(1), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(2), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(3), 2);
+  int32 output_height = output_size_data[Offset(output_size_shape, 0, 0, 0, 0)];
+  int32 output_width = output_size_data[Offset(output_size_shape, 0, 0, 0, 1)];
+
+  // Specialize for 2x2 upsample.
+  if (!op_params.align_corners && output_height == 2 * input_height &&
+      output_width == 2 * input_width) {
+    ResizeBilinear2x2(batches, input_height, input_width, depth, output_height,
+                      output_width, input_shape, input_data, output_shape,
+                      output_data);
+  } else {
+    float height_scale = static_cast<float>(input_height) / output_height;
+    float width_scale = static_cast<float>(input_width) / output_width;
+    if (op_params.align_corners && output_height > 1) {
+      height_scale = static_cast<float>(input_height - 1) / (output_height - 1);
+    }
+    if (op_params.align_corners && output_width > 1) {
+      width_scale = static_cast<float>(input_width - 1) / (output_width - 1);
+    }
+
+    ResizeBilinearGeneric(batches, input_height, input_width, depth,
+                          output_height, output_width, height_scale,
+                          width_scale, input_shape, input_data, output_shape,
+                          output_data);
+  }
+}
+
+// Legacy Dims<4>
 inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
                            const int32* output_size_data,
                            const Dims<4>& output_size_dims, float* output_data,
                            const Dims<4>& output_dims, bool align_corners) {
-  gemmlowp::ScopedProfilingLabel label("ResizeBilinear");
-  int32 batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  int32 input_height = ArraySize(input_dims, 2);
-  int32 input_width = ArraySize(input_dims, 1);
-  int32 depth = MatchingArraySize(input_dims, 0, output_dims, 0);
-
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 3), 1);
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 2), 1);
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 1), 1);
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 0), 2);
-  int32 output_height = output_size_data[Offset(output_size_dims, 0, 0, 0, 0)];
-  int32 output_width = output_size_data[Offset(output_size_dims, 1, 0, 0, 0)];
-
-  // Specialize for 2x2 upsample.
-  if (!align_corners && output_height == 2 * input_height &&
-      output_width == 2 * input_width) {
-    ResizeBilinear2x2(input_data, input_dims, output_data, output_dims, batches,
-                      input_height, input_width, depth, output_height,
-                      output_width);
-  } else {
-    float height_scale = static_cast<float>(input_height) / output_height;
-    float width_scale = static_cast<float>(input_width) / output_width;
-    if (align_corners && output_height > 1) {
-      height_scale = static_cast<float>(input_height - 1) / (output_height - 1);
-    }
-    if (align_corners && output_width > 1) {
-      width_scale = static_cast<float>(input_width - 1) / (output_width - 1);
-    }
-
-    ResizeBilinearGeneric(input_data, input_dims, output_data, output_dims,
-                          batches, input_height, input_width, depth,
-                          output_height, output_width, height_scale,
-                          width_scale);
-  }
+  tflite::ResizeBilinearParams op_params;
+  op_params.align_corners = align_corners;
+  ResizeBilinear(op_params, DimsToShape(input_dims), input_data,
+                 DimsToShape(output_size_dims), output_size_data,
+                 DimsToShape(output_dims), output_data);
 }
 
 // TODO(prabhumk): This is not a real quantized bilinear. It does not use int8
 // or int16 arithmetic.
-inline void ResizeBilinear(const uint8* input_data, const Dims<4>& input_dims,
+inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
+                           const RuntimeShape& input_shape,
+                           const uint8* input_data,
+                           const RuntimeShape& output_size_shape,
                            const int32* output_size_data,
-                           const Dims<4>& output_size_dims, uint8* output_data,
-                           const Dims<4>& output_dims, bool align_corners) {
+                           const RuntimeShape& output_shape,
+                           uint8* output_data) {
   gemmlowp::ScopedProfilingLabel label("ResizeBilinear");
-  int32 batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  int32 input_height = ArraySize(input_dims, 2);
-  int32 input_width = ArraySize(input_dims, 1);
-  int32 depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_size_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
 
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 3), 1);
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 2), 1);
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 1), 1);
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 0), 2);
-  int32 output_height = output_size_data[Offset(output_size_dims, 0, 0, 0, 0)];
-  int32 output_width = output_size_data[Offset(output_size_dims, 1, 0, 0, 0)];
+  int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
+  int32 input_height = input_shape.Dims(1);
+  int32 input_width = input_shape.Dims(2);
+  int32 depth = MatchingDim(input_shape, 3, output_shape, 3);
+
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(0), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(1), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(2), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(3), 2);
+  int32 output_height = output_size_data[Offset(output_size_shape, 0, 0, 0, 0)];
+  int32 output_width = output_size_data[Offset(output_size_shape, 0, 0, 0, 1)];
 
   float height_scale =
-      (align_corners && output_height > 1)
+      (op_params.align_corners && output_height > 1)
           ? (static_cast<float>(input_height - 1) / (output_height - 1))
           : (static_cast<float>(input_height) / output_height);
 
   float width_scale =
-      (align_corners && output_width > 1)
+      (op_params.align_corners && output_width > 1)
           ? (static_cast<float>(input_width - 1) / (output_width - 1))
           : (static_cast<float>(input_width) / output_width);
 
   ResizeBilinearGenericSmallChannel<uint8>(
-      input_data, input_dims, output_data, output_dims, batches, input_height,
-      input_width, depth, output_height, output_width, height_scale,
-      width_scale);
+      batches, input_height, input_width, depth, output_height, output_width,
+      height_scale, width_scale, input_shape, input_data, output_shape,
+      output_data);
+}
+
+// Legacy Dims<4>
+inline void ResizeBilinear(const uint8* input_data, const Dims<4>& input_dims,
+                           const int32* output_size_data,
+                           const Dims<4>& output_size_dims, uint8* output_data,
+                           const Dims<4>& output_dims, bool align_corners) {
+  tflite::ResizeBilinearParams op_params;
+  op_params.align_corners = align_corners;
+  ResizeBilinear(op_params, DimsToShape(input_dims), input_data,
+                 DimsToShape(output_size_dims), output_size_data,
+                 DimsToShape(output_dims), output_data);
 }
 
 // legacy, for compatibility with old checked-in code
@@ -5311,20 +5607,29 @@ inline void GetIndexRange(int spatial_index_dim, int block_shape_dim,
 }
 
 template <typename T>
-inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
-                           const int32* block_shape_data,
-                           const Dims<4>& block_shape_dims,
-                           const int32* crops_data, const Dims<4>& crops_dims,
-                           T* output_data, const Dims<4>& output_dims) {
+inline void BatchToSpaceND(
+    const RuntimeShape& unextended_input1_shape, const T* input1_data,
+    const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
+    const RuntimeShape& unextended_input3_shape, const int32* crops_data,
+    const RuntimeShape& unextended_output_shape, T* output_data) {
   gemmlowp::ScopedProfilingLabel label("BatchToSpaceND");
 
-  const int output_batch_size = ArraySize(output_dims, 3);
-  const int output_height = ArraySize(output_dims, 2);
-  const int output_width = ArraySize(output_dims, 1);
-  const int input_batch_size = ArraySize(input_dims, 3);
-  const int input_height = ArraySize(input_dims, 2);
-  const int input_width = ArraySize(input_dims, 1);
-  const int depth = ArraySize(input_dims, 0);
+  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape input1_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input1_shape);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
+  const int output_width = output_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+  const int output_batch_size = output_shape.Dims(0);
+
+  const int depth = input1_shape.Dims(3);
+  const int input_width = input1_shape.Dims(2);
+  const int input_height = input1_shape.Dims(1);
+  const int input_batch_size = input1_shape.Dims(0);
+
   const int block_shape_width = block_shape_data[1];
   const int block_shape_height = block_shape_data[0];
   const int crops_top = crops_data[0];
@@ -5359,12 +5664,26 @@ inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
                           spatial_offset % block_shape_width - crops_left;
         TFLITE_DCHECK_GE(out_w, 0);
         TFLITE_DCHECK_LT(out_w, output_width);
-        T* out = output_data + Offset(output_dims, 0, out_w, out_h, out_batch);
-        const T* in = input_data + Offset(input_dims, 0, in_w, in_h, in_batch);
+        T* out = output_data + Offset(output_shape, out_batch, out_h, out_w, 0);
+        const T* in =
+            input1_data + Offset(input1_shape, in_batch, in_h, in_w, 0);
         memcpy(out, in, depth * sizeof(T));
       }
     }
   }
+}
+
+// Legacy Dims<4>.
+template <typename T>
+inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
+                           const int32* block_shape_data,
+                           const Dims<4>& block_shape_dims,
+                           const int32* crops_data, const Dims<4>& crops_dims,
+                           T* output_data, const Dims<4>& output_dims) {
+  BatchToSpaceND(DimsToShape(input_dims), input_data,
+                 DimsToShape(block_shape_dims), block_shape_data,
+                 DimsToShape(crops_dims), crops_data, DimsToShape(output_dims),
+                 output_data);
 }
 
 template <typename T>
@@ -5383,31 +5702,54 @@ void TypedMemset(void* ptr, T value, size_t num) {
   }
 }
 
-template <typename T>
-inline void PadV2(const T* input_data, const Dims<4>& input_dims,
-                  const std::vector<int>& left_paddings,
-                  const std::vector<int>& right_paddings, T* output_data,
-                  const Dims<4>& output_dims, const T pad_value) {
+// There are two versions of pad: Pad and PadV2.  In PadV2 there is a second
+// scalar input that provides the padding value.  Therefore pad_value_ptr can be
+// equivalent to a simple input1_data.  For Pad, it should point to a zero
+// value.
+//
+// Note that two typenames are required, so that T=P=int32 is considered a
+// specialization distinct from P=int32.
+template <typename T, typename P>
+inline void PadImpl(const tflite::PadParams& op_params,
+                    const RuntimeShape& input_shape, const T* input_data,
+                    const P* pad_value_ptr, const RuntimeShape& output_shape,
+                    T* output_data) {
   gemmlowp::ScopedProfilingLabel label("Pad");
-  TFLITE_DCHECK_EQ(left_paddings.size(), 4);
-  TFLITE_DCHECK_EQ(right_paddings.size(), 4);
+  RuntimeShape ext_input_shape = RuntimeShape::ExtendedShape(4, input_shape);
+  RuntimeShape ext_output_shape = RuntimeShape::ExtendedShape(4, output_shape);
+  TFLITE_DCHECK_LE(op_params.left_padding_count, 4);
+  TFLITE_DCHECK_LE(op_params.right_padding_count, 4);
 
-  const int output_batch = ArraySize(output_dims, 3);
-  const int output_height = ArraySize(output_dims, 2);
-  const int output_width = ArraySize(output_dims, 1);
-  const int output_depth = ArraySize(output_dims, 0);
+  // Runtime calls are currently fixed at 4 dimensions. Copy inputs so
+  // we can pad them to 4 dims (yes, we are "padding the padding").
+  std::vector<int> left_padding_copy(4, 0);
+  const int left_padding_extend = 4 - op_params.left_padding_count;
+  for (int i = 0; i < op_params.left_padding_count; ++i) {
+    left_padding_copy[left_padding_extend + i] = op_params.left_padding[i];
+  }
+  std::vector<int> right_padding_copy(4, 0);
+  const int right_padding_extend = 4 - op_params.right_padding_count;
+  for (int i = 0; i < op_params.right_padding_count; ++i) {
+    right_padding_copy[right_padding_extend + i] = op_params.right_padding[i];
+  }
 
-  const int left_b_padding = left_paddings[3];
-  const int left_h_padding = left_paddings[2];
-  const int left_w_padding = left_paddings[1];
-  const int left_d_padding = left_paddings[0];
+  const int output_batch = ext_output_shape.Dims(0);
+  const int output_height = ext_output_shape.Dims(1);
+  const int output_width = ext_output_shape.Dims(2);
+  const int output_depth = ext_output_shape.Dims(3);
 
-  const int right_b_padding = right_paddings[3];
-  const int right_h_padding = right_paddings[2];
-  const int right_w_padding = right_paddings[1];
-  const int right_d_padding = right_paddings[0];
+  const int left_b_padding = left_padding_copy[0];
+  const int left_h_padding = left_padding_copy[1];
+  const int left_w_padding = left_padding_copy[2];
+  const int left_d_padding = left_padding_copy[3];
 
-  const int input_depth = ArraySize(input_dims, 0);
+  const int right_b_padding = right_padding_copy[0];
+  const int right_h_padding = right_padding_copy[1];
+  const int right_w_padding = right_padding_copy[2];
+  const int right_d_padding = right_padding_copy[3];
+
+  const int input_depth = ext_input_shape.Dims(3);
+  const T pad_value = *pad_value_ptr;
 
   if (left_b_padding != 0) {
     TypedMemset<T>(
@@ -5417,61 +5759,112 @@ inline void PadV2(const T* input_data, const Dims<4>& input_dims,
   for (int out_b = left_b_padding; out_b < output_batch - right_b_padding;
        ++out_b) {
     if (left_h_padding != 0) {
-      TypedMemset<T>(output_data + Offset(output_dims, 0, 0, 0, out_b),
+      TypedMemset<T>(output_data + Offset(ext_output_shape, out_b, 0, 0, 0),
                      pad_value, left_h_padding * output_width * output_depth);
     }
     for (int out_h = left_h_padding; out_h < output_height - right_h_padding;
          ++out_h) {
       if (left_w_padding != 0) {
-        TypedMemset<T>(output_data + Offset(output_dims, 0, 0, out_h, out_b),
-                       pad_value, left_w_padding * output_depth);
+        TypedMemset<T>(
+            output_data + Offset(ext_output_shape, out_b, out_h, 0, 0),
+            pad_value, left_w_padding * output_depth);
       }
       for (int out_w = left_w_padding; out_w < output_width - right_w_padding;
            ++out_w) {
         if (left_d_padding != 0) {
           TypedMemset<T>(
-              output_data + Offset(output_dims, 0, out_w, out_h, out_b),
+              output_data + Offset(ext_output_shape, out_b, out_h, out_w, 0),
               pad_value, left_d_padding);
         }
 
         T* out = output_data +
-                 Offset(output_dims, left_d_padding, out_w, out_h, out_b);
-        const T* in =
-            input_data + Offset(input_dims, 0, out_w - left_w_padding,
-                                out_h - left_h_padding, out_b - left_b_padding);
+                 Offset(ext_output_shape, out_b, out_h, out_w, left_d_padding);
+        const T* in = input_data +
+                      Offset(ext_input_shape, out_b - left_b_padding,
+                             out_h - left_h_padding, out_w - left_w_padding, 0);
         memcpy(out, in, input_depth * sizeof(T));
 
         if (right_d_padding != 0) {
           TypedMemset<T>(
-              output_data + Offset(output_dims, output_depth - right_d_padding,
-                                   out_w, out_h, out_b),
+              output_data + Offset(ext_output_shape, out_b, out_h, out_w,
+                                   output_depth - right_d_padding),
               pad_value, right_d_padding);
         }
       }
       if (right_w_padding != 0) {
-        TypedMemset<T>(
-            output_data + Offset(output_dims, 0, output_width - right_w_padding,
-                                 out_h, out_b),
-            pad_value, right_w_padding * output_depth);
+        TypedMemset<T>(output_data + Offset(ext_output_shape, out_b, out_h,
+                                            output_width - right_w_padding, 0),
+                       pad_value, right_w_padding * output_depth);
       }
     }
     if (right_h_padding != 0) {
       TypedMemset<T>(
-          output_data +
-              Offset(output_dims, 0, 0, output_height - right_h_padding, out_b),
+          output_data + Offset(ext_output_shape, out_b,
+                               output_height - right_h_padding, 0, 0),
           pad_value, right_h_padding * output_width * output_depth);
     }
   }
   if (right_b_padding != 0) {
     TypedMemset<T>(
         output_data +
-            Offset(output_dims, 0, 0, 0, output_batch - right_b_padding),
+            Offset(ext_output_shape, output_batch - right_b_padding, 0, 0, 0),
         pad_value,
         right_b_padding * output_height * output_width * output_depth);
   }
 }
 
-// Legacy Pad() method that casts an int32_t to T before padding.
+template <typename T, typename P>
+inline void Pad(const tflite::PadParams& op_params,
+                const RuntimeShape& input_shape, const T* input_data,
+                const P* pad_value_ptr, const RuntimeShape& output_shape,
+                T* output_data) {
+  PadImpl(op_params, input_shape, input_data, pad_value_ptr, output_shape,
+          output_data);
+}
+
+// The second (pad-value) input can be int32 when, say, the first is uint8.
+template <typename T>
+inline void Pad(const tflite::PadParams& op_params,
+                const RuntimeShape& input_shape, const T* input_data,
+                const int32* pad_value_ptr, const RuntimeShape& output_shape,
+                T* output_data) {
+  const T converted_pad_value = static_cast<T>(*pad_value_ptr);
+  PadImpl(op_params, input_shape, input_data, &converted_pad_value,
+          output_shape, output_data);
+}
+
+// This version avoids conflicting template matching.
+template <>
+inline void Pad(const tflite::PadParams& op_params,
+                const RuntimeShape& input_shape, const int32* input_data,
+                const int32* pad_value_ptr, const RuntimeShape& output_shape,
+                int32* output_data) {
+  PadImpl(op_params, input_shape, input_data, pad_value_ptr, output_shape,
+          output_data);
+}
+
+// Legacy signature, function covered both Pad and PadV2.
+template <typename T>
+inline void PadV2(const T* input_data, const Dims<4>& input_dims,
+                  const std::vector<int>& left_paddings,
+                  const std::vector<int>& right_paddings, T* output_data,
+                  const Dims<4>& output_dims, const T pad_value) {
+  TFLITE_DCHECK_EQ(left_paddings.size(), 4);
+  TFLITE_DCHECK_EQ(right_paddings.size(), 4);
+  tflite::PadParams op_params;
+  op_params.left_padding_count = 4;
+  op_params.right_padding_count = 4;
+  for (int i = 0; i < 4; ++i) {
+    op_params.left_padding[i] = left_paddings[3 - i];
+    op_params.right_padding[i] = right_paddings[3 - i];
+  }
+  const T pad_value_copy = pad_value;
+
+  Pad(op_params, DimsToShape(input_dims), input_data, &pad_value_copy,
+      DimsToShape(output_dims), output_data);
+}
+
+// Old Pad that calls legacy PadV2.
 template <typename T>
 inline void Pad(const T* input_data, const Dims<4>& input_dims,
                 const std::vector<int>& left_paddings,
@@ -5482,34 +5875,45 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
            output_dims, converted_pad_value);
 }
 
+// Old Pad that only padded with 0.
 template <typename T>
 inline void Pad(const T* input_data, const Dims<4>& input_dims,
                 const std::vector<int>& left_paddings,
                 const std::vector<int>& right_paddings, T* output_data,
                 const Dims<4>& output_dims) {
-  Pad(input_data, input_dims, left_paddings, right_paddings, output_data,
-      output_dims, 0);
+  const T pad_value = static_cast<T>(0);
+  PadV2<T>(input_data, input_dims, left_paddings, right_paddings, output_data,
+           output_dims, pad_value);
 }
 
 template <typename T>
-inline void Slice(const T* input_data, const Dims<4>& input_dims,
-                  const std::vector<int>& begin, const std::vector<int>& size,
-                  T* output_data, const Dims<4>& output_dims) {
-  // TODO(dkalenichenko): This op only supports 4D tensors.
-  TFLITE_DCHECK_EQ(begin.size(), 4);
-  TFLITE_DCHECK_EQ(size.size(), 4);
-  const int start_b = begin[3];
-  const int stop_b =
-      size[3] == -1 ? input_dims.sizes[3] - start_b : start_b + size[3];
-  const int start_h = begin[2];
-  const int stop_h =
-      size[2] == -1 ? input_dims.sizes[2] - start_h : start_h + size[2];
-  const int start_w = begin[1];
-  const int stop_w =
-      size[1] == -1 ? input_dims.sizes[1] - start_w : start_w + size[1];
-  const int start_d = begin[0];
-  const int stop_d =
-      size[0] == -1 ? input_dims.sizes[0] - start_d : start_d + size[0];
+inline void Slice(const tflite::SliceParams& op_params,
+                  const RuntimeShape& input_shape, const T* input_data,
+                  const RuntimeShape& output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Slice");
+  RuntimeShape ext_shape = RuntimeShape::ExtendedShape(4, input_shape);
+  // TODO(dkalenichenko): This op only supports 4D tensors or smaller.
+  TFLITE_DCHECK_LE(op_params.begin_count, 4);
+  TFLITE_DCHECK_LE(op_params.size_count, 4);
+  const int begin_count = op_params.begin_count;
+  const int size_count = op_params.size_count;
+  // We front-pad the begin and size vectors.
+  const int start_b = 4 - begin_count > 0 ? 0 : op_params.begin[0];
+  const int stop_b = (4 - size_count > 0 || op_params.size[0] == -1)
+                         ? ext_shape.Dims(0) - start_b
+                         : start_b + op_params.size[0];
+  const int start_h = begin_count < 3 ? 0 : op_params.begin[begin_count - 3];
+  const int stop_h = (size_count < 3 || op_params.size[size_count - 3] == -1)
+                         ? ext_shape.Dims(1) - start_h
+                         : start_h + op_params.size[size_count - 3];
+  const int start_w = begin_count < 2 ? 0 : op_params.begin[begin_count - 2];
+  const int stop_w = (size_count < 2 || op_params.size[size_count - 2] == -1)
+                         ? ext_shape.Dims(2) - start_w
+                         : start_w + op_params.size[size_count - 2];
+  const int start_d = begin_count < 1 ? 0 : op_params.begin[begin_count - 1];
+  const int stop_d = (size_count < 1 || op_params.size[size_count - 1] == -1)
+                         ? ext_shape.Dims(3) - start_d
+                         : start_d + op_params.size[size_count - 1];
 
   T* out_ptr = output_data;
   for (int in_b = start_b; in_b < stop_b; ++in_b) {
@@ -5517,7 +5921,7 @@ inline void Slice(const T* input_data, const Dims<4>& input_dims,
       for (int in_w = start_w; in_w < stop_w; ++in_w) {
         const int len = stop_d - start_d;
         memcpy(out_ptr,
-               input_data + Offset(input_dims, start_d, in_w, in_h, in_b),
+               input_data + Offset(ext_shape, in_b, in_h, in_w, start_d),
                len * sizeof(T));
         out_ptr += len;
       }
@@ -5526,25 +5930,57 @@ inline void Slice(const T* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
+inline void Slice(const T* input_data, const Dims<4>& input_dims,
+                  const std::vector<int>& begin, const std::vector<int>& size,
+                  T* output_data, const Dims<4>& output_dims) {
+  tflite::SliceParams op_params;
+  op_params.begin_count = 4;
+  op_params.size_count = 4;
+  for (int i = 0; i < 4; ++i) {
+    op_params.begin[i] = begin[3 - i];
+    op_params.size[i] = size[3 - i];
+  }
+
+  Slice(op_params, DimsToShape(input_dims), input_data,
+        DimsToShape(output_dims), output_data);
+}
+
+template <typename T>
+void Minimum(const RuntimeShape& input1_shape, const T* input1_data,
+             const T* input2_data, const RuntimeShape& output_shape,
+             T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("TensorFlowMinimum");
+  auto input1_map = MapAsVector(input1_data, input1_shape);
+  auto output_map = MapAsVector(output_data, output_shape);
+  auto min_value = input2_data[0];
+  output_map.array() = input1_map.array().min(min_value);
+}
+
+template <typename T>
+void Maximum(const RuntimeShape& input1_shape, const T* input1_data,
+             const T* input2_data, const RuntimeShape& output_shape,
+             T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("TensorFlowMaximum");
+  auto input1_map = MapAsVector(input1_data, input1_shape);
+  auto output_map = MapAsVector(output_data, output_shape);
+  auto max_value = input2_data[0];
+  output_map.array() = input1_map.array().max(max_value);
+}
+
+template <typename T>
 void TensorFlowMinimum(const T* input1_data, const Dims<4>& input1_dims,
                        const T* input2_data, T* output_data,
                        const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("TensorFlowMinimum");
-  auto input1_map = MapAsVector(input1_data, input1_dims);
-  auto output_map = MapAsVector(output_data, output_dims);
-  auto min_value = input2_data[0];
-  output_map.array() = input1_map.array().min(min_value);
+  Minimum(DimsToShape(input1_dims), input1_data, input2_data,
+          DimsToShape(output_dims), output_data);
 }
 
 template <typename T>
 void TensorFlowMaximum(const T* input1_data, const Dims<4>& input1_dims,
                        const T* input2_data, T* output_data,
                        const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("TensorFlowMaximum");
-  auto input1_map = MapAsVector(input1_data, input1_dims);
-  auto output_map = MapAsVector(output_data, output_dims);
-  auto max_value = input2_data[0];
-  output_map.array() = input1_map.array().max(max_value);
+  Maximum(DimsToShape(input1_dims), input1_data, input2_data,
+          DimsToShape(output_dims), output_data);
 }
 
 template <typename T>
@@ -5667,4 +6103,4 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
 #pragma GCC diagnostic pop
 #endif
 
-#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPS_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPTIMIZED_OPS_H_

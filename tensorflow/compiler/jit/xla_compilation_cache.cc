@@ -230,7 +230,7 @@ Status XlaCompilationCache::Compile(
     const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
     const XlaCompiler::CompilationResult** compilation_result,
     xla::LocalExecutable** executable,
-    const XlaCompiler::CompileOptions* compile_options) {
+    const XlaCompiler::CompileOptions& compile_options) {
   return CompileImpl(options, function, constant_args, variable_args, ctx,
                      compilation_result, executable, compile_options, false);
 }
@@ -241,7 +241,7 @@ Status XlaCompilationCache::CompileSingleOp(
     const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
     const XlaCompiler::CompilationResult** compilation_result,
     xla::LocalExecutable** executable,
-    const XlaCompiler::CompileOptions* compile_options) {
+    const XlaCompiler::CompileOptions& compile_options) {
   const NodeDef& def = ctx->op_kernel().def();
   NameAttrList name;
   name.set_name(def.op());
@@ -256,7 +256,7 @@ Status XlaCompilationCache::CompileImpl(
     const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
     const XlaCompiler::CompilationResult** compilation_result,
     xla::LocalExecutable** executable,
-    const XlaCompiler::CompileOptions* compile_options,
+    const XlaCompiler::CompileOptions& compile_options,
     bool compile_single_op) {
   CHECK_NE(executable, nullptr);
   VLOG(1) << "XlaCompilationCache::Compile " << DebugString();
@@ -324,13 +324,12 @@ Status XlaCompilationCache::CompileImpl(
     entry->compiled = true;
 
     if (compile_single_op) {
-      entry->compilation_status = compiler.CompileSingleOp(
-          compile_options ? *compile_options : XlaCompiler::CompileOptions(),
-          signature.name, ctx, args, &entry->compilation_result);
+      entry->compilation_status =
+          compiler.CompileSingleOp(compile_options, signature.name, ctx, args,
+                                   &entry->compilation_result);
     } else {
       entry->compilation_status = compiler.CompileFunction(
-          compile_options ? *compile_options : XlaCompiler::CompileOptions(),
-          function, args, &entry->compilation_result);
+          compile_options, function, args, &entry->compilation_result);
     }
     TF_RETURN_IF_ERROR(entry->compilation_status);
     CHECK_EQ(entry->executable.get(), nullptr);

@@ -31,7 +31,7 @@ namespace xla {
 class HloModuleDCE : public HloPassInterface {
  public:
   ~HloModuleDCE() override {}
-  tensorflow::StringPiece name() const override { return "hlo-module-dce"; }
+  absl::string_view name() const override { return "hlo-module-dce"; }
 
   // Run the pass on the given module. Returns whether the module was changed
   // (instructions were removed).

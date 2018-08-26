@@ -61,14 +61,14 @@ class PruningHParamsTest(test.TestCase):
     self.assertEqual(p._weight_sparsity_map["conv2/kernel"], 0.8)
 
   def testInitWithExternalSparsity(self):
-    with self.test_session():
+    with self.cached_session():
       p = pruning.Pruning(spec=self.pruning_hparams, sparsity=self.sparsity)
       variables.global_variables_initializer().run()
       sparsity = p._sparsity.eval()
       self.assertAlmostEqual(sparsity, 0.5)
 
   def testInitWithVariableReuse(self):
-    with self.test_session():
+    with self.cached_session():
       p = pruning.Pruning(spec=self.pruning_hparams, sparsity=self.sparsity)
       p_copy = pruning.Pruning(
           spec=self.pruning_hparams, sparsity=self.sparsity)
@@ -87,7 +87,7 @@ class PruningTest(test.TestCase):
   def testCreateMask2D(self):
     width = 10
     height = 20
-    with self.test_session():
+    with self.cached_session():
       weights = variables.Variable(
           random_ops.random_normal([width, height], stddev=1), name="weights")
       masked_weights = pruning.apply_mask(weights,
@@ -98,7 +98,7 @@ class PruningTest(test.TestCase):
       self.assertAllEqual(weights_val, masked_weights_val)
 
   def testUpdateSingleMask(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       weights = variables.Variable(
           math_ops.linspace(1.0, 100.0, 100), name="weights")
       masked_weights = pruning.apply_mask(weights)
@@ -122,7 +122,7 @@ class PruningTest(test.TestCase):
 
     # Set up pruning
     p = pruning.Pruning(pruning_hparams, sparsity=sparsity)
-    with self.test_session():
+    with self.cached_session():
       variables.global_variables_initializer().run()
       _, new_mask = p._maybe_update_block_mask(weights, threshold)
       # Check if the mask is the same size as the weights
@@ -167,7 +167,7 @@ class PruningTest(test.TestCase):
 
   def testPartitionedVariableMasking(self):
     partitioner = partitioned_variables.variable_axis_size_partitioner(40)
-    with self.test_session() as session:
+    with self.cached_session() as session:
       with variable_scope.variable_scope("", partitioner=partitioner):
         sparsity = variables.Variable(0.5, name="Sparsity")
         weights = variable_scope.get_variable(
@@ -201,7 +201,7 @@ class PruningTest(test.TestCase):
     sparsity_val = math_ops.linspace(0.0, 0.9, 10)
     increment_global_step = state_ops.assign_add(self.global_step, 1)
     non_zero_count = []
-    with self.test_session() as session:
+    with self.cached_session() as session:
       variables.global_variables_initializer().run()
       for i in range(10):
         session.run(state_ops.assign(sparsity, sparsity_val[i]))
@@ -234,7 +234,7 @@ class PruningTest(test.TestCase):
     mask_update_op = p.conditional_mask_update_op()
     increment_global_step = state_ops.assign_add(self.global_step, 1)
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       variables.global_variables_initializer().run()
       for _ in range(110):
         session.run(mask_update_op)

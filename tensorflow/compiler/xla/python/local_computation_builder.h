@@ -60,8 +60,7 @@ StatusOr<std::unique_ptr<Literal> > TransferFromOutfeedLocalReplica(
 class LocalShapedBuffer {
  public:
   static StatusOr<LocalShapedBuffer*> FromLiteral(
-      const Literal& argument,
-      const tensorflow::gtl::optional<Shape>& shape_with_layout);
+      const Literal& argument, const absl::optional<Shape>& shape_with_layout);
 
   LocalShapedBuffer(ScopedShapedBuffer shaped_buffer);
   const ScopedShapedBuffer* shaped_buffer() const;
@@ -120,7 +119,7 @@ class CompiledLocalComputation {
   // shapes_with_layout.
   StatusOr<std::unique_ptr<Literal> > Execute(
       const std::vector<Literal>& arguments,
-      const std::vector<tensorflow::gtl::optional<Shape> >& shapes_with_layout);
+      const std::vector<absl::optional<Shape> >& shapes_with_layout);
 
   LocalShapedBuffer* ExecuteWithShapedBuffers(
       tensorflow::gtl::ArraySlice<LocalShapedBuffer*> argument_handles);
@@ -301,6 +300,11 @@ class LocalComputationBuilder {
 
   StatusOr<bool> IsConstant(const LocalOp& operand);
 
+  LocalOp Sort(const LocalOp& operand, int64 dimension);
+
+  LocalOp SortKeyVal(const LocalOp& keys, const LocalOp& values,
+                     int64 dimension);
+
   StatusOr<LocalComputation*> BuildConstantSubGraph(const LocalOp& operand);
 
 #define _FORWARD(method_name, return_sig, args_sig) \
@@ -357,7 +361,6 @@ class LocalComputationBuilder {
   _FORWARD_UNOP(Tanh)
   _FORWARD_UNOP(IsFinite)
   _FORWARD_UNOP(Neg)
-  _FORWARD_UNOP(Sort)
   _FORWARD_UNOP(Sqrt)
   _FORWARD_UNOP(Rsqrt)
   _FORWARD_UNOP(Square)

@@ -51,7 +51,7 @@ class MinimizeLossOptimizerV2Test(test.TestCase, parameterized.TestCase):
                 model_fn, iterator.get_next(), run_concurrently=layer.built)))
 
       if not context.executing_eagerly():
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           run_step = sess.make_callable(run_step())
         self.evaluate(variables.global_variables_initializer())
 

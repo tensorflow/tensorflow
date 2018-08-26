@@ -265,7 +265,7 @@ class IndexedArrayAnalysis {
 
   StatusOr<Array*> ComputeArrayForGather(
       const Shape& shape, const GatherDimensionNumbers& dim_numbers,
-      tensorflow::gtl::ArraySlice<int64> window_bounds, Array* source,
+      tensorflow::gtl::ArraySlice<int64> slice_sizes, Array* source,
       Array* indices);
 
   StatusOr<Array*> ComputeArrayForDotWithIndexedLhs(
@@ -371,7 +371,7 @@ class IndexedArrayAnalysis {
 // unconditionally add to the regular HLO pass pipeline.
 class IndexedArrayAnalysisPrinterPass : public HloPassInterface {
  public:
-  tensorflow::StringPiece name() const override;
+  absl::string_view name() const override;
   StatusOr<bool> Run(HloModule* module) override;
 };
 

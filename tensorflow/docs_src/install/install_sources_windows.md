@@ -94,8 +94,8 @@ Assume you already have `pip3` in `%PATH%`, issue the following command:
 
 <pre>
 C:\> <b>pip3 install six numpy wheel</b>
-C:\> <b>pip3 install keras_applications==1.0.4 --no-deps</b>
-C:\> <b>pip3 install keras_preprocessing==1.0.2 --no-deps</b>
+C:\> <b>pip3 install keras_applications==1.0.5 --no-deps</b>
+C:\> <b>pip3 install keras_preprocessing==1.0.3 --no-deps</b>
 </pre>
 
 <a name="InstallCUDA"></a>

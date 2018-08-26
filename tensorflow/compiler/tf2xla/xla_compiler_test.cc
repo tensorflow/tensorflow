@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "absl/strings/match.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/data_flow_ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/version.h"
 
@@ -280,6 +280,54 @@ TEST_F(XlaCompilerTest, OutOfOrderGraph) {
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(*param0_literal, *actual_literal));
 }
 
+// Tests that the compiler doesn't reorder the parameters.
+TEST_F(XlaCompilerTest, MixedOrderArguments) {
+  for (bool swap_order : {false, true}) {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto var =
+        ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, swap_order ? 0 : 1);
+    auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, swap_order ? 1 : 0);
+    // Adds an identity op around the resource to make sure identity ops
+    // propagate resources correctly.
+    auto identity = ops::Identity(scope.WithOpName("VIdentity"), var);
+    auto write = ops::AssignAddVariableOp(scope, identity, a);
+    auto read = ops::ReadVariableOp(
+        scope.WithControlDependencies(std::vector<Operation>{write}), var,
+        DT_INT32);
+    auto read_plus_one = ops::Add(scope, read, ops::Const<int32>(scope, 1));
+    auto d = ops::_Retval(scope.WithOpName("D"), read_plus_one, 0);
+    std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+    TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+    // Builds a description of the arguments.
+    std::vector<XlaCompiler::Argument> args(2);
+    args[0].kind = XlaCompiler::Argument::kParameter;
+    args[0].type = DT_INT32;
+    args[0].shape = TensorShape({2});
+    args[1].kind = XlaCompiler::Argument::kResource;
+    args[1].resource_kind = XlaResource::kVariable;
+    args[1].initialized = true;
+    args[1].type = DT_INT32;
+    args[1].shape = TensorShape({2});
+
+    if (swap_order) {
+      // Even after swapping arguments, the compiler should maintain the new
+      // ordering of parameters.
+      std::swap(args[0], args[1]);
+    }
+    // Compiles the graph.
+    XlaCompiler compiler(DefaultOptions());
+
+    XlaCompiler::CompileOptions compile_options;
+    compile_options.always_return_tuple = false;
+    XlaCompiler::CompilationResult result;
+    TF_ASSERT_OK(compiler.CompileGraph(compile_options, "add", std::move(graph),
+                                       args, &result));
+
+    EXPECT_THAT(result.input_mapping, ::testing::ElementsAre(0, 1));
+  }
+}
+
 TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
   // Builds a graph that adds reshapes a tensor, but with the shape not
   // statically known.
@@ -309,10 +357,10 @@ TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
                             std::move(graph), args, &result);
   EXPECT_FALSE(status.ok());
   EXPECT_TRUE(
-      str_util::StrContains(status.error_message(), "depends on a parameter"))
+      absl::StrContains(status.error_message(), "depends on a parameter"))
       << status.error_message();
   EXPECT_TRUE(
-      str_util::StrContains(status.error_message(), "[[{{node C}} = Reshape"))
+      absl::StrContains(status.error_message(), "[[{{node C}} = Reshape"))
       << status.error_message();
 }
 
@@ -727,8 +775,7 @@ TEST_F(XlaCompilerTest, UndefinedFunctionFails) {
       compiler.CompileFunction(XlaCompiler::CompileOptions(), name_attr,
                                /*args=*/{}, &result);
   EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(str_util::StrContains(StringPiece(status.error_message()),
-                                    "is not defined."))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "is not defined."))
       << status.error_message();
 }
 
@@ -807,12 +854,10 @@ TEST_F(XlaCompilerTest, LocalFunctionWithWrongArgumentsFail) {
 
   ASSERT_FALSE(status.ok());
   // Flib lookup failure.
-  EXPECT_TRUE(str_util::StrContains(StringPiece(status.error_message()),
-                                    "is not defined."))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "is not defined."))
       << status.error_message();
   // Local flib lookup failure.
-  EXPECT_TRUE(str_util::StrContains(StringPiece(status.error_message()),
-                                    "Attr T is not found"))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "Attr T is not found"))
       << status.error_message();
 }
 
@@ -821,7 +866,10 @@ TEST_F(XlaCompilerTest, Variables) {
   Scope scope = Scope::NewRootScope().ExitOnError();
   auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
   auto var = ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, 1);
-  auto write = ops::AssignAddVariableOp(scope, var, a);
+  // Adds an identity op around the resource to make sure identity ops propagate
+  // resources correctly.
+  auto identity = ops::Identity(scope.WithOpName("VIdentity"), var);
+  auto write = ops::AssignAddVariableOp(scope, identity, a);
   auto read = ops::ReadVariableOp(
       scope.WithControlDependencies(std::vector<Operation>{write}), var,
       DT_INT32);
@@ -1075,9 +1123,9 @@ TEST_F(XlaCompilerTest, FunctionWithInvalidOp) {
   status = compiler.CompileGraph(XlaCompiler::CompileOptions(), "fill",
                                  std::move(graph), args, &result);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(str_util::StrContains(status.error_message(), "InvalidOp"))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "InvalidOp"))
       << status.error_message();
-  EXPECT_TRUE(str_util::StrContains(status.error_message(), "{{node fill_fn}}"))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "{{node fill_fn}}"))
       << status.error_message();
 }
 
@@ -1100,10 +1148,10 @@ TEST_F(XlaCompilerTest, NodeWithInvalidDataType) {
   status = compiler.CompileGraph(XlaCompiler::CompileOptions(), "invalid_type",
                                  std::move(graph), args, &result);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(str_util::StrContains(status.error_message(),
-                                    "is not in the list of allowed values"))
+  EXPECT_TRUE(absl::StrContains(status.error_message(),
+                                "is not in the list of allowed values"))
       << status.error_message();
-  EXPECT_TRUE(str_util::StrContains(status.error_message(), "{{node Shape}}"))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "{{node Shape}}"))
       << status.error_message();
 }
 
@@ -1127,9 +1175,9 @@ TEST_F(XlaCompilerTest, SingleOpWithoutInputs) {
                                    std::move(graph_copy), args, &result);
     ASSERT_FALSE(status.ok());
     EXPECT_TRUE(
-        str_util::StrContains(status.error_message(),
-                              "The following nodes are unreachable "
-                              "from the source in the graph: {{node NoOp}}"))
+        absl::StrContains(status.error_message(),
+                          "The following nodes are unreachable "
+                          "from the source in the graph: {{node NoOp}}"))
         << status.error_message();
   }
 

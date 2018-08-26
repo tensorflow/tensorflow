@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/delegates/eager/test_util.h"
 
 #include "absl/memory/memory.h"
-#include "flatbuffers/flexbuffers.h"
+#include "flatbuffers/flexbuffers.h"  // flatbuffers
 #include "tensorflow/contrib/lite/string.h"
 
 namespace tflite {

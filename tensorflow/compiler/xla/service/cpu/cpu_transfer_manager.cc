@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
@@ -256,7 +257,7 @@ StatusOr<Shape> CpuTransferManager::TransferBuffersFromOutfeedInternal(
     VLOG(2)
         << "Enqueueing outfeed buffer (for the device to populate) of length "
         << size_32 << "B";
-    buffers.emplace_back(MakeUnique<CpuOutfeedBuffer>(b.first, size_32));
+    buffers.emplace_back(absl::make_unique<CpuOutfeedBuffer>(b.first, size_32));
   }
 
   std::vector<cpu::runtime::XfeedBuffer*> buffer_pointers;
@@ -283,7 +284,7 @@ StatusOr<Shape> CpuTransferManager::TransferBuffersFromOutfeedInternal(
 }  // namespace xla
 
 static std::unique_ptr<xla::TransferManager> CreateCpuTransferManager() {
-  return xla::MakeUnique<xla::CpuTransferManager>();
+  return absl::make_unique<xla::CpuTransferManager>();
 }
 
 static bool InitModule() {

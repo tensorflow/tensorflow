@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -59,7 +59,7 @@ string HloModuleGroupMetadata::TrackedInstruction::ToString() const {
 
 /* static */ StatusOr<std::unique_ptr<HloModuleGroupMetadata>>
 HloModuleGroupMetadata::Build(const std::vector<HloModule*>& modules) {
-  auto metadata = MakeUnique<HloModuleGroupMetadata>(modules);
+  auto metadata = absl::make_unique<HloModuleGroupMetadata>(modules);
   TF_RETURN_IF_ERROR(metadata->Build());
   return std::move(metadata);
 }
@@ -204,6 +204,10 @@ const HloModuleGroupMetadata::Channel& HloModuleGroupMetadata::GetChannel(
   return channels_[channel_id_map_.at(channel_id)];
 }
 
+bool HloModuleGroupMetadata::HasChannel(int64 channel_id) const {
+  return channel_id_map_.find(channel_id) != channel_id_map_.end();
+}
+
 HloComputation* HloModuleGroupMetadata::PeerComputation(
     const HloInstruction* instruction) const {
   CHECK(IsChannelInstruction(instruction));
@@ -267,15 +271,14 @@ int64 HloModuleGroupMetadata::GetModuleId(const HloModule* module) const {
   LOG(FATAL) << "unknown module";
 }
 
-tensorflow::gtl::optional<int64> HloModuleGroupMetadata::GetInstructionDevice(
+absl::optional<int64> HloModuleGroupMetadata::GetInstructionDevice(
     const HloInstruction& instruction) const {
   // The module group metadata can be created in both "single module, multiple
   // devices" and "multiple modules, no explicit devices" fashions.
   // The API returns an optional even though the current implementation always
   // returns a device, to account for cases where we cannot guess a device.
   // In such cases the VerifyChannelInstructions() will return proper errors.
-  tensorflow::gtl::optional<int64> device =
-      instruction.sharding_unique_device();
+  absl::optional<int64> device = instruction.sharding_unique_device();
   if (!device) {
     device = GetModuleId(instruction.parent()->parent());
   }
@@ -283,10 +286,7 @@ tensorflow::gtl::optional<int64> HloModuleGroupMetadata::GetInstructionDevice(
 }
 
 int64 HloModuleGroupMetadata::GetDeviceModulesCount() const {
-  return std::count_if(modules_.begin(), modules_.end(),
-                       [](const HloModule* module) {
-                         return !module->config().is_host_module();
-                       });
+  return modules_.size();
 }
 
 Status HloModuleGroupMetadata::RecordInstructions() {
@@ -383,7 +383,7 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
   if (!ContainsKey(companion_set_index_, instruction1) &&
       !ContainsKey(companion_set_index_, instruction2)) {
     companion_sets_.push_back(
-        tensorflow::MakeUnique<std::unordered_set<HloInstruction*>>());
+        absl::make_unique<std::unordered_set<HloInstruction*>>());
     auto companion_set = companion_sets_.back().get();
     companion_set->insert(instruction1);
     companion_set->insert(instruction2);

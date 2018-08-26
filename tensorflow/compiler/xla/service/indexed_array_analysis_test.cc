@@ -22,6 +22,11 @@ limitations under the License.
 namespace xla {
 namespace {
 class IndexedArrayAnalysisTest : public HloVerifiedTestBase {
+ public:
+  IndexedArrayAnalysisTest()
+      : HloVerifiedTestBase(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false) {}
+
  protected:
   void AssertArrayForRootExpressionIs(const string& hlo_text,
                                       const string& root_expression) {
@@ -82,11 +87,11 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[5] parameter(1)
   ROOT gather = s32[5,3] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,3}
+      slice_sizes={1,3}
 }
 )";
 
@@ -102,11 +107,11 @@ ENTRY main {
   operand = s32[3,3] constant(s32[3,3]{{1,2,3},{1,2,3},{1,2,3}})
   indices = s32[5] parameter(0)
   ROOT gather = s32[5,3] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,3}
+      slice_sizes={1,3}
 }
 )";
 
@@ -122,11 +127,11 @@ ENTRY main {
   operand = s32[3,3] constant(s32[3,3]{{1,2,3},{1,2,3},{1,2,3}})
   indices = s32[5,2] parameter(0)
   ROOT gather = s32[5] gather(operand, indices),
-      output_window_dims={},
-      elided_window_dims={0,1},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
       index_vector_dim=1,
-      window_bounds={1,1}
+      slice_sizes={1,1}
 }
 )";
 
@@ -141,11 +146,11 @@ ENTRY main {
   operand = s32[3,3,1] parameter(0)
   indices = s32[5] parameter(1)
   ROOT gather = s32[5,3] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0,2},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0,2},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,3,1}
+      slice_sizes={1,3,1}
 }
 )";
 
@@ -160,11 +165,11 @@ ENTRY main {
   operand = s32[3,3,1] parameter(0)
   indices = s32[5] parameter(1)
   ROOT gather = s32[5,2,3] gather(operand, indices),
-      output_window_dims={1,2},
-      elided_window_dims={2},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1,2},
+      collapsed_slice_dims={2},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={2,3,1}
+      slice_sizes={2,3,1}
 }
 )";
 
@@ -179,11 +184,11 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[5] parameter(1)
   ROOT gather = s32[5,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,2}
+      slice_sizes={1,2}
 }
 )";
 
@@ -199,17 +204,17 @@ ENTRY main {
   indices_a = s32[5] parameter(0)
   indices_b = s32[2] parameter(1)
   gather_a = s32[5,3] gather(operand, indices_a),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,3}
+      slice_sizes={1,3}
   ROOT gather_b = s32[2,3] gather(gather_a, indices_b),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,3}
+      slice_sizes={1,3}
 }
 )";
 
@@ -228,17 +233,17 @@ ENTRY main {
   indices_a = s32[5,7] parameter(1)
   indices_b = s32[2] parameter(2)
   gather_a = s32[5,3,7] gather(operand, indices_a),
-      output_window_dims={1},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={1},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=2,
-      window_bounds={3,1}
+      slice_sizes={3,1}
   ROOT gather_b = s32[5,3,2] gather(gather_a, indices_b),
-      output_window_dims={0,1},
-      elided_window_dims={2},
-      gather_dims_to_operand_dims={2},
+      offset_dims={0,1},
+      collapsed_slice_dims={2},
+      start_index_map={2},
       index_vector_dim=1,
-      window_bounds={5,3,1}
+      slice_sizes={5,3,1}
 }
 )";
 
@@ -256,17 +261,17 @@ ENTRY main {
   indices_a = s32[2] parameter(1)
   indices_b = s32[5,7] parameter(2)
   gather_a = s32[2,6] gather(operand, indices_a),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,6}
+      slice_sizes={1,6}
   ROOT gather_b = s32[5,6,7] gather(gather_a, indices_b),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=2,
-      window_bounds={1,6}
+      slice_sizes={1,6}
 }
 )";
 
@@ -284,17 +289,17 @@ ENTRY main {
   indices_a = s32[5,7] parameter(1)
   indices_b = s32[4,8] parameter(2)
   gather_a = s32[5,3,7] gather(operand, indices_a),
-      output_window_dims={1},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={1},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=2,
-      window_bounds={3,1}
+      slice_sizes={3,1}
   ROOT gather_b = s32[4,5,3,8] gather(gather_a, indices_b),
-      output_window_dims={1,2},
-      elided_window_dims={2},
-      gather_dims_to_operand_dims={2},
+      offset_dims={1,2},
+      collapsed_slice_dims={2},
+      start_index_map={2},
       index_vector_dim=2,
-      window_bounds={5,3,1}
+      slice_sizes={5,3,1}
 }
 )";
 
@@ -312,11 +317,11 @@ ENTRY main {
   operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,2,3,4},{1,2,3,4}})
   indices = s32[5] parameter(0)
   gather = s32[5,4] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,4}
+      slice_sizes={1,4}
   ROOT reshape = s32[5,2,2] reshape(gather)
 }
 )";
@@ -333,11 +338,11 @@ ENTRY main {
   operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,2,3,4},{1,2,3,4}})
   indices = s32[5,7] parameter(0)
   gather = s32[5,4,7] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=2,
-      window_bounds={1,4}
+      slice_sizes={1,4}
   ROOT reshape = s32[5,2,2,7] reshape(gather)
 }
 )";
@@ -358,11 +363,11 @@ ENTRY main {
       {{1,2,3,4,5,6},{1,2,3,4,5,6}}})
   indices = s32[5,7] parameter(0)
   gather = s32[5,2,6,7] gather(operand, indices),
-      output_window_dims={1,2},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1,2},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=2,
-      window_bounds={1,2,6}
+      slice_sizes={1,2,6}
   ROOT reshape = s32[5,3,4,7] reshape(gather)
 }
 )";
@@ -381,11 +386,11 @@ ENTRY main {
       {1,2,3,4,5,6},{1,2,3,4,5,6}})
   indices = s32[1] parameter(0)
   gather = s32[1,6] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,6}
+      slice_sizes={1,6}
   ROOT reshape = s32[1,1,6] reshape(gather)
 }
 )";
@@ -408,14 +413,14 @@ ENTRY main {
   operand = s32[2,3]{1,0} constant(s32[2,3] { { 1, 2, 3 }, { 1, 2, 3 } })
 
   i.0 = s64[1,3]{1,0} parameter(0)
-  g.0 = s32[1,3,3]{2,1,0} gather(operand, i.0), output_window_dims={2},
-    elided_window_dims={0}, gather_dims_to_operand_dims={0},
-    index_vector_dim=2, window_bounds={1,3}
+  g.0 = s32[1,3,3]{2,1,0} gather(operand, i.0), offset_dims={2},
+    collapsed_slice_dims={0}, start_index_map={0},
+    index_vector_dim=2, slice_sizes={1,3}
 
   i.1 = s64[1] parameter(1)
-  g.1 = s32[1,1,3]{2,1,0} gather(g.0, i.1), output_window_dims={0,2},
-    elided_window_dims={1}, gather_dims_to_operand_dims={1},
-    index_vector_dim=1, window_bounds={1,1,3}
+  g.1 = s32[1,1,3]{2,1,0} gather(g.0, i.1), offset_dims={0,2},
+    collapsed_slice_dims={1}, start_index_map={1},
+    index_vector_dim=1, slice_sizes={1,1,3}
 
   ROOT reshape = s32[1,3]{1,0} reshape(g.1)
 }
@@ -441,11 +446,11 @@ ENTRY main {
   operand = s32[1,6] constant(s32[1,6]{{1,2,3,4,5,6}})
   indices = s32[1] parameter(0)
   gather = s32[1,6] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,6}
+      slice_sizes={1,6}
   ROOT reshape = s32[1,1,6] reshape(gather)
 }
 )";
@@ -469,11 +474,11 @@ ENTRY main {
       {1,2,3,4,5,6},{1,2,3,4,5,6}}})
   indices = s32[1] parameter(0)
   gather = s32[1,1,6] gather(operand, indices),
-      output_window_dims={1,2},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={1,2},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=1,
-      window_bounds={1,1,6}
+      slice_sizes={1,1,6}
   ROOT reshape = s32[1,1,1,6] reshape(gather)
 }
 )";
@@ -500,11 +505,11 @@ ENTRY main {
       {1,2,3,4,5,6},{1,2,3,4,5,6}})
   indices = s32[1,5] parameter(0)
   gather = s32[1,5,6] gather(operand, indices),
-      output_window_dims={2},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={2},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=2,
-      window_bounds={1,6}
+      slice_sizes={1,6}
   ROOT reshape = s32[1,1,5,6] reshape(gather)
 }
 )";
@@ -530,11 +535,11 @@ ENTRY main {
   operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,2,3,4},{1,2,3,4}})
   indices = s32[5,6] parameter(0)
   gather = s32[5,4,6] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=2,
-      window_bounds={1,4}
+      slice_sizes={1,4}
   ROOT reshape = s32[5,2,2,2,3] reshape(gather)
 }
 )";
@@ -562,11 +567,11 @@ ENTRY main {
       {{1,2},{3,4},{5,6},{7,8},{9,10}}})
   indices = s32[7] parameter(0)
   gather = s32[3,2,7] gather(operand, indices),
-      output_window_dims={0,1},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={0,1},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=1,
-      window_bounds={3,1,2}
+      slice_sizes={3,1,2}
   ROOT reshape = s32[6,7] reshape(gather)
 }
 )";
@@ -594,11 +599,11 @@ ENTRY main {
     {{1},{2},{3},{4}}})
   indices = s32[5,6] parameter(0)
   gather = s32[5,4,6,1] gather(operand, indices),
-      output_window_dims={1,3},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1,3},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=2,
-      window_bounds={1,4,1}
+      slice_sizes={1,4,1}
   ROOT reshape = s32[5,2,2,2,3,1] reshape(gather)
 }
 )";
@@ -623,20 +628,20 @@ ENTRY main {
   operand = f32[3,4] constant(f32[3,4]{{1,2,3,4},{1,3,2,4},{4,3,2,1}})
   indices = s32[5] parameter(0)
   gather = f32[5,4] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,4}
+      slice_sizes={1,4}
   ROOT tanh = f32[5,4] tanh(gather)
 }
 )";
 
   AssertArrayWithConstantsForRootExpressionIs(hlo_text, 1 + R"(
 (scalar-indexed-const (constant f32[3,4] f32[3,4] {
-  { 0.761594176, 0.964027584, 0.995054781, 0.999329329 },
-  { 0.761594176, 0.995054781, 0.964027584, 0.999329329 },
-  { 0.999329329, 0.995054781, 0.964027584, 0.761594176 }
+  { 0.761594, 0.964028, 0.995055, 0.999329 },
+  { 0.761594, 0.995055, 0.964028, 0.999329 },
+  { 0.999329, 0.995055, 0.964028, 0.761594 }
 }) %indices 0->[0]))");
 }
 
@@ -650,11 +655,11 @@ ENTRY main {
   constant_broadcasted = s32[5,4] broadcast(constant), dimensions={}
   indices = s32[5] parameter(0)
   gather = s32[5,4] gather(gather_operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,4}
+      slice_sizes={1,4}
   ROOT add = s32[5,4] add(gather, constant_broadcasted)
 }
 )";
@@ -678,11 +683,11 @@ ENTRY main {
   constant_broadcasted = s32[5,4] broadcast(constant), dimensions={}
   indices = s32[5] parameter(0)
   gather = s32[5,4] gather(gather_operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,4}
+      slice_sizes={1,4}
   ROOT sub = s32[5,4] subtract(gather, constant_broadcasted)
 }
 )";
@@ -706,11 +711,11 @@ ENTRY main {
   constant_broadcasted = s32[5,4] broadcast(constant), dimensions={}
   indices = s32[5] parameter(0)
   gather = s32[5,4] gather(gather_operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,4}
+      slice_sizes={1,4}
   ROOT sub = s32[5,4] subtract(constant_broadcasted, gather)
 }
 )";
@@ -733,11 +738,11 @@ ENTRY main {
   constant_broadcasted = s32[5,4] broadcast(constant_vect), dimensions={1}
   indices = s32[5] parameter(0)
   gather = s32[5,4] gather(gather_operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,4}
+      slice_sizes={1,4}
   ROOT add = s32[5,4] add(gather, constant_broadcasted)
 }
 )";
@@ -760,11 +765,11 @@ ENTRY main {
   constant_broadcasted = s32[5,4] broadcast(constant_vect), dimensions={0}
   indices = s32[5] parameter(0)
   gather = s32[5,4] gather(gather_operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,4}
+      slice_sizes={1,4}
   ROOT add = s32[5,4] add(gather, constant_broadcasted)
 }
 )";
@@ -808,11 +813,11 @@ ENTRY main {
   dot_rhs_constant = s32[4,3] constant(s32[4,3]{{1,2,3},{4,5,6},{7,8,9},{10,11,12}})
   indices = s32[5] parameter(0)
   dot_lhs = s32[5,4] gather(gather_operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,4}
+      slice_sizes={1,4}
   ROOT dot = s32[5,3] dot(dot_lhs, dot_rhs_constant), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )";
@@ -835,11 +840,11 @@ ENTRY main {
   dot_rhs_constant = s32[3,3] constant(s32[3,3]{{1,2,3},{4,5,6},{7,8,9}})
   indices = s32[5] parameter(0)
   dot_lhs = s32[3,5] gather(gather_operand, indices),
-      output_window_dims={0},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={0},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=1,
-      window_bounds={3,1}
+      slice_sizes={3,1}
   ROOT dot = s32[5,3] dot(dot_lhs, dot_rhs_constant), lhs_contracting_dims={0}, rhs_contracting_dims={0}
 }
 )";
@@ -863,11 +868,11 @@ ENTRY main {
   dot_lhs_constant = s32[4,3] constant(s32[4,3]{{1,2,3},{4,5,6},{7,8,9},{10,11,12}})
   indices = s32[5] parameter(0)
   dot_rhs = s32[3,5] gather(gather_operand, indices),
-      output_window_dims={0},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={0},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=1,
-      window_bounds={3,1}
+      slice_sizes={3,1}
   ROOT dot = s32[4,5] dot(dot_lhs_constant, dot_rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )";
@@ -892,11 +897,11 @@ ENTRY main {
   dot_lhs_constant = s32[4,3] constant(s32[4,3]{{1,2,3},{4,5,6},{7,8,9},{10,11,12}})
   indices = s32[5] parameter(0)
   dot_rhs = s32[5,3] gather(gather_operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,3}
+      slice_sizes={1,3}
   ROOT dot = s32[4,5] dot(dot_lhs_constant, dot_rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}
 }
 )";
@@ -921,11 +926,11 @@ ENTRY main {
   dot_lhs_constant = s32[2,2,3] constant(s32[2,2,3]{{{1,2,3},{4,5,6}},{{7,8,9},{10,11,12}}})
   indices = s32[4] parameter(0)
   dot_rhs = s32[2,3,4] gather(gather_operand, indices),
-      output_window_dims={0,1},
-      elided_window_dims={2},
-      gather_dims_to_operand_dims={2},
+      offset_dims={0,1},
+      collapsed_slice_dims={2},
+      start_index_map={2},
       index_vector_dim=1,
-      window_bounds={2,3,1}
+      slice_sizes={2,3,1}
   ROOT dot = s32[2,2,4] dot(dot_lhs_constant, dot_rhs),
       lhs_contracting_dims={2}, rhs_contracting_dims={1},
       lhs_batch_dims={0}, rhs_batch_dims={0}
@@ -952,11 +957,11 @@ ENTRY main {
   dot_rhs_constant = s32[2,3] constant(s32[2,3]{{1,2,3},{4,5,6}})
   indices = s32[2] parameter(0)
   dot_lhs = s32[3,2] gather(gather_operand, indices),
-      output_window_dims={0},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={0},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=1,
-      window_bounds={3,1}
+      slice_sizes={3,1}
   ROOT dot = s32[3,3] dot(dot_lhs, dot_rhs_constant), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )";

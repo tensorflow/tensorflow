@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -1124,6 +1125,78 @@ TEST_F(OpLevelCostEstimatorTest, PredictFusedBatchNormGrad) {
     EXPECT_EQ(1, costs.num_ops_total);
     EXPECT_FALSE(costs.inaccurate);
     EXPECT_EQ(0, costs.num_ops_with_unknown_shapes);
+  }
+}
+
+TEST_F(OpLevelCostEstimatorTest, MaybeGetMinimumShape) {
+  {
+    TensorShapeProto x;
+    x.set_unknown_rank(true);
+    bool unknown_shapes = false;
+    TensorShapeProto y = MaybeGetMinimumShape(x, 4, &unknown_shapes);
+    EXPECT_TRUE(unknown_shapes);
+    ExpectTensorShape({1, 1, 1, 1}, y);
+  }
+
+  {
+    TensorShapeProto x;
+    x.set_unknown_rank(false);
+    bool unknown_shapes = false;
+    TensorShapeProto y = MaybeGetMinimumShape(x, 1, &unknown_shapes);
+    EXPECT_FALSE(unknown_shapes);
+    ExpectTensorShape({1}, y);
+  }
+
+  {
+    TensorShapeProto x;
+    x.set_unknown_rank(false);
+    bool unknown_shapes = false;
+    TensorShapeProto y = MaybeGetMinimumShape(x, 2, &unknown_shapes);
+    EXPECT_FALSE(unknown_shapes);
+    ExpectTensorShape({1, 1}, y);
+  }
+
+  {
+    TensorShapeProto x;
+    x.set_unknown_rank(false);
+    x.add_dim()->set_size(10);
+    x.add_dim()->set_size(20);
+    bool unknown_shapes = false;
+    TensorShapeProto y = MaybeGetMinimumShape(x, 2, &unknown_shapes);
+    EXPECT_FALSE(unknown_shapes);
+    ExpectTensorShape({10, 20}, y);
+
+    unknown_shapes = false;
+    TensorShapeProto z = MaybeGetMinimumShape(x, 4, &unknown_shapes);
+    EXPECT_TRUE(unknown_shapes);
+    EXPECT_EQ(4, z.dim_size());
+    ExpectTensorShape({10, 20, 1, 1}, z);
+  }
+
+  {
+    TensorShapeProto x;
+    x.set_unknown_rank(false);
+    x.add_dim()->set_size(10);
+    x.add_dim()->set_size(20);
+    x.add_dim()->set_size(-1);
+    x.add_dim()->set_size(20);
+    bool unknown_shapes = false;
+    TensorShapeProto y = MaybeGetMinimumShape(x, 4, &unknown_shapes);
+    EXPECT_TRUE(unknown_shapes);
+    ExpectTensorShape({10, 20, 1, 20}, y);
+  }
+
+  {
+    TensorShapeProto x;
+    x.set_unknown_rank(false);
+    x.add_dim()->set_size(10);
+    x.add_dim()->set_size(20);
+    x.add_dim()->set_size(30);
+    x.add_dim()->set_size(20);
+    bool unknown_shapes = false;
+    TensorShapeProto y = MaybeGetMinimumShape(x, 2, &unknown_shapes);
+    EXPECT_TRUE(unknown_shapes);
+    ExpectTensorShape({10, 20}, y);
   }
 }
 }  // end namespace grappler

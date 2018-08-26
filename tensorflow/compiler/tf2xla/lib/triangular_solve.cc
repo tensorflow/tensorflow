@@ -57,7 +57,7 @@ xla::XlaOp DiagonalBlocks(xla::XlaOp a, int64 block_size) {
     // We can grab entire blocks using gather
     if (n > block_size) {
       // Construct the starting indices of the diagonal blocks
-      auto gather_indices =
+      auto start_indices =
           Transpose(Broadcast(Mul(Iota(builder, xla::S32, num_blocks),
                                   xla::ConstantR0<int32>(builder, block_size)),
                               /*broadcast_sizes=*/{2}),
@@ -65,13 +65,13 @@ xla::XlaOp DiagonalBlocks(xla::XlaOp a, int64 block_size) {
 
       // Gather the diagonal blocks
       xla::GatherDimensionNumbers dim_numbers;
-      dim_numbers.add_output_window_dims(ndims - 1);
-      dim_numbers.add_output_window_dims(ndims);
-      dim_numbers.add_gather_dims_to_operand_dims(ndims - 2);
-      dim_numbers.add_gather_dims_to_operand_dims(ndims - 1);
+      dim_numbers.add_offset_dims(ndims - 1);
+      dim_numbers.add_offset_dims(ndims);
+      dim_numbers.add_start_index_map(ndims - 2);
+      dim_numbers.add_start_index_map(ndims - 1);
       dim_numbers.set_index_vector_dim(1);
-      diag_blocks = Gather(a, gather_indices, dim_numbers,
-                           /*window_bounds=*/{block_size, block_size});
+      diag_blocks = Gather(a, start_indices, dim_numbers,
+                           /*slice_sizes=*/{block_size, block_size});
     }
 
     // The last block might be smaller than the block size,
@@ -110,8 +110,9 @@ xla::XlaOp DiagonalBlocks(xla::XlaOp a, int64 block_size) {
   });
 }
 
-xla::XlaOp InvertDiagonalBlocks(xla::XlaOp diag_blocks, bool lower,
-                                bool transpose_a, bool conjugate_a) {
+xla::XlaOp InvertDiagonalBlocks(
+    xla::XlaOp diag_blocks, bool lower, bool transpose_a, bool conjugate_a,
+    xla::PrecisionConfigProto::Precision precision) {
   xla::XlaBuilder* builder = diag_blocks.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
     // Input is a batch of square lower triangular square matrices. Its shape is
@@ -215,7 +216,10 @@ xla::XlaOp InvertDiagonalBlocks(xla::XlaOp diag_blocks, bool lower,
       dnums.add_rhs_batch_dimensions(0);
       dnums.add_lhs_contracting_dimensions(2);
       dnums.add_rhs_contracting_dimensions(1);
-      auto update = -DotGeneral(input_row, body_out, dnums);
+      xla::PrecisionConfigProto precision_proto;
+      precision_proto.add_operand_precision(precision);
+      precision_proto.add_operand_precision(precision);
+      auto update = -DotGeneral(input_row, body_out, dnums, &precision_proto);
 
       body_out = DynamicUpdateSlice(body_out, update, start_indices);
 
@@ -238,10 +242,10 @@ xla::XlaOp InvertDiagonalBlocks(xla::XlaOp diag_blocks, bool lower,
   });
 }
 
-xla::XlaOp SolveWithInvertedDiagonalBlocks(xla::XlaOp a, xla::XlaOp b,
-                                           xla::XlaOp inv_diag_blocks,
-                                           bool left_side, bool lower,
-                                           bool transpose_a, bool conjugate_a) {
+xla::XlaOp SolveWithInvertedDiagonalBlocks(
+    xla::XlaOp a, xla::XlaOp b, xla::XlaOp inv_diag_blocks, bool left_side,
+    bool lower, bool transpose_a, bool conjugate_a,
+    xla::PrecisionConfigProto::Precision precision) {
   xla::XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
     TF_ASSIGN_OR_RETURN(xla::Shape blocks_shape,
@@ -307,9 +311,13 @@ xla::XlaOp SolveWithInvertedDiagonalBlocks(xla::XlaOp a, xla::XlaOp b,
         auto a_row =
             MaybeConjugate(SliceInMinorDims(a, start, end), conjugate_a);
         if (left_side) {
-          remainder = b_row - BatchDot(a_row, x, transpose_a, false);
+          remainder = b_row - BatchDot(a_row, x, transpose_a, false,
+                                       /*conjugate_x=*/false,
+                                       /*conjugate_y=*/false, precision);
         } else {
-          remainder = b_row - BatchDot(x, a_row, false, transpose_a);
+          remainder = b_row - BatchDot(x, a_row, false, transpose_a,
+                                       /*conjugate_x=*/false,
+                                       /*conjugate_y=*/false, precision);
         }
       }
 
@@ -319,9 +327,13 @@ xla::XlaOp SolveWithInvertedDiagonalBlocks(xla::XlaOp a, xla::XlaOp b,
           xla::ConstantR0WithType(builder, xla::S32, j * block_size);
       std::vector<xla::XlaOp> update_starts = {start_index, zero};
       if (left_side) {
-        x_update = BatchDot(inv_block, remainder, transpose_a, false);
+        x_update =
+            BatchDot(inv_block, remainder, transpose_a, false,
+                     /*conjugate_x=*/false, /*conjugate_y=*/false, precision);
       } else {
-        x_update = BatchDot(remainder, inv_block, false, transpose_a);
+        x_update =
+            BatchDot(remainder, inv_block, false, transpose_a,
+                     /*conjugate_x=*/false, /*conjugate_y=*/false, precision);
         std::swap(update_starts[0], update_starts[1]);
       }
       x = DynamicUpdateSliceInMinorDims(x, x_update, /*starts=*/update_starts);
@@ -333,7 +345,8 @@ xla::XlaOp SolveWithInvertedDiagonalBlocks(xla::XlaOp a, xla::XlaOp b,
 
 xla::XlaOp TriangularSolve(xla::XlaOp a, xla::XlaOp b, bool left_side,
                            bool lower, bool transpose_a, bool conjugate_a,
-                           int64 block_size) {
+                           int64 block_size,
+                           xla::PrecisionConfigProto::Precision precision) {
   xla::XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
     TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));
@@ -388,12 +401,13 @@ xla::XlaOp TriangularSolve(xla::XlaOp a, xla::XlaOp b, bool left_side,
     auto diag_blocks = DiagonalBlocks(a, block_size);
 
     // We invert these blocks in parallel using batched matrix-vector products
-    auto inv_diag_blocks =
-        InvertDiagonalBlocks(diag_blocks, lower, transpose_a, conjugate_a);
+    auto inv_diag_blocks = InvertDiagonalBlocks(diag_blocks, lower, transpose_a,
+                                                conjugate_a, precision);
 
     // We now find the solution using GEMMs
-    auto x = SolveWithInvertedDiagonalBlocks(a, b, inv_diag_blocks, left_side,
-                                             lower, transpose_a, conjugate_a);
+    auto x =
+        SolveWithInvertedDiagonalBlocks(a, b, inv_diag_blocks, left_side, lower,
+                                        transpose_a, conjugate_a, precision);
 
     return x;
   });

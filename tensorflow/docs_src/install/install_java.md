@@ -135,7 +135,7 @@ instead:
 
 GPU acceleration is available via Maven only for Linux and only if your system
 meets the
-@{$install_linux#determine_which_tensorflow_to_install$requirements for GPU}.
+[requirements for GPU](../install/install_linux.md#determine_which_tensorflow_to_install).
 
 ## Using TensorFlow with JDK
 
@@ -155,8 +155,8 @@ Take the following steps to install TensorFlow for Java on Linux or macOS:
      the help of GPU(s). To help you decide, read the section entitled
      "Determine which TensorFlow to install" in one of the following guides:
 
-     * @{$install_linux#determine_which_tensorflow_to_install$Installing TensorFlow on Linux}
-     * @{$install_mac#determine_which_tensorflow_to_install$Installing TensorFlow on macOS}
+     * [Installing TensorFlow on Linux](../install/install_linux.md#determine_which_tensorflow_to_install)
+     * [Installing TensorFlow on macOS](../install/install_mac.md#determine_which_tensorflow_to_install)
 
   3. Download and extract the appropriate Java Native Interface (JNI)
      file for your operating system and processor support by running the

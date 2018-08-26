@@ -23,6 +23,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -31,8 +33,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -211,7 +211,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
           "layout minor_to_major field contains %d elements, "
           "but shape is rank %lld: {%s}; shape: %s",
           layout.minor_to_major_size(), ShapeUtil::Rank(shape),
-          tensorflow::str_util::Join(layout.minor_to_major(), ", ").c_str(),
+          absl::StrJoin(layout.minor_to_major(), ", ").c_str(),
           shape.ShortDebugString().c_str());
     }
 
@@ -403,12 +403,10 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 
 /* static */ string LayoutUtil::HumanString(const Layout& layout) {
   if (IsSparse(layout)) {
-    return tensorflow::strings::StrCat("sparse{", layout.max_sparse_elements(),
-                                       "}");
+    return absl::StrCat("sparse{", layout.max_sparse_elements(), "}");
   }
   CHECK(IsDense(layout));
-  return tensorflow::strings::StrCat(
-      "{", tensorflow::str_util::Join(layout.minor_to_major(), ","), "}");
+  return absl::StrCat("{", absl::StrJoin(layout.minor_to_major(), ","), "}");
 }
 
 namespace {

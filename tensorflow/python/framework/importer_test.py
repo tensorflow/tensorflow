@@ -1205,7 +1205,7 @@ class ImportGraphDefTest(test.TestCase):
           gdef, return_elements=["p1:0", "p2:0", "f:0", "f:1"], name="")
       grad = gradients_impl.gradients([a], [p1, p2])
 
-      with self.test_session(graph=g2) as sess:
+      with self.session(graph=g2) as sess:
         feed_dict = {p1: 1, p2: 2}
         a_val, b_val, grad_val = sess.run([a, b, grad], feed_dict=feed_dict)
         self.assertEqual(a_val, 3.0)
@@ -1225,7 +1225,7 @@ class ImportGraphDefTest(test.TestCase):
       # functions created in g2).
       grad = gradients_impl.gradients([a], [p1, p2])
 
-      with self.test_session(graph=g3) as sess:
+      with self.session(graph=g3) as sess:
         feed_dict = {p1: 1, p2: 2}
         a_val, b_val, grad_val = sess.run([a, b, grad], feed_dict=feed_dict)
         self.assertEqual(a_val, 3.0)

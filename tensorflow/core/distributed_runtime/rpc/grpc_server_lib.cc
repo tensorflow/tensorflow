@@ -190,6 +190,8 @@ Status GrpcServer::Init(
   builder.SetMaxMessageSize(std::numeric_limits<int32>::max());
   builder.SetOption(
       std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption));
+  // Allow subclasses to specify more args to pass to the gRPC server.
+  MaybeMutateBuilder(&builder);
   master_impl_ = CreateMaster(&master_env_);
   master_service_ = NewGrpcMasterService(master_impl_.get(), config, &builder);
   worker_impl_ =

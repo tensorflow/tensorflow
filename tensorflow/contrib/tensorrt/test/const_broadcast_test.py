@@ -36,6 +36,7 @@ class ConstBroadcastTest(trt_test.TfTrtIntegrationTestBase):
     dtype = dtypes.float32
     input_name = 'input'
     input_dims = [5, 12, 12, 2]
+    output_name = 'output'
     g = ops.Graph()
     with g.as_default():
       x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
@@ -53,15 +54,25 @@ class ConstBroadcastTest(trt_test.TfTrtIntegrationTestBase):
           dtype=dtype,
           name='filt3')
       y3 = nn.conv2d(z2, filt3, strides=[1, 1, 1, 1], padding='SAME', name='y3')
-      nn.relu(y3, name='output')
+      nn.relu(y3, name=output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
         input_dims=[input_dims],
-        expected_engines=['my_trt_op_0'],
-        expected_output_dims=(5, 12, 12, 1),
-        allclose_atol=1.e-02,
-        allclose_rtol=1.e-02)
+        output_names=[output_name],
+        expected_output_dims=[(5, 12, 12, 1)])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return ['my_trt_op_0']
+
+  def ExpectedAbsoluteTolerance(self, run_params):
+    """The absolute tolerance to compare floating point results."""
+    return 1.e-04 if run_params.precision_mode == 'FP32' else 1.e-02
+
+  def ExpectedRelativeTolerance(self, run_params):
+    """The relative tolerance to compare floating point results."""
+    return 1.e-04 if run_params.precision_mode == 'FP32' else 1.e-02
 
 
 if __name__ == '__main__':

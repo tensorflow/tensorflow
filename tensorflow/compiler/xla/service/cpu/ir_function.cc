@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/ir_function.h"
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/shape_partition.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -189,7 +190,7 @@ void IrFunction::Initialize(const string& function_name,
 llvm::Value* IrFunction::GetDynamicLoopBound(const int64 offset) {
   CHECK_GT(num_dynamic_loop_bounds_, 0);
   CHECK_LT(offset, num_dynamic_loop_bounds_ * 2);
-  string name = tensorflow::strings::StrCat("dynamic_loop_bound_", offset);
+  string name = absl::StrCat("dynamic_loop_bound_", offset);
   return b_->CreateLoad(b_->CreateGEP(CHECK_NOTNULL(dynamic_loop_bounds_arg_),
                                       b_->getInt64(offset), AsStringRef(name)));
 }
@@ -200,7 +201,7 @@ llvm::Value* IrFunction::GetDynamicLoopBound(const int64 offset) {
 // address buffer).
 std::vector<llvm::Value*> GetArrayFunctionCallArguments(
     tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
-    llvm::IRBuilder<>* b, tensorflow::StringPiece name,
+    llvm::IRBuilder<>* b, absl::string_view name,
     llvm::Value* return_value_buffer, llvm::Value* exec_run_options_arg,
     llvm::Value* temp_buffers_arg, llvm::Value* profile_counters_arg) {
   llvm::Value* parameter_addresses_buffer;
@@ -211,13 +212,13 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
   } else {
     parameter_addresses_buffer = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
         b->getInt8PtrTy(), b->getInt32(parameter_addresses.size()),
-        tensorflow::strings::StrCat(name, "_parameter_addresses"), b);
+        absl::StrCat(name, "_parameter_addresses"), b);
 
     for (size_t i = 0; i < parameter_addresses.size(); ++i) {
       llvm::Value* parameter_as_i8ptr =
           b->CreateBitCast(parameter_addresses[i], b->getInt8PtrTy(),
-                           AsStringRef(tensorflow::strings::StrCat(
-                               name, "_parameter_", i, "_address_as_i8ptr")));
+                           AsStringRef(absl::StrCat(name, "_parameter_", i,
+                                                    "_address_as_i8ptr")));
       llvm::Value* slot_in_param_addresses =
           b->CreateInBoundsGEP(parameter_addresses_buffer, {b->getInt64(i)});
       b->CreateStore(parameter_as_i8ptr, slot_in_param_addresses);
@@ -320,8 +321,7 @@ Status EmitCallToParallelForkJoin(
       /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
       /*Initializer=*/partitions_array,
       /*Name=*/
-      AsStringRef(
-          tensorflow::strings::StrCat(name, "_parallel_dimension_partitions")));
+      AsStringRef(absl::StrCat(name, "_parallel_dimension_partitions")));
 
   // Add argument specifying parallel dimension partitions.
   fork_join_arguments.push_back(

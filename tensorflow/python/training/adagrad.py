@@ -70,19 +70,23 @@ class AdagradOptimizer(optimizer.Optimizer):
 
   def _create_slots(self, var_list):
     for v in var_list:
-      with ops.colocate_with(v):
-        dtype = v.dtype.base_dtype
-        if v.get_shape().is_fully_defined():
-          init = init_ops.constant_initializer(self._initial_accumulator_value,
-                                               dtype=dtype)
-        else:
-          # Use a Tensor instead of initializer if variable does not have static
-          # shape.
-          init_constant = gen_array_ops.fill(array_ops.shape(v),
-                                             self._initial_accumulator_value)
-          init = math_ops.cast(init_constant, dtype)
+      dtype = v.dtype.base_dtype
+      if v.get_shape().is_fully_defined():
+        init = init_ops.constant_initializer(self._initial_accumulator_value,
+                                             dtype=dtype)
+      else:
+        init = self._init_constant_op(v, dtype)
       self._get_or_make_slot_with_initializer(v, init, v.get_shape(), dtype,
                                               "accumulator", self._name)
+
+  def _init_constant_op(self, v, dtype):
+    def init():
+      # Use a Tensor instead of initializer if variable does not have
+      # static shape.
+      init_constant = gen_array_ops.fill(array_ops.shape(v),
+                                         self._initial_accumulator_value)
+      return math_ops.cast(init_constant, dtype)
+    return init
 
   def _prepare(self):
     learning_rate = self._call_if_callable(self._learning_rate)

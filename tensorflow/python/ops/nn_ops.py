@@ -698,7 +698,7 @@ def convolution(
   `padded_input` is obtained by zero padding the input using an effective
   spatial filter shape of `(spatial_filter_shape-1) * dilation_rate + 1` and
   output striding `strides` as described in the
-  @{$python/nn#Convolution$comment here}.
+  [comment here](https://tensorflow.org/api_guides/python/nn#Convolution).
 
   In the case that `data_format` does start with `"NC"`, the `input` and output
   (but not the `filter`) are simply transposed as follows:
@@ -1836,8 +1836,9 @@ def softmax_cross_entropy_with_logits_v2(
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of the same shape as `labels` and of the same type as `logits`
-    with the softmax cross entropy loss.
+    A `Tensor` that contains the softmax cross entropy loss. Its type is the
+    same as `logits` and its shape is the same as `labels` except that it does
+    not have the last dimension of `labels`.
   """
   _ensure_xent_args("softmax_cross_entropy_with_logits", _sentinel, labels,
                     logits)
@@ -1962,8 +1963,9 @@ def softmax_cross_entropy_with_logits(
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of the same shape as `labels` and of the same type as `logits`
-    with the softmax cross entropy loss.
+    A `Tensor` that contains the softmax cross entropy loss. Its type is the
+    same as `logits` and its shape is the same as `labels` except that it does
+    not have the last dimension of `labels`.
   """
   _ensure_xent_args("softmax_cross_entropy_with_logits", _sentinel, labels,
                     logits)

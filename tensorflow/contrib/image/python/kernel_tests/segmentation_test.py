@@ -59,19 +59,19 @@ class SegmentationTest(test_util.TensorFlowTestCase):
          [7, 0, 8, 0, 0, 0, 9, 0, 0],
          [0, 0, 0, 0, 10, 0, 0, 0, 0],
          [0, 0, 11, 0, 0, 0, 0, 0, 0]])  # pyformat: disable
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(image_ops.connected_components(arr).eval(), expected)
 
   def testSimple(self):
     arr = [[0, 1, 0], [1, 1, 1], [0, 1, 0]]
-    with self.test_session():
+    with self.cached_session():
       # Single component with id 1.
       self.assertAllEqual(
           image_ops.connected_components(math_ops.cast(
               arr, dtypes.bool)).eval(), arr)
 
   def testSnake(self):
-    with self.test_session():
+    with self.cached_session():
       # Single component with id 1.
       self.assertAllEqual(
           image_ops.connected_components(math_ops.cast(
@@ -80,7 +80,7 @@ class SegmentationTest(test_util.TensorFlowTestCase):
   def testSnake_disconnected(self):
     for i in range(SNAKE.shape[0]):
       for j in range(SNAKE.shape[1]):
-        with self.test_session():
+        with self.cached_session():
           # If we disconnect any part of the snake except for the endpoints,
           # there will be 2 components.
           if SNAKE[i, j] and (i, j) not in [(1, 1), (6, 3)]:
@@ -121,27 +121,27 @@ class SegmentationTest(test_util.TensorFlowTestCase):
                  [0, 6, 6, 0],
                  [8, 0, 6, 0],
                  [0, 0, 6, 6]]]  # pyformat: disable
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(
           image_ops.connected_components(math_ops.cast(
               images, dtypes.bool)).eval(), expected)
 
   def testZeros(self):
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(
           image_ops.connected_components(
               array_ops.zeros((100, 20, 50), dtypes.bool)).eval(),
           np.zeros((100, 20, 50)))
 
   def testOnes(self):
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(
           image_ops.connected_components(
               array_ops.ones((100, 20, 50), dtypes.bool)).eval(),
           np.tile(np.arange(100)[:, None, None] + 1, [1, 20, 50]))
 
   def testOnes_small(self):
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(
           image_ops.connected_components(array_ops.ones((3, 5),
                                                         dtypes.bool)).eval(),
@@ -153,7 +153,7 @@ class SegmentationTest(test_util.TensorFlowTestCase):
     expected = connected_components_reference_implementation(images)
     if expected is None:
       return
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(
           image_ops.connected_components(images).eval(), expected)
 

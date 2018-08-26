@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
@@ -80,19 +81,19 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
       }
     }
 
+    Status Initialize(IteratorContext* ctx) override {
+      TF_RETURN_IF_ERROR(dataset()->init_func_->Instantiate(ctx));
+      TF_RETURN_IF_ERROR(dataset()->next_func_->Instantiate(ctx));
+      TF_RETURN_IF_ERROR(dataset()->finalize_func_->Instantiate(ctx));
+      TF_RETURN_IF_ERROR(
+          dataset()->init_func_->RunWithBorrowedArgs(ctx, {}, &state_));
+      return Status::OK();
+    }
+
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       mutex_lock l(mu_);
-
-      if (!initialized_) {
-        TF_RETURN_IF_ERROR(
-            dataset()->init_func_->RunWithBorrowedArgs(ctx, {}, &state_));
-        // Explicitly instantiate the finalize function here so that
-        // we can invoke it in the destructor.
-        TF_RETURN_IF_ERROR(dataset()->finalize_func_->Instantiate(ctx));
-        initialized_ = true;
-      }
 
       if (finalized_) {
         *end_of_sequence = true;
@@ -121,7 +122,6 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    bool initialized_ GUARDED_BY(mu_) = false;
     bool finalized_ GUARDED_BY(mu_) = false;
     std::vector<Tensor> state_ GUARDED_BY(mu_);
   };

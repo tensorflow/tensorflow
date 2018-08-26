@@ -188,11 +188,11 @@ class CTCGreedyDecoderTest(test.TestCase):
         ],
         dtype=np.float32)
     # Add arbitrary offset - this is fine
-    input_log_prob_matrix_0 = np.log(input_prob_matrix_0) + 2.0
+    input_prob_matrix_0 = input_prob_matrix_0 + 2.0
 
     # len max_time_steps array of batch_size x depth matrices
     inputs = ([
-        input_log_prob_matrix_0[t, :][np.newaxis, :] for t in range(seq_len_0)
+        input_prob_matrix_0[t, :][np.newaxis, :] for t in range(seq_len_0)
     ]  # Pad to max_time_steps = 8
               + 2 * [np.zeros(
                   (1, depth), dtype=np.float32)])
@@ -200,11 +200,11 @@ class CTCGreedyDecoderTest(test.TestCase):
     # batch_size length vector of sequence_lengths
     seq_lens = np.array([seq_len_0], dtype=np.int32)
 
-    # batch_size length vector of negative log probabilities
+    # batch_size length vector of log probabilities
     log_prob_truth = np.array(
         [
-            0.584855,  # output beam 0
-            0.389139  # output beam 1
+            -5.811451,  # output beam 0
+            -6.63339  # output beam 1
         ],
         np.float32)[np.newaxis, :]
 
@@ -215,11 +215,11 @@ class CTCGreedyDecoderTest(test.TestCase):
             [[0, 0], [0, 1]], dtype=np.int64), np.array(
                 [1, 0], dtype=np.int64), np.array(
                     [1, 2], dtype=np.int64)),
-        # beam 1, batch 0, three outputs decoded
+        # beam 1, batch 0, one output decoded
         (np.array(
-            [[0, 0], [0, 1], [0, 2]], dtype=np.int64), np.array(
-                [0, 1, 0], dtype=np.int64), np.array(
-                    [1, 3], dtype=np.int64)),
+            [[0, 0]], dtype=np.int64), np.array(
+                [1], dtype=np.int64), np.array(
+                    [1, 1], dtype=np.int64)),
     ]
 
     # Test correct decoding.

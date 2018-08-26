@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/hash/hash.h"
 
 namespace xla {
 
@@ -102,6 +103,9 @@ int64 CseHash(const HloInstruction* instruction) {
                 : -1);
   for (auto operand : instruction->operands()) {
     hash = tensorflow::Hash64Combine(hash, operand->unique_id());
+  }
+  if (instruction->opcode() == HloOpcode::kConstant) {
+    hash = tensorflow::Hash64Combine(hash, instruction->literal().Hash());
   }
   return hash;
 }

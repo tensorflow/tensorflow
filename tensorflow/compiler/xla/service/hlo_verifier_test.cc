@@ -37,13 +37,15 @@ using ::testing::HasSubstr;
 class HloVerifierTest : public HloTestBase {
  public:
   HloVerifierTest()
-      : HloTestBase(/*allow_mixed_precision_in_hlo_verifier=*/false) {}
+      : HloTestBase(/*verifier_layout_sensitive=*/false,
+                    /*allow_mixed_precision_in_hlo_verifier=*/false) {}
 };
 
 class HloVerifierTestAllowMixedPrecision : public HloTestBase {
  public:
   HloVerifierTestAllowMixedPrecision()
-      : HloTestBase(/*allow_mixed_precision_in_hlo_verifier=*/true) {}
+      : HloTestBase(/*verifier_layout_sensitive=*/false,
+                    /*allow_mixed_precision_in_hlo_verifier=*/true) {}
 };
 
 TEST_F(HloVerifierTest, NullInstructionParent) {

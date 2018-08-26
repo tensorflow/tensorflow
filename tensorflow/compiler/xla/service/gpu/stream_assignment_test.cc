@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -33,7 +34,7 @@ class StreamAssignmentTest : public HloTestBase {
     auto debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_disable_multi_streaming(false);
     config.set_debug_options(debug_options);
-    return MakeUnique<HloModule>("test_module", config);
+    return absl::make_unique<HloModule>("test_module", config);
   }
 
   // Pre-canned shapes.

@@ -67,7 +67,7 @@ class CheckpointIteratorTest(test.TestCase):
     global_step = variables.get_or_create_global_step()
     saver = saver_lib.Saver()  # Saves the global step.
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       session.run(variables_lib.global_variables_initializer())
       save_path = os.path.join(checkpoint_dir, 'model.ckpt')
       saver.save(session, save_path, global_step=global_step)

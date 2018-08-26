@@ -227,6 +227,8 @@ def generated_test_models():
         "constant",
         "control_dep",
         "conv",
+        "conv_with_shared_weights",
+        "conv_to_depthwiseconv_with_shared_weights",
         "depthwiseconv",
         "div",
         "equal",
@@ -265,6 +267,7 @@ def generated_test_models():
         "prelu",
         "pow",
         "reduce_max",
+        "reduce_min",
         "reduce_prod",
         "relu",
         "relu1",
@@ -290,6 +293,7 @@ def generated_test_models():
         "topk",
         "transpose",
         #"transpose_conv",   # disabled due to b/111213074
+        "unpack",
         "where",
     ]
 

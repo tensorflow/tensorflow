@@ -14,6 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
+# TODO(ycling): Refactoring - Move this script into `tools/make`.
 set -e
 
 echo "Starting"
@@ -32,7 +33,7 @@ echo "Headers, populating: TensorFlow Lite"
 cd $TFLITE_DIR/../../..
 
 find tensorflow/contrib/lite -name '*.h' \
-    -not -path 'tensorflow/contrib/lite/downloads/*' \
+    -not -path 'tensorflow/contrib/lite/tools/*' \
     -not -path 'tensorflow/contrib/lite/examples/*' \
     -not -path 'tensorflow/contrib/lite/gen/*' \
     -not -path 'tensorflow/contrib/lite/toco/*' \
@@ -44,7 +45,7 @@ tar xf tmp.tar
 rm -f tmp.tar
 
 echo "Headers, populating: Flatbuffer"
-cd $TFLITE_DIR/downloads/flatbuffers/include/
+cd $TFLITE_DIR/tools/make/downloads/flatbuffers/include/
 find . -name '*.h' | tar -cf $FW_DIR_TFLITE_HDRS/tmp.tar -T -
 cd $FW_DIR_TFLITE_HDRS
 tar xf tmp.tar
@@ -57,7 +58,7 @@ cp $TFLITE_DIR/../../../bazel-genfiles/tensorflow/tools/lib_package/include/tens
    $FW_DIR_TFLITE
 
 echo "Copying static libraries"
-cp $TFLITE_DIR/gen/lib/libtensorflow-lite.a \
+cp $TFLITE_DIR/tools/make/gen/lib/libtensorflow-lite.a \
    $FW_DIR_TFLITE/tensorflow_lite
 
 # This is required, otherwise they interfere with the documentation of the

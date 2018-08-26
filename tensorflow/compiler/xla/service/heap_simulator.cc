@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -45,7 +46,7 @@ StatusOr<int64> HeapSimulator::MinimumMemoryForModule(
   // bound, by minimizing the liveness of sub-computations.
   TF_ASSIGN_OR_RETURN(
       HeapSimulator::Result result,
-      HeapSimulator::Run(MakeUnique<NoFragmentationStatsHeap>(), *module,
+      HeapSimulator::Run(absl::make_unique<NoFragmentationStatsHeap>(), *module,
                          module_sequence, *points_to_analysis, size_function));
   return result.heap_size;
 }
@@ -60,9 +61,10 @@ StatusOr<int64> HeapSimulator::MinimumMemoryForComputation(
         memory_by_computation) {
   TF_ASSIGN_OR_RETURN(
       HeapSimulator::Result result,
-      HeapSimulator::Run(MakeUnique<NoFragmentationStatsHeap>(), computation,
-                         sequence, points_to_analysis, size_function,
-                         HeapSimulator::Options(), memory_by_computation));
+      HeapSimulator::Run(absl::make_unique<NoFragmentationStatsHeap>(),
+                         computation, sequence, points_to_analysis,
+                         size_function, HeapSimulator::Options(),
+                         memory_by_computation));
   return result.heap_size;
 }
 
@@ -142,7 +144,7 @@ Status HeapSimulator::RunComputation(
         }
       } else {
         // A GetTupleElement doesn't need to keep all of its operand's buffers
-        // alive. It only needs the buffers that relate to the element its
+        // alive. It only needs the buffers that relate to the element it's
         // extracting, and the tuple it's extracting from, but not the buffers
         // for the other elements.
         for (const BufferValue* buffer : points_to.element({})) {
@@ -275,13 +277,13 @@ Status HeapSimulator::RunComputation(
                                                  *memory_by_computation_);
     }
 
-    // If the whole module is sequential, we can save memory by running the
-    // heap-simulation for sub-computations inline. E.g. the buffers for the
-    // condition and body of a kWhile instruction are only live for the duration
-    // of the instruction itself.
+    // If all computations in the module have been scheduled, we can save memory
+    // by running the heap-simulation for sub-computations inline. E.g. the
+    // buffers for the condition and body of a kWhile instruction are only live
+    // for the duration of the instruction itself.
     //
     // The order that the sub-computations are simulated does not affect
-    // correctness; since the whole module is sequential, we know that the
+    // correctness; since the whole module has been scheduled, we know that the
     // sub-computations will never be run concurrently.
     if (module_sequence_ != nullptr) {
       if (instruction->opcode() == HloOpcode::kCall ||
@@ -344,7 +346,7 @@ HeapSimulator::HeapSimulator(
     const SequentialHloOrdering::HloModuleSequence* module_sequence,
     const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
         memory_by_computation)
-    : no_fragmentation_stats_(MakeUnique<NoFragmentationStatsHeap>()),
+    : no_fragmentation_stats_(absl::make_unique<NoFragmentationStatsHeap>()),
       algorithm_(std::move(algorithm)),
       size_fn_(size_fn),
       options_(options),
@@ -378,9 +380,10 @@ void HeapSimulator::Alloc(const BufferValue* buffer,
 
   allocated_buffers_.insert(buffer);
   const int64 size = size_fn_(*buffer);
-  algorithm_->Alloc(buffer, size);
-  no_fragmentation_stats_->Alloc(buffer, size);
-
+  const HloInstruction* instruction_to_calc_aliasing =
+      memory_by_computation_ == nullptr ? nullptr : instruction;
+  algorithm_->Alloc(buffer, size, instruction_to_calc_aliasing);
+  no_fragmentation_stats_->Alloc(buffer, size, instruction_to_calc_aliasing);
   FillDebugTrace(HeapSimulatorTrace::Event::ALLOC, buffer, instruction,
                  nullptr);
 }
@@ -515,6 +518,18 @@ void NoFragmentationStatsHeap::Alloc(const BufferValue* buffer, int64 size) {
   current_heap_size_ += size;
   if (current_heap_size_ > max_heap_size_) {
     max_heap_size_ = current_heap_size_;
+  }
+}
+
+void NoFragmentationStatsHeap::Alloc(const BufferValue* buffer, int64 size,
+                                     const HloInstruction* instruction) {
+  // The output buffer of while/call/conditional is always aliased with the
+  // output buffer of the root instruction in the body. Don't double count.
+  if (instruction == nullptr ||
+      (instruction->opcode() != HloOpcode::kWhile &&
+       instruction->opcode() != HloOpcode::kCall &&
+       instruction->opcode() != HloOpcode::kConditional)) {
+    Alloc(buffer, size);
   }
 }
 

@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/mark_for_compilation_pass_test_helper.h"
+#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 /*static*/ Status MarkForCompilationPassTestHelper::MarkForCompilation(
-    std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def) {
+    std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
+    SessionOptions* session_options) {
   // Assign all nodes to the CPU device.
   static const char* kCpuDevice = "/job:localhost/replica:0/task:0/cpu:0";
   for (Node* n : (*graph)->nodes()) {
@@ -26,9 +28,16 @@ namespace tensorflow {
 
   GraphOptimizationPassOptions opt_options;
   opt_options.graph = graph;
+  opt_options.session_options = session_options;
   opt_options.flib_def = flib_def;
   MarkForCompilationPass pass;
   return pass.RunImpl(opt_options);
+}
+
+/*static*/ Status MarkForCompilationPassTestHelper::MarkForCompilation(
+    std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def) {
+  SessionOptions session_options;
+  return MarkForCompilation(graph, flib_def, &session_options);
 }
 
 /*static*/ Status MarkForCompilationPassTestHelper::MarkForCompilation(
