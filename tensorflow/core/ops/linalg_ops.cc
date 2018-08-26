@@ -140,28 +140,37 @@ Status QrShapeFn(InferenceContext* c) {
 }
 
 
+/*
 // Input is [...,M,M].
 // First, second, and third outputs are:
 //   [...,M,M]; [...,M,M]; [...,M,M];
 Status LuShapeFn(InferenceContext* c) {  
   // TODO: add ERROR CHECK
-  //c->set_output(0, l_shape);
-  c->set_output(0, c->input(0));
+  ShapeHandle input;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));  
+  //c->set_output(0, l_shape);  
+  //c->set_output(0, c->input(0));
   //c->set_output(1, u_shape);
-  c->set_output(1, c->input(0));
+  //c->set_output(1, c->input(0));
   //c->set_output(2, p_shape);  
-  //auto uniq = c->Vector(InferenceContext::kUnknownDim);  
-  //ShapeHandle input;
-  //TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));  
-  //DimensionHandle m = c->Dim(input, -2);
+  //auto uniq = c->Vector(InferenceContext::kUnknownDim); 
+  DimensionHandle m = c->Dim(input, -1);
+  ShapeHandle batch_shape;
+  TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &batch_shape));
+  ShapeHandle l_shape;
+  ShapeHandle u_shape;
+  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(m, m), &l_shape));
+  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(m, m), &u_shape));    
   //c->set_output(2, c->Vector(m));
   //c->set_output(2, uniq);
   //c->set_output(2, c->input(0));
   //c->set_output(2, c->Matrix(c->Dim(c->input(0), 0), c->Dim(c->input(0), 0)));
-  c->set_output(2, c->Vector(c->Dim(c->input(0), 0)));
+  c->set_output(0, l_shape);
+  c->set_output(2, u_shape);//c->Vector(c->Dim(c->input(0), 0)));
   //c->set_output(2, c->Matrix(c->Dim(c->input(0), 0)));
   return Status::OK();
 }
+*/
 
 // Input is [...,M,N].  First output is [...,min(M,N)].
 // Second and third outputs are:
@@ -353,6 +362,7 @@ REGISTER_OP("Qr")
     .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(QrShapeFn);
 
+/*
 REGISTER_OP("Lu")
     .Input("input: T")
     .Output("l: T")
@@ -362,6 +372,7 @@ REGISTER_OP("Lu")
     .Attr("T: {double, float, complex64, complex128}")
     .Attr("Tperm: {int32, int64} = DT_INT32")
     .SetShapeFn(LuShapeFn);
+*/
 
 REGISTER_OP("Svd")
     .Input("input: T")

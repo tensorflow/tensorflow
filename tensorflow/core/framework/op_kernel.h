@@ -1239,7 +1239,7 @@ class Name : public KernelDefBuilder {
           });
 
 // The `REGISTER_SYSTEM_KERNEL_BUILDER()` macro acts as
-// `REGISTER_KERNEL_BUILDER()` except that the kernel is registered
+// `REGISTER_KERNEL_BUILDER()/` except that the kernel is registered
 // unconditionally even when selective registration is used.
 #define REGISTER_SYSTEM_KERNEL_BUILDER(kernel_builder, ...)               \
   REGISTER_SYSTEM_KERNEL_BUILDER_UNIQ_HELPER(__COUNTER__, kernel_builder, \
