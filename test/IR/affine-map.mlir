@@ -29,6 +29,11 @@
 #map3j = (i, j) -> (i + 1, j*1*4 + 2)
 #map3k = (i, j) -> (i + 1, j*4*1 + 2)
 
+// The following reduction should be unique'd out too but the expression
+// simplifier is not powerful enough.
+// CHECK: #map{{[0-9]+}} = (d0, d1) -> (d1 - d0 + (d0 - d1 + 1) * 2 + d1 - 1, d1 + d1 + d1 + d1 + 2)
+#map3l = (i, j) -> ((j - i) + 2*(i - j + 1) + j - 1 + 0, j + j + 1 + j + j + 1)
+
 // CHECK: #map{{[0-9]+}} = (d0, d1) -> (d0 + 2, d1)
 #map4  = (i, j) -> (3+3-2*2+i, j)
 
@@ -153,6 +158,10 @@
 // CHECK: #map{{[0-9]+}} = (d0, d1, d2) -> (d0, d0 * 4, 0, 0)
 #map47 = (i, j, k) -> (i * 64 ceildiv 64, i * 512 ceildiv 128, 4 * j mod 4, 4*j*4 mod 8)
 
+// floordiv should resolve similarly to ceildiv and be unique'd out
+// CHECK-NOT: #map48{{[a-z]}}
+#map48 = (i, j, k) -> (i * 64 floordiv 64, i * 512 floordiv 128, 4 * j mod 4, 4*j*4 mod 8)
+
 // CHECK: extfunc @f0(memref<2x4xi8, #map{{[0-9]+}}, 1>)
 extfunc @f0(memref<2x4xi8, #map0, 1>)
 
@@ -186,6 +195,8 @@ extfunc @f3i(memref<2x4xi8, #map3i, 1>)
 extfunc @f3j(memref<2x4xi8, #map3j, 1>)
 // CHECK: extfunc @f3k(memref<2x4xi8, #map{{[0-9]+}}, 1>)
 extfunc @f3k(memref<2x4xi8, #map3k, 1>)
+// CHECK: extfunc @f3l(memref<2x4xi8, #map{{[0-9]+}}, 1>)
+extfunc @f3l(memref<2x4xi8, #map3l, 1>)
 
 // CHECK: extfunc @f4(memref<2x4xi8, #map{{[0-9]+}}, 1>)
 extfunc @f4(memref<2x4xi8, #map4, 1>)
@@ -309,3 +320,6 @@ extfunc @f46(memref<100x100x100xi8, #map46>)
 
 // CHECK: extfunc @f47(memref<100x100x100xi8, #map{{[0-9]+}}>)
 extfunc @f47(memref<100x100x100xi8, #map47>)
+
+// CHECK: extfunc @f48(memref<100x100x100xi8, #map{{[0-9]+}}>)
+extfunc @f48(memref<100x100x100xi8, #map48>)
