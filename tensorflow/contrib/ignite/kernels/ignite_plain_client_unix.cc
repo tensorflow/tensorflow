@@ -29,104 +29,98 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
-namespace ignite {
+namespace tensorflow {
 
 PlainClient::PlainClient(std::string host, int port)
-    : host(host), port(port), sock(-1) {}
+    : host_(host), port_(port), sock_(-1) {}
 
 PlainClient::~PlainClient() {
   if (IsConnected()) {
-    tensorflow::Status status = Disconnect();
+    Status status = Disconnect();
     if (!status.ok()) LOG(WARNING) << status.ToString();
   }
 }
 
-tensorflow::Status PlainClient::Connect() {
-  if (sock == -1) {
-    sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock == -1)
-      return tensorflow::errors::Internal("Failed to create socket");
+Status PlainClient::Connect() {
+  if (sock_ == -1) {
+    sock_ = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock_ == -1) return errors::Internal("Failed to create socket");
   }
 
   sockaddr_in server;
 
-  server.sin_addr.s_addr = inet_addr(host.c_str());
+  server.sin_addr.s_addr = inet_addr(host_.c_str());
   if (server.sin_addr.s_addr == -1) {
     hostent* he;
     in_addr** addr_list;
 
-    if ((he = gethostbyname(host.c_str())) == NULL)
-      return tensorflow::errors::Internal("Failed to resolve hostname \"", host,
-                                          "\"");
+    if ((he = gethostbyname(host_.c_str())) == NULL)
+      return errors::Internal("Failed to resolve hostname \"", host_, "\"");
 
     addr_list = (in_addr**)he->h_addr_list;
     if (addr_list[0] != NULL) server.sin_addr = *addr_list[0];
   }
 
   server.sin_family = AF_INET;
-  server.sin_port = htons(port);
+  server.sin_port = htons(port_);
 
-  if (connect(sock, (sockaddr*)&server, sizeof(server)) < 0)
-    return tensorflow::errors::Internal("Failed to connect to \"", host, ":",
-                                        port, "\"");
+  if (connect(sock_, (sockaddr*)&server, sizeof(server)) < 0)
+    return errors::Internal("Failed to connect to \"", host_, ":", port_, "\"");
 
-  LOG(INFO) << "Connection to \"" << host << ":" << port << "\" established";
+  LOG(INFO) << "Connection to \"" << host_ << ":" << port_ << "\" established";
 
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status PlainClient::Disconnect() {
-  int close_res = close(sock);
-  sock = -1;
+Status PlainClient::Disconnect() {
+  int close_res = close(sock_);
+  sock_ = -1;
 
-  LOG(INFO) << "Connection to \"" << host << ":" << port << "\" is closed";
+  LOG(INFO) << "Connection to \"" << host_ << ":" << port_ << "\" is closed";
 
-  return close_res == 0 ? tensorflow::Status::OK()
-                        : tensorflow::errors::Internal(
-                              "Failed to correctly close connection");
+  return close_res == 0
+             ? Status::OK()
+             : errors::Internal("Failed to correctly close connection");
 }
 
-bool PlainClient::IsConnected() { return sock != -1; }
+bool PlainClient::IsConnected() { return sock_ != -1; }
 
-int PlainClient::GetSocketDescriptor() { return sock; }
+int PlainClient::GetSocketDescriptor() { return sock_; }
 
-tensorflow::Status PlainClient::ReadData(uint8_t* buf, int32_t length) {
+Status PlainClient::ReadData(uint8_t* buf, int32_t length) {
   int recieved = 0;
 
   while (recieved < length) {
-    int res = recv(sock, buf, length - recieved, 0);
+    int res = recv(sock_, buf, length - recieved, 0);
 
     if (res < 0)
-      return tensorflow::errors::Internal(
-          "Error occured while reading from socket: ", res, ", ",
-          std::string(strerror(errno)));
+      return errors::Internal("Error occured while reading from socket: ", res,
+                              ", ", std::string(strerror(errno)));
 
-    if (res == 0)
-      return tensorflow::errors::Internal("Server closed connection");
+    if (res == 0) return errors::Internal("Server closed connection");
 
     recieved += res;
     buf += res;
   }
 
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status PlainClient::WriteData(uint8_t* buf, int32_t length) {
+Status PlainClient::WriteData(uint8_t* buf, int32_t length) {
   int sent = 0;
 
   while (sent < length) {
-    int res = send(sock, buf, length - sent, 0);
+    int res = send(sock_, buf, length - sent, 0);
 
     if (res < 0)
-      return tensorflow::errors::Internal(
-          "Error occured while writing into socket: ", res, ", ",
-          std::string(strerror(errno)));
+      return errors::Internal("Error occured while writing into socket: ", res,
+                              ", ", std::string(strerror(errno)));
 
     sent += res;
     buf += res;
   }
 
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-}  // namespace ignite
+}  // namespace tensorflow

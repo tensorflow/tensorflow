@@ -15,51 +15,48 @@ limitations under the License.
 
 #include "tensorflow/core/framework/dataset.h"
 
-namespace ignite {
+namespace tensorflow {
 
-class IgniteDataset : public tensorflow::DatasetBase {
+class IgniteDataset : public DatasetBase {
  public:
-  IgniteDataset(tensorflow::OpKernelContext* ctx, std::string cache_name,
-                std::string host, tensorflow::int32 port, bool local,
-                tensorflow::int32 part, tensorflow::int32 page_size,
+  IgniteDataset(OpKernelContext* ctx, std::string cache_name, std::string host,
+                int32 port, bool local, int32 part, int32 page_size,
                 std::string username, std::string password,
                 std::string certfile, std::string keyfile,
-                std::string cert_password,
-                std::vector<tensorflow::int32> schema,
-                std::vector<tensorflow::int32> permutation);
+                std::string cert_password, std::vector<int32> schema,
+                std::vector<int32> permutation);
   ~IgniteDataset();
-  std::unique_ptr<tensorflow::IteratorBase> MakeIteratorInternal(
-      const tensorflow::string& prefix) const override;
-  const tensorflow::DataTypeVector& output_dtypes() const override;
-  const std::vector<tensorflow::PartialTensorShape>& output_shapes()
-      const override;
-  tensorflow::string DebugString() const override;
+  std::unique_ptr<IteratorBase> MakeIteratorInternal(
+      const string& prefix) const override;
+  const DataTypeVector& output_dtypes() const override;
+  const std::vector<PartialTensorShape>& output_shapes() const override;
+  string DebugString() const override;
 
  protected:
-  tensorflow::Status AsGraphDefInternal(
-      tensorflow::SerializationContext* ctx, DatasetGraphDefBuilder* b,
-      tensorflow::Node** output) const override;
+  Status AsGraphDefInternal(SerializationContext* ctx,
+                            DatasetGraphDefBuilder* b,
+                            Node** output) const override;
 
  private:
-  const std::string cache_name;
-  const std::string host;
-  const tensorflow::int32 port;
-  const bool local;
-  const tensorflow::int32 part;
-  const tensorflow::int32 page_size;
-  const std::string username;
-  const std::string password;
-  const std::string certfile;
-  const std::string keyfile;
-  const std::string cert_password;
-  const std::vector<tensorflow::int32> schema;
-  const std::vector<tensorflow::int32> permutation;
+  const std::string cache_name_;
+  const std::string host_;
+  const int32 port_;
+  const bool local_;
+  const int32 part_;
+  const int32 page_size_;
+  const std::string username_;
+  const std::string password_;
+  const std::string certfile_;
+  const std::string keyfile_;
+  const std::string cert_password_;
+  const std::vector<int32> schema_;
+  const std::vector<int32> permutation_;
 
-  tensorflow::DataTypeVector dtypes;
-  std::vector<tensorflow::PartialTensorShape> shapes;
+  DataTypeVector dtypes_;
+  std::vector<PartialTensorShape> shapes_;
 
   void SchemaToTypes();
   void SchemaToShapes();
 };
 
-}  // namespace ignite
+}  // namespace tensorflow
