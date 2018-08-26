@@ -17,13 +17,12 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/lib/core/status.h"
 
-namespace ignite {
+namespace tensorflow {
 
 class BinaryObjectParser {
  public:
-  tensorflow::Status Parse(uint8_t*& ptr,
-                           std::vector<tensorflow::Tensor>& out_tensors,
-                           std::vector<int32_t>& types);
+  Status Parse(uint8_t** ptr, std::vector<Tensor>* out_tensors,
+               std::vector<int32_t>* types);
 };
 
 enum ObjectType {
@@ -51,4 +50,4 @@ enum ObjectType {
   COMPLEX_OBJ = 103
 };
 
-}  // namespace ignite
+}  // namespace tensorflow

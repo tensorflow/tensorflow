@@ -13,15 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef IGNITE_CLIENT_H
-#define IGNITE_CLIENT_H
 #include "ignite_client.h"
-#endif
 
 #include <openssl/ssl.h>
 #include <string>
 
-namespace ignite {
+namespace tensorflow {
 
 class SslWrapper : public Client {
  public:
@@ -29,21 +26,22 @@ class SslWrapper : public Client {
              std::string keyfile, std::string cert_password);
   ~SslWrapper();
 
-  virtual tensorflow::Status Connect();
-  virtual tensorflow::Status Disconnect();
+  virtual Status Connect();
+  virtual Status Disconnect();
   virtual bool IsConnected();
   virtual int GetSocketDescriptor();
-  virtual tensorflow::Status ReadData(uint8_t* buf, int32_t length);
-  virtual tensorflow::Status WriteData(uint8_t* buf, int32_t length);
+  virtual Status ReadData(uint8_t* buf, int32_t length);
+  virtual Status WriteData(uint8_t* buf, int32_t length);
 
  private:
-  std::shared_ptr<Client> client;
-  std::string certfile;
-  std::string keyfile;
-  std::string cert_password;
-  SSL_CTX* ctx;
-  SSL* ssl;
-  tensorflow::Status InitSslContext();
+  std::shared_ptr<Client> client_;
+  std::string certfile_;
+  std::string keyfile_;
+  std::string cert_password_;
+  SSL_CTX* ctx_;
+  SSL* ssl_;
+
+  Status InitSslContext();
 };
 
-}  // namespace ignite
+}  // namespace tensorflow
