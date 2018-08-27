@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/common_runtime/broadcaster.h"
+#include "tensorflow/core/common_runtime/hierarchical_tree_broadcaster.h"
 
 #include <algorithm>
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
@@ -41,7 +41,7 @@ static int64 kStepId = 123;
 
 // The test harness won't allow a mixture of fixture and non-fixture
 // tests in one file, so this is a trival fixture for tests that don't
-// need the heavy-weight BroadcasterTest fixture.
+// need the heavy-weight HierarchicalTreeBroadcasterTest fixture.
 class TrivialTest : public ::testing::Test {
  protected:
   TrivialTest() {}
@@ -53,23 +53,23 @@ class TrivialTest : public ::testing::Test {
 // R = tested rank
 // RF = receive-from rank
 // ST = send_to rank vector
-#define DEF_TL_TEST(D, S, R, RF, ST)                               \
-  TEST_F(TrivialTest, TreeLinks_##D##Devs_##S##Source_##R##Rank) { \
-    CollectiveParams cp;                                           \
-    cp.group.group_size = D;                                       \
-    cp.instance.impl_details.subdiv_source_rank = {S};             \
-    cp.instance.impl_details.subdiv_permutations.push_back(        \
-        std::vector<int>(D, 0));                                   \
-    cp.subdiv_rank = {R};                                          \
-    cp.is_source = (S == R);                                       \
-    EXPECT_EQ(RF, Broadcaster::TreeRecvFrom(cp, 0));               \
-    std::vector<int> expected = ST;                                \
-    std::vector<int> send_to;                                      \
-    Broadcaster::TreeSendTo(cp, 0, &send_to);                      \
-    ASSERT_EQ(expected.size(), send_to.size());                    \
-    for (int i = 0; i < expected.size(); ++i) {                    \
-      EXPECT_EQ(expected[i], send_to[i]);                          \
-    }                                                              \
+#define DEF_TL_TEST(D, S, R, RF, ST)                                 \
+  TEST_F(TrivialTest, TreeLinks_##D##Devs_##S##Source_##R##Rank) {   \
+    CollectiveParams cp;                                             \
+    cp.group.group_size = D;                                         \
+    cp.instance.impl_details.subdiv_source_rank = {S};               \
+    cp.instance.impl_details.subdiv_permutations.push_back(          \
+        std::vector<int>(D, 0));                                     \
+    cp.subdiv_rank = {R};                                            \
+    cp.is_source = (S == R);                                         \
+    EXPECT_EQ(RF, HierarchicalTreeBroadcaster::TreeRecvFrom(cp, 0)); \
+    std::vector<int> expected = ST;                                  \
+    std::vector<int> send_to;                                        \
+    HierarchicalTreeBroadcaster::TreeSendTo(cp, 0, &send_to);        \
+    ASSERT_EQ(expected.size(), send_to.size());                      \
+    for (int i = 0; i < expected.size(); ++i) {                      \
+      EXPECT_EQ(expected[i], send_to[i]);                            \
+    }                                                                \
   }
 
 #define V(...) std::vector<int>({__VA_ARGS__})
@@ -130,7 +130,7 @@ DEF_TL_TEST(8, 7, 7, -1, V(0, 1))
 
 // Wraps CollectiveRemoteAccessLocal with the ability to return an
 // error status to the N'th action.
-// TODO(tucker): factor out of this file and ring_reducer_test.cc
+// TODO(b/113171733): factor out of this file and ring_reducer_test.cc
 // into a single common source.
 class FailTestRMA : public CollectiveRemoteAccessLocal {
  public:
@@ -187,31 +187,32 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
   int fail_after_ GUARDED_BY(mu_);
 };
 
-class BroadcasterTest : public ::testing::Test {
+class HierarchicalTreeBroadcasterTest : public ::testing::Test {
  protected:
-  BroadcasterTest() : device_type_(DEVICE_CPU) {}
+  HierarchicalTreeBroadcasterTest() : device_type_(DEVICE_CPU) {}
 
-  ~BroadcasterTest() override {
+  ~HierarchicalTreeBroadcasterTest() override {
     stop_ = true;
-    for (auto i : instances_) {
-      delete i;
-    }
+    for (auto i : instances_) delete i;
     if (col_exec_) col_exec_->Unref();
   }
 
-  void SetUp() override {
-#if GOOGLE_CUDA
+#ifdef GOOGLE_CUDA
+  void InitGPUDevices() {
     auto device_factory = DeviceFactory::GetFactory("GPU");
     CHECK(device_factory);
     SessionOptions options;
     Status s = device_factory->CreateDevices(
         options, "/job:worker/replica:0/task:0", &gpu_devices_);
     CHECK(s.ok());
-#endif
   }
+#endif
 
   void Init(int num_workers, int num_devices_per_worker, DataType dtype,
             const DeviceType& device_type, int fail_after) {
+#ifdef GOOGLE_CUDA
+    InitGPUDevices();
+#endif
     VLOG(2) << "num_workers=" << num_workers
             << " num_devices_per_worker=" << num_devices_per_worker;
     int total_num_devices = num_workers * num_devices_per_worker;
@@ -400,8 +401,6 @@ class BroadcasterTest : public ::testing::Test {
     return GetKernel(node_def, device_type, device);
   }
 
-  void BuildColParams() {}
-
   template <typename T>
   void RunTest(DataType dtype, const DeviceType& device_type, int num_workers,
                int num_devices, int tensor_len, int fail_after,
@@ -511,10 +510,47 @@ class BroadcasterTest : public ::testing::Test {
     }
   }
 
+  void RunSubdivPermsTest(
+      CollectiveParams* cp,
+      const std::vector<std::vector<int>>& expected_subdiv_perms,
+      const std::vector<int>& expected_subdiv_rank,
+      const std::vector<int>& expected_subdiv_source_rank) {
+    col_exec_ = nullptr;
+    cp->instance.impl_details.subdiv_permutations.clear();
+    cp->subdiv_rank.clear();
+    cp->instance.impl_details.subdiv_source_rank.clear();
+    // Create a stub broadcaster only for testing param initialization.
+    HierarchicalTreeBroadcaster broadcaster;
+    TF_CHECK_OK(broadcaster.InitializeCollectiveParams(cp));
+    EXPECT_EQ(expected_subdiv_perms,
+              cp->instance.impl_details.subdiv_permutations);
+    EXPECT_EQ(expected_subdiv_rank, cp->subdiv_rank);
+    EXPECT_EQ(expected_subdiv_source_rank,
+              cp->instance.impl_details.subdiv_source_rank);
+  }
+
+  void PrepColParamsForSubdivPermsTest(CollectiveParams* cp, int num_tasks,
+                                       int num_gpus) {
+    cp->group.device_type = DeviceType("GPU");
+    cp->group.num_tasks = num_tasks;
+    cp->group.group_size = num_tasks * num_gpus;
+    cp->instance.type = BROADCAST_COLLECTIVE;
+    cp->instance.impl_details.collective_name = "HierarchicalTreeBroadcast";
+    for (int ti = 0; ti < num_tasks; ti++) {
+      string task_name = strings::StrCat("/job:worker/replica:0/task:", ti);
+      for (int di = 0; di < num_gpus; di++) {
+        string dev_name = strings::StrCat(task_name, "/device:GPU:", di);
+        cp->instance.task_names.push_back(task_name);
+        cp->instance.device_names.push_back(dev_name);
+      }
+    }
+  }
+
   class DeviceInstance {
    public:
     DeviceInstance(int rank, const string& dev_name,
-                   const DeviceType& device_type, BroadcasterTest* parent)
+                   const DeviceType& device_type,
+                   HierarchicalTreeBroadcasterTest* parent)
         : parent_(parent),
           dev_name_(dev_name),
           device_type_(device_type),
@@ -636,21 +672,20 @@ class BroadcasterTest : public ::testing::Test {
             ctx.allocate_output(0, tensor_.shape(), &output_tensor_ptr));
       }
       CHECK_EQ(output_tensor_ptr, ctx.mutable_output(0));
+      const Tensor* input_tensor_ptr =
+          col_params_.is_source ? &tensor_ : nullptr;
 
       // Prepare a Broadcaster instance.
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
-      Broadcaster broadcaster(parent_->col_exec_, parent_->dev_mgr_.get(), &ctx,
-                              &op_params, col_params_, exec_key, kStepId,
-                              output_tensor_ptr);
+      HierarchicalTreeBroadcaster broadcaster;
+      CollectiveContext col_ctx(parent_->col_exec_, parent_->dev_mgr_.get(),
+                                &ctx, &op_params, col_params_, exec_key,
+                                kStepId, input_tensor_ptr, output_tensor_ptr);
+      TF_CHECK_OK(broadcaster.InitializeCollectiveContext(&col_ctx));
 
-      // Start execution in a threadpool then wait for completion.
-      Notification notification;
-      broadcaster.Run([this, &notification](Status s) {
-        status_ = s;
-        notification.Notify();
-      });
-      notification.WaitForNotification();
+      // Run the broadcast.
+      broadcaster.Run([this](Status s) { status_ = s; });
       if (status_.ok()) {
         CHECK(tensor_.CopyFrom(*ctx.mutable_output(0), tensor_.shape()));
       }
@@ -658,15 +693,13 @@ class BroadcasterTest : public ::testing::Test {
       dev_ctx->Unref();
     }
 
-    BroadcasterTest* parent_;
+    HierarchicalTreeBroadcasterTest* parent_;
     string dev_name_;
     DeviceType device_type_ = DEVICE_CPU;
     int rank_;
     Tensor tensor_;
     Device* device_;
     CollectiveParams col_params_;
-    std::unique_ptr<CollectiveAdapter> ca_;
-    std::unique_ptr<OpKernelContext> ctx_;
     Status status_;
   };  // class DeviceInstance
 
@@ -688,6 +721,118 @@ class BroadcasterTest : public ::testing::Test {
   int failure_count_ GUARDED_BY(mu_) = 0;
 };
 
+TEST_F(HierarchicalTreeBroadcasterTest, InitializeParams1Task8GPU) {
+  CollectiveParams cp;
+  PrepColParamsForSubdivPermsTest(&cp, 1, 8);
+
+  // source 0 device 0
+  cp.source_rank = 0;
+  cp.default_rank = 0;
+  RunSubdivPermsTest(&cp, {{0, 1, 2, 3, 4, 5, 6, 7}}, {0}, {0});
+
+  // source 2 device 2
+  cp.source_rank = 2;
+  cp.default_rank = 2;
+  RunSubdivPermsTest(&cp, {{0, 1, 2, 3, 4, 5, 6, 7}}, {2}, {2});
+
+  // source 2 device 0
+  cp.source_rank = 2;
+  cp.default_rank = 0;
+  RunSubdivPermsTest(&cp, {{0, 1, 2, 3, 4, 5, 6, 7}}, {0}, {2});
+}
+
+TEST_F(HierarchicalTreeBroadcasterTest, InitializeParams4Tasks8GPU) {
+  CollectiveParams cp;
+  PrepColParamsForSubdivPermsTest(&cp, 4, 8);
+
+  // source 0 device 0
+  cp.source_rank = 0;
+  cp.default_rank = 0;
+  RunSubdivPermsTest(&cp,
+                     {{0, 8, 16, 24},
+                      {0, 1, 2, 3, 4, 5, 6, 7},
+                      {8, 9, 10, 11, 12, 13, 14, 15},
+                      {16, 17, 18, 19, 20, 21, 22, 23},
+                      {24, 25, 26, 27, 28, 29, 30, 31}},
+                     {0, 0, -1, -1, -1}, {0, 0, 0, 0, 0});
+
+  // source 2 device 0
+  cp.source_rank = 2;
+  cp.default_rank = 0;
+  RunSubdivPermsTest(&cp,
+                     {{2, 8, 16, 24},
+                      {0, 1, 2, 3, 4, 5, 6, 7},
+                      {8, 9, 10, 11, 12, 13, 14, 15},
+                      {16, 17, 18, 19, 20, 21, 22, 23},
+                      {24, 25, 26, 27, 28, 29, 30, 31}},
+                     {-1, 0, -1, -1, -1}, {0, 2, 0, 0, 0});
+
+  // source 9 device 9
+  cp.source_rank = 9;
+  cp.default_rank = 9;
+  RunSubdivPermsTest(&cp,
+                     {{0, 9, 16, 24},
+                      {0, 1, 2, 3, 4, 5, 6, 7},
+                      {8, 9, 10, 11, 12, 13, 14, 15},
+                      {16, 17, 18, 19, 20, 21, 22, 23},
+                      {24, 25, 26, 27, 28, 29, 30, 31}},
+                     {1, -1, 1, -1, -1}, {1, 0, 1, 0, 0});
+}
+
+TEST_F(HierarchicalTreeBroadcasterTest, InitializeParams4TasksVariableGPU) {
+  CollectiveParams cp;
+  int num_tasks = 4;
+  cp.group.device_type = DeviceType("GPU");
+  cp.group.num_tasks = num_tasks;
+  cp.group.group_size = 0;
+  cp.instance.type = BROADCAST_COLLECTIVE;
+  cp.instance.impl_details.collective_name = "HierarchicalTreeBroadcast";
+  std::vector<int> dev_per_task = {4, 4, 6, 8};
+  for (int ti = 0; ti < cp.group.num_tasks; ti++) {
+    string task_name = strings::StrCat("/job:worker/replica:0/task:", ti);
+    for (int di = 0; di < dev_per_task[ti]; di++) {
+      string dev_name = strings::StrCat(task_name, "/device:GPU:", di);
+      cp.instance.task_names.push_back(task_name);
+      cp.instance.device_names.push_back(dev_name);
+      cp.group.group_size++;
+    }
+  }
+
+  // source 0 device 0
+  cp.source_rank = 0;
+  cp.default_rank = 0;
+  RunSubdivPermsTest(&cp,
+                     {{0, 4, 8, 14},
+                      {0, 1, 2, 3},
+                      {4, 5, 6, 7},
+                      {8, 9, 10, 11, 12, 13},
+                      {14, 15, 16, 17, 18, 19, 20, 21}},
+                     {0, 0, -1, -1, -1}, {0, 0, 0, 0, 0});
+
+  // source 2 device 0
+  cp.source_rank = 2;
+  cp.default_rank = 0;
+  RunSubdivPermsTest(&cp,
+                     {{2, 4, 8, 14},
+                      {0, 1, 2, 3},
+                      {4, 5, 6, 7},
+                      {8, 9, 10, 11, 12, 13},
+                      {14, 15, 16, 17, 18, 19, 20, 21}},
+                     {-1, 0, -1, -1, -1}, {0, 2, 0, 0, 0});
+
+  // source 9 device 5
+  cp.source_rank = 9;
+  cp.default_rank = 5;
+  RunSubdivPermsTest(&cp,
+                     {{0, 4, 9, 14},
+                      {0, 1, 2, 3},
+                      {4, 5, 6, 7},
+                      {8, 9, 10, 11, 12, 13},
+                      {14, 15, 16, 17, 18, 19, 20, 21}},
+                     {-1, -1, 1, -1, -1}, {2, 0, 0, 1, 0});
+}
+
+// TODO(b/113171733): change to use TEST_P.
 // Tests of full broadcast algorithm, with different device and
 // data types.
 // B = data element type
@@ -697,7 +842,7 @@ class BroadcasterTest : public ::testing::Test {
 // L = tensor length
 // A = abort after count
 #define DEF_TEST(B, T, W, D, L, A, F)                                      \
-  TEST_F(BroadcasterTest,                                                  \
+  TEST_F(HierarchicalTreeBroadcasterTest,                                  \
          DaTy##B##_DevTy##T##_Wkr##W##_Dev##D##_Len##L##_Abt##A##_Fw##F) { \
     DataType dtype = DT_##B;                                               \
     switch (dtype) {                                                       \
