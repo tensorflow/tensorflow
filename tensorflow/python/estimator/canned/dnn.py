@@ -95,26 +95,35 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
     for layer_id, num_hidden_units in enumerate(hidden_units):
       with variable_scope.variable_scope(
           'hiddenlayer_%d' % layer_id, values=(net,)) as hidden_layer_scope:
-        net = core_layers.dense(
-            net,
-            units=num_hidden_units,
-            activation=activation_fn,
-            kernel_initializer=init_ops.glorot_uniform_initializer(),
-            name=hidden_layer_scope)
-        if dropout is not None and is_training:
-          net = core_layers.dropout(net, rate=dropout, training=True)
         if batch_norm:
           # TODO(hjm): In future, if this becomes popular, we can enable
           # customization of the batch normalization params by accepting a
           # list of `BatchNormalization` instances as `batch_norm`.
+          net = core_layers.dense(
+              net,
+              units=num_hidden_units,
+              activation=None,
+              kernel_initializer=init_ops.glorot_uniform_initializer(),
+              name=hidden_layer_scope + "_input")
           net = normalization.batch_normalization(
               net,
               # The default momentum 0.99 actually crashes on certain
-              # problem, so here we use 0.999, which is the default of
+              # problems, so here we use 0.999, which is the default of
               # tf.contrib.layers.batch_norm.
               momentum=0.999,
               training=is_training,
               name='batchnorm_%d' % layer_id)
+          if activation_fn is not None:
+            net = activation_fn(net, name=hidden_layer_scope)
+        else:
+          net = core_layers.dense(
+              net,
+              units=num_hidden_units,
+              activation=activation_fn,
+              kernel_initializer=init_ops.glorot_uniform_initializer(),
+              name=hidden_layer_scope)
+        if dropout is not None and is_training:
+          net = core_layers.dropout(net, rate=dropout, training=True)
       _add_hidden_layer_summary(net, hidden_layer_scope.name)
 
     with variable_scope.variable_scope('logits', values=(net,)) as logits_scope:
