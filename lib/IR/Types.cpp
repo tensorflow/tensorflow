@@ -23,6 +23,7 @@ using namespace mlir;
 
 IntegerType::IntegerType(unsigned width, MLIRContext *context)
   : Type(Kind::Integer, context), width(width) {
+    assert(width <= kMaxWidth && "admissible integer bitwidth exceeded");
 }
 
 FloatType::FloatType(Kind kind, MLIRContext *context) : Type(kind, context) {}

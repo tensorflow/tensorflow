@@ -134,7 +134,7 @@ inline raw_ostream &operator<<(raw_ostream &os, const Type &type) {
   return os;
 }
 
-/// Integer types can have arbitrary bitwidth up to a large fixed limit of 4096.
+/// Integer types can have arbitrary bitwidth up to a large fixed limit.
 class IntegerType : public Type {
 public:
   static IntegerType *get(unsigned width, MLIRContext *context);
@@ -148,6 +148,9 @@ public:
   static bool classof(const Type *type) {
     return type->getKind() == Kind::Integer;
   }
+
+  /// Integer representation maximal bitwidth.
+  static constexpr unsigned kMaxWidth = 4096;
 private:
   unsigned width;
   IntegerType(unsigned width, MLIRContext *context);

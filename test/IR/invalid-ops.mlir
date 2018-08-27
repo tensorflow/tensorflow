@@ -101,6 +101,15 @@ bb0:
 
 // -----
 
+cfgfunc @intlimit2() {
+bb:
+  %0 = "constant"() {value: 0} : () -> i4096
+  %1 = "constant"() {value: 1} : () -> i4097 // expected-error {{integer bitwidth is limited to 4096 bits}}
+  return
+}
+
+// -----
+
 mlfunc @mlfunc_constant() {
   %x = "constant"(){value: "xyz"} : () -> i32 // expected-error {{'constant' op requires 'value' to be an integer for an integer result type}}
   return
@@ -112,4 +121,3 @@ mlfunc @calls(%arg0 : i32) {
   %x = call @calls() : () -> i32  // expected-error {{reference to function with mismatched type}}
   return
 }
-

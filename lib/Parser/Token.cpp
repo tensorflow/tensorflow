@@ -72,9 +72,7 @@ Optional<double> Token::getFloatingPointValue() const {
 Optional<unsigned> Token::getIntTypeBitwidth() const {
   unsigned result = 0;
   if (spelling[1] == '0' ||
-      spelling.drop_front().getAsInteger(10, result) ||
-      // Arbitrary but large limit on bitwidth.
-      result > 4096 || result == 0)
+      spelling.drop_front().getAsInteger(10, result) || result == 0)
     return None;
   return result;
 }
