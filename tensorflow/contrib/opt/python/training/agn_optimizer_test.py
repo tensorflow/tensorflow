@@ -23,10 +23,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 from tensorflow.python.training import device_setter
-from tensorflow.python.training import momentum
+from tensorflow.python.training import adam
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import training
 from tensorflow.python.training import training_util
@@ -100,7 +101,7 @@ def _get_workers(num_workers, period, workers, num_ps=1):
         grads_part_1 = constant_op.constant([[-1., -1., -1., -1.]])
 
         optimizer = \
-            momentum.MomentumOptimizer(learning_rate=0.1, momentum=0.0)
+            adam.AdamOptimizer(learning_rate=0.1, beta1=0.0, beta2=0.0)
         opt = AGNOptimizer(
             optimizer,
             num_worker=num_workers,
@@ -151,6 +152,13 @@ class AGNOptimizerTest(test.TestCase):
     global_step = training_util.get_global_step(graphs[0])
     var_0_g = graphs[0].get_tensor_by_name(GLOBAL_VARIABLE_NAME + "/v0:0")
     var_1_g = graphs[0].get_tensor_by_name(GLOBAL_VARIABLE_NAME + "/v1:0")
+
+    # verify adam/beta variables not in global collection
+    with graphs[0].as_default():
+      for ele in variables.global_variables():
+        self.assertTrue(ele.op.name.find('beta') < 0)
+        if ele.op.name.find('global_center_variable') < 0:
+          self.assertTrue(ele.op.name.find('Adam') < 0)
 
     # Verify the initialized value.
     self.assertAllEqual(0.0, sessions[0].run(var_0))

@@ -166,12 +166,17 @@ class AGNOptimizer(optimizer.Optimizer):
     """
     local_vars = [v for g, v in grads_and_vars if g is not None]
     grads = [g for g, v in grads_and_vars if g is not None]
+    def _variable_creator(next_creator, collections, **kwargs):
+      if not collections:
+        collections = [ops.GraphKeys.LOCAL_VARIABLES]
+      elif ops.GraphKeys.GLOBAL_VARIABLES in collections:
+        collections = list(collections)
+        collections.append(ops.GraphKeys.LOCAL_VARIABLES)
+        collections.remove(ops.GraphKeys.GLOBAL_VARIABLES)
+      return next_creator(collections=collections, **kwargs)
     # theta = theta - lr * grad
-    global_old = set(n.op.name for n in variables.global_variables())
-    local_update_op = self._opt.apply_gradients(grads_and_vars)
-    global_new = set(n.op.name for n in variables.global_variables())
-
-    self._adjust_optimizer_variable_collection(global_new - global_old)
+    with variable_scope.variable_creator_scope(_variable_creator):
+      local_update_op = self._opt.apply_gradients(grads_and_vars)
 
     # a = a + grad
     update_ops = []
