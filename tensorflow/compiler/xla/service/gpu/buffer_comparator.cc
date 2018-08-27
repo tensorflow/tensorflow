@@ -124,7 +124,7 @@ StatusOr<F16BufferComparator> F16BufferComparator::Create(
 StatusOr<bool> F16BufferComparator::CompareEqualImpl(
     se::DeviceMemory<Eigen::half> test_buffer) {
   if (ref_buffer_.root_buffer().size() != test_buffer.size()) {
-    return InternalError("Mismatched buffer size: %lld vs %lld",
+    return InternalError("Mismatched buffer size: %d vs %d",
                          ref_buffer_.root_buffer().size(), test_buffer.size());
   }
 

@@ -98,7 +98,7 @@ PlatformUtil::GetSupportedPlatforms() {
       [](string* out, const se::Platform* p) { out->append(p->Name()); });
   return InvalidArgument(
       "must specify platform because more than one platform found: %s",
-      platforms_string.c_str());
+      platforms_string);
 }
 
 /* static */ StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
@@ -123,7 +123,7 @@ PlatformUtil::GetSupportedPlatforms() {
   return InvalidArgument(
       "must specify platform because more than one platform (except for the "
       "interpreter platform) found: %s",
-      platforms_string.c_str());
+      platforms_string);
 }
 
 /*static*/ StatusOr<se::Platform*> PlatformUtil::GetPlatform(
@@ -135,7 +135,7 @@ PlatformUtil::GetSupportedPlatforms() {
       return platform;
     }
   }
-  return InvalidArgument("platform %s not found", platform_name.c_str());
+  return InvalidArgument("platform %s not found", platform_name);
 }
 
 /*static*/ StatusOr<se::Platform*> PlatformUtil::GetPlatformExceptFor(
@@ -151,7 +151,7 @@ PlatformUtil::GetSupportedPlatforms() {
   }
   if (matched.empty()) {
     return InvalidArgument("unable to find platform that is not %s",
-                           platform_name.c_str());
+                           platform_name);
   }
   if (matched.size() == 1) {
     return matched[0];
@@ -161,7 +161,7 @@ PlatformUtil::GetSupportedPlatforms() {
       [](string* out, const se::Platform* p) { out->append(p->Name()); });
   return InvalidArgument(
       "found multiple platforms %s, but expected one platform except for %s",
-      matched_string.c_str(), platform_name.c_str());
+      matched_string, platform_name);
 }
 
 // Returns whether the device underlying the given StreamExecutor is supported
@@ -192,7 +192,7 @@ static bool IsDeviceSupported(se::StreamExecutor* executor) {
 PlatformUtil::GetStreamExecutors(se::Platform* platform) {
   int device_count = platform->VisibleDeviceCount();
   if (device_count <= 0) {
-    return NotFound("no %s devices found", platform->Name().c_str());
+    return NotFound("no %s devices found", platform->Name());
   }
   if (platform->id() == se::host::kHostPlatformId) {
     // On host "devices", StreamExecutor exports a device for each hardware
@@ -231,7 +231,7 @@ PlatformUtil::GetStreamExecutors(se::Platform* platform) {
   if (std::all_of(stream_executors.begin(), stream_executors.end(),
                   [](se::StreamExecutor* s) { return s == nullptr; })) {
     return InternalError("no supported devices found for platform %s",
-                         platform->Name().c_str());
+                         platform->Name());
   }
   return stream_executors;
 }

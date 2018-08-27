@@ -306,8 +306,7 @@ TokKind HloLexer::LexNumberOrPattern() {
       R"([-]?((\d+|\d+[.]\d*|\d*[.]\d+)([eE][+-]?\d+))|[-]?(\d+[.]\d*|\d*[.]\d+))"};
   if (RE2::Consume(&consumable, *float_pattern)) {
     current_ptr_ = consumable.begin();
-    CHECK(absl::SimpleAtod(string(token_start_, current_ptr_).c_str(),
-                           &decimal_val_));
+    CHECK(absl::SimpleAtod(string(token_start_, current_ptr_), &decimal_val_));
     return TokKind::kDecimal;
   }
 

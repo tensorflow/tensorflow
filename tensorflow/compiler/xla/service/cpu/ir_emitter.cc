@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/BasicBlock.h"
@@ -68,7 +69,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
 
@@ -230,9 +230,8 @@ Status IrEmitter::HandleCopy(HloInstruction* copy) {
     // Use the elemental emitter for array shapes.
     return DefaultAction(copy);
   }
-  return Unimplemented(
-      "unsupported operand type %s for copy instruction",
-      PrimitiveType_Name(copy->shape().element_type()).c_str());
+  return Unimplemented("unsupported operand type %s for copy instruction",
+                       PrimitiveType_Name(copy->shape().element_type()));
 }
 
 // Calculate the alignment of a buffer allocated for a given primitive type.
@@ -389,7 +388,7 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
   int64 length = ByteSizeOf(shape);
   if (length <= 0 || length > std::numeric_limits<int32>::max()) {
     return InvalidArgument(
-        "xfeed (infeed or outfeed) buffer length %lld is outside the valid "
+        "xfeed (infeed or outfeed) buffer length %d is outside the valid "
         "size range",
         length);
   }
@@ -1620,9 +1619,8 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     int64 dimension = LayoutUtil::Minor(reduce->shape().layout(), i);
     int64 start_index = 0;
     int64 end_index = reduce->shape().dimensions(dimension);
-    std::unique_ptr<llvm_ir::ForLoop> loop =
-        loop_nest.AddLoop(start_index, end_index,
-                          tensorflow::strings::Printf("dim.%lld", dimension));
+    std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
+        start_index, end_index, absl::StrFormat("dim.%d", dimension));
     array_index[dimension] = loop->GetIndVarValue();
   }
 
@@ -1641,9 +1639,9 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     int64 start_index = 0;
     int64 end_index = (innermost_dimension_size / vectorization_factor) *
                       vectorization_factor;
-    std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
-        start_index, end_index, vectorization_factor,
-        tensorflow::strings::Printf("dim.%lld", innermost_dimension));
+    std::unique_ptr<llvm_ir::ForLoop> loop =
+        loop_nest.AddLoop(start_index, end_index, vectorization_factor,
+                          absl::StrFormat("dim.%d", innermost_dimension));
     array_index[innermost_dimension] = loop->GetIndVarValue();
 
     SetToFirstInsertPoint(loop->GetBodyBasicBlock(), &b_);
@@ -2170,8 +2168,8 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
             return InternalError(
                 "instruction %s %s does not share slice with "
                 "instruction %s %s",
-                a->ToString().c_str(), slice_a.ToString().c_str(),
-                b->ToString().c_str(), slice_b.ToString().c_str());
+                a->ToString(), slice_a.ToString(), b->ToString(),
+                slice_b.ToString());
           }
           return Status::OK();
         };
@@ -2826,8 +2824,8 @@ Status IrEmitter::ElementTypesSameAndSupported(
   if (std::find(supported_types.begin(), supported_types.end(),
                 primitive_type) == supported_types.end()) {
     return Unimplemented("unsupported operand type %s in op %s",
-                         PrimitiveType_Name(primitive_type).c_str(),
-                         HloOpcodeString(instruction.opcode()).c_str());
+                         PrimitiveType_Name(primitive_type),
+                         HloOpcodeString(instruction.opcode()));
   }
   return Status::OK();
 }

@@ -147,7 +147,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   }
   if (element_type == OPAQUE || element_type == TUPLE) {
     return InvalidArgument("Unsupported element type: %s",
-                           PrimitiveType_Name(element_type).c_str());
+                           PrimitiveType_Name(element_type));
   }
   Shape shape = ShapeUtil::MakeShape(element_type, dimensions);
   auto min2maj = shape.mutable_layout()->mutable_minor_to_major();
@@ -491,8 +491,7 @@ StatusOr<PrimitiveType> StringToPrimitiveType(const string& name) {
   }();
   auto found = name_to_type->find(name);
   if (found == name_to_type->end()) {
-    return InvalidArgument("Invalid element type string: \"%s\".",
-                           name.c_str());
+    return InvalidArgument("Invalid element type string: \"%s\".", name);
   }
   return found->second;
 }
@@ -564,8 +563,7 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
       if (absl::ConsumePrefix(s, ")")) {
         break;
       } else if (must_end) {
-        return InvalidArgument("Expected end of tuple; got: \"%s\"",
-                               string(*s).c_str());
+        return InvalidArgument("Expected end of tuple; got: \"%s\"", *s);
       }
       shapes.emplace_back();
       TF_ASSIGN_OR_RETURN(shapes.back(), ParseShapeStringInternal(s));
@@ -593,8 +591,8 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
       int64 element;
       if (!absl::SimpleAtoi(input, &element)) {
         return InvalidArgument(
-            "Invalid s64 value in parsed shape string: \"%s\" in \"%s\"",
-            string(input).c_str(), string(*s).c_str());
+            "Invalid s64 value in parsed shape string: \"%s\" in \"%s\"", input,
+            *s);
       }
       return element;
     };
@@ -618,7 +616,7 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
                         StringToPrimitiveType(element_type_string));
     if (primitive_type == PRIMITIVE_TYPE_INVALID || primitive_type == TUPLE) {
       return InvalidArgument("Invalid element type string: \"%s\".",
-                             element_type_string.c_str());
+                             element_type_string);
     }
 
     Shape result;
@@ -648,16 +646,14 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
     return std::move(result);
   }
 
-  return InvalidArgument("Invalid shape string to parse: \"%s\"",
-                         string(*s).c_str());
+  return InvalidArgument("Invalid shape string to parse: \"%s\"", *s);
 }
 }  // namespace
 
 /* static */ StatusOr<Shape> ShapeUtil::ParseShapeString(absl::string_view s) {
   TF_ASSIGN_OR_RETURN(Shape shape, ParseShapeStringInternal(&s));
   if (!s.empty()) {
-    return InvalidArgument("Invalid shape string to parse: \"%s\"",
-                           string(s).c_str());
+    return InvalidArgument("Invalid shape string to parse: \"%s\"", s);
   }
   return shape;
 }
@@ -822,7 +818,7 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
     const Shape& shape) {
   if (shape.element_type() == PRIMITIVE_TYPE_INVALID) {
     return InvalidArgument("shape has invalid element type: %s",
-                           shape.ShortDebugString().c_str());
+                           shape.ShortDebugString());
   }
   if (shape.element_type() == TUPLE) {
     if (shape.dimensions_size() != 0) {
@@ -845,21 +841,21 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
     if (shape.dimensions_size() != 0) {
       return InvalidArgument(
           "shape has %s element type, but has dimensions field: %s",
-          LowercasePrimitiveTypeName(shape.element_type()).c_str(),
-          shape.ShortDebugString().c_str());
+          LowercasePrimitiveTypeName(shape.element_type()),
+          shape.ShortDebugString());
     }
     if (shape.has_layout()) {
       return InvalidArgument(
           "shape has %s element type, but has layout field: %s",
-          LowercasePrimitiveTypeName(shape.element_type()).c_str(),
-          shape.ShortDebugString().c_str());
+          LowercasePrimitiveTypeName(shape.element_type()),
+          shape.ShortDebugString());
     }
     return Status::OK();
   }
 
   if (Rank(shape) != shape.dimensions_size()) {
     return InvalidArgument(
-        "shape's rank is mismatched with dimension count; rank=%lld "
+        "shape's rank is mismatched with dimension count; rank=%d "
         "dimensions_size=%d",
         Rank(shape), shape.dimensions_size());
   }
@@ -867,9 +863,8 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
     int64 dimension = shape.dimensions(i);
     if (dimension < 0) {
       return InvalidArgument(
-          "shape's dimensions must not be < 0; dimension at index %lld was "
-          "%lld",
-          i, dimension);
+          "shape's dimensions must not be < 0; dimension at index %d was %d", i,
+          dimension);
     }
   }
 
@@ -934,7 +929,7 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
 
   if (shape_size < 0) {
     return InvalidArgument("Shape %s size may overflow int64.",
-                           ShapeUtil::HumanString(shape).c_str());
+                           ShapeUtil::HumanString(shape));
   }
 
   VLOG(3) << "Shape size is valid: " << shape_size;
@@ -994,7 +989,7 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
         i >= return_shape->tuple_shapes_size()) {
       return InvalidArgument(
           "Shape index %s not a valid subshape index for tuple with shape %s",
-          index.ToString().c_str(), shape.DebugString().c_str());
+          index.ToString(), shape.DebugString());
     }
     return_shape = &return_shape->tuple_shapes(i);
   }

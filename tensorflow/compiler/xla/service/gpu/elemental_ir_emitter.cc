@@ -107,7 +107,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLibdeviceMathCall(
       break;
     default:
       return Unimplemented("Bad type for libdevice math call: %s",
-                           PrimitiveType_Name(output_type).c_str());
+                           PrimitiveType_Name(output_type));
   }
   llvm::Value* result = EmitMathCall(munged_callee, converted_operands,
                                      converted_input_types, output_type)
@@ -138,7 +138,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLlvmIntrinsicMathCall(
       break;
     default:
       return Unimplemented("Bad type for llvm intrinsic math call: %s",
-                           PrimitiveType_Name(output_type).c_str());
+                           PrimitiveType_Name(output_type));
   }
   return EmitMathCall(munged_callee, operands, input_types, output_type);
 }
@@ -152,8 +152,8 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
   for (PrimitiveType input_type : input_types) {
     if (output_type != input_type) {
       return Unimplemented("Input type ≠ output type: %s ≠ %s",
-                           PrimitiveType_Name(input_type).c_str(),
-                           PrimitiveType_Name(output_type).c_str());
+                           PrimitiveType_Name(input_type),
+                           PrimitiveType_Name(output_type));
     }
   }
 

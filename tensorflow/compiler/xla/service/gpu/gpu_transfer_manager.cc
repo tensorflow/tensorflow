@@ -84,7 +84,7 @@ Status GpuTransferManager::EnqueueBuffersToInfeed(
   Status block_status = stream->BlockHostUntilDone();
   if (!block_status.ok()) {
     return InternalError("Failed to complete data transfer on stream %p: %s",
-                         stream, block_status.error_message().c_str());
+                         stream, block_status.error_message());
   }
 
   infeed_manager->EnqueueDestination(std::move(buffers));
@@ -97,7 +97,7 @@ Status GpuTransferManager::EnqueueBuffersToInfeed(
 StatusOr<InfeedBuffer> GpuTransferManager::TransferBufferToInfeedInternal(
     se::StreamExecutor* executor, int64 size, const void* source) {
   if (size > std::numeric_limits<int32>::max()) {
-    return InvalidArgument("Infeed shape is too large: needs %lld bytes", size);
+    return InvalidArgument("Infeed shape is too large: needs %d bytes", size);
   }
 
   if (size == 0) {

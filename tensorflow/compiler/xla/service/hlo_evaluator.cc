@@ -435,7 +435,7 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
   if (!ShapeUtil::ElementIsFloating(operand->shape())) {
     return InvalidArgument(
         "expected element type in shape to be float for IsFinite op, got: %s",
-        PrimitiveType_Name(operand->shape().element_type()).c_str());
+        PrimitiveType_Name(operand->shape().element_type()));
   }
 
   switch (operand->shape().element_type()) {
@@ -476,9 +476,9 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
     return Unimplemented(
         "Implicit broadcasting is currently unsupported in HLO evaluator "
         "Shape Mismatch: %s vs %s vs %s",
-        ShapeUtil::HumanString(compare->shape()).c_str(),
-        ShapeUtil::HumanString(lhs->shape()).c_str(),
-        ShapeUtil::HumanString(rhs->shape()).c_str());
+        ShapeUtil::HumanString(compare->shape()),
+        ShapeUtil::HumanString(lhs->shape()),
+        ShapeUtil::HumanString(rhs->shape()));
   }
 
   TF_RET_CHECK(lhs->shape().element_type() == rhs->shape().element_type());
@@ -1105,8 +1105,8 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
   HloEvaluator loop_body_evaluator(max_loop_iterations_);
   while (keep_going) {
     if (max_loop_iterations_ >= 0 && iteration_count++ > max_loop_iterations_) {
-      return InvalidArgument("Loop %s exceeded loop iteration limit (%lld).",
-                             while_hlo->name().c_str(), max_loop_iterations_);
+      return InvalidArgument("Loop %s exceeded loop iteration limit (%d).",
+                             while_hlo->name(), max_loop_iterations_);
     }
     TF_ASSIGN_OR_RETURN(auto cond_val, cond_evaluator.Evaluate<Literal*>(
                                            *cond_comp, {lcv.get()}));
@@ -1262,7 +1262,7 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
   const int64 rank = ShapeUtil::Rank(sort->operand(0)->shape());
   if (sort_dim != rank - 1) {
     return Unimplemented(
-        "Trying to support along dimension %lld, which is not the last "
+        "Trying to support along dimension %d, which is not the last "
         "dimension",
         sort_dim);
   }

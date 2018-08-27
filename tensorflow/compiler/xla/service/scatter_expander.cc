@@ -291,7 +291,7 @@ StatusOr<HloInstruction*> ScatterExpander::ExpandScatter(
     return Unimplemented(
         "Scatter operations with more than 2147483647 scatter indices are not "
         "supported. This error occurred for %s.",
-        scatter->ToString().c_str());
+        scatter->ToString());
   }
 
   // Canonicalize the scatter_indices, after which the size of its most-major

@@ -72,7 +72,7 @@ XlaOp operator>>(const XlaOp& x, const XlaOp& y) {
     if (!ShapeUtil::ElementIsIntegral(shape)) {
       return InvalidArgument(
           "Argument to >> operator does not have an integral type (%s).",
-          ShapeUtil::HumanString(shape).c_str());
+          ShapeUtil::HumanString(shape));
     }
     if (ShapeUtil::ElementIsSigned(shape)) {
       return ShiftRightArithmetic(x, y);
@@ -492,7 +492,7 @@ XlaOp XlaBuilder::Parameter(int64 parameter_number, const Shape& shape,
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     if (!parameter_numbers_.insert(parameter_number).second) {
-      return InvalidArgument("parameter %lld already registered",
+      return InvalidArgument("parameter %d already registered",
                              parameter_number);
     }
     instr.set_parameter_number(parameter_number);
@@ -766,7 +766,7 @@ XlaOp XlaBuilder::GetTupleElement(const XlaOp& tuple_data, int64 index) {
     if (!ShapeUtil::IsTuple(tuple_shape)) {
       return InvalidArgument(
           "Operand to GetTupleElement() is not a tuple; got %s",
-          ShapeUtil::HumanString(tuple_shape).c_str());
+          ShapeUtil::HumanString(tuple_shape));
     }
     *instr.mutable_shape() =
         ShapeUtil::GetTupleElementShape(tuple_shape, index);
@@ -847,16 +847,14 @@ Status XlaBuilder::VerifyConvolution(
     return InvalidArgument(
         "Convolution arguments must have same number of "
         "dimensions. Got: %s and %s",
-        ShapeUtil::HumanString(lhs_shape).c_str(),
-        ShapeUtil::HumanString(rhs_shape).c_str());
+        ShapeUtil::HumanString(lhs_shape), ShapeUtil::HumanString(rhs_shape));
   }
   int num_dims = ShapeUtil::Rank(lhs_shape);
   if (num_dims < 2) {
     return InvalidArgument(
         "Convolution expects argument arrays with >= 3 dimensions. "
         "Got: %s and %s",
-        ShapeUtil::HumanString(lhs_shape).c_str(),
-        ShapeUtil::HumanString(rhs_shape).c_str());
+        ShapeUtil::HumanString(lhs_shape), ShapeUtil::HumanString(rhs_shape));
   }
   int num_spatial_dims = num_dims - 2;
 
@@ -870,7 +868,7 @@ Status XlaBuilder::VerifyConvolution(
         }
         for (int i = 0; i < numbers.size(); ++i) {
           if (numbers.Get(i) < 0 || numbers.Get(i) >= num_dims) {
-            return InvalidArgument("Convolution %s[%d] is out of bounds: %lld",
+            return InvalidArgument("Convolution %s[%d] is out of bounds: %d",
                                    field_name, i, numbers.Get(i));
           }
         }
@@ -1016,8 +1014,7 @@ StatusOr<Window> XlaBuilder::MakeWindow(
                     "Window has different number of window dimensions than of ",
                     x_name,
                     "\nNumber of window dimensions: ", window_dimensions.size(),
-                    "\nNumber of ", x_name, ": ", x, "\n")
-                    .c_str());
+                    "\nNumber of ", x_name, ": ", x, "\n"));
     }
   };
   TF_RETURN_IF_ERROR(verify_size(window_strides.size(), "window strides"));
@@ -1193,8 +1190,8 @@ void XlaBuilder::Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
     if (!ShapeUtil::Compatible(operand_shape, shape_with_layout)) {
       return InvalidArgument(
           "Outfeed shape %s must be compatible with operand shape %s",
-          ShapeUtil::HumanStringWithLayout(shape_with_layout).c_str(),
-          ShapeUtil::HumanStringWithLayout(operand_shape).c_str());
+          ShapeUtil::HumanStringWithLayout(shape_with_layout),
+          ShapeUtil::HumanStringWithLayout(operand_shape));
     }
     *instr.mutable_outfeed_shape() = shape_with_layout;
 
@@ -1246,8 +1243,8 @@ XlaOp XlaBuilder::OutfeedWithToken(const XlaOp& operand, const XlaOp& token,
     if (!ShapeUtil::Compatible(operand_shape, shape_with_layout)) {
       return InvalidArgument(
           "Outfeed shape %s must be compatible with operand shape %s",
-          ShapeUtil::HumanStringWithLayout(shape_with_layout).c_str(),
-          ShapeUtil::HumanStringWithLayout(operand_shape).c_str());
+          ShapeUtil::HumanStringWithLayout(shape_with_layout),
+          ShapeUtil::HumanStringWithLayout(operand_shape));
     }
     *instr.mutable_outfeed_shape() = shape_with_layout;
 
@@ -1286,7 +1283,7 @@ XlaOp XlaBuilder::CustomCall(const string& call_target_name,
       return InvalidArgument(
           "Invalid custom_call_target \"%s\": Call targets that start with '$' "
           "are reserved for internal use.",
-          call_target_name.c_str());
+          call_target_name);
     }
     *instr.mutable_shape() = shape;
     instr.set_custom_call_target(call_target_name);
@@ -1590,7 +1587,7 @@ XlaOp XlaBuilder::RngOp(RandomDistribution distribution,
         if (parameters.size() != 2) {
           return InvalidArgument(
               "RNG distribution (%s) expects 2 parameters, but got %ld",
-              RandomDistribution_Name(distribution).c_str(), parameters.size());
+              RandomDistribution_Name(distribution), parameters.size());
         }
         break;
       default:
@@ -2140,13 +2137,13 @@ XlaOp XlaBuilder::SendToHost(const XlaOp& operand, const XlaOp& token,
     if (!ShapeUtil::Compatible(operand_shape, shape_with_layout)) {
       return InvalidArgument(
           "SendToHost shape %s must be compatible with operand shape %s",
-          ShapeUtil::HumanStringWithLayout(shape_with_layout).c_str(),
-          ShapeUtil::HumanStringWithLayout(operand_shape).c_str());
+          ShapeUtil::HumanStringWithLayout(shape_with_layout),
+          ShapeUtil::HumanStringWithLayout(operand_shape));
     }
     // TODO(b/111544877): Support tuple shapes.
     if (!ShapeUtil::IsArray(operand_shape)) {
       return InvalidArgument("SendToHost only supports array shapes, shape: %s",
-                             ShapeUtil::HumanString(operand_shape).c_str());
+                             ShapeUtil::HumanString(operand_shape));
     }
 
     if (handle.type() != ChannelHandle::DEVICE_TO_HOST) {
@@ -2185,7 +2182,7 @@ XlaOp XlaBuilder::RecvFromHost(const XlaOp& token, const Shape& shape,
     if (!ShapeUtil::IsArray(shape)) {
       return InvalidArgument(
           "RecvFromHost only supports array shapes, shape: %s",
-          ShapeUtil::HumanString(shape).c_str());
+          ShapeUtil::HumanString(shape));
     }
 
     if (handle.type() != ChannelHandle::HOST_TO_DEVICE) {
@@ -2240,7 +2237,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
         "of being evaluated at XLA compile time.\n\n"
         "Please file a usability bug with the framework being used (e.g. "
         "TensorFlow).",
-        op_string.c_str());
+        op_string);
   }
 
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
@@ -2348,8 +2345,8 @@ XlaBuilder::CreateDefaultConvDimensionNumbers(int num_spatial_dims) {
            dnum.input_spatial_dimensions(0), dnum.input_spatial_dimensions(1)})
           .size() != 4) {
     return FailedPrecondition(
-        "dimension numbers for the input are not unique: (%lld, %lld, %lld, "
-        "%lld)",
+        "dimension numbers for the input are not unique: (%d, %d, %d, "
+        "%d)",
         dnum.input_batch_dimension(), dnum.input_feature_dimension(),
         dnum.input_spatial_dimensions(0), dnum.input_spatial_dimensions(1));
   }
@@ -2359,8 +2356,8 @@ XlaBuilder::CreateDefaultConvDimensionNumbers(int num_spatial_dims) {
                        dnum.kernel_spatial_dimensions(1)})
           .size() != 4) {
     return FailedPrecondition(
-        "dimension numbers for the weight are not unique: (%lld, %lld, %lld, "
-        "%lld)",
+        "dimension numbers for the weight are not unique: (%d, %d, %d, "
+        "%d)",
         dnum.kernel_output_feature_dimension(),
         dnum.kernel_input_feature_dimension(),
         dnum.kernel_spatial_dimensions(0), dnum.kernel_spatial_dimensions(1));
@@ -2371,8 +2368,8 @@ XlaBuilder::CreateDefaultConvDimensionNumbers(int num_spatial_dims) {
                        dnum.output_spatial_dimensions(1)})
           .size() != 4) {
     return FailedPrecondition(
-        "dimension numbers for the output are not unique: (%lld, %lld, %lld, "
-        "%lld)",
+        "dimension numbers for the output are not unique: (%d, %d, %d, "
+        "%d)",
         dnum.output_batch_dimension(), dnum.output_feature_dimension(),
         dnum.output_spatial_dimensions(0), dnum.output_spatial_dimensions(1));
   }
@@ -2392,13 +2389,11 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(
   }
   for (const auto& operand : operands) {
     if (operand.builder_ == nullptr) {
-      return InvalidArgument("invalid XlaOp with handle %lld",
-                             operand.handle());
+      return InvalidArgument("invalid XlaOp with handle %d", operand.handle());
     }
     if (operand.builder_ != this) {
       return InvalidArgument("Do not add XlaOp from builder %s to builder %s",
-                             operand.builder_->name().c_str(),
-                             this->name().c_str());
+                             operand.builder_->name(), this->name());
     }
     instr.add_operand_ids(operand.handle());
   }
@@ -2428,18 +2423,18 @@ StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstruction(
 
   if (op.builder_ == nullptr) {
     return InvalidArgument(
-        "invalid XlaOp with handle %lld; the builder of this op is freed",
+        "invalid XlaOp with handle %d; the builder of this op is freed",
         op.handle());
   }
   if (op.builder_ != this) {
     return InvalidArgument(
-        "XlaOp with handle %lld is built by builder '%s', but is trying to use "
+        "XlaOp with handle %d is built by builder '%s', but is trying to use "
         "it in builder '%s'",
-        op.handle(), op.builder_->name().c_str(), this->name().c_str());
+        op.handle(), op.builder_->name(), this->name());
   }
 
   if (op.handle() >= instructions_.size() || op.handle() < 0) {
-    return InvalidArgument("no XlaOp value %lld", op.handle());
+    return InvalidArgument("no XlaOp value %d", op.handle());
   }
   return &instructions_[op.handle()];
 }

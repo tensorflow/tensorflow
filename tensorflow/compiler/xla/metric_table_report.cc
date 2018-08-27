@@ -19,7 +19,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -264,8 +264,7 @@ string MetricTableReport::MetricString(double metric) {
 }
 
 string MetricTableReport::MetricPercent(double metric) {
-  return tensorflow::strings::Printf("%5.2f%%",
-                                     metric / expected_metric_sum_ * 100.0);
+  return absl::StrFormat("%5.2f%%", metric / expected_metric_sum_ * 100.0);
 }
 
 }  // namespace xla

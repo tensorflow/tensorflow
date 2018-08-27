@@ -163,7 +163,7 @@ Status HloModuleGroupMetadata::VerifyCompanionSets() const {
             ss << "  " << hlo->name() << std::endl;
           }
           ss << "has multiple instructions on the same device";
-          return FailedPrecondition("%s", ss.str().c_str());
+          return FailedPrecondition("%s", ss.str());
         }
       }
     }
@@ -411,16 +411,16 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
 Status HloModuleGroupMetadata::VerifyChannelInstructions() {
   for (const Channel& channel : channels_) {
     if (channel.send == nullptr) {
-      return FailedPrecondition("missing send for id : %lld", channel.id);
+      return FailedPrecondition("missing send for id : %d", channel.id);
     }
     if (channel.recv == nullptr) {
-      return FailedPrecondition("missing recv for id : %lld", channel.id);
+      return FailedPrecondition("missing recv for id : %d", channel.id);
     }
     if (channel.send_done == nullptr) {
-      return FailedPrecondition("missing send-done for id : %lld", channel.id);
+      return FailedPrecondition("missing send-done for id : %d", channel.id);
     }
     if (channel.recv_done == nullptr) {
-      return FailedPrecondition("missing recv-done for id : %lld", channel.id);
+      return FailedPrecondition("missing recv-done for id : %d", channel.id);
     }
   }
 
@@ -436,33 +436,33 @@ Status HloModuleGroupMetadata::VerifyChannelInstructions() {
     auto send_done_device = GetInstructionDevice(*channel.send_done);
     if (!send_device) {
       return FailedPrecondition("send instruction must have a device: %s",
-                                channel.send->ToString().c_str());
+                                channel.send->ToString());
     }
     if (!send_done_device) {
       return FailedPrecondition("send_done instruction must have a device: %s",
-                                channel.send_done->ToString().c_str());
+                                channel.send_done->ToString());
     }
     if (*send_device != *send_done_device) {
       return FailedPrecondition(
-          "send and send-done (channel=%lld) must be on the same device: %lld "
-          "vs. %lld",
+          "send and send-done (channel=%d) must be on the same device: %d "
+          "vs. %d",
           channel.id, *send_device, *send_done_device);
     }
     auto recv_device = GetInstructionDevice(*channel.recv);
     auto recv_done_device = GetInstructionDevice(*channel.recv_done);
     if (!recv_done_device) {
       return FailedPrecondition("recv_done instruction must have a device: %s",
-                                channel.recv_done->ToString().c_str());
+                                channel.recv_done->ToString());
     }
     if (*recv_device != *recv_done_device) {
       return FailedPrecondition(
-          "recv and recv-done (channel=%lld) must be on the same device: %lld "
-          "vs. %lld",
+          "recv and recv-done (channel=%d) must be on the same device: %d "
+          "vs. %d",
           channel.id, *recv_device, *recv_done_device);
     }
     if (*send_device == *recv_device) {
       return FailedPrecondition(
-          "send and recv (channel=%lld) must be on different devices: %lld",
+          "send and recv (channel=%d) must be on different devices: %d",
           channel.id, *send_device);
     }
   }
@@ -483,7 +483,7 @@ Status HloModuleGroupMetadata::VerifyChannelInstructions() {
         !CheckCompanionPathsCompatibility(
             path, GetCompanionsPath(channel.recv_done))) {
       return FailedPrecondition(
-          "Nest companion paths do not match for channel %lld", channel.id);
+          "Nest companion paths do not match for channel %d", channel.id);
     }
   }
   return Status::OK();

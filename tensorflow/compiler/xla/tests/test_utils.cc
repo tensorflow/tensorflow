@@ -194,7 +194,7 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteralInternal(
       break;
     default:
       return Unimplemented("Unsupported type for fake literal generation: %s",
-                           ShapeUtil::HumanString(shape).c_str());
+                           ShapeUtil::HumanString(shape));
   }
   return std::move(literal);
 }
@@ -342,7 +342,7 @@ StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
       default:
         return Unimplemented(
             "Constrained operand generation not implemented for %s.",
-            use->ToString().c_str());
+            use->ToString());
     }
   }
   int constraint_count = 0;

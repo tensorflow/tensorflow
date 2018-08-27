@@ -625,16 +625,15 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
   if (instruction->parent() != this) {
     return FailedPrecondition(
         "Can't deep copy instruction %s: instruction is not in computation %s",
-        instruction->name().c_str(), name().c_str());
+        instruction->name(), name());
   }
   if (indices_to_copy != nullptr &&
       !ShapeUtil::Compatible(instruction->shape(), indices_to_copy->shape())) {
     return FailedPrecondition(
         "Can't deep copy instruction %s: given shape tree of indices to copy "
         "has incompatible shapes: %s vs. %s",
-        instruction->name().c_str(),
-        ShapeUtil::HumanString(instruction->shape()).c_str(),
-        ShapeUtil::HumanString(indices_to_copy->shape()).c_str());
+        instruction->name(), ShapeUtil::HumanString(instruction->shape()),
+        ShapeUtil::HumanString(indices_to_copy->shape()));
   }
 
   ShapeIndex index;
@@ -664,7 +663,7 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyInstructionWithCustomCopier(
   if (instruction->parent() != this) {
     return FailedPrecondition(
         "Can't deep copy instruction %s: instruction is not in computation %s",
-        instruction->name().c_str(), name().c_str());
+        instruction->name(), name());
   }
   ShapeIndex index;
   return DeepCopyHelper(instruction, &index, copy_leaf);

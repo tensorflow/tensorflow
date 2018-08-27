@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stacktrace.h"
@@ -66,86 +65,6 @@ Status AppendStatus(Status prior, absl::string_view context) {
   CHECK(!prior.ok());
   return Status{prior.code(),
                 absl::StrCat(prior.error_message(), ": ", context)};
-}
-
-// Implementation note: we can't common these out (without using macros) because
-// they all need to va_start/va_end their varargs in their frame.
-
-Status InvalidArgumentV(const char* format, va_list args) {
-  string message;
-  tensorflow::strings::Appendv(&message, format, args);
-  return WithLogBacktrace(tensorflow::errors::InvalidArgument(message));
-}
-
-Status InvalidArgument(const char* format, ...) {
-  va_list args;
-  va_start(args, format);
-  Status result = InvalidArgumentV(format, args);
-  va_end(args);
-  return result;
-}
-
-Status Unimplemented(const char* format, ...) {
-  string message;
-  va_list args;
-  va_start(args, format);
-  tensorflow::strings::Appendv(&message, format, args);
-  va_end(args);
-  return WithLogBacktrace(tensorflow::errors::Unimplemented(message));
-}
-
-Status InternalError(const char* format, ...) {
-  string message;
-  va_list args;
-  va_start(args, format);
-  tensorflow::strings::Appendv(&message, format, args);
-  va_end(args);
-  return WithLogBacktrace(tensorflow::errors::Internal(message));
-}
-
-Status FailedPrecondition(const char* format, ...) {
-  string message;
-  va_list args;
-  va_start(args, format);
-  tensorflow::strings::Appendv(&message, format, args);
-  va_end(args);
-  return WithLogBacktrace(tensorflow::errors::FailedPrecondition(message));
-}
-
-Status Cancelled(const char* format, ...) {
-  string message;
-  va_list args;
-  va_start(args, format);
-  tensorflow::strings::Appendv(&message, format, args);
-  va_end(args);
-  return WithLogBacktrace(tensorflow::errors::Cancelled(message));
-}
-
-Status ResourceExhausted(const char* format, ...) {
-  string message;
-  va_list args;
-  va_start(args, format);
-  tensorflow::strings::Appendv(&message, format, args);
-  va_end(args);
-  return WithLogBacktrace(tensorflow::errors::ResourceExhausted(message));
-}
-
-Status NotFound(const char* format, ...) {
-  string message;
-  va_list args;
-  va_start(args, format);
-  tensorflow::strings::Appendv(&message, format, args);
-  va_end(args);
-  return WithLogBacktrace(tensorflow::errors::NotFound(message));
-}
-
-Status Unavailable(const char* format, ...) {
-  string message;
-  va_list args;
-  va_start(args, format);
-  tensorflow::strings::Appendv(&message, format, args);
-  va_end(args);
-  return WithLogBacktrace(tensorflow::errors::Unavailable(message));
 }
 
 string Reindent(absl::string_view original,

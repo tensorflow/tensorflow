@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
@@ -48,9 +49,9 @@ void DumpModuleProto(const HloModule& module, const string& dump_to,
   tensorflow::mutex_lock lock(mu);
   const int64 pass_number = (*module_id_to_pass_number)[module.unique_id()]++;
 
-  const string mod_name = SanitizeFileName(tensorflow::strings::Printf(
-      "module_%04d.%04lld.%s.after_%s", module.unique_id(), pass_number,
-      pipeline_name.c_str(), pass_name.c_str()));
+  const string mod_name = SanitizeFileName(
+      absl::StrFormat("module_%04d.%04d.%s.after_%s", module.unique_id(),
+                      pass_number, pipeline_name, pass_name));
 
   TF_QCHECK_OK(protobuf_util::DumpProtoToDirectory(MakeHloProto(module),
                                                    dump_to, mod_name));

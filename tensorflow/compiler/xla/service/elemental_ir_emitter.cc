@@ -264,8 +264,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
         }
       }
       return Unimplemented("conversion from primitive type %s to %s",
-                           PrimitiveType_Name(from_type).c_str(),
-                           PrimitiveType_Name(to_type).c_str());
+                           PrimitiveType_Name(from_type),
+                           PrimitiveType_Name(to_type));
     }
     case HloOpcode::kBitcastConvert: {
       PrimitiveType from_type = op->operand(0)->shape().element_type();
@@ -282,8 +282,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
       return InvalidArgument(
           "bitcast conversion from primitive type %s to %s with unequal "
           "bit-widths (%u versus %u) ",
-          PrimitiveType_Name(from_type).c_str(),
-          PrimitiveType_Name(to_type).c_str(),
+          PrimitiveType_Name(from_type), PrimitiveType_Name(to_type),
           primitive_util::BitWidth(from_type),
           primitive_util::BitWidth(to_type));
     }
@@ -332,7 +331,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
     }
     default:
       return Unimplemented("unary integer op '%s'",
-                           HloOpcodeString(op->opcode()).c_str());
+                           HloOpcodeString(op->opcode()));
   }
 }
 
@@ -389,8 +388,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
             operand_value, llvm_ir::PrimitiveTypeToIrType(to_type, module_));
       }
       return Unimplemented("unhandled conversion operation: %s => %s",
-                           PrimitiveType_Name(from_type).c_str(),
-                           PrimitiveType_Name(to_type).c_str());
+                           PrimitiveType_Name(from_type),
+                           PrimitiveType_Name(to_type));
     }
     case HloOpcode::kBitcastConvert: {
       PrimitiveType from_type = op->operand(0)->shape().element_type();
@@ -407,8 +406,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return InvalidArgument(
           "bitcast conversion from primitive type %s to %s with unequal "
           "bit-widths (%u versus %u) ",
-          PrimitiveType_Name(from_type).c_str(),
-          PrimitiveType_Name(to_type).c_str(),
+          PrimitiveType_Name(from_type), PrimitiveType_Name(to_type),
           primitive_util::BitWidth(from_type),
           primitive_util::BitWidth(to_type));
     }
@@ -471,7 +469,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return llvm::ConstantFP::get(operand_value->getType(), 0.0);
     default:
       return Unimplemented("unary floating-point op '%s'",
-                           HloOpcodeString(op->opcode()).c_str());
+                           HloOpcodeString(op->opcode()));
   }
 }
 
@@ -683,7 +681,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       return EmitExtractImag(operand_value);
     default:
       return Unimplemented("unary complex op '%s'",
-                           HloOpcodeString(op->opcode()).c_str());
+                           HloOpcodeString(op->opcode()));
   }
 }
 
@@ -755,7 +753,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
       return EmitAtan2(op->shape().element_type(), lhs_value, rhs_value);
     default:
       return Unimplemented("binary floating point op '%s'",
-                           HloOpcodeString(op->opcode()).c_str());
+                           HloOpcodeString(op->opcode()));
   }
 }
 
@@ -873,7 +871,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
     }
     default:
       return Unimplemented("binary complex op '%s'",
-                           HloOpcodeString(op->opcode()).c_str());
+                           HloOpcodeString(op->opcode()));
   }
 }
 
@@ -1247,7 +1245,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
                                       /*saturate_to_sign_bit=*/false);
     default:
       return Unimplemented("binary integer op '%s'",
-                           HloOpcodeString(op->opcode()).c_str());
+                           HloOpcodeString(op->opcode()));
   }
 }
 
@@ -1378,7 +1376,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::ConvertValueForDistribution(
     default:
       return InvalidArgument(
           "unhandled distribution %s",
-          RandomDistribution_Name(hlo->random_distribution()).c_str());
+          RandomDistribution_Name(hlo->random_distribution()));
   }
 }
 
@@ -1610,7 +1608,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalClamp(
         max_value, EmitIntegralMax(min_value, arg_value, is_signed), is_signed);
   } else {
     return Unimplemented("Clamp unimplemented for %s",
-                         PrimitiveType_Name(prim_type).c_str());
+                         PrimitiveType_Name(prim_type));
   }
 }
 
@@ -2232,7 +2230,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     default:
       return [hlo](const IrArray::Index& index) {
         return Unimplemented("Unhandled opcode for elemental IR emission: %s",
-                             HloOpcodeString(hlo->opcode()).c_str());
+                             HloOpcodeString(hlo->opcode()));
       };
   }
 }
