@@ -1,5 +1,5 @@
 op {
-  graph_op_name: "TreeSerialize"
+  graph_op_name: "TensorForestTreeSerialize"
   visibility: HIDDEN
   in_arg {
     name: "tree_handle"

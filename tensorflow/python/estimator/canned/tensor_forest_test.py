@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from google.protobuf.json_format import ParseDict
-from tensorflow.core.kernels.tensor_forest import tensor_forest_pb2
+from tensorflow.core.kernels.boosted_trees import boosted_trees_pb2
 from tensorflow.python.estimator.canned import tensor_forest
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -36,41 +36,39 @@ class TensorForestTest(test_util.TensorFlowTestCase):
     expected_prediction = [[0.0, 1.0], [0.0, 1.0],
                            [0.0, 1.0], [0.0, 1.0]]
     hparams = tensor_forest._ForestHParams(
-        num_output=2,
+        logits_dimension=2,
         n_trees=1,
         max_nodes=1000,
         num_splits_to_consider=250,
-        split_after_samples=25,
+        split_node_after_samples=25,
         is_regression=False)
-    tree_weight = {'decisionTree':
-                   {'nodes':
-                    [{'binaryNode':
-                      {'rightChildId': 2,
-                       'leftChildId': 1,
-                       'inequalityLeftChildTest':
-                           {'featureId': {'id': '0'},
-                            'threshold': {'floatValue': 0}}}},
-                     {'leaf': {'vector':
-                               {'value': [{'floatValue': 0.0},
-                                          {'floatValue': 1.0}]}},
-                      'nodeId': 1},
-                     {'leaf': {'vector':
-                               {'value': [{'floatValue': 0.0},
-                                          {'floatValue': 1.0}]}},
-                      'nodeId': 2}]}}
+    tree_weight = {'nodes':
+                   [{'dense_split':
+                     {'right_id': 2,
+                      'left_id': 1,
+                      'feature_id': 0,
+                      'threshold': 0.0}},
+                    {'leaf': {'vector':
+                              {'value': [0.0, 1.0]}}},
+                    {'leaf': {'vector':
+                              {'value': [0.0, 1.0]}}},
+                    ]}
     restored_tree_param = ParseDict(tree_weight,
-                                    tensor_forest_pb2.Model()).SerializeToString()
+                                    boosted_trees_pb2.Tree()).SerializeToString()
     graph_builder = tensor_forest.RandomForestGraphs(hparams, None,
                                                      [restored_tree_param])
-    probs, paths, var = graph_builder.inference_graph(input_data)
+    probs, var = graph_builder.inference_graph(
+        input_data)
     self.assertTrue(isinstance(probs, ops.Tensor))
     self.assertTrue(isinstance(paths, ops.Tensor))
     self.assertTrue(isinstance(var, ops.Tensor))
     with self.test_session():
       variables.global_variables_initializer().run()
-      resources.initialize_resources(resources.shared_resources()).run()
+      resources.initialize_resources(
+          resources.shared_resources()).run()
       self.assertEquals(probs.eval().shape, (4, 2))
-      self.assertEquals(probs.eval().tolist(), expected_prediction)
+      self.assertEquals(probs.eval().tolist(),
+                        expected_prediction)
 
 
 if __name__ == '__main__':

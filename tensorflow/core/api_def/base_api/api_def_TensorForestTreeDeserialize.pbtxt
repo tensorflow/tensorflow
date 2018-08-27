@@ -1,5 +1,5 @@
 op {
-  graph_op_name: "TreeDeserialize"
+  graph_op_name: "TensorForestTreeDeserialize"
   visibility: HIDDEN
   in_arg {
     name: "tree_handle"
@@ -13,5 +13,5 @@ END
 Serialied proto string of the tree resource.
 END
   }
-  summary: "DeSerializes the tree handle from a proto"
+  summary: "DeSerializes a proto into the tree handle"
 }

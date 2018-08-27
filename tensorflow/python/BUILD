@@ -1856,7 +1856,7 @@ py_library(
         ":framework",
         ":ops",
         ":training",
-        "//tensorflow/core/kernels/tensor_forest:tensor_forest_proto_py",
+        "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
     ],
 )
 py_library(

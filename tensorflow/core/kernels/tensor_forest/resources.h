@@ -18,60 +18,44 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/tensor_forest/evaluator.h"
-#include "tensorflow/core/kernels/tensor_forest/leaf_model.h"
-#include "tensorflow/core/kernels/tensor_forest/tensor_forest.pb.h"
+#include "tensorflow/core/kernels/boosted_trees/boosted_trees.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 
+typedef TTypes<const float, 2>::ConstTensor DenseTensorType;
+
 // Keep a tree ensemble in memory for efficient evaluation and mutation.
 class DecisionTreeResource : public ResourceBase {
  public:
-  DecisionTreeResource(const int32& leaf_model_type, const int32& num_output)
-      : leaf_model_type_(leaf_model_type),
-        decision_tree_(new tensorforest::Model()) {
-    model_op_ =
-        LeafModelFactory::CreateLeafModelOperator(leaf_model_type_, num_output);
-  };
+  DecisionTreeResource() : decision_tree_(new boosted_trees::Tree()){};
+
   string DebugString() override {
-    return strings::StrCat("DecisionTree[size=",
-                           decision_tree_->decision_tree().nodes_size(), "]");
+    return strings::StrCat("DecisionTree[size=", get_size(), "]");
   }
 
   mutex* get_mutex() { return &mu_; }
 
-  const tensorforest::Model& decision_tree() const { return *decision_tree_; }
-
-  tensorforest::Model* mutable_decision_tree() { return decision_tree_.get(); }
-
-  const tensorforest::Leaf& get_leaf(int32 id) const {
-    return decision_tree_->decision_tree().nodes(id).leaf();
-  }
-
-  tensorforest::TreeNode* get_mutable_tree_node(int32 id) {
-    return decision_tree_->mutable_decision_tree()->mutable_nodes(id);
-  }
+  bool InitFromSerialized(const string& serialized);
 
   // Resets the resource and frees the proto.
   // Caller needs to hold the mutex lock while calling this.
-  void Reset() { decision_tree_.reset(new tensorforest::Model()); }
+  void Reset() { decision_tree_.reset(new boosted_trees::Tree()); }
 
-  void MaybeInitialize();
-  int32 TraverseTree(const std::unique_ptr<DenseTensorType>& input_data,
-                     int example, tensorforest::TreePath* path) const;
+  const boosted_trees::Tree& decision_tree() const { return *decision_tree_; }
 
-  // void SplitNode(int32 node_id, tensorforest::SplitCandidate* best,
-  //                std::vector<int32>* new_children);
+  const int32 get_size() const { return decision_tree_->nodes_size(); }
+
+  const float get_prediction(const int32 id, const int32 dimension) const;
+
+  const int32 TraverseTree(const std::unique_ptr<DenseTensorType>& input_data,
+                           const int example) const;
 
  private:
   mutex mu_;
-  const int32 leaf_model_type_;
-  std::shared_ptr<LeafModelOperator> model_op_;
-  std::unique_ptr<tensorforest::Model> decision_tree_;
-  std::vector<std::unique_ptr<BinaryDecisionNodeEvaluator>> node_evaluators_;
+  std::unique_ptr<boosted_trees::Tree> decision_tree_;
 };
 
 }  // namespace tensorflow

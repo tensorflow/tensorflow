@@ -14,45 +14,33 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/tensor_forest/resources.h"
-#include "tensorflow/core/kernels/tensor_forest/evaluator.h"
-#include "tensorflow/core/kernels/tensor_forest/tensor_forest.pb.h"
+#include "tensorflow/core/kernels/boosted_trees/boosted_trees.pb.h"
 
 namespace tensorflow {
 
-using tensorforest::DecisionTree;
+const float DecisionTreeResource::get_prediction(const int32 id,
+                                                 const int32 dimension) const {
+  return decision_tree_->nodes(id).leaf().vector().value(dimension);
+};
 
-void DecisionTreeResource::MaybeInitialize() {
-  DecisionTree* tree = decision_tree_->mutable_decision_tree();
-  if (tree->nodes_size() == 0) {
-    model_op_->InitModel(tree->add_nodes()->mutable_leaf());
-  } else if (node_evaluators_.empty()) {  // reconstruct evaluators
-    for (const auto& node : tree->nodes()) {
-      if (node.has_leaf()) {
-        node_evaluators_.emplace_back(nullptr);
-      } else {
-        node_evaluators_.push_back(CreateBinaryDecisionNodeEvaluator(node));
-      }
-    }
-  }
-}
-
-int32 DecisionTreeResource::TraverseTree(
-    const std::unique_ptr<DenseTensorType>& input_data, int example,
-    tensorforest::TreePath* path) const {
-  const DecisionTree& tree = decision_tree_->decision_tree();
+const int32 DecisionTreeResource::TraverseTree(
+    const std::unique_ptr<DenseTensorType>& input_data, int example_id) const {
+  using boosted_trees::Node;
+  using boosted_trees::Tree;
   int32 current_id = 0;
   while (true) {
-    const tensorforest::TreeNode& current = tree.nodes(current_id);
-    if (path != nullptr) {
-      *path->add_nodes_visited() = current;
-    }
+    const Node& current = decision_tree_->nodes(current_id);
     if (current.has_leaf()) {
       return current_id;
-    }
-    const int32 next_id =
-        node_evaluators_[current_id]->Decide(input_data, example);
-    current_id = tree.nodes(next_id).node_id().value();
-  }
-}
+    };
+    DCHECK_EQ(current.node_case(), Node::kDenseSplit);
+    const auto& split = current.dense_split();
 
+    if ((*input_data)(example_id, split.feature_id()) <= split.threshold()) {
+      current_id = split.left_id();
+    } else {
+      current_id = split.right_id();
+    }
+  }
+};
 }  // namespace tensorflow

@@ -1,0 +1,29 @@
+op {
+  graph_op_name: "TensorForestTreePredict"
+  visibility: HIDDEN
+  attr {
+    name: "logits_dimension"
+    description: <<END
+Scalar, dimension of the logits
+END
+  }
+  in_arg {
+    name: "tree_handle"
+    description: <<END
+Handle to the tree resource to be used.
+END
+  }
+  in_arg {
+    name: "dense_features"
+    description: <<END
+The data tensor.
+END
+  }
+  out_arg {
+    name: "logits"
+    description: <<END
+The logtis.
+END
+  }
+  summary: "Output the logits and tree_paths for the given input data"
+}

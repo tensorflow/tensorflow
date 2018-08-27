@@ -24,25 +24,9 @@ from tensorflow.python.ops import gen_tensor_forest_ops
 from tensorflow.python.training import saver
 
 
-class LeafModelType(object):
-  LEAF_TYPE = {'classification': 0,
-               'regression': 1}
-
-  @classmethod
-  def get_type(cls, params):
-    if params.is_regression:
-      return cls.LEAF_TYPE['regression']
-    else:
-      return cls.LEAF_TYPE['classification']
-
-
-def predict(tree_handle, data, params):
-    return gen_tensor_forest_ops.tree_predictions(tree_handle, data, num_output=params.num_output, leaf_model_type=LeafModelType.get_type(params))
-
-
 class VariableSavable(saver.BaseSaverBuilder.SaveableObject):
 
-  def __init__(self, leaf_model_type, num_output, config, name, container,  type_name, resource_handle_func, create_op_func,
+  def __init__(self, type_name, name, container, config, resource_handle_func, create_op_func,
                is_initialized_op_func, serialize_op_func, deserialize_op_func):
 
     with ops.name_scope(name, type_name) as name:
@@ -54,9 +38,7 @@ class VariableSavable(saver.BaseSaverBuilder.SaveableObject):
     tensor = serialize_op_func(self._resource_handle)
     self._create_op = create_op_func(
         self._resource_handle,
-        config,
-        leaf_model_type=leaf_model_type,
-        num_output=num_output)
+        config)
     # slice_spec is useful for saving a slice from a variable.
     # It's not meaningful the tree variable. So we just pass an empty
     # value.
@@ -95,52 +77,34 @@ class VariableSavable(saver.BaseSaverBuilder.SaveableObject):
     return self._resource_handle
 
 
-def tree_variable(leaf_model_type, num_output, tree_config, name, container=None):
-  return VariableSavable(leaf_model_type,
-                         num_output,
-                         tree_config,
-                         name,
-                         container,
-                         "TreeVariable",
-                         gen_tensor_forest_ops.decision_tree_resource_handle_op,
-                         gen_tensor_forest_ops.create_tree_variable,
-                         gen_tensor_forest_ops.tree_is_initialized_op,
-                         gen_tensor_forest_ops.tree_serialize,
-                         gen_tensor_forest_ops.tree_deserialize).resource
-
-
-class DecisionTreeVariables(object):
-
-  def __init__(self, leaf_model_type, num_output, tree_num, tree_config='', tree_stat=''):
-    self.stats = None
-    self.tree = tree_variable(
-        leaf_model_type, num_output, tree_config, self.get_tree_name('tree', tree_num))
-
-  def get_tree_name(self, name, num):
-    return '{0}-{1}'.format(name, num)
+def tree_variable(tree_config, name, container=None):
+  return VariableSavable(
+      "TreeVariable",
+      name,
+      container,
+      tree_config,
+      gen_tensor_forest_ops.decision_tree_resource_handle_op,
+      gen_tensor_forest_ops.tensor_forest_create_tree_variable,
+      gen_tensor_forest_ops.tensor_forest_tree_is_initialized_op,
+      gen_tensor_forest_ops.tensor_forest_tree_serialize,
+      gen_tensor_forest_ops.tensor_forest_tree_deserialize).resource
 
 
 class ForestVariables(object):
 
   def __init__(self, params,
-               tree_configs=None, tree_stats=None):
-    self.variables = []
-    # Set up some scalar variables to run through the device assigner, then
-    # we can use those to colocate everything related
-    # to a tree.
+               tree_configs=None):
+
+    self._variables = []
 
     for i in range(params.n_trees):
-      kwargs = {}
+      tree_config = ''
       if tree_configs is not None:
-        kwargs.update(dict(tree_config=tree_configs[i]))
-      if tree_stats is not None:
-        kwargs.update(dict(tree_stat=tree_stats[i]))
-
-      self.variables.append(DecisionTreeVariables(
-          LeafModelType.get_type(params), params.num_output, i, **kwargs))
-
-  def __setitem__(self, t, val):
-    self.variables[t] = val
+        tree_config = tree_configs[i]
+      self._variables.append(tree_variable(
+          tree_configs,
+          'tree-%s' % i,
+      ))
 
   def __getitem__(self, t):
-    return self.variables[t]
+    return self._variables[t]

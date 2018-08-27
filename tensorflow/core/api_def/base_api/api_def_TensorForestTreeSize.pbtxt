@@ -1,5 +1,5 @@
 op {
-  graph_op_name: "TreeSize"
+  graph_op_name: "TensorForestTreeSize"
   visibility: HIDDEN
   in_arg {
     name: "tree_handle"

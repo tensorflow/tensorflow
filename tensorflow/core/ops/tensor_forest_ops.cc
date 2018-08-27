@@ -24,53 +24,47 @@ namespace tensorflow {
 
 REGISTER_RESOURCE_HANDLE_OP(DecisionTreeResource);
 
-REGISTER_OP("TreeIsInitializedOp")
+REGISTER_OP("TensorForestTreeIsInitializedOp")
     .Input("tree_handle: resource")
     .Output("is_initialized: bool")
-    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
-    .Doc(R"doc(
-Checks whether a tree has been initialized.
-)doc");
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
 
-REGISTER_OP("CreateTreeVariable")
-    .Attr("leaf_model_type: int")
-    .Attr("num_output: int")
+REGISTER_OP("TensorForestCreateTreeVariable")
     .Input("tree_handle: resource")
     .Input("tree_config: string")
     .SetShapeFn(tensorflow::shape_inference::NoOutputs);
 
-REGISTER_OP("TreeSerialize")
+REGISTER_OP("TensorForestTreeSerialize")
     .Input("tree_handle: resource")
     .Output("tree_config: string")
     .SetShapeFn(tensorflow::shape_inference::ScalarShape);
 
-REGISTER_OP("TreeDeserialize")
+REGISTER_OP("TensorForestTreeDeserialize")
     .Input("tree_handle: resource")
     .Input("tree_config: string")
     .SetShapeFn(tensorflow::shape_inference::NoOutputs);
 
-REGISTER_OP("TreeSize")
+REGISTER_OP("TensorForestTreeSize")
     .Input("tree_handle: resource")
     .Output("tree_size: int32")
     .SetShapeFn(tensorflow::shape_inference::ScalarShape);
 
-REGISTER_OP("TreePredictions")
-    .Attr("leaf_model_type: int")
-    .Attr("num_output: int")
+REGISTER_OP("TensorForestTreePredict")
+    .Attr("logits_dimension: int")
     .Input("tree_handle: resource")
-    .Input("input_data: float")
-    .Output("predictions: float")
-    .Output("tree_paths: string")
+    .Input("dense_features: float")
+    .Output("logits: float")
     .SetShapeFn([](tensorflow::shape_inference::InferenceContext* c) {
-      shape_inference::DimensionHandle num_points = c->UnknownDim();
+      shape_inference::DimensionHandle batch_size = c->UnknownDim();
 
       if (c->RankKnown(c->input(1)) && c->Rank(c->input(1)) > 0 &&
           c->Value(c->Dim(c->input(1), 0)) > 0) {
-        num_points = c->Dim(c->input(1), 0);
+        batch_size = c->Dim(c->input(1), 0);
       }
 
-      c->set_output(0, c->Matrix(num_points, c->UnknownDim()));
-      c->set_output(1, c->Vector(c->UnknownDim()));
+      int logits_dimension;
+      TF_RETURN_IF_ERROR(c->GetAttr("logits_dimension", &logits_dimension));
+      c->set_output(0, c->Matrix(batch_size, logits_dimension));
       return Status::OK();
     });
 }  // namespace tensorflow
