@@ -66,8 +66,7 @@ void RnnBatchStep(const float* input_ptr_batch, const int8_t* input_weights_ptr,
 //  - n_input: the input size,
 //  - n_output: the output size.
 //
-// The pointers to the cell and output state and the output are updated. Unless
-// projection is specified output and output state contain the same data.
+// The pointers to the cell and output state and the output are updated.
 //
 // The pointers with the suffix "_batch" point to data aligned in batch_major
 // order, and each step processes batch_size many inputs from input_ptr_batch,
