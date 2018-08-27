@@ -122,7 +122,7 @@ class InstructionFusion : public HloPassInterface {
 
   // Computes the set of nodes that we do not want to fuse into any of their
   // consumers based on a global analysis of the HLO graph.
-  HloInstructionSet ComputeGloballyUnfusable(
+  HloInstructionSet ComputeGloballyUnfusible(
       tensorflow::gtl::ArraySlice<HloInstruction*> post_order);
 
   // Used to determine if an HLO is expensive. Expensive operations will not be

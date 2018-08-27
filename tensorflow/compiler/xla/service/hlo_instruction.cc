@@ -2169,7 +2169,7 @@ void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
 
 bool HloInstruction::IsFused() const { return parent_->IsFusionComputation(); }
 
-bool HloInstruction::IsFusable() const {
+bool HloInstruction::IsFusible() const {
   // Instructions which are traced should not be fused.
   if (tracing()) {
     return false;

@@ -3345,7 +3345,7 @@ bool IrEmitterUnnested::CheckAndEmitHloWithTile021(HloInstruction* hlo) {
   // if there's a Right Choice.
   //
   // This is only sound if tiled transposes are the only place where we use
-  // shared memory in fusions.  If in the future other fusile ops use shared
+  // shared memory in fusions.  If in the future other fusible ops use shared
   // memory, we'll have to adjust this heuristic.
   constexpr int kMinBlocksPerCore = 3;
   constexpr int64 kShmemPerCore = 48 * 1024;

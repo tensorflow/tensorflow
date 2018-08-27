@@ -145,7 +145,7 @@ bool GpuMultiOutputFusion::IsFusible(HloInstruction* instr) {
   // with any other instruction.
   // TODO(b/112957171): This should use the same isFusible logic as
   // instruction_fusion.
-  return instr->IsFusable() &&
+  return instr->IsFusible() &&
          (IsInputFusibleReduction(instr) ||
           (instr->opcode() == HloOpcode::kFusion &&
            instr->fusion_kind() == HloInstruction::FusionKind::kLoop) ||
@@ -204,7 +204,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
   tensorflow::gtl::FlatSet<HloInstruction*> to_fuse;
   // Keep a list of the instructions to fuse after making all the fusion
   // decisions. We first aggressively add instructions to potential_fusion_list,
-  // then filter out instructions that will be no longer fusable because of
+  // then filter out instructions that will be no longer fusible because of
   // reachability change. This avoids recalculating reachability on a large set
   // of instructions.
   std::vector<std::pair<HloInstruction*, HloInstruction*>>
@@ -220,7 +220,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
       continue;
     }
     if (!IsInputFusibleReduction(consumer)) {
-      VLOG(3) << consumer->name() << " is not an input-fusable reduction.";
+      VLOG(3) << consumer->name() << " is not an input-fusible reduction.";
       continue;
     }
     VLOG(3) << consumer->name()
@@ -229,8 +229,8 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
     auto consumer_operands = consumer->operands();
     for (size_t i = 0; i < consumer_operands.size(); ++i) {
       HloInstruction* producer = consumer_operands[i];
-      if (!producer->IsFusable()) {
-        VLOG(3) << producer->name() << " is not fusable.";
+      if (!producer->IsFusible()) {
+        VLOG(3) << producer->name() << " is not fusible.";
         continue;
       }
       const bool is_loop_fusion =
@@ -270,7 +270,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
     }
   }
 
-  // Filter out pairs that will be no longer fusable because of reachability
+  // Filter out pairs that will be no longer fusible because of reachability
   // change.
   for (auto& fusion_pair : potential_fusion_list) {
     HloInstruction* producer = fusion_pair.first;
