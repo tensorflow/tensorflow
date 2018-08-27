@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -325,13 +326,21 @@ class BuildDenseInequalitySplitsOp : public OpKernel {
     }
 
     float best_gain = std::numeric_limits<float>::lowest();
-    int64 best_bucket_idx = 0;
+    int64 best_bucket_id = 0;
     std::vector<NodeStats> best_right_node_stats(num_elements, NodeStats(0));
     std::vector<NodeStats> best_left_node_stats(num_elements, NodeStats(0));
     std::vector<NodeStats> current_left_node_stats(num_elements, NodeStats(0));
     std::vector<NodeStats> current_right_node_stats(num_elements, NodeStats(0));
-    int64 current_bucket_id = 0;
+    int64 current_bucket_id = std::numeric_limits<int64>::max();
     int64 last_bucket_id = -1;
+    // Find the lowest bucket id, this is going to be the first bucket id to
+    // try.
+    for (int root_idx = 0; root_idx < num_elements; root_idx++) {
+      const int start_index = partition_boundaries[root_idx];
+      if (bucket_ids(start_index, 0) < current_bucket_id) {
+        current_bucket_id = bucket_ids(start_index, 0);
+      }
+    }
     // Indexes offsets for each of the partitions that can be used to access
     // gradients of a partition for a current bucket we consider.
     std::vector<int> current_layer_offsets(num_elements, 0);
@@ -373,6 +382,7 @@ class BuildDenseInequalitySplitsOp : public OpKernel {
         best_gain = gain_of_split;
         best_left_node_stats = current_left_node_stats;
         best_right_node_stats = current_right_node_stats;
+        best_bucket_id = current_bucket_id;
       }
       current_bucket_id = next_bucket_id;
     }
@@ -387,8 +397,7 @@ class BuildDenseInequalitySplitsOp : public OpKernel {
         oblivious_split_info.mutable_split_node()
             ->mutable_oblivious_dense_float_binary_split();
     oblivious_dense_split->set_feature_column(state->feature_column_group_id());
-    oblivious_dense_split->set_threshold(
-        bucket_boundaries(bucket_ids(best_bucket_idx, 0)));
+    oblivious_dense_split->set_threshold(bucket_boundaries(best_bucket_id));
     (*gains)(0) = best_gain;
 
     for (int root_idx = 0; root_idx < num_elements; root_idx++) {

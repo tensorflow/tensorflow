@@ -186,11 +186,12 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
     with self.test_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Dense Quantile |
-      # i0      |  (0.2, 0.12)  | 1         | 2              |
-      # i1      |  (-0.5, 0.07) | 1         | 2              |
-      # i2      |  (1.2, 0.2)   | 1         | 0              |
-      # i3      |  (4.0, 0.13)  | 2         | 1              |
-      dense_column = array_ops.constant([0.62, 0.62, 0.3, 0.52])
+      # i0      |  (0.2, 0.12)  | 1         | 3              |
+      # i1      |  (-0.5, 0.07) | 1         | 3              |
+      # i2      |  (1.2, 0.2)   | 1         | 1              |
+      # i3      |  (4.0, 0.13)  | 2         | 2              |
+      dense_column = array_ops.placeholder(
+          dtypes.float32, shape=(4, 1), name="dense_column")
       gradients = array_ops.constant([0.2, -0.5, 1.2, 4.0])
       hessians = array_ops.constant([0.12, 0.07, 0.2, 0.13])
       partition_ids = array_ops.constant([1, 1, 1, 2], dtype=dtypes.int32)
@@ -230,24 +231,28 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       with ops.control_dependencies([update_1]):
         are_splits_ready = split_handler.make_splits(
             np.int64(0), np.int64(1), class_id)[0]
+        # Forcing the creation of four buckets.
+        are_splits_ready = sess.run(
+            [are_splits_ready],
+            feed_dict={dense_column: [[0.2], [0.62], [0.3], [0.52]]})[0]
 
-      with ops.control_dependencies([are_splits_ready]):
-        update_2 = split_handler.update_stats_sync(
-            1,
-            partition_ids,
-            gradients,
-            hessians,
-            empty_gradients,
-            empty_hessians,
-            example_weights,
-            is_active=array_ops.constant([True, True]))
+      update_2 = split_handler.update_stats_sync(
+          1,
+          partition_ids,
+          gradients,
+          hessians,
+          empty_gradients,
+          empty_hessians,
+          example_weights,
+          is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_2]):
         are_splits_ready2, partitions, gains, splits = (
             split_handler.make_splits(np.int64(1), np.int64(2), class_id))
-        are_splits_ready, are_splits_ready2, partitions, gains, splits = (
-            sess.run([
-                are_splits_ready, are_splits_ready2, partitions, gains, splits
-            ]))
+        # Only using the last three buckets.
+        are_splits_ready2, partitions, gains, splits = (
+            sess.run(
+                [are_splits_ready2, partitions, gains, splits],
+                feed_dict={dense_column: [[0.62], [0.62], [0.3], [0.52]]}))
 
     # During the first iteration, inequality split handlers are not going to
     # have any splits. Make sure that we return not_ready in that case.
