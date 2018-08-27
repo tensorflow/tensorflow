@@ -143,7 +143,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   Status DefaultAction(HloInstruction* hlo_instruction) override {
     return Unimplemented("unhandled HLO ops for HloEvaluator: %s.",
-                         HloOpcodeString(hlo_instruction->opcode()).c_str());
+                         HloOpcodeString(hlo_instruction->opcode()));
   }
 
   // TODO(b/35950897): many of the stl functions used in the handlers are not
@@ -2654,9 +2654,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       return Unimplemented(
           "Implicit broadcasting is currently unsupported in HLO evaluator "
           "Shape Mismatch: %s vs %s vs %s: ",
-          ShapeUtil::HumanString(shape).c_str(),
-          ShapeUtil::HumanString(lhs->shape()).c_str(),
-          ShapeUtil::HumanString(rhs->shape()).c_str());
+          ShapeUtil::HumanString(shape), ShapeUtil::HumanString(lhs->shape()),
+          ShapeUtil::HumanString(rhs->shape()));
     }
 
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
@@ -2690,10 +2689,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       return Unimplemented(
           "Implicit broadcasting is currently unsupported in HLO evaluator "
           "Shape Mismatch: %s vs %s vs %s vs %s: ",
-          ShapeUtil::HumanString(shape).c_str(),
-          ShapeUtil::HumanString(lhs->shape()).c_str(),
-          ShapeUtil::HumanString(rhs->shape()).c_str(),
-          ShapeUtil::HumanString(ehs->shape()).c_str());
+          ShapeUtil::HumanString(shape), ShapeUtil::HumanString(lhs->shape()),
+          ShapeUtil::HumanString(rhs->shape()),
+          ShapeUtil::HumanString(ehs->shape()));
     }
 
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);

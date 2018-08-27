@@ -384,8 +384,8 @@ Status IrEmitter::EmitAtomicOperationForNestedComputation(
     // TODO(b/30258929): We only accept binary computations so far.
     return Unimplemented(
         "We only support atomic functions with exactly two parameters, but "
-        "computation %s has %lld.",
-        computation.name().c_str(), computation.num_parameters());
+        "computation %s has %d.",
+        computation.name(), computation.num_parameters());
   }
 
   if (MaybeEmitDirectAtomicOperation(computation, output_address,

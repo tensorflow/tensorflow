@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
 
@@ -39,8 +39,8 @@ using absl::nullopt;
 using absl::optional;
 using absl::StrAppend;
 using absl::StrCat;
+using absl::StrFormat;
 using absl::StrJoin;
-using ::tensorflow::strings::Printf;
 
 const double kF16max = 65504;
 
@@ -1586,8 +1586,7 @@ bool HloParser::ParseInstructionNames(
     }
     std::pair<HloInstruction*, LocTy>* instr = FindInstruction(name);
     if (!instr) {
-      return TokenError(
-          Printf("instruction '%s' is not defined", name.c_str()));
+      return TokenError(StrFormat("instruction '%s' is not defined", name));
     }
     instructions->push_back(instr->first);
   } while (EatIfPresent(TokKind::kComma));
@@ -1829,17 +1828,17 @@ bool HloParser::ParseDenseLiteral(std::unique_ptr<Literal>* literal,
       case TokKind::kLbrace: {
         nest_level++;
         if (nest_level > rank) {
-          return TokenError(Printf(
-              "expects nested array in rank %lld, but sees larger", rank));
+          return TokenError(absl::StrFormat(
+              "expects nested array in rank %d, but sees larger", rank));
         }
         if (nest_level > 1) {
           elems_seen_per_dim[nest_level - 2]++;
           if (elems_seen_per_dim[nest_level - 2] >
               shape.dimensions(nest_level - 2)) {
-            return TokenError(Printf(
-                "expects %lld elements in the %sth element, but sees more",
+            return TokenError(absl::StrFormat(
+                "expects %d elements in the %sth element, but sees more",
                 shape.dimensions(nest_level - 2),
-                get_index_str(nest_level - 2).c_str()));
+                get_index_str(nest_level - 2)));
           }
         }
         lexer_.Lex();
@@ -1848,9 +1847,9 @@ bool HloParser::ParseDenseLiteral(std::unique_ptr<Literal>* literal,
       case TokKind::kRbrace: {
         nest_level--;
         if (elems_seen_per_dim[nest_level] != shape.dimensions(nest_level)) {
-          return TokenError(Printf(
-              "expects %lld elements in the %sth element, but sees %lld",
-              shape.dimensions(nest_level), get_index_str(nest_level).c_str(),
+          return TokenError(absl::StrFormat(
+              "expects %d elements in the %sth element, but sees %d",
+              shape.dimensions(nest_level), get_index_str(nest_level),
               elems_seen_per_dim[nest_level]));
         }
         elems_seen_per_dim[nest_level] = 0;
@@ -1871,15 +1870,15 @@ bool HloParser::ParseDenseLiteral(std::unique_ptr<Literal>* literal,
         if (rank > 0) {
           if (nest_level != rank) {
             return TokenError(
-                Printf("expects nested array in rank %lld, but sees %lld", rank,
-                       nest_level));
+                absl::StrFormat("expects nested array in rank %d, but sees %d",
+                                rank, nest_level));
           }
           elems_seen_per_dim[rank - 1]++;
           if (elems_seen_per_dim[rank - 1] > shape.dimensions(rank - 1)) {
-            return TokenError(
-                Printf("expects %lld elements on the minor-most dimension, but "
-                       "sees more",
-                       shape.dimensions(rank - 1)));
+            return TokenError(absl::StrFormat(
+                "expects %d elements on the minor-most dimension, but "
+                "sees more",
+                shape.dimensions(rank - 1)));
           }
         }
         if (lexer_.GetKind() == TokKind::kw_true ||
@@ -2135,8 +2134,8 @@ bool HloParser::ParseSubAttributes(
   for (const auto& attr_it : attrs) {
     if (attr_it.second.required &&
         seen_attrs.find(attr_it.first) == seen_attrs.end()) {
-      return Error(loc, Printf("sub-attribute %s is expected but not seen",
-                               attr_it.first.c_str()));
+      return Error(loc, StrFormat("sub-attribute %s is expected but not seen",
+                                  attr_it.first));
     }
   }
   return ParseToken(TokKind::kRbrace, "expects '}' to end sub attributes");
@@ -2156,8 +2155,8 @@ bool HloParser::ParseAttributes(
   for (const auto& attr_it : attrs) {
     if (attr_it.second.required &&
         seen_attrs.find(attr_it.first) == seen_attrs.end()) {
-      return Error(loc, Printf("attribute %s is expected but not seen",
-                               attr_it.first.c_str()));
+      return Error(loc, StrFormat("attribute %s is expected but not seen",
+                                  attr_it.first));
     }
   }
   return true;
@@ -2173,7 +2172,7 @@ bool HloParser::ParseAttributeHelper(
   }
   VLOG(1) << "Parsing attribute " << name;
   if (!seen_attrs->insert(name).second) {
-    return Error(loc, Printf("attribute %s already exists", name.c_str()));
+    return Error(loc, StrFormat("attribute %s already exists", name));
   }
   auto attr_it = attrs.find(name);
   if (attr_it == attrs.end()) {
@@ -2188,8 +2187,8 @@ bool HloParser::ParseAttributeHelper(
                     StrAppend(out, kv.first);
                   }));
     }
-    return Error(loc, Printf("unexpected attribute \"%s\".  %s", name.c_str(),
-                             allowed_attrs.c_str()));
+    return Error(loc, StrFormat("unexpected attribute \"%s\".  %s", name,
+                                allowed_attrs));
   }
   AttrTy attr_type = attr_it->second.attr_type;
   void* attr_out_ptr = attr_it->second.result;
@@ -2384,7 +2383,7 @@ bool HloParser::ParseAttributeHelper(
     }
   }();
   if (!success) {
-    return Error(loc, Printf("error parsing attribute %s", name.c_str()));
+    return Error(loc, StrFormat("error parsing attribute %s", name));
   }
   return true;
 }
@@ -2548,7 +2547,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
         dnums->set_input_spatial_dimensions(c - '0', i);
       } else {
         return TokenError(
-            Printf("expects [0-%lldbf] in lhs dimension numbers", rank - 1));
+            StrFormat("expects [0-%dbf] in lhs dimension numbers", rank - 1));
       }
     }
   }
@@ -2571,7 +2570,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
         dnums->set_kernel_spatial_dimensions(c - '0', i);
       } else {
         return TokenError(
-            Printf("expects [0-%lldio] in rhs dimension numbers", rank - 1));
+            StrFormat("expects [0-%dio] in rhs dimension numbers", rank - 1));
       }
     }
   }
@@ -2593,8 +2592,8 @@ bool HloParser::ParseConvolutionDimensionNumbers(
       } else if (c < '0' + rank && c >= '0') {
         dnums->set_output_spatial_dimensions(c - '0', i);
       } else {
-        return TokenError(
-            Printf("expects [0-%lldbf] in output dimension numbers", rank - 1));
+        return TokenError(StrFormat(
+            "expects [0-%dbf] in output dimension numbers", rank - 1));
       }
     }
   }
@@ -2640,9 +2639,10 @@ bool HloParser::ParseSliceRanges(SliceRanges* result) {
     }
     const auto& range = ranges.back();
     if (range.size() != 2 && range.size() != 3) {
-      return Error(loc, Printf("expects [start:limit:step] or [start:limit], "
-                               "but sees %ld elements.",
-                               range.size()));
+      return Error(loc,
+                   StrFormat("expects [start:limit:step] or [start:limit], "
+                             "but sees %d elements.",
+                             range.size()));
     }
   } while (EatIfPresent(TokKind::kComma));
 
@@ -2828,14 +2828,13 @@ bool HloParser::ParseDxD(const string& name,
                          std::vector<tensorflow::int64>* result) {
   LocTy loc = lexer_.GetLoc();
   if (!result->empty()) {
-    return Error(loc,
-                 Printf("sub-attribute '%s=' already exists", name.c_str()));
+    return Error(loc, StrFormat("sub-attribute '%s=' already exists", name));
   }
   // 1D
   if (lexer_.GetKind() == TokKind::kInt) {
     tensorflow::int64 number;
     if (!ParseInt64(&number)) {
-      return Error(loc, Printf("expects sub-attribute '%s=i'", name.c_str()));
+      return Error(loc, StrFormat("expects sub-attribute '%s=i'", name));
     }
     result->push_back(number);
     return true;
@@ -2844,8 +2843,7 @@ bool HloParser::ParseDxD(const string& name,
   if (lexer_.GetKind() == TokKind::kDxD) {
     string str = lexer_.GetStrVal();
     if (!SplitToInt64s(str, 'x', result)) {
-      return Error(loc,
-                   Printf("expects sub-attribute '%s=ixj...'", name.c_str()));
+      return Error(loc, StrFormat("expects sub-attribute '%s=ixj...'", name));
     }
     lexer_.Lex();
     return true;
@@ -2940,9 +2938,8 @@ bool HloParser::ParseOpcode(HloOpcode* result) {
   string val = lexer_.GetStrVal();
   auto status_or_result = StringToHloOpcode(val);
   if (!status_or_result.ok()) {
-    return TokenError(
-        Printf("expects opcode but sees: %s, error: %s", val.c_str(),
-               status_or_result.status().error_message().c_str()));
+    return TokenError(StrFormat("expects opcode but sees: %s, error: %s", val,
+                                status_or_result.status().error_message()));
   }
   *result = status_or_result.ValueOrDie();
   lexer_.Lex();
@@ -2956,7 +2953,7 @@ bool HloParser::ParseFftType(FftType* result) {
   }
   string val = lexer_.GetStrVal();
   if (!FftType_Parse(val, result) || !FftType_IsValid(*result)) {
-    return TokenError(Printf("expects fft type but sees: %s", val.c_str()));
+    return TokenError(StrFormat("expects fft type but sees: %s", val));
   }
   lexer_.Lex();
   return true;
@@ -2970,9 +2967,9 @@ bool HloParser::ParseFusionKind(HloInstruction::FusionKind* result) {
   string val = lexer_.GetStrVal();
   auto status_or_result = StringToFusionKind(val);
   if (!status_or_result.ok()) {
-    return TokenError(
-        Printf("expects fusion kind but sees: %s, error: %s", val.c_str(),
-               status_or_result.status().error_message().c_str()));
+    return TokenError(StrFormat("expects fusion kind but sees: %s, error: %s",
+                                val,
+                                status_or_result.status().error_message()));
   }
   *result = status_or_result.ValueOrDie();
   lexer_.Lex();
@@ -2988,8 +2985,8 @@ bool HloParser::ParseRandomDistribution(RandomDistribution* result) {
   auto status_or_result = StringToRandomDistribution(val);
   if (!status_or_result.ok()) {
     return TokenError(
-        Printf("expects random distribution but sees: %s, error: %s",
-               val.c_str(), status_or_result.status().error_message().c_str()));
+        StrFormat("expects random distribution but sees: %s, error: %s", val,
+                  status_or_result.status().error_message()));
   }
   *result = status_or_result.ValueOrDie();
   lexer_.Lex();
@@ -3004,9 +3001,9 @@ bool HloParser::ParsePrecision(PrecisionConfigProto::Precision* result) {
   string val = lexer_.GetStrVal();
   auto status_or_result = StringToPrecision(val);
   if (!status_or_result.ok()) {
-    return TokenError(
-        Printf("expects precision but sees: %s, error: %s", val.c_str(),
-               status_or_result.status().error_message().c_str()));
+    return TokenError(StrFormat("expects precision but sees: %s, error: %s",
+                                val,
+                                status_or_result.status().error_message()));
   }
   *result = status_or_result.ValueOrDie();
   lexer_.Lex();
@@ -3100,7 +3097,7 @@ StatusOr<HloSharding> HloParser::ParseShardingOnly() {
   lexer_.Lex();
   OpSharding op_sharding;
   if (!ParseSharding(&op_sharding)) {
-    return InvalidArgument("Syntax error:\n%s", GetError().c_str());
+    return InvalidArgument("Syntax error:\n%s", GetError());
   }
   if (lexer_.GetKind() != TokKind::kEof) {
     return InvalidArgument("Syntax error:\nExtra content after sharding");
@@ -3112,7 +3109,7 @@ StatusOr<Window> HloParser::ParseWindowOnly() {
   lexer_.Lex();
   Window window;
   if (!ParseWindow(&window, /*expect_outer_curlies=*/false)) {
-    return InvalidArgument("Syntax error:\n%s", GetError().c_str());
+    return InvalidArgument("Syntax error:\n%s", GetError());
   }
   if (lexer_.GetKind() != TokKind::kEof) {
     return InvalidArgument("Syntax error:\nExtra content after window");
@@ -3125,7 +3122,7 @@ HloParser::ParseConvolutionDimensionNumbersOnly() {
   lexer_.Lex();
   ConvolutionDimensionNumbers dnums;
   if (!ParseConvolutionDimensionNumbers(&dnums)) {
-    return InvalidArgument("Syntax error:\n%s", GetError().c_str());
+    return InvalidArgument("Syntax error:\n%s", GetError());
   }
   if (lexer_.GetKind() != TokKind::kEof) {
     return InvalidArgument(
@@ -3163,7 +3160,7 @@ Status HloParser::ParseSingleInstruction(HloComputation::Builder* builder,
 
   // Parse the instruction with the registered hook.
   if (!ParseInstruction(builder, root_name)) {
-    return InvalidArgument("Syntax error:\n%s", GetError().c_str());
+    return InvalidArgument("Syntax error:\n%s", GetError());
   }
   return Status::OK();
 }
@@ -3174,7 +3171,7 @@ StatusOr<std::unique_ptr<HloModule>> ParseHloString(
     absl::string_view str, const HloModuleConfig& config) {
   HloParser parser(str, config);
   if (!parser.Run()) {
-    return InvalidArgument("Syntax error:\n%s", parser.GetError().c_str());
+    return InvalidArgument("Syntax error:\n%s", parser.GetError());
   }
   return parser.ConsumeHloModule();
 }

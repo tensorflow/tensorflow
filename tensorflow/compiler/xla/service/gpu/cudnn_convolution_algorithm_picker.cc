@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
@@ -59,8 +60,8 @@ StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
   if (byte_size > GetMemoryLimitInBytes(stream)) {
     return se::port::Status(
         se::port::error::RESOURCE_EXHAUSTED,
-        tensorflow::strings::Printf(
-            "Allocating %lld bytes exceeds the memory limit of %lld bytes.",
+        absl::StrFormat(
+            "Allocating %d bytes exceeds the memory limit of %d bytes.",
             byte_size, GetMemoryLimitInBytes(stream)));
   }
 
@@ -361,7 +362,7 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
   return InternalError(
       "All algorithms tried for convolution %s failed.  Falling back to "
       "default algorithm.",
-      instr->ToString().c_str());
+      instr->ToString());
 }
 
 StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(

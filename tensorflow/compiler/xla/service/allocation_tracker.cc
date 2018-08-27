@@ -69,8 +69,7 @@ StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
       return InvalidArgument(
           "AllocationTracker for platform %s cannot register buffer from "
           "platform %s",
-          backend_->platform()->Name().c_str(),
-          shaped_buffer.platform()->Name().c_str());
+          backend_->platform()->Name(), shaped_buffer.platform()->Name());
     }
   }
 
@@ -125,7 +124,7 @@ Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
   // "handle does not exist".
   auto it = handle_to_shaped_buffers_.find(data.handle());
   if (it == handle_to_shaped_buffers_.end()) {
-    return NotFound("no allocation record for global data handle: %lld",
+    return NotFound("no allocation record for global data handle: %d",
                     data.handle());
   }
   for (auto& shaped_buffer : it->second) {
@@ -144,7 +143,7 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
   // the same for all buffers across replicas.
   const ShapedBuffer* shaped_buffer = replicated_buffers[0];
   if (!ShapeUtil::IsTuple(shaped_buffer->on_host_shape())) {
-    return InvalidArgument("global data handle %lld is not a tuple",
+    return InvalidArgument("global data handle %d is not a tuple",
                            data.handle());
   }
   // If the on-host representation is a tuple, then the on-device one should be
@@ -201,14 +200,14 @@ StatusOr<std::vector<const ShapedBuffer*>> AllocationTracker::ResolveInternal(
   VLOG(2) << "resolve:" << data.handle();
   auto it = handle_to_shaped_buffers_.find(data.handle());
   if (it == handle_to_shaped_buffers_.end()) {
-    return NotFound("no allocation record for global data handle: %lld",
+    return NotFound("no allocation record for global data handle: %d",
                     data.handle());
   }
   std::vector<const ShapedBuffer*> replicated_buffers;
   for (const auto& shaped_buffer : it->second) {
     if (shaped_buffer == nullptr) {
-      return InvalidArgument(
-          "global data handle %lld was previously deallocated", data.handle());
+      return InvalidArgument("global data handle %d was previously deallocated",
+                             data.handle());
     }
     replicated_buffers.push_back(shaped_buffer.get());
   }

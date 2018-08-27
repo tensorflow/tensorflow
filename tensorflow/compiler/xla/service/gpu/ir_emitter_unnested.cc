@@ -2674,8 +2674,7 @@ Status CheckHloBuffersShareAllocation(
   if (slice_a != slice_b) {
     return InternalError(
         "instruction %s %s does not share allocation with instruction %s %s",
-        a->ToString().c_str(), slice_a.ToString().c_str(),
-        b->ToString().c_str(), slice_b.ToString().c_str());
+        a->ToString(), slice_a.ToString(), b->ToString(), slice_b.ToString());
   }
   return Status::OK();
 }

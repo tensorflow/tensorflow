@@ -32,6 +32,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -557,12 +558,11 @@ struct BoundsLayout {
 };
 
 void PrintTo(const BoundsLayout& spec, std::ostream* os) {
-  *os << tensorflow::strings::Printf(
-      "R%luToR%lu%s_%s_Reduce%s", spec.bounds.size(),
-      spec.bounds.size() - spec.reduce_dims.size(),
-      absl::StrJoin(spec.bounds, "x").c_str(),
-      absl::StrJoin(spec.layout, "").c_str(),
-      absl::StrJoin(spec.reduce_dims, "").c_str());
+  *os << absl::StrFormat("R%uToR%u%s_%s_Reduce%s", spec.bounds.size(),
+                         spec.bounds.size() - spec.reduce_dims.size(),
+                         absl::StrJoin(spec.bounds, "x"),
+                         absl::StrJoin(spec.layout, ""),
+                         absl::StrJoin(spec.reduce_dims, ""));
 }
 
 // Add-reduces a broadcasted scalar matrix among dimension 1 and 0.

@@ -365,7 +365,7 @@ static StatusOr<const HloInstruction*> FindHloInstruction(
   }
   return NotFound(
       "Computation '%s' does not contain an instruction with op code '%s'.",
-      computation.name().c_str(), HloOpcodeString(op).c_str());
+      computation.name(), HloOpcodeString(op));
 }
 
 TEST_F(InstructionFusionTest, MultiOutputFusion) {

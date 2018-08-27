@@ -251,7 +251,7 @@ StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
       return InternalError(
           "Failed running replica %d (other replicas may have failed as well): "
           "%s.",
-          replica, statusor.status().ToString().c_str());
+          replica, statusor.status().ToString());
     }
   }
 
@@ -696,8 +696,7 @@ StatusOr<LocalShapedBufferTuple*> DestructureLocalShapedBufferTuple(
         "Attemped to destructure a LocalShapedBuffer that did not have a tuple "
         "shape; shape: %s",
         ShapeUtil::HumanString(
-            local_shaped_buffer->shaped_buffer()->on_device_shape())
-            .c_str());
+            local_shaped_buffer->shaped_buffer()->on_device_shape()));
   }
 
   DeviceMemoryAllocator* allocator =

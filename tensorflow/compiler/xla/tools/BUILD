@@ -193,6 +193,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
