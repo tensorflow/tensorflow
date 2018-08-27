@@ -19,9 +19,7 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -134,40 +132,6 @@ class AGNOptimizer(optimizer.Optimizer):
         name='local_step')
     self._opt._prepare()
 
-  def compute_gradients(self,
-                        loss,
-                        var_list=None,
-                        gate_gradients=optimizer.Optimizer.GATE_OP,
-                        aggregation_method=None,
-                        colocate_gradients_with_ops=False,
-                        grad_loss=None):
-    """Compute gradients of `loss` for the variables in `var_list`.
-    Args:
-      loss: A Tensor containing the value to minimize.
-      var_list: Optional list or tuple of `tf.Variable` to update to minimize
-        `loss`.  Defaults to the list of variables collected in the graph
-        under the key `GraphKey.TRAINABLE_VARIABLES`.
-      gate_gradients: How to gate the computation of gradients.  Can be
-        `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
-      aggregation_method: Specifies the method used to combine gradient terms.
-        Valid values are defined in the class `AggregationMethod`.
-      colocate_gradients_with_ops: If True, try colocating gradients with
-        the corresponding op.
-      grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`
-
-    Returns:
-      A list of (gradient, variable) pairs. Variable is always present, but
-      gradient can be `None`.
-    """
-    if not var_list:
-      var_list = variables.trainable_variables()
-    return self._opt.compute_gradients(loss,
-                                       var_list,
-                                       gate_gradients,
-                                       aggregation_method,
-                                       colocate_gradients_with_ops,
-                                       grad_loss)
-
   def _adjust_optimizer_variable_collection(self, opt_vars):
     """ Move optimizer created variables to local collection
     """
@@ -268,7 +232,7 @@ class AGNOptimizer(optimizer.Optimizer):
       raise ValueError('The lists of local_variables, global_center_variables,'
                        'grad_center_variables should not be empty')
     for lvar, gc_var in zip(local_vars, global_center_vars):
-      init_ops.append(state_ops.assign(gc_var, lvar))
+      init_ops.append(state_ops.assign(lvar, gc_var))
     for g in grad_vars:
       init_ops.append(state_ops.assign(g, array_ops.zeros_like(g)))
     init_op = control_flow_ops.group(*(init_ops))
