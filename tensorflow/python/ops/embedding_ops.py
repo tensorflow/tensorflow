@@ -134,7 +134,10 @@ def _embedding_lookup_and_transform(params,
                        ids, max_norm)
         if transform_fn:
           result = transform_fn(result)
-        return result
+      # Make sure the final result does not have colocation contraints on the
+      # params. Similar to the case np > 1 where parallel_dynamic_stitch is
+      # outside the scioe of all with ops.colocate_with(params[p]).
+      return array_ops.identity(result)
     else:
       # Flatten the ids. There are two cases where we need to do this.
       # - There is more than one params tensor.
