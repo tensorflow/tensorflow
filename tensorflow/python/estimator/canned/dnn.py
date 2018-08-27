@@ -104,7 +104,7 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
               units=num_hidden_units,
               activation=None,
               kernel_initializer=init_ops.glorot_uniform_initializer(),
-              name=hidden_layer_scope + "_input")
+              name='hiddenlayer_%d_input' % layer_id)
           net = normalization.batch_normalization(
               net,
               # The default momentum 0.99 actually crashes on certain
