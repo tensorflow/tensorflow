@@ -38,18 +38,18 @@ class LuOpTest(test.TestCase):
     for np_type in [np.float32, np.float64]: #, np.complex64, np.complex128]:
       if np_type == np.float32 or np_type == np.complex64:
         tol = 1e-2
-        a = x.astype(np_type)      
+        a = x.astype(np_type) 
       l, u, p = math_ops.lu(a)
       pp = np.zeros(p.shape)
-      pl = math_ops.matmul(l, u)      
+      pl = math_ops.matmul(l, u) 
       #pinv = array_ops.invert_permutation(p);
-      plu = array_ops.gather(pl, p)            
-      with self.test_session() as sess:        
-        out = plu.eval()        
+      plu = array_ops.gather(pl, p) 
+      with self.test_session() as sess:
+        out = plu.eval()
       self.assertAllClose(a, out, atol=tol, rtol=tol)
 
   def _generateMatrix(self, m, n):
-    matrix = (np.random.normal(10, 1000,  m * n).reshape([m, n]))
+    matrix = (np.random.normal(10, 1000, m * n).reshape([m, n]))
     return matrix
 
   def testLU(self):
@@ -59,3 +59,4 @@ class LuOpTest(test.TestCase):
 
 if __name__ == "__main__":
   test.main()
+
