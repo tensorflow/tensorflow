@@ -1213,6 +1213,7 @@ def defun(func=None, input_signature=None):
       self.dense2 = tf.keras.layers.Dense(5, activation=tf.nn.softmax)
       self.keep_probability = keep_probability
 
+    @tf.contrib.eager.defun
     def call(self, inputs, training=True):
       x = self.dense2(self.dense1(inputs))
       if training:
@@ -1221,7 +1222,6 @@ def defun(func=None, input_signature=None):
         return x
 
   model = MyModel()
-  model.call = tf.contrib.eager.defun(model.call)
   model(x, training=True)  # executes a graph, with dropout
   model(x, training=False) # executes a graph, without dropout
 
