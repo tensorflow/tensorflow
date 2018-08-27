@@ -125,7 +125,7 @@ __device__ inline unsigned GpuLaneId() {
   asm("mov.u32 %0, %%laneid;" : "=r"(lane_id));
 #elif TENSORFLOW_USE_ROCM
   // ROCM TODO add ROCM implementation
-  lane_id = hc::__lane_id();
+  lane_id = __lane_id();
 #endif
   return lane_id;
 }
