@@ -810,8 +810,8 @@ class TensorBoard(Callback):
           write_graph is set to True.
       write_grads: whether to visualize gradient histograms in TensorBoard.
           `histogram_freq` must be greater than 0.
-      batch_level_metrics: Writes scalar summaries for metrics on every
-          training batch.
+      batch_metrics_freq: frequency (in batches) at which to log metrics.
+          If set to 0, metrics are only computed every epoch
       batch_size: size of batch of inputs to feed to the network
           for histograms computation.
       write_images: whether to write model weights to visualize as
@@ -847,7 +847,7 @@ class TensorBoard(Callback):
   def __init__(self,
                log_dir='./logs',
                histogram_freq=0,
-               batch_level_metrics=True,
+               batch_metrics_freq=0,
                batch_size=32,
                write_graph=True,
                write_grads=False,
@@ -868,7 +868,7 @@ class TensorBoard(Callback):
     self.write_graph = write_graph
     self.write_grads = write_grads
     self.write_images = write_images
-    self.batch_level_metrics = batch_level_metrics
+    self.batch_metrics_freq = batch_metrics_freq
     self.batch_size = batch_size
     self._current_batch = 0
     self._total_batches_seen = 0
@@ -1069,12 +1069,13 @@ class TensorBoard(Callback):
   def on_batch_end(self, batch, logs=None):
     """Writes scalar summaries for metrics on every training batch."""
     # Don't output batch_size and batch number as Tensorboard summaries
-    if self.batch_level_metrics:
-      logs = logs or {}
-      batch_logs = {('batch_' + k): v
-                    for k, v in logs.items()
-                    if k not in ['batch', 'size']}
-      self._write_custom_summaries(self._total_batches_seen, batch_logs)
+    if self.batch_metrics_freq:
+      if self._total_batches_seen % self.batch_metrics_freq == 0:
+        logs = logs or {}
+        batch_logs = {('batch_' + k): v
+                      for k, v in logs.items()
+                      if k not in ['batch', 'size']}
+        self._write_custom_summaries(self._total_batches_seen, batch_logs)
       self._total_batches_seen += 1
 
   def on_epoch_begin(self, epoch, logs=None):

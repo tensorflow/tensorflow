@@ -1114,7 +1114,18 @@ class KerasCallbacksTest(test.TestCase):
     temp_dir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
-    tb_cbk = keras.callbacks.TensorBoard(temp_dir)
+    # don't log batch
+    tb_cbk = keras.callbacks.TensorBoard(temp_dir, batch_metrics_freq=0)
+    tb_cbk.writer = FileWriterStub(temp_dir)
+
+    for batch in range(5):
+      tb_cbk.on_batch_end(batch, {'acc': np.float32(batch)})
+    self.assertEqual(tb_cbk.writer.batches_logged, [])
+    self.assertEqual(tb_cbk.writer.summary_values, [])
+    self.assertEqual(tb_cbk.writer.summary_tags, [])
+
+    # log every batch
+    tb_cbk = keras.callbacks.TensorBoard(temp_dir, batch_metrics_freq=1)
     tb_cbk.writer = FileWriterStub(temp_dir)
 
     for batch in range(5):
@@ -1122,6 +1133,16 @@ class KerasCallbacksTest(test.TestCase):
     self.assertEqual(tb_cbk.writer.batches_logged, [0, 1, 2, 3, 4])
     self.assertEqual(tb_cbk.writer.summary_values, [0., 1., 2., 3., 4.])
     self.assertEqual(tb_cbk.writer.summary_tags, ['batch_acc'] * 5)
+
+    # log every second batch
+    tb_cbk = keras.callbacks.TensorBoard(temp_dir, batch_metrics_freq=2)
+    tb_cbk.writer = FileWriterStub(temp_dir)
+
+    for batch in range(5):
+      tb_cbk.on_batch_end(batch, {'acc': np.float32(batch)})
+    self.assertEqual(tb_cbk.writer.batches_logged, [0, 2, 4])
+    self.assertEqual(tb_cbk.writer.summary_values, [0., 2., 4.])
+    self.assertEqual(tb_cbk.writer.summary_tags, ['batch_acc'] * 3)
 
   def test_Tensorboard_epoch_and_batch_logging(self):
 
@@ -1146,7 +1167,7 @@ class KerasCallbacksTest(test.TestCase):
     temp_dir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
-    tb_cbk = keras.callbacks.TensorBoard(temp_dir)
+    tb_cbk = keras.callbacks.TensorBoard(temp_dir, batch_metrics_freq=1)
     tb_cbk.writer = FileWriterStub(temp_dir)
 
     tb_cbk.on_batch_end(0, {'acc': np.float32(5.0)})
