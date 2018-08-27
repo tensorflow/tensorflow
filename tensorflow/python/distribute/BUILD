@@ -44,7 +44,11 @@ py_test(
     size = "large",
     srcs = ["distribute_coordinator_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "manual",
+        "no_pip",
+        "notap",
+    ],
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
