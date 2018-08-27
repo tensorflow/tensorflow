@@ -361,6 +361,9 @@ Status BuildComputation(
     if (retval.has_constant_value()) {
       output.is_constant = true;
       output.constant_value = retval.constant_value();
+    } else if (retval.resource() != nullptr) {
+      output.is_constant = false;
+      output.input_index = retval.resource()->arg_num();
     } else {
       output.is_constant = false;
       elems.push_back(retval.handle());
@@ -495,7 +498,8 @@ Status XlaCompiler::BuildArguments(
         arg_expression.set_constant_value(arg.constant_value);
         break;
       case XlaCompiler::Argument::kInvalid:
-        return errors::Internal("Unreachable case in BuildArguments()");
+        return errors::Internal(
+            "Unreachable case in BuildArguments() while filling constant args");
     }
   }
 
@@ -615,7 +619,8 @@ Status XlaCompiler::BuildArguments(
         break;
       case XlaCompiler::Argument::kConstant:
       case XlaCompiler::Argument::kInvalid:
-        return errors::Internal("Unreachable case in BuildArguments()");
+        return errors::Internal(
+            "Unreachable case in BuildArguments() while filling handles");
     }
   }
 

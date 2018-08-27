@@ -183,6 +183,8 @@ class XlaCompiler {
 
   struct OutputDescription {
     // Type and shape of the output. The shape is the unflattened shape.
+    // When `type` is DT_RESOURCE, `shape` is the shape of the resource
+    // variable's value.
     DataType type;
     TensorShape shape;
 
@@ -190,6 +192,10 @@ class XlaCompiler {
     // 'Tensor' is in host memory.
     bool is_constant = false;
     Tensor constant_value;
+
+    // When this output is a resource, i.e. `type == DT_RESOURCE`, this is
+    // the index of the input that contains the resource.
+    int input_index;
   };
 
   // Describes a variable write side effect of the computation.
