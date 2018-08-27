@@ -30,6 +30,10 @@ import "tensorflow/core/framework/attr_value.proto";
 message ApiDef {
   // Name of the op (in the OpDef) to specify the API for.
   string graph_op_name = 1;
+  // If this op is deprecated, set deprecation message to the message
+  // that should be logged when this op is used.
+  // The message should indicate alternative op to use, if any.
+  string deprecation_message = 12;
 
   enum Visibility {
     // Normally this is "VISIBLE" unless you are inheriting a
@@ -56,10 +60,10 @@ message ApiDef {
     // use a snake_case convention instead of CamelCase.
     string name = 1;
 
-    // If this endpoint is deprecated, set deprecation_message to a
-    // message that should be logged when the endpoint is used.
-    // The message should indicate alternative endpoint to use, if any.
-    string deprecation_message = 2;
+    // Set if this endpoint is deprecated. If set to true, a message suggesting
+    // to use a non-deprecated endpoint instead will be printed. If all
+    // endpoints are deprecated, set deprecation_message in ApiDef instead.
+    bool deprecated = 3;
   }
   repeated Endpoint endpoint = 3;
 

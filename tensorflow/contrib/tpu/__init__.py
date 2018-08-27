@@ -18,6 +18,10 @@
 @@cross_replica_sum
 @@infeed_dequeue
 @@infeed_dequeue_tuple
+@@infeed_enqueue
+@@infeed_enqueue_tuple
+@@outfeed_dequeue
+@@outfeed_dequeue_tuple
 @@outfeed_enqueue
 @@outfeed_enqueue_tuple
 
@@ -42,9 +46,14 @@
 
 @@TPUEstimator
 @@TPUEstimatorSpec
+@@export_estimator_savedmodel
 @@RunConfig
 @@InputPipelineConfig
 @@TPUConfig
+@@bfloat16_scope
+
+@@TPUDistributionStrategy
+@@keras_to_tpu_model
 """
 
 from __future__ import absolute_import
@@ -56,11 +65,13 @@ from tensorflow.contrib.tpu.python import profiler
 from tensorflow.contrib.tpu.python.ops.tpu_ops import *
 from tensorflow.contrib.tpu.python.tpu.bfloat16 import *
 from tensorflow.contrib.tpu.python.tpu.device_assignment import *
+from tensorflow.contrib.tpu.python.tpu.keras_support import tpu_model as keras_to_tpu_model
+from tensorflow.contrib.tpu.python.tpu.keras_support import TPUDistributionStrategy
 from tensorflow.contrib.tpu.python.tpu.topology import *
 from tensorflow.contrib.tpu.python.tpu.tpu import *
 from tensorflow.contrib.tpu.python.tpu.tpu_config import *
 from tensorflow.contrib.tpu.python.tpu.tpu_estimator import *
-from tensorflow.contrib.tpu.python.tpu.tpu_feed import *
+from tensorflow.contrib.tpu.python.tpu.tpu_feed import InfeedQueue
 from tensorflow.contrib.tpu.python.tpu.tpu_optimizer import *
 from tensorflow.contrib.tpu.python.tpu.training_loop import *
 # pylint: enable=wildcard-import,unused-import

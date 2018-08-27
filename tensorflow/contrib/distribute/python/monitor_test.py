@@ -45,18 +45,18 @@ class MonitorTest(test.TestCase, parameterized.TestCase):
       if context.executing_eagerly():
         monitor = monitor_lib.Monitor(single_loss_step, None)
       else:
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           monitor = monitor_lib.Monitor(single_loss_step, sess)
 
       monitor.run_steps(1)
 
       self.assertEqual(1, len(layer.trainable_variables))
       mirrored_weight_variable = layer.trainable_variables[0]
-      start_error = self.evaluate(distribution.fetch(mirrored_weight_variable))
+      start_error = self.evaluate(mirrored_weight_variable)
       start_error = abs(numpy.array(start_error) - 1)
 
       monitor.run_steps(9)
-      end_error = self.evaluate(distribution.fetch(mirrored_weight_variable))
+      end_error = self.evaluate(mirrored_weight_variable)
       end_error = abs(numpy.array(end_error) - 1)
       self.assertGreaterEqual(start_error, end_error)
 

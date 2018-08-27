@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 
 namespace tensorflow {
 
@@ -199,25 +200,24 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
     }
   }
 
+  auto input_tuple = xla::Tuple(b, inputs);
   xla::XlaOp outputs =
-      b->Conditional(ctx->Input(0), b->Tuple(inputs), *then_result.computation,
-                     b->Tuple(inputs), *else_result.computation);
+      xla::Conditional(ctx->Input(0), input_tuple, *then_result.computation,
+                       input_tuple, *else_result.computation);
   // Sets non-variable outputs.
   for (int i = 0; i < output_types_.size(); ++i) {
-    if (ctx->input_type(i) != DT_RESOURCE) {
-      xla::XlaOp output_handle = b->GetTupleElement(outputs, i);
-      if (VLOG_IS_ON(2)) {
-        LOG(INFO) << "Setting output " << i;
-        auto shape_or = b->GetShape(output_handle);
-        if (shape_or.ok()) {
-          LOG(INFO) << "Shape for output " << i << ": "
-                    << xla::ShapeUtil::HumanString(shape_or.ValueOrDie());
-        } else {
-          LOG(INFO) << "Shape unknown for output " << i;
-        }
+    xla::XlaOp output_handle = xla::GetTupleElement(outputs, i);
+    if (VLOG_IS_ON(2)) {
+      LOG(INFO) << "Setting output " << i;
+      auto shape_or = b->GetShape(output_handle);
+      if (shape_or.ok()) {
+        LOG(INFO) << "Shape for output " << i << ": "
+                  << xla::ShapeUtil::HumanString(shape_or.ValueOrDie());
+      } else {
+        LOG(INFO) << "Shape unknown for output " << i;
       }
-      ctx->SetOutput(i, output_handle);
     }
+    ctx->SetOutput(i, output_handle);
   }
 
   // Updates the values of any resource variables modified by the conditional
@@ -233,7 +233,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
         OP_REQUIRES_OK(ctx,
                        resource->SetFromPack(
                            arguments[update.input_index].tensor_array_gradients,
-                           b->GetTupleElement(outputs, pos), b));
+                           xla::GetTupleElement(outputs, pos), b));
       }
       VLOG(2) << "If variable: pos: " << update.input_index
               << " name: " << resource->name()
@@ -245,6 +245,8 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   VLOG(1) << "Done building If";
 }
 
+REGISTER_XLA_OP(Name("If").AllowResourceTypes(), XlaIfOp);
+REGISTER_XLA_OP(Name("StatelessIf").AllowResourceTypes(), XlaIfOp);
 REGISTER_XLA_OP(Name("XlaIf").AllowResourceTypes(), XlaIfOp);
 
 }  // namespace tensorflow

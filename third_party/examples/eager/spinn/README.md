@@ -22,7 +22,7 @@ Other eager execution examples can be found under [tensorflow/contrib/eager/pyth
 - [`data.py`](../../../../tensorflow/contrib/eager/python/examples/spinn/data.py): Pipeline for loading and preprocessing the
    [SNLI](https://nlp.stanford.edu/projects/snli/) data and
    [GloVe](https://nlp.stanford.edu/projects/glove/) word embedding, written
-   using the [`tf.data`](https://www.tensorflow.org/programmers_guide/datasets)
+   using the [`tf.data`](https://www.tensorflow.org/guide/datasets)
    API.
 - [`spinn.py`](./spinn.py): Model definition and training routines.
   This example illustrates how one might perform the following actions with

@@ -23,14 +23,15 @@ limitations under the License.
 // non-const method, all threads accessing the same StringPiece must use
 // external synchronization.
 
-#ifndef TENSORFLOW_LIB_CORE_STRINGPIECE_H_
-#define TENSORFLOW_LIB_CORE_STRINGPIECE_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_
+#define TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_
 
 #include <assert.h>
 #include <stddef.h>
 #include <string.h>
 #include <iosfwd>
 #include <string>
+#include <type_traits>
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -101,11 +102,18 @@ class StringPiece {
   //   >  0 iff "*this" >  "b"
   int compare(StringPiece b) const;
 
-  // Converts to `std::basic_string`.
-  template <typename A>
-  explicit operator std::basic_string<char, std::char_traits<char>, A>() const {
+  // Converts to various kinds of strings, including `std::basic_string`.
+  template <typename S>
+  explicit operator S() const {
+    static_assert(
+        std::is_same<char, typename S::value_type>::value,
+        "Type mismatch: S must be a string with character type char.");
+    static_assert(
+        std::is_same<std::char_traits<char>, typename S::traits_type>::value,
+        "Type mismatch: S must be a string with traits type "
+        "std::char_traits<char>.");
     if (!data()) return {};
-    return std::basic_string<char, std::char_traits<char>, A>(data(), size());
+    return S(data(), size());
   }
 
  private:
@@ -148,4 +156,4 @@ extern std::ostream& operator<<(std::ostream& o, tensorflow::StringPiece piece);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_CORE_STRINGPIECE_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_

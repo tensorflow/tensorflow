@@ -22,8 +22,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -32,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -42,12 +43,11 @@ namespace {
 // Adds a computation to the given HLO module which adds a scalar constant to
 // its parameter and returns the result.
 HloComputation* AddScalarConstantComputation(int64 addend, HloModule* module) {
-  auto builder =
-      HloComputation::Builder(tensorflow::strings::StrCat("add_", addend));
+  auto builder = HloComputation::Builder(absl::StrCat("add_", addend));
   auto x_value = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {}), "x_value"));
   auto half = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.5)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.5)));
   builder.AddInstruction(HloInstruction::CreateBinary(
       half->shape(), HloOpcode::kAdd, x_value, half));
   return module->AddEmbeddedComputation(builder.Build());
@@ -83,7 +83,7 @@ HloComputation* CallForwardingComputation(HloComputation* computation,
 // the module.
 std::unique_ptr<HloModule> MakeBigGraph() {
   HloModuleConfig config;
-  auto module = MakeUnique<HloModule>("BigGraph", config);
+  auto module = absl::make_unique<HloModule>("BigGraph", config);
 
   auto builder = HloComputation::Builder("TestBigGraphvizGraph");
 
@@ -122,7 +122,7 @@ std::unique_ptr<HloModule> MakeBigGraph() {
   auto rng = builder.AddInstruction(
       HloInstruction::CreateRng(vshape, RNG_UNIFORM, {param_m, param_m}));
   auto one = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto add_computation = ScalarSumComputation(module.get());
   builder.AddInstruction(
       HloInstruction::CreateReduce(vshape, rng, one, {1}, add_computation));

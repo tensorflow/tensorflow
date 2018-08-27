@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/initializable_lookup_table.h"
-
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -41,6 +40,12 @@ Status InitializableLookupTable::Contain(OpKernelContext* ctx, const Tensor& key
   // a lock by the readers.
   std::atomic_thread_fence(std::memory_order_acquire);
   return DoContain(keys, values);
+
+Status InitializableLookupTable::ImportValues(OpKernelContext* ctx,
+                                              const Tensor& keys,
+                                              const Tensor& values) {
+  lookup::KeyValueTensorIterator iter(&keys, &values);
+  return Initialize(iter);
 }
 
 Status InitializableLookupTable::Initialize(InitTableIterator& iter) {

@@ -109,7 +109,8 @@ limitations under the License.
 // Must be included first
 #include "tensorflow/python/lib/core/numpy.h"
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "third_party/absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -409,10 +410,10 @@ tensorflow::ImportNumpy();
   $1 = &temp;
 }
 
-%typemap(in) const tensorflow::gtl::optional<Shape>& (
-    tensorflow::gtl::optional<Shape> temp) {
+%typemap(in) const absl::optional<Shape>& (
+    absl::optional<Shape> temp) {
   if ($input == Py_None) {
-    temp = tensorflow::gtl::nullopt;
+    temp = absl::nullopt;
     $1 = &temp;
   } else {
     StatusOr<Shape> statusor = numpy::XlaShapeFromPyShape($input);
@@ -448,8 +449,8 @@ tensorflow::ImportNumpy();
   $1 = &temps;
 }
 
-%typemap(in) const std::vector<tensorflow::gtl::optional<Shape> >& (
-    std::vector<tensorflow::gtl::optional<Shape> > temps) {
+%typemap(in) const std::vector<absl::optional<Shape> >& (
+    std::vector<absl::optional<Shape> > temps) {
   if (!PySequence_Check($input)) {
     PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
     SWIG_fail;
@@ -458,7 +459,7 @@ tensorflow::ImportNumpy();
   for (int i = 0; i < size; ++i) {
     PyObject* o = PySequence_GetItem($input, i);
     if (o == Py_None) {
-      temps.push_back(tensorflow::gtl::nullopt);
+      temps.push_back(absl::nullopt);
     } else {
       StatusOr<Shape> statusor = numpy::XlaShapeFromPyShape(o);
       Py_DECREF(o);
@@ -896,7 +897,7 @@ tensorflow::ImportNumpy();
     if (o != Py_None) {
       StatusOr<Shape> statusor = numpy::XlaShapeFromPyShape(o);
       if (!statusor.ok()) {
-        PyErr_SetString(PyExc_TypeError, tensorflow::strings::StrCat("ExecutableBuildOptions.result_shape could not be created from Python shape value: ", statusor.status().ToString()).c_str());
+        PyErr_SetString(PyExc_TypeError, absl::StrCat("ExecutableBuildOptions.result_shape could not be created from Python shape value: ", statusor.status().ToString()).c_str());
         Py_DECREF(o);
         SWIG_fail;
       }
@@ -957,6 +958,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Tuple;
 %unignore xla::swig::LocalComputationBuilder::GetTupleElement;
 %unignore xla::swig::LocalComputationBuilder::ConvertElementType;
+%unignore xla::swig::LocalComputationBuilder::BitcastConvertType;
 %unignore xla::swig::LocalComputationBuilder::Call;
 %unignore xla::swig::LocalComputationBuilder::Transpose;
 %unignore xla::swig::LocalComputationBuilder::Rev;
@@ -988,6 +990,10 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Min;
 %unignore xla::swig::LocalComputationBuilder::And;
 %unignore xla::swig::LocalComputationBuilder::Or;
+%unignore xla::swig::LocalComputationBuilder::Xor;
+%unignore xla::swig::LocalComputationBuilder::ShiftLeft;
+%unignore xla::swig::LocalComputationBuilder::ShiftRightArithmetic;
+%unignore xla::swig::LocalComputationBuilder::ShiftRightLogical;
 %unignore xla::swig::LocalComputationBuilder::Not;
 %unignore xla::swig::LocalComputationBuilder::Abs;
 %unignore xla::swig::LocalComputationBuilder::Exp;
@@ -1001,13 +1007,34 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Cos;
 %unignore xla::swig::LocalComputationBuilder::Sin;
 %unignore xla::swig::LocalComputationBuilder::Tanh;
-%unignore xla::swig::LocalComputationBuilder::SqrtF32;
-%unignore xla::swig::LocalComputationBuilder::SquareF32;
-%unignore xla::swig::LocalComputationBuilder::Pow;
+%unignore xla::swig::LocalComputationBuilder::Atan2;
 %unignore xla::swig::LocalComputationBuilder::IsFinite;
-%unignore xla::swig::LocalComputationBuilder::ReciprocalF32;
+%unignore xla::swig::LocalComputationBuilder::Pow;
 %unignore xla::swig::LocalComputationBuilder::Neg;
 %unignore xla::swig::LocalComputationBuilder::Sort;
+%unignore xla::swig::LocalComputationBuilder::SortKeyVal;
+%unignore xla::swig::LocalComputationBuilder::Sqrt;
+%unignore xla::swig::LocalComputationBuilder::Rsqrt;
+%unignore xla::swig::LocalComputationBuilder::Square;
+%unignore xla::swig::LocalComputationBuilder::Reciprocal;
+%unignore xla::swig::LocalComputationBuilder::Erfc;
+%unignore xla::swig::LocalComputationBuilder::Erf;
+%unignore xla::swig::LocalComputationBuilder::ErfInv;
+%unignore xla::swig::LocalComputationBuilder::Lgamma;
+%unignore xla::swig::LocalComputationBuilder::Digamma;
+%unignore xla::swig::LocalComputationBuilder::Acos;
+%unignore xla::swig::LocalComputationBuilder::Asin;
+%unignore xla::swig::LocalComputationBuilder::Atan;
+%unignore xla::swig::LocalComputationBuilder::Tan;
+%unignore xla::swig::LocalComputationBuilder::Acosh;
+%unignore xla::swig::LocalComputationBuilder::Asinh;
+%unignore xla::swig::LocalComputationBuilder::Atanh;
+%unignore xla::swig::LocalComputationBuilder::Cosh;
+%unignore xla::swig::LocalComputationBuilder::Sinh;
+%unignore xla::swig::LocalComputationBuilder::Real;
+%unignore xla::swig::LocalComputationBuilder::Imag;
+%unignore xla::swig::LocalComputationBuilder::Conj;
+%unignore xla::swig::LocalComputationBuilder::Complex;
 %unignore xla::swig::DestructureLocalShapedBufferTuple;
 %unignore xla::swig::DeleteLocalShapedBuffer;
 %unignore xla::swig::DeleteLocalComputation;

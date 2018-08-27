@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Converts Assert statements to their corresponding TF calls."""
+"""Converts assert statements to their corresponding TF calls."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -20,12 +20,12 @@ from __future__ import print_function
 
 import gast
 
+from tensorflow.contrib.autograph.core import converter
 from tensorflow.contrib.autograph.pyct import templates
-from tensorflow.contrib.autograph.pyct import transformer
 
 
-class AssertsTransformer(transformer.Base):
-  """Transforms Print nodes to Call so they can be handled as functions."""
+class AssertTransformer(converter.Base):
+  """Transforms Assert nodes to Call so they can be handled as functions."""
 
   def visit_Assert(self, node):
     self.generic_visit(node)
@@ -45,5 +45,5 @@ class AssertsTransformer(transformer.Base):
       raise NotImplementedError('can only convert string messages for now.')
 
 
-def transform(node, context):
-  return AssertsTransformer(context).visit(node)
+def transform(node, ctx):
+  return AssertTransformer(ctx).visit(node)

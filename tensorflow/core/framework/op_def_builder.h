@@ -16,8 +16,8 @@ limitations under the License.
 // Class and associated machinery for specifying an Op's OpDef and shape
 // inference function for Op registration.
 
-#ifndef TENSORFLOW_FRAMEWORK_OP_DEF_BUILDER_H_
-#define TENSORFLOW_FRAMEWORK_OP_DEF_BUILDER_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_OP_DEF_BUILDER_H_
+#define TENSORFLOW_CORE_FRAMEWORK_OP_DEF_BUILDER_H_
 
 #include <string>
 #include <vector>
@@ -162,4 +162,4 @@ class OpDefBuilder {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_OP_DEF_BUILDER_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_OP_DEF_BUILDER_H_

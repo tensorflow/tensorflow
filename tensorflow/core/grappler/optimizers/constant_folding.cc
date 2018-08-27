@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/grappler/optimizers/evaluation_utils.h"
 #include "tensorflow/core/grappler/optimizers/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -71,44 +72,6 @@ class EigenThreadPoolWrapper : public Eigen::ThreadPoolInterface {
 
  private:
   thread::ThreadPool* pool_ = nullptr;
-};
-
-class DeviceSimple : public DeviceBase {
- public:
-  DeviceSimple() : DeviceBase(Env::Default()) {
-    eigen_worker_threads_.num_threads = port::NumSchedulableCPUs();
-    eigen_worker_threads_.workers = new thread::ThreadPool(
-        Env::Default(), "constant_folding", eigen_worker_threads_.num_threads);
-    eigen_threadpool_wrapper_.reset(
-        new EigenThreadPoolWrapper(eigen_worker_threads_.workers));
-    eigen_device_.reset(new Eigen::ThreadPoolDevice(
-        eigen_threadpool_wrapper_.get(), eigen_worker_threads_.num_threads));
-    set_tensorflow_cpu_worker_threads(&eigen_worker_threads_);
-    set_eigen_cpu_device(eigen_device_.get());
-  }
-  ~DeviceSimple() override {
-    eigen_threadpool_wrapper_.reset();
-    eigen_device_.reset();
-    delete eigen_worker_threads_.workers;
-  }
-  Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
-                             Tensor* tensor) override {
-    Tensor parsed(tensor_proto.dtype());
-    if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
-      return errors::InvalidArgument("Cannot parse tensor from tensor_proto.");
-    }
-    *tensor = parsed;
-    return Status::OK();
-  }
-  Allocator* GetAllocator(AllocatorAttributes attr) override {
-    return cpu_allocator();
-  }
-
- private:
-  DeviceBase::CpuWorkerThreads eigen_worker_threads_;
-  std::unique_ptr<Eigen::ThreadPoolInterface> eigen_threadpool_wrapper_;
-  std::unique_ptr<Eigen::ThreadPoolDevice> eigen_device_;
 };
 
 template <typename T>
@@ -354,12 +317,14 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
     }
 
     if (op == "TensorArraySizeV3") {
-      const NodeDef* array = node_map_->GetNode(node->input(0));
-      if (array->attr().count("dynamic_size") != 0 &&
-          array->attr().at("dynamic_size").b()) {
+      const NodeDef* array = CHECK_NOTNULL(node_map_->GetNode(node->input(0)));
+      if (array->input_size() == 0 ||
+          (array->attr().count("dynamic_size") != 0 &&
+           array->attr().at("dynamic_size").b())) {
         continue;
       }
-      const NodeDef* array_size = node_map_->GetNode(array->input(0));
+      const NodeDef* array_size =
+          CHECK_NOTNULL(node_map_->GetNode(array->input(0)));
       if (IsReallyConstant(*array_size)) {
         // Don't materialize 0 sizes to avoid triggering incorrect static
         // checks. A 0 sized array that can't grow isn't useful anyway.
@@ -374,6 +339,7 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
         if (value.flat<int32>()(0) == 0) {
           continue;
         }
+
         node->set_op("Const");
         *node->mutable_attr() = array_size->attr();
         node->set_input(0, AsControlDependency(NodeName(node->input(0))));
@@ -886,7 +852,19 @@ DataType GetDataTypeFromNodeOrProps(const NodeDef& node,
   }
   return dtype;
 }
-
+bool IsValidConstShapeForNCHW(const TensorShapeProto& shape) {
+  if (shape.dim_size() != 4) {
+    return false;
+  }
+  int num_dim_larger_than_one = 0;
+  for (const auto& dim : shape.dim()) {
+    if (dim.size() > 1) ++num_dim_larger_than_one;
+  }
+  return num_dim_larger_than_one <= 1;
+}
+const string& GetShape(const NodeDef& node) {
+  return node.attr().at("data_format").s();
+}
 }  // namespace
 
 // static
@@ -980,33 +958,8 @@ Status ConstantFolding::CreateNodeDef(const string& name,
 Status ConstantFolding::EvaluateNode(const NodeDef& node,
                                      const TensorVector& inputs,
                                      TensorVector* output) const {
-  Status status;
-  auto op_kernel =
-      CreateOpKernel("CPU", cpu_device_, cpu_device_->GetAllocator({}), node,
-                     TF_GRAPH_DEF_VERSION, &status);
-  TF_RETURN_IF_ERROR(status);
-  OpKernelContext::Params params;
-  params.device = cpu_device_;
-  params.frame_iter = FrameAndIter(0, 0);
-  params.inputs = &inputs;
-  params.op_kernel = op_kernel.get();
-  params.resource_manager = resource_mgr_.get();
-
-  gtl::InlinedVector<AllocatorAttributes, 4> output_attrs;
-  const int num_outputs = op_kernel->num_outputs();
-  for (int i = 0; i < num_outputs; i++) {
-    AllocatorAttributes attr;
-    attr.set_on_host(true);
-    output_attrs.push_back(attr);
-  }
-  params.output_attr_array = output_attrs.data();
-
-  OpKernelContext op_context(&params);
-  op_kernel->Compute(&op_context);
-  for (int i = 0; i < num_outputs; i++) {
-    output->push_back(op_context.release_output(i));
-  }
-  return op_context.status();
+  return ::tensorflow::grappler::EvaluateNode(node, inputs, cpu_device_,
+                                              resource_mgr_.get(), output);
 }
 
 Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
@@ -1302,17 +1255,12 @@ Status ConstantFolding::FoldGraph(GraphDef* output) {
   }
 
   // Delete the newly created nodes that don't feed anything.
-  int last = output->node_size() - 1;
-  for (int i = output->node_size() - 1; i >= 0; --i) {
-    const NodeDef& node = output->node(i);
-    auto fanout = node_map_->GetOutputs(node.name());
-    if (fanout.empty()) {
-      output->mutable_node()->SwapElements(i, last);
-      last--;
-    }
+  std::vector<int> nodes_to_delete;
+  for (int i = 0; i < output->node_size(); i++) {
+    auto fanout = node_map_->GetOutputs(output->node(i).name());
+    if (fanout.empty()) nodes_to_delete.push_back(i);
   }
-  output->mutable_node()->DeleteSubrange(last + 1,
-                                         output->node_size() - last - 1);
+  EraseNodesFromGraph(std::move(nodes_to_delete), output);
 
   for (const auto& node : graph_->node()) {
     // If no fetch nodes is provided, we conservatively
@@ -1763,7 +1711,7 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
     return Status::OK();
   }
 
-  if (MulConvPushDown(node, *properties)) {
+  if (MulConvPushDown(*properties, optimized_graph, node)) {
     graph_modified_ = true;
     return Status::OK();
   }
@@ -2605,8 +2553,9 @@ bool ConstantFolding::ConstantPushDown(NodeDef* node) {
   return false;
 }
 
-bool ConstantFolding::MulConvPushDown(NodeDef* node,
-                                      const GraphProperties& properties) {
+bool ConstantFolding::MulConvPushDown(const GraphProperties& properties,
+                                      GraphDef* optimized_graph,
+                                      NodeDef* node) {
   // Push down multiplication on ConvND.
   //                       *                  ConvND
   //                     /   \                /    \
@@ -2682,12 +2631,14 @@ bool ConstantFolding::MulConvPushDown(NodeDef* node,
     }
     const auto& const_shape = const_props[0].shape();
 
-    TensorShapeProto new_filter_shape;
-    if (!ShapeAfterBroadcast(filter_shape, const_shape, &new_filter_shape)) {
-      return false;
-    }
-    if (!ShapesSymbolicallyEqual(filter_shape, new_filter_shape)) {
-      return false;
+    if (GetShape(*conv_node) == "NHWC") {
+      TensorShapeProto new_filter_shape;
+      if (!ShapeAfterBroadcast(filter_shape, const_shape, &new_filter_shape)) {
+        return false;
+      }
+      if (!ShapesSymbolicallyEqual(filter_shape, new_filter_shape)) {
+        return false;
+      }
     }
 
     string mul_new_name =
@@ -2720,6 +2671,69 @@ bool ConstantFolding::MulConvPushDown(NodeDef* node,
       node->set_input(0, conv_const_node->name());
     }
     node_map_->AddNode(mul_new_name, node);
+
+    if (GetShape(*conv_node) == "NCHW") {
+      if (const_node->attr().at("value").tensor().tensor_shape().dim_size() <=
+          1) {
+        // Broadcast should work for scalar or 1D. No need to reshape.
+        return true;
+      }
+      if (!IsValidConstShapeForNCHW(
+              const_node->attr().at("value").tensor().tensor_shape())) {
+        return false;
+      }
+      // Adds Const node for Reshape.
+      auto* shape_const_node = optimized_graph->add_node();
+      const string shape_const_node_name =
+          OptimizedNodeName(*const_node, "_new_shape");
+      shape_const_node->set_name(shape_const_node_name);
+      shape_const_node->set_op("Const");
+      shape_const_node->set_device(const_node->device());
+      (*shape_const_node->mutable_attr())["dtype"].set_type(DT_INT32);
+      Tensor t(DT_INT32, {4});
+      t.flat<int32>()(0) = 1;
+      t.flat<int32>()(1) = 1;
+      t.flat<int32>()(2) = 1;
+      t.flat<int32>()(3) = const_node->attr()
+                               .at("value")
+                               .tensor()
+                               .tensor_shape()
+                               .dim(1)  // IsValidConstShapeForNCHW guarantees
+                                        // dim 1 is the dim to reshape
+                               .size();
+      t.AsProtoTensorContent(
+          (*shape_const_node->mutable_attr())["value"].mutable_tensor());
+      node_map_->AddNode(shape_const_node_name, shape_const_node);
+
+      // Adds Reshape node.
+      auto* reshape_node = optimized_graph->add_node();
+      const string reshape_node_name =
+          OptimizedNodeName(*const_node, "_reshape");
+      reshape_node->set_op("Reshape");
+      reshape_node->set_name(reshape_node_name);
+      reshape_node->set_device(const_node->device());
+      (*reshape_node->mutable_attr())["T"].set_type(
+          const_node->attr().at("dtype").type());
+      (*reshape_node->mutable_attr())["Tshape"].set_type(DT_INT32);
+      node_map_->AddNode(reshape_node_name, reshape_node);
+
+      // const_node -> reshape_node
+      node_map_->RemoveOutput(const_node->name(), node->name());
+      *reshape_node->add_input() = const_node->name();
+      node_map_->AddOutput(const_node->name(), reshape_node_name);
+
+      // shape_const_node -> reshape_node
+      *reshape_node->add_input() = shape_const_node_name;
+      node_map_->AddOutput(shape_const_node_name, reshape_node_name);
+
+      // reshape_node -> node (Mul)
+      node_map_->AddOutput(reshape_node_name, node->name());
+      if (left_child_is_constant) {
+        node->set_input(0, reshape_node_name);
+      } else {
+        node->set_input(1, reshape_node_name);
+      }
+    }
 
     return true;
   }

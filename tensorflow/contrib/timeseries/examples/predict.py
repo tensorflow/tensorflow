@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import os
 import sys
 
 import numpy as np
@@ -38,6 +39,10 @@ except ImportError:
   HAS_MATPLOTLIB = False
 
 FLAGS = None
+
+
+_MODULE_PATH = os.path.dirname(__file__)
+_DEFAULT_DATA_FILE = os.path.join(_MODULE_PATH, "data/period_trend.csv")
 
 
 def structural_ensemble_train_and_predict(csv_file_name):
@@ -115,9 +120,12 @@ def main(unused_argv):
   if not HAS_MATPLOTLIB:
     raise ImportError(
         "Please install matplotlib to generate a plot from this example.")
+  input_filename = FLAGS.input_filename
+  if input_filename is None:
+    input_filename = _DEFAULT_DATA_FILE
   make_plot("Structural ensemble",
-            *structural_ensemble_train_and_predict(FLAGS.input_filename))
-  make_plot("AR", *ar_train_and_predict(FLAGS.input_filename))
+            *structural_ensemble_train_and_predict(input_filename))
+  make_plot("AR", *ar_train_and_predict(input_filename))
   pyplot.show()
 
 
@@ -126,7 +134,7 @@ if __name__ == "__main__":
   parser.add_argument(
       "--input_filename",
       type=str,
-      required=True,
-      help="Input csv file.")
+      required=False,
+      help="Input csv file (omit to use the data/period_trend.csv).")
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

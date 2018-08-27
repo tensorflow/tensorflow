@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Igamma"
+  endpoint {
+    name: "math.igamma"
+  }
+  endpoint {
+    name: "igamma"
+    deprecated: true
+  }
+}

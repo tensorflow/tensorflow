@@ -36,7 +36,7 @@ class InstructionFusion : public HloPassInterface {
       bool may_duplicate = true)
       : is_expensive_(is_expensive), may_duplicate_(may_duplicate) {}
   ~InstructionFusion() override = default;
-  tensorflow::StringPiece name() const override { return "fusion"; }
+  absl::string_view name() const override { return "fusion"; }
 
   // Run instruction fusion on the given computation. Returns whether the
   // computation was changed (instructions were fused).

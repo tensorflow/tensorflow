@@ -19,9 +19,11 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/service.h"
@@ -29,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
@@ -43,10 +44,9 @@ class OperationDumper : public DfsHloVisitorWithDefault {
   explicit OperationDumper(const string& path) : path_(path) {}
 
   Status DefaultAction(HloInstruction* hlo) override {
-    string params = tensorflow::str_util::Join(
+    string params = absl::StrJoin(
         hlo->operands(), ", ", [](string* out, const HloInstruction* operand) {
-          tensorflow::strings::StrAppend(
-              out, ShapeUtil::HumanString(operand->shape()));
+          absl::StrAppend(out, ShapeUtil::HumanString(operand->shape()));
         });
     // Spit `op_name(params...) -> result_type :: path` to stdout.
     std::cout << tensorflow::strings::Printf(

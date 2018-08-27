@@ -1,0 +1,67 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+description: <!--no description-->
+landing_page:
+  rows:
+  - heading: TensorFlow Lite is a lightweight solution for mobile and embedded devices.
+    items:
+    - description: >
+        TensorFlow Lite is TensorFlow’s lightweight solution for mobile and
+        embedded devices. It enables on-device machine learning inference with
+        low latency and a small binary size. TensorFlow Lite also supports
+        hardware acceleration with the
+        <a href='https://developer.android.com/ndk/guides/neuralnetworks/index.html'>Android Neural Networks API</a>.
+      list:
+      - heading: Key point 1
+        description: >
+          [high-level overview]
+        icon:
+          icon_name: chevron_right
+          foreground: theme
+          background: grey
+      - heading: Key point 2
+        description: >
+          [high-level overview]
+        icon:
+          icon_name: chevron_right
+          foreground: theme
+          background: grey
+      - heading: Key point 3
+        description: >
+          [high-level overview]
+        icon:
+          icon_name: chevron_right
+          foreground: theme
+          background: grey
+    - code_block: |
+        <pre class = "prettyprint">
+        $ toco --input_file=$(pwd)/mobilenet_v1_1.0_224/frozen_graph.pb \
+               --input_format=TENSORFLOW_GRAPHDEF \
+               --output_format=TFLITE \
+               --output_file=/tmp/mobilenet_v1_1.0_224.tflite \
+               --inference_type=FLOAT \
+               --input_type=FLOAT \
+               --input_arrays=input \
+               --output_arrays=MobilenetV1/Predictions/Reshape_1 \
+               --input_shapes=1,224,224,3
+        </pre>
+
+  - classname: devsite-landing-row-cards
+    items:
+    - heading: Using TensorFlow Lite on Android
+      image_path: /ecosystem/images/tf-logo-card-16x9.png
+      path: https://medium.com/tensorflow/using-tensorflow-lite-on-android-9bbc9cb7d69d
+      buttons:
+      - label: Read on TensorFlow blog
+        path: https://medium.com/tensorflow/using-tensorflow-lite-on-android-9bbc9cb7d69d
+    - heading: TensorFlow Lite at the Dev Summit
+      youtube_id: FAMfy7izB6A
+      buttons:
+      - label: Watch the video
+        path: https://www.youtube.com/watch?v=FAMfy7izB6A
+    - heading: TensorFlow Lite on GitHub
+      image_path: /ecosystem/images/github-card-16x9.png
+      path: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite
+      buttons:
+      - label: View on GitHub
+        path: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite

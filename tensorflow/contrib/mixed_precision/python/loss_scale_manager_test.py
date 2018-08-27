@@ -34,7 +34,7 @@ def _GetExampleIter(inputs):
 
 class FixedLossScaleManagerTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_basic(self):
     itr = _GetExampleIter([True] * 10 + [False] * 10)
 
@@ -84,13 +84,13 @@ class ExponentialUpdateLossScaleManagerTest(test.TestCase):
       actual_outputs.append(self.evaluate(lsm.get_loss_scale()))
     self.assertEqual(actual_outputs, expected_outputs)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_increase_every_n_steps(self):
     inputs = [True] * 6
     expected_outputs = [1, 2, 2, 4, 4, 8]
     self._test_helper(inputs, expected_outputs)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_keep_increasing_until_capped(self):
     init_loss_scale = np.finfo(np.float32).max / 4 + 10
     max_float = np.finfo(np.float32).max
@@ -104,7 +104,7 @@ class ExponentialUpdateLossScaleManagerTest(test.TestCase):
 
     self._test_helper(inputs, expected_outputs, init_loss_scale)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_decrease_every_n_steps(self):
     inputs = [False] * 6
     init_loss_scale = 1024
@@ -112,7 +112,7 @@ class ExponentialUpdateLossScaleManagerTest(test.TestCase):
 
     self._test_helper(inputs, expected_outputs, init_loss_scale)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_keep_decreasing_until_one(self):
     inputs = [False] * 10
     init_loss_scale = 16
@@ -120,19 +120,19 @@ class ExponentialUpdateLossScaleManagerTest(test.TestCase):
 
     self._test_helper(inputs, expected_outputs, init_loss_scale)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_incr_bad_step_clear_good_step(self):
     inputs = [True, True, True, False, True]
     expected_outputs = [1, 2, 2, 2, 2]
     self._test_helper(inputs, expected_outputs)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_incr_good_step_does_not_clear_bad_step(self):
     inputs = [True, True, True, False, True, False]
     expected_outputs = [1, 2, 2, 2, 2, 1]
     self._test_helper(inputs, expected_outputs)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_trigger_loss_scale_update_each_step(self):
     """Test when incr_every_n_step and decr_every_n_nan_or_inf is 1."""
     init_loss_scale = 1
@@ -145,7 +145,7 @@ class ExponentialUpdateLossScaleManagerTest(test.TestCase):
     self._test_helper(inputs, expected_outputs, init_loss_scale,
                       incr_every_n_step, decr_every_n_nan_or_inf)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_alternating_good_and_bad_gradients_trigger_each_step(self):
     init_loss_scale = 1
     incr_every_n_step = 1
@@ -156,7 +156,7 @@ class ExponentialUpdateLossScaleManagerTest(test.TestCase):
     self._test_helper(inputs, expected_outputs, init_loss_scale,
                       incr_every_n_step, decr_every_n_nan_or_inf)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_alternating_good_and_bad_gradients_trigger_incr_every_2steps(self):
     init_loss_scale = 32
     incr_every_n_step = 2
@@ -167,7 +167,7 @@ class ExponentialUpdateLossScaleManagerTest(test.TestCase):
     self._test_helper(inputs, expected_outputs, init_loss_scale,
                       incr_every_n_step, decr_every_n_nan_or_inf)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_random_mix_good_and_bad_gradients(self):
     init_loss_scale = 4
     inputs = [

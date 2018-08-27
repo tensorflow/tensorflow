@@ -38,11 +38,11 @@ class ZipDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx,
                      const std::vector<DatasetBase*>& inputs)
-        : GraphDatasetBase(ctx), inputs_(inputs) {
+        : DatasetBase(DatasetContext(ctx)), inputs_(inputs) {
       for (const auto& input : inputs_) {
         input->Ref();
         for (DataType dt : input->output_dtypes()) {
@@ -77,13 +77,14 @@ class ZipDatasetOp : public DatasetOpKernel {
     string DebugString() const override { return "ZipDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       std::vector<Node*> input_graph_nodes;
       input_graph_nodes.reserve(inputs_.size());
       for (const auto& input : inputs_) {
         Node* input_node;
-        TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input, &input_node));
+        TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &input_node));
         input_graph_nodes.emplace_back(input_node);
       }
       TF_RETURN_IF_ERROR(b->AddDataset(
@@ -142,7 +143,7 @@ class ZipDatasetOp : public DatasetOpKernel {
               writer->WriteScalar(full_name("input_impls_empty"), ""));
         } else {
           for (auto& input_impl : input_impls_)
-            TF_RETURN_IF_ERROR(SaveParent(writer, input_impl));
+            TF_RETURN_IF_ERROR(SaveInput(writer, input_impl));
         }
         return Status::OK();
       }
@@ -155,7 +156,7 @@ class ZipDatasetOp : public DatasetOpKernel {
         } else {
           DCHECK_EQ(input_impls_.size(), dataset()->inputs_.size());
           for (auto& input_impl : input_impls_)
-            TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl));
+            TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl));
         }
         return Status::OK();
       }

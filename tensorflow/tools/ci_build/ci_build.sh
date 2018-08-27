@@ -79,7 +79,7 @@ if [[ "${CONTAINER_TYPE}" == "cmake" ]]; then
 fi
 
 # Use nvidia-docker if the container is GPU.
-if [[ "${CONTAINER_TYPE}" == "gpu" ]]; then
+if [[ "${CONTAINER_TYPE}" == gpu* ]]; then
   DOCKER_BINARY="nvidia-docker"
 else
   DOCKER_BINARY="docker"
@@ -99,7 +99,7 @@ BUILD_TAG="${BUILD_TAG:-tf_ci}"
 
 # Add extra params for cuda devices and libraries for GPU container.
 # And clear them if we are not building for GPU.
-if [[ "${CONTAINER_TYPE}" != "gpu" ]]; then
+if [[ "${CONTAINER_TYPE}" != gpu* ]]; then
   GPU_EXTRA_PARAMS=""
 fi
 
@@ -115,6 +115,7 @@ DOCKER_IMG_NAME=$(echo "${DOCKER_IMG_NAME}" | tr '[:upper:]' '[:lower:]')
 
 # Print arguments.
 echo "WORKSPACE: ${WORKSPACE}"
+echo "CI_DOCKER_BUILD_EXTRA_PARAMS: ${CI_DOCKER_BUILD_EXTRA_PARAMS[*]}"
 echo "CI_DOCKER_EXTRA_PARAMS: ${CI_DOCKER_EXTRA_PARAMS[*]}"
 echo "COMMAND: ${COMMAND[*]}"
 echo "CI_COMMAND_PREFIX: ${CI_COMMAND_PREFIX[*]}"
@@ -126,7 +127,7 @@ echo ""
 
 # Build the docker container.
 echo "Building container (${DOCKER_IMG_NAME})..."
-docker build -t ${DOCKER_IMG_NAME} \
+docker build -t ${DOCKER_IMG_NAME} ${CI_DOCKER_BUILD_EXTRA_PARAMS[@]} \
     -f "${DOCKERFILE_PATH}" "${DOCKER_CONTEXT_PATH}"
 
 # Check docker build status

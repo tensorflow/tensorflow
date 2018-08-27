@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cuda-cusparse-9-0 \
         curl \
         libcudnn7=7.1.4.18-1+cuda9.0 \
+        libnccl2=2.2.13-1+cuda9.0 \
         libfreetype6-dev \
         libhdf5-serial-dev \
         libpng12-dev \
@@ -36,8 +37,10 @@ RUN pip --no-cache-dir install \
         h5py \
         ipykernel \
         jupyter \
+        keras_applications==1.0.5 \
+        keras_preprocessing==1.0.3 \
         matplotlib \
-        numpy \
+        numpy==1.14.5 \
         pandas \
         scipy \
         sklearn \

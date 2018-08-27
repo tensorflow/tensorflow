@@ -24,6 +24,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_clone_context.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
@@ -105,20 +105,19 @@ class HloModule {
     return entry_computation_;
   }
 
-  ComputationLayout* mutable_host_entry_computation_layout() {
-    return config_.mutable_host_entry_computation_layout();
+  // Creates the ComputationLayout which describes the current status of the HLO
+  // module entry computation.
+  ComputationLayout compute_computation_layout() const {
+    return ComputationLayout(entry_computation()->ComputeProgramShape(),
+                             /*ignore_layouts=*/false);
   }
 
-  const ComputationLayout& host_entry_computation_layout() const {
-    return config_.host_entry_computation_layout();
+  ComputationLayout* mutable_entry_computation_layout() {
+    return config_.mutable_entry_computation_layout();
   }
 
-  ComputationLayout* mutable_device_entry_computation_layout() {
-    return config_.mutable_device_entry_computation_layout();
-  }
-
-  const ComputationLayout& device_entry_computation_layout() const {
-    return config_.device_entry_computation_layout();
+  const ComputationLayout& entry_computation_layout() const {
+    return config_.entry_computation_layout();
   }
 
   // Gets the computations in this module.
@@ -143,7 +142,7 @@ class HloModule {
 
   // Returns the computation in this module that has the name `name`.  Returns
   // null if there is no such computation.
-  HloComputation* GetComputationWithName(tensorflow::StringPiece name);
+  HloComputation* GetComputationWithName(absl::string_view name);
 
   // Gets the number of computations in this module.
   int64 computation_count() const { return computations_.size(); }
@@ -154,7 +153,7 @@ class HloModule {
   // Compute and return a post order of all computations in the module. The sort
   // is defined like so: if computation A has an instruction which calls
   // computation B, then A will appear after B in the sort.
-  std::list<HloComputation*> MakeComputationPostOrder() const;
+  std::vector<HloComputation*> MakeComputationPostOrder() const;
 
   // Gets the computations in this module which aren't for fusion nodes.
   //

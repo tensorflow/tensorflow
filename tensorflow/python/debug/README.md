@@ -28,7 +28,7 @@ models:
 
 * Easy access through session wrappers
 * Easy integration with common high-level APIs, such as
-  [TensorFlow Estimators](https://www.tensorflow.org/programmers_guide/estimators) and
+  [TensorFlow Estimators](https://www.tensorflow.org/guide/estimators) and
   [Keras](https://keras.io/)
 * Inspection of runtime tensor values and node connections
 * Conditional breaking after runs that generate tensors satisfying given
@@ -43,7 +43,7 @@ models:
 
 ## How to use TFDBG?
 
-* For a walkthrough of TFDBG command-line interface, see https://www.tensorflow.org/programmers_guide/debugger.
+* For a walkthrough of TFDBG command-line interface, see https://www.tensorflow.org/guide/debugger.
 * For information on the web GUI of TFDBG (TensorBoard Debugger Plugin), see
   [this README](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/plugins/debugger/README.md).
 * For programmatic use of the API of TFDBG, see https://www.tensorflow.org/api_docs/python/tfdbg.

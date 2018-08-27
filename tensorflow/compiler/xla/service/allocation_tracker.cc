@@ -17,15 +17,15 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -91,8 +91,9 @@ StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
     // If ShapedBufferTy is ScopedShapedBuffer, release the ScopedShapedBuffer
     // into a regular ShapedBuffer, which is stored in
     // handle_to_shaped_buffers_.
-    handle_to_shaped_buffers_[handle].emplace_back(MakeUnique<ShapedBuffer>(
-        ReleaseIfScopedShapedBuffer(std::move(shaped_buffer))));
+    handle_to_shaped_buffers_[handle].emplace_back(
+        absl::make_unique<ShapedBuffer>(
+            ReleaseIfScopedShapedBuffer(std::move(shaped_buffer))));
   }
 
   GlobalDataHandle result;
@@ -109,11 +110,11 @@ Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
                       ResolveInternal(data));
   for (const auto& shaped_buffer : replicated_buffers) {
     std::vector<ShapeIndex> shape_indices;
-    ShapeUtil::ForEachSubshape(shaped_buffer->on_device_shape(),
-                               [this, &shape_indices](const Shape& /*subshape*/,
-                                                      const ShapeIndex& index) {
-                                 shape_indices.push_back(index);
-                               });
+    ShapeUtil::ForEachSubshape(
+        shaped_buffer->on_device_shape(),
+        [&shape_indices](const Shape& /*subshape*/, const ShapeIndex& index) {
+          shape_indices.push_back(index);
+        });
     for (const ShapeIndex& index : shape_indices) {
       TF_RETURN_IF_ERROR(DecrementRefCount(shaped_buffer->buffer(index),
                                            shaped_buffer->device_ordinal()));

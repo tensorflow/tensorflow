@@ -29,7 +29,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
 
-def single_loss_example(optimizer_fn, distribution, use_bias=False):
+def single_loss_example(optimizer_fn, distribution, use_bias=False,
+                        iterations_per_step=1):
   """Build a very simple network to use in tests and examples."""
 
   def dataset_fn():
@@ -38,12 +39,13 @@ def single_loss_example(optimizer_fn, distribution, use_bias=False):
   optimizer = optimizer_fn()
   layer = core.Dense(1, use_bias=use_bias)
 
-  def loss_fn(x):
+  def loss_fn(ctx, x):
+    del ctx
     y = array_ops.reshape(layer(x), []) - constant_op.constant(1.)
     return y * y
 
-  single_loss_step = step_fn.StandardSingleLossStep(dataset_fn, loss_fn,
-                                                    optimizer, distribution)
+  single_loss_step = step_fn.StandardSingleLossStep(
+      dataset_fn, loss_fn, optimizer, distribution, iterations_per_step)
 
   # Layer is returned for inspecting the kernels in tests.
   return single_loss_step, layer

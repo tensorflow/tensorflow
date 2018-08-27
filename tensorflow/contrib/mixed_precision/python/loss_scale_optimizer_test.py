@@ -54,7 +54,7 @@ class LossScaleOptimizerTest(test.TestCase):
       opt = loss_scale_opt_fn(opt)
     return x, loss, opt
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_float16_underflow_without_loss_scale(self):
     lr = 1
     init_val = 1.
@@ -73,7 +73,7 @@ class LossScaleOptimizerTest(test.TestCase):
         rtol=0,
         atol=min(symbolic_update, 1e-6))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_float16_with_loss_scale(self):
     lr = 1.
     init_val = 1.
@@ -95,7 +95,7 @@ class LossScaleOptimizerTest(test.TestCase):
         rtol=0,
         atol=min(expected_update, 1e-6))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_compute_gradients_with_loss_scale(self):
     lr = 1
     init_val = 1.
@@ -115,7 +115,7 @@ class LossScaleOptimizerTest(test.TestCase):
     # Gradients aren't applied.
     self.assertAllClose(init_val, self.evaluate(x), rtol=0, atol=1e-6)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_compute_gradients_without_loss_scale(self):
     lr = 1
     init_val = 1.
@@ -127,7 +127,7 @@ class LossScaleOptimizerTest(test.TestCase):
     g_v = self.evaluate(grads_and_vars[0][0])
     self.assertAllClose(g_v, 0)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_apply_gradients(self):
 
     x = variable_scope.get_variable("x", initializer=1., dtype=dtypes.float32)
@@ -155,7 +155,7 @@ class LossScaleOptimizerTest(test.TestCase):
       actual_output.append(self.evaluate(x))
     self.assertAllClose(expected_output, actual_output)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_apply_gradients_loss_scale_is_updated(self):
 
     class SimpleLossScaleManager(lsm_lib.LossScaleManager):

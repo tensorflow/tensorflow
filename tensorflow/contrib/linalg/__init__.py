@@ -14,7 +14,8 @@
 # ==============================================================================
 """Linear algebra libraries.
 
-See the @{$python/contrib.linalg} guide.
+See the[Contrib Linalg](https://tensorflow.org/api_guides/python/contrib.linalg)
+guide.
 
 @@LinearOperator
 @@LinearOperatorBlockDiag

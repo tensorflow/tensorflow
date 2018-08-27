@@ -17,8 +17,8 @@ limitations under the License.
 // #category: operations on strings
 // #summary: Merges strings or numbers with no delimiter.
 //
-#ifndef TENSORFLOW_LIB_STRINGS_STRCAT_H_
-#define TENSORFLOW_LIB_STRINGS_STRCAT_H_
+#ifndef TENSORFLOW_CORE_LIB_STRINGS_STRCAT_H_
+#define TENSORFLOW_CORE_LIB_STRINGS_STRCAT_H_
 
 #include <string>
 
@@ -233,4 +233,4 @@ inline void StrAppend(string *dest, const AlphaNum &a, const AlphaNum &b,
 }  // namespace strings
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_STRINGS_STRCAT_H_
+#endif  // TENSORFLOW_CORE_LIB_STRINGS_STRCAT_H_

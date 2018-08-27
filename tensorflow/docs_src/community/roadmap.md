@@ -58,10 +58,12 @@ across image recognition, speech, object detection, and
 * Increase support for devices beyond Android and iOS (eg. RPi, Cortex-M)
 
 #### TensorFlow.js:
-* Release package for Node.js bindings to the TensorFlow C API through the TensorFlow.js backend interface
-* Expand support for importing TensorFlow SavedModels and Keras models into browser with unified APIs supporting retraining in browser
-* Improve Layers API and allow model exporting/saving
+* Continue to expand support for importing TensorFlow SavedModels and Keras models into browser with unified APIs supporting retraining in browser
+* Improve inference and training performance in both browser and Node.js environments
+* Widen the collection of pre-built models in [tfjs-models](https://github.com/tensorflow/tfjs-models),
+  including but not limited to audio- and speech-oriented models
 * Release tfjs-data API for efficient data input pipelines
+* Integration with [TF-Hub](https://www.tensorflow.org/hub/)
 
 #### TensorFlow with Swift:
 * Establish open source project including documentation, open design, and code availability.

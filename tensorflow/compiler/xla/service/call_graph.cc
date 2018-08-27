@@ -17,21 +17,21 @@ limitations under the License.
 
 #include <queue>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
+using absl::StrCat;
 using ::tensorflow::strings::Appendf;
-using ::tensorflow::strings::StrCat;
 
 string CallContextToString(CallContext context) {
   switch (context) {
@@ -61,6 +61,7 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
     case HloOpcode::kMap:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
+    case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kFusion:
       return CallContext::kParallel;
@@ -70,10 +71,10 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
 }
 
 string CallSite::ToString() const {
-  return StrCat(instruction()->name(), " calls in context ",
-                CallContextToString(context()), ": ",
-                tensorflow::str_util::Join(
-                    called_computations(), ", ",
+  return StrCat(
+      instruction()->name(), " calls in context ",
+      CallContextToString(context()), ": ",
+      absl::StrJoin(called_computations(), ", ",
                     [](string* out, const HloComputation* computation) {
                       out->append(computation->name());
                     }));
@@ -236,8 +237,8 @@ void CallGraph::SetCallContexts() {
 
 /* static */
 std::unique_ptr<CallGraph> CallGraph::Build(const HloModule* module) {
-  // Constructor for CallGraph is private so MakeUnique can't be used.
-  auto call_graph = WrapUnique<CallGraph>(new CallGraph(module));
+  // Constructor for CallGraph is private so absl::make_unique can't be used.
+  auto call_graph = absl::WrapUnique<CallGraph>(new CallGraph(module));
 
   VLOG(2) << "Building call graph for:";
   XLA_VLOG_LINES(2, module->ToString());

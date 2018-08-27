@@ -32,8 +32,8 @@ limitations under the License.
 // (e.g. &MyClass::mutex_) to refer to a mutex in some (unknown) object.
 //
 
-#ifndef TENSORFLOW_PLATFORM_DEFAULT_THREAD_ANNOTATIONS_H_
-#define TENSORFLOW_PLATFORM_DEFAULT_THREAD_ANNOTATIONS_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_THREAD_ANNOTATIONS_H_
+#define TENSORFLOW_CORE_PLATFORM_DEFAULT_THREAD_ANNOTATIONS_H_
 
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/thread_annotations.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/thread_annotations.h
@@ -174,4 +174,4 @@ inline T& ts_unchecked_read(T& v) NO_THREAD_SAFETY_ANALYSIS {
 }  // namespace thread_safety_analysis
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_DEFAULT_THREAD_ANNOTATIONS_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_THREAD_ANNOTATIONS_H_

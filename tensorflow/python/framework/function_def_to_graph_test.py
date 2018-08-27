@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import graph_to_function_def
@@ -54,7 +56,7 @@ class FunctionDefToGraphTest(test.TestCase):
     fdef = self._build_function_def()
     g = function_def_to_graph.function_def_to_graph(fdef)
     self.assertEqual(g.name, "_whats_in_a_name")
-    with self.test_session(graph=g) as sess:
+    with self.session(graph=g) as sess:
       inputs = sess.run(g.inputs, feed_dict={"x:0": 2, "y:0": 3})
       self.assertSequenceEqual(inputs, [2.0, 3.0])
       outputs = sess.run(g.outputs, feed_dict={"x:0": 2, "y:0": 3})
@@ -79,7 +81,6 @@ class FunctionDefToGraphTest(test.TestCase):
 
     g = function_def_to_graph.function_def_to_graph(
         fdef, input_shapes=[None, tensor_shape.matrix(5, 7)])
-    print(g.as_graph_def())
     self.assertIsNone(g.inputs[0].shape.dims)
     self.assertSequenceEqual(g.inputs[1].shape.dims, [5, 7])
     self.assertSequenceEqual(g.outputs[0].shape.dims, [5, 7])
@@ -153,14 +154,20 @@ class FunctionDefToGraphDefTest(test.TestCase):
     self.assertDictEqual(
         tensor_name_map, {
             "x": "x:0",
+            "^x": "^x",
             "y": "y:0",
+            "^y": "^y",
             "z": "z:0",
+            "^z": "^z",
             "foo_1:d:0": "foo_1:0",
             "foo_1:e:0": "foo_1:1",
+            "^foo_1": "^foo_1",
             "list_output:a:0": "list_output:0",
             "list_output:a:1": "list_output:1",
+            "^list_output": "^list_output",
             "foo_2:d:0": "foo_2:0",
             "foo_2:e:0": "foo_2:1",
+            "^foo_2": "^foo_2",
         })
 
   def testShapes(self):
@@ -178,6 +185,60 @@ class FunctionDefToGraphDefTest(test.TestCase):
         tensor_shape.TensorShape(g.node[1].attr["shape"].shape).as_list(), [5])
     self.assertEqual(g.node[0].attr["shape"].shape.unknown_rank, False)
     self.assertFalse("shape" in g.node[2].attr)
+
+  def testFunctionCallsFromFunction(self):
+    x = constant_op.constant(5.0)
+    y = constant_op.constant(10.0)
+
+    @function.defun
+    def fn():
+
+      @function.defun
+      def inner_fn():
+        return x + y
+
+      return inner_fn()
+
+    @function.defun
+    def fn2():
+      return 2 * fn()
+
+    fn2_defun = fn2.get_concrete_function()
+
+    # Call `fn2` to make sure `fn` is correctly instantiated so
+    # `function_def_to_graph` can find it.
+    fn2_defun()
+
+    fdef = fn2_defun._inference_function.definition
+    func_graph = function_def_to_graph.function_def_to_graph(fdef)
+    with func_graph.as_default():
+      x_ph, y_ph = func_graph.inputs
+      with self.session(graph=func_graph) as sess:
+        self.assertEqual(
+            sess.run(func_graph.outputs[0], feed_dict={
+                x_ph: 5.0,
+                y_ph: 10.0
+            }), 30.0)
+
+  def testControlDependencies(self):
+
+    @function.defun
+    def fn(inp):
+      x = constant_op.constant(2.0, name="x")
+      # TODO(b/79881896): Test external control dependency once that's
+      # supported.
+      with ops.control_dependencies([x, inp]):
+        constant_op.constant(3.0, name="y")
+      return 4.0
+
+    inp = constant_op.constant(1.0)
+    fdef = fn.get_concrete_function(inp).function_def
+    func_graph = function_def_to_graph.function_def_to_graph(fdef)
+
+    op = func_graph.get_operation_by_name("y")
+    self.assertEqual(len(op.control_inputs), 2)
+    self.assertEqual(op.control_inputs[0].name, "x")
+    self.assertEqual(op.control_inputs[1].name, "placeholder")
 
 
 if __name__ == "__main__":

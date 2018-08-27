@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SOURCE_MAP_UTIL_H_
-#define TENSORFLOW_COMPILER_XLA_SOURCE_MAP_UTIL_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_SOURCE_MAP_UTIL_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_SOURCE_MAP_UTIL_H_
 
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -43,4 +43,4 @@ Status InvalidParameterArgument(const OpMetadata& op_metadata,
 }  // namespace source_map_util
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SOURCE_MAP_UTIL_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_SOURCE_MAP_UTIL_H_

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_TYPES_H_
-#define TENSORFLOW_FRAMEWORK_TYPES_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_TYPES_H_
+#define TENSORFLOW_CORE_FRAMEWORK_TYPES_H_
 
 #include <map>
 #include <set>
@@ -470,6 +470,10 @@ inline bool DataTypeIsUnsigned(DataType dt) {
 // Returns a 0 on failure
 int DataTypeSize(DataType dt);
 
+// Returns HOST_MEMORY if `dtype` is always on host or is a DT_INT32,
+// DEVICE_MEMORY otherwise.
+MemoryType MTypeFromDType(const DataType dtype);
+
 // Types that always sit on host: DT_STRING, DT_STRING_REF, DT_RESOURCE.
 // For DT_RESOURCE, the handle always sits on host (even if the underlying
 // object has device-allocated resources).
@@ -477,4 +481,4 @@ bool DataTypeAlwaysOnHost(DataType dt);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_TYPES_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_TYPES_H_

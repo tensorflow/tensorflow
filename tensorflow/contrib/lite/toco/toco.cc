@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/toco_cmdline_flags.h"
 #include "tensorflow/contrib/lite/toco/toco_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/toco_port.h"
-#include "tensorflow/contrib/lite/toco/toco_saved_model.h"
 #include "tensorflow/contrib/lite/toco/toco_tooling.h"
 #include "tensorflow/contrib/lite/toco/toco_types.h"
 #include "tensorflow/core/platform/logging.h"
@@ -49,17 +48,6 @@ void CheckFrozenModelPermissions(const Arg<string>& input_file) {
       << input_file.value() << ".\n";
 }
 
-// Checks the permissions of the SavedModel directory.
-void CheckSavedModelPermissions(const Arg<string>& savedmodel_directory) {
-  QCHECK(savedmodel_directory.specified())
-      << "Missing required flag --savedmodel_directory.\n";
-  QCHECK(
-      port::file::Exists(savedmodel_directory.value(), port::file::Defaults())
-          .ok())
-      << "Specified savedmodel_directory does not exist: "
-      << savedmodel_directory.value() << ".\n";
-}
-
 // Reads the contents of the GraphDef from either the frozen graph file or the
 // SavedModel directory. If it reads the SavedModel directory, it updates the
 // ModelFlags and TocoFlags accordingly.
@@ -69,24 +57,16 @@ void ReadInputData(const ParsedTocoFlags& parsed_toco_flags,
                    string* graph_def_contents) {
   port::CheckInitGoogleIsDone("InitGoogle is not done yet.\n");
 
-  bool has_input_file = parsed_toco_flags.input_file.specified();
-  bool has_savedmodel_dir = parsed_toco_flags.savedmodel_directory.specified();
-
-  // Ensure either input_file or savedmodel_directory flag has been set.
-  QCHECK_NE(has_input_file, has_savedmodel_dir)
-      << "Specify either input_file or savedmodel_directory flag.\n";
+  // Ensure savedmodel_directory is not set.
+  QCHECK(!parsed_toco_flags.savedmodel_directory.specified())
+      << "Use `tensorflow/contrib/lite/python/tflite_convert` script with "
+      << "SavedModel directories.\n";
 
   // Checks the input file permissions and reads the contents.
-  if (has_input_file) {
-    CheckFrozenModelPermissions(parsed_toco_flags.input_file);
-    CHECK(port::file::GetContents(parsed_toco_flags.input_file.value(),
-                                  graph_def_contents, port::file::Defaults())
-              .ok());
-  } else {
-    CheckSavedModelPermissions(parsed_toco_flags.savedmodel_directory);
-    GetSavedModelContents(parsed_toco_flags, parsed_model_flags, toco_flags,
-                          model_flags, graph_def_contents);
-  }
+  CheckFrozenModelPermissions(parsed_toco_flags.input_file);
+  CHECK(port::file::GetContents(parsed_toco_flags.input_file.value(),
+                                graph_def_contents, port::file::Defaults())
+            .ok());
 }
 
 void ToolMain(const ParsedTocoFlags& parsed_toco_flags,

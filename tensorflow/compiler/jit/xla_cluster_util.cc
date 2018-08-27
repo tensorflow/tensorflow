@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/kernels/bounds_check.h"
@@ -139,27 +140,32 @@ Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles) {
   };
 
   for (Edge const* edge : graph->edges()) {
-    if (edge->dst()->IsEnter()) {
-      // Lift edges to an "Enter" node to the corresponding frame node.
-      const string& frame_name =
-          control_flow_info[edge->dst()->id()].frame_name;
-      int dst = GetOrAddFrameNodeId(frame_name);
-      if (!cycles->InsertEdge(edge->src()->id(), dst)) {
-        return errors::Internal(
-            "Cycle detected when adding enter->frame edge: ",
-            DescribeCycle(cycles, *graph, edge->src()->id(), dst));
+    if (edge->dst()->IsEnter() || edge->src()->IsExit()) {
+      const char* src_type = "pre-enter";
+      const char* dst_type = "post-exit";
+      int src = edge->src()->id();
+      int dst = edge->dst()->id();
+
+      if (edge->dst()->IsEnter()) {
+        // Lift edges to an "Enter" node to the corresponding frame node.
+        const string& frame_name =
+            control_flow_info[edge->dst()->id()].frame_name;
+        dst = GetOrAddFrameNodeId(frame_name);
+        dst_type = "frame";
       }
-      continue;
-    }
-    if (edge->src()->IsExit()) {
-      // Lift edges from an "Exit" node to the corresponding frame node.
-      const string& frame_name =
-          control_flow_info[edge->src()->id()].frame_name;
-      int src = GetOrAddFrameNodeId(frame_name);
-      if (!cycles->InsertEdge(src, edge->dst()->id())) {
+
+      if (edge->src()->IsExit()) {
+        // Lift edges from an "Exit" node to the corresponding frame node.
+        const string& frame_name =
+            control_flow_info[edge->src()->id()].frame_name;
+        src = GetOrAddFrameNodeId(frame_name);
+        src_type = "frame";
+      }
+
+      if (!cycles->InsertEdge(src, dst)) {
         return errors::Internal(
-            "Cycle detected when adding frame->exit edge: ",
-            DescribeCycle(cycles, *graph, src, edge->dst()->id()));
+            "Cycle detected when adding ", src_type, "->", dst_type,
+            " edge: ", DescribeCycle(cycles, *graph, src, dst));
       }
       // Drop the original edge.
       continue;
@@ -176,6 +182,51 @@ Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles) {
           "compilation: ",
           DescribeCycle(cycles, *graph, edge->src()->id(), edge->dst()->id()));
     }
+  }
+  return Status::OK();
+}
+
+absl::optional<StringPiece> GetXlaClusterForNode(const Node& node) {
+  const AttrValue* attr_value = node.attrs().Find(kXlaClusterAttr);
+  if (attr_value == nullptr) {
+    return absl::nullopt;
+  }
+  Status s = AttrValueHasType(*attr_value, "string");
+  if (!s.ok()) {
+    return absl::nullopt;
+  }
+  return attr_value->s();
+}
+
+bool HasResourceInputOrOutput(const Node& node) {
+  return std::find(node.input_types().begin(), node.input_types().end(),
+                   DT_RESOURCE) != node.input_types().end() ||
+         std::find(node.output_types().begin(), node.output_types().end(),
+                   DT_RESOURCE) != node.output_types().end();
+}
+
+void RemoveFromXlaCluster(NodeDef* node_def) {
+  node_def->mutable_attr()->erase(kXlaClusterAttr);
+}
+
+Status AdjustCycleDetectionGraphForResourceOps(
+    const Graph* graph, const FunctionLibraryDefinition* flib_def,
+    const std::function<Status(const Node&, bool*)>& resource_ops_to_ignore,
+    GraphCycles* cycles) {
+  std::vector<std::pair<int, int>> unsafe_deps;
+  TF_RETURN_IF_ERROR(ComputeIncompatibleResourceOperationPairs(
+      *graph, flib_def, resource_ops_to_ignore, &unsafe_deps));
+
+  // An edge {P,Q} in `unsafe_deps` denotes that P and Q, both of which are
+  // operations that interact with resource variables, must not be put in the
+  // same cluster.  We enforce this constraint by creating a phantom node, X,
+  // and adding edges P->X and X->Q.  MarkForCompilation then cannot cluster P
+  // and Q together since that would create a cycle with X.
+
+  for (std::pair<int, int> unsafe_dep : unsafe_deps) {
+    int phantom_node_id = cycles->NewNode();
+    CHECK(cycles->InsertEdge(unsafe_dep.first, phantom_node_id));
+    CHECK(cycles->InsertEdge(phantom_node_id, unsafe_dep.second));
   }
   return Status::OK();
 }

@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Ceil"
+  endpoint {
+    name: "math.ceil"
+  }
+  endpoint {
+    name: "ceil"
+    deprecated: true
+  }
+}

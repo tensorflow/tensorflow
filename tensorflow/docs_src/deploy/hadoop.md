@@ -6,7 +6,7 @@ at the moment.
 
 ## HDFS
 
-We assume that you are familiar with @{$reading_data$reading data}.
+We assume that you are familiar with [reading data](../api_guides/python/reading_data.md).
 
 To use HDFS with TensorFlow, change the file paths you use to read and write
 data to an HDFS path. For example:
@@ -61,5 +61,5 @@ be set:
     export KRB5CCNAME=/tmp/krb5cc_10002
     ```
 
-If you are running @{$distributed$Distributed TensorFlow}, then all
+If you are running [Distributed TensorFlow](../deploy/distributed.md), then all
 workers must have the environment variables set and Hadoop installed.

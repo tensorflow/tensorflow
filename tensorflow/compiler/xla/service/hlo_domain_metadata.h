@@ -20,10 +20,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace xla {
@@ -63,7 +63,7 @@ class DomainMetadata {
 
   // Returns the metadata type. A unique identifier which describes the real
   // metadata type.
-  virtual tensorflow::StringPiece Kind() const = 0;
+  virtual absl::string_view Kind() const = 0;
 
   // Compares the metadata object with another one and returns true if the
   // two matches.
@@ -71,12 +71,6 @@ class DomainMetadata {
 
   // Returns a string representation of the metadata.
   virtual string ToString() const = 0;
-
-  // Given a reachable set (the set of instructions which are reachable from
-  // each other via user/operand pathways, without crossing a kDomain
-  // instruciton), makes sure that all of them have metadata attributes which
-  // are coherent with this metadata object.
-  virtual Status NormalizeInstructions(const Domain& domain) const = 0;
 };
 
 }  // namespace xla

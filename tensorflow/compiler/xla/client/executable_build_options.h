@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 
 namespace xla {
 
@@ -57,34 +57,33 @@ class ExecutableBuildOptions {
 
   // If set, specifies a regexp of HLO graphs to dump (as in DebugOptions).
   ExecutableBuildOptions& set_generate_hlo_graph(string regex);
-  const tensorflow::gtl::optional<string>& generate_hlo_graph() const;
+  const absl::optional<string>& generate_hlo_graph() const;
 
   // If set, specifies a dirpath to dump the end-of-optimization-pipeline HLO
   // protobuf to (as in DebugOptions).
   ExecutableBuildOptions& set_dump_optimized_hlo_proto_to(
-      tensorflow::StringPiece dirpath);
-  const tensorflow::gtl::optional<string>& dump_optimized_hlo_proto_to() const;
+      absl::string_view dirpath);
+  const absl::optional<string>& dump_optimized_hlo_proto_to() const;
 
   // If set, specifies a dirpath to dump the start-of-optimization-pipeline HLO
   // protobuf to (as in DebugOptions).
   ExecutableBuildOptions& set_dump_unoptimized_hlo_proto_to(
-      tensorflow::StringPiece dirpath);
-  const tensorflow::gtl::optional<string>& dump_unoptimized_hlo_proto_to()
-      const;
+      absl::string_view dirpath);
+  const absl::optional<string>& dump_unoptimized_hlo_proto_to() const;
 
   // If set, specifies a dirpath to dump the per-pass-in-pipeline HLO protobufs
   // to (as in DebugOptions).
   ExecutableBuildOptions& set_dump_per_pass_hlo_proto_to(
-      tensorflow::StringPiece dirpath);
-  const tensorflow::gtl::optional<string>& dump_per_pass_hlo_proto_to() const;
+      absl::string_view dirpath);
+  const absl::optional<string>& dump_per_pass_hlo_proto_to() const;
 
   // If true, specifies that we should record an HLO profile during execution
   // and log it after execution (as in DebugOptions). If nullopt the default is
   // used.
   ExecutableBuildOptions& set_hlo_profile(bool enabled);
-  tensorflow::gtl::optional<bool> hlo_profile() const;
+  absl::optional<bool> hlo_profile() const;
 
-  void add_disabled_hlo_pass(tensorflow::StringPiece pass_name) {
+  void add_disabled_hlo_pass(absl::string_view pass_name) {
     disabled_hlo_passes_.push_back(std::string(pass_name));
   }
   const tensorflow::gtl::ArraySlice<std::string> disabled_hlo_passes() const {
@@ -96,14 +95,14 @@ class ExecutableBuildOptions {
   string ToString() const;
 
  private:
-  tensorflow::gtl::optional<bool> hlo_profile_;
+  absl::optional<bool> hlo_profile_;
   int device_ordinal_ = -1;
   Shape result_layout_;
   bool result_layout_set_ = false;
-  tensorflow::gtl::optional<string> generate_hlo_graph_;
-  tensorflow::gtl::optional<string> dump_optimized_hlo_proto_to_;
-  tensorflow::gtl::optional<string> dump_unoptimized_hlo_proto_to_;
-  tensorflow::gtl::optional<string> dump_per_pass_hlo_proto_to_;
+  absl::optional<string> generate_hlo_graph_;
+  absl::optional<string> dump_optimized_hlo_proto_to_;
+  absl::optional<string> dump_unoptimized_hlo_proto_to_;
+  absl::optional<string> dump_per_pass_hlo_proto_to_;
   DeviceMemoryAllocator* device_allocator_ = nullptr;
   std::vector<std::string> disabled_hlo_passes_;
 };

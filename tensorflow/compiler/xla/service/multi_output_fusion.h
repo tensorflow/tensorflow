@@ -19,10 +19,10 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace xla {
 
@@ -48,9 +48,7 @@ class MultiOutputFusion : public HloPassInterface {
  public:
   MultiOutputFusion(int64 fuel) : fuel_(fuel) {}
 
-  tensorflow::StringPiece name() const override {
-    return "multi_output_fusion";
-  }
+  absl::string_view name() const override { return "multi_output_fusion"; }
 
   // Run multi-output fusion on the given module. Returns whether the module
   // was changed.
@@ -78,6 +76,19 @@ class MultiOutputFusion : public HloPassInterface {
   // Test if it's legal to fuse instr1 and instr2 into one fusion instruction.
   virtual bool LegalToFuse(HloInstruction* instr1, HloInstruction* instr2);
 
+  // Fuse HloInstrctuion instr1 and instr2 and return the fused instruction.
+  // The other instruction is removed from its parent computation.
+  virtual HloInstruction* Fuse(HloInstruction* instr1, HloInstruction* instr2);
+
+  // Recompute reachability for the current computation.
+  void RecomputeReachability();
+
+  // Returns the reachability map for the current computation.
+  HloReachabilityMap* reachability() const { return reachability_.get(); }
+
+  // Returns the computation for the pass.
+  HloComputation* computation() const { return computation_; }
+
   // Update the reachability map after fusing instr1 and instr2.
   void UpdateReachability(
       HloInstruction* instr1, HloInstruction* instr2,
@@ -89,22 +100,18 @@ class MultiOutputFusion : public HloPassInterface {
   //
   // TODO(b/80420762): Perform producer-consumer multi-output fusion in
   // InstructionFusion instead.
-  virtual bool DoProducerConsumerMultiOutputFusion(HloComputation* computation);
-
- private:
-  // Fuse HloInstrctuion instr1 and instr2 and return the fused instruction.
-  // The other instruction is removed from its parent computation.
-  HloInstruction* Fuse(HloInstruction* instr1, HloInstruction* instr2);
-
-  // Update the internal data structures after instr1 and instr2 are fused into
-  // one fusion instruction.
-  void Update(HloInstruction* instr1, HloInstruction* instr2);
+  virtual bool DoProducerConsumerMultiOutputFusion();
 
   // Optimization fuel is a compiler debugging technique that makes an
   // optimization pass stop what it is doing after having made N changes to the
   // program, where N is the fuel. By varying N, this can be used to find the
   // first single change that makes a test fail.
   int64 fuel_;
+
+ private:
+  // Update the internal data structures after instr1 and instr2 are fused into
+  // one fusion instruction.
+  void Update(HloInstruction* instr1, HloInstruction* instr2);
 
   // Computation for the pass.
   HloComputation* computation_;
