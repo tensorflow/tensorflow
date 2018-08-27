@@ -19,8 +19,8 @@
 #   parameterized_docker_build.sh
 #
 # The script obeys the following environment variables:
-#   TF_DOCKER_BUILD_TYPE: (CPU | GPU | MKL | MKL-HOROVOD)
-#     CPU, GPU, MKL or MKL-HOROVOD image
+#   TF_DOCKER_BUILD_TYPE: (CPU | GPU | MKL | MKL-HOROVOD | ROCM)
+#     CPU, GPU, MKL, MKL-HOROVOD, ROCM image
 #
 #   TF_DOCKER_BUILD_IS_DEVEL: (NO | YES)
 #     Is this developer image
@@ -188,6 +188,16 @@ elif   [[ ${TF_DOCKER_BUILD_TYPE} == "gpu" ]]; then
   else
     ORIG_DOCKERFILE="${ORIG_DOCKERFILE}.gpu"
   fi
+elif   [[ ${TF_DOCKER_BUILD_TYPE} == "rocm" ]]; then
+  DOCKER_BINARY="docker"
+
+  FINAL_TAG="${FINAL_TAG}-rocm"
+  if [[ ${ORIG_DOCKERFILE} == *"."* ]]; then
+    # There is already a dot in the tag, use "-"
+    ORIG_DOCKERFILE="${ORIG_DOCKERFILE}-rocm"
+  else
+    ORIG_DOCKERFILE="${ORIG_DOCKERFILE}.rocm"
+  fi
 else
   die "ERROR: Unrecognized value in TF_DOCKER_BUILD_TYPE: "\
 "${TF_DOCKER_BUILD_TYPE}"
@@ -245,6 +255,10 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
     if [[ "${TF_DOCKER_BUILD_TYPE}" == "gpu" ]]; then
       export TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS=\
   "${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS} -e TF_CUDA_COMPUTE_CAPABILITIES=3.0,3.5,5.2"
+    fi
+
+    if [[ "${TF_DOCKER_BUILD_TYPE}" == "rocm" ]]; then
+      die "FAIL: Non-development ROCm builds require a pre-built pip whl."
     fi
 
     pushd "${SCRIPT_DIR}/../../../"
