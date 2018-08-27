@@ -457,7 +457,7 @@ labelloc = t;
 tooltip = " ";
 // DOT graphs accept a stylesheet as a URI.  So naturally, an inline
 // stylesheet is a data URI!
-stylesheet="
+stylesheet=<
   data:text/css,
   @import url(https://fonts.googleapis.com/css?family=Roboto:400,700);
   svg text {
@@ -466,7 +466,7 @@ stylesheet="
   }
 
   %s
-"
+>
 
 )";
 

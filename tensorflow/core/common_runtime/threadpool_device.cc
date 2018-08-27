@@ -70,17 +70,6 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
 
 ThreadPoolDevice::~ThreadPoolDevice() {}
 
-void ThreadPoolDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
-  // When Xprof/ThreadScape profiling is off (which is the default), the
-  // following code is simple enough that its overhead is negligible.
-  tracing::ScopedActivity activity(op_kernel->name(), op_kernel->type_string(),
-                                   op_kernel->IsExpensive());
-  tracing::ScopedRegion region(tracing::EventCategory::kCompute,
-                               op_kernel->name());
-
-  op_kernel->Compute(context);
-}
-
 Allocator* ThreadPoolDevice::GetAllocator(AllocatorAttributes attr) {
   return allocator_;
 }

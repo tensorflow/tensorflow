@@ -24,6 +24,8 @@ from absl.testing import parameterized
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import parameter_server_strategy
+from tensorflow.contrib.distribute.python import values
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import constant_op
@@ -37,21 +39,15 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribution_strategy_context
+from tensorflow.python.training import training_util
+
+CHIEF = run_config.TaskType.CHIEF
+WORKER = run_config.TaskType.WORKER
+PS = run_config.TaskType.PS
 
 
-class ParameterServerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
-                                  parameterized.TestCase):
-
-  @classmethod
-  def setUpClass(cls):
-    cls._workers, cls._ps = multi_worker_test_base.create_in_process_cluster(
-        num_workers=3, num_ps=2)
-    cls._cluster_spec = {
-        run_config.TaskType.WORKER: [
-            'fake_worker_0', 'fake_worker_1', 'fake_worker_2'
-        ],
-        run_config.TaskType.PS: ['fake_ps_0', 'fake_ps_1']
-    }
+class ParameterServerStrategyTestBase(
+    multi_worker_test_base.MultiWorkerTestBase):
 
   def setUp(self):
     self._result = 0
@@ -60,7 +56,7 @@ class ParameterServerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
     self._init_reached = 0
     self._finish_condition = threading.Condition()
     self._finish_reached = 0
-    super(ParameterServerStrategyTest, self).setUp()
+    super(ParameterServerStrategyTestBase, self).setUp()
 
   def _get_test_objects(self, task_type, task_id, num_gpus):
     distribution = parameter_server_strategy.ParameterServerStrategy(
@@ -70,13 +66,13 @@ class ParameterServerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
 
     distribution.configure(
         cluster_spec=self._cluster_spec, task_type=task_type, task_id=task_id)
-    return distribution, self._workers[task_id].target
+    return distribution, 'grpc://' + self._cluster_spec[WORKER][task_id]
 
   def _test_device_assignment_distributed(self, task_type, task_id, num_gpus):
     worker_device = '/job:%s/replica:0/task:%d' % (task_type, task_id)
     d, _ = self._get_test_objects(task_type, task_id, num_gpus)
     with ops.Graph().as_default(), \
-         self.test_session(target=self._workers[0].target) as sess, \
+         self.test_session(target=self._default_target) as sess, \
          d.scope():
 
       # Define a variable outside the call_for_each_tower scope. This is not
@@ -172,18 +168,13 @@ class ParameterServerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
         self.assertEqual(z_val, 43.0)
         self.assertEqual(f_val, 46.0)
 
-  @combinations.generate(
-      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
-  def testDeviceAssignmentDistributed(self, num_gpus):
-    self._test_device_assignment_distributed('worker', 1, num_gpus)
-
   def _test_device_assignment_local(self,
                                     d,
                                     compute_device='CPU',
                                     variable_device='CPU',
                                     num_gpus=0):
     with ops.Graph().as_default(), \
-         self.test_session(target=self._workers[0].target) as sess, \
+         self.test_session(target=self._default_target) as sess, \
          d.scope():
 
       def model_fn():
@@ -276,29 +267,12 @@ class ParameterServerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
         self.assertEqual(z_val, 43.0)
         self.assertEqual(f_val, 46.0)
 
-  def testDeviceAssignmentLocalCPU(self):
-    distribution = parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=0)
-    self._test_device_assignment_local(
-        distribution, compute_device='CPU', variable_device='CPU', num_gpus=0)
-
-  def testDeviceAssignmentLocalOneGPU(self):
-    distribution = parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=1)
-    self._test_device_assignment_local(
-        distribution, compute_device='GPU', variable_device='GPU', num_gpus=1)
-
-  def testDeviceAssignmentLocalTwoGPUs(self):
-    distribution = parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=2)
-    self._test_device_assignment_local(
-        distribution, compute_device='GPU', variable_device='CPU', num_gpus=2)
-
   def _test_simple_increment(self, task_type, task_id, num_gpus):
     d, master_target = self._get_test_objects(task_type, task_id, num_gpus)
     if hasattr(d, '_cluster_spec') and d._cluster_spec:
-      num_workers = len(d._cluster_spec.as_dict().get('worker',
-                                                      ['dummy_worker']))
+      num_workers = len(d._cluster_spec.as_dict().get(WORKER))
+      if 'chief' in d._cluster_spec.as_dict():
+        num_workers += 1
     else:
       num_workers = 1
     with ops.Graph().as_default(), \
@@ -357,6 +331,11 @@ class ParameterServerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
 
   def _test_minimize_loss_graph(self, task_type, task_id, num_gpus):
     d, master_target = self._get_test_objects(task_type, task_id, num_gpus)
+    assert hasattr(d, '_cluster_spec') and d._cluster_spec
+    num_workers = len(d._cluster_spec.as_dict().get(WORKER))
+    if CHIEF in d._cluster_spec.as_dict():
+      num_workers += 1
+
     with ops.Graph().as_default(), \
          self.test_session(target=master_target) as sess, \
          d.scope():
@@ -405,13 +384,13 @@ class ParameterServerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
       if context.num_gpus() < d._num_gpus_per_worker:
         return True
 
-      if task_id == 0:
+      if multi_worker_util.is_chief(d._cluster_spec, task_type, task_id):
         variables.global_variables_initializer().run()
 
       # Workers waiting for chief worker's initializing variables.
       self._init_condition.acquire()
       self._init_reached += 1
-      while self._init_reached != 3:
+      while self._init_reached != num_workers:
         self._init_condition.wait()
       self._init_condition.notify_all()
       self._init_condition.release()
@@ -428,9 +407,42 @@ class ParameterServerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
       self.assertLess(error_after, error_before)
       return error_after < error_before
 
+
+class ParameterServerStrategyTest(ParameterServerStrategyTestBase,
+                                  parameterized.TestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    cls._cluster_spec = multi_worker_test_base.create_in_process_cluster(
+        num_workers=3, num_ps=2)
+    cls._default_target = 'grpc://' + cls._cluster_spec[WORKER][0]
+
+  def testDeviceAssignmentLocalCPU(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=0)
+    self._test_device_assignment_local(
+        distribution, compute_device='CPU', variable_device='CPU', num_gpus=0)
+
+  def testDeviceAssignmentLocalOneGPU(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=1)
+    self._test_device_assignment_local(
+        distribution, compute_device='GPU', variable_device='GPU', num_gpus=1)
+
+  def testDeviceAssignmentLocalTwoGPUs(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_device_assignment_local(
+        distribution, compute_device='GPU', variable_device='CPU', num_gpus=2)
+
+  @combinations.generate(
+      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
+  def testDeviceAssignmentDistributed(self, num_gpus):
+    self._test_device_assignment_distributed('worker', 1, num_gpus)
+
   def testSimpleBetweenGraph(self):
     self._run_between_graph_clients(self._test_simple_increment,
-                                    self._cluster_spec, 0)
+                                    self._cluster_spec, context.num_gpus())
 
   @combinations.generate(
       combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
@@ -442,6 +454,39 @@ class ParameterServerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
   def testMinimizeLossGraph(self, num_gpus):
     self._run_between_graph_clients(self._test_minimize_loss_graph,
                                     self._cluster_spec, num_gpus)
+
+
+class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
+                                           parameterized.TestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    cls._cluster_spec = multi_worker_test_base.create_in_process_cluster(
+        num_workers=3, num_ps=2, has_chief=True)
+    cls._default_target = 'grpc://' + cls._cluster_spec[CHIEF][0]
+
+  def testSimpleBetweenGraph(self):
+    self._run_between_graph_clients(self._test_simple_increment,
+                                    self._cluster_spec, context.num_gpus())
+
+  @combinations.generate(
+      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
+  def testMinimizeLossGraph(self, num_gpus):
+    self._run_between_graph_clients(self._test_minimize_loss_graph,
+                                    self._cluster_spec, num_gpus)
+
+  def testGlobalStepIsWrapped(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    with ops.Graph().as_default(), distribution.scope():
+      created_step = training_util.create_global_step()
+      get_step = training_util.get_global_step()
+      self.assertEqual(created_step, get_step,
+                       msg=('created_step %s type %s vs. get_step %s type %s' %
+                            (id(created_step), created_step.__class__.__name__,
+                             id(get_step), get_step.__class__.__name__)))
+      self.assertIs(values.AggregatingVariable, type(created_step))
+      self.assertIs(values.AggregatingVariable, type(get_step))
 
 
 if __name__ == '__main__':

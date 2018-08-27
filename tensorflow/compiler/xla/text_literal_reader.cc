@@ -95,9 +95,9 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
                              line.c_str());
     }
     float value;
-    if (!absl::SimpleAtof(std::string(value_string).c_str(), &value)) {
+    if (!absl::SimpleAtof(absl::string_view(value_string), &value)) {
       return InvalidArgument("could not parse value as float: \"%s\"",
-                             std::string(value_string).c_str());
+                             string(value_string).c_str());
     }
     coordinates = absl::StrSplit(coordinates_string, ',');
     coordinate_values.clear();

@@ -142,7 +142,7 @@ class MatMulStatsTest(test_lib.TestCase):
       for op in g.get_operations():
         flops = ops.get_stats_for_node_def(g, op.node_def, "flops").value
         if op.name == "MatMul":
-          self.assertEqual(6975, flops)
+          self.assertEqual(7200, flops)
 
   def testTransposedStatistics(self):
     g = ops.Graph()
@@ -153,7 +153,7 @@ class MatMulStatsTest(test_lib.TestCase):
       for op in g.get_operations():
         flops = ops.get_stats_for_node_def(g, op.node_def, "flops").value
         if op.name == "MatMul":
-          self.assertEqual(6975, flops)
+          self.assertEqual(7200, flops)
 
 
 try:

@@ -36,7 +36,7 @@ using tensorflow::TensorShapeProto;
 
 string GetOpDefName(const HloInstruction* instruction) {
   string name = StrCat("hlo-", HloOpcodeString(instruction->opcode()));
-  tensorflow::str_util::TitlecaseString(&name, "-");
+  tensorflow::str_util::TitlecaseString(&name, "-");  // non-absl ok
   name.erase(std::remove(name.begin(), name.end(), '-'), name.end());
 
   if (instruction->opcode() == HloOpcode::kFusion) {

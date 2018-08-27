@@ -1092,19 +1092,6 @@ class HloInstruction {
   // instruction.
   void SetupDerivedInstruction(HloInstruction* derived_instruction) const;
 
-  // TODO(b/80249101): Remove these methods once HLO scheduling and copy
-  // insertion are integrated, and we don't need to run a separate pass
-  // of copy elision anymore.
-  bool CopyElisionAllowed() const {
-    CHECK_EQ(HloOpcode::kCopy, opcode_);
-    return copy_elision_allowed_;
-  }
-
-  void SetCopyElisionAllowed(bool value) {
-    CHECK_EQ(HloOpcode::kCopy, opcode_);
-    copy_elision_allowed_ = value;
-  }
-
   // Returns data on the dimension numbers used for a dot operation.
   const DotDimensionNumbers& dot_dimension_numbers() const {
     CHECK(dot_dimension_numbers_ != nullptr);

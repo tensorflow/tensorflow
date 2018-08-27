@@ -187,7 +187,7 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   OP_REQUIRES_OK(
       ctx, cache->Compile(options, function_, constant_args, variables, ctx,
-                          &kernel, &executable, &compile_options));
+                          &kernel, &executable, compile_options));
 
   VLOG(1) << "Executing XLA Computation...";
 

@@ -618,7 +618,7 @@ def cast(x, dtype, name=None):
   """Casts a tensor to a new type.
 
   The operation casts `x` (in case of `Tensor`) or `x.values`
-  (in case of `SparseTensor`) to `dtype`.
+  (in case of `SparseTensor` or `IndexedSlices`) to `dtype`.
 
   For example:
 
@@ -637,15 +637,16 @@ def cast(x, dtype, name=None):
   behavior of numpy.
 
   Args:
-    x: A `Tensor` or `SparseTensor` of numeric type. It could be
-      `uint8`, `uint16`, `uint32`, `uint64`, `int8`, `int16`, `int32`, `int64`,
-      `float16`, `float32`, `float64`, `complex64`, `complex128`, `bfloat16`.
-    dtype: The destination type. The list of supported dtypes is the same
-      as `x`.
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices` of numeric type. It could
+      be `uint8`, `uint16`, `uint32`, `uint64`, `int8`, `int16`, `int32`,
+      `int64`, `float16`, `float32`, `float64`, `complex64`, `complex128`,
+      `bfloat16`.
+    dtype: The destination type. The list of supported dtypes is the same as
+      `x`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` and
+    A `Tensor` or `SparseTensor` or `IndexedSlices` with same shape as `x` and
       same type as `dtype`.
 
   Raises:
@@ -659,6 +660,9 @@ def cast(x, dtype, name=None):
     if isinstance(x, sparse_tensor.SparseTensor):
       values_cast = cast(x.values, base_type, name=name)
       x = sparse_tensor.SparseTensor(x.indices, values_cast, x.dense_shape)
+    elif isinstance(x, ops.IndexedSlices):
+      values_cast = cast(x.values, base_type, name=name)
+      x = ops.IndexedSlices(values_cast, x.indices, x.dense_shape)
     else:
       # TODO(josh11b): If x is not already a Tensor, we could return
       # ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
@@ -711,11 +715,12 @@ def to_float(x, name="ToFloat"):
   """Casts a tensor to type `float32`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` with type `float32`.
+    A `Tensor` or `SparseTensor` or `IndexedSlices` with same shape as `x` with
+    type `float32`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `float32`.
@@ -728,11 +733,12 @@ def to_double(x, name="ToDouble"):
   """Casts a tensor to type `float64`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` with type `float64`.
+    A `Tensor` or `SparseTensor` or `IndexedSlices` with same shape as `x` with
+    type `float64`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `float64`.
@@ -745,11 +751,12 @@ def to_int32(x, name="ToInt32"):
   """Casts a tensor to type `int32`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` with type `int32`.
+    A `Tensor` or `SparseTensor` or `IndexedSlices` with same shape as `x` with
+    type `int32`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `int32`.
@@ -762,11 +769,12 @@ def to_int64(x, name="ToInt64"):
   """Casts a tensor to type `int64`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` with type `int64`.
+    A `Tensor` or `SparseTensor` or `IndexedSlices` with same shape as `x` with
+    type `int64`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `int64`.
@@ -779,11 +787,12 @@ def to_bfloat16(x, name="ToBFloat16"):
   """Casts a tensor to type `bfloat16`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` with type `bfloat16`.
+    A `Tensor` or `SparseTensor` or `IndexedSlices` with same shape as `x` with
+    type `bfloat16`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `bfloat16`.
@@ -796,11 +805,12 @@ def to_complex64(x, name="ToComplex64"):
   """Casts a tensor to type `complex64`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` with type `complex64`.
+    A `Tensor` or `SparseTensor` or `IndexedSlices` with same shape as `x` with
+    type `complex64`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `complex64`.
@@ -813,11 +823,12 @@ def to_complex128(x, name="ToComplex128"):
   """Casts a tensor to type `complex128`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` with type `complex128`.
+    A `Tensor` or `SparseTensor` or `IndexedSlices` with same shape as `x` with
+    type `complex128`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `complex128`.
@@ -2061,7 +2072,7 @@ def _calc_mat_mul_flops(graph, node):
   output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
   output_shape.assert_is_fully_defined()
   output_count = np.prod(output_shape.as_list())
-  return ops.OpStats("flops", ((2 * k - 1) * output_count))
+  return ops.OpStats("flops", (k * output_count * 2))
 
 
 def _as_indexed_slices(x, optimize=True):

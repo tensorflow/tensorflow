@@ -184,18 +184,6 @@ void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
       return;
     }
     status = TransferLiteralToDevice(reshaped_cpu_tensor, device_tensor);
-    if (status.ok()) {
-      xla_tensor->set_host_tensor(*cpu_tensor);
-      host_to_device_stream_->ThenDoHostCallback([this, done]() {
-        // We must not call the done closure directly from DoHostCallback
-        // to avoid a deadlock. If done() is the callback that ends an
-        // Executor's run, the Executor may call XlaDevice::Sync() inside the
-        // callback. This deadlocks, because XlaDevice::Sync() waits for all
-        // stream activity to complete.
-        thread_pool_->Schedule([done]() { done(Status::OK()); });
-      });
-      return;
-    }
   } else {
     se::DeviceMemoryBase dev_dst_ptr =
         XlaTensor::DeviceMemoryFromTensor(*device_tensor);
@@ -208,8 +196,9 @@ void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
           host_to_device_stream_.get(), block_status.error_message().c_str());
     }
   }
-  xla_tensor->set_host_tensor(*cpu_tensor);
-
+  if (status.ok()) {
+    xla_tensor->set_host_tensor(*cpu_tensor);
+  }
   done(status);
 }
 

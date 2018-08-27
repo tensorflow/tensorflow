@@ -15046,6 +15046,10 @@ op {
       }
     }
   }
+  deprecation {
+    version: 27
+    explanation: "Use Python implementation tf.linalg.matrix_exponential instead."
+  }
 }
 op {
   name: "MatrixInverse"

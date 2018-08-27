@@ -30,7 +30,7 @@ py_test(
 
 py_test(
     name = "map_and_filter_fusion_test",
-    size = "small",
+    size = "medium",
     srcs = ["map_and_filter_fusion_test.py"],
     srcs_version = "PY2AND3",
     deps = [

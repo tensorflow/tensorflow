@@ -387,8 +387,9 @@ Status Conditional::BuildArgumentNodes() {
       }
       if (!has_input) {
         return errors::Internal(
-            "Failed to functionalize control flow with merge '", m->name(),
-            "' that doesn't have input on ", Branch_Name(branch), " branch.");
+            "Failed to functionalize control flow with merge ",
+            FormatNodeForError(*m), " that doesn't have input on ",
+            Branch_Name(branch), " branch.");
       }
     }
   }
@@ -469,8 +470,8 @@ Status Conditional::ExtractBodies(Graph* graph) {
               // but revisit to improve the testing to enable making this an
               // error.
               LOG(WARNING) << errors::InvalidArgument(
-                  "Graph contains node ", src->name(), " that feeds into node ",
-                  dst->name(),
+                  "Graph contains node ", FormatNodeForError(*src),
+                  " that feeds into node ", FormatNodeForError(*dst),
                   " but these nodes are in different control contexts (",
                   DebugString(src_id), " vs ", DebugString(dst_id),
                   " (detected during out edge testing)");
@@ -512,8 +513,8 @@ Status Conditional::ExtractBodies(Graph* graph) {
             node_map.at(src->id()) = output->CopyNode(src);
           } else {
             return errors::InvalidArgument(
-                "Graph contains node ", src->name(), " that feeds into node ",
-                dst->name(),
+                "Graph contains node ", FormatNodeForError(*src),
+                " that feeds into node ", FormatNodeForError(*dst),
                 " but these nodes are in different control contexts (",
                 DebugString(src_id), " vs ", DebugString(dst_id),
                 " (detected during in edge testing)");
@@ -675,7 +676,8 @@ Status Conditional::AddOutputEdges(Graph* graph) {
       int dst_input = edge->dst_input();
       if (edge->src_output() > 0) {
         return errors::Unimplemented("Output of index (", edge->src_output(),
-                                     ") of merge node ", node->name());
+                                     ") of merge node ",
+                                     FormatNodeForError(*node));
       }
 
       bool control_edge = edge->IsControlEdge();
@@ -1060,7 +1062,8 @@ Status FunctionalizeCond::DetermineCondStateMerge(Node* dst) {
 
     CondStateMap::CondId prop = StateAlongEdge(e);
     auto id_or = JoinCondStatesMerge(prop, cond_state_map_.LookupId(dst));
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(id_or.status(), "for node ", dst->name());
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(id_or.status(), "for node ",
+                                    FormatNodeForError(*dst));
     cond_state_map_.ResetId(dst, id_or.ValueOrDie());
   }
 
@@ -1090,7 +1093,8 @@ Status FunctionalizeCond::DetermineCondState(Node* dst) {
       // Joining the state between the current and propagated state.
       CondStateMap::CondId prop = StateAlongEdge(e);
       auto id_or = JoinCondStatesNonMerge(prop, cond_state_map_.LookupId(dst));
-      TF_RETURN_WITH_CONTEXT_IF_ERROR(id_or.status(), "for node ", dst->name());
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(id_or.status(), "for node ",
+                                      FormatNodeForError(*dst));
       cond_state_map_.ResetId(dst, id_or.ValueOrDie());
     }
   }
@@ -1117,7 +1121,7 @@ Status FunctionalizeCond::RemoveRedundantMerge(Node* node) {
   }
 
   if (non_dead_edge == nullptr) {
-    return errors::InvalidArgument("Merge node ", node->name(),
+    return errors::InvalidArgument("Merge node ", FormatNodeForError(*node),
                                    " has no non-dead inputs.");
   }
   cond_state_map_.MarkDead(node);
@@ -1169,7 +1173,8 @@ Status FunctionalizeCond::RemoveRedundantSwitch(Node* node) {
       if (IsMerge(dst_node)) {
         auto id_or =
             JoinCondStatesMerge(dst_id, cond_state_map_.LookupId(dst_node));
-        TF_RETURN_IF_ERROR(id_or.status());
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(id_or.status(), "for node ",
+                                        FormatNodeForError(*dst_node));
         cond_state_map_.ResetId(dst_node, id_or.ValueOrDie());
       } else {
         auto id_or =

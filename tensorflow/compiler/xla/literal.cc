@@ -1434,6 +1434,12 @@ bool LiteralBase::Piece::EqualElementsInternal(
 bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
   DCHECK(ShapeUtil::Compatible(subshape(), other.subshape()));
 
+  if (ShapeUtil::Equal(subshape(), other.subshape()) &&
+      LayoutUtil::IsDenseArray(subshape())) {
+    CHECK_EQ(size_bytes(), other.size_bytes());
+    return memcmp(buffer(), other.buffer(), size_bytes()) == 0;
+  }
+
   std::vector<int64> multi_index;
   switch (subshape().element_type()) {
     case PRED:

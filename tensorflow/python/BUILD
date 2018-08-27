@@ -134,6 +134,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/compat",
         "//tensorflow/python/data",
+        "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras",
         "//tensorflow/python/ops/distributions",
@@ -3246,7 +3247,6 @@ py_library(
     ),
     srcs_version = "PY2AND3",
     deps = [
-        "saver",
         ":array_ops",
         ":array_ops_gen",
         ":checkpoint_management",
@@ -3270,6 +3270,7 @@ py_library(
         ":random_ops",
         ":resource_variable_ops",
         ":resources",
+        ":saver",
         ":sdca_ops",
         ":session",
         ":sparse_ops",

@@ -17,7 +17,7 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "tensorflow/contrib/lite/tools/accuracy/inception_preprocessing.h"
+#include "tensorflow/contrib/lite/tools/accuracy/ilsvrc/inception_preprocessing.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/command_line_flags.h"

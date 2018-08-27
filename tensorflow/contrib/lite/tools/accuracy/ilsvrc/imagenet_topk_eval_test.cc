@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/lite/tools/accuracy/imagenet_topk_eval.h"
+#include "tensorflow/contrib/lite/tools/accuracy/ilsvrc/imagenet_topk_eval.h"
 #include <gtest/gtest.h>
 
 namespace tensorflow {
@@ -40,7 +40,9 @@ std::vector<string> CreateGroundTruth() {
   std::vector<string> ground_truth;
   ground_truth.reserve(kNumCategories);
   for (int i = 0; i < kNumCategories; i++) {
-    ground_truth.push_back(std::to_string(i));
+    string category;
+    strings::StrAppend(&category, i);
+    ground_truth.push_back(category);
   }
   return ground_truth;
 }

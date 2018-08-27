@@ -510,7 +510,10 @@ class CheckpointManager(object):
       max_to_keep: An integer, the number of checkpoints to keep. Unless
         preserved by `keep_checkpoint_every_n_hours`, checkpoints will be
         deleted from the active set, oldest first, until only `max_to_keep`
-        checkpoints remain.
+        checkpoints remain. If `None`, no checkpoints are deleted and everything
+        stays in the active set. Note that `max_to_keep=None` will keep all
+        checkpoint paths in memory and in the checkpoint state protocol buffer
+        on disk.
       keep_checkpoint_every_n_hours: Upon removal from the active set, a
         checkpoint will be preserved if it has been at least
         `keep_checkpoint_every_n_hours` since the last preserved checkpoint. The
@@ -521,9 +524,10 @@ class CheckpointManager(object):
     """
     self._checkpoint = checkpoint
     self._save_counter_assign = None
-    if not max_to_keep or max_to_keep < 0:
+    if max_to_keep is not None and max_to_keep <= 0:
       raise ValueError(
-          "Expected a positive integer for `max_to_max_to_keep`, got %d."
+          ("Expected a positive integer or `None` for `max_to_max_to_keep`, "
+           "got %d.")
           % (max_to_keep,))
     self._max_to_keep = max_to_keep
     self._keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
@@ -534,7 +538,9 @@ class CheckpointManager(object):
     self._maybe_delete = collections.OrderedDict()
     if recovered_state is None:
       self._latest_checkpoint = None
-      self._last_preserved_timestamp = current_clock
+      # Set the clock back slightly to avoid race conditions when quckly
+      # re-creating a CheckpointManager.
+      self._last_preserved_timestamp = current_clock - 1.
     else:
       self._latest_checkpoint = recovered_state.model_checkpoint_path
       self._last_preserved_timestamp = recovered_state.last_preserved_timestamp
@@ -586,6 +592,10 @@ class CheckpointManager(object):
 
   def _sweep(self):
     """Deletes or preserves managed checkpoints."""
+    if not self._max_to_keep:
+      # Does not update self._last_preserved_timestamp, since everything is kept
+      # in the active set.
+      return
     while len(self._maybe_delete) > self._max_to_keep:
       filename, timestamp = self._maybe_delete.popitem(last=False)
       # Even if we're keeping this checkpoint due to

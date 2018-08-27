@@ -296,6 +296,22 @@ XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantS64s) {
   ComputeAndCompareR1<int64>(&b, expected, {lhs_data.get(), rhs_data.get()});
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, CmpTwoConstantU64s) {
+  XlaBuilder b(TestName());
+
+  std::vector<uint64> lhs{static_cast<uint64>(0x8000000000000000ULL)};
+  std::unique_ptr<Literal> lhs_literal = LiteralUtil::CreateR1<uint64>({lhs});
+  auto lhs_param = Parameter(&b, 0, lhs_literal->shape(), "lhs_param");
+
+  std::vector<uint64> rhs{static_cast<uint64>(0x7FFFFFFFFFFFFFFFULL)};
+  std::unique_ptr<Literal> rhs_literal = LiteralUtil::CreateR1<uint64>({rhs});
+  auto rhs_param = Parameter(&b, 1, rhs_literal->shape(), "rhs_param");
+
+  Lt(lhs_param, rhs_param);
+
+  ComputeAndCompare(&b, {std::move(*lhs_literal), std::move(*rhs_literal)});
+}
+
 TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
   const int count = GetParam();
   XlaBuilder builder(TestName());

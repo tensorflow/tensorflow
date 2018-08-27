@@ -90,12 +90,17 @@ Status MapFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     const auto& fun = map_node->attr().at("f");
     const FunctionDef* func = function_library.Find(fun.func().name());
 
-    if (!fusion_utils::CanCompose(parent_func->signature(), func->signature()))
+    if (!fusion_utils::CanCompose(parent_func->signature(),
+                                  func->signature())) {
+      VLOG(1) << "Can't fuse two maps because the output signature of the "
+                 "first map function does not match the input signature of the "
+                 "second function\n";
       return nullptr;
+    }
     return fusion_utils::FuseFunctions(
         *parent_func, *func, "fused_map", fusion_utils::ComposeSignature,
         fusion_utils::ComposeInput, fusion_utils::ComposeOutput,
-        output->mutable_library());
+        fusion_utils::MergeNodes, output->mutable_library());
   };
 
   for (const NodeDef& node : sorted_old_graph.node()) {

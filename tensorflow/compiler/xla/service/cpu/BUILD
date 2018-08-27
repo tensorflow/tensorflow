@@ -88,6 +88,7 @@ cc_library(
         ":simple_orc_jit",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        ":target_machine_features",
         "//tensorflow/compiler/tf2xla:cpu_function_runtime",
         "//tensorflow/compiler/xla/service:scatter_expander",
         "//tensorflow/compiler/xla:literal",

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/lite/tools/accuracy/inception_preprocessing.h"
+#include "tensorflow/contrib/lite/tools/accuracy/ilsvrc/inception_preprocessing.h"
 
 #include <memory>
 

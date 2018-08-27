@@ -2268,6 +2268,8 @@ cc_library(
     srcs = if_android([
         "lib/gif/gif_io.cc",
         "platform/gif.h",
+        "lib/strings/strcat.h",
+        "lib/strings/numbers.h",
     ]),
     hdrs = [
         "lib/bfloat16/bfloat16.h",
@@ -2741,6 +2743,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/stats_publisher_interface.h",
     "common_runtime/step_stats_collector.h",
     "common_runtime/threadpool_device.h",
+    "common_runtime/tracing_device.h",
     "common_runtime/visitable_allocator.h",
     "common_runtime/process_state.h",
     "common_runtime/pool_allocator.h",

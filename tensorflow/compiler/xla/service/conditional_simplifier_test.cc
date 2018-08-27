@@ -39,6 +39,10 @@ namespace op = xla::testing::opcode_matchers;
 
 class ConditionalSimplifierTest : public HloVerifiedTestBase {
  public:
+  ConditionalSimplifierTest()
+      : HloVerifiedTestBase(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false) {}
+
   // Makes a computation that contains a conditional with constant predicate.
   HloComputation* MakeConditional(HloModule* module);
 };

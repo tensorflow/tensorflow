@@ -68,11 +68,11 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
       self._cluster_spec = multi_worker_util.normalize_cluster_spec(
           cluster_spec)
       worker_device = "/job:%s/task:%d" % (task_type, task_id)
-      num_workers = len(self._cluster_spec.as_dict().get(task_type, []))
-      if "chief" in self._cluster_spec.as_dict():
-        num_workers += 1
+      num_workers = len(self._cluster_spec.as_dict().get("worker", [])) + len(
+          self._cluster_spec.as_dict().get("chief", []))
       if not num_workers:
-        raise ValueError("`task_type` shoud be in `cluster_spec`.")
+        raise ValueError("No `worker` or `chief` tasks can be found in "
+                         "`cluster_spec`.")
 
       self._is_chief = multi_worker_util.is_chief(cluster_spec, task_type,
                                                   task_id)
