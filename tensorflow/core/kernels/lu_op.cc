@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// See docs in ../ops/linalg_ops.cc.
-#include <vector>
+// See docs in ../ops/math_ops.cc.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -35,51 +34,17 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-/*    
-ConstEigenMatrixMap in_mat(
-      tensor_in.flat<T>().data(), params.depth,
-      params.tensor_in_cols * params.tensor_in_rows * params.tensor_in_batch);
-  EigenMatrixMap out_mat(
-      output->flat<T>().data(), params.depth,
-      params.out_width * params.out_height * params.tensor_in_batch);
-  EigenIndexMatrixMap out_arg_max_mat(
-      output_arg_max->flat<int64>().data(), params.depth,
-      params.out_width * params.out_height * params.tensor_in_batch);
-*/
-
 static const char kErrMsg[] =
     "LU decomposition was not successful. The input might not be valid.";
 
 template <typename Device, typename T>
 class LuOp : public OpKernel {
  public:
-
-  /*
-  using Matrix =
-      Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
-  using ConstMatrixMap = Eigen::Map<const Matrix>;
-  using MatrixMap = Eigen::Map<Matrix>;
-  //using ConstMatrixMaps = gtl::InlinedVector<ConstMatrixMap, 4>;
-  using MatrixMaps = gtl::InlinedVector<MatrixMap, 4>;
-  //using RealScalar = typename Eigen::NumTraits<T>::Real;
- 
-  using tensorflow::MakeUnique;
-  */
-
   explicit LuOp(OpKernelConstruction* context) : OpKernel(context) {}
   
   void Compute(OpKernelContext* context) override {   
-    /*  
-    typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
-        ConstEigenMatrixMap;
-    typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
-        EigenMatrixMap;
-    typedef Eigen::Map<Eigen::Matrix<int64, Eigen::Dynamic, Eigen::Dynamic>>
-        EigenIndexMatrixMap; 
-    */
     const Tensor & in = context->input(0);  
-    TensorShape mtx_shape = in.shape();  
-    //const ConstMatrixMap & input = in;        
+    TensorShape mtx_shape = in.shape();         
     // zhuangh: assume square at this moment        
     auto matrix = in.matrix<T>();
     
@@ -103,19 +68,11 @@ class LuOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(1, mtx_shape, &output_u));
     OP_REQUIRES_OK(context, context->allocate_output(2, perm_shape, &perm_idx));
     
-    T * ltensor = output_l->flat<T>().data();
-    //auto ltensor = output_l->flat<T>();
-    //auto ltensor = output_l->matrix<T>();
-    //auto d = context->template eigen_device<Device>();
-    //const CPUDevice& d = context->eigen_device<CPUDevice>();
-    //ltensor.device(d) = 
+    T * ltensor = output_l->flat<T>().data();    
     auto &l = lu_decomposition.matrixLU().template triangularView<Eigen::UnitLower>();
     auto lm = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 
                 Eigen::Dynamic, Eigen::RowMajor> >(ltensor, l.rows(), l.cols());
-    lm = l;
-    //ltensor = Eigen::Matrix<T, Eigen::Dynamic, 
-    //                        Eigen::Dynamic, Eigen::RowMajor>::Map(l, l.rows(), l.cols());
-
+    lm = l;    
     T * utensor = output_u->flat<T>().data();
     auto &u = lu_decomposition.matrixLU().template triangularView<Eigen::Upper>();
     auto um = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 
@@ -126,24 +83,7 @@ class LuOp : public OpKernel {
     
     for(int i = 0; i < p.size(); i++){
       ptensor[i] = p[i];
-    }
-    
-    
-    /*
-    EigenMatrixMap out_mat(
-      output_l->flat<T>().data(), params.depth,
-      params.out_width * params.out_height * params.tensor_in_batch);
-
-    T * utensor = output_u->flat<T>().data();
-    auto & u = lu_decomposition.matrixLU().template triangularView<Eigen::Upper>();
-    utensor = Eigen::Matrix<T, Eigen::Dynamic, 
-                            Eigen::Dynamic, Eigen::RowMajor>::Map(u, u.rows(), u.cols());
-    int * ptensor = perm_idx->flat<int>().data();
-    auto & p = lu_decomposition.permutationP().indices().array();         
-    for(int i = 0; i < p.size(); i++){
-        ptensor[i] = p[i];
-    }    
-    */
+    }        
   }
 };
 
@@ -157,82 +97,3 @@ REGISTER_KERNEL(double);
 
 #undef REGISTER_KERNEL
 }  // namespace tensorflow
-
-
-
-
-
-
-/*
-namespace tensorflow {
-
-
-static const char kErrMsg[] =
-    "LU decomposition was not successful. The input might not be valid.";
-
-template <class Scalar>
-class LuOp : public LinearAlgebraOp<Scalar> {
- public:
-  INHERIT_LINALG_TYPEDEFS(Scalar);
- explicit LuOp(OpKernelConstruction* context) : Base(context) {}
-
-  TensorShapes GetOutputMatrixShapes(
-      const TensorShapes& input_matrix_shapes) const final {
-    int64 m = input_matrix_shapes[0].dim_size(0);  
-    // only square matrix is supported for now.
-    return TensorShapes({TensorShape({m, m}), 
-                         TensorShape({m, m}),
-                         TensorShape({m})}); // 1, m
-  }
-
-
-  void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
-                     MatrixMaps* outputs) final {
-    const ConstMatrixMap& input = inputs[0];
-    if (input.rows() == 0) {
-      return;
-    }
-
-    // Perform the actual LU decomposition.
-    Eigen::PartialPivLU<
-        Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
-        lu_decomposition(input);
-
-    //OP_REQUIRES(context, lu_decomposition.isInvertible() == true,
-    //            errors::InvalidArgument(kErrMsg));
-    // Output the lower triangular in a dense form.
-    outputs->at(0) =
-        lu_decomposition.matrixLU().template triangularView<Eigen::UnitLower>();
-    outputs->at(1) =
-        lu_decomposition.matrixLU().template triangularView<Eigen::Upper>();        
-    //outputs->at(2) = lu_decomposition.permutationP();//.indices().data();    
-    //Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>  perm(input.rows());
-    Eigen::VectorXd perm(input.rows()); 
-    outputs->at(2) = perm.cast<Scalar>();
-    //outputs->at(2) = perm.cast<int64>();
-    
-    auto & indices = lu_decomposition.permutationP().indices();    
-    for(int i = 0; i < indices.size(); i++){
-        perm(i) = indices(i);        
-    }
-    //using namespace std;
-    //cout<<perm<<endl;   
-    //lu_decomposition.permutationP();//.indices().data();    
-    //outputs->at(2) = lu_decomposition.permutationP().indices().array();        
-    //using namespace std;
-    //cout<<"permutation matrix"<<endl;
-    //cout<<lu_decomposition.permutationP().indices()<<endl;//.cast<int>().array();
-    //int n = input.rows();
-    //Tensor perm_vec;//(n, 1);
-    //outputs->at(2) = perm_vec;    
-    //Eigen::ArrayXi perm = lu_decomposition.permutationP().indices().cast<int>().array();
-    //for(const auto & it:perm) cout<<it<<" ";
-  }
-};
-
-REGISTER_LINALG_OP("Lu", (LuOp<float>), float);
-REGISTER_LINALG_OP("Lu", (LuOp<double>), double);
-REGISTER_LINALG_OP("Lu", (LuOp<complex64>), complex64);
-REGISTER_LINALG_OP("Lu", (LuOp<complex128>), complex128);
-}  // namespace tensorflow  
-*/

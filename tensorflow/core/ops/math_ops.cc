@@ -103,22 +103,6 @@ REGISTER_OP("BatchMatMul")
     });
 
 
-REGISTER_OP("Lu")
-    .Input("input: T")
-    .Output("l: T")
-    .Output("u: T")
-    .Output("p: Tperm")
-    //.Output("p: Tperm")
-    .Attr("T: {double, float}")
-    //.Attr("T: {double, float, complex64, complex128}")
-    .Attr("Tperm: {int32, int64} = DT_INT32")
-     .SetShapeFn([](InferenceContext* c) {            
-      DimensionHandle perm_shape = c->Dim(c->input(0), 1);
-      c->set_output(0, c->input(0));
-      c->set_output(1, c->input(0));
-      c->set_output(2, c->Vector(perm_shape));
-      return Status::OK();
-});
 
 // --------------------------------------------------------------------------
 // Casting Ops
@@ -724,6 +708,22 @@ REGISTER_OP("Select")
     });
 
 // --------------------------------------------------------------------------
+
+REGISTER_OP("Lu")
+    .Input("input: T")
+    .Output("l: T")
+    .Output("u: T")
+    .Output("p: Tperm")
+    .Attr("T: {double, float}")
+    .Attr("Tperm: {int32, int64} = DT_INT32")
+     .SetShapeFn([](InferenceContext* c) {            
+      DimensionHandle perm_shape = c->Dim(c->input(0), 1);
+      c->set_output(0, c->input(0));
+      c->set_output(1, c->input(0));
+      c->set_output(2, c->Vector(perm_shape));
+      return Status::OK();
+});
+
 
 REGISTER_OP("MatMul")
     .Input("a: T")

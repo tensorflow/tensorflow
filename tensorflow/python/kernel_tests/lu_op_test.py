@@ -37,29 +37,23 @@ class LuOpTest(test.TestCase):
   def _verifyLU(self, x):
     for np_type in [np.float32, np.float64]: #, np.complex64, np.complex128]:
       if np_type == np.float32 or np_type == np.complex64:
-        tol = 1e-5
+        tol = 1e-2
         a = x.astype(np_type)      
       l, u, p = math_ops.lu(a)
+      pp = np.zeros(p.shape)
       pl = math_ops.matmul(l, u)      
-      pinv = array_ops.invert_permutation(p);
-      plu = array_ops.gather(pl, pinv)            
-      with self.test_session() as sess:
-        l.eval()
+      #pinv = array_ops.invert_permutation(p);
+      plu = array_ops.gather(pl, p)            
+      with self.test_session() as sess:        
         out = plu.eval()        
-        print(l)
-        print(u)
-        print(p)
-        print(out)
-        print(pinv)
-      self.assertEqual(a.shape, l.shape)
       self.assertAllClose(a, out, atol=tol, rtol=tol)
 
   def _generateMatrix(self, m, n):
-    matrix = (np.random.normal(-5, 5,  m * n).reshape([m, n]))
+    matrix = (np.random.normal(10, 1000,  m * n).reshape([m, n]))
     return matrix
 
   def testLU(self):
-    for n in 4, 9, 16, 64:
+    for n in 1, 4, 9, 16, 64, 128, 256:
       matrix = self._generateMatrix(n, n)
       self._verifyLU(matrix)
 
