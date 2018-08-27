@@ -14,20 +14,70 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/lite/interpreter.h"
+
 #include <cassert>
 #include <cstdarg>
 #include <cstdint>
 #include <cstring>
+
 #include "tensorflow/contrib/lite/arena_planner.h"
 #include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/context_util.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/graph_info.h"
-#include "tensorflow/contrib/lite/kernels/gemm_support.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
+#include "tensorflow/contrib/lite/profiling/profiler.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
+#include "tensorflow/contrib/lite/util.h"
 
 namespace tflite {
+namespace {
+
+TfLiteStatus ReportOpError(TfLiteContext* context, const TfLiteNode& node,
+                           const TfLiteRegistration& registration,
+                           int node_index, const char* message) {
+  context->ReportError(
+      context, "Node number %d (%s) %s.\n", node_index,
+      registration.custom_name
+          ? registration.custom_name
+          : EnumNameBuiltinOperator(
+                static_cast<BuiltinOperator>(registration.builtin_code)),
+      message);
+  return kTfLiteError;
+}
+
+// Stub method which returns kTfLiteError when the function is forbidden.
+// We're registrating this function to several different function to save
+// compiled binary size. Please note the restrictions:
+// * The type of first parameter have to be `TfLiteContext*`.
+// * All paramteters must be trivailly destructible. (E.g. No C++ class)
+TfLiteStatus ForbiddenContextFunction(TfLiteContext* context, ...) {
+  context->ReportError(context,
+                       "The function is forbidden if not calling in delegate.");
+  return kTfLiteError;
+}
+
+// Set the ForbiddenContextFunction to a compatible function pointer.
+template <typename FunctionType>
+void SetForbiddenContextFunction(FunctionType* func) {
+  *func = reinterpret_cast<FunctionType>(ForbiddenContextFunction);
+}
+
+// Returns true if at least one tensor in the given list is kTfLiteDynamic.
+template <typename TensorIntArray>
+bool HasDynamicTensorImpl(const TfLiteContext& context,
+                          const TensorIntArray& int_array) {
+  for (int i : int_array) {
+    const TfLiteTensor& tensor = context.tensors[i];
+    if (tensor.allocation_type == kTfLiteDynamic) {
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
 
 // A trivial implementation of GraphInfo around the Interpreter.
 // NOTE: this interpreter info represents the subset of the
@@ -56,6 +106,9 @@ class InterpreterInfo : public GraphInfo {
   const std::vector<int>& outputs() const override {
     return interpreter_->outputs();
   }
+  const std::vector<int>& variables() const override {
+    return interpreter_->variables();
+  }
 
  public:
   Interpreter* interpreter_;
@@ -70,17 +123,22 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   context_.AddTensors = AddTensors;
   context_.tensors = nullptr;
   context_.tensors_size = 0;
-  context_.gemm_context = nullptr;
+  context_.recommended_num_threads = -1;
+  context_.GetExternalContext = GetExternalContext;
+  context_.SetExternalContext = SetExternalContext;
 
   // Invalid to call these these except from TfLiteDelegate
-  context_.GetNodeAndRegistration = nullptr;
-  context_.ReplaceSubgraphsWithDelegateKernels = nullptr;
-  context_.GetExecutionPlan = nullptr;
+  SwitchToKernelContext();
 
   // Reserve some space for the tensors to avoid excessive resizing.
   tensors_.reserve(kTensorsReservedCapacity);
   nodes_and_registration_.reserve(kTensorsReservedCapacity);
   next_execution_plan_index_to_prepare_ = 0;
+
+  for (int i = 0; i < kTfLiteMaxExternalContexts; ++i) {
+    external_contexts_[i] = nullptr;
+  }
+
   UseNNAPI(false);
 }
 
@@ -96,19 +154,100 @@ Interpreter::~Interpreter() {
   }
 
   for (int i = 0; i < context_.tensors_size; i++) {
-    TfLiteTensorFree(&context_.tensors[i]);
+    TfLiteTensor* tensor = &context_.tensors[i];
+    if (tensor->buffer_handle != kTfLiteNullBufferHandle &&
+        tensor->delegate->FreeBufferHandle != nullptr) {
+      tensor->delegate->FreeBufferHandle(&context_, tensor->delegate,
+                                         &tensor->buffer_handle);
+    }
+    TfLiteTensorFree(tensor);
   }
 }
 
 TfLiteStatus Interpreter::ReplaceSubgraphsWithDelegateKernels(
     TfLiteContext* context, TfLiteRegistration registration,
-    const TfLiteIntArray* nodes_to_replace) {
+    const TfLiteIntArray* nodes_to_replace, TfLiteDelegate* delegate) {
   return static_cast<Interpreter*>(context->impl_)
-      ->ReplaceSubgraphsWithDelegateKernels(registration, nodes_to_replace);
+      ->ReplaceSubgraphsWithDelegateKernels(registration, nodes_to_replace,
+                                            delegate);
 }
 
+namespace {
+
+// Copy a std::vector<int> to an existing TfLiteIntArray.
+// This is a low-level data manipulation function, and it's caller's
+// responsibility to ensure TfLiteIntArray has enough size.
+void CopyVectorToTfLiteIntArray(const std::vector<int>& vec,
+                                TfLiteIntArray* arr) {
+  arr->size = vec.size();
+  memcpy(arr->data, vec.data(), sizeof(int) * arr->size);
+}
+
+// This function allocates a continuous memory space that contains a
+// TfLiteDelegateParams followed by a several TfLiteIntArray.
+// When calling `free` at TfLiteDelegateParams*, all the allocated space
+// will be freed together.
+//
+// +-----------------------------------+
+// | TfLiteDelegateParams              |
+// | TfLiteDelegate* delegate;         |
+// | TfLiteIntArray* nodes_to_replace; |--\
+// | TfLiteIntArray* input_tensors;    |--+--\
+// | TfLiteIntArray* output_tensors;   |--+--+--\
+// +-----------------------------------+  |  |  |
+// | TfLiteIntArray (variable size)    |<-/  |  |
+// +-----------------------------------+     |  |
+// | TfLiteIntArray (variable size)    |<----/  |
+// +-----------------------------------+        |
+// | TfLiteIntArray (variable size)    |<-------/
+// +-----------------------------------+
+TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
+                                           const Subgraph& subgraph) {
+  // Step 1: Calculate the allocation size.
+  int allocation_size = sizeof(TfLiteDelegateParams);
+
+  int nodes_to_replace_size =
+      TfLiteIntArrayGetSizeInBytes(subgraph.nodes.size());
+  allocation_size += nodes_to_replace_size;
+
+  int input_tensors_size =
+      TfLiteIntArrayGetSizeInBytes(subgraph.input_tensors.size());
+  allocation_size += input_tensors_size;
+
+  int output_tensors_size =
+      TfLiteIntArrayGetSizeInBytes(subgraph.output_tensors.size());
+  allocation_size += output_tensors_size;
+
+  // Step 2: Allocate the memory.
+  // Use `char*` for conveniently step through the allocated space by bytes.
+  char* allocation = reinterpret_cast<char*>(malloc(allocation_size));
+
+  // Step 3: Fill all data structures structures.
+  TfLiteDelegateParams* params =
+      reinterpret_cast<TfLiteDelegateParams*>(allocation);
+  params->delegate = delegate;
+  allocation += sizeof(TfLiteDelegateParams);
+
+  params->nodes_to_replace = reinterpret_cast<TfLiteIntArray*>(allocation);
+  CopyVectorToTfLiteIntArray(subgraph.nodes, params->nodes_to_replace);
+  allocation += nodes_to_replace_size;
+
+  params->input_tensors = reinterpret_cast<TfLiteIntArray*>(allocation);
+  CopyVectorToTfLiteIntArray(subgraph.input_tensors, params->input_tensors);
+  allocation += input_tensors_size;
+
+  params->output_tensors = reinterpret_cast<TfLiteIntArray*>(allocation);
+  CopyVectorToTfLiteIntArray(subgraph.output_tensors, params->output_tensors);
+  allocation += output_tensors_size;
+
+  return params;
+}
+
+}  // namespace
+
 TfLiteStatus Interpreter::ReplaceSubgraphsWithDelegateKernels(
-    TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace) {
+    TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
+    TfLiteDelegate* delegate) {
   // Annotate the registration as DELEGATE op.
   registration.builtin_code = BuiltinOperator_DELEGATE;
 
@@ -120,30 +259,35 @@ TfLiteStatus Interpreter::ReplaceSubgraphsWithDelegateKernels(
 
   execution_plan_.clear();
   for (auto& subgraph : subgraphs) {
-    // Turn subgraph.nodes into a TfLiteIntArray compatible data structure.
-    // TODO(aselle): Avoid this copy by constructing subgraph.nodes that way
-    // in the first place
-    subgraph.nodes.insert(subgraph.nodes.begin(),
-                          static_cast<int>(subgraph.nodes.size()));
     // Subgraphs calimed by the delegate should have a "macro" op created, the
     // other subgraphs (kTfNonPartition) just have their nodes added back to
     // the execution plan.
     switch (subgraph.type) {
       case Subgraph::kTfNonPartition:
-        for (auto it = subgraph.nodes.begin() + 1; it != subgraph.nodes.end();
+        for (auto it = subgraph.nodes.begin(); it != subgraph.nodes.end();
              ++it) {
           execution_plan_.push_back(*it);
         }
         break;
       case Subgraph::kTfPartition: {
-        void* builtin_data = nullptr;
         int node_index;
-        // Create a node that represents computation of this subgraph.
-        AddNodeWithParameters(
-            subgraph.input_tensors, subgraph.output_tensors,
-            reinterpret_cast<const char*>(subgraph.nodes.data()),
-            subgraph.nodes.size() * sizeof(subgraph.nodes[0]), builtin_data,
-            &registration, &node_index);
+
+        TfLiteDelegateParams* params = CreateDelegateParams(delegate, subgraph);
+        TF_LITE_ENSURE_STATUS(AddNodeWithParameters(
+            subgraph.input_tensors, subgraph.output_tensors, nullptr, 0, params,
+            &registration, &node_index));
+
+        // Initialize the output tensors's delegate-related fields.
+        for (int tensor_index : subgraph.output_tensors) {
+          TfLiteTensor* tensor = &tensors_[tensor_index];
+          TF_LITE_ENSURE(&context_, tensor->delegate == nullptr ||
+                                        tensor->delegate == delegate);
+          tensor->delegate = delegate;
+        }
+
+        // Associate the node with the delegate.
+        TfLiteNode* node = &nodes_and_registration_[node_index].first;
+        node->delegate = delegate;
       } break;
       case Subgraph::kTfUnexplored:
         return kTfLiteError;
@@ -151,6 +295,33 @@ TfLiteStatus Interpreter::ReplaceSubgraphsWithDelegateKernels(
     }
   }
   return kTfLiteOk;
+}
+
+TfLiteExternalContext* Interpreter::GetExternalContext(
+    TfLiteExternalContextType type) {
+  if (type >= 0 && type < kTfLiteMaxExternalContexts) {
+    return external_contexts_[type];
+  }
+  return nullptr;
+}
+
+TfLiteExternalContext* Interpreter::GetExternalContext(
+    struct TfLiteContext* context, TfLiteExternalContextType type) {
+  return static_cast<Interpreter*>(context->impl_)->GetExternalContext(type);
+}
+
+void Interpreter::SetExternalContext(TfLiteExternalContextType type,
+                                     TfLiteExternalContext* ctx) {
+  if (type >= 0 && type < kTfLiteMaxExternalContexts) {
+    external_contexts_[type] = ctx;
+  }
+}
+
+void Interpreter::SetExternalContext(struct TfLiteContext* context,
+                                     TfLiteExternalContextType type,
+                                     TfLiteExternalContext* ctx) {
+  return static_cast<Interpreter*>(context->impl_)
+      ->SetExternalContext(type, ctx);
 }
 
 // Gets an TfLiteIntArray* representing the execution plan. The interpreter owns
@@ -162,8 +333,8 @@ TfLiteStatus Interpreter::GetExecutionPlan(TfLiteIntArray** execution_plan) {
   *execution_plan = plan_cache_.get();
   static_assert(sizeof(plan_cache_->data[0]) == sizeof(execution_plan_[0]),
                 "TfLiteIntArray and execution_plan do not contain same type.");
-  memcpy(plan_cache_->data, execution_plan_.data(),
-         sizeof(plan_cache_->data[0]) * execution_plan_.size());
+  std::memcpy(plan_cache_->data, execution_plan_.data(),
+              sizeof(plan_cache_->data[0]) * execution_plan_.size());
   return kTfLiteOk;
 }
 
@@ -189,6 +360,13 @@ TfLiteStatus Interpreter::SetOutputs(std::vector<int> outputs) {
   return kTfLiteOk;
 }
 
+TfLiteStatus Interpreter::SetVariables(std::vector<int> variables) {
+  TF_LITE_ENSURE_OK(&context_, CheckTensorIndices("variables", variables.data(),
+                                                  variables.size()));
+  variables_ = std::move(variables);
+  return kTfLiteOk;
+}
+
 TfLiteStatus Interpreter::CheckTensorIndices(const char* label,
                                              const int* indices, int length) {
   // Making sure kOptionalTensor is not re-defined to something other than -1.
@@ -196,7 +374,12 @@ TfLiteStatus Interpreter::CheckTensorIndices(const char* label,
 
   for (int i = 0; i < length; i++) {
     int index = indices[i];
-    if (index < kOptionalTensor || index >= context_.tensors_size) {
+    // Continue if index == kOptionalTensor before additional comparisons below,
+    // size_t(-1) is always >= context_tensors_size.
+    if (index == kOptionalTensor) {
+      continue;
+    }
+    if (index < 0 || static_cast<size_t>(index) >= context_.tensors_size) {
       ReportError(&context_, "Invalid tensor index %d in %s\n", index, label);
       consistent_ = false;
       return kTfLiteError;
@@ -206,7 +389,7 @@ TfLiteStatus Interpreter::CheckTensorIndices(const char* label,
 }
 
 TfLiteStatus Interpreter::BytesRequired(TfLiteType type, const int* dims,
-                                        int dims_size, size_t* bytes) {
+                                        size_t dims_size, size_t* bytes) {
   // TODO(aselle): Check for overflow here using overflow.h in TensorFlow
   // MultiplyWithoutOverflow.
   TF_LITE_ENSURE(&context_, bytes != nullptr);
@@ -215,6 +398,9 @@ TfLiteStatus Interpreter::BytesRequired(TfLiteType type, const int* dims,
   switch (type) {
     case kTfLiteFloat32:
       *bytes = sizeof(float) * count;
+      break;
+    case kTfLiteInt16:
+      *bytes = sizeof(int16_t) * count;
       break;
     case kTfLiteInt32:
       *bytes = sizeof(int32_t) * count;
@@ -225,43 +411,85 @@ TfLiteStatus Interpreter::BytesRequired(TfLiteType type, const int* dims,
     case kTfLiteInt64:
       *bytes = sizeof(int64_t) * count;
       break;
+    case kTfLiteBool:
+      *bytes = sizeof(bool) * count;
+      break;
+    case kTfLiteComplex64:
+      *bytes = sizeof(std::complex<float>) * count;
+      break;
     default:
       ReportError(&context_,
-                  "Only float32, int32, int64, uint8 supported currently.");
+                  "Only float32, int16, int32, int64, uint8, bool, complex64 "
+                  "supported currently.");
       return kTfLiteError;
   }
   return kTfLiteOk;
 }
 
-namespace {
-TfLiteIntArray* convertVectorToTfLiteIntArray(const std::vector<int>& x) {
-  TfLiteIntArray* lite = TfLiteIntArrayCreate(x.size());
-  for (size_t i = 0; i < x.size(); i++) lite->data[i] = x[i];
-  return lite;
-}
-}  // namespace
-
 TfLiteStatus Interpreter::AllocateTensors() {
-  next_execution_plan_index_to_prepare_ = 0;
-  if (memory_planner_) {
-    TF_LITE_ENSURE_STATUS(memory_planner_->ResetAllocations());
-  }
-
   if (!consistent_) {
     ReportError(&context_, "AllocateTensors() called on inconsistent model.");
     return kTfLiteError;
   }
 
+  // Explicit (re)allocation is necessary if nodes have been changed or tensors
+  // have been resized. For inputs marked as dynamic, we can't short-circuit the
+  // allocation as the client may have done the resize manually.
+  if (state_ != kStateUninvokable && !HasDynamicTensorImpl(context_, inputs_)) {
+    return kTfLiteOk;
+  }
+
+  next_execution_plan_index_to_prepare_ = 0;
+  if (memory_planner_) {
+    TF_LITE_ENSURE_STATUS(memory_planner_->ResetAllocations());
+  }
+
   TF_LITE_ENSURE_STATUS(PrepareOpsAndTensors());
-  invokable_ = true;
+
+  state_ = kStateInvokable;
+
+  // Reset the variable tensors to zero after (re)allocating the tensors.
+  // Developers shouldn't rely on the side effect of this function to reset
+  // variable tesnsors. They should call `ResetVariableTensorsToZero` directly
+  // instead.
+  ResetVariableTensorsToZero();
+
   return kTfLiteOk;
+}
+
+// TODO(ycling): Consider to provide other functions to initialize variable
+// tensors to non-zero values.
+TfLiteStatus Interpreter::ResetVariableTensorsToZero() {
+  for (auto& tensor : tensors_) {
+    if (!tensor.is_variable) {
+      continue;
+    }
+
+    // Variable tensors have to be `kTfLiteArenaRwPersistent`, and must be
+    // allocated after the initial `PrepareOpsAndTensors()` is called.
+    TF_LITE_ENSURE_EQ(&context_, tensor.allocation_type,
+                      kTfLiteArenaRwPersistent);
+    TF_LITE_ENSURE(&context_, tensor.data.raw != nullptr);
+
+    memset(tensor.data.raw, 0, tensor.bytes);
+  }
+  return kTfLiteOk;
+}
+
+void Interpreter::ReserveNodes(int count) {
+  nodes_and_registration_.reserve(count);
 }
 
 TfLiteStatus Interpreter::AddNodeWithParameters(
     const std::vector<int>& inputs, const std::vector<int>& outputs,
     const char* init_data, size_t init_data_size, void* builtin_data,
     const TfLiteRegistration* registration, int* node_index) {
-  invokable_ = false;
+  if (state_ == kStateInvokableAndImmutable) {
+    ReportError(&context_,
+                "AddNodeWithParameters is disallowed when graph is immutable.");
+    return kTfLiteError;
+  }
+  state_ = kStateUninvokable;
 
   std::unique_ptr<void, decltype(free)*> builtin_data_deleter(builtin_data,
                                                               free);
@@ -275,7 +503,6 @@ TfLiteStatus Interpreter::AddNodeWithParameters(
   int new_node_index = nodes_and_registration_.size();
   if (node_index) *node_index = new_node_index;
   nodes_and_registration_.resize(nodes_and_registration_.size() + 1);
-
   auto& node_and_reg = nodes_and_registration_.back();
   TfLiteNode& node = node_and_reg.first;
   if (node.inputs) TfLiteIntArrayFree(node.inputs);
@@ -285,8 +512,8 @@ TfLiteStatus Interpreter::AddNodeWithParameters(
   // NOTE, here we are not using move semantics yet, since our internal
   // representation isn't std::vector, but in the future we would like to avoid
   // copies, so we want the interface to take r-value references now.
-  node.inputs = convertVectorToTfLiteIntArray(inputs);
-  node.outputs = convertVectorToTfLiteIntArray(outputs);
+  node.inputs = ConvertVectorToTfLiteIntArray(inputs);
+  node.outputs = ConvertVectorToTfLiteIntArray(outputs);
   node.temporaries = TfLiteIntArrayCreate(0);
   if (init_data) {
     node.user_data = OpInit(*registration, init_data, init_data_size);
@@ -299,6 +526,7 @@ TfLiteStatus Interpreter::AddNodeWithParameters(
   node.builtin_data = builtin_data_deleter.release();
   // TODO(ycling): Filling `custom_initial_data` and `custom_initial_data_size`
   // properly for nodes generated by ReplaceSubgraphsWithDelegateKernels.
+
   if (registration->builtin_code == BuiltinOperator_CUSTOM) {
     // When it's a CUSTOM op, the `custom_options` field in the Flatbuffer
     // `Operator` table is passed in.
@@ -309,6 +537,7 @@ TfLiteStatus Interpreter::AddNodeWithParameters(
     node.custom_initial_data_size = 0;
   }
 
+  node.delegate = nullptr;
   node_and_reg.second = *registration;
   execution_plan_.push_back(new_node_index);
   return kTfLiteOk;
@@ -316,26 +545,31 @@ TfLiteStatus Interpreter::AddNodeWithParameters(
 
 TfLiteStatus Interpreter::ResizeInputTensor(int tensor_index,
                                             const std::vector<int>& dims) {
+  if (state_ == kStateInvokableAndImmutable) {
+    ReportError(&context_,
+                "ResizeInputTensor is disallowed when graph is immutable.");
+    return kTfLiteError;
+  }
+
   // TODO(aselle): All bounds checks can be implemented as one-sided bounds
   // checks by casting to unsigned for efficiency. Profile before doing this.
-
   TF_LITE_ENSURE(&context_,
                  tensor_index < context_.tensors_size && tensor_index >= 0);
-  invokable_ = false;
-  TfLiteIntArray* dims_lite = convertVectorToTfLiteIntArray(dims);
-  return ResizeTensorImpl(&context_.tensors[tensor_index], dims_lite);
+  TfLiteTensor* tensor = &context_.tensors[tensor_index];
+
+  // Short-circuit the state change if the dimensions don't change, avoiding
+  // unnecessary (re)allocations.
+  if (EqualArrayAndTfLiteIntArray(tensor->dims, dims.size(), dims.data())) {
+    return kTfLiteOk;
+  }
+
+  state_ = kStateUninvokable;
+  return ResizeTensorImpl(tensor, ConvertVectorToTfLiteIntArray(dims));
 }
 
-// Returns true if at least one tensor in the given list is kTfLiteDynamic.
 bool HasDynamicTensor(const TfLiteContext& context,
-                      const TfLiteIntArray* tensors) {
-  for (int i = 0; i < tensors->size; ++i) {
-    const TfLiteTensor& tensor = context.tensors[tensors->data[i]];
-    if (tensor.allocation_type == kTfLiteDynamic) {
-      return true;
-    }
-  }
-  return false;
+                      const TfLiteIntArray* int_array) {
+  return HasDynamicTensorImpl(context, TfLiteIntArrayView{int_array});
 }
 
 TfLiteStatus Interpreter::PrepareOpsStartingAt(
@@ -348,7 +582,8 @@ TfLiteStatus Interpreter::PrepareOpsStartingAt(
         nodes_and_registration_[node_index].second;
     EnsureTensorsVectorCapacity();
     if (OpPrepare(registration, &node) == kTfLiteError) {
-      return kTfLiteError;
+      return ReportOpError(&context_, node, registration, node_index,
+                           "failed to prepare");
     }
 
     *last_execution_plan_index_prepared = execution_plan_index;
@@ -366,7 +601,8 @@ TfLiteStatus Interpreter::PrepareOpsStartingAt(
 TfLiteStatus Interpreter::PrepareOpsAndTensors() {
   if (!memory_planner_) {
     memory_planner_.reset(new ArenaPlanner(
-        &context_, std::unique_ptr<GraphInfo>(new InterpreterInfo(this))));
+        &context_, std::unique_ptr<GraphInfo>(new InterpreterInfo(this)),
+        /*preserve_inputs=*/true, /*preserve_intermediates*/ false));
     memory_planner_->PlanAllocations();
   }
 
@@ -386,7 +622,7 @@ TfLiteStatus Interpreter::Invoke() {
     ReportError(&context_, "Invoke called on model that is not consistent.");
     return kTfLiteError;
   }
-  if (!invokable_) {
+  if (state_ == kStateUninvokable) {
     ReportError(&context_, "Invoke called on model that is not ready.");
     return kTfLiteError;
   }
@@ -424,11 +660,45 @@ TfLiteStatus Interpreter::Invoke() {
     TfLiteNode& node = nodes_and_registration_[node_index].first;
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
+    SCOPED_OPERATOR_PROFILE(profiler_, node_index);
+
+    // TODO(ycling): This is an extra loop through inputs to check if the data
+    // need to be copied from Delegate buffer to raw memory, which is often not
+    // needed. We may want to cache this in prepare to know if this needs to be
+    // done for a node or not.
+    for (int i = 0; i < node.inputs->size; ++i) {
+      int tensor_index = node.inputs->data[i];
+      if (tensor_index == kOptionalTensor) {
+        continue;
+      }
+      TfLiteTensor* tensor = &tensors_[tensor_index];
+      if (tensor->delegate && tensor->delegate != node.delegate &&
+          tensor->data_is_stale) {
+        EnsureTensorDataIsReadable(tensor_index);
+      }
+    }
+
     EnsureTensorsVectorCapacity();
+    tensor_resized_since_op_invoke_ = false;
     if (OpInvoke(registration, &node) == kTfLiteError) {
-      status = kTfLiteError;
+      status = ReportOpError(&context_, node, registration, node_index,
+                             "failed to invoke");
+    }
+
+    // Force execution prep for downstream ops if the latest op triggered the
+    // resize of a dynamic tensor.
+    if (tensor_resized_since_op_invoke_ &&
+        HasDynamicTensor(context_, node.outputs)) {
+      next_execution_plan_index_to_prepare_ = execution_plan_index + 1;
     }
   }
+
+  if (!allow_buffer_handle_output_) {
+    for (int tensor_index : outputs_) {
+      EnsureTensorDataIsReadable(tensor_index);
+    }
+  }
+
   return status;
 }
 
@@ -464,6 +734,7 @@ TfLiteStatus Interpreter::AddTensors(int tensors_to_add,
   tensors_.resize(tensors_.size() + tensors_to_add);
   for (int i = base_index; i < tensors_.size(); i++) {
     memset(&tensors_[i], 0, sizeof(tensors_[i]));
+    tensors_[i].buffer_handle = kTfLiteNullBufferHandle;
   }
   context_.tensors = tensors_.data();
   context_.tensors_size = tensors_.size();
@@ -496,9 +767,16 @@ TfLiteStatus Interpreter::GetNodeAndRegistration(
 }
 
 TfLiteStatus Interpreter::SetTensorParametersReadOnly(
-    int tensor_index, TfLiteType type, const char* name,
-    const std::vector<int>& dims, TfLiteQuantizationParams quantization,
-    const char* buffer, size_t bytes, const Allocation* allocation) {
+    int tensor_index, TfLiteType type, const char* name, const size_t rank,
+    const int* dims, TfLiteQuantizationParams quantization, const char* buffer,
+    size_t bytes, const Allocation* allocation) {
+  if (state_ == kStateInvokableAndImmutable) {
+    ReportError(
+        &context_,
+        "SetTensorParametersReadOnly is disallowed when graph is immutable.");
+    return kTfLiteError;
+  }
+
   TF_LITE_ENSURE(&context_,
                  tensor_index < context_.tensors_size && tensor_index >= 0);
   // For most tensors we know exactly how much memory is necessary so we can
@@ -506,14 +784,27 @@ TfLiteStatus Interpreter::SetTensorParametersReadOnly(
   // because their sizes change with the contents of the individual strings.
   if (type != kTfLiteString) {
     size_t required_bytes;
-    TF_LITE_ENSURE_OK(&context_, BytesRequired(type, dims.data(), dims.size(),
-                                               &required_bytes));
+    TF_LITE_ENSURE_OK(&context_,
+                      BytesRequired(type, dims, rank, &required_bytes));
     TF_LITE_ENSURE_EQ(&context_, required_bytes, bytes);
   }
-  invokable_ = false;
-  TfLiteTensorReset(type, name, convertVectorToTfLiteIntArray(dims),
-                    quantization, const_cast<char*>(buffer), bytes,
-                    kTfLiteMmapRo, allocation, &context_.tensors[tensor_index]);
+
+  TfLiteTensor& tensor = context_.tensors[tensor_index];
+  if (type == tensor.type &&
+      EqualArrayAndTfLiteIntArray(tensor.dims, rank, dims)) {
+    // Fast path which does not invalidate the invokable property.
+    TfLiteTensorDataFree(&tensor);
+    tensor.data.raw = const_cast<char*>(buffer);
+    if (!tensor.dims) tensor.dims = ConvertArrayToTfLiteIntArray(rank, dims);
+    tensor.params = quantization;
+    tensor.allocation_type = kTfLiteMmapRo;
+    tensor.allocation = allocation;
+  } else {
+    state_ = kStateUninvokable;
+    TfLiteTensorReset(type, name, ConvertArrayToTfLiteIntArray(rank, dims),
+                      quantization, const_cast<char*>(buffer), bytes,
+                      kTfLiteMmapRo, allocation, false, &tensor);
+  }
   return kTfLiteOk;
 }
 
@@ -522,9 +813,14 @@ TfLiteStatus Interpreter::SetTensorParametersReadOnly(
 // bytes. The lifetime of buffer must be ensured to be greater or equal
 // to Interpreter.
 TfLiteStatus Interpreter::SetTensorParametersReadWrite(
-    int tensor_index, TfLiteType type, const char* name,
-    const std::vector<int>& dims, TfLiteQuantizationParams quantization) {
-  invokable_ = false;
+    int tensor_index, TfLiteType type, const char* name, const size_t rank,
+    const int* dims, TfLiteQuantizationParams quantization, bool is_variable) {
+  if (state_ == kStateInvokableAndImmutable) {
+    ReportError(
+        &context_,
+        "SetTensorParametersReadWrite is disallowed when graph is immutable.");
+    return kTfLiteError;
+  }
   TF_LITE_ENSURE(&context_,
                  tensor_index < context_.tensors_size && tensor_index >= 0);
   size_t required_bytes = 0;
@@ -533,14 +829,26 @@ TfLiteStatus Interpreter::SetTensorParametersReadWrite(
     // many bytes we will need based on the dimensions. String tensors are
     // allocated dynamically and we can't know ahead of time how much space
     // they will require.
-    TF_LITE_ENSURE_OK(&context_, BytesRequired(type, dims.data(), dims.size(),
-                                               &required_bytes));
+    TF_LITE_ENSURE_OK(&context_,
+                      BytesRequired(type, dims, rank, &required_bytes));
   }
-  TfLiteTensorReset(type, name, convertVectorToTfLiteIntArray(dims),
+
+  TfLiteAllocationType allocation_type = kTfLiteArenaRw;
+  if (type == kTfLiteString) {
+    if (is_variable) {
+      // We don't have a real use case for string variable tensor.
+      ReportError(&context_, "String variable tensor isn't supported.");
+      return kTfLiteError;
+    }
+    allocation_type = kTfLiteDynamic;
+  } else if (is_variable) {
+    allocation_type = kTfLiteArenaRwPersistent;
+  }
+
+  TfLiteTensorReset(type, name, ConvertArrayToTfLiteIntArray(rank, dims),
                     quantization,
-                    /*buffer=*/nullptr, required_bytes,
-                    type == kTfLiteString ? kTfLiteDynamic : kTfLiteArenaRw,
-                    nullptr, &context_.tensors[tensor_index]);
+                    /*buffer=*/nullptr, required_bytes, allocation_type,
+                    nullptr, is_variable, &context_.tensors[tensor_index]);
   return kTfLiteOk;
 }
 
@@ -556,7 +864,10 @@ TfLiteStatus Interpreter::ResizeTensorImpl(TfLiteTensor* tensor,
                                            TfLiteIntArray* new_size) {
   // Note that in theory we could resize kTfLiteArenaRwPersistent tensors too.
   if (tensor->allocation_type == kTfLiteArenaRw ||
-      tensor->allocation_type == kTfLiteDynamic) {
+      tensor->allocation_type == kTfLiteDynamic ||
+      tensor->allocation_type == kTfLiteArenaRwPersistent) {
+    tensor_resized_since_op_invoke_ |=
+        TfLiteIntArrayEqual(tensor->dims, new_size) == 0;
     if (tensor->type != kTfLiteString) {
       size_t bytesRequired;
       TfLiteStatus status = BytesRequired(tensor->type, new_size->data,
@@ -590,7 +901,7 @@ void Interpreter::UseNNAPI(bool enable) {
   // TODO(aselle): This is a workaround for finding if NNAPI exists.
   // We also need to make sure getLibraryHandle() is renamed to be NNAPI
   // prefixed.
-  if (!NNAPIExists()) enable = false;
+  if (!NNAPIDelegate::IsSupported()) enable = false;
   if (!enable) {
     nnapi_delegate_.reset();
   } else if (!nnapi_delegate_) {
@@ -599,26 +910,106 @@ void Interpreter::UseNNAPI(bool enable) {
 }
 
 void Interpreter::SetNumThreads(int num_threads) {
-  // TODO(ahentz): this forces us to link against gemmlowp even when the ops
-  // don't use it. We should implement some dynamic mechanism for this sort of
-  // library-specific initialization.
-  tflite::gemm_support::SetMaxNumThreads(&context_, num_threads);
+  context_.recommended_num_threads = num_threads;
+
+  for (int i = 0; i < kTfLiteMaxExternalContexts; ++i) {
+    auto* c = external_contexts_[i];
+    if (c && c->Refresh) {
+      c->Refresh(&context_);
+    }
+  }
 }
 
-TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
-  // TODO(aselle): Consider if it is worth storing pointers to delegates.
-  // Setup additional context interface
+void Interpreter::SwitchToDelegateContext() {
   context_.GetNodeAndRegistration = GetNodeAndRegistration;
   context_.ReplaceSubgraphsWithDelegateKernels =
       ReplaceSubgraphsWithDelegateKernels;
   context_.GetExecutionPlan = GetExecutionPlan;
+}
 
-  TfLiteStatus status = delegate->Prepare(&context_, delegate->data_);
+void Interpreter::SwitchToKernelContext() {
+  SetForbiddenContextFunction(&context_.GetNodeAndRegistration);
+  SetForbiddenContextFunction(&context_.ReplaceSubgraphsWithDelegateKernels);
+  SetForbiddenContextFunction(&context_.GetExecutionPlan);
+}
+
+TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate,
+                                                  bool allow_dynamic_tensors) {
+  if (!allow_dynamic_tensors) {
+    int last_execution_plan_index_prepared;
+    TF_LITE_ENSURE_OK(&context_, PrepareOpsStartingAt(
+                                     0, &last_execution_plan_index_prepared));
+
+    bool has_dynamic_tensors = true;
+    // Dynamic tensors exist if not all nodes can be prepared.
+    if (last_execution_plan_index_prepared + 1 == execution_plan_.size()) {
+      // If all the nodes can be prepared, check if the last node has dynamic
+      // tensors.
+      int node_index = execution_plan_[last_execution_plan_index_prepared];
+      TfLiteNode& node = nodes_and_registration_[node_index].first;
+      if (!HasDynamicTensor(context_, node.outputs)) {
+        has_dynamic_tensors = false;
+      }
+    }
+    if (has_dynamic_tensors) {
+      ReportError(&context_, "Attempting to resize a fixed-size tensor.");
+      return kTfLiteError;
+    }
+  }
+
+  // TODO(aselle): Consider if it is worth storing pointers to delegates.
+  // Setup additional context interface.
+  SwitchToDelegateContext();
+
+  TfLiteStatus status = delegate->Prepare(&context_, delegate);
+
   // Remove additional context info.
-  context_.GetNodeAndRegistration = nullptr;
-  context_.ReplaceSubgraphsWithDelegateKernels = nullptr;
-  context_.GetExecutionPlan = nullptr;
+  SwitchToKernelContext();
+
+  TF_LITE_ENSURE_OK(&context_, status);
+
+  if (!allow_dynamic_tensors) {
+    // Reset the state to force tensor/op reallocation.
+    state_ = kStateUninvokable;
+    TF_LITE_ENSURE_OK(&context_, AllocateTensors());
+    TF_LITE_ENSURE_EQ(&context_, state_, kStateInvokable);
+    // After using a delegate which doesn't support dynamic tensors, make the
+    // entire graph immutable.
+    state_ = kStateInvokableAndImmutable;
+  }
+
   return status;
+}
+
+TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
+                                          TfLiteBufferHandle buffer_handle,
+                                          TfLiteDelegate* delegate) {
+  TF_LITE_ENSURE(&context_, tensor_index < tensors_size());
+  TfLiteTensor* tensor = &tensors_[tensor_index];
+
+  TF_LITE_ENSURE(&context_,
+                 tensor->delegate == nullptr || tensor->delegate == delegate);
+  tensor->delegate = delegate;
+  if (tensor->buffer_handle != kTfLiteNullBufferHandle) {
+    TF_LITE_ENSURE(&context_, tensor->delegate->FreeBufferHandle != nullptr);
+    tensor->delegate->FreeBufferHandle(&context_, tensor->delegate,
+                                       &tensor->buffer_handle);
+  }
+  tensor->buffer_handle = buffer_handle;
+
+  return kTfLiteOk;
+}
+
+TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
+                                          TfLiteBufferHandle* buffer_handle,
+                                          TfLiteDelegate** delegate) {
+  TF_LITE_ENSURE(&context_, tensor_index < tensors_size());
+  TfLiteTensor* tensor = &tensors_[tensor_index];
+
+  *delegate = tensor->delegate;
+  *buffer_handle = tensor->buffer_handle;
+
+  return kTfLiteOk;
 }
 
 }  // namespace tflite

@@ -24,8 +24,10 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.estimator.export import export_output as export_output_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
 
@@ -224,6 +226,129 @@ class ExportOutputTest(test.TestCase):
               indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
       })
 
+
+class MockSupervisedOutput(export_output_lib._SupervisedOutput):
+  """So that we can test the abstract class methods directly."""
+
+  def _get_signature_def_fn(self):
+    pass
+
+
+class SupervisedOutputTest(test.TestCase):
+
+  def test_supervised_outputs_valid(self):
+    """Tests that no errors are raised when provided outputs are valid."""
+    loss = {"my_loss": constant_op.constant([0])}
+    predictions = {u"output1": constant_op.constant(["foo"])}
+    metrics = {"metrics": (constant_op.constant([0]),
+                           constant_op.constant([10])),
+               "metrics2": (constant_op.constant([0]),
+                            constant_op.constant([10]))}
+
+    outputter = MockSupervisedOutput(loss, predictions, metrics)
+    self.assertEqual(outputter.loss["loss/my_loss"], loss["my_loss"])
+    self.assertEqual(
+        outputter.predictions["predictions/output1"], predictions["output1"])
+    self.assertEqual(outputter.metrics["metrics/value"], metrics["metrics"][0])
+    self.assertEqual(
+        outputter.metrics["metrics2/update_op"], metrics["metrics2"][1])
+
+    # Single Tensor is OK too
+    outputter = MockSupervisedOutput(
+        loss["my_loss"], predictions["output1"], metrics["metrics"])
+    self.assertEqual(outputter.loss, {"loss": loss["my_loss"]})
+    self.assertEqual(
+        outputter.predictions, {"predictions": predictions["output1"]})
+    self.assertEqual(outputter.metrics["metrics/value"], metrics["metrics"][0])
+
+  def test_supervised_outputs_none(self):
+    outputter = MockSupervisedOutput(
+        constant_op.constant([0]), None, None)
+    self.assertEqual(len(outputter.loss), 1)
+    self.assertEqual(outputter.predictions, None)
+    self.assertEqual(outputter.metrics, None)
+
+  def test_supervised_outputs_invalid(self):
+    with self.assertRaisesRegexp(ValueError, "predictions output value must"):
+      MockSupervisedOutput(constant_op.constant([0]), [3], None)
+    with self.assertRaisesRegexp(ValueError, "loss output value must"):
+      MockSupervisedOutput("str", None, None)
+    with self.assertRaisesRegexp(ValueError, "metrics output value must"):
+      MockSupervisedOutput(None, None, (15.3, 4))
+    with self.assertRaisesRegexp(ValueError, "loss output key must"):
+      MockSupervisedOutput({25: "Tensor"}, None, None)
+
+  def test_supervised_outputs_tuples(self):
+    """Tests that no errors are raised when provided outputs are valid."""
+    loss = {("my", "loss"): constant_op.constant([0])}
+    predictions = {(u"output1", "2"): constant_op.constant(["foo"])}
+    metrics = {("metrics", "twice"): (constant_op.constant([0]),
+                                      constant_op.constant([10]))}
+
+    outputter = MockSupervisedOutput(loss, predictions, metrics)
+    self.assertEqual(set(outputter.loss.keys()), set(["loss/my/loss"]))
+    self.assertEqual(set(outputter.predictions.keys()),
+                     set(["predictions/output1/2"]))
+    self.assertEqual(set(outputter.metrics.keys()),
+                     set(["metrics/twice/value", "metrics/twice/update_op"]))
+
+  def test_supervised_outputs_no_prepend(self):
+    """Tests that no errors are raised when provided outputs are valid."""
+    loss = {"loss": constant_op.constant([0])}
+    predictions = {u"predictions": constant_op.constant(["foo"])}
+    metrics = {u"metrics": (constant_op.constant([0]),
+                            constant_op.constant([10]))}
+
+    outputter = MockSupervisedOutput(loss, predictions, metrics)
+    self.assertEqual(set(outputter.loss.keys()), set(["loss"]))
+    self.assertEqual(set(outputter.predictions.keys()), set(["predictions"]))
+    self.assertEqual(set(outputter.metrics.keys()),
+                     set(["metrics/value", "metrics/update_op"]))
+
+  def test_train_signature_def(self):
+    loss = {"my_loss": constant_op.constant([0])}
+    predictions = {u"output1": constant_op.constant(["foo"])}
+    metrics = {"metrics": (constant_op.constant([0]),
+                           constant_op.constant([10]))}
+
+    outputter = export_output_lib.TrainOutput(loss, predictions, metrics)
+
+    receiver = {u"features": constant_op.constant(100, shape=(100, 2)),
+                "labels": constant_op.constant(100, shape=(100, 1))}
+    sig_def = outputter.as_signature_def(receiver)
+
+    self.assertTrue("loss/my_loss" in sig_def.outputs)
+    self.assertTrue("metrics/value" in sig_def.outputs)
+    self.assertTrue("predictions/output1" in sig_def.outputs)
+    self.assertTrue("features" in sig_def.inputs)
+
+  def test_eval_signature_def(self):
+    loss = {"my_loss": constant_op.constant([0])}
+    predictions = {u"output1": constant_op.constant(["foo"])}
+
+    outputter = export_output_lib.EvalOutput(loss, predictions, None)
+
+    receiver = {u"features": constant_op.constant(100, shape=(100, 2)),
+                "labels": constant_op.constant(100, shape=(100, 1))}
+    sig_def = outputter.as_signature_def(receiver)
+
+    self.assertTrue("loss/my_loss" in sig_def.outputs)
+    self.assertFalse("metrics/value" in sig_def.outputs)
+    self.assertTrue("predictions/output1" in sig_def.outputs)
+    self.assertTrue("features" in sig_def.inputs)
+
+  def test_metric_op_is_operation(self):
+    """Tests that ops.Operation is wrapped by a tensor for metric_ops."""
+    loss = {"my_loss": constant_op.constant([0])}
+    predictions = {u"output1": constant_op.constant(["foo"])}
+    metrics = {"metrics": (constant_op.constant([0]), control_flow_ops.no_op())}
+
+    outputter = MockSupervisedOutput(loss, predictions, metrics)
+    self.assertEqual(outputter.metrics["metrics/value"], metrics["metrics"][0])
+    self.assertEqual(
+        outputter.metrics["metrics/update_op"].name, "metric_op_wrapper:0")
+    self.assertTrue(
+        isinstance(outputter.metrics["metrics/update_op"], ops.Tensor))
 
 if __name__ == "__main__":
   test.main()

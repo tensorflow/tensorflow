@@ -29,9 +29,9 @@ import time
 
 import tensorflow as tf
 
-import tensorflow.contrib.eager as tfe
 from tensorflow.examples.tutorials.mnist import input_data
 
+layers = tf.keras.layers
 FLAGS = None
 
 
@@ -56,15 +56,15 @@ class Discriminator(tf.keras.Model):
     else:
       assert data_format == 'channels_last'
       self._input_shape = [-1, 28, 28, 1]
-    self.conv1 = tf.layers.Conv2D(
+    self.conv1 = layers.Conv2D(
         64, 5, padding='SAME', data_format=data_format, activation=tf.tanh)
-    self.pool1 = tf.layers.AveragePooling2D(2, 2, data_format=data_format)
-    self.conv2 = tf.layers.Conv2D(
+    self.pool1 = layers.AveragePooling2D(2, 2, data_format=data_format)
+    self.conv2 = layers.Conv2D(
         128, 5, data_format=data_format, activation=tf.tanh)
-    self.pool2 = tf.layers.AveragePooling2D(2, 2, data_format=data_format)
-    self.flatten = tf.layers.Flatten()
-    self.fc1 = tf.layers.Dense(1024, activation=tf.tanh)
-    self.fc2 = tf.layers.Dense(1, activation=None)
+    self.pool2 = layers.AveragePooling2D(2, 2, data_format=data_format)
+    self.flatten = layers.Flatten()
+    self.fc1 = layers.Dense(1024, activation=tf.tanh)
+    self.fc2 = layers.Dense(1, activation=None)
 
   def call(self, inputs):
     """Return two logits per image estimating input authenticity.
@@ -112,16 +112,16 @@ class Generator(tf.keras.Model):
     else:
       assert data_format == 'channels_last'
       self._pre_conv_shape = [-1, 6, 6, 128]
-    self.fc1 = tf.layers.Dense(6 * 6 * 128, activation=tf.tanh)
+    self.fc1 = layers.Dense(6 * 6 * 128, activation=tf.tanh)
 
     # In call(), we reshape the output of fc1 to _pre_conv_shape
 
     # Deconvolution layer. Resulting image shape: (batch, 14, 14, 64)
-    self.conv1 = tf.layers.Conv2DTranspose(
+    self.conv1 = layers.Conv2DTranspose(
         64, 4, strides=2, activation=None, data_format=data_format)
 
     # Deconvolution layer. Resulting image shape: (batch, 28, 28, 1)
-    self.conv2 = tf.layers.Conv2DTranspose(
+    self.conv2 = layers.Conv2DTranspose(
         1, 2, strides=2, activation=tf.nn.sigmoid, data_format=data_format)
 
   def call(self, inputs):
@@ -213,7 +213,7 @@ def train_one_epoch(generator, discriminator, generator_optimizer,
 
   total_generator_loss = 0.0
   total_discriminator_loss = 0.0
-  for (batch_index, images) in enumerate(tfe.Iterator(dataset)):
+  for (batch_index, images) in enumerate(dataset):
     with tf.device('/cpu:0'):
       tf.assign_add(step_counter, 1)
 
@@ -226,7 +226,10 @@ def train_one_epoch(generator, discriminator, generator_optimizer,
           maxval=1.,
           seed=batch_index)
 
-      with tfe.GradientTape(persistent=True) as g:
+      # we can use 2 tapes or a single persistent tape.
+      # Using two tapes is memory efficient since intermediate tensors can be
+      # released between the two .gradient() calls below
+      with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
         generated_images = generator(noise)
         tf.contrib.summary.image(
             'generated_images',
@@ -242,9 +245,10 @@ def train_one_epoch(generator, discriminator, generator_optimizer,
         generator_loss_val = generator_loss(discriminator_gen_outputs)
         total_generator_loss += generator_loss_val
 
-      generator_grad = g.gradient(generator_loss_val, generator.variables)
-      discriminator_grad = g.gradient(discriminator_loss_val,
-                                      discriminator.variables)
+      generator_grad = gen_tape.gradient(generator_loss_val,
+                                         generator.variables)
+      discriminator_grad = disc_tape.gradient(discriminator_loss_val,
+                                              discriminator.variables)
 
       generator_optimizer.apply_gradients(
           zip(generator_grad, generator.variables))
@@ -260,7 +264,7 @@ def train_one_epoch(generator, discriminator, generator_optimizer,
 
 def main(_):
   (device, data_format) = ('/gpu:0', 'channels_first')
-  if FLAGS.no_gpu or tfe.num_gpus() <= 0:
+  if FLAGS.no_gpu or tf.contrib.eager.num_gpus() <= 0:
     (device, data_format) = ('/cpu:0', 'channels_last')
   print('Using device %s, and data format %s.' % (device, data_format))
 
@@ -286,7 +290,7 @@ def main(_):
   latest_cpkt = tf.train.latest_checkpoint(FLAGS.checkpoint_dir)
   if latest_cpkt:
     print('Using latest checkpoint at ' + latest_cpkt)
-  checkpoint = tfe.Checkpoint(**model_objects)
+  checkpoint = tf.train.Checkpoint(**model_objects)
   # Restore variables on creation if a checkpoint exists.
   checkpoint.restore(latest_cpkt)
 
@@ -305,7 +309,7 @@ def main(_):
 
 
 if __name__ == '__main__':
-  tfe.enable_eager_execution()
+  tf.enable_eager_execution()
 
   parser = argparse.ArgumentParser()
   parser.add_argument(

@@ -19,10 +19,11 @@ on the `XLA_CPU` or `XLA_GPU` TensorFlow devices. Placing operators directly on
 a TensorFlow XLA device forces the operator to run on that device and is mainly
 used for testing.
 
-> Note: The XLA CPU backend produces fast single-threaded code (in most cases),
-> but does not yet parallelize as well as the TensorFlow CPU backend. The XLA
-> GPU backend is competitive with the standard TensorFlow implementation,
-> sometimes faster, sometimes slower.
+> Note: The XLA CPU backend supports intra-op parallelism (i.e. it can shard a
+> single operation across multiple cores) but it does not support inter-op
+> parallelism (i.e. it cannot execute independent operations concurrently across
+> multiple cores).  The XLA GPU backend is competitive with the standard
+> TensorFlow implementation, sometimes faster, sometimes slower.
 
 ### Turning on JIT compilation
 
@@ -55,8 +56,7 @@ sess = tf.Session(config=config)
 
 > Note: Turning on JIT at the session level will not result in operations being
 > compiled for the CPU. JIT compilation for CPU operations must be done via
-> the manual method documented below. This decision was made due to the CPU
-> backend being single-threaded.
+> the manual method documented below.
 
 #### Manual
 
@@ -133,16 +133,16 @@ Execute the python script to train the model with XLA and turn on a debugging
 feature of XLA via an environmental variable that outputs the XLA graph.
 
 ```shell
-TF_XLA_FLAGS=--xla_generate_hlo_graph=.* python mnist_softmax_xla.py
+TF_XLA_FLAGS="--xla_hlo_graph_path=/tmp --xla_generate_hlo_graph=.*" python mnist_softmax_xla.py
 ```
 
 Open the timeline file created (`timeline.ctf.json`).  The rendered timeline
-should look similar to the picture below with one long bar labeled `_XlaLaunch`.
+should look similar to the picture below with one long bar labeled `XlaLaunch`.
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
   <img style="width:100%" src="https://www.tensorflow.org/images/jit_timeline_gpu_xla.png">
 </div>
 
-To understand what is happening in `_XlaLaunch`, look at the console output for
+To understand what is happening in `XlaLaunch`, look at the console output for
 statements similar to the following:
 
 ```shell
@@ -157,7 +157,7 @@ to fuse Ops is visible by starting at `hlo_graph_0.dot` and viewing each diagram
 in succession.
 
 To Render the .dot file into a png, install
-[GraphViz](http://www.graphviz.org/Download..php) and run:
+[GraphViz](https://www.graphviz.org/download/) and run:
 
 ```shell
 dot -Tpng hlo_graph_80.dot -o hlo_graph_80.png

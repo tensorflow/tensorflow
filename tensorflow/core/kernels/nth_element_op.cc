@@ -114,7 +114,7 @@ struct NthElementFunctor<CPUDevice, T> {
 
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
     // The average time complexity of partition-based nth_element (BFPRT) is
-    // O(n), althought the worst time complexity could be O(n^2). Here, 20 is a
+    // O(n), although the worst time complexity could be O(n^2). Here, 20 is a
     // empirical factor of cost_per_unit.
     Shard(worker_threads.num_threads, worker_threads.workers, num_rows,
           20 * last_dim, SubNthElement);

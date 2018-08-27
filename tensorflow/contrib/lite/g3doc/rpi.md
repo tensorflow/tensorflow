@@ -1,3 +1,4 @@
+
 # TensorFlow Lite for Raspberry Pi
 
 ## Cross compiling
@@ -17,7 +18,7 @@ Clone this Tensorflow repository, Run this script at the root of the repository 
 ```bash
 ./tensorflow/contrib/lite/download_dependencies.sh
 ```
-Note than you only need to to this once.
+Note that you only need to do this once.
 
 You should then be able to compile:
 ```bash
@@ -32,14 +33,14 @@ This has been tested on Raspberry Pi 3b, Raspbian GNU/Linux 9.1 (stretch), gcc v
 
 Log in to you RPI, install the toolchain.
 ```bash
-sudo apt-get instal build-essential
+sudo apt-get install build-essential
 ```
 
 First, clone this TensorFlow repository. Run this at the root of the repository:
 ```bash
 ./tensorflow/contrib/lite/download_dependencies.sh
 ```
-Note than you only need to to this once.
+Note that you only need to do this once.
 
 You should then be able to compile:
 ```bash

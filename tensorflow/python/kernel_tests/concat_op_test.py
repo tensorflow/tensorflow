@@ -606,6 +606,17 @@ class ConcatOpTest(test.TestCase):
           inp_tensors_placeholders, -2, output_shape=[2, 3],
           gather_indexes=[2, 0], feed_dict=feed_dict)
 
+  def testConcatAxisType(self):
+    for dtype in [dtypes.int32, dtypes.int64]:
+      with self.test_session(use_gpu=True):
+        t1 = [[1, 2, 3], [4, 5, 6]]
+        t2 = [[7, 8, 9], [10, 11, 12]]
+
+        c = gen_array_ops.concat_v2([t1, t2],
+                                    constant_op.constant(1, dtype=dtype))
+        self.assertEqual([2, 6], c.get_shape().as_list())
+        output = c.eval()
+        self.assertAllEqual([[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]], output)
 
 class ConcatOffsetTest(test.TestCase):
 

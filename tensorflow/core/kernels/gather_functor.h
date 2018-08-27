@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_GATHER_FUNCTOR_H_
-#define TENSORFLOW_KERNELS_GATHER_FUNCTOR_H_
+#ifndef TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_H_
+#define TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
@@ -28,6 +28,7 @@ limitations under the License.
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
+typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
 
@@ -50,7 +51,7 @@ SliceIndex HandleCopies(OpKernelContext* ctx,
   }
   // Compute slice_bytes here so that static knowledge is available
   const size_t slice_bytes = slice_elems * sizeof(T);
-  auto worker_threads = ctx->device()->tensorflow_cpu_worker_threads();
+  auto* worker_threads = ctx->device()->tensorflow_cpu_worker_threads();
   mutex mu;
   // Store the value of invalidate index for printing error information, it's a
   // shared variable.
@@ -162,7 +163,17 @@ struct GatherFunctor<CPUDevice, T, Index> {
   }
 };
 
+template <typename Index>
+struct GatherFunctor<GPUDevice, Variant, Index> {
+  int64 operator()(OpKernelContext* ctx,
+                   typename TTypes<Variant, 3>::ConstTensor params,
+                   typename TTypes<Index>::ConstFlat indices,
+                   typename TTypes<Variant, 3>::Tensor out) {
+    return GatherFunctorCPU<Variant, Index>()(ctx, params, indices, out);
+  }
+};
+
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_GATHER_FUNCTOR_H_
+#endif  // TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_H_

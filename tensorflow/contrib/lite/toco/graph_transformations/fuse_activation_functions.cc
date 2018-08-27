@@ -42,9 +42,9 @@ bool FuseActivationFunctions::Run(Model* model, std::size_t op_index) {
 
   if (CountTrueOutputs(*model, *op) > 1) {
     AddMessageF(
-        "Not fusing activation function into %s because it has more than one "
-        " consumed output",
-        LogName(*op));
+        "Not fusing activation function %s into %s because it has more than "
+        "one  consumed output",
+        LogName(*ac_op), LogName(*op));
     return false;
   }
 
@@ -56,22 +56,31 @@ bool FuseActivationFunctions::Run(Model* model, std::size_t op_index) {
     AddMessageF(
         "Not fusing activation function into %s because it is consumed by more "
         "than 1 other operator",
-        LogName(*op));
+        LogName(*ac_op), LogName(*op));
+    return false;
+  }
+
+  if (!IsDiscardableArray(*model, op->outputs[0])) {
+    AddMessageF(
+        "Not fusing activation function %s into %s because output %s it is not "
+        "discardable",
+        LogName(*ac_op), LogName(*op), op->outputs[0]);
     return false;
   }
 
   if (op->fused_activation_function != FusedActivationFunctionType::kNone) {
     AddMessageF(
-        "Not fusing activation function into %s because it already has a fused "
-        "activation function",
-        LogName(*op));
+        "Not fusing activation function %s into %s because it already has a "
+        "fused activation function",
+        LogName(*ac_op), LogName(*op));
     return false;
   }
 
   if (!OperatorSupportsFusedActivation(op->type)) {
     AddMessageF(
-        "Not fusing activation function because the %s op doesn't support it",
-        LogName(*op));
+        "Not fusing activation function %s because the %s op doesn't support "
+        "it",
+        LogName(*ac_op), LogName(*op));
     return false;
   }
 

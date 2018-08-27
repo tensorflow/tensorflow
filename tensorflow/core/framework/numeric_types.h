@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_NUMERIC_TYPES_H_
-#define TENSORFLOW_FRAMEWORK_NUMERIC_TYPES_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_NUMERIC_TYPES_H_
+#define TENSORFLOW_CORE_FRAMEWORK_NUMERIC_TYPES_H_
 
 #include <complex>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -24,6 +24,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
 // clang-format on
 
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -110,7 +111,7 @@ EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE tensorflow::bfloat16 abs(
 }  // namespace numext
 }  // namespace Eigen
 
-#if defined(COMPILER_MSVC) && !defined(__clang__)
+#if defined(_MSC_VER) && !defined(__clang__)
 namespace std {
 template <>
 struct hash<Eigen::half> {
@@ -119,6 +120,6 @@ struct hash<Eigen::half> {
   }
 };
 }  // namespace std
-#endif  // COMPILER_MSVC
+#endif  // _MSC_VER
 
-#endif  // TENSORFLOW_FRAMEWORK_NUMERIC_TYPES_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_NUMERIC_TYPES_H_

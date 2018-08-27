@@ -55,6 +55,17 @@ def _MatrixDeterminantGrad(op, grad):
   return multipliers * a_adj_inv
 
 
+@ops.RegisterGradient("LogMatrixDeterminant")
+def _LogMatrixDeterminantGrad(op, _, grad_b):
+  """Gradient for LogMatrixDeterminant."""
+  a = op.inputs[0]
+  c = op.outputs[1]
+  a_adj_inv = linalg_ops.matrix_inverse(a, adjoint=True)
+  multipliers = array_ops.reshape(
+      grad_b, array_ops.concat([array_ops.shape(c), [1, 1]], 0))
+  return multipliers * a_adj_inv
+
+
 @ops.RegisterGradient("Cholesky")
 def _CholeskyGrad(op, grad):
   """Gradient for Cholesky."""

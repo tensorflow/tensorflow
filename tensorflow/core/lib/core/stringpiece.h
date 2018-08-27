@@ -23,19 +23,18 @@ limitations under the License.
 // non-const method, all threads accessing the same StringPiece must use
 // external synchronization.
 
-#ifndef TENSORFLOW_LIB_CORE_STRINGPIECE_H_
-#define TENSORFLOW_LIB_CORE_STRINGPIECE_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_
+#define TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_
 
 #include <assert.h>
 #include <stddef.h>
 #include <string.h>
 #include <iosfwd>
 #include <string>
+#include <type_traits>
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-
-struct StringPieceHasher;
 
 class StringPiece {
  public:
@@ -90,22 +89,11 @@ class StringPiece {
 
   size_t find(char c, size_t pos = 0) const;
   size_t rfind(char c, size_t pos = npos) const;
-  bool contains(StringPiece s) const;
-
-  // Checks whether StringPiece starts with x and if so advances the beginning
-  // of it to past the match.  It's basically a shortcut for starts_with
-  // followed by remove_prefix.
-  bool Consume(StringPiece x) {
-    if (starts_with(x)) {
-      remove_prefix(x.size_);
-      return true;
-    }
-    return false;
-  }
 
   StringPiece substr(size_t pos, size_t n = npos) const;
 
   // Return a string that contains the copy of the referenced data.
+  // DEPRECATED: use std::string(sv) instead.
   std::string ToString() const { return std::string(data_, size_); }
 
   // Three-way comparison.  Returns value:
@@ -114,14 +102,18 @@ class StringPiece {
   //   >  0 iff "*this" >  "b"
   int compare(StringPiece b) const;
 
-  // Return true iff "x" is a prefix of "*this"
-  bool starts_with(StringPiece x) const {
-    return ((size_ >= x.size_) && (memcmp(data_, x.data_, x.size_) == 0));
-  }
-  // Return true iff "x" is a suffix of "*this"
-  bool ends_with(StringPiece x) const {
-    return ((size_ >= x.size_) &&
-            (memcmp(data_ + (size_ - x.size_), x.data_, x.size_) == 0));
+  // Converts to various kinds of strings, including `std::basic_string`.
+  template <typename S>
+  explicit operator S() const {
+    static_assert(
+        std::is_same<char, typename S::value_type>::value,
+        "Type mismatch: S must be a string with character type char.");
+    static_assert(
+        std::is_same<std::char_traits<char>, typename S::traits_type>::value,
+        "Type mismatch: S must be a string with traits type "
+        "std::char_traits<char>.");
+    if (!data()) return {};
+    return S(data(), size());
   }
 
  private:
@@ -129,10 +121,6 @@ class StringPiece {
   size_t size_;
 
   // Intentionally copyable
-};
-
-struct StringPieceHasher {
-  size_t operator()(StringPiece s) const;
 };
 
 inline bool operator==(StringPiece x, StringPiece y) {
@@ -168,4 +156,4 @@ extern std::ostream& operator<<(std::ostream& o, tensorflow::StringPiece piece);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_CORE_STRINGPIECE_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_

@@ -17,18 +17,21 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 
-ComputationLayout::ComputationLayout(const ProgramShape& program_shape)
+ComputationLayout::ComputationLayout(const ProgramShape& program_shape,
+                                     bool ignore_layouts)
     : result_layout_(program_shape.result()) {
   for (auto& shape : program_shape.parameters()) {
     parameter_layouts_.emplace_back(shape);
   }
-  SetToDefaultLayout();
+  if (ignore_layouts) {
+    SetToDefaultLayout();
+  }
 }
 
 void ComputationLayout::SetToDefaultLayout() {
@@ -49,9 +52,8 @@ string ComputationLayout::ToString() const {
   for (auto& param_layout : parameter_layouts_) {
     params.push_back(param_layout.ToString());
   }
-  return tensorflow::strings::StrCat("(",
-                                     tensorflow::str_util::Join(params, ", "),
-                                     ") => ", result_layout_.ToString());
+  return absl::StrCat("(", absl::StrJoin(params, ", "), ") => ",
+                      result_layout_.ToString());
 }
 
 }  // namespace xla

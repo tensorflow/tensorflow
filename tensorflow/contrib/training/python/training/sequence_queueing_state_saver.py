@@ -876,7 +876,7 @@ class SequenceQueueingStateSaver(object):
         ]):
           self._length = array_ops.identity(self._length)
 
-        # Only create barrier; enqueu and dequeue operations happen when you
+        # Only create barrier; enqueue and dequeue operations happen when you
         # access prefetch_op and next_batch.
         self._create_barrier()
         self._scope = scope
@@ -988,14 +988,14 @@ class SequenceQueueingStateSaver(object):
     assert isinstance(sequences, dict)
     assert isinstance(context, dict)
     assert isinstance(states, dict)
-    self._name_to_index = dict(
-        (name, ix)
+    self._name_to_index = {
+        name: ix
         for (ix, name) in enumerate([
             "__length", "__total_length", "__next_key", "__sequence",
             "__sequence_count"
         ] + ["__sequence__%s" % k for k in sequences.keys()] + [
             "__context__%s" % k for k in context.keys()
-        ] + ["__state__%s" % k for k in states.keys()]))
+        ] + ["__state__%s" % k for k in states.keys()])}
     self._index_to_name = [
         name
         for (name, _) in sorted(
@@ -1574,8 +1574,9 @@ def _padding(sequences, num_unroll):
   if not sequences:
     return 0, {}
 
-  sequences_dict = {}
-  for key, value in sequences.items():
+  # Sort 'sequences_dict' so 'length' will have a predictable value below.
+  sequences_dict = collections.OrderedDict()
+  for key, value in sorted(sequences.items()):
     if not (isinstance(value, sparse_tensor.SparseTensor) or
             isinstance(value, sparse_tensor.SparseTensorValue)):
       sequences_dict[key] = ops.convert_to_tensor(value)
@@ -1636,7 +1637,7 @@ def _move_sparse_tensor_out_context(input_context, input_sequences, num_unroll):
 
   For `key, value` pairs in `input_context` with `SparseTensor` `value` removes
   them from `input_context` and transforms the `value` into a sequence and
-  then adding `key`, transformed `value` into `input_seuqences`.
+  then adding `key`, transformed `value` into `input_sequences`.
   The transformation is done by adding a new first dimension of `value_length`
   equal to that of the other values in input_sequences` and tiling the `value`
   every `num_unroll` steps.

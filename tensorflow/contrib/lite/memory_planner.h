@@ -34,8 +34,8 @@ class MemoryPlanner {
   // [first_node, last_node].
   virtual TfLiteStatus ExecuteAllocations(int first_node, int last_node) = 0;
 
-  // Invalidates allocations made earliers. This is called when tensors sizes
-  // have change. All planned allocations remain, but can't be used until
+  // Invalidates allocations made earlier. This is called when tensors sizes
+  // have changed. All planned allocations remain, but can't be used until
   // ExecuteAllocations() is called.
   virtual TfLiteStatus ResetAllocations() = 0;
 };

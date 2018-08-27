@@ -65,7 +65,7 @@ class IdentityOpTest(test.TestCase):
           constant_op.constant(
               [[1, 2, 3], [6, 5, 4]], dtype=dtypes.int32))
       self.assertEquals(shape, tensor.get_shape())
-      self.assertEquals(shape, gen_array_ops._ref_identity(tensor).get_shape())
+      self.assertEquals(shape, gen_array_ops.ref_identity(tensor).get_shape())
 
 
 if __name__ == "__main__":

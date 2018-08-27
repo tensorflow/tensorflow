@@ -119,7 +119,7 @@ class CheckpointsTest(test.TestCase):
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         with variable_scope.variable_scope("some_scope"):
           my1 = variable_scope.get_variable("my1", [1, 10])
           with variable_scope.variable_scope("some_other_scope"):
@@ -153,28 +153,28 @@ class CheckpointsTest(test.TestCase):
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         with variable_scope.variable_scope(
             "some_scope", initializer=init_ops.zeros_initializer()):
           my1 = variable_scope.get_variable("my1", [1, 10])
 
-        # At this point, my1.initialized_value() will add ops that reference
-        # the zeros initializer of my1.
-        before = variables.Variable(my1.initialized_value(), name="before")
+        before = my1.initialized_value()
 
         checkpoint_utils.init_from_checkpoint(checkpoint_dir, {"var1": my1})
 
-        # At this point, my1.initialized_value() will add ops that reference
-        # the newly set initializer of my1.
-        after = variables.Variable(my1.initialized_value(), name="after")
+        after = my1.initialized_value()
+
+        self.assertAllEqual(session.run(before), [[0.0] * 10])
+        self.assertAllEqual(session.run(after), v1)
 
         session.run(variables.global_variables_initializer())
+
         self.assertAllEqual(session.run(my1), v1)
         self.assertAllEqual(session.run(my1.initialized_value()), v1)
-        self.assertAllClose(session.run(before), [[0.0] * 10])
+        self.assertAllClose(session.run(before), v1)
         self.assertAllClose(session.run(after), v1)
         with self.assertRaises(AssertionError):
-          self.assertAllClose(session.run(before), session.run(after))
+          self.assertAllClose(v1, [[0.0] * 10])
 
   def testInitWithScopeDoesNotCaptureSuffixes(self):
     checkpoint_dir = self.get_temp_dir()
@@ -190,7 +190,7 @@ class CheckpointsTest(test.TestCase):
 
       checkpoint_utils.init_from_checkpoint(checkpoint_dir,
                                             {"useful_scope/": "useful_scope/"})
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         session.run(variables.global_variables_initializer())
         self.assertAllEqual(my4.eval(session), v4)
         self.assertAllEqual(my5.eval(session), my5_init)
@@ -218,7 +218,7 @@ class CheckpointsTest(test.TestCase):
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         with variable_scope.variable_scope("some_scope"):
           my1 = variable_scope.get_variable("var1", [1, 10])
           my2 = variable_scope.get_variable("var2", [10, 10])
@@ -242,7 +242,7 @@ class CheckpointsTest(test.TestCase):
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         my1 = variable_scope.get_variable("var1", [1, 10])
         my2 = variable_scope.get_variable("var2", [10, 10])
         my3 = variable_scope.get_variable("var3", [100, 100])
@@ -265,7 +265,7 @@ class CheckpointsTest(test.TestCase):
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         with variable_scope.variable_scope("some_scope"):
           my1 = variable_scope.get_variable(
               name="my1",
@@ -303,7 +303,7 @@ class CheckpointsTest(test.TestCase):
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         with variable_scope.variable_scope("some_scope"):
           my1 = variable_scope.get_variable(
               name="my1",
@@ -327,7 +327,7 @@ class CheckpointsTest(test.TestCase):
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         with variable_scope.variable_scope("some_scope"):
           _ = variable_scope.get_variable("my1", [10, 10])
           _ = variable_scope.get_variable(
@@ -372,7 +372,7 @@ class CheckpointsTest(test.TestCase):
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         my1 = resource_variable_ops.ResourceVariable([[0.0] * 10], name="my1")
 
         with ops.name_scope("init_from_checkpoint"):
@@ -386,7 +386,9 @@ class CheckpointsTest(test.TestCase):
         op for op in g.get_operations()
         if (op.name.startswith("init_from_checkpoint/") and
             not op.name.startswith("init_from_checkpoint/checkpoint_initializer"
-                                  ) and op.type != "AssignVariableOp")
+                                  ) and
+            op.type != "AssignVariableOp" and
+            op.type != "Identity")
     ]
     self.assertEqual(ops_in_init_from_checkpoint_scope, [])
 

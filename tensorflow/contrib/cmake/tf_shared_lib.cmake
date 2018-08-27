@@ -52,12 +52,13 @@ if(WIN32)
     set(tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/tensorflow.def")
   endif()
   set_source_files_properties(${tensorflow_deffile} PROPERTIES GENERATED TRUE)
-
+  math(EXPR tensorflow_target_bitness "${CMAKE_SIZEOF_VOID_P}*8")
   add_custom_command(TARGET tensorflow_static POST_BUILD
       COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/create_def_file.py
           --input "${tensorflow_static_dependencies}"
           --output "${tensorflow_deffile}"
           --target tensorflow.dll
+          --bitness "${tensorflow_target_bitness}"
   )
 endif(WIN32)
 
@@ -100,8 +101,7 @@ if(WIN32)
 endif(WIN32)
 
 target_include_directories(tensorflow PUBLIC 
-    $<INSTALL_INTERFACE:include/>
-    $<INSTALL_INTERFACE:include/external/nsync/public>)
+    $<INSTALL_INTERFACE:include/>)
 
 install(TARGETS tensorflow EXPORT tensorflow_export
         RUNTIME DESTINATION bin
@@ -133,10 +133,6 @@ install(DIRECTORY ${tensorflow_source_dir}/tensorflow/stream_executor/
 install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/src/google/
         DESTINATION include/google
         FILES_MATCHING PATTERN "*.h")
-# nsync headers
-install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/external/nsync/
-        DESTINATION include/external/nsync
-        FILES_MATCHING PATTERN "*.h")
 # Eigen directory
 install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/eigen/src/eigen/Eigen/
         DESTINATION include/Eigen)
@@ -149,3 +145,8 @@ install(DIRECTORY ${tensorflow_source_dir}/third_party/eigen3/
 # unsupported Eigen directory
 install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/eigen/src/eigen/unsupported/Eigen/
         DESTINATION include/unsupported/Eigen)
+# mkl
+if (tensorflow_ENABLE_MKL_SUPPORT)
+    install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/mkl/src/mkl/include/
+            DESTINATION include/mkl)
+endif (tensorflow_ENABLE_MKL_SUPPORT)

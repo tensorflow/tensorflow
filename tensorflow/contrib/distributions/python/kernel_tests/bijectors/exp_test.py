@@ -30,31 +30,35 @@ class ExpBijectorTest(test.TestCase):
   """Tests correctness of the Y = g(X) = exp(X) transformation."""
 
   def testBijector(self):
-    with self.test_session():
-      bijector = Exp(event_ndims=1)
+    with self.cached_session():
+      bijector = Exp()
       self.assertEqual("exp", bijector.name)
       x = [[[1.], [2.]]]
       y = np.exp(x)
       self.assertAllClose(y, bijector.forward(x).eval())
       self.assertAllClose(x, bijector.inverse(y).eval())
       self.assertAllClose(
-          -np.sum(np.log(y), axis=-1),
-          bijector.inverse_log_det_jacobian(y).eval())
-      self.assertAllClose(-bijector.inverse_log_det_jacobian(np.exp(x)).eval(),
-                          bijector.forward_log_det_jacobian(x).eval())
+          -np.squeeze(np.log(y), axis=-1),
+          bijector.inverse_log_det_jacobian(
+              y, event_ndims=1).eval())
+      self.assertAllClose(
+          -bijector.inverse_log_det_jacobian(
+              np.exp(x), event_ndims=1).eval(),
+          bijector.forward_log_det_jacobian(
+              x, event_ndims=1).eval())
 
   def testScalarCongruency(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = Exp()
       assert_scalar_congruency(
           bijector, lower_x=-2., upper_x=1.5, rtol=0.05)
 
   def testBijectiveAndFinite(self):
-    with self.test_session():
-      bijector = Exp(event_ndims=0)
+    with self.cached_session():
+      bijector = Exp()
       x = np.linspace(-10, 10, num=10).astype(np.float32)
       y = np.logspace(-10, 10, num=10).astype(np.float32)
-      assert_bijective_and_finite(bijector, x, y)
+      assert_bijective_and_finite(bijector, x, y, event_ndims=0)
 
 
 if __name__ == "__main__":

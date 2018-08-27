@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import device_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -28,6 +29,10 @@ class DeviceLibTest(test_util.TensorFlowTestCase):
 
   def testListLocalDevices(self):
     devices = device_lib.list_local_devices()
+    self.assertGreater(len(devices), 0)
+    self.assertEqual(devices[0].device_type, "CPU")
+
+    devices = device_lib.list_local_devices(config_pb2.ConfigProto())
     self.assertGreater(len(devices), 0)
     self.assertEqual(devices[0].device_type, "CPU")
 

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_OP_GEN_LIB_H_
-#define TENSORFLOW_FRAMEWORK_OP_GEN_LIB_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_OP_GEN_LIB_H_
+#define TENSORFLOW_CORE_FRAMEWORK_OP_GEN_LIB_H_
 
 #include <string>
 #include <unordered_map>
@@ -59,14 +59,14 @@ class ApiDefMap {
   // You can call this method multiple times to load multiple
   // sets of files. Api definitions are merged if the same
   // op definition is loaded multiple times. Later-loaded
-  // definitions take precedense.
+  // definitions take precedence.
   // ApiDefs loaded from files must contain a subset of ops defined
   // in the OpList passed to the constructor.
   Status LoadFileList(Env* env, const std::vector<string>& filenames);
 
   // Load a single file. Api definitions are merged if the same
   // op definition is loaded multiple times. Later-loaded
-  // definitions take precedense.
+  // definitions take precedence.
   // ApiDefs loaded from file must contain a subset of ops defined
   // in the OpList passed to the constructor.
   Status LoadFile(Env* env, const string& filename);
@@ -97,4 +97,4 @@ class ApiDefMap {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_OP_GEN_LIB_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_OP_GEN_LIB_H_

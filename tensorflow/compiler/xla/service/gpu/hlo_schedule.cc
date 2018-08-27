@@ -19,7 +19,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/hlo_schedule.h"
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -58,8 +59,8 @@ GpuHloOrdering::GpuHloOrdering(
     : PredecessorHloOrdering(module) {
   // The entry computation has a total order when there's only one stream.
   if (stream_assignment.StreamCount() == 1) {
-    entry_sequence_ =
-        MakeUnique<std::vector<const HloInstruction*>>(thunk_launch_order);
+    entry_sequence_ = absl::make_unique<std::vector<const HloInstruction*>>(
+        thunk_launch_order);
   }
 
   // The ordering of instructions for the entry computation is determined by the
@@ -74,7 +75,7 @@ GpuHloOrdering::GpuHloOrdering(
   // same-stream predecessors of each instruction.
 
   // Compute the set of all instructions we will want to set reachability on.
-  auto predecessor_map = MakeUnique<HloReachabilityMap>(
+  auto predecessor_map = absl::make_unique<HloReachabilityMap>(
       module->entry_computation()->MakeInstructionPostOrder());
 
   // The most recently visited instruction per stream.
@@ -99,7 +100,7 @@ GpuHloOrdering::GpuHloOrdering(
       if (last_instruction_per_stream[stream_no] != nullptr) {
         immediate_preds.push_back(last_instruction_per_stream[stream_no]);
       }
-      predecessor_map->SetReachabilityToUnion(immediate_preds, hlo);
+      predecessor_map->FastSetReachabilityToUnion(immediate_preds, hlo);
       last_instruction_per_stream[stream_no] = hlo;
     } else {
       // Only parameters and constants don't have an assigned stream, since they
@@ -198,8 +199,8 @@ StatusOr<std::unique_ptr<HloSchedule>> HloSchedule::Build(
     // concurrency by optimizing for minimal memory usage.
     TF_ASSIGN_OR_RETURN(
         schedule->thunk_launch_order_,
-        CreateMemoryMinimizingSequence(
-            *entry_computation, [pointer_size](const LogicalBuffer& buffer) {
+        ScheduleOneComputation(
+            *entry_computation, [pointer_size](const BufferValue& buffer) {
               return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
             }));
   } else {
@@ -207,7 +208,7 @@ StatusOr<std::unique_ptr<HloSchedule>> HloSchedule::Build(
     BFSLaunchOrder(entry_computation, &schedule->thunk_launch_order_);
   }
 
-  schedule->hlo_ordering_ = MakeUnique<GpuHloOrdering>(
+  schedule->hlo_ordering_ = absl::make_unique<GpuHloOrdering>(
       &module, stream_assignment, schedule->thunk_launch_order_);
 
   return std::move(schedule);

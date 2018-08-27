@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import summary_pb2
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import summary_op_util
@@ -71,6 +72,8 @@ def tensor_summary(name,
 
   serialized_summary_metadata = summary_metadata.SerializeToString()
 
+  if summary_op_util.skip_summary():
+    return constant_op.constant("")
   with summary_op_util.summary_scope(
       name, family, values=[tensor]) as (tag, scope):
     val = gen_logging_ops.tensor_summary_v2(

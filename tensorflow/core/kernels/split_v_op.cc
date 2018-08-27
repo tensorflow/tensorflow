@@ -208,10 +208,10 @@ class SplitVOpCPUImpl {
          input_element_count >= std::max(num_threads, num_split) * 4096 &&
          input_element_count < num_split * 180 * 1024);
 
-    auto range_output_func = [&indices, context, &input_shape, prefix_dim_size,
-                              split_dim, &split_sizes_vec, &split_start_points,
-                              suffix_dim_size, use_parallelism_between_outputs,
-                              &input_reshaped, &make_sizes,
+    auto range_output_func = [&indices, context, &input_shape, split_dim,
+                              &split_sizes_vec, &split_start_points,
+                              use_parallelism_between_outputs, &input_reshaped,
+                              &make_sizes,
                               &reshape_result](int64 start, int64 limit) {
       for (int64 i = start; i < limit; ++i) {
         TensorShape output_shape(input_shape);

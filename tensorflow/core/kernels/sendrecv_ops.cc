@@ -160,7 +160,6 @@ Rendezvous::DoneCallback make_recv_callback(OpKernelContext* ctx,
           if (!is_dead) {
             ctx->set_output(0, val);
           }
-          *ctx->is_output_dead() = is_dead;
         }
         done();
       },
@@ -169,9 +168,10 @@ Rendezvous::DoneCallback make_recv_callback(OpKernelContext* ctx,
 }  // namespace
 
 void RecvOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
-  OP_REQUIRES(
+  OP_REQUIRES_ASYNC(
       ctx, ctx->rendezvous() != nullptr,
-      errors::Internal("Op kernel context needs to provide a rendezvous."));
+      errors::Internal("Op kernel context needs to provide a rendezvous."),
+      done);
 
   Rendezvous::Args args;
   args.device_context = ctx->op_device_context();

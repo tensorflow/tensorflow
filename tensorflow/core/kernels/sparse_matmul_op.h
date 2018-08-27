@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_SPARSE_MATMUL_OP_H_
-#define TENSORFLOW_KERNELS_SPARSE_MATMUL_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SPARSE_MATMUL_OP_H_
+#define TENSORFLOW_CORE_KERNELS_SPARSE_MATMUL_OP_H_
 
 #include "third_party/eigen3/Eigen/Core"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/types.h"
 
 #if defined(PLATFORM_WINDOWS)
@@ -464,4 +465,4 @@ EIGEN_DEVICE_FUNC inline Packet16f pexpand_bf16_u(const Packet16f& from) {
 #endif
 }  // namespace internal
 }  // namespace Eigen
-#endif
+#endif  // TENSORFLOW_CORE_KERNELS_SPARSE_MATMUL_OP_H_

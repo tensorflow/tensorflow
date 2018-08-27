@@ -49,7 +49,7 @@ namespace tflite {
 
 // Convenient structure to store string pointer and length.
 typedef struct {
-  char* str;
+  const char* str;
   int len;
 } StringRef;
 
@@ -70,6 +70,10 @@ class DynamicBuffer {
   // buffer.
   void AddJoinedString(const std::vector<StringRef>& strings, char separator);
 
+  // Fill content into a buffer and returns the number of bytes stored.
+  // The function allocates space for the buffer but does NOT take ownership.
+  int WriteToBuffer(char** buffer);
+
   // Fill content into a string tensor.
   void WriteToTensor(TfLiteTensor* tensor);
 
@@ -81,10 +85,12 @@ class DynamicBuffer {
 };
 
 // Return num of strings in a String tensor.
+int GetStringCount(const char* raw_buffer);
 int GetStringCount(const TfLiteTensor* tensor);
 
 // Get String pointer and length of index-th string in tensor.
 // NOTE: This will not create a copy of string data.
+StringRef GetString(const char* raw_buffer, int string_index);
 StringRef GetString(const TfLiteTensor* tensor, int string_index);
 }  // namespace tflite
 

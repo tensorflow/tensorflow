@@ -12,15 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_KERNELS_NCCL_COMMUNICATOR_H_
-#define TENSORFLOW_CORE_KERNELS_NCCL_COMMUNICATOR_H_
+#ifndef TENSORFLOW_CONTRIB_NCCL_KERNELS_NCCL_MANAGER_H_
+#define TENSORFLOW_CONTRIB_NCCL_KERNELS_NCCL_MANAGER_H_
 
 #ifdef GOOGLE_CUDA
 
 #include <unordered_map>
 #include <vector>
 
-#include "src/nccl.h"
+// TODO(rmlarsen): Get rid of this workaround. "gpu_assert" is defined when
+// setting EIGEN_USE_THREADS. But when defining EIGEN_USE_THREADS here,
+// incAtomic and other CUDA specific symbols are no longer recognized.
+#ifndef gpu_assert
+#define gpu_assert(x)
+#endif
+
+#include "third_party/nccl/nccl.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -55,41 +62,34 @@ class NcclManager {
   // is also the stream that will use the produced data; <done_callback> is
   // not called until the next kernel launched on <stream> would see the data.
   void AddToAllReduce(int num_devices, const string& key,
-                      ncclRedOp_t reduction_op,
-                      perftools::gputools::StreamExecutor* executor,
+                      ncclRedOp_t reduction_op, se::StreamExecutor* executor,
                       int gpu_device_id, EventMgr* event_mgr,
-                      perftools::gputools::Stream* tensor_stream,
-                      const Tensor* in_t, Tensor* out_t,
-                      const DoneCallback& done_callback);
+                      se::Stream* tensor_stream, const Tensor* in_t,
+                      Tensor* out_t, const DoneCallback& done_callback);
 
   // AddBroadcastSend and AddBroadcastRecv combine to sent data from one sender
   // to all receivers.
   void AddBroadcastSend(int num_devices, const string& key,
-                        perftools::gputools::StreamExecutor* executor,
-                        int gpu_device_id, EventMgr* event_mgr,
-                        perftools::gputools::Stream* tensor_stream,
+                        se::StreamExecutor* executor, int gpu_device_id,
+                        EventMgr* event_mgr, se::Stream* tensor_stream,
                         const Tensor* in_t, DoneCallback done_callback);
   void AddBroadcastRecv(int num_devices, const string& key,
-                        perftools::gputools::StreamExecutor* executor,
-                        int gpu_device_id, EventMgr* event_mgr,
-                        perftools::gputools::Stream* tensor_stream,
+                        se::StreamExecutor* executor, int gpu_device_id,
+                        EventMgr* event_mgr, se::Stream* tensor_stream,
                         Tensor* out_t, DoneCallback done_callback);
 
   // AddReduceSend and AddReduceRecv combine to sent data from all senders
   // to one receiver.
   void AddReduceSend(int num_devices, const string& key,
-                     ncclRedOp_t reduction_op,
-                     perftools::gputools::StreamExecutor* executor,
+                     ncclRedOp_t reduction_op, se::StreamExecutor* executor,
                      int gpu_device_id, EventMgr* event_mgr,
-                     perftools::gputools::Stream* tensor_stream,
-                     const Tensor* in_t, DoneCallback done_callback);
-  void AddReduceRecv(int num_devices, const string& key,
-                     ncclRedOp_t reduction_op,
-                     perftools::gputools::StreamExecutor* executor,
-                     int gpu_device_id, EventMgr* event_mgr,
-                     perftools::gputools::Stream* tensor_stream,
-                     const Tensor* in_t, Tensor* out_t,
+                     se::Stream* tensor_stream, const Tensor* in_t,
                      DoneCallback done_callback);
+  void AddReduceRecv(int num_devices, const string& key,
+                     ncclRedOp_t reduction_op, se::StreamExecutor* executor,
+                     int gpu_device_id, EventMgr* event_mgr,
+                     se::Stream* tensor_stream, const Tensor* in_t,
+                     Tensor* out_t, DoneCallback done_callback);
 
  private:
   enum CollectiveType {
@@ -123,8 +123,7 @@ class NcclManager {
   // Maps a device to the communication streams that make up its collective.
   // This is used to share the stream across different communicators that
   // include the same device.
-  std::map<perftools::gputools::StreamExecutor*,
-           std::vector<std::unique_ptr<NcclStream>>>
+  std::map<se::StreamExecutor*, std::vector<std::unique_ptr<NcclStream>>>
       device_to_comm_streams_ GUARDED_BY(mu_);
 
   std::vector<std::unique_ptr<Communicator>> communicators_;
@@ -136,4 +135,4 @@ class NcclManager {
 
 #endif  // GOOGLE_CUDA
 
-#endif  // TENSORFLOW_CORE_KERNELS_NCCL_COMMUNICATOR_H_
+#endif  // TENSORFLOW_CONTRIB_NCCL_KERNELS_NCCL_MANAGER_H_

@@ -17,22 +17,22 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
-
 namespace xla {
-
 namespace {
+
+using absl::StrAppend;
+using absl::StrCat;
+
 void DumpModuleGraph(const HloModule& module, const string& message) {
   hlo_graph_dumper::MaybeDumpHloModule(module, message);
   VLOG(3) << "HLO " << message << ":";
@@ -68,7 +68,7 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
                                                    repeated_field.end());
   if (!disabled_passes.empty()) {
     VLOG(1) << "Passes disabled by --xla_disable_hlo_passes: "
-            << tensorflow::str_util::Join(disabled_passes, ", ");
+            << absl::StrJoin(disabled_passes, ", ");
   }
 
   auto run_invariant_checkers = [this,
@@ -90,7 +90,7 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
     return Status::OK();
   };
 
-  string prefix = name().ToString() + ": pipeline start";
+  string prefix = std::string(name()) + ": pipeline start";
   bool changed = false;
   string message;
   TF_RETURN_IF_ERROR(
@@ -98,12 +98,12 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
   const string xla_dump_per_pass_hlo_proto_to =
       module->config().debug_options().xla_dump_per_pass_hlo_proto_to();
   if (!xla_dump_per_pass_hlo_proto_to.empty()) {
-    DumpModuleProto(*module, xla_dump_per_pass_hlo_proto_to, name().ToString(),
-                    "pipeline_start");
+    DumpModuleProto(*module, xla_dump_per_pass_hlo_proto_to,
+                    std::string(name()), "pipeline_start");
   }
 
   for (auto& pass : passes_) {
-    if (disabled_passes.count(pass->name().ToString()) > 0) {
+    if (disabled_passes.count(std::string(pass->name())) > 0) {
       VLOG(1) << "  Skipping HLO pass " << pass->name()
               << ", disabled by --xla_disable_hlo_passes";
       continue;
@@ -121,7 +121,7 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
         run_invariant_checkers(StrCat("after running pass: ", pass->name())));
     if (!xla_dump_per_pass_hlo_proto_to.empty()) {
       DumpModuleProto(*module, xla_dump_per_pass_hlo_proto_to,
-                      name().ToString(), pass->name().ToString());
+                      std::string(name()), std::string(pass->name()));
     }
 
     changed |= changed_this_pass;

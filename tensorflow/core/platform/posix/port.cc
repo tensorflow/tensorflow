@@ -17,13 +17,12 @@ limitations under the License.
 #include "jemalloc/jemalloc.h"
 #endif
 
-#ifdef TENSORFLOW_USE_ABSL
 #include "absl/base/internal/sysinfo.h"
-#endif
 
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -72,6 +71,24 @@ int NumSchedulableCPUs() {
   fprintf(stderr, "can't determine number of CPU cores: assuming %d\n",
           kDefaultCores);
   return kDefaultCores;
+}
+
+int NumHyperthreadsPerCore() {
+  static const int ht_per_core = tensorflow::port::CPUIDNumSMT();
+  return (ht_per_core > 0) ? ht_per_core : 1;
+}
+
+bool NUMAEnabled() {
+  // Not yet implemented: coming soon.
+  return false;
+}
+
+int NUMANumNodes() { return 1; }
+
+void NUMASetThreadNodeAffinity(int node) {}
+
+int NUMAGetThreadNodeAffinity() {
+  return kNUMANoAffinity;
 }
 
 void* AlignedMalloc(size_t size, int minimum_alignment) {
@@ -123,6 +140,16 @@ void Free(void* ptr) {
 #endif
 }
 
+void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
+  return AlignedMalloc(size, minimum_alignment);
+}
+
+void NUMAFree(void* ptr, size_t size) { Free(ptr); }
+
+int NUMAGetMemAffinity(const void* addr) {
+  return kNUMANoAffinity;
+}
+
 void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
   // No-op.
 }
@@ -165,11 +192,7 @@ bool Snappy_Uncompress(const char* input, size_t length, char* output) {
 string Demangle(const char* mangled) { return mangled; }
 
 double NominalCPUFrequency() {
-#ifdef TENSORFLOW_USE_ABSL
   return absl::base_internal::NominalCPUFrequency();
-#else
-  return 1.0;
-#endif
 }
 
 int64 AvailableRam() {
@@ -177,7 +200,7 @@ int64 AvailableRam() {
   struct sysinfo info;
   int err = sysinfo(&info);
   if (err == 0) {
-    return info.freeram / 1024;
+    return info.freeram;
   }
 #endif
   return INT64_MAX;

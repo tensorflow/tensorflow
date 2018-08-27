@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_STRINGS_STR_UTIL_H_
-#define TENSORFLOW_LIB_STRINGS_STR_UTIL_H_
+#ifndef TENSORFLOW_CORE_LIB_STRINGS_STR_UTIL_H_
+#define TENSORFLOW_CORE_LIB_STRINGS_STR_UTIL_H_
 
 #include <functional>
 #include <string>
 #include <vector>
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -141,6 +140,21 @@ bool SplitAndParseAsInts(StringPiece text, char delim,
 bool SplitAndParseAsFloats(StringPiece text, char delim,
                            std::vector<float>* result);
 
+// StartsWith()
+//
+// Returns whether a given string `text` begins with `prefix`.
+bool StartsWith(StringPiece text, StringPiece prefix);
+
+// EndsWith()
+//
+// Returns whether a given string `text` ends with `suffix`.
+bool EndsWith(StringPiece text, StringPiece suffix);
+
+// StrContains()
+//
+// Returns whether a given string `haystack` contains the substring `needle`.
+bool StrContains(StringPiece haystack, StringPiece needle);
+
 // ------------------------------------------------------------------
 // Implementation details below
 template <typename T>
@@ -191,7 +205,7 @@ std::vector<string> Split(StringPiece text, StringPiece delims, Predicate p) {
       if ((i == text.size()) || (delims.find(text[i]) != StringPiece::npos)) {
         StringPiece token(text.data() + token_start, i - token_start);
         if (p(token)) {
-          result.push_back(token.ToString());
+          result.emplace_back(token);
         }
         token_start = i + 1;
       }
@@ -209,7 +223,12 @@ std::vector<string> Split(StringPiece text, char delims, Predicate p) {
   return Split(text, StringPiece(&delims, 1), p);
 }
 
+// Returns the length of the given null-terminated byte string 'str'.
+// Returns 'string_max_len' if the null character was not found in the first
+// 'string_max_len' bytes of 'str'.
+size_t Strnlen(const char* str, const size_t string_max_len);
+
 }  // namespace str_util
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_STRINGS_STR_UTIL_H_
+#endif  // TENSORFLOW_CORE_LIB_STRINGS_STR_UTIL_H_

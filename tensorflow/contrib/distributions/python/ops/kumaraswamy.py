@@ -31,7 +31,7 @@ from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import transformed_distribution
 from tensorflow.python.ops.distributions import uniform
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util import deprecation
 
 __all__ = [
     "Kumaraswamy",
@@ -41,27 +41,32 @@ _kumaraswamy_sample_note = """Note: `x` must have dtype `self.dtype` and be in
 `[0, 1].` It must have a shape compatible with `self.batch_shape()`."""
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _harmonic_number(x):
   """Compute the harmonic number from its analytic continuation.
 
-  Derivation from [1] and Euler's constant [2].
-  [1] -
-  https://en.wikipedia.org/wiki/Digamma_function#Relation_to_harmonic_numbers
-  [2] - https://en.wikipedia.org/wiki/Euler%E2%80%93Mascheroni_constant
-
+  Derivation from [here](
+  https://en.wikipedia.org/wiki/Digamma_function#Relation_to_harmonic_numbers)
+  and [Euler's constant](
+  https://en.wikipedia.org/wiki/Euler%E2%80%93Mascheroni_constant).
 
   Args:
     x: input float.
 
   Returns:
     z: The analytic continuation of the harmonic number for the input.
-
   """
   one = array_ops.ones([], dtype=x.dtype)
   return math_ops.digamma(x + one) - math_ops.digamma(one)
 
 
-@tf_export("distributions.Kumaraswamy")
 class Kumaraswamy(transformed_distribution.TransformedDistribution):
   """Kumaraswamy distribution.
 
@@ -127,6 +132,14 @@ class Kumaraswamy(transformed_distribution.TransformedDistribution):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                concentration1=None,
                concentration0=None,
@@ -153,10 +166,11 @@ class Kumaraswamy(transformed_distribution.TransformedDistribution):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    concentration1 = ops.convert_to_tensor(
-        concentration1, name="concentration1")
-    concentration0 = ops.convert_to_tensor(
-        concentration0, name="concentration0")
+    with ops.name_scope(name, values=[concentration1, concentration0]) as name:
+      concentration1 = ops.convert_to_tensor(
+          concentration1, name="concentration1")
+      concentration0 = ops.convert_to_tensor(
+          concentration0, name="concentration0")
     super(Kumaraswamy, self).__init__(
         distribution=uniform.Uniform(
             low=array_ops.zeros([], dtype=concentration1.dtype),

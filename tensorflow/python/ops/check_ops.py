@@ -15,30 +15,8 @@
 # pylint: disable=g-short-docstring-punctuation
 """Asserts and Boolean Checks.
 
-See the @{$python/check_ops} guide.
-
-@@assert_negative
-@@assert_positive
-@@assert_non_negative
-@@assert_non_positive
-@@assert_equal
-@@assert_none_equal
-@@assert_near
-@@assert_less
-@@assert_less_equal
-@@assert_greater
-@@assert_greater_equal
-@@assert_rank
-@@assert_rank_at_least
-@@assert_rank_in
-@@assert_type
-@@assert_integer
-@@assert_proper_iterable
-@@assert_same_float_dtype
-@@assert_scalar
-@@is_non_decreasing
-@@is_numeric_tensor
-@@is_strictly_increasing
+See the [Asserts and
+checks](https://tensorflow.org/api_guides/python/check_ops) guide.
 """
 
 from __future__ import absolute_import
@@ -363,27 +341,30 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
                          (x_sum, x_np[:x_sum],
                           y_sum, y_np[:y_sum]))
 
-        # Get the values that actually differed and their indices.
-        mask = math_ops.logical_not(eq)
-        indices = array_ops.where(mask)
-        indices_np = indices.numpy()
-        x_vals = array_ops.boolean_mask(x, mask)
-        y_vals = array_ops.boolean_mask(y, mask)
-        summarize = min(summarize, indices_np.shape[0])
+        index_and_values_str = ''
+        if x.shape == y.shape and x.shape.as_list():
+          # If the shapes of x and y are the same (and not scalars),
+          # Get the values that actually differed and their indices.
+          # If shapes are different this information is more confusing
+          # than useful.
+          mask = math_ops.logical_not(eq)
+          indices = array_ops.where(mask)
+          indices_np = indices.numpy()
+          x_vals = array_ops.boolean_mask(x, mask)
+          y_vals = array_ops.boolean_mask(y, mask)
+          summarize = min(summarize, indices_np.shape[0])
+          index_and_values_str = (
+              'Indices of first %s different values:\n%s\n'
+              'Corresponding x values:\n%s\n'
+              'Corresponding y values:\n%s\n' %
+              (summarize, indices_np[:summarize],
+               x_vals.numpy().reshape((-1,))[:summarize],
+               y_vals.numpy().reshape((-1,))[:summarize]))
 
         raise errors.InvalidArgumentError(
             node_def=None, op=None,
-            message=('%s\nCondition x == y did not hold.\n'
-                     'Indices of first %s different values:\n%s\n'
-                     'Corresponding x values:\n%s\n'
-                     'Corresponding y values:\n%s\n'
-                     '%s'
-                     %
-                     (message or '',
-                      summarize, indices_np[:summarize],
-                      x_vals.numpy().reshape((-1,))[:summarize],
-                      y_vals.numpy().reshape((-1,))[:summarize],
-                      summary_msg)))
+            message=('%s\nCondition x == y did not hold.\n%s%s' %
+                     (message or '', index_and_values_str, summary_msg)))
       return
 
     if data is None:
@@ -1189,19 +1170,35 @@ def _assert_same_base_type(items, expected_type=None):
   Raises:
     ValueError: If any types do not match.
   """
-  original_item_str = None
+  original_expected_type = expected_type
+  mismatch = False
   for item in items:
     if item is not None:
       item_type = item.dtype.base_dtype
       if not expected_type:
         expected_type = item_type
-        original_item_str = item.name if hasattr(item, 'name') else str(item)
       elif expected_type != item_type:
-        raise ValueError('%s, type=%s, must be of the same type (%s)%s.' % (
-            item.name if hasattr(item, 'name') else str(item),
-            item_type, expected_type,
-            (' as %s' % original_item_str) if original_item_str else ''))
-  return expected_type
+        mismatch = True
+        break
+  if mismatch:
+    # Loop back through and build up an informative error message (this is very
+    # slow, so we don't do it unless we found an error above).
+    expected_type = original_expected_type
+    original_item_str = None
+    for item in items:
+      if item is not None:
+        item_type = item.dtype.base_dtype
+        if not expected_type:
+          expected_type = item_type
+          original_item_str = item.name if hasattr(item, 'name') else str(item)
+        elif expected_type != item_type:
+          raise ValueError('%s, type=%s, must be of the same type (%s)%s.' % (
+              item.name if hasattr(item, 'name') else str(item),
+              item_type, expected_type,
+              (' as %s' % original_item_str) if original_item_str else ''))
+    return expected_type  # Should be unreachable
+  else:
+    return expected_type
 
 
 @tf_export('assert_same_float_dtype')

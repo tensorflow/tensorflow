@@ -236,20 +236,36 @@ def train_and_predict(
       [evaluation["mean"][0], predictions["mean"]], axis=0))
   all_times = numpy.concatenate([times, predictions["times"]], axis=0)
 
-  # Export the model in SavedModel format.
+  # Export the model in SavedModel format. We include a bit of extra boilerplate
+  # for "cold starting" as if we didn't have any state from the Estimator, which
+  # is the case when serving from a SavedModel. If Estimator output is
+  # available, the result of "Estimator.evaluate" can be passed directly to
+  # `tf.contrib.timeseries.saved_model_utils.predict_continuation` as the
+  # `continue_from` argument.
+  with tf.Graph().as_default():
+    filter_feature_tensors, _ = evaluation_input_fn()
+    with tf.train.MonitoredSession() as session:
+      # Fetch the series to "warm up" our state, which will allow us to make
+      # predictions for its future values. This is just a dictionary of times,
+      # values, and exogenous features mapping to numpy arrays. The use of an
+      # input_fn is just a convenience for the example; they can also be
+      # specified manually.
+      filter_features = session.run(filter_feature_tensors)
   if export_directory is None:
     export_directory = tempfile.mkdtemp()
   input_receiver_fn = estimator.build_raw_serving_input_receiver_fn()
   export_location = estimator.export_savedmodel(
       export_directory, input_receiver_fn)
-  # Predict using the SavedModel
+  # Warm up and predict using the SavedModel
   with tf.Graph().as_default():
     with tf.Session() as session:
       signatures = tf.saved_model.loader.load(
           session, [tf.saved_model.tag_constants.SERVING], export_location)
+      state = tf.contrib.timeseries.saved_model_utils.cold_start_filter(
+          signatures=signatures, session=session, features=filter_features)
       saved_model_output = (
           tf.contrib.timeseries.saved_model_utils.predict_continuation(
-              continue_from=evaluation, signatures=signatures,
+              continue_from=state, signatures=signatures,
               session=session, steps=100,
               exogenous_features=predict_exogenous_features))
       # The exported model gives the same results as the Estimator.predict()

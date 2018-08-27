@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_IO_ZLIB_COMPRESSION_OPTIONS_H_
 #define TENSORFLOW_LIB_IO_ZLIB_COMPRESSION_OPTIONS_H_
 
-#include <zlib.h>
-
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -25,11 +23,14 @@ namespace io {
 
 class ZlibCompressionOptions {
  public:
+  ZlibCompressionOptions();
+
   static ZlibCompressionOptions DEFAULT();
   static ZlibCompressionOptions RAW();
   static ZlibCompressionOptions GZIP();
 
-  int8 flush_mode = Z_NO_FLUSH;
+  // Defaults to Z_NO_FLUSH
+  int8 flush_mode;
 
   // Size of the buffer used for caching the data read from source file.
   int64 input_buffer_size = 256 << 10;
@@ -71,7 +72,9 @@ class ZlibCompressionOptions {
   // window_bits value provided used while compressing. If a compressed stream
   // with a larger window size is given as input, inflate() will return with the
   // error code Z_DATA_ERROR instead of trying to allocate a larger window.
-  int8 window_bits = MAX_WBITS;
+  //
+  // Defaults to MAX_WBITS
+  int8 window_bits;
 
   // From the zlib manual (http://www.zlib.net/manual.html):
   // The compression level must be Z_DEFAULT_COMPRESSION, or between 0 and 9:
@@ -79,10 +82,10 @@ class ZlibCompressionOptions {
   // (the input data is simply copied a block at a time). Z_DEFAULT_COMPRESSION
   // requests a default compromise between speed and compression (currently
   // equivalent to level 6).
-  int8 compression_level = Z_DEFAULT_COMPRESSION;
+  int8 compression_level;
 
-  // The only one supported at this time.
-  int8 compression_method = Z_DEFLATED;
+  // Only Z_DEFLATED is supported at this time.
+  int8 compression_method;
 
   // From the zlib manual (http://www.zlib.net/manual.html):
   // The mem_level parameter specifies how much memory should be allocated for
@@ -106,7 +109,7 @@ class ZlibCompressionOptions {
   // but not the correctness of the compressed output even if it is not set
   // appropriately. Z_FIXED prevents the use of dynamic Huffman codes, allowing
   // for a simpler decoder for special applications.
-  int8 compression_strategy = Z_DEFAULT_STRATEGY;
+  int8 compression_strategy;
 };
 
 inline ZlibCompressionOptions ZlibCompressionOptions::DEFAULT() {

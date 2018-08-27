@@ -165,7 +165,7 @@ bool UnpartitionEmbeddingLookup::Run(Model* model, std::size_t op_index) {
   CHECK(mod_op && mod_op->type == OperatorType::kFloorMod)
       << "Unsupported partition strategy";
   CHECK_EQ(mod_op, GetOpWithOutput(*model, indices_partition_op->inputs[1]))
-      << "Indices and data parition ops require the same partition strategy "
+      << "Indices and data partition ops require the same partition strategy "
          "and inputs";
 
   // Glob together all of the gather data. This is not yet in the correct order.
@@ -187,10 +187,13 @@ bool UnpartitionEmbeddingLookup::Run(Model* model, std::size_t op_index) {
       AvailableArrayName(*model, gather_ops[0]->inputs[0] + "_permuted/perm"));
   gather_params_permute_op->outputs.push_back(
       AvailableArrayName(*model, gather_ops[0]->inputs[0] + "_permuted"));
+  gather_params_permute_op->axis = {0};
   op_it = model->operators.emplace(op_it, gather_params_permute_op) + 1;
   model->GetOrCreateArray(gather_params_permute_op->outputs[0]);
   const auto& partition_array = model->GetArray(gather_ops[0]->inputs[0]);
   const auto& partition_array_dims = partition_array.shape().dims();
+  gather_params_permute_op->input_rank =
+      partition_array.shape().dimensions_count();
   auto& perm_array =
       model->GetOrCreateArray(gather_params_permute_op->inputs[1]);
   perm_array.data_type = ArrayDataType::kInt32;
@@ -209,6 +212,8 @@ bool UnpartitionEmbeddingLookup::Run(Model* model, std::size_t op_index) {
   merged_gather_op->inputs = {gather_params_permute_op->outputs[0],
                               mod_op->inputs[0]};
   merged_gather_op->outputs = {stitch_op->outputs[0]};
+  merged_gather_op->input_rank = partition_array.shape().dimensions_count();
+  merged_gather_op->axis = {0};
   model->operators.emplace(op_it, merged_gather_op);
 
   AddMessageF(

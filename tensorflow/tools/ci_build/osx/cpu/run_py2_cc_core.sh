@@ -33,6 +33,7 @@ yes "" | $PYTHON_BIN_PATH configure.py
 which bazel
 bazel test --test_tag_filters=-no_oss,-gpu,-benchmark-test,-nomac,-no_mac \
     --test_timeout 300,450,1200,3600 --config=opt \
+    --announce_rc \
     --test_size_filters=small,medium \
     --jobs=${N_JOBS} --build_tests_only --test_output=errors -k -- \
     //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/...

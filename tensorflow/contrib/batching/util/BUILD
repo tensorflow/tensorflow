@@ -8,18 +8,6 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "**/google_*",
-        ],
-    ),
-)
-
 cc_library(
     name = "periodic_function_dynamic",
     hdrs = ["periodic_function.h"],

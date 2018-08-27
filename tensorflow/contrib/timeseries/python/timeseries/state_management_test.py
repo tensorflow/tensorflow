@@ -78,7 +78,7 @@ class StubTimeSeriesModel(model.TimeSeriesModel):
     batch_end_values = array_ops.squeeze(
         array_ops.slice(values, [0, array_ops.shape(times)[1] - 1, 0],
                         [-1, 1, -1]),
-        squeeze_dims=[1, 2])
+        axis=[1, 2])
     # A pretty odd but easy to think about loss: L1 loss on the batch end
     # values.
     loss = math_ops.reduce_sum(

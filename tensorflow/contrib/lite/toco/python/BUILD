@@ -12,10 +12,11 @@ cc_library(
     deps = [
         "//tensorflow/contrib/lite/toco:model_flags_proto_cc",
         "//tensorflow/contrib/lite/toco:toco_flags_proto_cc",
+        "//tensorflow/contrib/lite/toco:toco_graphviz_dump_options",
         "//tensorflow/contrib/lite/toco:toco_port",
         "//tensorflow/contrib/lite/toco:toco_tooling",
         "//tensorflow/core:lib",
-        "//util/python:python_headers",
+        "//third_party/python_runtime:headers",
     ],
 )
 
@@ -26,7 +27,7 @@ tf_py_wrap_cc(
         ":toco_python_api",
         "//tensorflow/contrib/lite/toco:model_flags_proto_cc",
         "//tensorflow/contrib/lite/toco:toco_flags_proto_cc",
-        "//util/python:python_headers",
+        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -41,15 +42,6 @@ py_binary(
     ],
 )
 
-py_binary(
-    name = "toco_wrapper",
-    srcs = ["toco_wrapper.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
 tf_py_test(
     name = "toco_from_protos_test",
     srcs = ["toco_from_protos_test.py"],
@@ -61,17 +53,8 @@ tf_py_test(
     data = [
         ":toco_from_protos",
     ],
-    tags = ["no_pip"],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
 )

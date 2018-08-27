@@ -7,18 +7,6 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        include = ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 cc_library(
     name = "sql",
     srcs = [

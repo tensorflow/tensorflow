@@ -37,8 +37,8 @@ struct TransposeContext {
     perm = GetInput(context, node, 1);
     output = GetOutput(context, node, 0);
   }
-  TfLiteTensor* input;
-  TfLiteTensor* perm;
+  const TfLiteTensor* input;
+  const TfLiteTensor* perm;
   TfLiteTensor* output;
 };
 
@@ -136,7 +136,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     default:
       context->ReportError(context,
-                           "Type is currently not supported by Transpose.");
+                           "Type %d is currently not supported by Transpose.",
+                           op_context.input->type);
       return kTfLiteError;
   }
 #undef TF_LITE_TRANSPOSE

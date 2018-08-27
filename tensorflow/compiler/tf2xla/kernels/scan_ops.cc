@@ -20,7 +20,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -66,7 +68,7 @@ class ScanOp : public XlaOpKernel {
                                 -input_shape.dims(), ", ", input_shape.dims(),
                                 "), but got ", axis));
 
-    DataType dtype = ctx->input_type(0);
+    DataType dtype = XlaHelpers::SumAccumulationType(ctx->input_type(0));
 
     if (input_shape.num_elements() == 0) {
       // Exit early if there is nothing to compute.
@@ -74,7 +76,7 @@ class ScanOp : public XlaOpKernel {
       return;
     }
 
-    xla::ComputationBuilder* builder = ctx->builder();
+    xla::XlaBuilder* builder = ctx->builder();
 
     std::vector<int64> window_strides(input_shape.dims(), 1);
     std::vector<int64> window_dims(input_shape.dims(), 1);
@@ -91,9 +93,8 @@ class ScanOp : public XlaOpKernel {
       std::swap(padding[axis].first, padding[axis].second);
     }
 
-    xla::ComputationDataHandle input = ctx->Input(0);
-    xla::ComputationDataHandle init;
-    const xla::Computation* reducer;
+    xla::XlaOp init;
+    const xla::XlaComputation* reducer;
     if (sum_) {
       init = XlaHelpers::Zero(builder, dtype);
       reducer = ctx->GetOrCreateAdd(dtype);
@@ -101,19 +102,22 @@ class ScanOp : public XlaOpKernel {
       init = XlaHelpers::One(builder, dtype);
       reducer = ctx->GetOrCreateMul(dtype);
     }
-    auto output = builder->ReduceWindowWithGeneralPadding(
-        ctx->Input(0), init, *reducer, window_dims, window_strides, padding);
+    auto output = xla::ReduceWindowWithGeneralPadding(
+        XlaHelpers::ConvertElementType(builder, ctx->Input(0), dtype), init,
+        *reducer, window_dims, window_strides, padding);
+    output =
+        XlaHelpers::ConvertElementType(builder, output, ctx->input_type(0));
 
     // In exclusive mode, we have computed an extra element containing the sum
     // of all the input elements. Slice off this extra "last" element.
     if (exclusive_) {
       if (reverse_) {
-        output = builder->SliceInDim(output, 1, input_shape.dim_size(axis) + 1,
-                                     1, axis);
+        output =
+            xla::SliceInDim(output, 1, input_shape.dim_size(axis) + 1, 1, axis);
 
       } else {
         output =
-            builder->SliceInDim(output, 0, input_shape.dim_size(axis), 1, axis);
+            xla::SliceInDim(output, 0, input_shape.dim_size(axis), 1, axis);
       }
     }
     ctx->SetOutput(0, output);

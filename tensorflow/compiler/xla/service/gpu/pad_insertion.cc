@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/pad_insertion.h"
 
+#include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -67,14 +70,8 @@ HloInstruction* MaybePaddedAndSlicedInput(
     PrimitiveType element_type = input->shape().element_type();
     HloInstruction* padding =
         computation->AddInstruction(HloInstruction::CreateConstant(
-            MakeUnique<Literal>(Literal::Zero(element_type))));
-    input = computation->AddInstruction(HloInstruction::CreatePad(
-        ShapeInference::InferPadShape(
-            /*operand_shape=*/input->shape(),
-            /*padding_value_shape=*/ShapeUtil::MakeShape(element_type, {}),
-            padding_config)
-            .ConsumeValueOrDie(),
-        input, padding, padding_config));
+            absl::make_unique<Literal>(LiteralUtil::Zero(element_type))));
+    input = MakePadHlo(input, padding, padding_config).ValueOrDie();
   }
 
   if (window_util::HasNegativePadding(conv_window)) {
@@ -97,11 +94,8 @@ HloInstruction* MaybePaddedAndSlicedInput(
           std::max<int64>(0LL, -conv_window.dimensions(i).padding_high());
     }
 
-    input = computation->AddInstruction(HloInstruction::CreateSlice(
-        ShapeInference::InferSliceShape(input->shape(), start_indices,
-                                        limit_indices, strides)
-            .ConsumeValueOrDie(),
-        input, start_indices, limit_indices, strides));
+    input =
+        MakeSliceHlo(input, start_indices, limit_indices, strides).ValueOrDie();
   }
 
   return input;
@@ -133,14 +127,8 @@ HloInstruction* MaybePaddedKernel(const Window& conv_window,
   PrimitiveType element_type = kernel->shape().element_type();
   HloInstruction* padding =
       computation->AddInstruction(HloInstruction::CreateConstant(
-          MakeUnique<Literal>(Literal::Zero(element_type))));
-  return computation->AddInstruction(HloInstruction::CreatePad(
-      ShapeInference::InferPadShape(
-          /*operand_shape=*/kernel->shape(),
-          /*padding_value_shape=*/ShapeUtil::MakeShape(element_type, {}),
-          padding_config)
-          .ConsumeValueOrDie(),
-      kernel, padding, padding_config));
+          absl::make_unique<Literal>(LiteralUtil::Zero(element_type))));
+  return MakePadHlo(kernel, padding, padding_config).ValueOrDie();
 }
 }  // namespace
 
@@ -248,15 +236,11 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
   // Create a new backward convolution replacing the old one.
   HloComputation* computation = backward_conv->parent();
   HloInstruction* output = backward_conv->mutable_operand(1);
-  HloInstruction* padding =
-      computation->AddInstruction(HloInstruction::CreateConstant(
-          MakeUnique<Literal>(Literal::Zero(input->shape().element_type()))));
+  HloInstruction* padding = computation->AddInstruction(
+      HloInstruction::CreateConstant(absl::make_unique<Literal>(
+          LiteralUtil::Zero(input->shape().element_type()))));
   HloInstruction* padded_input =
-      computation->AddInstruction(HloInstruction::CreatePad(
-          ShapeInference::InferPadShape(input->shape(), padding->shape(),
-                                        input_padding_config)
-              .ConsumeValueOrDie(),
-          input, padding, input_padding_config));
+      MakePadHlo(input, padding, input_padding_config).ValueOrDie();
 
   // The shape of the backward_conv CustomCall is a tuple (conv_result,
   // scratch_buffer).  Extract out the shape of conv_result.
@@ -388,23 +372,35 @@ bool PadInsertion::CanonicalizeBackwardInputConvolution(
   return true;
 }
 
+StatusOr<bool> PadInsertion::RunOnComputation(HloComputation* computation) {
+  bool changed = false;
+  std::vector<HloInstruction*> convs;
+  for (auto* instr : computation->instructions()) {
+    if (IsCustomCallToDnnConvolution(*instr)) {
+      convs.push_back(instr);
+    }
+  }
+  for (HloInstruction* instruction : convs) {
+    const auto& target = instruction->custom_call_target();
+    if (target == kCudnnConvForwardCallTarget) {
+      changed |= CanonicalizeForwardConvolution(instruction);
+    } else if (target == kCudnnConvBackwardFilterCallTarget) {
+      changed |= CanonicalizeBackwardFilterConvolution(instruction);
+    } else if (target == kCudnnConvBackwardInputCallTarget) {
+      changed |= CanonicalizeBackwardInputConvolution(instruction);
+    } else {
+      LOG(FATAL) << "Unknown custom call target for cudnn conv: "
+                 << instruction->ToString();
+    }
+  }
+  return changed;
+}
+
 StatusOr<bool> PadInsertion::Run(HloModule* module) {
   bool changed = false;
-  for (HloInstruction* instruction :
-       module->entry_computation()->MakeInstructionPostOrder()) {
-    if (IsCustomCallToDnnConvolution(*instruction)) {
-      const auto& target = instruction->custom_call_target();
-      if (target == kCudnnConvForwardCallTarget) {
-        changed |= CanonicalizeForwardConvolution(instruction);
-      } else if (target == kCudnnConvBackwardFilterCallTarget) {
-        changed |= CanonicalizeBackwardFilterConvolution(instruction);
-      } else if (target == kCudnnConvBackwardInputCallTarget) {
-        changed |= CanonicalizeBackwardInputConvolution(instruction);
-      } else {
-        LOG(FATAL) << "Unknown custom call target for cudnn conv: "
-                   << instruction->ToString();
-      }
-    }
+  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+    TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
+    changed |= result;
   }
   return changed;
 }

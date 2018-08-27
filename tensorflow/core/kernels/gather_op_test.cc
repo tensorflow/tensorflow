@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -171,7 +172,7 @@ TEST_F(GatherOpTest, Error_IndexOutOfRange) {
   AddInputFromArray<int32>(TensorShape({}), {0});
   Status s = RunOpKernel();
   EXPECT_TRUE(
-      StringPiece(s.ToString()).contains("indices[2] = 99 is not in [0, 5)"))
+      str_util::StrContains(s.ToString(), "indices[2] = 99 is not in [0, 5)"))
       << s;
 }
 

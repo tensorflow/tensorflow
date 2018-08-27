@@ -13,10 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_IO_PATH_H_
-#define TENSORFLOW_LIB_IO_PATH_H_
+#ifndef TENSORFLOW_CORE_LIB_IO_PATH_H_
+#define TENSORFLOW_CORE_LIB_IO_PATH_H_
 
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
@@ -95,4 +94,4 @@ string GetTempFilename(const string& extension);
 }  // namespace io
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_IO_PATH_H_
+#endif  // TENSORFLOW_CORE_LIB_IO_PATH_H_

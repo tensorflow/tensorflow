@@ -30,9 +30,7 @@ def _reduce_and_reshape_grad(g, t):
   """Returns the gradient, sum-reduced and reshaped to `t`'s shape."""
   shape = array_ops.shape(t)
   g_shape = array_ops.shape(g)
-  # pylint: disable=protected-access
-  bcast_dims, _ = gen_array_ops._broadcast_gradient_args(shape, g_shape)
-  # pylint: enable=protected-access
+  bcast_dims, _ = gen_array_ops.broadcast_gradient_args(shape, g_shape)
   return array_ops.reshape(math_ops.reduce_sum(g, bcast_dims), shape)
 
 

@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_CONTRIB_LITE_TOCO_GRAPH_TRANSFORMATIONS_LSTM_UTILS_H_
+#define TENSORFLOW_CONTRIB_LITE_TOCO_GRAPH_TRANSFORMATIONS_LSTM_UTILS_H_
+
 #include <iostream>
 #include <string>
 #include <vector>
@@ -44,14 +47,18 @@ enum ExtendedLstmCellInputs {
   kOutputGateBiasTensor = 15,
   kProjectionWeightsTensor = 16,  // Optional
   kProjectionBiasTensor = 17,     // Optional
-  kExtendedLstmInputCount = 18
+  kInputActivationStateTensor = 18,
+  // The op can handle 18 inputs or 20 inputs.
+  kInputCellStateTensor = 19,
+  kExtendedLstmInputCount = 20,
 };
 
 enum ExtendedLstmCellOutputs {
-  kScratchBufferTensor = 0,
-  kOutputStateTensor = 1,
-  kCellStateTensor = 2,
-  kOutputTensor = 3
+  // TODO(ycling): Make the 2 output state tensors optional.
+  kOutputStateTensor = 0,
+  kCellStateTensor = 1,
+  kOutputTensor = 2,
+  kExtendedLstmOutputCount = 3
 };
 
 // Create optional array used for optional tensor in ExtendedLstmCell inputs.
@@ -100,3 +107,5 @@ bool GetMatchingRnnArray(Model* model, const string& back_edge_source_array,
                          string* rnn_array);
 
 }  // namespace toco
+
+#endif  // TENSORFLOW_CONTRIB_LITE_TOCO_GRAPH_TRANSFORMATIONS_LSTM_UTILS_H_

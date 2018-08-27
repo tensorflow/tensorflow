@@ -140,44 +140,6 @@ REGISTER_SYCL_KERNEL(SYCL, bool);
 #undef REGISTER_SYCL_KERNEL
 #endif
 
-HostConstantOp::HostConstantOp(OpKernelConstruction* ctx)
-    : OpKernel(ctx), tensor_(ctx->output_type(0)) {
-  const TensorProto* proto = nullptr;
-  AllocatorAttributes alloc_attr;
-  alloc_attr.set_on_host(true);
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
-  OP_REQUIRES_OK(
-      ctx, ctx->device()->MakeTensorFromProto(*proto, alloc_attr, &tensor_));
-  OP_REQUIRES(
-      ctx, ctx->output_type(0) == tensor_.dtype(),
-      errors::InvalidArgument("Type mismatch between value (",
-                              DataTypeString(tensor_.dtype()), ") and dtype (",
-                              DataTypeString(ctx->output_type(0)), ")"));
-}
-
-void HostConstantOp::Compute(OpKernelContext* ctx) {
-  ctx->set_output(0, tensor_);
-}
-
-#if GOOGLE_CUDA
-// A special GPU kernel for int32.
-// TODO(b/25387198): Also enable int32 in device memory. This kernel
-// registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(Name("Const")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("output")
-                            .TypeConstraint<int32>("dtype"),
-                        HostConstantOp);
-#endif
-
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("Const")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("output")
-                            .TypeConstraint<int32>("dtype"),
-                        HostConstantOp);
-#endif  // TENSORFLOW_USE_SYCL
-
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
@@ -258,13 +220,15 @@ REGISTER_KERNEL(GPU, Eigen::half);
 REGISTER_KERNEL(GPU, bfloat16);
 REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
+REGISTER_KERNEL(GPU, complex64);
+REGISTER_KERNEL(GPU, complex128);
 REGISTER_KERNEL(GPU, uint8);
 REGISTER_KERNEL(GPU, int8);
 REGISTER_KERNEL(GPU, uint16);
 REGISTER_KERNEL(GPU, int16);
 REGISTER_KERNEL(GPU, int64);
 REGISTER_KERNEL(GPU, bool);
-// Currently we do not support filling strings and complex64 on GPU
+// Currently we do not support filling strings on GPU
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -295,6 +259,8 @@ class ZerosLikeOp : public OpKernel {
           errors::InvalidArgument("ZerosLike non-scalar Tensor with "
                                   "dtype=DT_VARIANT is not supported."));
       const Variant& v = input.scalar<Variant>()();
+      // DT_VARIANT tensors must be allocated on CPU since they wrap C++
+      // objects which can not be efficiently represented in GPU memory.
       Tensor out(cpu_allocator(), DT_VARIANT, TensorShape({}));
       Variant* out_v = &(out.scalar<Variant>()());
       OP_REQUIRES_OK(ctx, UnaryOpVariant<Device>(

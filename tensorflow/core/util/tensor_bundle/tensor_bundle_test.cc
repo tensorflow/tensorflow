@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/table_builder.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -106,7 +107,7 @@ std::vector<string> AllTensorKeys(BundleReader* reader) {
   reader->Seek(kHeaderEntryKey);
   reader->Next();
   for (; reader->Valid(); reader->Next()) {
-    ret.push_back(reader->key().ToString());
+    ret.push_back(std::string(reader->key()));
   }
   return ret;
 }
@@ -293,7 +294,7 @@ void VersionTest(const VersionDef& version, StringPiece expected_error) {
   BundleReader reader(Env::Default(), path);
   EXPECT_TRUE(errors::IsInvalidArgument(reader.status()));
   EXPECT_TRUE(
-      StringPiece(reader.status().error_message()).starts_with(expected_error));
+      str_util::StartsWith(reader.status().error_message(), expected_error));
 }
 
 }  // namespace
@@ -588,7 +589,7 @@ TEST(TensorBundleTest, Error) {
     TF_EXPECT_OK(writer.Add("foo", Constant_2x3(1.f)));
     EXPECT_FALSE(writer.Add("foo", Constant_2x3(2.f)).ok());
     EXPECT_TRUE(
-        StringPiece(writer.status().ToString()).contains("duplicate key"));
+        str_util::StrContains(writer.status().ToString(), "duplicate key"));
     EXPECT_FALSE(writer.Finish().ok());
   }
   {  // Double finish
@@ -598,7 +599,7 @@ TEST(TensorBundleTest, Error) {
   }
   {  // Not found.
     BundleReader reader(Env::Default(), Prefix("nonexist"));
-    EXPECT_TRUE(StringPiece(reader.status().ToString()).contains("Not found"));
+    EXPECT_TRUE(str_util::StrContains(reader.status().ToString(), "Not found"));
   }
 }
 
@@ -629,7 +630,7 @@ TEST(TensorBundleTest, Checksum) {
     BundleReader reader(Env::Default(), Prefix(prefix));
     Status status = reader.Lookup(key, &val);
     EXPECT_TRUE(errors::IsDataLoss(status));
-    EXPECT_TRUE(StringPiece(status.ToString()).contains(expected_msg));
+    EXPECT_TRUE(str_util::StrContains(status.ToString(), expected_msg));
   };
 
   // Corrupts a float tensor.
@@ -680,8 +681,8 @@ TEST(TensorBundleTest, Endianness) {
 
   BundleReader reader(Env::Default(), Prefix("end"));
   EXPECT_TRUE(errors::IsUnimplemented(reader.status()));
-  EXPECT_TRUE(StringPiece(reader.status().ToString())
-                  .contains("different endianness from the reader"));
+  EXPECT_TRUE(str_util::StrContains(reader.status().ToString(),
+                                    "different endianness from the reader"));
 }
 
 TEST(TensorBundleTest, TruncatedTensorContents) {

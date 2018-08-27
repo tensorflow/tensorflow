@@ -53,6 +53,6 @@ This makes it easier to chain operations that need to use the reset value.
 Duplicate entries are handled correctly: if multiple `indices` reference
 the same location, their contributions divide.
 
-Requires `updates.shape = indices.shape + ref.shape[1:]`.
+Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape = []`.
 END
 }

@@ -27,7 +27,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import itertools
 import textwrap
 
 
@@ -58,8 +57,7 @@ def build_md_page(page_info):
 
 def _build_function_page(page_info):
   """Given a FunctionPageInfo object Return the page as an md string."""
-  parts = [_Metadata(page_info.full_name).build_html()]
-  parts.append('# %s\n\n' % page_info.full_name)
+  parts = ['# %s\n\n' % page_info.full_name]
 
   if len(page_info.aliases) > 1:
     parts.append('### Aliases:\n\n')
@@ -83,17 +81,7 @@ def _build_function_page(page_info):
 
 def _build_class_page(page_info):
   """Given a ClassPageInfo object Return the page as an md string."""
-  meta_data = _Metadata(page_info.full_name)
-  for item in itertools.chain(
-      page_info.classes,
-      page_info.properties,
-      page_info.methods,
-      page_info.other_members):
-    meta_data.append(item)
-
-  parts = [meta_data.build_html()]
-
-  parts.append('# {page_info.full_name}\n\n'.format(page_info=page_info))
+  parts = ['# {page_info.full_name}\n\n'.format(page_info=page_info)]
 
   parts.append('## Class `%s`\n\n' % page_info.full_name.split('.')[-1])
   if page_info.bases:
@@ -101,7 +89,7 @@ def _build_class_page(page_info):
 
     link_template = '[`{short_name}`]({url})'
     parts.append(', '.join(
-        link_template.format(**base.__dict__) for base in page_info.bases))
+        link_template.format(**base._asdict()) for base in page_info.bases))
 
   parts.append('\n\n')
 
@@ -159,7 +147,7 @@ def _build_class_page(page_info):
       h3 = ('<h3 id="{short_name}">'
             '<code>{short_name}</code>'
             '</h3>\n\n')
-      parts.append(h3.format(**method_info.__dict__))
+      parts.append(h3.format(**method_info._asdict()))
 
       if method_info.signature is not None:
         parts.append(_build_signature(method_info, use_full_name=False))
@@ -186,17 +174,7 @@ def _build_class_page(page_info):
 
 def _build_module_page(page_info):
   """Given a ClassPageInfo object Return the page as an md string."""
-  meta_data = _Metadata(page_info.full_name)
-
-  # Objects with their own pages are not added to the matadata list for the
-  # module, as the only thing on the module page is a link to the object's page.
-  for item in page_info.other_members:
-    meta_data.append(item)
-
-  parts = [meta_data.build_html()]
-
-  parts.append(
-      '# Module: {full_name}\n\n'.format(full_name=page_info.full_name))
+  parts = ['# Module: {full_name}\n\n'.format(full_name=page_info.full_name)]
 
   if len(page_info.aliases) > 1:
     parts.append('### Aliases:\n\n')
@@ -217,7 +195,7 @@ def _build_module_page(page_info):
     template = '[`{short_name}`]({url}) module'
 
     for item in page_info.modules:
-      parts.append(template.format(**item.__dict__))
+      parts.append(template.format(**item._asdict()))
 
       if item.doc.brief:
         parts.append(': ' + item.doc.brief)
@@ -229,7 +207,7 @@ def _build_module_page(page_info):
     template = '[`class {short_name}`]({url})'
 
     for item in page_info.classes:
-      parts.append(template.format(**item.__dict__))
+      parts.append(template.format(**item._asdict()))
 
       if item.doc.brief:
         parts.append(': ' + item.doc.brief)
@@ -241,7 +219,7 @@ def _build_module_page(page_info):
     template = '[`{short_name}(...)`]({url})'
 
     for item in page_info.functions:
-      parts.append(template.format(**item.__dict__))
+      parts.append(template.format(**item._asdict()))
 
       if item.doc.brief:
         parts.append(': ' + item.doc.brief)
@@ -254,7 +232,7 @@ def _build_module_page(page_info):
     parts.append('## Other Members\n\n')
 
     for item in page_info.other_members:
-      parts.append('`{short_name}`\n\n'.format(**item.__dict__))
+      parts.append('`{short_name}`\n\n'.format(**item._asdict()))
 
   return ''.join(parts)
 
@@ -317,41 +295,3 @@ def _build_function_details(function_details):
     parts.append(''.join(sub))
 
   return '\n'.join(parts)
-
-
-class _Metadata(object):
-  """A class for building a page's Metadata block.
-
-  Attributes:
-    name: The name of the page being described by the Metadata block.
-  """
-
-  def __init__(self, name):
-    """Create a Metadata builder.
-
-    Args:
-      name: The name of the page being described by the Metadata block.
-    """
-    self.name = name
-    self._content = []
-
-  def append(self, item):
-    """Add an item from the page to the Metadata block.
-
-    Args:
-      item: The parsed page section to add.
-    """
-    self._content.append(item.short_name)
-
-  def build_html(self):
-    """Return the Metadata block as an Html string."""
-    schema = 'http://developers.google.com/ReferenceObject'
-    parts = ['<div itemscope itemtype="%s">' % schema]
-
-    parts.append('<meta itemprop="name" content="%s" />' % self.name)
-    for item in self._content:
-      parts.append('<meta itemprop="property" content="%s"/>' % item)
-
-    parts.extend(['</div>', '', ''])
-
-    return '\n'.join(parts)

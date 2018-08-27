@@ -236,8 +236,7 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
         meaning the quadratic form `x^H A x` has positive real part for all
         nonzero `x`.  Note that we do not require the operator to be
         self-adjoint to be positive-definite.  See:
-        https://en.wikipedia.org/wiki/Positive-definite_matrix\
-            #Extension_for_non_symmetric_matrices
+        https://en.wikipedia.org/wiki/Positive-definite_matrix#Extension_for_non-symmetric_matrices
       is_square:  Expect that this operator acts like square [batch] matrices.
       assert_proper_shapes:  Python `bool`.  If `False`, only perform static
         checks that initialization and method arguments have proper shape.
@@ -576,8 +575,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
         meaning the quadratic form `x^H A x` has positive real part for all
         nonzero `x`.  Note that we do not require the operator to be
         self-adjoint to be positive-definite.  See:
-        https://en.wikipedia.org/wiki/Positive-definite_matrix\
-            #Extension_for_non_symmetric_matrices
+        https://en.wikipedia.org/wiki/Positive-definite_matrix#Extension_for_non-symmetric_matrices
       is_square:  Expect that this operator acts like square [batch] matrices.
       assert_proper_shapes:  Python `bool`.  If `False`, only perform static
         checks that initialization and method arguments have proper shape.

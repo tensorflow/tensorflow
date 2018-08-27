@@ -19,7 +19,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -28,14 +29,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 
 // Tries to replace a conditional with a call operation of the corresponding
 // computation. If the given conditional has a constant predicate, tries to
-// replace it with a call to its true/false computation as appropirate and then
+// replace it with a call to its true/false computation as appropriate and then
 // inline that computation.
 //
 // Returns true if it made a change to the graph.
@@ -69,7 +68,7 @@ static StatusOr<bool> TryRemoveConditional(HloInstruction* conditional) {
         conditional->shape(), {conditional->mutable_operand(2)},
         conditional->false_computation()));
   }
-
+  conditional->SetupDerivedInstruction(call_op);
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(conditional, call_op));
   TF_RETURN_IF_ERROR(CallInliner::Inline(call_op).status());
 

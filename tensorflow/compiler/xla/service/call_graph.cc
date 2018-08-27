@@ -17,21 +17,21 @@ limitations under the License.
 
 #include <queue>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
+using absl::StrCat;
 using ::tensorflow::strings::Appendf;
-using ::tensorflow::strings::StrCat;
 
 string CallContextToString(CallContext context) {
   switch (context) {
@@ -51,15 +51,17 @@ std::ostream& operator<<(std::ostream& out, const CallContext& context) {
   return out;
 }
 
-CallContext GetInstructionCallContext(const HloInstruction* instruction) {
-  switch (instruction->opcode()) {
+CallContext GetInstructionCallContext(HloOpcode opcode) {
+  switch (opcode) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kWhile:
       return CallContext::kSequential;
+    case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kMap:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
+    case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kFusion:
       return CallContext::kParallel;
@@ -69,10 +71,10 @@ CallContext GetInstructionCallContext(const HloInstruction* instruction) {
 }
 
 string CallSite::ToString() const {
-  return StrCat(instruction()->name(), " calls in context ",
-                CallContextToString(context()), ": ",
-                tensorflow::str_util::Join(
-                    called_computations(), ", ",
+  return StrCat(
+      instruction()->name(), " calls in context ",
+      CallContextToString(context()), ": ",
+      absl::StrJoin(called_computations(), ", ",
                     [](string* out, const HloComputation* computation) {
                       out->append(computation->name());
                     }));
@@ -101,7 +103,7 @@ void CallGraphNode::AddCallerCallSite(const CallSite& caller_callsite) {
 
 void CallGraphNode::AddCallSiteForInstruction(HloInstruction* instruction) {
   CHECK_EQ(instruction->parent(), computation());
-  const CallContext context = GetInstructionCallContext(instruction);
+  const CallContext context = GetInstructionCallContext(instruction->opcode());
   if (!instruction->called_computations().empty()) {
     CHECK(context == CallContext::kSequential ||
           context == CallContext::kParallel);
@@ -235,8 +237,8 @@ void CallGraph::SetCallContexts() {
 
 /* static */
 std::unique_ptr<CallGraph> CallGraph::Build(const HloModule* module) {
-  // Constructor for CallGraph is private so MakeUnique can't be used.
-  auto call_graph = WrapUnique<CallGraph>(new CallGraph(module));
+  // Constructor for CallGraph is private so absl::make_unique can't be used.
+  auto call_graph = absl::WrapUnique<CallGraph>(new CallGraph(module));
 
   VLOG(2) << "Building call graph for:";
   XLA_VLOG_LINES(2, module->ToString());

@@ -47,7 +47,7 @@ class ConstantValueTest(test.TestCase):
 
   def test_variable(self):
     for v in [True, False, 1, 0, 1.0]:
-      with ops.Graph().as_default() as g, self.test_session(g) as sess:
+      with ops.Graph().as_default() as g, self.session(g) as sess:
         x = variables.Variable(v)
         value = utils.constant_value(x)
         self.assertEqual(value, None)
@@ -293,7 +293,6 @@ class NPositiveIntegersTest(test.TestCase):
     self.assertEqual(utils.n_positive_integers(1, 2), (2,))
     self.assertEqual(utils.n_positive_integers(2, 2), (2, 2))
     self.assertEqual(utils.n_positive_integers(2, (2, 3)), (2, 3))
-    self.assertEqual(utils.n_positive_integers(3, (2, 3, 1)), (2, 3, 1))
     self.assertEqual(utils.n_positive_integers(3, (2, 3, 1)), (2, 3, 1))
     self.assertEqual(
         utils.n_positive_integers(3, tensor_shape.TensorShape([2, 3, 1])),

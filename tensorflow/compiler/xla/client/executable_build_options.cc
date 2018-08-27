@@ -71,9 +71,52 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_generate_hlo_graph(
   return *this;
 }
 
-const tensorflow::gtl::optional<string>&
-ExecutableBuildOptions::generate_hlo_graph() const {
+const absl::optional<string>& ExecutableBuildOptions::generate_hlo_graph()
+    const {
   return generate_hlo_graph_;
+}
+
+ExecutableBuildOptions& ExecutableBuildOptions::set_dump_optimized_hlo_proto_to(
+    absl::string_view dirpath) {
+  dump_optimized_hlo_proto_to_ = string(dirpath);
+  return *this;
+}
+
+const absl::optional<string>&
+ExecutableBuildOptions::dump_optimized_hlo_proto_to() const {
+  return dump_optimized_hlo_proto_to_;
+}
+
+ExecutableBuildOptions&
+ExecutableBuildOptions::set_dump_unoptimized_hlo_proto_to(
+    absl::string_view dirpath) {
+  dump_unoptimized_hlo_proto_to_ = string(dirpath);
+  return *this;
+}
+
+const absl::optional<string>&
+ExecutableBuildOptions::dump_unoptimized_hlo_proto_to() const {
+  return dump_unoptimized_hlo_proto_to_;
+}
+
+ExecutableBuildOptions& ExecutableBuildOptions::set_dump_per_pass_hlo_proto_to(
+    absl::string_view dirpath) {
+  dump_per_pass_hlo_proto_to_ = string(dirpath);
+  return *this;
+}
+
+const absl::optional<string>&
+ExecutableBuildOptions::dump_per_pass_hlo_proto_to() const {
+  return dump_per_pass_hlo_proto_to_;
+}
+
+ExecutableBuildOptions& ExecutableBuildOptions::set_hlo_profile(bool enabled) {
+  hlo_profile_ = enabled;
+  return *this;
+}
+
+absl::optional<bool> ExecutableBuildOptions::hlo_profile() const {
+  return hlo_profile_;
 }
 
 }  // namespace xla

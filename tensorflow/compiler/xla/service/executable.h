@@ -22,14 +22,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
-#include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
-#include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -63,14 +61,14 @@ class Executable {
   // enabled.
   //
   // Returns a shaped buffer containing the result of the computation.
-  virtual StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
+  virtual StatusOr<ScopedShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       HloExecutionProfile* hlo_execution_profile) = 0;
 
   // Same as ExecuteOnStream(), but this call is non-blocking and returns as
   // soon as all of the operations are enqueued for launch on the stream.
-  virtual StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteAsyncOnStream(
+  virtual StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) = 0;
 
@@ -78,7 +76,7 @@ class Executable {
   // streams. arguments[i] contains the arguments to the execution on
   // run_options[i]->stream() and the returned value is at index i of the
   // returned vector.
-  virtual StatusOr<std::vector<std::unique_ptr<ShapedBuffer>>> ExecuteOnStreams(
+  virtual StatusOr<std::vector<ScopedShapedBuffer>> ExecuteOnStreams(
       tensorflow::gtl::ArraySlice<const ServiceExecutableRunOptions>
           run_options,
       tensorflow::gtl::ArraySlice<
@@ -90,15 +88,14 @@ class Executable {
   // called explicitly for other (async, for example) variants after the stream
   // has completed.
   virtual Status PopulateExecutionProfile(
-      HloExecutionProfile* hlo_execution_profile,
-      perftools::gputools::StreamExecutor* executor) {
+      HloExecutionProfile* hlo_execution_profile, se::Stream* stream) {
     return Status::OK();
   }
 
   // Convenience wrapper for calling Executable::ExecuteOnStream. Sets up a
   // timer for the execution, sets up HLO profiling if enabled, and fills in the
   // given ExecutionProfile if non-null.
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStreamWrapper(
+  StatusOr<ScopedShapedBuffer> ExecuteOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
 
@@ -107,14 +104,6 @@ class Executable {
   ExecutionProfile execution_profile() const {
     tensorflow::mutex_lock lock(mutex_);
     return execution_profile_;
-  }
-
-  // Returns Status::ok() if the two executables are equal to each other.
-  //
-  // An error status is returned otherwise.
-  virtual const Status EqualOrFail(const Executable& executable) {
-    return Unimplemented(
-        "Equality test on this executable is not implemented.");
   }
 
   const HloProfilePrinterData& hlo_profile_printer_data() const {
@@ -140,29 +129,27 @@ class Executable {
 
   const HloModuleConfig& module_config() const { return hlo_module_->config(); }
 
-  // Returns the versioned computation handle of the computation computed by
-  // this executable.
-  const VersionedComputationHandle& entry_computation_handle() const {
-    return hlo_module_->entry_computation_handle();
-  }
-
   // The shape (including layout) that results from this execution. This is the
   // shape of the DeviceMemoryBase result value in ExecuteOnStream above.
   const Shape& result_shape() const {
     return hlo_module_->config().entry_computation_layout().result_shape();
   }
 
-  // Dumping helpers.
-  void set_session_module(std::unique_ptr<xla::SessionModule> session_module) {
-    session_module_ = std::move(session_module);
-  }
-  bool dumping() const { return session_module_ != nullptr; }
-  SessionModule* session_module() const { return session_module_.get(); }
-  Status DumpSessionModule();
+  // Returns the size of the executable in bytes. Returns -1 by default if the
+  // method is not overridden to support this kind of query.
+  virtual int64 SizeInBytes();
 
-  // Dump session_module to directory_path/filename.
+  // Dumping helpers.
+  void set_hlo_snapshot(std::unique_ptr<xla::HloSnapshot> hlo_snapshot) {
+    hlo_snapshot_ = std::move(hlo_snapshot);
+  }
+  bool dumping_snapshot() const { return hlo_snapshot_ != nullptr; }
+  HloSnapshot* hlo_snapshot() const { return hlo_snapshot_.get(); }
+  Status DumpHloSnapshot();
+
+  // Dump hlo snapshot to directory_path/filename.
   static Status DumpToDirectory(const string& directory_path, string filename,
-                                const SessionModule& session_module);
+                                const HloSnapshot& hlo_session);
 
  protected:
   mutable tensorflow::mutex mutex_;
@@ -175,8 +162,8 @@ class Executable {
   // around.
   const std::unique_ptr<const HloModule> hlo_module_;
 
-  // SessionModule this was compiled from. Null if not dumping executions.
-  std::unique_ptr<SessionModule> session_module_;
+  // HloSnapshot this was compiled from. Null if not dumping executions.
+  std::unique_ptr<HloSnapshot> hlo_snapshot_;
 
   // Execution count, used to generate a unique filename for each dumped
   // execution.

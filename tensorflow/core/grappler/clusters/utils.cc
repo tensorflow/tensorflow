@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/mem.h"
 
@@ -54,7 +55,7 @@ DeviceProperties GetLocalCPUInfo() {
 
   int64 free_mem = port::AvailableRam();
   if (free_mem < INT64_MAX) {
-    device.set_memory_size(free_mem * 1024);
+    device.set_memory_size(free_mem);
   }
 
   (*device.mutable_environment())["cpu_instruction_set"] =

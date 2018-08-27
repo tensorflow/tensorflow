@@ -15,12 +15,10 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/host/host_platform_id.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace host {
 
 PLATFORM_DEFINE_ID(kHostPlatformId);
 
 }  // namespace host
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

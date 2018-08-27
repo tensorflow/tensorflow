@@ -38,6 +38,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import re
 import sys
 
 from google.protobuf import text_format
@@ -54,9 +55,23 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.tools import saved_model_utils
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 
-FLAGS = None
+
+def _has_no_variables(sess):
+  """Determines if the graph has any variables.
+
+  Args:
+    sess: TensorFlow Session.
+
+  Returns:
+    Bool.
+  """
+  for op in sess.graph.get_operations():
+    if op.type.startswith("Variable") or op.type.endswith("VariableOp"):
+      return False
+  return True
 
 
 def freeze_graph_with_def_protos(input_graph_def,
@@ -79,7 +94,7 @@ def freeze_graph_with_def_protos(input_graph_def,
 
   # 'input_checkpoint' may be a prefix if we're using Saver V2 format
   if (not input_saved_model_dir and
-      not saver_lib.checkpoint_exists(input_checkpoint)):
+      not checkpoint_management.checkpoint_exists(input_checkpoint)):
     print("Input checkpoint '" + input_checkpoint + "' doesn't exist!")
     return -1
 
@@ -118,16 +133,48 @@ def freeze_graph_with_def_protos(input_graph_def,
       var_list = {}
       reader = pywrap_tensorflow.NewCheckpointReader(input_checkpoint)
       var_to_shape_map = reader.get_variable_to_shape_map()
+
+      # List of all partition variables. Because the condition is heuristic
+      # based, the list could include false positives.
+      all_parition_variable_names = [
+          tensor.name.split(":")[0]
+          for op in sess.graph.get_operations()
+          for tensor in op.values()
+          if re.search(r"/part_\d+/", tensor.name)
+      ]
+      has_partition_var = False
+
       for key in var_to_shape_map:
         try:
           tensor = sess.graph.get_tensor_by_name(key + ":0")
+          if any(key in name for name in all_parition_variable_names):
+            has_partition_var = True
         except KeyError:
           # This tensor doesn't exist in the graph (for example it's
           # 'global_step' or a similar housekeeping element) so skip it.
           continue
         var_list[key] = tensor
-      saver = saver_lib.Saver(
-          var_list=var_list, write_version=checkpoint_version)
+
+      try:
+        saver = saver_lib.Saver(
+            var_list=var_list, write_version=checkpoint_version)
+      except TypeError as e:
+        # `var_list` is required to be a map of variable names to Variable
+        # tensors. Partition variables are Identity tensors that cannot be
+        # handled by Saver.
+        if has_partition_var:
+          print("Models containing partition variables cannot be converted "
+                "from checkpoint files. Please pass in a SavedModel using "
+                "the flag --input_saved_model_dir.")
+          return -1
+        # Models that have been frozen previously do not contain Variables.
+        elif _has_no_variables(sess):
+          print("No variables were found in this model. It is likely the model "
+                "was frozen previously. You cannot freeze a graph twice.")
+          return 0
+        else:
+          raise e
+
       saver.restore(sess, input_checkpoint)
       if initializer_nodes:
         sess.run(initializer_nodes.replace(" ", "").split(","))
@@ -256,25 +303,24 @@ def freeze_graph(input_graph,
       checkpoint_version=checkpoint_version)
 
 
-def main(unused_args):
-  if FLAGS.checkpoint_version == 1:
+def main(unused_args, flags):
+  if flags.checkpoint_version == 1:
     checkpoint_version = saver_pb2.SaverDef.V1
-  elif FLAGS.checkpoint_version == 2:
+  elif flags.checkpoint_version == 2:
     checkpoint_version = saver_pb2.SaverDef.V2
   else:
     print("Invalid checkpoint version (must be '1' or '2'): %d" %
-          FLAGS.checkpoint_version)
+          flags.checkpoint_version)
     return -1
-  freeze_graph(FLAGS.input_graph, FLAGS.input_saver, FLAGS.input_binary,
-               FLAGS.input_checkpoint, FLAGS.output_node_names,
-               FLAGS.restore_op_name, FLAGS.filename_tensor_name,
-               FLAGS.output_graph, FLAGS.clear_devices, FLAGS.initializer_nodes,
-               FLAGS.variable_names_whitelist, FLAGS.variable_names_blacklist,
-               FLAGS.input_meta_graph, FLAGS.input_saved_model_dir,
-               FLAGS.saved_model_tags, checkpoint_version)
+  freeze_graph(flags.input_graph, flags.input_saver, flags.input_binary,
+               flags.input_checkpoint, flags.output_node_names,
+               flags.restore_op_name, flags.filename_tensor_name,
+               flags.output_graph, flags.clear_devices, flags.initializer_nodes,
+               flags.variable_names_whitelist, flags.variable_names_blacklist,
+               flags.input_meta_graph, flags.input_saved_model_dir,
+               flags.saved_model_tags, checkpoint_version)
 
-
-if __name__ == "__main__":
+def run_main():
   parser = argparse.ArgumentParser()
   parser.register("type", "bool", lambda v: v.lower() == "true")
   parser.add_argument(
@@ -376,5 +422,10 @@ if __name__ == "__main__":
       separated by \',\'. For tag-set contains multiple tags, all tags \
       must be passed in.\
       """)
-  FLAGS, unparsed = parser.parse_known_args()
-  app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  flags, unparsed = parser.parse_known_args()
+
+  my_main = lambda unused_args: main(unused_args, flags)
+  app.run(main=my_main, argv=[sys.argv[0]] + unparsed)
+
+if __name__ == '__main__':
+  run_main()

@@ -1,4 +1,4 @@
-# Installing TensorFlow for C
+# Install TensorFlow for C
 
 TensorFlow provides a C API defined in
 [`c_api.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/c/c_api.h),
@@ -28,8 +28,8 @@ enable TensorFlow for C:
      entitled "Determine which TensorFlow to install" in one of the
      following guides:
 
-       * @{$install_linux#determine_which_tensorflow_to_install$Installing TensorFlow on Linux}
-       * @{$install_mac#determine_which_tensorflow_to_install$Installing TensorFlow on macOS}
+       * [Installing TensorFlow on Linux](../install/install_linux.md#determine_which_tensorflow_to_install)
+       * [Installing TensorFlow on macOS](../install/install_mac.md#determine_which_tensorflow_to_install)
 
   2. Download and extract the TensorFlow C library into `/usr/local/lib` by
      invoking the following shell commands:
@@ -38,7 +38,7 @@ enable TensorFlow for C:
          OS="linux" # Change to "darwin" for macOS
          TARGET_DIRECTORY="/usr/local"
          curl -L \
-           "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-${TF_TYPE}-${OS}-x86_64-1.6.0.tar.gz" |
+           "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-${TF_TYPE}-${OS}-x86_64-1.10.0.tar.gz" |
            sudo tar -C $TARGET_DIRECTORY -xz
 
      The `tar` command extracts the TensorFlow C library into the `lib`
@@ -113,6 +113,6 @@ If executing `a.out` fails, ask yourself the following questions:
   * Did you export those environment variables?
 
 If you are still seeing build or execution error messages, search (or post to)
-[StackOverflow](www.stackoverflow.com/questions/tagged/tensorflow) for
+[StackOverflow](https://stackoverflow.com/questions/tagged/tensorflow) for
 possible solutions.
 

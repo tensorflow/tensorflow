@@ -15,16 +15,24 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/dnn.h"
 
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace dnn {
+
+uint64 AlgorithmDesc::hash() const {
+  return ::tensorflow::Hash64Combine(algo_, tensor_ops_enabled_);
+}
 
 bool DnnSupport::GetConvolveAlgorithms(
     bool with_winograd_nonfused, int cc_major, int cc_minor,
     std::vector<AlgorithmDesc>* out_algorithms) {
+  return false;
+}
+
+bool DnnSupport::GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
@@ -109,6 +117,8 @@ string FilterLayoutString(FilterLayout layout) {
   switch (layout) {
     case FilterLayout::kOutputInputYX:
       return "OutputInputYX";
+    case FilterLayout::kOutputYXInput:
+      return "OutputYXInput";
     case FilterLayout::kOutputInputYX4:
       return "OutputInputYX4";
     case FilterLayout::kInputYXOutput:
@@ -131,6 +141,10 @@ string PadAlignmentString(PadAlignment alignment) {
       return "TensorFlow padding";
   }
   return "unknown pad alignment";
+}
+
+std::ostream& operator<<(std::ostream& str, dnn::PadAlignment alignment) {
+  return str << PadAlignmentString(alignment);
 }
 
 string ShortPoolingModeString(PoolingMode mode) {
@@ -399,6 +413,8 @@ string FilterDescriptor::ToShortString() const {
   switch (layout_) {
     case FilterLayout::kOutputInputYX:
       return port::StrCat(od, id, spatial);
+    case FilterLayout::kOutputYXInput:
+      return port::StrCat(od, spatial, id);
     case FilterLayout::kOutputInputYX4:
       return port::StrCat(od, id, spatial, "(VECT_C)");
     case FilterLayout::kInputYXOutput:
@@ -426,6 +442,7 @@ ConvolutionDescriptor::ConvolutionDescriptor(int ndims)
       filter_strides_(ndims, 1),
       dilation_rates_(ndims, 1),
       pad_alignment_(PadAlignment::kDefault),
+      group_count_(1),
       ndims_(ndims) {}
 
 ConvolutionDescriptor::ConvolutionDescriptor()
@@ -550,5 +567,4 @@ string NormalizeDescriptor::ToShortString() const {
 }
 
 }  // namespace dnn
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

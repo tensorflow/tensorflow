@@ -13,11 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tensor Handle Operations. See the @{$python/session_ops} guide.
+"""Tensor Handle Operations.
 
-@@get_session_handle
-@@get_session_tensor
-@@delete_session_tensor
+See the [Session Ops](https://tensorflow.org/api_guides/python/session_ops)
+guide.
 """
 
 # pylint: disable=g-bad-name

@@ -18,15 +18,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/liveness_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -62,6 +61,28 @@ bool HloOrdering::ExecutesBefore(const HloInstruction* a,
     const HloComputation* condition = a_ancestor->while_condition();
     if (call_graph_->InstructionIsNestedIn(a, condition) &&
         call_graph_->InstructionIsNestedIn(b, body)) {
+      return true;
+    }
+  }
+
+  // If the common ancestor is a conditional instruction, even though the true
+  // and false computations are not really ordered per-se, we define the true
+  // computation to be ordered before the false one.
+  // This ensures that buffers can still be shared among the two computations
+  // as they will forcibly have disjoint liveness.
+  if (a_ancestor == b_ancestor &&
+      a_ancestor->opcode() == HloOpcode::kConditional) {
+    const HloComputation* true_computation = a_ancestor->true_computation();
+    const HloComputation* false_computation = a_ancestor->false_computation();
+    if (call_graph_->InstructionIsNestedIn(a, true_computation) &&
+        call_graph_->InstructionIsNestedIn(b, false_computation)) {
+      return true;
+    }
+    // If 'b' is the conditional ancestor, and 'a' is within the true or false
+    // computations, 'a' executes before 'b'.
+    if (b == a_ancestor &&
+        (call_graph_->InstructionIsNestedIn(a, true_computation) ||
+         call_graph_->InstructionIsNestedIn(a, false_computation))) {
       return true;
     }
   }
@@ -118,7 +139,18 @@ bool HloOrdering::IsDefinedBefore(const HloValue& a, const HloValue& b) const {
            b.defining_instruction()->while_condition()))) {
     return true;
   }
-
+  // If 'b' is a conditional phi and 'a' is in the true or false computation,
+  // then 'a' executes before 'b'.
+  if (b.is_phi() &&
+      b.defining_instruction()->opcode() == HloOpcode::kConditional &&
+      (call_graph_->InstructionIsNestedIn(
+           a.defining_instruction(),
+           b.defining_instruction()->true_computation()) ||
+       call_graph_->InstructionIsNestedIn(
+           a.defining_instruction(),
+           b.defining_instruction()->false_computation()))) {
+    return true;
+  }
   return ExecutesBefore(a.defining_instruction(), b.defining_instruction());
 }
 
@@ -137,10 +169,10 @@ bool HloOrdering::UseIsBeforeValueDefinition(
   // is before the def if the instruction allows buffer sharing (in place
   // computation).
   if (use.instruction == value.defining_instruction() &&
-      CanShareOperandBufferWithUser(
+      dataflow.CanShareOperandBufferWithUser(
           use.instruction->mutable_operand(use.operand_number),
           use.operand_index, value.defining_instruction(),
-          value.defining_index(), dataflow)) {
+          value.defining_index())) {
     VLOG(4) << "  use is value def, and instruction can share use buffer";
     return true;
   }
@@ -200,6 +232,11 @@ bool HloOrdering::UseIsBeforeValueDefinition(
               << " and def is in FALSE computation";
       return true;
     }
+    if (value.defining_instruction() == use.instruction) {
+      VLOG(4) << "  use is conditional " << use << " and def is "
+              << value.ToShortString();
+      return true;
+    }
   }
 
   VLOG(4) << "  use is not before value";
@@ -212,18 +249,21 @@ bool HloOrdering::LiveRangeStrictlyBefore(
   VLOG(4) << "LiveRangeStrictlyBefore(a = " << a.ToShortString()
           << ", b = " << b.ToShortString() << ")";
   if (!IsDefinedBefore(a, b)) {
-    VLOG(4) << "a not defined before b";
+    VLOG(4) << a << " not defined before " << b;
     return false;
   }
-
   // All uses of 'a' must be before 'b' is defined.
   for (const HloUse& use : a.uses()) {
+    if (dataflow.DoesNotUseOperandBuffer(a.instruction(), a.index(),
+                                         use.instruction)) {
+      continue;
+    }
     if (!UseIsBeforeValueDefinition(use, b, dataflow)) {
-      VLOG(4) << "use of a (" << use << ") not before b is defined";
+      VLOG(4) << "use of " << a << " (" << use << ") not before " << b
+              << " is defined";
       return false;
     }
   }
-
   return true;
 }
 
@@ -281,7 +321,7 @@ string PredecessorHloOrdering::ToStringHelper(const string& name) const {
       }
     }
   }
-  return tensorflow::str_util::Join(pieces, "\n");
+  return absl::StrJoin(pieces, "\n");
 }
 
 DependencyHloOrdering::DependencyHloOrdering(const HloModule* module)
@@ -352,7 +392,7 @@ string SequentialHloOrdering::ToString() const {
           tensorflow::strings::Printf("  %s", instruction->name().c_str()));
     }
   }
-  return tensorflow::str_util::Join(pieces, "\n");
+  return absl::StrJoin(pieces, "\n");
 }
 
 std::ostream& operator<<(

@@ -80,7 +80,7 @@ need for a separate calibration step.
 TensorFlow can train models with quantization in the loop. Because training
 requires small gradient adjustments, floating point values are still used. To
 keep models as floating point while adding the quantization error in the training
-loop, @{$array_ops#Fake_quantization$fake quantization} nodes simulate the
+loop, [fake quantization](../api_guides/python/array_ops.md#Fake_quantization) nodes simulate the
 effect of quantization in the forward and backward passes.
 
 Since it's difficult to add these fake quantization operations to all the
@@ -110,7 +110,7 @@ we've added a separate rewrite for the *eval graph*:
 
 ```
 # Build eval model
-logits = tf.nn.softmax_cross_entropy_with_logits(...)
+logits = tf.nn.softmax_cross_entropy_with_logits_v2(...)
 
 # Call the eval rewrite which rewrites the graph in-place with
 # FakeQuantization nodes and fold batchnorm for eval.
@@ -163,7 +163,7 @@ bazel build tensorflow/contrib/lite/toco:toco && \
   --std_value=127.5 --mean_value=127.5
 ```
 
-See the documentation for @{tf.contrib.quantize} and
+See the documentation for `tf.contrib.quantize` and
 [TensorFlow Lite](/mobile/tflite/).
 
 ## Quantized accuracy
@@ -227,8 +227,8 @@ of 30.0f, and an 8-bit array, the quantized values represent the following:
   <table>
     <tr><th>Quantized</th><th>Float</th></tr>
     <tr><td>0</td><td>-10.0</td></tr>
-    <tr><td>255</td><td>30.0</td></tr>
     <tr><td>128</td><td>10.0</td></tr>
+    <tr><td>255</td><td>30.0</td></tr>
   </table>
   <figcaption>
     <b>Table 2</b>: Example quantized value range

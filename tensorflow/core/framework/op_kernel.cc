@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/kernel_def.pb_text.h"
+#include "tensorflow/core/framework/kernel_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -96,7 +97,7 @@ OpKernel::OpKernel(OpKernelConstruction* context,
       output_memory_types_(context->output_memory_types().begin(),
                            context->output_memory_types().end()),
       graph_def_version_(context->graph_def_version()),
-      is_internal_(StringPiece(type_string()).starts_with("_")),
+      is_internal_(str_util::StartsWith(type_string(), "_")),
       input_name_map_(context->num_inputs()),
       output_name_map_(context->num_outputs()) {
   OP_REQUIRES_OK(context,
@@ -262,11 +263,13 @@ OpKernelContext::OpKernelContext(Params* params, int num_outputs)
       outputs_(num_outputs),
       temp_memory_allocated_(0),
       persistent_memory_allocated_(0) {
-  Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
   params_->ensure_eigen_gpu_device();
-  params_->device->ReinitializeGpuDevice(this, params_->eigen_gpu_device,
-                                         params_->op_device_context,
-                                         eigen_gpu_allocator);
+  if (params_->eigen_gpu_device != nullptr) {
+    Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
+    params_->device->ReinitializeGpuDevice(this, params_->eigen_gpu_device,
+                                           params_->op_device_context,
+                                           eigen_gpu_allocator);
+  }
   if (params_->record_tensor_accesses) {
     referenced_tensors_.Init();
   }
@@ -282,9 +285,14 @@ OpKernelContext::~OpKernelContext() {
 }
 
 Allocator* OpKernelContext::get_allocator(AllocatorAttributes attr) {
-  Allocator* allocator =
-      params_->device->GetStepAllocator(attr, resource_manager());
-  if (track_allocations()) {
+  Allocator* allocator = nullptr;
+  if (TF_PREDICT_FALSE(attr.scope_id > 0)) {
+    allocator = params_->device->GetScopedAllocator(attr, step_id());
+    CHECK(allocator);
+  } else {
+    allocator = params_->device->GetAllocator(attr);
+  }
+  if (TF_PREDICT_FALSE(track_allocations())) {
     mutex_lock lock(mu_);
     for (const auto& wrapped : wrapped_allocators_) {
       if (wrapped.first == allocator) {
@@ -360,7 +368,7 @@ Status OpKernelContext::input_ref_mutex(StringPiece name, mutex** out_mutex) {
 
 const Tensor& OpKernelContext::input(int index) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, num_inputs());
+  DCHECK_LT(index, num_inputs()) << " name: " << op_kernel().name();
   DCHECK(!input_is_ref(index));
   const Tensor& tensor = *((*params_->inputs)[index].tensor);
   record_tensor_reference(tensor);
@@ -415,8 +423,8 @@ bool OpKernelContext::forward_input_to_output_with_shape(
                                ? AllocatorAttributes()
                                : output_alloc_attr(output_index);
   std::unique_ptr<Tensor> new_tensor = forward_input(
-      input_index, expected_output_dtype(output_index), output_shape,
-      output_memory_type(output_index), output_attr);
+      input_index, output_index, expected_output_dtype(output_index),
+      output_shape, output_memory_type(output_index), output_attr);
   if (new_tensor != nullptr) {
     // Transfer ownership to the output slot in OpKernelContext.
     outputs_[output_index] = TensorValue(new_tensor.release());
@@ -456,35 +464,66 @@ Status OpKernelContext::forward_input_to_output_with_shape(
 }
 
 std::unique_ptr<Tensor> OpKernelContext::forward_input(
-    int input_index, DataType output_dtype, const TensorShape& output_shape,
-    MemoryType output_memory_type, const AllocatorAttributes& output_attr) {
+    int input_index, int output_index, DataType output_dtype,
+    const TensorShape& output_shape, MemoryType output_memory_type,
+    const AllocatorAttributes& output_attr) {
   DCHECK_GE(input_index, 0);
   DCHECK_LT(input_index, num_inputs());
   const TensorValue& input = (*params_->inputs)[input_index];
-  // Check that input tensor exists, is not a ref, and has no other consumers.
-  if (input.tensor == nullptr || input.is_ref() || !input->RefCountIsOne()) {
+  // Check whether at graph construction time this output was marked
+  // either for no forwarding or with a reservation for this input.
+  // If it's reserved for this input we'll skip the refcount and
+  // AllocatorAttribute checks.
+  // TODO(tucker): Maybe we should skip all of the checks?
+  bool never_forward =
+      (params_->forward_from_array != nullptr && output_index >= 0 &&
+       params_->forward_from_array[output_index] == Params::kNeverForward);
+  if (never_forward) return nullptr;
+  bool forward_expected =
+      (params_->forward_from_array != nullptr && output_index >= 0 &&
+       params_->forward_from_array[output_index] == input_index);
+  if (!forward_expected && params_->forward_from_array != nullptr) {
+    // Check for possibly conflicting forward.
+    for (int i = 0; i < num_outputs(); ++i) {
+      if (params_->forward_from_array[i] == input_index) {
+        // This input is reserved for output i.
+        return nullptr;
+      }
+    }
+  }
+  // Check that input tensor exists and is not a ref.
+  if (input.tensor == nullptr || input.is_ref()) {
+    CHECK(!forward_expected);
     return nullptr;
   }
   // Check that input type matches.
   if (input_dtype(input_index) != output_dtype) {
+    CHECK(!forward_expected);
     return nullptr;
   }
   // Check that the input and output sizes are compatible.
   if (input.tensor->shape().num_elements() != output_shape.num_elements()) {
+    CHECK(!forward_expected);
     return nullptr;
   }
   // Check that input and output memory types match, i.e.
   // that they either both live in host or both live in device memory.
   if (input_memory_type(input_index) != output_memory_type) {
+    CHECK(!forward_expected);
     return nullptr;
   }
-  // Check that output allocator attributes are not more restrictive than
-  // input allocator attributes.
-  const auto input_attr = params_->input_alloc_attrs == nullptr
-                              ? AllocatorAttributes()
-                              : input_alloc_attr(input_index);
-  if (!output_attr.IsEqualOrLessRestrictiveThan(input_attr)) {
-    return nullptr;
+  if (!forward_expected) {
+    if (!input->RefCountIsOne()) {
+      return nullptr;
+    }
+    // Check that output allocator attributes are not more restrictive than
+    // input allocator attributes.
+    const auto input_attr = params_->input_alloc_attrs == nullptr
+                                ? AllocatorAttributes()
+                                : input_alloc_attr(input_index);
+    if (!output_attr.IsEqualOrLessRestrictiveThan(input_attr)) {
+      return nullptr;
+    }
   }
   // TODO(rmlarsen): Use MakeUnique here. There is already a copy in
   // tensorflow/compiler/xla/ptr_util.h. Perhaps this should be part of
@@ -500,7 +539,8 @@ Status OpKernelContext::forward_input_or_allocate_temp(
     Tensor* out_temp) {
   for (int input_index : candidate_input_indices) {
     std::unique_ptr<Tensor> new_tensor =
-        forward_input(input_index, type, shape, DEVICE_MEMORY, allocator_attr);
+        forward_input(input_index, Params::kNoReservation /*output_index*/,
+                      type, shape, DEVICE_MEMORY, allocator_attr);
     if (new_tensor != nullptr) {
       *out_temp = std::move(*new_tensor);
       return Status::OK();
@@ -590,6 +630,14 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
                                         Tensor** output) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, num_outputs());
+  bool forward_expected =
+      (params_->forward_from_array != nullptr && index >= 0 &&
+       params_->forward_from_array[index] >= 0);
+  if (forward_expected) {
+    return errors::Internal(
+        "Explicit allocate_output call where input forwarding required.  Try "
+        "turning off the ScopedAllocator optimizer.");
+  }
   AllocatorAttributes attr = output_alloc_attr(index);
   return allocate_output(index, shape, output, attr);
 }
@@ -778,19 +826,6 @@ Status OpKernelContext::mutable_output(StringPiece name, Tensor** tensor) {
   return Status::OK();
 }
 
-Status OpKernelContext::release_output(StringPiece name, TensorValue* value) {
-  int start, stop;
-  TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
-  if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued output name '",
-                                   name,
-                                   "' when single-valued output was "
-                                   "expected");
-  }
-  *value = release_output(start);
-  return Status::OK();
-}
-
 bool OpKernelContext::ValidateInputsAreSameShape(OpKernel* op) {
   const auto& inputs = *params_->inputs;
   for (size_t i = 1; i < inputs.size(); ++i) {
@@ -878,7 +913,7 @@ void OpKernelContext::clear_recorded_memory() {
 struct KernelRegistration {
   KernelRegistration(const KernelDef& d, StringPiece c,
                      kernel_factory::OpKernelRegistrar::Factory f)
-      : def(d), kernel_class_name(c.ToString()), factory(f) {}
+      : def(d), kernel_class_name(std::string(c)), factory(f) {}
   const KernelDef def;
   const string kernel_class_name;
   const kernel_factory::OpKernelRegistrar::Factory factory;
@@ -924,62 +959,6 @@ void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
 
 namespace {
 
-// Helper for AttrsMatch().
-bool InTypeList(DataType dt, const AttrValue& type_list) {
-  for (int in_list : type_list.list().type()) {
-    if (dt == in_list) return true;
-  }
-  return false;
-}
-
-// Returns whether the attrs satisfy the constraints in the kernel_def.  Returns
-// an error if attrs in kernel_def are not found, or have a mismatching type.
-Status AttrsMatch(AttrSlice attrs, const KernelDef& kernel_def, bool* match) {
-  *match = false;
-  for (const auto& constraint : kernel_def.constraint()) {
-    if (constraint.allowed_values().list().type_size() == 0) {
-      return errors::Unimplemented(
-          "KernelDef '", ProtoShortDebugString(kernel_def),
-          " has constraint on attr '", constraint.name(),
-          "' with unsupported type: ",
-          SummarizeAttrValue(constraint.allowed_values()));
-    }
-
-    const AttrValue* found = attrs.Find(constraint.name());
-    if (found) {
-      if (found->type() != DT_INVALID) {
-        if (!InTypeList(found->type(), constraint.allowed_values())) {
-          return Status::OK();
-        }
-      } else {
-        if (!AttrValueHasType(*found, "list(type)").ok()) {
-          return errors::InvalidArgument(
-              "KernelDef '", ProtoShortDebugString(kernel_def),
-              "' has constraint on attr '", constraint.name(),
-              "' that has value '", SummarizeAttrValue(*found),
-              "' that does not have type 'type' or 'list(type)' in NodeDef "
-              "'",
-              attrs.SummarizeNode(), "'");
-        }
-
-        for (int t : found->list().type()) {
-          if (!InTypeList(static_cast<DataType>(t),
-                          constraint.allowed_values())) {
-            return Status::OK();
-          }
-        }
-      }
-    } else {
-      return errors::InvalidArgument(
-          "OpKernel '", kernel_def.op(), "' has constraint on attr '",
-          constraint.name(), "' not in NodeDef '", attrs.SummarizeNode(),
-          "', KernelDef: '", ProtoShortDebugString(kernel_def), "'");
-    }
-  }
-  *match = true;
-  return Status::OK();
-}
-
 static const StringPiece kKernelAttr("_kernel");
 
 // TODO(irving): Replace with const Node& version below.
@@ -998,7 +977,7 @@ Status FindKernelRegistration(const DeviceType& device_type,
     // If there is a kernel registered for the op and device_type,
     // check that the attrs match.
     bool match;
-    TF_RETURN_IF_ERROR(AttrsMatch(node_def, iter->second.def, &match));
+    TF_RETURN_IF_ERROR(KernelAttrsMatch(iter->second.def, node_def, &match));
     if (match) {
       if (*reg != nullptr) {
         return errors::InvalidArgument(
@@ -1069,30 +1048,51 @@ Status SupportedDeviceTypesForNode(
 }
 
 void LogAllRegisteredKernels() {
-  for (const auto& key_registration : *GlobalKernelRegistryTyped()) {
-    const KernelDef& kernel_def(key_registration.second.def);
+  KernelList kernel_list = GetAllRegisteredKernels();
+  for (const auto& kernel_def : kernel_list.kernel()) {
     LOG(INFO) << "OpKernel ('" << ProtoShortDebugString(kernel_def) << "')";
   }
 }
 
-string KernelsRegisteredForOp(StringPiece op_name) {
-  string ret;
-  for (const auto& key_registration : *GlobalKernelRegistryTyped()) {
-    const KernelDef& kernel_def(key_registration.second.def);
-    if (kernel_def.op() == op_name) {
-      strings::StrAppend(&ret, "  device='", kernel_def.device_type(), "'");
-      if (!kernel_def.label().empty()) {
-        strings::StrAppend(&ret, "; label='", kernel_def.label(), "'");
-      }
-      for (int i = 0; i < kernel_def.constraint_size(); ++i) {
-        strings::StrAppend(
-            &ret, "; ", kernel_def.constraint(i).name(), " in ",
-            SummarizeAttrValue(kernel_def.constraint(i).allowed_values()));
-      }
-      strings::StrAppend(&ret, "\n");
+KernelList GetAllRegisteredKernels() {
+  return GetFilteredRegisteredKernels([](const KernelDef& k) { return true; });
+}
+
+KernelList GetFilteredRegisteredKernels(
+    const std::function<bool(const KernelDef&)>& predicate) {
+  const KernelRegistry* const typed_registry = GlobalKernelRegistryTyped();
+  KernelList kernel_list;
+  kernel_list.mutable_kernel()->Reserve(typed_registry->size());
+  for (const auto& p : *typed_registry) {
+    const KernelDef& kernel_def = p.second.def;
+    if (predicate(kernel_def)) {
+      *kernel_list.add_kernel() = kernel_def;
     }
   }
-  if (ret.empty()) return "  <no registered kernels>\n";
+  return kernel_list;
+}
+
+KernelList GetRegisteredKernelsForOp(StringPiece op_name) {
+  auto op_pred = [op_name](const KernelDef& k) { return k.op() == op_name; };
+  return GetFilteredRegisteredKernels(op_pred);
+}
+
+string KernelsRegisteredForOp(StringPiece op_name) {
+  KernelList kernel_list = GetRegisteredKernelsForOp(op_name);
+  if (kernel_list.kernel_size() == 0) return "  <no registered kernels>\n";
+  string ret;
+  for (const auto& kernel_def : kernel_list.kernel()) {
+    strings::StrAppend(&ret, "  device='", kernel_def.device_type(), "'");
+    if (!kernel_def.label().empty()) {
+      strings::StrAppend(&ret, "; label='", kernel_def.label(), "'");
+    }
+    for (int i = 0; i < kernel_def.constraint_size(); ++i) {
+      strings::StrAppend(
+          &ret, "; ", kernel_def.constraint(i).name(), " in ",
+          SummarizeAttrValue(kernel_def.constraint(i).allowed_values()));
+    }
+    strings::StrAppend(&ret, "\n");
+  }
   return ret;
 }
 
@@ -1273,6 +1273,12 @@ void OpKernelContext::CtxFailureWithWarning(const char* file, int line,
   LOG(WARNING) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
                << " : " << s;
   SetStatus(s);
+}
+
+void CheckNotInComputeAsync(OpKernelContext* ctx,
+                            const char* correct_macro_name) {
+  CHECK_EQ(nullptr, ctx->op_kernel().AsAsync())
+      << "Use " << correct_macro_name << " in AsyncOpKernel implementations.";
 }
 
 }  // namespace tensorflow

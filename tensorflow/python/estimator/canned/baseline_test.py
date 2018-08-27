@@ -42,13 +42,13 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import checkpoint_utils
+from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import queue_runner
@@ -154,6 +154,8 @@ class BaselineRegressorEvaluationTest(test.TestCase):
     self.assertDictEqual({
         metric_keys.MetricKeys.LOSS: 9.,
         metric_keys.MetricKeys.LOSS_MEAN: 9.,
+        metric_keys.MetricKeys.PREDICTION_MEAN: 13.,
+        metric_keys.MetricKeys.LABEL_MEAN: 10.,
         ops.GraphKeys.GLOBAL_STEP: 100
     }, eval_metrics)
 
@@ -176,6 +178,8 @@ class BaselineRegressorEvaluationTest(test.TestCase):
     self.assertDictEqual({
         metric_keys.MetricKeys.LOSS: 18.,
         metric_keys.MetricKeys.LOSS_MEAN: 9.,
+        metric_keys.MetricKeys.PREDICTION_MEAN: 13.,
+        metric_keys.MetricKeys.LABEL_MEAN: 10.,
         ops.GraphKeys.GLOBAL_STEP: 100
     }, eval_metrics)
 
@@ -204,6 +208,8 @@ class BaselineRegressorEvaluationTest(test.TestCase):
     self.assertDictEqual({
         metric_keys.MetricKeys.LOSS: 27.,
         metric_keys.MetricKeys.LOSS_MEAN: 9.,
+        metric_keys.MetricKeys.PREDICTION_MEAN: 13.,
+        metric_keys.MetricKeys.LABEL_MEAN: 10.,
         ops.GraphKeys.GLOBAL_STEP: 100
     }, eval_metrics)
 
@@ -229,7 +235,9 @@ class BaselineRegressorEvaluationTest(test.TestCase):
 
     self.assertItemsEqual(
         (metric_keys.MetricKeys.LOSS, metric_keys.MetricKeys.LOSS_MEAN,
-         ops.GraphKeys.GLOBAL_STEP), eval_metrics.keys())
+         metric_keys.MetricKeys.PREDICTION_MEAN,
+         metric_keys.MetricKeys.LABEL_MEAN, ops.GraphKeys.GLOBAL_STEP),
+        eval_metrics.keys())
 
     # Logit is bias which is [46, 58]
     self.assertAlmostEqual(0, eval_metrics[metric_keys.MetricKeys.LOSS])
@@ -482,7 +490,7 @@ class BaselineRegressorTrainingTest(test.TestCase):
       self.assertEquals(0, loss.shape.ndims)
       if expected_loss is None:
         if global_step is not None:
-          return state_ops.assign_add(global_step, 1).op
+          return distribute_lib.increment_var(global_step)
         return control_flow_ops.no_op()
       assert_loss = assert_close(
           math_ops.to_float(expected_loss, name='expected'),
@@ -490,7 +498,7 @@ class BaselineRegressorTrainingTest(test.TestCase):
           name='assert_loss')
       with ops.control_dependencies((assert_loss,)):
         if global_step is not None:
-          return state_ops.assign_add(global_step, 1).op
+          return distribute_lib.increment_var(global_step)
         return control_flow_ops.no_op()
 
     mock_optimizer = test.mock.NonCallableMock(
@@ -685,13 +693,13 @@ class BaselineClassifierTrainingTest(test.TestCase):
       # Verify loss. We can't check the value directly, so we add an assert op.
       self.assertEquals(0, loss.shape.ndims)
       if expected_loss is None:
-        return state_ops.assign_add(global_step, 1).op
+        return distribute_lib.increment_var(global_step)
       assert_loss = assert_close(
           math_ops.to_float(expected_loss, name='expected'),
           loss,
           name='assert_loss')
       with ops.control_dependencies((assert_loss,)):
-        return state_ops.assign_add(global_step, 1).op
+        return distribute_lib.increment_var(global_step)
 
     mock_optimizer = test.mock.NonCallableMock(
         spec=optimizer.Optimizer,
@@ -1071,6 +1079,8 @@ class BaselineClassifierEvaluationTest(test.TestCase):
           ops.GraphKeys.GLOBAL_STEP: 100,
           metric_keys.MetricKeys.LOSS_MEAN: 1.3133,
           metric_keys.MetricKeys.ACCURACY: 0.,
+          metric_keys.MetricKeys.PRECISION: 0.,
+          metric_keys.MetricKeys.RECALL: 0.,
           metric_keys.MetricKeys.PREDICTION_MEAN: 0.2689,
           metric_keys.MetricKeys.LABEL_MEAN: 1.,
           metric_keys.MetricKeys.ACCURACY_BASELINE: 1,
@@ -1132,6 +1142,8 @@ class BaselineClassifierEvaluationTest(test.TestCase):
           ops.GraphKeys.GLOBAL_STEP: 100,
           metric_keys.MetricKeys.LOSS_MEAN: expected_loss / 2,
           metric_keys.MetricKeys.ACCURACY: 0.5,
+          metric_keys.MetricKeys.PRECISION: 0.,
+          metric_keys.MetricKeys.RECALL: 0.,
           metric_keys.MetricKeys.PREDICTION_MEAN: 0.2689,
           metric_keys.MetricKeys.LABEL_MEAN: 0.5,
           metric_keys.MetricKeys.ACCURACY_BASELINE: 0.5,
@@ -1207,6 +1219,8 @@ class BaselineClassifierEvaluationTest(test.TestCase):
           ops.GraphKeys.GLOBAL_STEP: 100,
           metric_keys.MetricKeys.LOSS_MEAN: loss_mean,
           metric_keys.MetricKeys.ACCURACY: 2. / (1. + 2.),
+          metric_keys.MetricKeys.PRECISION: 0.,
+          metric_keys.MetricKeys.RECALL: 0.,
           metric_keys.MetricKeys.PREDICTION_MEAN: predictions_mean,
           metric_keys.MetricKeys.LABEL_MEAN: label_mean,
           metric_keys.MetricKeys.ACCURACY_BASELINE: (
@@ -1542,4 +1556,3 @@ class BaselineLogitFnTest(test.TestCase):
 
 if __name__ == '__main__':
   test.main()
-

@@ -72,25 +72,21 @@ string CudnnConvKindToString(CudnnConvKind kind);
 // that size, if you like.
 Status RunCudnnConvolution(
     CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
-    const Shape& output_shape, perftools::gputools::DeviceMemoryBase input_buf,
-    perftools::gputools::DeviceMemoryBase filter_buf,
-    perftools::gputools::DeviceMemoryBase output_buf,
-    perftools::gputools::DeviceMemoryBase scratch_buf, const Window& window,
+    const Shape& output_shape, se::DeviceMemoryBase input_buf,
+    se::DeviceMemoryBase filter_buf, se::DeviceMemoryBase output_buf,
+    se::DeviceMemoryBase scratch_buf, const Window& window,
     const ConvolutionDimensionNumbers& dnums,
-    perftools::gputools::dnn::AlgorithmConfig algorithm,
-    perftools::gputools::Stream* stream,
-    perftools::gputools::dnn::ProfileResult* profile_result = nullptr);
+    se::dnn::AlgorithmConfig algorithm, se::Stream* stream,
+    se::dnn::ProfileResult* profile_result = nullptr);
 
 Status RunCudnnConvolution(
     CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
-    const Shape& output_shape, perftools::gputools::DeviceMemoryBase input_buf,
-    perftools::gputools::DeviceMemoryBase filter_buf,
-    perftools::gputools::DeviceMemoryBase output_buf,
-    perftools::gputools::ScratchAllocator* scratch_allocator,
-    const Window& window, const ConvolutionDimensionNumbers& dnums,
-    perftools::gputools::dnn::AlgorithmConfig algorithm,
-    perftools::gputools::Stream* stream,
-    perftools::gputools::dnn::ProfileResult* profile_result = nullptr);
+    const Shape& output_shape, se::DeviceMemoryBase input_buf,
+    se::DeviceMemoryBase filter_buf, se::DeviceMemoryBase output_buf,
+    se::ScratchAllocator* scratch_allocator, const Window& window,
+    const ConvolutionDimensionNumbers& dnums,
+    se::dnn::AlgorithmConfig algorithm, se::Stream* stream,
+    se::dnn::ProfileResult* profile_result = nullptr);
 
 }  // namespace gpu
 }  // namespace xla

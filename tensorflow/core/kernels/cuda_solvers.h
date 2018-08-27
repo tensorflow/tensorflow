@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================
 */
 
+#ifndef TENSORFLOW_CORE_KERNELS_CUDA_SOLVERS_H_
+#define TENSORFLOW_CORE_KERNELS_CUDA_SOLVERS_H_
+
 // This header declares the class CudaSolver, which contains wrappers of linear
 // algebra solvers in the cuBlas and cuSolverDN libraries for use in TensorFlow
 // kernels.
@@ -398,7 +401,7 @@ class DeviceLapackInfo : public ScratchSpace<int> {
     CHECK(success != nullptr);
     HostLapackInfo copy(context(), size(), debug_info());
     auto stream = context()->op_device_context()->stream();
-    perftools::gputools::DeviceMemoryBase wrapped_src(
+    se::DeviceMemoryBase wrapped_src(
         static_cast<void*>(const_cast<int*>(this->data())));
     *success =
         stream->ThenMemcpy(copy.mutable_data(), wrapped_src, this->bytes())
@@ -433,3 +436,5 @@ inline DeviceLapackInfo CudaSolver::GetDeviceLapackInfo(
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA
+
+#endif  // TENSORFLOW_CORE_KERNELS_CUDA_SOLVERS_H_

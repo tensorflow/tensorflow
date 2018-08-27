@@ -57,7 +57,7 @@ def create_local_cluster(num_workers, num_ps, protocol="grpc"):
 
 
 # Creates the workers and return their sessions, graphs, train_ops.
-# Cheif worker will update at last
+# Chief worker will update at last
 def _get_workers(num_workers, steps, workers):
   sessions = []
   graphs = []
@@ -146,7 +146,7 @@ class ModelAverageOptimizerTest(test.TestCase):
     self.assertAllEqual(1.0, sessions[0].run(global_var_1))
     self.assertAllEqual(0, sessions[0].run(global_step))
 
-    # iteration 2, global varibale update
+    # iteration 2, global variable update
     thread_0 = self.checkedThread(
         target=self._run, args=(train_ops[0], sessions[0]))
     thread_1 = self.checkedThread(

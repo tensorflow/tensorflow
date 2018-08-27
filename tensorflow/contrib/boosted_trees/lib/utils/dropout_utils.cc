@@ -54,7 +54,7 @@ Status DropoutUtils::DropOutTrees(
   if (probability_of_skipping_dropout < 0 ||
       probability_of_skipping_dropout > 1) {
     return errors::InvalidArgument(
-        "Probability of skiping dropout must be in [0,1] range");
+        "Probability of skipping dropout must be in [0,1] range");
   }
   const auto num_trees = weights.size();
 

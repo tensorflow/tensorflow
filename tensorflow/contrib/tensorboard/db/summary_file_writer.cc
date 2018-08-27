@@ -132,7 +132,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
   Status WriteEvent(std::unique_ptr<Event> event) override {
     mutex_lock ml(mu_);
     queue_.emplace_back(std::move(event));
-    if (queue_.size() >= max_queue_ ||
+    if (queue_.size() > max_queue_ ||
         env_->NowMicros() - last_flush_ > 1000 * flush_millis_) {
       return InternalFlush();
     }

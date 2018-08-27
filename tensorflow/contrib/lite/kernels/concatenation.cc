@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <unistd.h>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -58,7 +57,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, t0->dims->size <= 4);
   TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActNone);
   TF_LITE_ENSURE(context,
-                 input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8);
+                 input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
+                     input_type == kTfLiteInt16 || input_type == kTfLiteInt32 ||
+                     input_type == kTfLiteInt64);
 
   // Output dimensions will match input dimensions, except 'axis', which
   // will be the sum of inputs
@@ -67,10 +68,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TfLiteTensor* t = &context->tensors[node->inputs->data[i]];
     TF_LITE_ENSURE_EQ(context, t->dims->size, t0->dims->size);
     TF_LITE_ENSURE_EQ(context, t->type, input_type);
-    if (input_type == kTfLiteUInt8) {
-      TF_LITE_ENSURE_EQ(context, t->params.zero_point, t0->params.zero_point);
-      TF_LITE_ENSURE_EQ(context, t->params.scale, t0->params.scale);
-    }
     for (int d = 0; d < t0->dims->size; ++d) {
       if (d == axis) {
         sum_axis += t->dims->data[axis];
@@ -87,11 +84,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
   TF_LITE_ENSURE_EQ(context, output->type, input_type);
-  if (input_type == kTfLiteUInt8) {
-    TF_LITE_ENSURE_EQ(context, output->params.zero_point,
-                      t0->params.zero_point);
-    TF_LITE_ENSURE_EQ(context, output->params.scale, t0->params.scale);
-  }
 
   return context->ResizeTensor(context, output, output_size);
 }
@@ -115,6 +107,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       all_inputs.dims(), node->inputs->size, GetTensorData<scalar>(output), \
       GetTensorDims(output))
 
+#define TF_LITE_CONCATENATION_QUANTIZED(type)                                  \
+  VectorOfQuantizedTensors all_inputs(*context, *node->inputs);                \
+  type::Concatenation(                                                         \
+      RemapDim(NumDimensions(output), axis), all_inputs.data(),                \
+      all_inputs.dims(), all_inputs.zero_point(), all_inputs.scale(),          \
+      node->inputs->size, GetTensorData<uint8>(output), GetTensorDims(output), \
+      output->params.zero_point, output->params.scale)
+
   switch (output->type) {  // Already know in/outtypes are same.
     case kTfLiteFloat32:
       if (kernel_type == kReference) {
@@ -123,19 +123,35 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_CONCATENATION(optimized_ops, float);
       }
       break;
-    case kTfLiteUInt8:
+    case kTfLiteInt32:
       if (kernel_type == kReference) {
-        TF_LITE_CONCATENATION(reference_ops, uint8_t);
+        TF_LITE_CONCATENATION(reference_ops, int32);
       } else {
-        TF_LITE_CONCATENATION(optimized_ops, uint8_t);
+        TF_LITE_CONCATENATION(optimized_ops, int32);
       }
       break;
+    case kTfLiteUInt8:
+      if (kernel_type == kReference) {
+        TF_LITE_CONCATENATION_QUANTIZED(reference_ops);
+      } else {
+        TF_LITE_CONCATENATION_QUANTIZED(optimized_ops);
+      }
+      break;
+    case kTfLiteInt64:
+      if (kernel_type == kReference) {
+        TF_LITE_CONCATENATION(reference_ops, int64_t);
+      } else {
+        TF_LITE_CONCATENATION(optimized_ops, int64_t);
+      }
+      break;
+
     default:
       context->ReportError(context,
                            "Only float32 and uint8 are currently supported.");
       return kTfLiteError;
   }
 
+#undef TF_LITE_CONCATENATION_QUANTIZED
 #undef TF_LITE_CONCATENATION
 
   return kTfLiteOk;

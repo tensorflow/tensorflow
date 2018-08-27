@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_TREE_UTILS_H_
-#define TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_TREE_UTILS_H_
+#ifndef TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_TREE_UTILS_H_
+#define TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_TREE_UTILS_H_
 
 #include <limits>
 
@@ -123,7 +123,7 @@ bool BestSplitDominatesRegression(const Tensor& total_sums,
                                   const Tensor& split_squares,
                                   int32 accumulator);
 
-// Performs booststrap_samples bootstrap samples of the best split's class
+// Performs bootstrap_samples bootstrap samples of the best split's class
 // counts and the second best splits's class counts, and returns true if at
 // least dominate_fraction of the time, the former has a better (lower)
 // Gini impurity.  Does not take over ownership of *rand.
@@ -302,4 +302,4 @@ void GetParentWeightedMean(float leaf_sum, const float* leaf_data,
 }  // namespace tensorforest
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_TREE_UTILS_H_
+#endif  // TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_TREE_UTILS_H_

@@ -127,7 +127,7 @@ class Mutex : public ResourceBase {
       }
     }
     thread_pool_->Schedule(std::bind(
-        [this, c, cm, cancelled,
+        [this, cm, cancelled,
          token](std::function<void(const Status& s, SharedLockReleaser&& lock)>
                     fn_) {
           bool local_locked;
@@ -173,7 +173,7 @@ class MutexLockOp : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(
         c,
         LookupOrCreateResource<Mutex>(c, HandleFromInput(c, 0), &mutex,
-                                      [this, c](Mutex** ptr) {
+                                      [c](Mutex** ptr) {
                                         *ptr = new Mutex(
                                             c, HandleFromInput(c, 0).name());
                                         return Status::OK();
@@ -186,10 +186,10 @@ class MutexLockOp : public AsyncOpKernel {
 
     mutex->AcquireAsync(
         c, std::bind(
-               [this, c, variant, mutex](DoneCallback done_,
-                                         // End of bound arguments.
-                                         const Status& s,
-                                         Mutex::SharedLockReleaser&& lock) {
+               [c, variant, mutex](DoneCallback done_,
+                                   // End of bound arguments.
+                                   const Status& s,
+                                   Mutex::SharedLockReleaser&& lock) {
                  VLOG(2) << "Finished locking mutex " << mutex
                          << " with lock: " << lock.shared_lock.get()
                          << " status: " << s.ToString();

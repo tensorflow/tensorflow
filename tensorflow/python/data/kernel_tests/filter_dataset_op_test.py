@@ -176,6 +176,14 @@ class FilterDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testParallelFilters(self):
+    dataset = dataset_ops.Dataset.range(10).filter(
+        lambda x: math_ops.equal(x % 2, 0))
+    iterators = [dataset.make_one_shot_iterator() for _ in range(10)]
+    next_elements = [iterator.get_next() for iterator in iterators]
+    with self.test_session() as sess:
+      self.assertEqual([0 for _ in range(10)], sess.run(next_elements))
+
 
 class FilterDatasetBenchmark(test.Benchmark):
 

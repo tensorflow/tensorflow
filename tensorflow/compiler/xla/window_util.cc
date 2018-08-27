@@ -17,10 +17,9 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
@@ -49,8 +48,8 @@ PaddingConfig MakeSymmetricPadding(tensorflow::gtl::ArraySlice<int64> sizes) {
 }
 
 /* static */ string ToString(const WindowDimension& dim) {
-  using tensorflow::strings::StrAppend;
-  using tensorflow::strings::StrCat;
+  using absl::StrAppend;
+  using absl::StrCat;
   string str = StrCat("(size=", dim.size());
   if (dim.stride() != 1) {
     StrAppend(&str, ",stride=", dim.stride());
@@ -75,8 +74,8 @@ PaddingConfig MakeSymmetricPadding(tensorflow::gtl::ArraySlice<int64> sizes) {
 }
 
 string ToString(const Window& window) {
-  using tensorflow::strings::StrAppend;
-  using tensorflow::strings::StrCat;
+  using absl::StrAppend;
+  using absl::StrCat;
 
   string str;
   const auto add_field =
@@ -199,6 +198,9 @@ bool IsInactiveWindowDimension(const Window& window, int64 logical_dim) {
 int64 DilatedBound(int64 bound, int64 dilation) {
   CHECK_GE(bound, 0);
   CHECK_GE(dilation, 1);
+  if (bound == 0) {
+    return 0;
+  }
 
   // Suppose the array has three entries 123 and the dilation factor is 4. Then
   // the dilated array has 9 entries 1xxx2xxx3. Here, each original entry except
@@ -212,7 +214,7 @@ int64 StridedBound(int64 bound, int64 window_size, int64 stride) {
   CHECK_GE(bound, 0);
   CHECK_GE(stride, 1);
 
-  if (window_size > bound) {
+  if (bound == 0 || window_size > bound) {
     return 0;
   }
 

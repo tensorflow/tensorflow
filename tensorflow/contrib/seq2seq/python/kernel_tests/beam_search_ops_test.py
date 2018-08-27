@@ -67,7 +67,7 @@ class GatherTreeTest(test.TestCase):
           parent_ids=parent_ids,
           max_sequence_lengths=max_sequence_lengths,
           end_token=end_token)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError(
           r"parent id -1 at \(batch, time, beam\) == \(0, 0, 1\)"):
         _ = beams.eval()

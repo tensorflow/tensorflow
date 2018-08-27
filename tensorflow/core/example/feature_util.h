@@ -97,8 +97,8 @@ limitations under the License.
 //   GetFeatureValues<FeatureType>(feature) -> RepeatedField<FeatureType>
 //     Returns values of the feature for the FeatureType.
 
-#ifndef TENSORFLOW_EXAMPLE_FEATURE_H_
-#define TENSORFLOW_EXAMPLE_FEATURE_H_
+#ifndef TENSORFLOW_CORE_EXAMPLE_FEATURE_UTIL_H_
+#define TENSORFLOW_CORE_EXAMPLE_FEATURE_UTIL_H_
 
 #include <iterator>
 #include <type_traits>
@@ -182,13 +182,25 @@ struct FeatureTrait<
 // Returns true if sequence_example has a feature_list with the specified key.
 bool HasFeatureList(const string& key, const SequenceExample& sequence_example);
 
+template <typename T>
+struct TypeHasFeatures : std::false_type {};
+
+template <>
+struct TypeHasFeatures<Example> : std::true_type {};
+
+template <>
+struct TypeHasFeatures<Features> : std::true_type {};
+
 // A family of template functions to return mutable Features proto from a
 // container proto. Supported ProtoTypes: Example, Features.
 template <typename ProtoType>
-Features* GetFeatures(ProtoType* proto);
+typename std::enable_if<TypeHasFeatures<ProtoType>::value, Features*>::type
+GetFeatures(ProtoType* proto);
 
 template <typename ProtoType>
-const Features& GetFeatures(const ProtoType& proto);
+typename std::enable_if<TypeHasFeatures<ProtoType>::value,
+                        const Features&>::type
+GetFeatures(const ProtoType& proto);
 
 // Base declaration of a family of template functions to return a read only
 // repeated field of feature values.
@@ -300,7 +312,7 @@ bool HasFeature(const string& key, const Features& features);
 template <typename... FeatureType>
 bool HasFeature(const string& key, const Example& example) {
   return HasFeature<FeatureType...>(key, GetFeatures(example));
-};
+}
 
 // DEPRECATED: use HasFeature instead.
 // TODO(gorban): update all clients in a followup CL.
@@ -310,4 +322,4 @@ bool ExampleHasFeature(const string& key, const Example& example) {
 }
 
 }  // namespace tensorflow
-#endif  // TENSORFLOW_EXAMPLE_FEATURE_H_
+#endif  // TENSORFLOW_CORE_EXAMPLE_FEATURE_UTIL_H_

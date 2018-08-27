@@ -8,13 +8,26 @@ load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
+# Suppress warnings that are introduced by Eigen Tensor.
+EXTRA_EIGEN_COPTS = select({
+    "//tensorflow:ios": [
+        "-Wno-error=invalid-partial-specialization",
+        "-Wno-error=reorder",
+    ],
+    "//tensorflow:windows": [
+        "/DEIGEN_HAS_C99_MATH",
+        "/DEIGEN_AVOID_STL_ARRAY",
+    ],
+    "//conditions:default": ["-Wno-error=reorder"],
+})
+
 tf_cc_test(
     name = "optional_tensor_test",
     size = "small",
     srcs = ["optional_tensor_test.cc"],
     tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
+        "no_oss",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":builtin_ops",
@@ -34,9 +47,27 @@ cc_library(
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:schema_fbs_version",
         "//tensorflow/contrib/lite:string_util",
+        "//tensorflow/contrib/lite/kernels/internal:tensor_utils",
         "//tensorflow/contrib/lite/testing:util",
         "//tensorflow/core:tflite_portable_logging",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "eigen_support",
+    srcs = [
+        "eigen_support.cc",
+    ],
+    hdrs = [
+        "eigen_support.h",
+    ],
+    copts = tflite_copts() + EXTRA_EIGEN_COPTS,
+    deps = [
+        ":op_macros",
+        "//tensorflow/contrib/lite:arena_planner",
+        "//tensorflow/contrib/lite:context",
+        "//tensorflow/contrib/lite/kernels/internal:optimized",
     ],
 )
 
@@ -93,8 +124,8 @@ tf_cc_test(
     size = "small",
     srcs = ["kernel_util_test.cc"],
     tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
+        "no_oss",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":kernel_util",
@@ -107,6 +138,7 @@ tf_cc_test(
     name = "test_util_test",
     size = "small",
     srcs = ["test_util_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":test_util",
         "//tensorflow/contrib/lite/testing:util",
@@ -119,75 +151,144 @@ cc_library(
     srcs = [
         "activations.cc",
         "add.cc",
+        "arg_min_max.cc",
+        "audio_spectrogram.cc",
         "basic_rnn.cc",
         "batch_to_space_nd.cc",
         "bidirectional_sequence_lstm.cc",
         "bidirectional_sequence_rnn.cc",
         "cast.cc",
+        "comparisons.cc",
         "concatenation.cc",
         "conv.cc",
         "depthwise_conv.cc",
         "dequantize.cc",
+        "detection_postprocess.cc",
         "div.cc",
+        "elementwise.cc",
         "embedding_lookup.cc",
         "embedding_lookup_sparse.cc",
         "exp.cc",
+        "expand_dims.cc",
+        "fake_quant.cc",
+        "floor.cc",
         "fully_connected.cc",
         "gather.cc",
         "hashtable_lookup.cc",
         "l2norm.cc",
         "local_response_norm.cc",
+        "logical.cc",
         "lsh_projection.cc",
         "lstm.cc",
-        "mean.cc",
+        "maximum_minimum.cc",
+        "mfcc.cc",
         "mul.cc",
+        "neg.cc",
+        "one_hot.cc",
+        "pack.cc",
         "pad.cc",
         "pooling.cc",
+        "pow.cc",
+        "reduce.cc",
         "register.cc",
         "reshape.cc",
         "resize_bilinear.cc",
+        "select.cc",
+        "shape.cc",
         "skip_gram.cc",
+        "slice.cc",
         "space_to_batch_nd.cc",
         "space_to_depth.cc",
+        "sparse_to_dense.cc",
         "split.cc",
         "squeeze.cc",
         "strided_slice.cc",
         "sub.cc",
         "svdf.cc",
+        "tile.cc",
         "topk_v2.cc",
         "transpose.cc",
+        "transpose_conv.cc",
         "unidirectional_sequence_lstm.cc",
         "unidirectional_sequence_rnn.cc",
+        "unpack.cc",
     ],
     hdrs = [
         "padding.h",
         "register.h",
     ],
-    # Suppress warnings that are introduced by Eigen Tensor.
-    copts = tflite_copts() + [
-        "-Wno-error=reorder",
-    ] + select({
-        "//tensorflow:ios": ["-Wno-error=invalid-partial-specialization"],
-        "//conditions:default": [
-        ],
-    }),
+    copts = tflite_copts() + EXTRA_EIGEN_COPTS,
     deps = [
         ":activation_functor",
+        ":eigen_support",
         ":kernel_util",
         ":op_macros",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string_util",
+        "//tensorflow/contrib/lite:util",
         "//tensorflow/contrib/lite/kernels:gemm_support",
+        "//tensorflow/contrib/lite/kernels/internal:audio_utils",
         "//tensorflow/contrib/lite/kernels/internal:kernel_utils",
         "//tensorflow/contrib/lite/kernels/internal:optimized",
         "//tensorflow/contrib/lite/kernels/internal:optimized_base",
         "//tensorflow/contrib/lite/kernels/internal:quantization_util",
         "//tensorflow/contrib/lite/kernels/internal:reference",
         "//tensorflow/contrib/lite/kernels/internal:reference_base",
-        "//tensorflow/contrib/lite/kernels/internal:round",
         "//tensorflow/contrib/lite/kernels/internal:tensor_utils",
         "@farmhash_archive//:farmhash",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
+    name = "audio_spectrogram_test",
+    size = "small",
+    srcs = ["audio_spectrogram_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
+    name = "mfcc_test",
+    size = "small",
+    srcs = ["mfcc_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
+    name = "detection_postprocess_test",
+    size = "small",
+    srcs = ["detection_postprocess_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
     ],
 )
 
@@ -195,10 +296,7 @@ tf_cc_test(
     name = "activations_test",
     size = "small",
     srcs = ["activations_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -211,9 +309,54 @@ tf_cc_test(
     name = "add_test",
     size = "small",
     srcs = ["add_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "arg_min_max_test",
+    size = "small",
+    srcs = ["arg_min_max_test.cc"],
     tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "div_test",
+    size = "small",
+    srcs = ["div_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "sub_test",
+    size = "small",
+    srcs = ["sub_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":builtin_ops",
@@ -228,8 +371,8 @@ tf_cc_test(
     size = "small",
     srcs = ["transpose_test.cc"],
     tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
+        "no_oss",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":builtin_ops",
@@ -246,8 +389,8 @@ tf_cc_test(
     size = "small",
     srcs = ["space_to_batch_nd_test.cc"],
     tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
+        "no_oss",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":builtin_ops",
@@ -262,8 +405,8 @@ tf_cc_test(
     size = "small",
     srcs = ["batch_to_space_nd_test.cc"],
     tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
+        "no_oss",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":builtin_ops",
@@ -277,6 +420,10 @@ tf_cc_test(
     name = "cast_test",
     size = "small",
     srcs = ["cast_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -289,10 +436,7 @@ tf_cc_test(
     name = "concatenation_test",
     size = "small",
     srcs = ["concatenation_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -305,10 +449,7 @@ tf_cc_test(
     name = "conv_test",
     size = "small",
     srcs = ["conv_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -322,10 +463,7 @@ tf_cc_test(
     name = "depthwise_conv_test",
     size = "small",
     srcs = ["depthwise_conv_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -338,6 +476,10 @@ tf_cc_test(
     name = "dequantize_test",
     size = "small",
     srcs = ["dequantize_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -351,10 +493,7 @@ tf_cc_test(
     name = "basic_rnn_test",
     size = "small",
     srcs = ["basic_rnn_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -368,8 +507,40 @@ tf_cc_test(
     size = "small",
     srcs = ["bidirectional_sequence_lstm_test.cc"],
     tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "floor_test",
+    size = "small",
+    srcs = ["floor_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "elementwise_test",
+    size = "small",
+    srcs = ["elementwise_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":builtin_ops",
@@ -384,8 +555,8 @@ tf_cc_test(
     size = "small",
     srcs = ["unidirectional_sequence_lstm_test.cc"],
     tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
+        "no_oss",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":builtin_ops",
@@ -400,6 +571,7 @@ tf_cc_test(
     size = "small",
     srcs = ["bidirectional_sequence_rnn_test.cc"],
     tags = [
+        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -415,8 +587,8 @@ tf_cc_test(
     size = "small",
     srcs = ["unidirectional_sequence_rnn_test.cc"],
     tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
+        "no_oss",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":builtin_ops",
@@ -430,10 +602,7 @@ tf_cc_test(
     name = "l2norm_test",
     size = "small",
     srcs = ["l2norm_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -447,8 +616,8 @@ tf_cc_test(
     size = "small",
     srcs = ["exp_test.cc"],
     tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
+        "no_oss",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":builtin_ops",
@@ -459,12 +628,44 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "mean_test",
+    name = "fake_quant_test",
     size = "small",
-    srcs = ["mean_test.cc"],
+    srcs = ["fake_quant_test.cc"],
     tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "maximum_minimum_test",
+    size = "small",
+    srcs = ["maximum_minimum_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "reduce_test",
+    size = "small",
+    srcs = ["reduce_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":builtin_ops",
@@ -478,10 +679,7 @@ tf_cc_test(
     name = "mul_test",
     size = "small",
     srcs = ["mul_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -495,8 +693,8 @@ tf_cc_test(
     size = "small",
     srcs = ["pad_test.cc"],
     tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
+        "no_oss",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":builtin_ops",
@@ -510,10 +708,7 @@ tf_cc_test(
     name = "reshape_test",
     size = "small",
     srcs = ["reshape_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -527,8 +722,8 @@ tf_cc_test(
     size = "small",
     srcs = ["gather_test.cc"],
     tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
+        "no_oss",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":builtin_ops",
@@ -544,8 +739,8 @@ tf_cc_test(
     size = "small",
     srcs = ["topk_v2_test.cc"],
     tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
+        "no_oss",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":builtin_ops",
@@ -560,10 +755,7 @@ tf_cc_test(
     name = "resize_bilinear_test",
     size = "small",
     srcs = ["resize_bilinear_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -576,10 +768,7 @@ tf_cc_test(
     name = "svdf_test",
     size = "small",
     srcs = ["svdf_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -592,10 +781,7 @@ tf_cc_test(
     name = "embedding_lookup_test",
     size = "small",
     srcs = ["embedding_lookup_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -608,10 +794,7 @@ tf_cc_test(
     name = "embedding_lookup_sparse_test",
     size = "small",
     srcs = ["embedding_lookup_sparse_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -624,14 +807,13 @@ tf_cc_test(
     name = "fully_connected_test",
     size = "small",
     srcs = ["fully_connected_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:test_util",
+        "//tensorflow/contrib/lite/kernels/internal:tensor_utils",
+        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -640,10 +822,7 @@ tf_cc_test(
     name = "local_response_norm_test",
     size = "small",
     srcs = ["local_response_norm_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -656,10 +835,7 @@ tf_cc_test(
     name = "pooling_test",
     size = "small",
     srcs = ["pooling_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -672,10 +848,7 @@ tf_cc_test(
     name = "softmax_test",
     size = "small",
     srcs = ["softmax_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -690,8 +863,8 @@ tf_cc_test(
     size = "small",
     srcs = ["log_softmax_test.cc"],
     tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
+        "no_oss",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":builtin_ops",
@@ -706,10 +879,7 @@ tf_cc_test(
     name = "lsh_projection_test",
     size = "small",
     srcs = ["lsh_projection_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -722,10 +892,7 @@ tf_cc_test(
     name = "hashtable_lookup_test",
     size = "small",
     srcs = ["hashtable_lookup_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -739,10 +906,7 @@ tf_cc_test(
     name = "lstm_test",
     size = "small",
     srcs = ["lstm_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -755,10 +919,7 @@ tf_cc_test(
     name = "skip_gram_test",
     size = "small",
     srcs = ["skip_gram_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -772,10 +933,7 @@ tf_cc_test(
     name = "space_to_depth_test",
     size = "small",
     srcs = ["space_to_depth_test.cc"],
-    tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
-    ],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -789,8 +947,8 @@ tf_cc_test(
     size = "small",
     srcs = ["split_test.cc"],
     tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
+        "no_oss",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":builtin_ops",
@@ -805,8 +963,8 @@ tf_cc_test(
     size = "small",
     srcs = ["squeeze_test.cc"],
     tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
+        "no_oss",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":builtin_ops",
@@ -821,11 +979,237 @@ tf_cc_test(
     size = "small",
     srcs = ["strided_slice_test.cc"],
     tags = [
-        "tflite_not_portable_ios_arm64",
-        "tflite_not_portable_ios_x86_64",
+        "no_oss",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "tile_test",
+    size = "small",
+    srcs = ["tile_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "comparisons_test",
+    size = "small",
+    srcs = [
+        "comparisons_test.cc",
+    ],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "neg_test",
+    size = "small",
+    srcs = ["neg_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "select_test",
+    size = "small",
+    srcs = [
+        "select_test.cc",
+    ],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "slice_test",
+    size = "small",
+    srcs = [
+        "slice_test.cc",
+    ],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "transpose_conv_test",
+    size = "small",
+    srcs = ["transpose_conv_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "expand_dims_test",
+    size = "small",
+    srcs = ["expand_dims_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "sparse_to_dense_test",
+    size = "small",
+    srcs = ["sparse_to_dense_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "shape_test",
+    size = "small",
+    srcs = ["shape_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "pow_test",
+    size = "small",
+    srcs = ["pow_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "pack_test",
+    size = "small",
+    srcs = ["pack_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "one_hot_test",
+    size = "small",
+    srcs = ["one_hot_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "logical_test",
+    size = "small",
+    srcs = ["logical_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "unpack_test",
+    size = "small",
+    srcs = ["unpack_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",

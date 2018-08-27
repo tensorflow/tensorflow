@@ -22,6 +22,7 @@ import collections
 import functools
 import six
 
+from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -277,6 +278,27 @@ class HashTable(InitializableLookupTableBase):
           name=scope)
 
       super(HashTable, self).__init__(table_ref, default_value, initializer)
+      self._value_shape = self._default_value.get_shape()
+
+  def export(self, name=None):
+    """Returns tensors of all keys and values in the table.
+
+    Args:
+      name: A name for the operation (optional).
+
+    Returns:
+      A pair of tensors with the first tensor containing all keys and the
+        second tensors containing all values in the table.
+    """
+    with ops.name_scope(name, "%s_Export" % self._name,
+                        [self._table_ref]) as name:
+      with ops.colocate_with(self._table_ref):
+        exported_keys, exported_values = gen_lookup_ops.lookup_table_export_v2(
+            self._table_ref, self._key_dtype, self._value_dtype, name=name)
+
+    exported_values.set_shape(exported_keys.get_shape().concatenate(
+        self._value_shape))
+    return exported_keys, exported_values
 
 
 class TableInitializerBase(object):
@@ -346,8 +368,17 @@ class KeyValueTensorInitializer(TableInitializerBase):
     with ops.name_scope(
         self._name, values=(table.table_ref, self._keys,
                             self._values)) as scope:
-      init_op = gen_lookup_ops.initialize_table_v2(
-          table.table_ref, self._keys, self._values, name=scope)
+      if context.executing_eagerly():
+        # Ensure a unique name when eager execution is enabled to avoid spurious
+        # sharing issues.
+        scope += str(ops.uid())
+      if fwd_compat.forward_compatible(2018, 9, 19):
+        init_op = gen_lookup_ops.lookup_table_import_v2(
+            table.table_ref, self._keys, self._values, name=scope)
+      else:
+        # To maintain forward compatibiltiy, use the old implementation.
+        init_op = gen_lookup_ops.initialize_table_v2(
+            table.table_ref, self._keys, self._values, name=scope)
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     return init_op
 
@@ -1088,6 +1119,10 @@ def index_table_from_tensor(vocabulary_list,
 
     shared_name = ""
     with ops.name_scope(None, "hash_table") as hash_table_scope:
+      if context.executing_eagerly():
+        # Ensure a unique name when eager execution is enabled to avoid spurious
+        # sharing issues.
+        shared_name += str(ops.uid())
       table_keys = math_ops.to_int64(keys) if keys.dtype.is_integer else keys
       init = KeyValueTensorInitializer(
           table_keys,

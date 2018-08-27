@@ -18,13 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras._impl.keras.models import load_model
-from tensorflow.python.keras._impl.keras.models import Model
-from tensorflow.python.keras._impl.keras.models import model_from_config
-from tensorflow.python.keras._impl.keras.models import model_from_json
-from tensorflow.python.keras._impl.keras.models import model_from_yaml
-from tensorflow.python.keras._impl.keras.models import save_model
-from tensorflow.python.keras._impl.keras.models import Sequential
+from tensorflow.python.keras.models import load_model
+from tensorflow.python.keras.models import Model
+from tensorflow.python.keras.models import model_from_config
+from tensorflow.python.keras.models import model_from_json
+from tensorflow.python.keras.models import model_from_yaml
+from tensorflow.python.keras.models import save_model
+from tensorflow.python.keras.models import Sequential
 
 del absolute_import
 del division

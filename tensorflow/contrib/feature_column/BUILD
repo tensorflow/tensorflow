@@ -8,24 +8,13 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 py_library(
     name = "feature_column_py",
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":sequence_feature_column",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -38,7 +27,6 @@ py_library(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:tensor_shape",

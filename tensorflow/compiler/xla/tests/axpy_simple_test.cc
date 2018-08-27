@@ -15,8 +15,8 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -28,11 +28,11 @@ namespace {
 class AxpySimpleTest : public ClientLibraryTestBase {};
 
 TEST_F(AxpySimpleTest, AxTenValues) {
-  ComputationBuilder builder(client_, "ax_10");
-  auto alpha = builder.ConstantR0<float>(3.1415926535);
-  auto x = builder.ConstantR1<float>(
-      {-1.0, 1.0, 2.0, -2.0, -3.0, 3.0, 4.0, -4.0, -5.0, 5.0});
-  auto ax = builder.Mul(alpha, x);
+  XlaBuilder builder("ax_10");
+  auto alpha = ConstantR0<float>(&builder, 3.1415926535);
+  auto x = ConstantR1<float>(
+      &builder, {-1.0, 1.0, 2.0, -2.0, -3.0, 3.0, 4.0, -4.0, -5.0, 5.0});
+  Mul(alpha, x);
 
   std::vector<float> expected = {
       -3.14159265, 3.14159265,  6.28318531,   -6.28318531,  -9.42477796,
@@ -41,26 +41,26 @@ TEST_F(AxpySimpleTest, AxTenValues) {
 }
 
 XLA_TEST_F(AxpySimpleTest, AxpyZeroValues) {
-  ComputationBuilder builder(client_, "axpy_10");
-  auto alpha = builder.ConstantR0<float>(3.1415926535);
-  auto x = builder.ConstantR1<float>({});
-  auto y = builder.ConstantR1<float>({});
-  auto ax = builder.Mul(alpha, x);
-  auto axpy = builder.Add(ax, y);
+  XlaBuilder builder("axpy_10");
+  auto alpha = ConstantR0<float>(&builder, 3.1415926535);
+  auto x = ConstantR1<float>(&builder, {});
+  auto y = ConstantR1<float>(&builder, {});
+  auto ax = Mul(alpha, x);
+  Add(ax, y);
 
   std::vector<float> expected = {};
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
 TEST_F(AxpySimpleTest, AxpyTenValues) {
-  ComputationBuilder builder(client_, "axpy_10");
-  auto alpha = builder.ConstantR0<float>(3.1415926535);
-  auto x = builder.ConstantR1<float>(
-      {-1.0, 1.0, 2.0, -2.0, -3.0, 3.0, 4.0, -4.0, -5.0, 5.0});
-  auto y = builder.ConstantR1<float>(
-      {5.0, -5.0, -4.0, 4.0, 3.0, -3.0, -2.0, 2.0, 1.0, -1.0});
-  auto ax = builder.Mul(alpha, x);
-  auto axpy = builder.Add(ax, y);
+  XlaBuilder builder("axpy_10");
+  auto alpha = ConstantR0<float>(&builder, 3.1415926535);
+  auto x = ConstantR1<float>(
+      &builder, {-1.0, 1.0, 2.0, -2.0, -3.0, 3.0, 4.0, -4.0, -5.0, 5.0});
+  auto y = ConstantR1<float>(
+      &builder, {5.0, -5.0, -4.0, 4.0, 3.0, -3.0, -2.0, 2.0, 1.0, -1.0});
+  auto ax = Mul(alpha, x);
+  Add(ax, y);
 
   TF_ASSERT_OK_AND_ASSIGN(ProgramShape shape, builder.GetProgramShape());
 

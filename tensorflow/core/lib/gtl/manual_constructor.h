@@ -53,7 +53,7 @@ template <int size>
 struct AlignType<0, size> {
   typedef char result[size];
 };
-#if defined(COMPILER_MSVC)
+#if defined(_MSC_VER)
 #define TF_LIB_GTL_ALIGN_ATTRIBUTE(X) __declspec(align(X))
 #define TF_LIB_GTL_ALIGN_OF(T) __alignof(T)
 #elif defined(COMPILER_GCC3) || __GNUC__ >= 3 || defined(__APPLE__) || \

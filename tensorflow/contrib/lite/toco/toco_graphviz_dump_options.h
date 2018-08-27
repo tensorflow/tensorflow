@@ -21,8 +21,6 @@ namespace toco {
 
 // Global data for determining whether to output graph viz format from toco.
 struct GraphVizDumpOptions {
-  std::string graphviz_first_array;
-  std::string graphviz_last_array;
   std::string dump_graphviz;
   bool dump_graphviz_video = false;
 

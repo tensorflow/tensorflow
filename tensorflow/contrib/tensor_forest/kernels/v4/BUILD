@@ -11,11 +11,6 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-filegroup(
-    name = "all_files",
-    srcs = glob(["**/*"]),
-)
-
 DECISION_TREE_RESOURCE_DEPS = [
     ":decision_node_evaluator",
     ":input_data",

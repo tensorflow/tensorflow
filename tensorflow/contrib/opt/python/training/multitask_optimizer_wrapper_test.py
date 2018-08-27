@@ -34,7 +34,7 @@ class MultitaskOptimizerWrapperTest(test.TestCase):
   """
 
   def testWrapper(self):
-    with self.test_session():
+    with self.cached_session():
       var0 = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
       var1 = variables.Variable([3.0, 4.0], dtype=dtypes.float32)
       grads0 = constant_op.constant([0.1, 0.1], dtype=dtypes.float32)
@@ -92,7 +92,7 @@ class MultitaskOptimizerWrapperTest(test.TestCase):
           self.evaluate(slot1))
 
   def testGradientClipping(self):
-    with self.test_session():
+    with self.cached_session():
       var0 = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
       var1 = variables.Variable([3.0, 4.0], dtype=dtypes.float32)
       var2 = variables.Variable([3.0, 4.0], dtype=dtypes.float32)

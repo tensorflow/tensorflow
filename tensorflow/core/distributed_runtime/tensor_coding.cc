@@ -81,7 +81,7 @@ void TensorResponse::InitPartial(const RecvTensorResponse& response) {
 Status TensorResponse::ParseFrom(Source* source) {
   if (!on_host_) {
     protobuf::io::CodedInputStream input(source->contents());
-    input.SetTotalBytesLimit(INT_MAX);  // Unlimited
+    input.SetTotalBytesLimit(INT_MAX, INT_MAX);  // Unlimited
 
     // Pre-parse into local storage, then delegate to device.
     if (!meta_.ParseFromCodedStream(&input) || !input.ConsumedEntireMessage()) {
@@ -217,7 +217,7 @@ bool TensorResponse::ParseTensorSubmessage(
 
 bool TensorResponse::ParseFast(Source* source) {
   protobuf::io::CodedInputStream input(source->contents());
-  input.SetTotalBytesLimit(INT_MAX);  // Unlimited
+  input.SetTotalBytesLimit(INT_MAX, INT_MAX);  // Unlimited
   while (true) {
     auto p = input.ReadTagWithCutoff(127);
     int tag = GetTagFieldNumber(p.first);

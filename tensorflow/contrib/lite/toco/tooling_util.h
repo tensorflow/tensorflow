@@ -26,14 +26,15 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
 #if TOCO_SUPPORT_PORTABLE_PROTOS
-#include "third_party/protobuf/src/google/protobuf/text_format.h"
+#include "third_party/protobuf/include/google/protobuf/text_format.h"
 #endif  // TOCO_SUPPORT_PORTABLE_PROTOS
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/runtime/types.h"
 #include "tensorflow/contrib/lite/toco/toco_flags.pb.h"
-#include "tensorflow/contrib/lite/toco/toco_port.h"
 #include "tensorflow/contrib/lite/toco/types.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 
 // TODO(aselle): Replace with using a container specific hash override instead.
 namespace std {
@@ -56,7 +57,11 @@ string LogName(const Operator& op);
 
 string ArrayDataTypeName(ArrayDataType data_type);
 
-bool IsInputArray(const Model& model, const string& name);
+// Returns true if the given array is specified as a model input array.
+bool IsInputArray(const Model& model, const string& array_name);
+// Returns true if the given array is specified as a model output array.
+bool IsOutputArray(const Model& model, const string& array_name);
+
 bool IsArrayConsumed(const Model& model, const string& name);
 int CountTrueOutputs(const Model& model, const Operator& op);
 
@@ -84,6 +89,10 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOpWithInput(
 Operator* GetOpWithInput(const Model& model, const string& array_name);
 Operator* GetFirstOpWithInput(const Model& model, const string& array_name);
 
+// Replaces all uses of the |old_array_name| with the |new_array_name|.
+void ReplaceArrayUsage(Model* model, const string& old_array_name,
+                       const string& new_array_name);
+
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOp(
     const Model& model, const Operator* op);
 std::vector<std::unique_ptr<Operator>>::iterator FindOp(Model& model,
@@ -92,6 +101,8 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOp(Model& model,
 const char* OperatorTypeName(OperatorType type);
 string HelpfulOperatorTypeName(const Operator& op);
 
+// Whether the operator can be fused with an activation function. Note that this
+// will return false by default for new operators; fusing support is opt-in.
 bool OperatorSupportsFusedActivation(OperatorType type);
 
 void DumpGraphvizVideoFrame(const Model& model);
@@ -104,8 +115,9 @@ void ExtendShape(Shape* shape, int new_shape_size);
 // TODO(b/36075966): Clean up when dims superseded by array shape.
 void UnextendShape(Shape* shape, int new_shape_size);
 
-// Checks (using CHECK) that all dimensions of 'shape' are at least 1.
-void CheckShapeDimensions(const Shape& shape);
+// Checks that all dimensions of 'shape' are at least 1. Note that scalars,
+// lacking dimensions, satisfy this condition and are considered non-empty.
+bool IsNonEmpty(const Shape& shape);
 
 // Given two shapes with potentially different dimensionality and dimension
 // arrays d0 and d1. Without loss of generality, assume that shape0 may have
@@ -134,6 +146,9 @@ int RequiredBufferSizeForShape(const Shape& shape);
 
 bool IsConstantParameterArray(const Model& model, const string& name);
 
+// Compares two constant parameter arrays for exact equality.
+bool CompareConstantArrays(const Array& lhs_array, const Array& rhs_array);
+
 void CheckNoMissingArray(const Model& model);
 void CheckInvariants(const Model& model);
 
@@ -143,82 +158,60 @@ void FixOperatorOrdering(Model* model);
 void FixNoMissingArray(Model* model);
 void FixNoOrphanedArray(Model* model);
 
+// Fixes input/output arrays that may have issues during export or inference.
+void FixEdgeArrays(Model* model);
+
+// Finds and deduplicates large constant arrays in the model.
+// After constant propagation runs it's possible to end up with several of the
+// same large array (whether they be zeros or otherwise).
+//
+// |min_size| is used to adjust the minimum size in bytes of an array before
+// it's considered for deduping. As deduping can make the graphs more difficult
+// to read this helps prevent small arrays from spidering out.
+void DedupeConstantArrays(Model* model, size_t min_size);
+
+// Copies the contents of an array into another.
+// Expects that the shape and data type match.
+template <ArrayDataType A>
+void CopyArrayBuffer(const Array& source_array, Array* target_array) {
+  int source_buffer_size = RequiredBufferSizeForShape(source_array.shape());
+  int target_buffer_size = RequiredBufferSizeForShape(target_array->shape());
+  CHECK_EQ(source_buffer_size, target_buffer_size)
+      << "Buffer sizes must match in element count";
+  CHECK(source_array.data_type == target_array->data_type)
+      << "Data types must match";
+  if (source_array.buffer) {
+    const auto& source_buffer = source_array.GetBuffer<A>();
+    auto& target_buffer = target_array->GetMutableBuffer<A>();
+    target_buffer.data = source_buffer.data;
+  }
+}
+
+// Inserts a no-op reshape operator between the source array and the target
+// array. This effectively just copies the data.
+void InsertCopyOperator(Model* model, const string& source_array_name,
+                        const string& target_array_name);
+
+// Clones an array with all data and parameters.
+void CloneArray(Model* model, const string& source_array_name,
+                const string& target_array_name);
+
 void ResolveModelFlags(const ModelFlags& model_flags, Model* model);
 
-template <ArrayDataType A>
-void GetQuantizationParamsFromMinMax(const MinMax& minmax,
-                                     QuantizationParams* quantization_params) {
-  using Integer = DataType<A>;
-  const Integer qmin = std::numeric_limits<Integer>::min();
-  const Integer qmax = std::numeric_limits<Integer>::max();
-  const double qmin_double = qmin;
-  const double qmax_double = qmax;
-  const double rmin = minmax.min;
-  const double rmax = minmax.max;
-  // 0 should always be a representable value. Let's assume that the initial
-  // min,max range contains 0.
-  CHECK_LE(rmin, 0.);
-  CHECK_GE(rmax, 0.);
-  if (rmin == rmax) {
-    // Special case where the min,max range is a point. Should be {0}.
-    CHECK_EQ(rmin, 0.);
-    CHECK_EQ(rmax, 0.);
-    quantization_params->zero_point = 0;
-    quantization_params->scale = 0.;
-    return;
+template <typename T>
+T ConvertOperator(Operator* o, OperatorType type) {
+  if (o != nullptr && o->type == type) {
+    return static_cast<T>(o);
   }
 
-  // General case.
-  //
-  // First determine the scale.
-  const double scale = (rmax - rmin) / (qmax_double - qmin_double);
-
-  // Zero-point computation.
-  // First the initial floating-point computation. The zero-point can be
-  // determined from solving an affine equation for any known pair
-  // (real value, corresponding quantized value).
-  // We know two such pairs: (rmin, qmin) and (rmax, qmax).
-  // The arithmetic error on the zero point computed from either pair
-  // will be roughly machine_epsilon * (sum of absolute values of terms)
-  // so we want to use the variant that adds the smaller terms.
-  const double zero_point_from_min = qmin_double - rmin / scale;
-  const double zero_point_from_max = qmax_double - rmax / scale;
-  const double zero_point_from_min_error =
-      std::abs(qmin_double) + std::abs(rmin / scale);
-  const double zero_point_from_max_error =
-      std::abs(qmax_double) + std::abs(rmax / scale);
-
-  const double zero_point_double =
-      zero_point_from_min_error < zero_point_from_max_error
-          ? zero_point_from_min
-          : zero_point_from_max;
-
-  // Now we need to nudge the zero point to be an integer
-  // (our zero points are integer, and this is motivated by the requirement
-  // to be able to represent the real value "0" exactly as a quantized value,
-  // which is required in multiple places, for example in Im2col with SAME
-  // padding).
-  Integer nudged_zero_point = 0;
-  if (zero_point_double < qmin_double) {
-    nudged_zero_point = qmin;
-  } else if (zero_point_double > qmax_double) {
-    nudged_zero_point = qmax;
-  } else {
-    nudged_zero_point = static_cast<Integer>(std::round(zero_point_double));
-  }
-  // The zero point should always be in the range of quantized value,
-  // [qmin, qmax].
-  CHECK_GE(nudged_zero_point, qmin);
-  CHECK_LE(nudged_zero_point, qmax);
-
-  // Finally, store the result nudged quantization params.
-  quantization_params->zero_point = nudged_zero_point;
-  quantization_params->scale = scale;
+  return nullptr;
 }
 
 void CheckIsReadyForQuantization(const Model& model);
-void UseDefaultMinMaxRangeValues(Model* model, double default_ranges_min,
-                                 double default_ranges_max);
+
+bool ReshapeIsEquivalentToTranspose(const Model& model,
+                                    const TensorFlowReshapeOperator* op,
+                                    bool allow_extra_unary_dims);
 
 inline int Offset(const Shape& shape, const std::vector<int>& indices) {
   DCHECK_EQ(shape.dimensions_count(), indices.size());
@@ -319,7 +312,44 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type);
 // already quantized, then case (a) should hold.
 void FinishBuildingRNNStates(Model* model);
 
-void UseArraysExtraInfo(Model* model);
+void UseArraysExtraInfo(Model* model, bool quantize_output);
+
+// Calculates the number of elements in tensor given a shape. Shape elements
+// are assumed to be of type T, while the result total is of type U. If U
+// doesn't have enough range to represent the sum of elements, an error is
+// returned.
+template <typename T, typename U>
+tensorflow::Status NumElements(const std::vector<T>& shape, U* num_elements) {
+  static_assert(
+      std::numeric_limits<T>::max() <= std::numeric_limits<uint64_t>::max(),
+      "vector type exceed capabilities of NumElements");
+
+  *num_elements = 1;
+  for (const T& dim : shape) {
+    if (dim < 0) {
+      // TensorFlow's shapes sometimes include -1 to represent an "unknown"
+      // size but TOCO isn't able to create arrays of unknown sizes and will
+      // crash in RequiredBufferSizeForShape().
+      return tensorflow::errors::InvalidArgument(
+          "Tensor shape should not include negative values");
+    }
+    if (static_cast<uint64_t>(dim) >
+        std::numeric_limits<U>::max() / *num_elements) {
+      *num_elements = 0;
+      return tensorflow::errors::InvalidArgument("Tensor shape is too large");
+    }
+    *num_elements *= dim;
+  }
+  return tensorflow::Status::OK();
+}
+
+// A model file may have shuffled FC weights.
+// When that happens, we want to de-shuffle them immediately on import,
+// so that the rest of toco doesn't need to know about shuffled weights.
+void UndoWeightsShuffling(Model* model);
+
+// Copies minmax, quantization_params, and narrow_range.
+void CopyMinMaxAndQuantizationRelatedFields(const Array& src, Array* dst);
 
 }  // namespace toco
 

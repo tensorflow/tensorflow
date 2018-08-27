@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/notification.h"
@@ -292,7 +294,50 @@ TEST_F(UtilsTest, DedupControlInputs) {
   EXPECT_EQ("gnu", foo.input(1));
 }
 
-TEST_F(UtilsTest, DeleteNodes) {}
+TEST_F(UtilsTest, NumNonControlOutputs) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  //  *) Round node has control dependency edge from Add, which
+  //     is not on this scheme (ASCII graphics limitation).
+  //
+  //   *Round    [Sqrt, Shape]
+  //      |           |
+  //      |   ctrl    |
+  //     Mul ------> Add
+  //     / \         / \
+  //    x   y       a   b
+  auto x = ops::Variable(s.WithOpName("x"), {1, 2}, DT_FLOAT);
+  auto y = ops::Variable(s.WithOpName("y"), {1, 2}, DT_FLOAT);
+  auto a = ops::Variable(s.WithOpName("a"), {1, 2}, DT_FLOAT);
+  auto b = ops::Variable(s.WithOpName("b"), {1, 2}, DT_FLOAT);
+
+  auto mul = ops::Multiply(s.WithOpName("mul"), x, y);
+  auto add = ops::Add(s.WithOpName("add").WithControlDependencies(mul), a, b);
+
+  auto shape = ops::Shape(s.WithOpName("shape"), add);
+  auto sqrt = ops::Sqrt(s.WithOpName("sqrt"), add);
+
+  auto round =
+      ops::Round(s.WithOpName("round").WithControlDependencies(add), mul);
+
+  GraphDef graph;
+  TF_CHECK_OK(s.ToGraphDef(&graph));
+  NodeMap node_map(&graph);
+
+  const NodeDef* add_node = node_map.GetNode("add");
+  ASSERT_TRUE(add_node != nullptr);
+
+  // [a, b] are only non-control inputs
+  EXPECT_EQ(2, NumNonControlInputs(*add_node));
+  // [sqrt, shape] are non control outputs
+  EXPECT_EQ(2, NumNonControlOutputs(*add_node, node_map));
+  // sqrt is the only data output
+  EXPECT_EQ(1, NumNonControlDataOutputs(*add_node, node_map));
+}
+
+TEST_F(UtilsTest, DeleteNodes) {
+  // TODO(rmlarsen): write forgtten test.
+}
 
 }  // namespace
 }  // namespace grappler

@@ -26,8 +26,15 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_replace.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -35,29 +42,25 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/regexp.h"
 
-using ::tensorflow::Env;
-using ::tensorflow::WriteStringToFile;
-using ::tensorflow::gtl::nullopt;
-using ::tensorflow::gtl::optional;
-using ::tensorflow::io::JoinPath;
-using ::tensorflow::str_util::Join;
-using ::tensorflow::str_util::StringReplace;
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
-
 namespace xla {
 namespace hlo_graph_dumper {
 namespace {
+
+using absl::nullopt;
+using absl::optional;
+using absl::StrAppend;
+using absl::StrCat;
+using absl::StrJoin;
+using tensorflow::Env;
+using tensorflow::WriteStringToFile;
+using tensorflow::io::JoinPath;
 
 // Helpers for Printf and Appendf.
 template <typename T>
@@ -215,9 +218,8 @@ string NodeColorAttributes(ColorScheme color) {
 
 // Replaces <> with &lt;&gt;, so that this string is safe(er) for use in a
 // graphviz HTML-like string.
-string HtmlLikeStringSanitize(tensorflow::StringPiece s) {
-  return StringReplace(StringReplace(s, "<", "&lt;", /*replace_all=*/true), ">",
-                       "&gt;", /*replace_all=*/true);
+string HtmlLikeStringSanitize(absl::string_view s) {
+  return absl::StrReplaceAll(s, {{"<", "&lt;"}, {">", "&gt;"}});
 }
 
 // Tries to generates a human-readable one-word description of the given
@@ -320,13 +322,13 @@ optional<string> MatchTrivialComputation(const HloComputation* computation) {
 // Encapsulates logic for dumping an HLO module to DOT (i.e. graphviz syntax).
 class HloDotDumper {
  public:
-  HloDotDumper(const HloComputation* computation, tensorflow::StringPiece label,
-               const DebugOptions& debug_options, bool show_metadata,
+  HloDotDumper(const HloComputation* computation, absl::string_view label,
+               const DebugOptions& debug_options, bool show_backend_config,
                const HloExecutionProfile* profile, NodeFilter filter)
       : computation_(computation),
-        label_(label.ToString()),
+        label_(std::string(label)),
         debug_options_(debug_options),
-        show_metadata_(show_metadata),
+        show_backend_config_(show_backend_config),
         profile_(profile),
         filter_(std::move(filter)) {}
 
@@ -365,6 +367,7 @@ class HloDotDumper {
   string GetInstructionNodeShape(const HloInstruction* instr);
   string GetInstructionNodeLabel(const HloInstruction* instr);
   string GetInstructionNodeMetadata(const HloInstruction* instr);
+  string GetInstructionNodeBackendConfig(const HloInstruction* instr);
   string GetInstructionNodeExtraInfo(const HloInstruction* instr);
   string GetInstructionNodeInlinedOperands(const HloInstruction* instr);
   void AddInstructionIncomingEdges(const HloInstruction* instr);
@@ -392,7 +395,7 @@ class HloDotDumper {
   const HloComputation* computation_;  // never null
   const string label_;                 // overall name for the graph
   const DebugOptions& debug_options_;
-  const bool show_metadata_;
+  const bool show_backend_config_;
   const HloExecutionProfile* profile_;  // may be null
   const NodeFilter filter_;
 
@@ -426,7 +429,8 @@ class HloDotDumper {
 
   // When coloring by sharding information, we track the sharding string
   // representation to color association, by round-robin the color schemes.
-  std::unordered_map<string, ColorScheme> sharding_colors_;
+  std::unordered_map<HloSharding, ColorScheme, HloSharding::Hasher>
+      sharding_colors_;
   int64 next_shard_color_ = 0;
 };
 
@@ -453,7 +457,7 @@ labelloc = t;
 tooltip = " ";
 // DOT graphs accept a stylesheet as a URI.  So naturally, an inline
 // stylesheet is a data URI!
-stylesheet="
+stylesheet=<
   data:text/css,
   @import url(https://fonts.googleapis.com/css?family=Roboto:400,700);
   svg text {
@@ -462,7 +466,7 @@ stylesheet="
   }
 
   %s
-"
+>
 
 )";
 
@@ -555,10 +559,10 @@ stylesheet="
     }
   }
 
-  return Printf(fmt, graph_label, Join(edge_css_rules, "\n"));
+  return Printf(fmt, graph_label, StrJoin(edge_css_rules, "\n"));
 }
 
-string HloDotDumper::Footer() { return StrCat(Join(edges_, "\n"), "\n}"); }
+string HloDotDumper::Footer() { return StrCat(StrJoin(edges_, "\n"), "\n}"); }
 
 bool HloDotDumper::ShouldShowFusionSubcomputation(const HloInstruction* instr) {
   CHECK_EQ(instr->opcode(), HloOpcode::kFusion);
@@ -588,15 +592,26 @@ bool HloDotDumper::ShouldShowSubcomputation(const HloComputation* subcomp) {
 string HloDotDumper::DumpSubcomputation(const HloComputation* subcomp,
                                         const HloInstruction* parent_instr) {
   VLOG(2) << "Dumping subcomputation " << subcomp->name();
-  const char* computation_fmt = R"(subgraph %s {
-%s
-label = <%s>;
-labelloc = t;
-tooltip = " ";
-%s
-}  // %s
+  // Add an edge from the subcomputation to its parent node.  If subcomp
+  // belongs to a fusion node, it's drawn in place of the fusion instruction,
+  // so there's no need to link those.
+  if (parent_instr->opcode() != HloOpcode::kFusion) {
+    const HloInstruction* from = GetNodeForEdge(subcomp->root_instruction());
+    VLOG(2) << "Edge: from " << from->name() << " to " << parent_instr->name()
+            << " as " << next_edge_id_;
+    edge_ids_.insert({{from, parent_instr}, next_edge_id_++});
+    const char* edge_fmt =
+        R"(%s -> %s [ltail="%s", style="dashed" tooltip="%s -> %s"];)";
+    edges_.push_back(Printf(
+        edge_fmt, InstructionId(from), InstructionId(parent_instr),
+        SubcomputationId(subcomp), subcomp->name(), parent_instr->name()));
+  }
 
-)";
+  // Have we already dumped this subcomputation?  If so, generating the edge
+  // linking it and parent_instr is all we want to do in this function.
+  if (cluster_ids_.find(subcomp) != cluster_ids_.end()) {
+    return "";
+  }
 
   cluster_ids_[subcomp] = next_cluster_id_++;
 
@@ -610,6 +625,10 @@ tooltip = " ";
     string extra_info = GetInstructionNodeExtraInfo(parent_instr);
     if (!extra_info.empty()) {
       StrAppend(&subcomp_label, "<br/>", extra_info);
+    }
+    string node_backend_config = GetInstructionNodeBackendConfig(parent_instr);
+    if (!node_backend_config.empty()) {
+      StrAppend(&subcomp_label, "<br/>", node_backend_config);
     }
 
     bool highlight = filter_.Highlight(parent_instr);
@@ -639,25 +658,16 @@ tooltip = " ";
 
   string comp_body = DumpComputation(subcomp);
 
-  // Add an edge from the subcomputation to its parent node.  If subcomp
-  // belongs to a fusion node, it's drawn in place of the fusion instruction,
-  // so there's no need to link those.
-  if (parent_instr->opcode() != HloOpcode::kFusion) {
-    const HloInstruction* from = GetNodeForEdge(subcomp->root_instruction());
-    VLOG(2) << "Edge: from " << from->name() << " to " << parent_instr->name()
-            << " as " << next_edge_id_;
-    edge_ids_.insert({{from, parent_instr}, next_edge_id_++});
-    const char* edge_fmt =
-        R"(%s -> %s [ltail="%s", style="dashed" tooltip="%s -> %s"];)";
-    edges_.push_back(Printf(
-        edge_fmt, InstructionId(from), InstructionId(parent_instr),
-        SubcomputationId(subcomp), subcomp->name(), parent_instr->name()));
-  }
+  const char* computation_fmt = R"(subgraph %s {
+%s
+label = <%s>;
+labelloc = t;
+tooltip = " ";
+%s
+}  // %s
 
-  string computation =
-      Printf(computation_fmt, id, style, subcomp_label, comp_body, id);
-
-  return computation;
+)";
+  return Printf(computation_fmt, id, style, subcomp_label, comp_body, id);
 }
 
 string HloDotDumper::DumpComputation(const HloComputation* comp) {
@@ -715,11 +725,25 @@ string HloDotDumper::DumpRootTag() {
                 to_id, node_body, node_shape, NodeColorAttributes(color));
 }
 
+static const HloConstantInstruction* TryGetFusionParameterConstant(
+    const HloInstruction* instr) {
+  if (instr->opcode() != HloOpcode::kParameter || !instr->IsFused()) {
+    return nullptr;
+  }
+  const HloInstruction* fusion = instr->parent()->FusionInstruction();
+  const HloInstruction* operand = fusion->operand(instr->parameter_number());
+  return DynCast<HloConstantInstruction>(operand);
+}
+
 bool HloDotDumper::ShouldMergeIntoUsers(const HloInstruction* instr) const {
   // If a node:
   //
-  //  - is a tuple-shaped parameter,
-  //  - is not a parameter to a fusion node,
+  //  - is a parameter of a fusion node which is bound to a constant,
+  //
+  // or
+  //
+  //  - is a tuple-shaped parameter, and
+  //  - is not a parameter to a fusion node, and
   //  - has at least kMinUsersToOmit users shown, and
   //  - all of the shown users are get-tuple-elements,
   //
@@ -727,6 +751,9 @@ bool HloDotDumper::ShouldMergeIntoUsers(const HloInstruction* instr) const {
   //
   // This helps us handle the common case where a while loop body has one big
   // tuple-shaped parameter.
+  if (TryGetFusionParameterConstant(instr) != nullptr) {
+    return true;
+  }
   const int kMinUsersToOmit = 3;
   return instr->opcode() == HloOpcode::kParameter &&
          ShapeUtil::IsTuple(instr->shape()) && !instr->IsFused() &&
@@ -765,6 +792,7 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
   string node_shape = GetInstructionNodeShape(instr);
   string node_label = GetInstructionNodeLabel(instr);
   string node_metadata = GetInstructionNodeMetadata(instr);
+  string node_backend_config = GetInstructionNodeBackendConfig(instr);
   string extra_info = GetInstructionNodeExtraInfo(instr);
   string inlined_constants = GetInstructionNodeInlinedOperands(instr);
   string trivial_subcomputation = GetInstructionTrivialComputationStr(instr);
@@ -782,48 +810,51 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
   }
   // Build the text that will be displayed inside the node.
   string node_body = node_label;
-  for (const string& s :
-       {trivial_subcomputation, node_metadata, extra_info, inlined_constants}) {
+  for (const string& s : {trivial_subcomputation, node_backend_config,
+                          extra_info, inlined_constants}) {
     if (!s.empty()) {
       StrAppend(&node_body, "<br/>", s);
     }
   }
 
-  return Printf(R"(%s [label=<%s>, shape=%s, tooltip=" ", %s];)"
+  return Printf(R"(%s [label=<%s>, shape=%s, tooltip="%s", %s];)"
                 "\n",
-                InstructionId(instr), node_body, node_shape,
+                InstructionId(instr), node_body, node_shape, node_metadata,
                 NodeColorAttributes(color));
 }
 
 string HloDotDumper::GetInstructionNodeInlinedOperands(
     const HloInstruction* instr) {
-  auto stringify_constant = [](const HloInstruction* constant) {
+  auto stringify_constant = [](const HloConstantInstruction* constant) {
     const auto& shape = constant->shape();
 
     // If the shape has a dimension of size zero, print it as e.g.
     // "{} (f32[42, 0, 10])".  The alternative, calling Literal::ToString(),
     // enumerates all of its empty dimensions (e.g.  "{ { {}, {} }, ..."), which
     // is just noise.
-    if (ShapeUtil::HasZeroElements(shape)) {
+    if (ShapeUtil::IsZeroElementArray(shape)) {
       return Printf("{} (%s)", ShapeUtil::HumanString(constant->shape()));
     }
 
     // Print the literal value of constants with <= K elements.
     optional<int64> elem_count;
-    if (!ShapeUtil::IsOpaque(shape) && !ShapeUtil::IsTuple(shape)) {
+    if (ShapeUtil::IsArray(shape)) {
       elem_count = 1;
       for (int64 dim : shape.dimensions()) {
         *elem_count *= dim;
       }
     }
-    if (elem_count.has_value() && *elem_count <= 8) {
+    // Allow HloDotDumper to print HloInstruction reconstructed from HloProto
+    // collected from profiling tools. Those constants may not have a valid
+    // literal.
+    if (elem_count.has_value() && *elem_count <= 8 && constant->HasLiteral()) {
       return Printf("%s (%s)", constant->literal().ToString(),
                     ShapeUtil::HumanString(constant->shape()));
     }
 
     // Otherwise, print e.g. "%constant.42 (s32[100])".
     string constant_name;
-    if (tensorflow::StringPiece(constant->name()).starts_with("constant")) {
+    if (absl::StartsWith(constant->name(), "constant")) {
       constant_name = constant->name();
     } else {
       constant_name = StrCat("constant ", constant->name());
@@ -832,29 +863,26 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
                   ShapeUtil::HumanString(constant->shape()));
   };
 
-  // Special case: If instr is a parameter to a fusion node, check whether the
-  // corresponding operand to the fusion node is a constant.
-  if (instr->opcode() == HloOpcode::kParameter && instr->IsFused()) {
-    const HloInstruction* fusion = instr->parent()->FusionInstruction();
-    const HloInstruction* operand = fusion->operand(instr->parameter_number());
-    if (operand->opcode() != HloOpcode::kConstant) {
-      return "";
-    }
-    return StrCat("<b>constant</b> ", stringify_constant(operand));
-  }
-
   std::vector<string> lines;
   for (int64 i = 0; i < instr->operand_count(); ++i) {
     const HloInstruction* operand = instr->operand(i);
+    const auto* constant_operand = DynCast<HloConstantInstruction>(operand);
     optional<string> operand_str;
-    if (operand->opcode() == HloOpcode::kConstant) {
-      operand_str = stringify_constant(operand);
+    if (constant_operand != nullptr) {
+      operand_str = stringify_constant(constant_operand);
     } else if (ShouldMergeIntoUsers(operand)) {
-      // Special case: If the operand is a parameter, use its parameter number
-      // rather than its name, because that's generally how people think of the
-      // node.
+      // Special case: If the operand is a parameter to a fusion node and it
+      // always has a constant value, display it like a regular constant.
+      //
+      // For other parameters, use the parameter number rather than the proper
+      // name, because that's generally how people think of the node.
       if (operand->opcode() == HloOpcode::kParameter) {
-        operand_str = Printf("Parameter %lld", operand->parameter_number());
+        if (const HloConstantInstruction* constant =
+                TryGetFusionParameterConstant(operand)) {
+          operand_str = stringify_constant(constant);
+        } else {
+          operand_str = Printf("Parameter %lld", operand->parameter_number());
+        }
       } else {
         operand_str = operand->name();
       }
@@ -868,7 +896,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
       }
     }
   }
-  return Join(lines, "<br/>");
+  return StrJoin(lines, "<br/>");
 }
 
 ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
@@ -876,24 +904,26 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     if (!instr->has_sharding()) {
       return kDashedBorder;
     }
-    string shard_str = instr->sharding().ToString();
-    auto it = sharding_colors_.find(shard_str);
+    auto it = sharding_colors_.find(instr->sharding());
     if (it != sharding_colors_.end()) {
       return it->second;
     }
     ColorScheme color = static_cast<ColorScheme>(
         kBlue + (next_shard_color_++ % (kDashedBorder - kBlue)));
-    sharding_colors_.emplace(shard_str, color);
+    sharding_colors_.emplace(instr->sharding(), color);
     return color;
   }
   const auto kParameterColor = kOrange;
 
   // Special case: If this instruction has a parameter merged into it, paint it
-  // the same color as a parameter.
+  // the same color as a parameter.  Unless the merged-in parameter is a
+  // parameter to a fusion node that is bound to a constant -- these aren't
+  // "real" parameters from the user's perspective.
   if (std::any_of(instr->operands().begin(), instr->operands().end(),
                   [&](const HloInstruction* operand) {
                     return operand->opcode() == HloOpcode::kParameter &&
-                           ShouldMergeIntoUsers(operand);
+                           ShouldMergeIntoUsers(operand) &&
+                           TryGetFusionParameterConstant(operand) == nullptr;
                   })) {
     return kParameterColor;
   }
@@ -909,19 +939,23 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
+    case HloOpcode::kClz:
     case HloOpcode::kComplex:
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
     case HloOpcode::kDivide:
     case HloOpcode::kEq:
     case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kGe:
     case HloOpcode::kGt:
     case HloOpcode::kImag:
+    case HloOpcode::kIota:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
     case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
@@ -930,11 +964,13 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
     case HloOpcode::kPower:
     case HloOpcode::kReal:
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
@@ -953,6 +989,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kBitcast:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTrace:
+    case HloOpcode::kAfterAll:
     case HloOpcode::kTuple:
       return kWhite;
     case HloOpcode::kBroadcast:
@@ -964,13 +1001,12 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       }
       return kGreen;
     case HloOpcode::kConcatenate:
-    case HloOpcode::kCopy:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kGather:
     case HloOpcode::kPad:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
-    case HloOpcode::kSelect:
+    case HloOpcode::kTupleSelect:
     case HloOpcode::kTranspose:
       // De-emphasize scalar-shaped data movement ops and all data movement ops
       // inside fusion nodes, both of which are essentially free.
@@ -985,6 +1021,12 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
         return kWhite;
       }
+      return kGreen;
+    case HloOpcode::kScatter:
+      // Do not de-emphasize Scatter, since it involves significant work.
+    case HloOpcode::kCopy:
+      // Emphasize copy nodes, which are either physical transposes (and thus
+      // significant), or copies of read-only buffers (and thus dead weight).
       return kGreen;
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
@@ -1001,10 +1043,12 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kSelectAndScatter:
       return kPurple;
+    case HloOpcode::kDomain:
     case HloOpcode::kFusion:
     case HloOpcode::kMap:
       return kGray;
     case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllToAll:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kRecv:
@@ -1015,7 +1059,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kHostCompute:
     case HloOpcode::kWhile:
       return kDarkGreen;
     case HloOpcode::kConstant:
@@ -1041,8 +1084,7 @@ string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
 
   // The HLO instruction name contains usually the opcode, e.g. "%add.42" is
   // an add instruction.  In this case we render just the name.
-  if (tensorflow::StringPiece(instr->name())
-          .starts_with(HloOpcodeString(instr->opcode()))) {
+  if (absl::StartsWith(instr->name(), HloOpcodeString(instr->opcode()))) {
     return Printf("<b>%s</b>", HtmlLikeStringSanitize(instr->name()));
   }
   string extended_opcode =
@@ -1056,10 +1098,6 @@ string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
 }
 
 string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
-  if (!show_metadata_) {
-    return "";
-  }
-
   std::vector<string> lines;
   if (!instr->metadata().op_name().empty()) {
     lines.push_back(HtmlLikeStringSanitize(instr->metadata().op_name()));
@@ -1074,7 +1112,16 @@ string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
                            instr->metadata().source_line()));
   }
 
-  return Join(lines, "<br/>");
+  return StrJoin(lines, "<br/>");
+}
+
+string HloDotDumper::GetInstructionNodeBackendConfig(
+    const HloInstruction* instr) {
+  if (!show_backend_config_ || instr->raw_backend_config_string().empty()) {
+    return "";
+  }
+
+  return StrCat("backend_config=\"", instr->raw_backend_config_string(), "\"");
 }
 
 string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
@@ -1083,7 +1130,8 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
   // Get the instruction's extra attributes excluding the names of its
   // subcomputations, since those are drawn explicitly in the graph.
   for (const auto& line : instr->ExtraAttributesToString(
-           HloPrintOptions().set_print_subcomputation_references(false))) {
+           HloPrintOptions().set_print_subcomputation_mode(
+               HloPrintOptions::PrintSubcomputationMode::kOff))) {
     lines.push_back(HtmlLikeStringSanitize(line));
   }
 
@@ -1111,8 +1159,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
     constexpr int kMaxShapeLen = 64;
     if (instr_shape.length() > kMaxShapeLen) {
       instr_shape = StrCat(
-          tensorflow::StringPiece(instr_shape).substr(0, kMaxShapeLen - 3),
-          "...");
+          absl::string_view(instr_shape).substr(0, kMaxShapeLen - 3), "...");
     }
     lines.push_back(instr_shape);
   }
@@ -1129,7 +1176,21 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
                  100 * hlo_cycles_executed / total_cycles_executed));
     }
   }
-  return Join(lines, "<br/>");
+  return StrJoin(lines, "<br/>");
+}
+
+// Gets the total number of array elements in the given shape.  For tuples, this
+// is the sum of all the sizes of all of the array elements recursively in the
+// tuple.
+static int64 TotalElementsInShape(const Shape& shape) {
+  int64 elems = 0;
+  ShapeUtil::ForEachSubshape(
+      shape, [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+        if (ShapeUtil::IsArray(subshape)) {
+          elems += ShapeUtil::ElementsIn(subshape);
+        }
+      });
+  return elems;
 }
 
 void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
@@ -1151,9 +1212,16 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
     } else if (control_edge) {
       edge_label = "style=\"dotted\" color=\"gray\" label=\"ctrl\"";
     }
-    const char* kEdgeFmt = R"(%s -> %s [tooltip="%s -> %s" %s];)";
+
+    // We print "small" arrays using a hollow arrowhead and "large" arrays using
+    // a filled arrowhead.  For now, we use an arbitrary cutoff for what "big"
+    // means.
+    bool is_big_array = TotalElementsInShape(from->shape()) >= 4096;
+
+    const char* kEdgeFmt = R"(%s -> %s [arrowhead=%s tooltip="%s -> %s" %s];)";
     edges_.push_back(Printf(kEdgeFmt, InstructionId(from), InstructionId(to),
-                            from->name(), to->name(), edge_label));
+                            (is_big_array ? "normal" : "empty"), from->name(),
+                            to->name(), edge_label));
   };
 
   // Add edges from instr's operands to instr.  Parameters within fusion
@@ -1201,7 +1269,7 @@ string HloDotDumper::GetInstructionTrivialComputationStr(
                              HtmlLikeStringSanitize(*computation_type)));
     }
   }
-  return Join(lines, "<br/>");
+  return StrJoin(lines, "<br/>");
 }
 
 const HloInstruction* HloDotDumper::GetNodeForEdge(
@@ -1403,7 +1471,7 @@ string ExportGraph(const string& graph,
 string DumpGraph(const HloComputation& computation, const string& label,
                  const DebugOptions& debug_options,
                  const HloExecutionProfile* hlo_execution_profile,
-                 bool show_metadata) {
+                 bool show_backend_config) {
   GraphRendererInterface::GraphKind graph_kind;
   string graph;
   if (debug_options.xla_hlo_dump_as_graphdef()) {
@@ -1413,9 +1481,10 @@ string DumpGraph(const HloComputation& computation, const string& label,
                                                           &graph));
     graph_kind = GraphRendererInterface::TF_GRAPHDEF;
   } else {
-    graph = HloDotDumper(&computation, label, debug_options, show_metadata,
-                         hlo_execution_profile, NodeFilter())
-                .Dump();
+    graph =
+        HloDotDumper(&computation, label, debug_options, show_backend_config,
+                     hlo_execution_profile, NodeFilter())
+            .Dump();
     graph_kind = GraphRendererInterface::DOT_GRAPH;
   }
 
@@ -1426,13 +1495,13 @@ string DumpGraph(const HloComputation& computation, const string& label,
 }
 
 string DumpNeighborhoodAround(const HloInstruction& node, int radius,
-                              bool show_metadata) {
+                              bool show_backend_config) {
   auto debug_options = node.GetModule()->config().debug_options();
   string label =
       StrCat("Neighborhood of ", radius, " nodes around ", node.name());
   NodeFilter filter = MakeNodeFilter(&node, radius);
   string graph =
-      HloDotDumper(node.parent(), label, debug_options, show_metadata,
+      HloDotDumper(node.parent(), label, debug_options, show_backend_config,
                    /*profile=*/nullptr, filter)
           .Dump();
   return ExportGraph(graph, GraphRendererInterface::DOT_GRAPH, debug_options);

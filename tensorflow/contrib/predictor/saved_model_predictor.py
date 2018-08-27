@@ -121,7 +121,8 @@ class SavedModelPredictor(predictor.Predictor):
                input_names=None,
                output_names=None,
                tags=None,
-               graph=None):
+               graph=None,
+               config=None):
     """Initialize a `CoreEstimatorPredictor`.
 
     Args:
@@ -142,6 +143,7 @@ class SavedModelPredictor(predictor.Predictor):
         the correct `SignatureDef`. Defaults to `DEFAULT_TAGS`.
       graph: Optional. The Tensorflow `graph` in which prediction should be
         done.
+      config: `ConfigProto` proto used to configure the session.
     Raises:
       ValueError: If more than one of signature_def_key OR signature_def OR
         (input_names AND output_names) is specified.
@@ -152,7 +154,7 @@ class SavedModelPredictor(predictor.Predictor):
     self._graph = graph or ops.Graph()
 
     with self._graph.as_default():
-      self._session = session.Session()
+      self._session = session.Session(config=config)
       loader.load(self._session, tags.split(','), export_dir)
 
     if input_names is None:
