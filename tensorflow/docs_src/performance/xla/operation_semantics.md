@@ -2266,7 +2266,7 @@ arguments to the slice operation.
 | `limit_indices` | `ArraySlice<int64>` | List of N integers containing the    |
 :                 :                     : ending indices (exclusive) for the   :
 :                 :                     : slice for each dimension. Each value :
-:                 :                     : must be strictly greater than the    :
+:                 :                     : must be greater than or equal to the :
 :                 :                     : respective `start_indices` value for :
 :                 :                     : the dimension and less than or equal :
 :                 :                     : to the size of the dimension.        :
