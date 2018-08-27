@@ -189,7 +189,7 @@ Note: These are just the minimum requirements to _build_ tensorflow. Installing
 the pip package will download additional packages required to _run_ it. If you
 plan on executing tasks directly with `bazel` , without the pip installation,
 you may need to install additional python packages. For example, you should `pip
-install enum34` before running TensorFlow's tests with bazel.
+install mock enum34` before running TensorFlow's tests with bazel.
 
 <a name="ConfigureInstallation"></a>
 
@@ -286,6 +286,7 @@ Please specify the NCCL version you want to use. If NCLL 2.2 is not installed, t
 
 Please specify a list of comma-separated Cuda compute capabilities you want to build with.
 You can find the compute capability of your device at: https://developer.nvidia.com/cuda-gpus.
+<<<<<<< HEAD
 Please note that each additional compute capability significantly increases your
 build time and binary size. [Default is: 3.5,7.0] <b>6.1</b>
 
@@ -380,10 +381,10 @@ Invoke `pip install` to install that pip package. The filename of the `.whl`
 file depends on your platform. For example, the following command will install
 the pip package
 
-for TensorFlow 1.10.0 on Linux:
+for TensorFlow 1.10.1 on Linux:
 
 <pre>
-$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.10.0-py2-none-any.whl</b>
+$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.10.1-py2-none-any.whl</b>
 </pre>
 
 ## Validate your installation
