@@ -575,7 +575,7 @@ which can then be used in the `Compute` method:
     // Set all the elements of the output tensor to 0
     const int N = input.size();
     for (int i = 0; i < N; i++) {
-      output\_flat(i) = 0;
+      output_flat(i) = 0;
     }
 
     // Preserve the requested input value
@@ -1262,7 +1262,7 @@ For example, add `-L /usr/local/cuda-8.0/lib64/` if your CUDA is installed in
 Given a graph of ops, TensorFlow uses automatic differentiation
 (backpropagation) to add new ops representing gradients with respect to the
 existing ops (see
-[Gradient Computation](../api_guides/python/train.md#gradient_computation)).
+[Gradient Computation](../api_guides/python/train.md#Gradient_Computation)).
 To make automatic differentiation work for new ops, you must register a gradient
 function which computes gradients with respect to the ops' inputs given
 gradients with respect to the ops' outputs.
