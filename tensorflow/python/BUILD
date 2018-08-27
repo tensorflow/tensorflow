@@ -3777,6 +3777,7 @@ tf_py_wrap_cc(
         "framework/python_op_gen.i",
         "grappler/cluster.i",
         "grappler/cost_analyzer.i",
+        "grappler/graph_analyzer.i",
         "grappler/item.i",
         "grappler/model_analyzer.i",
         "grappler/tf_optimizer.i",
@@ -3835,6 +3836,7 @@ tf_py_wrap_cc(
         "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/costs:graph_memory",
+        "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core:lib",
         "//tensorflow/core:reader_base",
@@ -5533,6 +5535,18 @@ py_test(
         ":state_ops",
         "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
+    ],
+)
+
+py_binary(
+    name = "graph_analyzer",
+    srcs = [
+        "grappler/graph_analyzer.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_for_generated_wrappers",
+        ":pywrap_tensorflow_internal",
     ],
 )
 
