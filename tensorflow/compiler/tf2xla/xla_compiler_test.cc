@@ -861,6 +861,33 @@ TEST_F(XlaCompilerTest, LocalFunctionWithWrongArgumentsFail) {
       << status.error_message();
 }
 
+void RunAndCheckVariablesComputation(
+    xla::Client* client, const XlaCompiler::CompilationResult& result) {
+  std::unique_ptr<xla::Literal> param0_literal =
+      xla::LiteralUtil::CreateR1<int32>({7, 42});
+  std::unique_ptr<xla::Literal> param1_literal =
+      xla::LiteralUtil::CreateR1<int32>({-3, 101});
+  std::unique_ptr<xla::GlobalData> param0_data =
+      client->TransferToServer(*param0_literal).ConsumeValueOrDie();
+  std::unique_ptr<xla::GlobalData> param1_data =
+      client->TransferToServer(*param1_literal).ConsumeValueOrDie();
+
+  std::unique_ptr<xla::GlobalData> actual =
+      client
+          ->Execute(*result.computation, {param0_data.get(), param1_data.get()})
+          .ConsumeValueOrDie();
+  std::unique_ptr<xla::Literal> actual_literal =
+      client->Transfer(*actual).ConsumeValueOrDie();
+
+  std::unique_ptr<xla::Literal> expected0 =
+      xla::LiteralUtil::CreateR1<int32>({5, 144});
+  std::unique_ptr<xla::Literal> expected1 =
+      xla::LiteralUtil::CreateR1<int32>({4, 143});
+  std::unique_ptr<xla::Literal> expected_literal =
+      xla::LiteralUtil::MakeTuple({expected0.get(), expected1.get()});
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected_literal, *actual_literal));
+}
+
 // Tests a simple graph that reads and writes a variable.
 TEST_F(XlaCompilerTest, Variables) {
   Scope scope = Scope::NewRootScope().ExitOnError();
@@ -895,31 +922,85 @@ TEST_F(XlaCompilerTest, Variables) {
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
                                      std::move(graph), args, &result));
+  RunAndCheckVariablesComputation(client_, result);
+}
+
+// Tests a simple graph that reads and writes a variable.
+TEST_F(XlaCompilerTest, ReturnResourceHandleOnly) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto var = ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, 0);
+  auto d = ops::_Retval(scope.WithOpName("D"), var, 0);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kResource;
+  args[0].resource_kind = XlaResource::kVariable;
+  args[0].initialized = true;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({2});
+
+  // Compiles the graph.
+  XlaCompiler compiler(DefaultOptions());
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
+                                     std::move(graph), args, &result));
 
   // Tests that the generated computation works.
-  std::unique_ptr<xla::Literal> param0_literal =
-      xla::LiteralUtil::CreateR1<int32>({7, 42});
   std::unique_ptr<xla::Literal> param1_literal =
       xla::LiteralUtil::CreateR1<int32>({-3, 101});
-  std::unique_ptr<xla::GlobalData> param0_data =
-      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
   std::unique_ptr<xla::GlobalData> param1_data =
       client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
 
   std::unique_ptr<xla::GlobalData> actual =
-      client_
-          ->Execute(*result.computation, {param0_data.get(), param1_data.get()})
+      client_->Execute(*result.computation, {param1_data.get()})
           .ConsumeValueOrDie();
   std::unique_ptr<xla::Literal> actual_literal =
       client_->Transfer(*actual).ConsumeValueOrDie();
 
-  std::unique_ptr<xla::Literal> expected0 =
-      xla::LiteralUtil::CreateR1<int32>({5, 144});
-  std::unique_ptr<xla::Literal> expected1 =
-      xla::LiteralUtil::CreateR1<int32>({4, 143});
   std::unique_ptr<xla::Literal> expected_literal =
-      xla::LiteralUtil::MakeTuple({expected0.get(), expected1.get()});
+      xla::LiteralUtil::MakeTuple({});
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected_literal, *actual_literal));
+}
+
+TEST_F(XlaCompilerTest, ReturnResourceHandle) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
+  auto var = ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, 1);
+  // Adds an identity op around the resource to make sure identity ops propagate
+  // resources correctly.
+  auto identity = ops::Identity(scope.WithOpName("VIdentity"), var);
+  auto write = ops::AssignAddVariableOp(scope, identity, a);
+  auto read = ops::ReadVariableOp(
+      scope.WithControlDependencies(std::vector<Operation>{write}), var,
+      DT_INT32);
+  auto read_plus_one = ops::Add(scope, read, ops::Const<int32>(scope, 1));
+  auto r = ops::_Retval(scope.WithOpName("R"), var, 0);
+  auto d = ops::_Retval(scope.WithOpName("D"), read_plus_one, 1);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({2});
+  args[1].kind = XlaCompiler::Argument::kResource;
+  args[1].resource_kind = XlaResource::kVariable;
+  args[1].initialized = true;
+  args[1].type = DT_INT32;
+  args[1].shape = TensorShape({2});
+
+  // Compiles the graph.
+  XlaCompiler compiler(DefaultOptions());
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
+                                     std::move(graph), args, &result));
+  RunAndCheckVariablesComputation(client_, result);
 }
 
 xla::StatusOr<std::unique_ptr<Graph>> BuildTestGraph() {
