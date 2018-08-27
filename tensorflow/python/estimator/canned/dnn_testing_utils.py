@@ -591,13 +591,12 @@ class BaseDNNLogitFnTest(object):
       x11 = (7-(-2))/sqrt(81+0.001) = 0.99999383
       x21 = (-11-(-2))/sqrt(81+0.001) = -0.99999383
 
-    hidden_layer_0 = [[relu(0.99999383), relu(-0.99999383)]] = [[0.99999383, 0]]
-
       mean2 = 1/2*(4+(-11)) = -3.5,
       variance2 = 1/2*(7.5^2+7.5^2) = 56.25
       x12 = (4-(-3.5))/sqrt(56.25+0.001) = 0.99999111,
       x22 = (-11-(-3.5))/sqrt(56.25+0.001) = -0.99999111,
 
+    hidden_layer_0 = [[relu(0.99999383), relu(-0.99999383)]] = [[0.99999383, 0]]
     hidden_layer_0 = [[relu(0.99999111), relu(-0.99999111)]] = [[0.99999111, 0]]
 
     logits = [[-1*0.99999383 + 2*0.99999111 + 0.3],
@@ -606,15 +605,15 @@ class BaseDNNLogitFnTest(object):
 
     batch_norm_0, not training (epsilon = 0.001):
       moving_mean1 = 0, moving_variance1 = 1
-      x11 = (0.99999383-0)/sqrt(1+0.001) = 0.99949420777,
-      x21 = (0.99999111-0)/sqrt(1+0.001) = 0.99949148913,
+      x11 = (0.99999383-0)/sqrt(1+0.001) = 0.999494208,
+      x21 = (0.99999111-0)/sqrt(1+0.001) = 0.999491489,
       moving_mean2 = 0, moving_variance2 = 1
       x12 = (0-0)/sqrt(1+0.001) = 0,
       x22 = (0-0)/sqrt(1+0.001) = 0,
 
-    logits = [[-1*6.996502623 + 2*3.998001499 + 0.3],
+    logits = [[-1*0.999494208 + 2*0.999491489 + 0.3],
               [-1*(0) + 2*(0) + 0.3]]
-           = [[1.299500375],[0.3]]
+           = [[1.2995],[0.3]]
     """
     base_global_step = 100
     create_checkpoint(
@@ -634,7 +633,7 @@ class BaseDNNLogitFnTest(object):
         hidden_units=[2],
         logits_dimension=1,
         inputs=[[10.], [-20.]],
-        expected_logits=[[1.29998839], [-0.69998839]],
+        expected_logits=[[1.29998839], [0.3]],
         batch_norm=True)
     for mode in [model_fn.ModeKeys.EVAL, model_fn.ModeKeys.PREDICT]:
       self._test_logits(
@@ -642,7 +641,7 @@ class BaseDNNLogitFnTest(object):
           hidden_units=[2],
           logits_dimension=1,
           inputs=[[10.], [-20.]],
-          expected_logits=[[1.299500375], [-10.694504121]],
+          expected_logits=[[1.2995], [0.3]],
           batch_norm=True)
 
   def test_multi_dim_logits(self):
