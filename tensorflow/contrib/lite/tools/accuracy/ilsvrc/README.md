@@ -1,7 +1,7 @@
 ## Accuracy evaluation for ILSVRC 2012 (Imagenet Large Scale Visual Recognition Challenge) image classification task
 
-This binary can evaluate the accuracy of TFLite models trained for the [ILSVRC 2012 image classification task]
-(http://www.image-net.org/challenges/LSVRC/2012/).
+This binary can evaluate the accuracy of TFLite models trained for the 
+[ILSVRC 2012 image classification task](http://www.image-net.org/challenges/LSVRC/2012/).
 The binary takes the path to validation images and labels as inputs. It outputs the accuracy after running the TFLite model on the validation sets.
 
 To run the binary download the ILSVRC 2012 devkit [see instructions](#downloading-ilsvrc) and run the [`generate_validation_ground_truth` script](#ground-truth-label-generation) to generate the ground truth labels.
