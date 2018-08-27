@@ -1348,6 +1348,19 @@ py_test(
 )
 
 py_test(
+    name = "framework_ops_enable_eager_test",
+    size = "small",
+    srcs = ["framework/ops_enable_eager_test.py"],
+    main = "framework/ops_enable_eager_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+        ":platform_test",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_test(
     name = "framework_tensor_shape_test",
     size = "small",
     srcs = ["framework/tensor_shape_test.py"],
