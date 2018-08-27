@@ -1280,6 +1280,7 @@ tf_cuda_cc_test(
     srcs = ["gather_op_test.cc"],
     deps = [
         ":gather_op",
+        ":host_constant_op",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
