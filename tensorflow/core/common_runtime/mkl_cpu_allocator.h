@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/framework/allocator_registry.h"
+#include "tensorflow/core/platform/mutex.h"
 
 #ifndef INTEL_MKL_DNN_ONLY
 #include "i_malloc.h"
@@ -48,6 +50,120 @@ class MklSubAllocator : public SubAllocator {
   void Free(void* ptr, size_t num_bytes) override { port::AlignedFree(ptr); }
 };
 
+/// CPU allocator that handles small-size allocations by calling
+/// suballocator directly. Mostly, it is just a wrapper around a suballocator
+/// (that calls malloc and free directly) with support for bookkeeping.
+class MklSmallSizeAllocator : public VisitableAllocator {
+ public:
+  MklSmallSizeAllocator(SubAllocator* sub_allocator, size_t total_memory,
+                        const string& name) : sub_allocator_(sub_allocator),
+                        name_(name) {
+    stats_.bytes_limit = total_memory;
+  }
+  ~MklSmallSizeAllocator() override {}
+
+  TF_DISALLOW_COPY_AND_ASSIGN(MklSmallSizeAllocator);
+
+  inline string Name() override { return name_; }
+
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+    void* ptr = nullptr;
+    if ((ptr = sub_allocator_->Alloc(alignment, num_bytes)) != nullptr) {
+      std::pair<void*, size_t> map_val(ptr, num_bytes);
+      mutex_lock l(mutex_);
+      // Check that insertion in the hash map was successful.
+      CHECK_EQ(map_.insert(map_val).second, true);
+      // Increment statistics for small-size allocations.
+      IncrementStats(num_bytes);
+      // Call alloc visitors.
+      for (const auto& visitor : alloc_visitors_) {
+        visitor(ptr, num_bytes);
+      }
+    }
+    return ptr;
+  }
+
+  void DeallocateRaw(void* ptr) override {
+    if (ptr == nullptr) {
+      LOG(ERROR) << "tried to deallocate nullptr";
+      return;
+    }
+
+    mutex_lock l(mutex_);
+    auto map_iter = map_.find(ptr);
+    if (map_iter != map_.end()) {
+      // Call free visitors.
+      size_t dealloc_bytes = map_iter->second;
+      for (const auto& visitor : free_visitors_) {
+        visitor(ptr, dealloc_bytes);
+      }
+      sub_allocator_->Free(ptr, dealloc_bytes);
+      DecrementStats(dealloc_bytes);
+      map_.erase(map_iter);
+    }
+  }
+
+  inline bool IsSmallSizeAllocation(const void* ptr) const {
+    mutex_lock l(mutex_);
+    return map_.find(ptr) != map_.end();
+  }
+
+  void GetStats(AllocatorStats* stats) override {
+    mutex_lock l(mutex_);
+    *stats = stats_;
+  }
+
+  void ClearStats() override {
+    mutex_lock l(mutex_);
+    stats_.Clear();
+  }
+
+  void AddAllocVisitor(Visitor visitor) override {
+    mutex_lock l(mutex_);
+    alloc_visitors_.push_back(visitor);
+  }
+
+  void AddFreeVisitor(Visitor visitor) override {
+    mutex_lock l(mutex_);
+    free_visitors_.push_back(visitor);
+  }
+
+ private:
+  /// Increment statistics for the allocator handling small allocations.
+  inline void IncrementStats(size_t alloc_size) {
+    ++stats_.num_allocs;
+    stats_.bytes_in_use += alloc_size;
+    stats_.max_bytes_in_use = std::max(stats_.max_bytes_in_use,
+                                       stats_.bytes_in_use);
+    stats_.max_alloc_size = std::max(alloc_size,
+                                    static_cast<size_t>(stats_.max_alloc_size));
+  }
+
+  /// Decrement statistics for the allocator handling small allocations.
+  inline void DecrementStats(size_t dealloc_size) {
+    stats_.bytes_in_use -= dealloc_size;
+  }
+
+  SubAllocator* sub_allocator_;  // Not owned by this class.
+
+  /// Mutex for protecting updates to map of allocations.
+  mutable mutex mutex_;
+
+  /// Allocator name
+  string name_;
+
+  /// Hash map to keep track of "small" allocations
+  /// We do not use BFC allocator for small allocations.
+  std::unordered_map<const void*, size_t> map_ GUARDED_BY(mutex_);
+
+  /// Allocator stats for small allocs
+  AllocatorStats stats_ GUARDED_BY(mutex_);
+
+  /// Visitors
+  std::vector<Visitor> alloc_visitors_ GUARDED_BY(mutex_);
+  std::vector<Visitor> free_visitors_ GUARDED_BY(mutex_);
+};
+
 /// CPU allocator for MKL that wraps BFC allocator and intercepts
 /// and redirects memory allocation calls from MKL.
 class MklCPUAllocator : public VisitableAllocator {
@@ -62,7 +178,10 @@ class MklCPUAllocator : public VisitableAllocator {
 
   MklCPUAllocator() { TF_CHECK_OK(Initialize()); }
 
-  ~MklCPUAllocator() override { delete allocator_; }
+  ~MklCPUAllocator() override {
+    delete small_size_allocator_;
+    delete large_size_allocator_;
+  }
 
   Status Initialize() {
     VLOG(2) << "MklCPUAllocator: In MklCPUAllocator";
@@ -96,7 +215,11 @@ class MklCPUAllocator : public VisitableAllocator {
     }
 
     VLOG(1) << "MklCPUAllocator: Setting max_mem_bytes: " << max_mem_bytes;
-    allocator_ = new BFCAllocator(new MklSubAllocator, max_mem_bytes,
+
+    sub_allocator_ = new MklSubAllocator();
+    small_size_allocator_ = new MklSmallSizeAllocator(sub_allocator_,
+                                                      max_mem_bytes, kName);
+    large_size_allocator_ = new BFCAllocator(sub_allocator_, max_mem_bytes,
                                   kAllowGrowth, kName);
 #ifndef INTEL_MKL_DNN_ONLY
     // For redirecting all allocations from MKL to this allocator
@@ -112,23 +235,52 @@ class MklCPUAllocator : public VisitableAllocator {
   inline string Name() override { return kName; }
 
   inline void* AllocateRaw(size_t alignment, size_t num_bytes) override {
-    return allocator_->AllocateRaw(alignment, num_bytes);
+    // If the allocation size is less than threshold, call small allocator,
+    // otherwise call large-size allocator (BFC). We found that BFC allocator
+    // does not deliver good performance for small allocations when
+    // inter_op_parallelism_threads is high.
+    return (num_bytes < kSmallAllocationsThreshold) ?
+          small_size_allocator_->AllocateRaw(alignment, num_bytes) :
+          large_size_allocator_->AllocateRaw(alignment, num_bytes);
   }
 
   inline void DeallocateRaw(void* ptr) override {
-    allocator_->DeallocateRaw(ptr);
+    // Check if ptr is for "small" allocation. If it is, then call Free
+    // directly. Otherwise, call BFC to handle free.
+    if (small_size_allocator_->IsSmallSizeAllocation(ptr)) {
+      small_size_allocator_->DeallocateRaw(ptr);
+    } else {
+      large_size_allocator_->DeallocateRaw(ptr);
+    }
   }
 
-  void GetStats(AllocatorStats* stats) override { allocator_->GetStats(stats); }
+  void GetStats(AllocatorStats* stats) override {
+    AllocatorStats l_stats, s_stats;
+    small_size_allocator_->GetStats(&s_stats);
+    large_size_allocator_->GetStats(&l_stats);
 
-  void ClearStats() override { allocator_->ClearStats(); }
+    // Combine statistics from small-size and large-size allocator.
+    stats->num_allocs = l_stats.num_allocs + s_stats.num_allocs;
+    stats->bytes_in_use = l_stats.bytes_in_use + s_stats.bytes_in_use;
+    stats->max_bytes_in_use = l_stats.max_bytes_in_use +
+                              s_stats.max_bytes_in_use;
+    stats->max_alloc_size = std::max(l_stats.max_alloc_size,
+                                     s_stats.max_alloc_size);
+  }
+
+  void ClearStats() override {
+    small_size_allocator_->ClearStats();
+    large_size_allocator_->ClearStats();
+  }
 
   void AddAllocVisitor(Visitor visitor) override {
-    allocator_->AddAllocVisitor(visitor);
+    small_size_allocator_->AddAllocVisitor(visitor);
+    large_size_allocator_->AddAllocVisitor(visitor);
   }
 
   void AddFreeVisitor(Visitor visitor) override {
-    allocator_->AddFreeVisitor(visitor);
+    small_size_allocator_->AddFreeVisitor(visitor);
+    large_size_allocator_->AddFreeVisitor(visitor);
   }
 
  private:
@@ -165,7 +317,14 @@ class MklCPUAllocator : public VisitableAllocator {
   /// The alignment that we need for the allocations
   static constexpr const size_t kAlignment = 64;
 
-  VisitableAllocator* allocator_;  // owned by this class
+  VisitableAllocator* large_size_allocator_;  // owned by this class
+  MklSmallSizeAllocator* small_size_allocator_;  // owned by this class.
+
+  SubAllocator* sub_allocator_;  // not owned by this class
+
+  /// Size in bytes that defines the upper-bound for "small" allocations.
+  /// Any allocation below this threshold is "small" allocation.
+  static constexpr const size_t kSmallAllocationsThreshold = 4096;
 };
 
 }  // namespace tensorflow
