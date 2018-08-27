@@ -2651,8 +2651,8 @@ ParseResult ModuleParser::parseAffineMapDef() {
   StringRef affineMapId = getTokenSpelling().drop_front();
 
   // Check for redefinitions.
-  auto **entry = &getState().affineMapDefinitions[affineMapId];
-  if (*entry)
+  auto *&entry = getState().affineMapDefinitions[affineMapId];
+  if (entry)
     return emitError("redefinition of affine map id '" + affineMapId + "'");
 
   consumeToken(Token::hash_identifier);
@@ -2662,8 +2662,8 @@ ParseResult ModuleParser::parseAffineMapDef() {
                  "expected '=' in affine map outlined definition"))
     return ParseFailure;
 
-  *entry = parseAffineMapInline();
-  if (!*entry)
+  entry = parseAffineMapInline();
+  if (!entry)
     return ParseFailure;
 
   return ParseSuccess;
@@ -2679,8 +2679,8 @@ ParseResult ModuleParser::parseIntegerSetDef() {
   StringRef integerSetId = getTokenSpelling().drop_front(2);
 
   // Check for redefinitions (a default entry is created if one doesn't exist)
-  auto **entry = &getState().integerSetDefinitions[integerSetId];
-  if (*entry)
+  auto *&entry = getState().integerSetDefinitions[integerSetId];
+  if (entry)
     return emitError("redefinition of integer set id '" + integerSetId + "'");
 
   consumeToken(Token::double_at_identifier);
@@ -2690,8 +2690,8 @@ ParseResult ModuleParser::parseIntegerSetDef() {
                  "expected '=' in outlined integer set definition"))
     return ParseFailure;
 
-  *entry = parseIntegerSetInline();
-  if (!*entry)
+  entry = parseIntegerSetInline();
+  if (!entry)
     return ParseFailure;
 
   return ParseSuccess;
