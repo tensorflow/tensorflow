@@ -41,7 +41,7 @@ _MODULE_PATH = path.dirname(__file__)
 _DATA_FILE = path.join(_MODULE_PATH, "data/changepoints.csv")
 
 
-def state_space_esitmator(exogenous_feature_columns):
+def state_space_estimator(exogenous_feature_columns):
   """Constructs a StructuralEnsembleRegressor."""
 
   def _exogenous_update_condition(times, features):
@@ -68,7 +68,7 @@ def state_space_esitmator(exogenous_feature_columns):
       4, 64)
 
 
-def autoregressive_esitmator(exogenous_feature_columns):
+def autoregressive_estimator(exogenous_feature_columns):
   input_window_size = 8
   output_window_size = 2
   return (
@@ -169,10 +169,10 @@ def main(unused_argv):
         "Please install matplotlib to generate a plot from this example.")
   make_plot("Ignoring a known anomaly (state space)",
             *train_and_evaluate_exogenous(
-                estimator_fn=state_space_esitmator))
+                estimator_fn=state_space_estimator))
   make_plot("Ignoring a known anomaly (autoregressive)",
             *train_and_evaluate_exogenous(
-                estimator_fn=autoregressive_esitmator, train_steps=3000))
+                estimator_fn=autoregressive_estimator, train_steps=3000))
   pyplot.show()
 
 
