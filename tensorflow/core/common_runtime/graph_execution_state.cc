@@ -581,7 +581,7 @@ Status GraphExecutionState::OptimizeGraph(
         if (id.second != 0) {
           return errors::InvalidArgument("Unsupported feed: ", feed);
         }
-        feeds.insert(id.first.ToString());
+        feeds.emplace(id.first);
       }
       for (const TensorConnection& tensor_connection :
            options.callable_options.tensor_connection()) {
@@ -590,7 +590,7 @@ Status GraphExecutionState::OptimizeGraph(
           return errors::InvalidArgument("Unsupported feed: ",
                                          tensor_connection.to_tensor());
         }
-        feeds.insert(id.first.ToString());
+        feeds.emplace(id.first);
       }
       for (const NodeDef& node : original_graph_def_.node()) {
         if (feeds.find(node.name()) == feeds.end()) {
