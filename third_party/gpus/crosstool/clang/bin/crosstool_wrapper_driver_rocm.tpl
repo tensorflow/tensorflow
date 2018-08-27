@@ -225,12 +225,10 @@ def main():
 
     # special handling for $ORIGIN
     # - guard every argument with ''
-    # - replace $ORIGIN with \$ORIGIN so it won't be evaluated by hipcc which
-    #   is a bash script itself
     modified_gpu_compiler_flags = []
     for flag in gpu_compiler_flags:
       modified_gpu_compiler_flags.append(
-          "'" + flag.replace('$ORIGIN', '\$ORIGIN') + "'")
+          "'" + flag + "'")
 
     cmd = HIPCC_ENV.split() + [HIPCC_PATH] + modified_gpu_compiler_flags
     cmd_str = ' '.join(cmd)

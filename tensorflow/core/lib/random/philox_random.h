@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 // Function qualifiers that need to work on both CPU and GPU.
-#if defined(__CUDACC__)
+#if defined(__CUDACC__) || defined(__HIPCC__)
 // For nvcc.
 #define PHILOX_DEVICE_FUNC __host__ __device__
 #define PHILOX_INLINE __inline__
