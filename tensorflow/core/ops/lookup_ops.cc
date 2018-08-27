@@ -216,8 +216,9 @@ REGISTER_OP("LookupTableContainV2")
 REGISTER_OP("LookupTableInsert")
     .Input("table_handle: Ref(string)")
     .Input("keys: Tin")
-    .Input("values: bool")
+    .Input("values: Tout")
     .Attr("Tin: type")
+    .Attr("Tout: type")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle handle;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
