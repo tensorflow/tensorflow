@@ -83,7 +83,7 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
 
   // If necessary, flatten output.
   void Flatten() {
-    if (old_shape_.dims() > 1) {
+    if (old_shape_.dims() != 1) {
       TensorShape new_shape = TensorShape({old_shape_.num_elements()});
       DMAHelper::UnsafeSetShape(&output_, new_shape);
     }
