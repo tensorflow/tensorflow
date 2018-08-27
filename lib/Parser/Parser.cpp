@@ -1970,7 +1970,6 @@ private:
                                          SmallVectorImpl<CFGValue *> &values);
 
   ParseResult parseBasicBlock();
-  OperationInst *parseCFGOperation();
   TerminatorInst *parseTerminator();
 };
 } // end anonymous namespace
