@@ -76,7 +76,7 @@ typedef enum TFE_ContextDevicePlacementPolicy {
 // Sets the default execution mode (sync/async). Note that this can be
 // overridden per thread using TFE_ContextSetAsyncForThread.
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetAsync(TFE_ContextOptions*,
-                                                      unsigned char async);
+                                                      unsigned char enable);
 
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetDevicePlacementPolicy(
     TFE_ContextOptions*, TFE_ContextDevicePlacementPolicy);
@@ -114,7 +114,7 @@ TFE_ContextGetDevicePlacementPolicy(TFE_Context*);
 
 // Overrides the execution mode (sync/async) for the current thread.
 TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context*,
-                                                        unsigned char async,
+                                                        unsigned char enable,
                                                         TF_Status* status);
 
 // A tensorflow.ServerDef specifies remote workers (in addition to the current
