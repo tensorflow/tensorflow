@@ -1152,7 +1152,7 @@ HloInstruction* HloFusionInstruction::FuseInstructionInternal(
 
 HloInstruction* HloFusionInstruction::CloneAndFuseInternal(
     HloInstruction* instruction_to_fuse, bool add_output) {
-  CHECK(instruction_to_fuse->IsFusable()) << instruction_to_fuse->ToString();
+  CHECK(instruction_to_fuse->IsFusible()) << instruction_to_fuse->ToString();
   VLOG(3) << "CloneAndFuseInternal:\n" << instruction_to_fuse->ToString();
   HloInstruction* clone = nullptr;
   if (called_computations().empty()) {

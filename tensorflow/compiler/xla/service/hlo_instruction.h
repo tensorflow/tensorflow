@@ -1029,7 +1029,7 @@ class HloInstruction {
 
   // Returns true if this instruction can be legally fused into a fusion
   // instruction.
-  bool IsFusable() const;
+  bool IsFusible() const;
 
   // Returns the sharding applied to this operator.
   // REQUIRES: has_sharding() is true.

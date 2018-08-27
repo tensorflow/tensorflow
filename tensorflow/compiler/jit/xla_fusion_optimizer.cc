@@ -41,8 +41,8 @@ static bool IsShapeConsumerOp(const Node& node) {
 }
 
 // Returns true if the op can be decomposed into XLA ops for which
-// there are fusable elemental implementations.
-bool IsXlaFusable(const NodeDef& node) {
+// there are fusible elemental implementations.
+static bool IsXlaFusible(const NodeDef& node) {
   static const std::unordered_set<std::string>* elementwise_ops =
       new std::unordered_set<std::string>(
           {// tf2xla/kernels/aggregate_ops.cc
@@ -176,9 +176,9 @@ Status XlaFusionOptimizer::Optimize(grappler::Cluster* cluster,
     TF_RETURN_IF_ERROR(DeviceToDeviceType(node->def().device(), &device_type));
     if (device_type.type_string().find("XLA") != string::npos) continue;
 
-    // Assume all fusable ops are registered.
+    // Assume all fusible ops are registered.
     // TODO(hpucha): Check for registration if possible.
-    if (!IsXlaFusable(node->def())) {
+    if (!IsXlaFusible(node->def())) {
       continue;
     }
 
