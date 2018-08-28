@@ -191,7 +191,7 @@ class NonSquareLinearOperatorCompositionTest(
         linalg.LinearOperatorFullMatrix(rng.rand(2, 4, 5))
     ]
     operator = linalg.LinearOperatorComposition(operators)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual((2, 3, 5), operator.shape_tensor().eval())
 
   def test_shape_tensors_when_only_dynamically_available(self):
@@ -206,7 +206,7 @@ class NonSquareLinearOperatorCompositionTest(
         linalg.LinearOperatorFullMatrix(mat_ph_2)
     ]
     operator = linalg.LinearOperatorComposition(operators)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(
           (1, 2, 3, 5), operator.shape_tensor().eval(feed_dict=feed_dict))
 

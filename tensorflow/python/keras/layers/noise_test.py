@@ -27,14 +27,14 @@ from tensorflow.python.platform import test
 class NoiseLayersTest(test.TestCase):
 
   def test_GaussianNoise(self):
-    with self.test_session():
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.GaussianNoise,
           kwargs={'stddev': 1.},
           input_shape=(3, 2, 3))
 
   def test_GaussianDropout(self):
-    with self.test_session():
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.GaussianDropout,
           kwargs={'rate': 0.5},

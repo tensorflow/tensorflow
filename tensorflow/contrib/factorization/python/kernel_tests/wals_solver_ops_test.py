@@ -50,7 +50,7 @@ class WalsSolverOpsTest(test.TestCase):
 
   def testWalsSolverLhs(self):
     sparse_block = SparseBlock3x3()
-    with self.test_session():
+    with self.cached_session():
       [lhs_tensor,
        rhs_matrix] = gen_factorization_ops.wals_compute_partial_lhs_and_rhs(
            self._column_factors, self._column_weights, self._unobserved_weights,
@@ -82,7 +82,7 @@ class WalsSolverOpsTest(test.TestCase):
 
   def testWalsSolverLhsEntryWeights(self):
     sparse_block = SparseBlock3x3()
-    with self.test_session():
+    with self.cached_session():
       [lhs_tensor,
        rhs_matrix] = gen_factorization_ops.wals_compute_partial_lhs_and_rhs(
            self._column_factors, [], self._unobserved_weights,

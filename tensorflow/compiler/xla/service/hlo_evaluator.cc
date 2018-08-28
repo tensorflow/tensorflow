@@ -23,13 +23,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator_typed_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -43,7 +45,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -95,7 +96,7 @@ StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
                  << HloOpcodeString(opcode);
   }
 
-  auto result = MakeUnique<Literal>(shape);
+  auto result = absl::make_unique<Literal>(shape);
   TF_RETURN_IF_ERROR(result->Populate<bool>([&](ArraySlice<int64> multi_index) {
     return compare_op(lhs_literal.Get<OperandT>(multi_index),
                       rhs_literal.Get<OperandT>(multi_index));
@@ -125,7 +126,7 @@ StatusOr<std::unique_ptr<Literal>> Compare<complex64>(
                  << HloOpcodeString(opcode);
   }
 
-  auto result = MakeUnique<Literal>(shape);
+  auto result = absl::make_unique<Literal>(shape);
   TF_RETURN_IF_ERROR(result->Populate<bool>([&](ArraySlice<int64> multi_index) {
     return compare_op(lhs_literal.Get<complex64>(multi_index),
                       rhs_literal.Get<complex64>(multi_index));
@@ -138,44 +139,57 @@ StatusOr<std::unique_ptr<Literal>> Compare<complex64>(
 
 HloEvaluator::HloEvaluator(int64 max_loop_iterations)
     : max_loop_iterations_(max_loop_iterations) {
-  typed_visitors_[PRED] = MakeUnique<HloEvaluatorTypedVisitor<bool>>(this);
-  typed_visitors_[U8] = MakeUnique<HloEvaluatorTypedVisitor<uint8>>(this);
-  typed_visitors_[U16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented(
-        "HloEvaluator::HloEvaluatorTypedVisitor: unhandled primitive type: "
-        "U16.");
-  });
-  typed_visitors_[U32] = MakeUnique<HloEvaluatorTypedVisitor<uint32>>(this);
-  typed_visitors_[U64] = MakeUnique<HloEvaluatorTypedVisitor<uint64>>(this);
-  typed_visitors_[S8] = MakeUnique<HloEvaluatorTypedVisitor<int8>>(this);
-  typed_visitors_[S16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented(
-        "HloEvaluator::HloEvaluatorTypedVisitor: unhandled primitive type: "
-        "S16.");
-  });
-  typed_visitors_[S32] = MakeUnique<HloEvaluatorTypedVisitor<int32>>(this);
-  typed_visitors_[S64] = MakeUnique<HloEvaluatorTypedVisitor<int64>>(this);
+  typed_visitors_[PRED] =
+      absl::make_unique<HloEvaluatorTypedVisitor<bool>>(this);
+  typed_visitors_[U8] =
+      absl::make_unique<HloEvaluatorTypedVisitor<uint8>>(this);
+  typed_visitors_[U16] =
+      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
+        return Unimplemented(
+            "HloEvaluator::HloEvaluatorTypedVisitor: unhandled primitive type: "
+            "U16.");
+      });
+  typed_visitors_[U32] =
+      absl::make_unique<HloEvaluatorTypedVisitor<uint32>>(this);
+  typed_visitors_[U64] =
+      absl::make_unique<HloEvaluatorTypedVisitor<uint64>>(this);
+  typed_visitors_[S8] = absl::make_unique<HloEvaluatorTypedVisitor<int8>>(this);
+  typed_visitors_[S16] =
+      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
+        return Unimplemented(
+            "HloEvaluator::HloEvaluatorTypedVisitor: unhandled primitive type: "
+            "S16.");
+      });
+  typed_visitors_[S32] =
+      absl::make_unique<HloEvaluatorTypedVisitor<int32>>(this);
+  typed_visitors_[S64] =
+      absl::make_unique<HloEvaluatorTypedVisitor<int64>>(this);
   typed_visitors_[F16] =
-      MakeUnique<HloEvaluatorTypedVisitor<Eigen::half, float>>(this);
-  typed_visitors_[F32] = MakeUnique<HloEvaluatorTypedVisitor<float>>(this);
-  typed_visitors_[F64] = MakeUnique<HloEvaluatorTypedVisitor<double>>(this);
-  typed_visitors_[C64] = MakeUnique<HloEvaluatorTypedVisitor<complex64>>(this);
+      absl::make_unique<HloEvaluatorTypedVisitor<Eigen::half, float>>(this);
+  typed_visitors_[F32] =
+      absl::make_unique<HloEvaluatorTypedVisitor<float>>(this);
+  typed_visitors_[F64] =
+      absl::make_unique<HloEvaluatorTypedVisitor<double>>(this);
+  typed_visitors_[C64] =
+      absl::make_unique<HloEvaluatorTypedVisitor<complex64>>(this);
 
   // Most of the evaluator computations we use don't support BF16 (e.g.,
   // std::ceil, std::tanh). To make evaluator work with BF16, we set all
   // elementwise computations to be done in F32 and do BF16<->F32 conversion
   // around the input and the output of the computations.
   typed_visitors_[BF16] =
-      MakeUnique<HloEvaluatorTypedVisitor<bfloat16, float>>(this);
+      absl::make_unique<HloEvaluatorTypedVisitor<bfloat16, float>>(this);
 
-  typed_visitors_[TUPLE] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented(
-        "HloEvaluatorTypedVisitor: unhandled primitive type: TUPLE.");
-  });
-  typed_visitors_[OPAQUE] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented(
-        "HloEvaluatorTypedVisitor: unhandled primitive type: OPAQUE.");
-  });
+  typed_visitors_[TUPLE] =
+      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
+        return Unimplemented(
+            "HloEvaluatorTypedVisitor: unhandled primitive type: TUPLE.");
+      });
+  typed_visitors_[OPAQUE] =
+      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
+        return Unimplemented(
+            "HloEvaluatorTypedVisitor: unhandled primitive type: OPAQUE.");
+      });
 }
 
 template <typename LiteralPtr>
@@ -216,7 +230,6 @@ template <typename LiteralPtr>
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
     HloInstruction* instruction, ArraySlice<LiteralPtr> arg_literals) {
   TF_RET_CHECK(hlo_query::AllOperandsAreParametersOrConstants(*instruction));
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(instruction->shape()));
 
   evaluated_.clear();
   arg_literals_.clear();
@@ -253,7 +266,6 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
     return tensorflow::errors::FailedPrecondition(
         "Not all operands are constants.");
   }
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(instruction->shape()));
 
   arg_literals_.clear();
   evaluated_.clear();
@@ -423,7 +435,7 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
   if (!ShapeUtil::ElementIsFloating(operand->shape())) {
     return InvalidArgument(
         "expected element type in shape to be float for IsFinite op, got: %s",
-        PrimitiveType_Name(operand->shape().element_type()).c_str());
+        PrimitiveType_Name(operand->shape().element_type()));
   }
 
   switch (operand->shape().element_type()) {
@@ -464,9 +476,9 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
     return Unimplemented(
         "Implicit broadcasting is currently unsupported in HLO evaluator "
         "Shape Mismatch: %s vs %s vs %s",
-        ShapeUtil::HumanString(compare->shape()).c_str(),
-        ShapeUtil::HumanString(lhs->shape()).c_str(),
-        ShapeUtil::HumanString(rhs->shape()).c_str());
+        ShapeUtil::HumanString(compare->shape()),
+        ShapeUtil::HumanString(lhs->shape()),
+        ShapeUtil::HumanString(rhs->shape()));
   }
 
   TF_RET_CHECK(lhs->shape().element_type() == rhs->shape().element_type());
@@ -564,7 +576,8 @@ ShapeUtil::IndexIterationSpace IterationSpaceForOutputBatchIndices(
   std::vector<int64> index_count;
   index_count.reserve(output_rank);
   for (int64 i = 0; i < output_rank; i++) {
-    bool is_output_batch_dim = !c_binary_search(dim_numbers.offset_dims(), i);
+    bool is_output_batch_dim =
+        !absl::c_binary_search(dim_numbers.offset_dims(), i);
     index_count.push_back(is_output_batch_dim ? output_shape.dimensions(i) : 1);
   }
 
@@ -581,10 +594,11 @@ ShapeUtil::IndexIterationSpace IterationSpaceForOutputOffsetIndices(
   std::vector<int64> index_count(output_rank, 1);
   int64 slice_sizes_idx = 0;
   for (int64 i = 0; i < output_rank; i++) {
-    bool is_output_window_dim = c_binary_search(dim_numbers.offset_dims(), i);
+    bool is_output_window_dim =
+        absl::c_binary_search(dim_numbers.offset_dims(), i);
     if (is_output_window_dim) {
-      while (c_binary_search(dim_numbers.collapsed_slice_dims(),
-                             slice_sizes_idx)) {
+      while (absl::c_binary_search(dim_numbers.collapsed_slice_dims(),
+                                   slice_sizes_idx)) {
         slice_sizes_idx++;
       }
       index_count[i] = slice_sizes[slice_sizes_idx++];
@@ -610,13 +624,13 @@ class OutputBatchIndexToInputIndex {
       : dim_numbers_(*dim_numbers), start_indices_(*start_indices) {
     for (int64 i = 0; i < output_shape.dimensions_size(); i++) {
       output_dim_is_batch_dims_.push_back(
-          !c_binary_search(dim_numbers_.offset_dims(), i));
+          !absl::c_binary_search(dim_numbers_.offset_dims(), i));
     }
 
     for (int64 i = 0; i < input_shape.dimensions_size(); i++) {
       int64 index_of_input_dim_in_index_vector =
           std::distance(dim_numbers_.start_index_map().begin(),
-                        c_find(dim_numbers_.start_index_map(), i));
+                        absl::c_find(dim_numbers_.start_index_map(), i));
       if (index_of_input_dim_in_index_vector ==
           dim_numbers_.start_index_map_size()) {
         input_dim_value_to_index_vector_.push_back(-1);
@@ -736,7 +750,7 @@ class OutputOffsetIndexToInputIndex {
     std::vector<int64> window_index_to_output_index;
     int64 output_index_count = 0;
     for (int64 i = 0; i < output_shape.dimensions_size(); i++) {
-      if (c_binary_search(dim_numbers.offset_dims(), i)) {
+      if (absl::c_binary_search(dim_numbers.offset_dims(), i)) {
         window_index_to_output_index.push_back(output_index_count++);
       } else {
         output_index_count++;
@@ -745,7 +759,7 @@ class OutputOffsetIndexToInputIndex {
 
     int64 window_dim_count = 0;
     for (int64 i = 0; i < input_shape.dimensions_size(); i++) {
-      if (c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
+      if (absl::c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
         input_dim_value_to_output_index_.push_back(-1);
       } else {
         input_dim_value_to_output_index_.push_back(
@@ -953,7 +967,7 @@ Status HloEvaluator::HandleGetTupleElement(HloInstruction* get_tuple_element) {
 
   const Literal& operand_tuple_literal = GetEvaluatedLiteralFor(operand);
 
-  evaluated_[get_tuple_element] = MakeUnique<Literal>(
+  evaluated_[get_tuple_element] = absl::make_unique<Literal>(
       ShapeUtil::GetTupleElementShape(operand->shape(), index));
   return evaluated_[get_tuple_element]->CopyFrom(operand_tuple_literal,
                                                  /*dest_shape_index=*/{},
@@ -1091,8 +1105,8 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
   HloEvaluator loop_body_evaluator(max_loop_iterations_);
   while (keep_going) {
     if (max_loop_iterations_ >= 0 && iteration_count++ > max_loop_iterations_) {
-      return InvalidArgument("Loop %s exceeded loop iteration limit (%lld).",
-                             while_hlo->name().c_str(), max_loop_iterations_);
+      return InvalidArgument("Loop %s exceeded loop iteration limit (%d).",
+                             while_hlo->name(), max_loop_iterations_);
     }
     TF_ASSIGN_OR_RETURN(auto cond_val, cond_evaluator.Evaluate<Literal*>(
                                            *cond_comp, {lcv.get()}));
@@ -1155,10 +1169,11 @@ StatusOr<std::unique_ptr<Literal>> EvaluateSortInternal(
       result_keys.push_back(key_value.first);
       result_values.push_back(key_value.second);
     }
-    auto result_keys_literal = MakeUnique<Literal>(keys_literal.shape());
+    auto result_keys_literal = absl::make_unique<Literal>(keys_literal.shape());
     result_keys_literal->PopulateR1(
         tensorflow::gtl::ArraySlice<KeyType>(result_keys));
-    auto result_values_literal = MakeUnique<Literal>(values_literal.shape());
+    auto result_values_literal =
+        absl::make_unique<Literal>(values_literal.shape());
     result_values_literal->PopulateR1(
         tensorflow::gtl::ArraySlice<ValueType>(result_values));
     return std::make_pair(std::move(result_keys_literal),
@@ -1173,8 +1188,9 @@ StatusOr<std::unique_ptr<Literal>> EvaluateSortInternal(
   } else {
     // For R2 sort, the desired semantics are to sort each matrix row
     // independently.
-    auto keys_result_literal = MakeUnique<Literal>(keys_literal.shape());
-    auto values_result_literal = MakeUnique<Literal>(values_literal.shape());
+    auto keys_result_literal = absl::make_unique<Literal>(keys_literal.shape());
+    auto values_result_literal =
+        absl::make_unique<Literal>(values_literal.shape());
     int64 r1_length = keys_literal.shape().dimensions(1);
     for (int64 row = 0; row < keys_literal.shape().dimensions(0); ++row) {
       TF_ASSIGN_OR_RETURN(auto keys_r1_slice,
@@ -1246,7 +1262,7 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
   const int64 rank = ShapeUtil::Rank(sort->operand(0)->shape());
   if (sort_dim != rank - 1) {
     return Unimplemented(
-        "Trying to support along dimension %lld, which is not the last "
+        "Trying to support along dimension %d, which is not the last "
         "dimension",
         sort_dim);
   }
@@ -1267,7 +1283,7 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
 
 Status HloEvaluator::Preprocess(HloInstruction* hlo) {
   VLOG(2) << "About to visit HLO: " << hlo->ToString();
-  return Status::OK();
+  return ShapeUtil::ValidateShape(hlo->shape());
 }
 
 Status HloEvaluator::Postprocess(HloInstruction* hlo) {

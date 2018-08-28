@@ -200,21 +200,10 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
     }
   }
 
-  bool resource_variable_seen = false;
-  for (int i = 0; i < ctx->num_inputs(); ++i) {
-    if (ctx->input_type(i) == DT_RESOURCE) {
-      resource_variable_seen = true;
-    } else {
-      OP_REQUIRES(
-          ctx, !resource_variable_seen,
-          errors::FailedPrecondition(
-              "Resource variables and regular inputs cannot be interleaved."));
-    }
-  }
-
-  xla::XlaOp outputs = xla::Conditional(
-      ctx->Input(0), xla::Tuple(b, inputs), *then_result.computation,
-      xla::Tuple(b, inputs), *else_result.computation);
+  auto input_tuple = xla::Tuple(b, inputs);
+  xla::XlaOp outputs =
+      xla::Conditional(ctx->Input(0), input_tuple, *then_result.computation,
+                       input_tuple, *else_result.computation);
   // Sets non-variable outputs.
   for (int i = 0; i < output_types_.size(); ++i) {
     xla::XlaOp output_handle = xla::GetTupleElement(outputs, i);

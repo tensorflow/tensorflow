@@ -88,25 +88,27 @@ struct ResizeNearestNeighbor<CPUDevice, T, align_corners> {
   bool operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
                   const float height_scale, const float width_scale,
                   typename TTypes<T, 4>::Tensor output) {
-    const int batch_size = input.dimension(0);
-    const int64 in_height = input.dimension(1);
-    const int64 in_width = input.dimension(2);
-    const int channels = input.dimension(3);
+    const Eigen::Index batch_size = input.dimension(0);
+    const Eigen::Index in_height = input.dimension(1);
+    const Eigen::Index in_width = input.dimension(2);
+    const Eigen::Index channels = input.dimension(3);
 
-    const int64 out_height = output.dimension(1);
-    const int64 out_width = output.dimension(2);
+    const Eigen::Index out_height = output.dimension(1);
+    const Eigen::Index out_width = output.dimension(2);
 
-    for (int b = 0; b < batch_size; ++b) {
-      for (int y = 0; y < out_height; ++y) {
-        const int64 in_y = std::min(
-            (align_corners) ? static_cast<int64>(roundf(y * height_scale))
-                            : static_cast<int64>(floorf(y * height_scale)),
-            in_height - 1);
-        for (int x = 0; x < out_width; ++x) {
-          const int64 in_x = std::min(
-              (align_corners) ? static_cast<int64>(roundf(x * width_scale))
-                              : static_cast<int64>(floorf(x * width_scale)),
-              in_width - 1);
+    for (Eigen::Index b = 0; b < batch_size; ++b) {
+      for (Eigen::Index y = 0; y < out_height; ++y) {
+        const Eigen::Index in_y =
+            std::min((align_corners)
+                         ? static_cast<Eigen::Index>(roundf(y * height_scale))
+                         : static_cast<Eigen::Index>(floorf(y * height_scale)),
+                     in_height - 1);
+        for (Eigen::Index x = 0; x < out_width; ++x) {
+          const Eigen::Index in_x =
+              std::min((align_corners)
+                           ? static_cast<Eigen::Index>(roundf(x * width_scale))
+                           : static_cast<Eigen::Index>(floorf(x * width_scale)),
+                       in_width - 1);
           std::copy_n(&input(b, in_y, in_x, 0), channels, &output(b, y, x, 0));
         }
       }
@@ -199,28 +201,29 @@ struct ResizeNearestNeighborGrad<CPUDevice, T, align_corners> {
   bool operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
                   const float height_scale, const float width_scale,
                   typename TTypes<T, 4>::Tensor output) {
-    const int batch_size = input.dimension(0);
-    const int64 in_height = input.dimension(1);
-    const int64 in_width = input.dimension(2);
-    const int channels = input.dimension(3);
+    const Eigen::Index batch_size = input.dimension(0);
+    const Eigen::Index in_height = input.dimension(1);
+    const Eigen::Index in_width = input.dimension(2);
+    const Eigen::Index channels = input.dimension(3);
 
-    const int64 out_height = output.dimension(1);
-    const int64 out_width = output.dimension(2);
+    const Eigen::Index out_height = output.dimension(1);
+    const Eigen::Index out_width = output.dimension(2);
 
     output.setZero();
 
-    for (int y = 0; y < in_height; ++y) {
-      const int64 out_y = std::min(
-          (align_corners) ? static_cast<int64>(roundf(y * height_scale))
-                          : static_cast<int64>(floorf(y * height_scale)),
+    for (Eigen::Index y = 0; y < in_height; ++y) {
+      const Eigen::Index out_y = std::min(
+          (align_corners) ? static_cast<Eigen::Index>(roundf(y * height_scale))
+                          : static_cast<Eigen::Index>(floorf(y * height_scale)),
           out_height - 1);
-      for (int x = 0; x < in_width; ++x) {
-        const int64 out_x = std::min(
-            (align_corners) ? static_cast<int64>(roundf(x * width_scale))
-                            : static_cast<int64>(floorf(x * width_scale)),
-            out_width - 1);
-        for (int b = 0; b < batch_size; ++b) {
-          for (int c = 0; c < channels; ++c) {
+      for (Eigen::Index x = 0; x < in_width; ++x) {
+        const Eigen::Index out_x =
+            std::min((align_corners)
+                         ? static_cast<Eigen::Index>(roundf(x * width_scale))
+                         : static_cast<Eigen::Index>(floorf(x * width_scale)),
+                     out_width - 1);
+        for (Eigen::Index b = 0; b < batch_size; ++b) {
+          for (Eigen::Index c = 0; c < channels; ++c) {
             output(b, out_y, out_x, c) += input(b, y, x, c);
           }
         }

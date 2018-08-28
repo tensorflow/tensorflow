@@ -27,6 +27,7 @@ from tensorflow.contrib.distribute.python.one_device_strategy import OneDeviceSt
 from tensorflow.contrib.distribute.python.parameter_server_strategy import ParameterServerStrategy
 from tensorflow.contrib.distribute.python.step_fn import *
 from tensorflow.contrib.distribute.python.tpu_strategy import TPUStrategy
+from tensorflow.python.distribute.distribute_config import DistributeConfig
 from tensorflow.python.training.distribute import *
 from tensorflow.python.training.distribution_strategy_context import *
 
@@ -37,6 +38,7 @@ _allowed_symbols = [
     'AllReduceCrossTowerOps',
     'CollectiveAllReduceStrategy',
     'CrossTowerOps',
+    'DistributeConfig',
     'DistributionStrategy',
     'MirroredStrategy',
     'Monitor',

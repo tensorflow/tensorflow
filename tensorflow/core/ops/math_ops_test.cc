@@ -121,7 +121,7 @@ TEST(MathOpsTest, BroadcastBinaryOps_ShapeFn) {
                               "Mod",        "Mul",
                               "NotEqual",   "Pow",
                               "Sub",        "SquaredDifference",
-                              "UnsafeDiv"}) {
+                              "DivNoNan"}) {
     ShapeInferenceTestOp op(op_name);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[1,2];?", "?");

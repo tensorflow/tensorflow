@@ -216,7 +216,7 @@ bool ParseStringValue(const string& key, PyObject* py_value, TF_Status* status,
 #if PY_MAJOR_VERSION >= 3
   if (PyUnicode_Check(py_value)) {
     Py_ssize_t size = 0;
-    char* buf = PyUnicode_AsUTF8AndSize(py_value, &size);
+    const char* buf = PyUnicode_AsUTF8AndSize(py_value, &size);
     if (buf == nullptr) return false;
     *value = tensorflow::StringPiece(buf, size);
     return true;
@@ -825,7 +825,7 @@ int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
   return -1;
 }
 
-char* TFE_GetPythonString(PyObject* o) {
+const char* TFE_GetPythonString(PyObject* o) {
   if (PyBytes_Check(o)) {
     return PyBytes_AsString(o);
   }

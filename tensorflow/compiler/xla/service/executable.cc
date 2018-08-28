@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/executable.h"
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -22,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 
 using tensorflow::gtl::ArraySlice;
@@ -76,8 +77,8 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
   std::unique_ptr<HloExecutionProfile> profile_ptr =
       module_config().debug_options().xla_hlo_profile() &&
               hlo_profiling_enabled()
-          ? MakeUnique<HloExecutionProfile>(&hlo_profile_printer_data(),
-                                            &hlo_profile_index_map())
+          ? absl::make_unique<HloExecutionProfile>(&hlo_profile_printer_data(),
+                                                   &hlo_profile_index_map())
           : nullptr;
 
   StatusOr<ScopedShapedBuffer> return_value =
@@ -154,9 +155,9 @@ Status Executable::DumpHloSnapshot() {
   const string& directory_path =
       module_config().debug_options().xla_dump_executions_to();
   const auto& module = hlo_snapshot_->hlo().hlo_module();
-  string filename = tensorflow::strings::Printf(
-      "computation_%lld__%s__execution_%lld", module.id(),
-      module.entry_computation_name().c_str(), ++execution_count_);
+  string filename =
+      absl::StrFormat("computation_%d__%s__execution_%d", module.id(),
+                      module.entry_computation_name(), ++execution_count_);
   return Executable::DumpToDirectory(directory_path, filename, *hlo_snapshot_);
 }
 

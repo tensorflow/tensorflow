@@ -108,7 +108,7 @@ class ResizeBilinearOpTest(test.TestCase):
 
     x = np.arange(0, 4).reshape(in_shape).astype(np.float32)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       input_tensor = constant_op.constant(x, shape=in_shape)
       resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
       self.assertEqual(out_shape, list(resize_out.get_shape()))
@@ -122,7 +122,7 @@ class ResizeBilinearOpTest(test.TestCase):
 
     x = np.arange(0, 6).reshape(in_shape).astype(np.float32)
 
-    with self.test_session():
+    with self.cached_session():
       input_tensor = constant_op.constant(x, shape=in_shape)
       resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
       err = gradient_checker.compute_gradient_error(
@@ -135,7 +135,7 @@ class ResizeBilinearOpTest(test.TestCase):
 
     x = np.arange(0, 24).reshape(in_shape).astype(np.float32)
 
-    with self.test_session():
+    with self.cached_session():
       input_tensor = constant_op.constant(x, shape=in_shape)
       resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
       err = gradient_checker.compute_gradient_error(
@@ -165,7 +165,7 @@ class ResizeBilinearOpTest(test.TestCase):
     out_shape = [1, 2, 3, 1]
     x = np.arange(0, 24).reshape(in_shape)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for dtype in [np.float16, np.float32, np.float64]:
         input_tensor = constant_op.constant(x.astype(dtype), shape=in_shape)
         resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
@@ -190,7 +190,7 @@ class ResizeBicubicOpTest(test.TestCase):
     x = np.arange(0, 4).reshape(in_shape).astype(np.float32)
 
     for align_corners in [True, False]:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         input_tensor = constant_op.constant(x, shape=in_shape)
         resize_out = image_ops.resize_bicubic(input_tensor, out_shape[1:3],
                                               align_corners=align_corners)
@@ -206,7 +206,7 @@ class ResizeBicubicOpTest(test.TestCase):
     x = np.arange(0, 6).reshape(in_shape).astype(np.float32)
 
     for align_corners in [True, False]:
-      with self.test_session():
+      with self.cached_session():
         input_tensor = constant_op.constant(x, shape=in_shape)
         resize_out = image_ops.resize_bicubic(input_tensor, out_shape[1:3],
                                               align_corners=align_corners)
@@ -221,7 +221,7 @@ class ResizeBicubicOpTest(test.TestCase):
     x = np.arange(0, 24).reshape(in_shape).astype(np.float32)
 
     for align_corners in [True, False]:
-      with self.test_session():
+      with self.cached_session():
         input_tensor = constant_op.constant(x, shape=in_shape)
         resize_out = image_ops.resize_bicubic(input_tensor, out_shape[1:3],
                                               align_corners=align_corners)
@@ -235,7 +235,7 @@ class ResizeBicubicOpTest(test.TestCase):
 
     x = np.arange(0, 24).reshape(in_shape).astype(np.uint8)
 
-    with self.test_session():
+    with self.cached_session():
       input_tensor = constant_op.constant(x, shape=in_shape)
       resize_out = image_ops.resize_bicubic(input_tensor, out_shape[1:3])
       grad = gradients_impl.gradients(input_tensor, [resize_out])

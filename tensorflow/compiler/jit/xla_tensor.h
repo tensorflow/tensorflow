@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -70,7 +71,7 @@ class XlaTensor {
   // Mutates the XlaTensor to set the ShapedBuffer.
   void set_shaped_buffer(xla::ScopedShapedBuffer shaped_buffer) {
     shaped_buffer_ =
-        xla::MakeUnique<xla::ScopedShapedBuffer>(std::move(shaped_buffer));
+        absl::make_unique<xla::ScopedShapedBuffer>(std::move(shaped_buffer));
   }
 
   // Some tensors on the device may have known values on the host. We use these
@@ -127,4 +128,4 @@ class XlaTensor {
 
 }  // namespace tensorflow
 
-#endif
+#endif  // TENSORFLOW_COMPILER_JIT_XLA_TENSOR_H_

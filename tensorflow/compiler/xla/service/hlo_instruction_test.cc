@@ -53,7 +53,7 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
  public:
   Status DefaultAction(HloInstruction* hlo_instruction) override {
     return Unimplemented("not implemented %s",
-                         HloOpcodeString(hlo_instruction->opcode()).c_str());
+                         HloOpcodeString(hlo_instruction->opcode()));
   }
 
   Status HandleParameter(HloInstruction* parameter) override {

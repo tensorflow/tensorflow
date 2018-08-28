@@ -91,8 +91,8 @@ limitations under the License.
 //   for (int i = 0; i < 10; ++i) { my_proto.add_value(i); }
 //   MyMutatingRoutine(my_proto.mutable_value());
 
-#ifndef TENSORFLOW_LIB_GTL_ARRAY_SLICE_H_
-#define TENSORFLOW_LIB_GTL_ARRAY_SLICE_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_ARRAY_SLICE_H_
+#define TENSORFLOW_CORE_LIB_GTL_ARRAY_SLICE_H_
 
 #include <initializer_list>
 #include <type_traits>
@@ -187,8 +187,6 @@ class ArraySlice {
 
   void remove_prefix(size_type n) { impl_.remove_prefix(n); }
   void remove_suffix(size_type n) { impl_.remove_suffix(n); }
-  void pop_back() { remove_suffix(1); }
-  void pop_front() { remove_prefix(1); }
 
   // These relational operators have the same semantics as the
   // std::vector<T> relational operators: they do deep (element-wise)
@@ -286,8 +284,6 @@ class MutableArraySlice {
 
   void remove_prefix(size_type n) { impl_.remove_prefix(n); }
   void remove_suffix(size_type n) { impl_.remove_suffix(n); }
-  void pop_back() { remove_suffix(1); }
-  void pop_front() { remove_prefix(1); }
 
   bool operator==(ArraySlice<T> other) const {
     return ArraySlice<T>(*this) == other;
@@ -295,9 +291,6 @@ class MutableArraySlice {
   bool operator!=(ArraySlice<T> other) const {
     return ArraySlice<T>(*this) != other;
   }
-
-  // DEPRECATED(jacobsa): Please use data() instead.
-  pointer mutable_data() const { return impl_.data(); }
 
  private:
   Impl impl_;
@@ -311,4 +304,4 @@ const typename MutableArraySlice<T>::size_type MutableArraySlice<T>::npos;
 }  // namespace gtl
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_GTL_ARRAY_SLICE_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_ARRAY_SLICE_H_

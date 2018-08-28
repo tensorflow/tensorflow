@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
@@ -31,17 +33,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
-
-using ::tensorflow::str_util::Join;
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
-
 namespace {
+
+using absl::StrAppend;
 
 bool IsEntryParameterValue(const HloValue& value) {
   const HloComputation* computation = value.defining_instruction()->parent();
@@ -381,7 +378,7 @@ class CopyRemover {
   }
 
   string ToString() const {
-    string out = StrCat("CopyRemover, module ", module_->name(), "\n");
+    string out = absl::StrCat("CopyRemover, module ", module_->name(), "\n");
     StrAppend(&out, "  Buffer values, in dependency order:\n");
     for (const HloBuffer& buffer : alias_analysis_.buffers()) {
       StrAppend(&out, "    HloBuffer ", buffer.id(), ":\n");
@@ -863,16 +860,16 @@ class CopyRemover {
       for (const ValueNode* p = head; p != nullptr; p = Next(*p)) {
         values.push_back(p->value);
       }
-      return StrCat("{",
-                    Join(values, ", ",
-                         [](string* s, const HloValue* value) {
-                           StrAppend(s, value->ToShortString());
-                         }),
-                    "}");
+      return absl::StrCat("{",
+                          absl::StrJoin(values, ", ",
+                                        [](string* s, const HloValue* value) {
+                                          StrAppend(s, value->ToShortString());
+                                        }),
+                          "}");
     }
 
     string ToString() const {
-      string out = StrCat("BufferValueTracker:\n");
+      string out = absl::StrCat("BufferValueTracker:\n");
       StrAppend(&out, "  Def-use chains in each buffer:\n");
       for (const ValueNode* head : value_lists_) {
         StrAppend(&out, "    Buffer defined by ", head->value->ToShortString(),
@@ -880,10 +877,10 @@ class CopyRemover {
         const ValueNode* p = head;
         do {
           StrAppend(&out, "      ", p->value->ToShortString(), ", uses: ",
-                    Join(p->uses, "; ",
-                         [](string* s, const HloUse* use) {
-                           StrAppend(s, use->ToString());
-                         }),
+                    absl::StrJoin(p->uses, "; ",
+                                  [](string* s, const HloUse* use) {
+                                    StrAppend(s, use->ToString());
+                                  }),
                     "\n");
 
           p = p->next;
@@ -960,16 +957,11 @@ Status CopyInsertion::AddCopiesToResolveInterference(HloModule* module) {
   return Status::OK();
 }
 
-// Add copies to address special constraints on the roots of computations not
-// related to live range interference:
-//
-//    (1) Entry computation root must be unambiguous and distinct.
-//
-//    (2) Any computation called by a kCall instruction must have an
-//        unambiguous root.
-//
-//    (3) Constants and parameters cannot be live out of the entry computation
-//
+Status CopyInsertion::AddSpecialCaseCopies(HloModule* module) {
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+  return AddSpecialCaseCopies(*call_graph, module);
+}
+
 Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
                                            HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
@@ -1065,15 +1057,6 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
     for (HloInstruction* user : users) {
       TF_RETURN_IF_ERROR(instruction->ReplaceUseWith(user, deep_copy));
     }
-    // Special case copies are not eligible for later copy elision passes.
-    indices_to_copy.ForEachElement([&](const ShapeIndex& index, bool has_copy) {
-      if (has_copy) {
-        HloInstruction* copy = *copies_added.mutable_element(index);
-        if (copy != nullptr) {
-          copy->SetCopyElisionAllowed(false);
-        }
-      }
-    });
     if (instruction == instruction->parent()->root_instruction()) {
       instruction->parent()->set_root_instruction(deep_copy);
     }
@@ -1081,10 +1064,10 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
   return Status::OK();
 }
 
-Status CopyInsertion::VerifyNoLiveRangeInterference(HloModule* module) {
+Status CopyInsertion::VerifyNoLiveRangeInterference(const HloOrdering& ordering,
+                                                    HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, fusion_can_share_buffer_));
-  DependencyHloOrdering ordering(module);
   TF_RET_CHECK(!alias_analysis->HasLiveRangeInterference(ordering));
   return Status::OK();
 }
@@ -1101,8 +1084,7 @@ Status CopyInsertion::RemoveUnnecessaryCopies(const HloOrdering& ordering,
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() == HloOpcode::kCopy &&
-          instruction->CopyElisionAllowed()) {
+      if (instruction->opcode() == HloOpcode::kCopy) {
         TF_RETURN_IF_ERROR(copy_remover.TryElideCopy(instruction).status());
       }
     }
@@ -1168,10 +1150,10 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
   TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
   TF_RETURN_IF_ERROR(dce.Run(module).status());
 
-  TF_DCHECK_OK(VerifyNoLiveRangeInterference(module));
+  DependencyHloOrdering dep_ordering(module);
+  TF_DCHECK_OK(VerifyNoLiveRangeInterference(dep_ordering, module));
 
-  DependencyHloOrdering ordering(module);
-  TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(ordering, module));
+  TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(dep_ordering, module));
 
   TF_RETURN_IF_ERROR(AddSpecialCaseCopies(*call_graph, module));
 
@@ -1179,7 +1161,8 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
 
   TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
   TF_RETURN_IF_ERROR(dce.Run(module).status());
-  TF_DCHECK_OK(VerifyNoLiveRangeInterference(module));
+  TF_DCHECK_OK(
+      VerifyNoLiveRangeInterference(DependencyHloOrdering(module), module));
 
   MaybeDumpModule("after copy insertion", *module);
 

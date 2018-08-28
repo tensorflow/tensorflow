@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/hlo_schedule.h"
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/hlo_scheduling.h"
@@ -59,8 +59,8 @@ GpuHloOrdering::GpuHloOrdering(
     : PredecessorHloOrdering(module) {
   // The entry computation has a total order when there's only one stream.
   if (stream_assignment.StreamCount() == 1) {
-    entry_sequence_ =
-        MakeUnique<std::vector<const HloInstruction*>>(thunk_launch_order);
+    entry_sequence_ = absl::make_unique<std::vector<const HloInstruction*>>(
+        thunk_launch_order);
   }
 
   // The ordering of instructions for the entry computation is determined by the
@@ -75,7 +75,7 @@ GpuHloOrdering::GpuHloOrdering(
   // same-stream predecessors of each instruction.
 
   // Compute the set of all instructions we will want to set reachability on.
-  auto predecessor_map = MakeUnique<HloReachabilityMap>(
+  auto predecessor_map = absl::make_unique<HloReachabilityMap>(
       module->entry_computation()->MakeInstructionPostOrder());
 
   // The most recently visited instruction per stream.
@@ -208,7 +208,7 @@ StatusOr<std::unique_ptr<HloSchedule>> HloSchedule::Build(
     BFSLaunchOrder(entry_computation, &schedule->thunk_launch_order_);
   }
 
-  schedule->hlo_ordering_ = MakeUnique<GpuHloOrdering>(
+  schedule->hlo_ordering_ = absl::make_unique<GpuHloOrdering>(
       &module, stream_assignment, schedule->thunk_launch_order_);
 
   return std::move(schedule);

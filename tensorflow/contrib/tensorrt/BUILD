@@ -279,7 +279,9 @@ tf_gpu_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
+        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -291,6 +293,31 @@ tf_gpu_library(
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]) + tf_custom_op_library_additional_deps(),
+)
+
+tf_cuda_cc_test(
+    name = "convert_graph_test",
+    size = "medium",
+    srcs = ["convert/convert_graph_test.cc"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":trt_conversion",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
+    ]),
 )
 
 # Library for the segmenting portion of TensorRT operation creation

@@ -98,8 +98,7 @@ class PartitionedCallOp : public AsyncOpKernel {
                           done);
         auto graph = tensorflow::MakeUnique<Graph>(fbody->graph->flib_def());
         CopyGraph(*fbody->graph, graph.get());
-        OP_REQUIRES_OK_ASYNC(ctx, PropagateInheritedDevices(graph.get(), args),
-                             done);
+        OP_REQUIRES_OK_ASYNC(ctx, PinResourceArgs(graph.get(), args), done);
 
         DeviceSet device_set;
         for (auto d : lib->device_mgr()->ListDevices()) {
@@ -163,15 +162,10 @@ class PartitionedCallOp : public AsyncOpKernel {
                     std::vector<AllocatorAttributes>>
       ArgAndRetAllocAttrs;
 
-  // Propagates device annotations from the outer graph to the function body.
-  //
   // Pins each arg that emits a `DT_RESOURCE` tensor to the device on which the
   // corresponding resource lives. This ensures that the Placer assigns ops that
-  // access these resources to the appropriate devices. Additionally, places
-  // nodes that are unadorned with device annotations onto PartitiondCallOp's
-  // device. This lets call-site device annotations influence the execution
-  // of the function.
-  Status PropagateInheritedDevices(Graph* graph, const OpInputList& args) {
+  // access these resources to the appropriate devices.
+  Status PinResourceArgs(Graph* graph, const OpInputList& args) {
     for (Node* node : graph->op_nodes()) {
       string node_type = node->type_string();
       if (node_type == FunctionLibraryDefinition::kArgOp) {
@@ -183,18 +177,6 @@ class PartitionedCallOp : public AsyncOpKernel {
         if (dtype == DT_RESOURCE) {
           ResourceHandle handle = args[index].flat<ResourceHandle>()(0);
           node->set_assigned_device_name(handle.device());
-        }
-      } else if (node_type != FunctionLibraryDefinition::kRetOp) {
-        // All non-RetVal nodes that weren't explicitly placed by the user
-        // inherit PartitionedCallOp's device. RetVal placement is inferred by
-        // the placer, to avoid forcing the function's outputs through a single
-        // device.
-        //
-        // TODO(b/112166045): Plumb the original requested device into this
-        // OpKernel (this->requested_device() isn't reliable), and merge it
-        // with node->requested_device() if possible.
-        if (node->requested_device().empty()) {
-          node->set_requested_device(local_device_name_);
         }
       }
     }

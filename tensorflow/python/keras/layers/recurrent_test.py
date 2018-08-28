@@ -50,7 +50,7 @@ class RNNTest(test.TestCase):
         output = keras.backend.dot(inputs, self.kernel) + prev_output
         return output, [output]
 
-    with self.test_session():
+    with self.cached_session():
       # Basic test case.
       cell = MinimalRNNCell(32, 5)
       x = keras.Input((None, 5))
@@ -88,7 +88,7 @@ class RNNTest(test.TestCase):
         output -= prev_output_2
         return output, [output * 2, output * 3]
 
-    with self.test_session():
+    with self.cached_session():
       # Basic test case.
       cell = MinimalRNNCell(32, 5)
       x = keras.Input((None, 5))
@@ -103,7 +103,8 @@ class RNNTest(test.TestCase):
                MinimalRNNCell(16, 8),
                MinimalRNNCell(32, 16)]
       layer = keras.layers.RNN(cells)
-      assert layer.cell.state_size == (32, 32, 16, 16, 8, 8)
+      self.assertEqual(layer.cell.state_size, (8, 8, 16, 16, 32, 32))
+      self.assertEqual(layer.cell.output_size, 32)
       y = layer(x)
       model = keras.models.Model(x, y)
       model.compile(optimizer='rmsprop', loss='mse')
@@ -139,7 +140,7 @@ class RNNTest(test.TestCase):
         base_config = super(MinimalRNNCell, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
-    with self.test_session():
+    with self.cached_session():
       # Test basic case.
       x = keras.Input((None, 5))
       cell = MinimalRNNCell(32)
@@ -228,7 +229,7 @@ class RNNTest(test.TestCase):
         base_config = super(RNNCellWithConstants, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
-    with self.test_session():
+    with self.cached_session():
       # Test basic case.
       x = keras.Input((None, 5))
       c = keras.Input((3,))
@@ -243,7 +244,7 @@ class RNNTest(test.TestCase):
           np.zeros((6, 32))
       )
 
-    with self.test_session():
+    with self.cached_session():
       # Test basic case serialization.
       x_np = np.random.random((6, 5, 5))
       c_np = np.random.random((6, 3))
@@ -259,7 +260,7 @@ class RNNTest(test.TestCase):
       y_np_2 = model.predict([x_np, c_np])
       self.assertAllClose(y_np, y_np_2, atol=1e-4)
 
-    with self.test_session():
+    with self.cached_session():
       # test flat list inputs.
       with keras.utils.CustomObjectScope(custom_objects):
         layer = keras.layers.RNN.from_config(config.copy())
@@ -269,7 +270,7 @@ class RNNTest(test.TestCase):
       y_np_3 = model.predict([x_np, c_np])
       self.assertAllClose(y_np, y_np_3, atol=1e-4)
 
-    with self.test_session():
+    with self.cached_session():
       # Test stacking.
       cells = [keras.layers.recurrent.GRUCell(8),
                RNNCellWithConstants(12),
@@ -283,7 +284,7 @@ class RNNTest(test.TestCase):
           np.zeros((6, 32))
       )
 
-    with self.test_session():
+    with self.cached_session():
       # Test GRUCell reset_after property.
       x = keras.Input((None, 5))
       c = keras.Input((3,))
@@ -297,7 +298,7 @@ class RNNTest(test.TestCase):
           np.zeros((6, 32))
       )
 
-    with self.test_session():
+    with self.cached_session():
       # Test stacked RNN serialization
       x_np = np.random.random((6, 5, 5))
       c_np = np.random.random((6, 3))
@@ -355,7 +356,7 @@ class RNNTest(test.TestCase):
         base_config = super(RNNCellWithConstants, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
-    with self.test_session():
+    with self.cached_session():
       # Test basic case.
       x = keras.Input((None, 5))
       c = keras.Input((3,))
@@ -370,7 +371,7 @@ class RNNTest(test.TestCase):
           np.zeros((6, 32))
       )
 
-    with self.test_session():
+    with self.cached_session():
       # Test basic case serialization.
       x_np = np.random.random((6, 5, 5))
       s_np = np.random.random((6, 32))
@@ -392,7 +393,7 @@ class RNNTest(test.TestCase):
       with self.assertRaises(AssertionError):
         self.assertAllClose(y_np, y_np_2_different_s, atol=1e-4)
 
-    with self.test_session():
+    with self.cached_session():
       # test flat list inputs
       with keras.utils.CustomObjectScope(custom_objects):
         layer = keras.layers.RNN.from_config(config.copy())
@@ -467,7 +468,7 @@ class RNNTest(test.TestCase):
     timesteps = 2
     num_samples = 2
 
-    with self.test_session():
+    with self.cached_session():
       input1 = keras.Input(batch_shape=(num_samples, timesteps, embedding_dim))
       layer = layer_class(units,
                           return_state=True,
@@ -487,7 +488,7 @@ class RNNTest(test.TestCase):
     for cell_class in [keras.layers.SimpleRNNCell,
                        keras.layers.GRUCell,
                        keras.layers.LSTMCell]:
-      with self.test_session():
+      with self.cached_session():
         # Test basic case.
         x = keras.Input((None, 5))
         cell = cell_class(32)
@@ -534,7 +535,7 @@ class RNNTest(test.TestCase):
              keras.layers.LSTMCell(3, dropout=0.1, recurrent_dropout=0.1)]
     layer = keras.layers.RNN(cells)
 
-    with self.test_session():
+    with self.cached_session():
       x = keras.Input((None, 5))
       y = layer(x)
       model = keras.models.Model(x, y)
@@ -551,6 +552,21 @@ class RNNTest(test.TestCase):
     layer = keras.layers.RNN(cells, return_state=True, return_sequences=True)
     output_shape = layer.compute_output_shape((None, timesteps, embedding_dim))
     expected_output_shape = [(None, timesteps, 6),
+                             (None, 3),
+                             (None, 3),
+                             (None, 6),
+                             (None, 6)]
+    self.assertEqual(
+        [tuple(o.as_list()) for o in output_shape],
+        expected_output_shape)
+
+    # Test reverse_state_order = True for stacked cell.
+    stacked_cell = keras.layers.StackedRNNCells(
+        cells, reverse_state_order=True)
+    layer = keras.layers.RNN(
+        stacked_cell, return_state=True, return_sequences=True)
+    output_shape = layer.compute_output_shape((None, timesteps, embedding_dim))
+    expected_output_shape = [(None, timesteps, 6),
                              (None, 6),
                              (None, 6),
                              (None, 3),
@@ -561,7 +577,7 @@ class RNNTest(test.TestCase):
 
   def test_checkpointable_dependencies(self):
     rnn = keras.layers.SimpleRNN
-    with self.test_session():
+    with self.cached_session():
       x = np.random.random((2, 2, 2))
       y = np.random.random((2, 2))
       model = keras.models.Sequential()
@@ -576,7 +592,7 @@ class RNNTest(test.TestCase):
         self.assertIn(v, checkpointed_objects)
 
   def test_high_dimension_RNN(self):
-    with self.test_session():
+    with self.cached_session():
       # Basic test case.
       unit_a = 10
       unit_b = 20
@@ -626,7 +642,7 @@ class RNNTest(test.TestCase):
     batch = 32
     time_step = 4
 
-    with self.test_session():
+    with self.cached_session():
       # Basic test case.
       cell = Minimal2DRNNCell(unit_a, unit_b)
       x = keras.Input((None, input_a, input_b))
@@ -642,7 +658,7 @@ class RNNTest(test.TestCase):
       ], np.zeros((batch, unit_a, unit_b)))
       self.assertEqual(model.output_shape, (None, unit_a, unit_b))
 
-    with self.test_session():
+    with self.cached_session():
       # Bad init state shape.
       bad_shape_a = unit_a * 2
       bad_shape_b = unit_b * 2
@@ -655,7 +671,7 @@ class RNNTest(test.TestCase):
         layer(x, initial_state=s)
 
   def test_inconsistent_output_state_size(self):
-    with self.test_session():
+    with self.cached_session():
       batch = 32
       time_step = 4
       state_size = 5
@@ -677,6 +693,23 @@ class RNNTest(test.TestCase):
           np.zeros((batch, time_step, input_size)),
           np.zeros((batch, input_size)))
       self.assertEqual(model.output_shape, (None, input_size))
+
+  def test_get_initial_state(self):
+    cell = keras.layers.SimpleRNNCell(5)
+    with self.assertRaisesRegexp(ValueError,
+                                 'batch_size and dtype cannot be None'):
+      cell.get_initial_state(None, None, None)
+
+    inputs = keras.Input((None, 2, 10))
+    initial_state = cell.get_initial_state(inputs, None, None)
+    self.assertEqual(initial_state.shape.as_list(), [None, 5])
+    self.assertEqual(initial_state.dtype, inputs.dtype)
+
+    batch = array_ops.shape(inputs)[0]
+    dtype = inputs.dtype
+    initial_state = cell.get_initial_state(None, batch, dtype)
+    self.assertEqual(initial_state.shape.as_list(), [None, 5])
+    self.assertEqual(initial_state.dtype, inputs.dtype)
 
 
 class Minimal2DRNNCell(keras.layers.Layer):

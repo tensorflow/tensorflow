@@ -476,6 +476,16 @@ TEST_F(OperatorTest, BuiltinOneHot) {
   EXPECT_EQ(op.axis, output_toco_op->axis);
 }
 
+TEST_F(OperatorTest, BuiltinUnpack) {
+  UnpackOperator op;
+  op.num = 5;
+  op.axis = 2;
+  auto output_toco_op =
+      SerializeAndDeserialize(GetOperator("UNPACK", OperatorType::kUnpack), op);
+  EXPECT_EQ(op.num, output_toco_op->num);
+  EXPECT_EQ(op.axis, output_toco_op->axis);
+}
+
 TEST_F(OperatorTest, CustomCTCBeamSearchDecoder) {
   CTCBeamSearchDecoderOperator op;
   op.beam_width = 3;

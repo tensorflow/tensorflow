@@ -18,16 +18,34 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import os
 
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import metrics
 from tensorflow.python.keras import models
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
+
+
+class TestModel(keras.Model):
+  """A model subclass."""
+
+  def __init__(self, n_outputs=4, trainable=True):
+    """A test class with one dense layer and number of outputs as a variable."""
+    super(TestModel, self).__init__()
+    self.layer1 = keras.layers.Dense(n_outputs)
+    self.n_outputs = resource_variable_ops.ResourceVariable(
+        n_outputs, trainable=trainable)
+
+  def call(self, x):
+    return self.layer1(x)
 
 
 class TestModelCloning(test.TestCase):
@@ -185,6 +203,36 @@ class TestModelBackend(test.TestCase):
     model.compile('rmsprop', 'mse')
 
     keras.backend.set_floatx(floatx)
+
+
+class TestModelDeepCopy(test.TestCase):
+
+  def test_deep_copy_eager_mode_trainable(self):
+    with context.eager_mode():
+      x = random_ops.random_normal((32, 4))
+      model = TestModel(trainable=True)
+      model(x)  # Initialize Variables.
+      model_copy = copy.deepcopy(model)
+      self.assertEqual(len(model_copy.trainable_variables), 3)
+      model_copy.n_outputs.assign(1200)
+      self.assertFalse(
+          np.allclose(model_copy.n_outputs.numpy(),
+                      model.n_outputs.numpy()))
+
+  def test_deep_copy_eager_mode_not_trainable(self):
+    with context.eager_mode():
+      x = random_ops.random_normal((32, 4))
+      model = TestModel(trainable=False)
+      model(x)
+      model_copy = copy.deepcopy(model)
+      self.assertEqual(len(model_copy.trainable_variables), 2)
+
+      weights = model_copy.get_weights()
+      weights = [w * 4 for w in weights]
+      model_copy.set_weights(weights)
+      self.assertFalse(
+          np.allclose(model.get_weights()[0],
+                      model_copy.get_weights()[0]))
 
 
 class TestCloneAndBuildModel(test.TestCase):

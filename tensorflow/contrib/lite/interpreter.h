@@ -136,6 +136,11 @@ class Interpreter {
   // interpreter.
   TfLiteStatus SetVariables(std::vector<int> variables);
 
+  // Ensure the internal node storage memory allocates at least `count`
+  // spots for node. NOTE, this doesn't actually add operators. This is an
+  // efficiency optimization that is subject to change.
+  void ReserveNodes(int count);
+
   // Adds a node with the given parameters and returns the index of the new
   // node in `node_index` (optionally). Interpreter will take ownership of
   // `builtin_data` and destroy it with `free`. Ownership of 'init_data'

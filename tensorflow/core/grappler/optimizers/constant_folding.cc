@@ -852,7 +852,19 @@ DataType GetDataTypeFromNodeOrProps(const NodeDef& node,
   }
   return dtype;
 }
-
+bool IsValidConstShapeForNCHW(const TensorShapeProto& shape) {
+  if (shape.dim_size() != 4) {
+    return false;
+  }
+  int num_dim_larger_than_one = 0;
+  for (const auto& dim : shape.dim()) {
+    if (dim.size() > 1) ++num_dim_larger_than_one;
+  }
+  return num_dim_larger_than_one <= 1;
+}
+const string& GetShape(const NodeDef& node) {
+  return node.attr().at("data_format").s();
+}
 }  // namespace
 
 // static
@@ -1699,7 +1711,7 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
     return Status::OK();
   }
 
-  if (MulConvPushDown(node, *properties)) {
+  if (MulConvPushDown(*properties, optimized_graph, node)) {
     graph_modified_ = true;
     return Status::OK();
   }
@@ -2541,8 +2553,9 @@ bool ConstantFolding::ConstantPushDown(NodeDef* node) {
   return false;
 }
 
-bool ConstantFolding::MulConvPushDown(NodeDef* node,
-                                      const GraphProperties& properties) {
+bool ConstantFolding::MulConvPushDown(const GraphProperties& properties,
+                                      GraphDef* optimized_graph,
+                                      NodeDef* node) {
   // Push down multiplication on ConvND.
   //                       *                  ConvND
   //                     /   \                /    \
@@ -2618,12 +2631,14 @@ bool ConstantFolding::MulConvPushDown(NodeDef* node,
     }
     const auto& const_shape = const_props[0].shape();
 
-    TensorShapeProto new_filter_shape;
-    if (!ShapeAfterBroadcast(filter_shape, const_shape, &new_filter_shape)) {
-      return false;
-    }
-    if (!ShapesSymbolicallyEqual(filter_shape, new_filter_shape)) {
-      return false;
+    if (GetShape(*conv_node) == "NHWC") {
+      TensorShapeProto new_filter_shape;
+      if (!ShapeAfterBroadcast(filter_shape, const_shape, &new_filter_shape)) {
+        return false;
+      }
+      if (!ShapesSymbolicallyEqual(filter_shape, new_filter_shape)) {
+        return false;
+      }
     }
 
     string mul_new_name =
@@ -2656,6 +2671,69 @@ bool ConstantFolding::MulConvPushDown(NodeDef* node,
       node->set_input(0, conv_const_node->name());
     }
     node_map_->AddNode(mul_new_name, node);
+
+    if (GetShape(*conv_node) == "NCHW") {
+      if (const_node->attr().at("value").tensor().tensor_shape().dim_size() <=
+          1) {
+        // Broadcast should work for scalar or 1D. No need to reshape.
+        return true;
+      }
+      if (!IsValidConstShapeForNCHW(
+              const_node->attr().at("value").tensor().tensor_shape())) {
+        return false;
+      }
+      // Adds Const node for Reshape.
+      auto* shape_const_node = optimized_graph->add_node();
+      const string shape_const_node_name =
+          OptimizedNodeName(*const_node, "_new_shape");
+      shape_const_node->set_name(shape_const_node_name);
+      shape_const_node->set_op("Const");
+      shape_const_node->set_device(const_node->device());
+      (*shape_const_node->mutable_attr())["dtype"].set_type(DT_INT32);
+      Tensor t(DT_INT32, {4});
+      t.flat<int32>()(0) = 1;
+      t.flat<int32>()(1) = 1;
+      t.flat<int32>()(2) = 1;
+      t.flat<int32>()(3) = const_node->attr()
+                               .at("value")
+                               .tensor()
+                               .tensor_shape()
+                               .dim(1)  // IsValidConstShapeForNCHW guarantees
+                                        // dim 1 is the dim to reshape
+                               .size();
+      t.AsProtoTensorContent(
+          (*shape_const_node->mutable_attr())["value"].mutable_tensor());
+      node_map_->AddNode(shape_const_node_name, shape_const_node);
+
+      // Adds Reshape node.
+      auto* reshape_node = optimized_graph->add_node();
+      const string reshape_node_name =
+          OptimizedNodeName(*const_node, "_reshape");
+      reshape_node->set_op("Reshape");
+      reshape_node->set_name(reshape_node_name);
+      reshape_node->set_device(const_node->device());
+      (*reshape_node->mutable_attr())["T"].set_type(
+          const_node->attr().at("dtype").type());
+      (*reshape_node->mutable_attr())["Tshape"].set_type(DT_INT32);
+      node_map_->AddNode(reshape_node_name, reshape_node);
+
+      // const_node -> reshape_node
+      node_map_->RemoveOutput(const_node->name(), node->name());
+      *reshape_node->add_input() = const_node->name();
+      node_map_->AddOutput(const_node->name(), reshape_node_name);
+
+      // shape_const_node -> reshape_node
+      *reshape_node->add_input() = shape_const_node_name;
+      node_map_->AddOutput(shape_const_node_name, reshape_node_name);
+
+      // reshape_node -> node (Mul)
+      node_map_->AddOutput(reshape_node_name, node->name());
+      if (left_child_is_constant) {
+        node->set_input(0, reshape_node_name);
+      } else {
+        node->set_input(1, reshape_node_name);
+      }
+    }
 
     return true;
   }

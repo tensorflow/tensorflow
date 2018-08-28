@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -145,8 +145,8 @@ TEST_F(ComputeConstantTest, DirectParamMissing) {
     EXPECT_FALSE(IsConstant(computation, &b));
 
     auto value = ComputeConstantScalar<float>(client, computation, &b);
-    EXPECT_TRUE(tensorflow::str_util::StrContains(value.status().ToString(),
-                                                  "depends on a parameter"))
+    EXPECT_TRUE(
+        absl::StrContains(value.status().ToString(), "depends on a parameter"))
         << value.status();
   }
 }
@@ -161,8 +161,8 @@ TEST_F(ComputeConstantTest, IndirectParamMissing) {
     EXPECT_FALSE(IsConstant(computation, &b));
 
     auto value = ComputeConstantScalar<float>(client, computation, &b);
-    EXPECT_TRUE(tensorflow::str_util::StrContains(value.status().ToString(),
-                                                  "depends on a parameter"))
+    EXPECT_TRUE(
+        absl::StrContains(value.status().ToString(), "depends on a parameter"))
         << value.status();
   }
 }

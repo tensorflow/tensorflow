@@ -371,7 +371,7 @@ class IndexedArrayAnalysis {
 // unconditionally add to the regular HLO pass pipeline.
 class IndexedArrayAnalysisPrinterPass : public HloPassInterface {
  public:
-  tensorflow::StringPiece name() const override;
+  absl::string_view name() const override;
   StatusOr<bool> Run(HloModule* module) override;
 };
 

@@ -119,6 +119,7 @@ py_test(
     deps = [
         ":pruning_utils",
         "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

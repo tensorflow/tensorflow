@@ -476,8 +476,8 @@ class Pruning(object):
 
       smoothed_threshold, new_mask = self._update_mask(pooled_weights,
                                                        threshold)
-      updated_mask = pruning_utils.kronecker_product(
-          new_mask, array_ops.ones(self._block_dim))
+
+      updated_mask = pruning_utils.expand_tensor(new_mask, self._block_dim)
       sliced_mask = array_ops.slice(
           updated_mask, [0, 0],
           [squeezed_weights.get_shape()[0],

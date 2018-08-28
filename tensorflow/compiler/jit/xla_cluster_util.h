@@ -18,9 +18,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_CLUSTER_UTIL_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_CLUSTER_UTIL_H_
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 
 namespace tensorflow {
 
@@ -47,13 +47,20 @@ Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles);
 
 // Returns the XLA cluster in which `node` is placed if it is in an XLA cluster,
 // otherwise returns nullopt.
-gtl::optional<StringPiece> GetXlaClusterForNode(const Node& node);
+absl::optional<StringPiece> GetXlaClusterForNode(const Node& node);
 
 // Removes `node_def` its XLA cluster (by clearing its _XlaCluster attribute).
 void RemoveFromXlaCluster(NodeDef* node_def);
 
 // Returns true if `node` has a DT_RESOURCE typed input or output.
 bool HasResourceInputOrOutput(const Node& node);
+
+// Adds edges to `cycles` to prevent clustering resource operations that cannot
+// be legally clustered.
+Status AdjustCycleDetectionGraphForResourceOps(
+    const Graph* graph, const FunctionLibraryDefinition* flib_def,
+    const std::function<Status(const Node&, bool*)>& resource_ops_to_ignore,
+    GraphCycles* cycles);
 
 }  // namespace tensorflow
 

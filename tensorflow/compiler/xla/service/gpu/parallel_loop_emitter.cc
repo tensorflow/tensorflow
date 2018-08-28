@@ -57,8 +57,8 @@ ParallelLoopEmitter::ParallelLoopEmitter(
       unroll_factor_(unroll_factor) {}
 
 std::vector<llvm_ir::IrArray::Index>
-ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
-    tensorflow::StringPiece loop_name, llvm::Type* index_type) {
+ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
+                                                   llvm::Type* index_type) {
   // Emit the following code in LLVM IR:
   //   linear_index = blockIdx.x * blockDim.x + threadIdx.x;
   //   if (linear_index < num_elements) {

@@ -802,7 +802,7 @@ class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
           [single_cell_fn() for _ in range(num_layers)])
     input_size = 3
     save_graph = ops.Graph()
-    with save_graph.as_default(), self.test_session(graph=save_graph):
+    with save_graph.as_default(), self.session(graph=save_graph):
       save_layer = _MultiCellFn()
       save_layer(inputs=array_ops.ones([1, input_size]),
                  state=save_layer.zero_state(1, dtypes.float32))

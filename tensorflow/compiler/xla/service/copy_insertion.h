@@ -45,7 +45,7 @@ namespace xla {
 //       InstructionAliasSet::IsDistinct return true.
 class CopyInsertion : public HloPassInterface {
  public:
-  tensorflow::StringPiece name() const override { return "copy-insertion"; }
+  absl::string_view name() const override { return "copy-insertion"; }
 
   // fusion_can_share_buffer: backend specific function that decides whether a
   // fusion can share buffer with its operand.
@@ -77,14 +77,28 @@ class CopyInsertion : public HloPassInterface {
   Status RemoveUnnecessaryCopies(const HloOrdering& ordering,
                                  HloModule* module);
 
+  // Add copies to address special constraints on the roots of computations not
+  // related to live range interference:
+  //
+  //    (1) Entry computation root must be unambiguous and distinct.
+  //
+  //    (2) Any computation called by a kCall instruction must have an
+  //        unambiguous root.
+  //
+  //    (3) Constants and parameters cannot be live out of the entry computation
+  //
+  Status AddSpecialCaseCopies(HloModule* module);
+
+  // Verifies that no HLO values have interfering live ranges using the given
+  // ordering.
+  Status VerifyNoLiveRangeInterference(const HloOrdering& ordering,
+                                       HloModule* module);
+
  private:
-  // Verifies that no HLO values have interfering live ranged assuming the
-  // ordering used by copy insertion.
-  Status VerifyNoLiveRangeInterference(HloModule* module);
+  // Override which requires the caller to pass in a call graph.
+  Status AddSpecialCaseCopies(const CallGraph& call_graph, HloModule* module);
 
   Status AddCopiesToResolveInterference(HloModule* module);
-
-  Status AddSpecialCaseCopies(const CallGraph& call_graph, HloModule* module);
 
   // Backend specific function that decides whether a fusion can share buffer
   // with its operand.

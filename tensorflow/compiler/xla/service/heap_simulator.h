@@ -36,6 +36,7 @@ namespace xla {
 
 // Forward declare classes defined below.
 class HeapAlgorithm;
+class NoFragmentationStatsHeap;
 
 // HeapSimulator assigns buffer offsets by running a simulation of a regular
 // memory heap with Alloc and Free calls.  It only works for completely
@@ -161,7 +162,10 @@ class HeapSimulator {
                       const HloInstruction* instruction,
                       const BufferValue* shared_with_canonical);
 
-  const std::unique_ptr<HeapAlgorithm> no_fragmentation_stats_;
+  // Counterintuitive: the algorithm_ itself can be a NoFragmentationStatsHeap,
+  // in which case we are calculating the same allocs/frees twice in the
+  // simulation.
+  const std::unique_ptr<NoFragmentationStatsHeap> no_fragmentation_stats_;
   const std::unique_ptr<HeapAlgorithm> algorithm_;
   const BufferValue::SizeFunction size_fn_;
   const Options options_;
@@ -216,6 +220,21 @@ class HeapAlgorithm {
   // Alloc allocates a buffer of 'size' bytes.
   virtual void Alloc(const BufferValue* buffer, int64 size) = 0;
 
+  // NoFragmentationStatsHeap overrides this method.
+  virtual void Alloc(const BufferValue* buffer, int64 size,
+                     const HloInstruction* instruction) {
+    Alloc(buffer, size);
+  }
+
+  // Takes memory usage of subcomputations into account when calculating the
+  // memory usage of a computation. Currently, we don't handle buffer aliasing
+  // between computations entirely correctly. We are careful to not double count
+  // for the output buffers of whiles/conds/calls. But we don't take into
+  // account other aliases, such as for the while init. A more thorough solution
+  // would require something like BufferAssignment::BuildColocatedBufferSets.
+  // TODO(b/65835246):
+  // Since TuplePointsToAnalysis is being replaced with a module-aware alias
+  // analysis, it's not worth making major changes to HeapSimulator now.
   virtual void AccountForSubcomputationMemory(
       const HloInstruction* instruction,
       const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
@@ -239,6 +258,9 @@ class NoFragmentationStatsHeap : public HeapAlgorithm {
   ~NoFragmentationStatsHeap() override = default;
 
   void Alloc(const BufferValue* buffer, int64 size) override;
+
+  void Alloc(const BufferValue* buffer, int64 size,
+             const HloInstruction* instruction) override;
 
   void AccountForSubcomputationMemory(
       const HloInstruction* instruction,

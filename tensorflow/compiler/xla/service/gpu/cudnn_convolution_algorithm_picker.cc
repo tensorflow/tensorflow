@@ -14,24 +14,25 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
+using absl::optional;
 using se::DeviceMemoryBase;
 using se::dnn::AlgorithmConfig;
 using se::dnn::AlgorithmDesc;
-using tensorflow::gtl::optional;
 
 class ScratchAllocator : public se::ScratchAllocator {
  public:
@@ -59,8 +60,8 @@ StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
   if (byte_size > GetMemoryLimitInBytes(stream)) {
     return se::port::Status(
         se::port::error::RESOURCE_EXHAUSTED,
-        tensorflow::strings::Printf(
-            "Allocating %lld bytes exceeds the memory limit of %lld bytes.",
+        absl::StrFormat(
+            "Allocating %d bytes exceeds the memory limit of %d bytes.",
             byte_size, GetMemoryLimitInBytes(stream)));
   }
 
@@ -128,14 +129,14 @@ std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
 
 string AlgorithmToString(const AlgorithmDesc& algo) {
   if (algo.tensor_ops_enabled()) {
-    return tensorflow::strings::StrCat(algo.algo_id(), "+TC");
+    return absl::StrCat(algo.algo_id(), "+TC");
   }
-  return tensorflow::strings::StrCat(algo.algo_id());
+  return absl::StrCat(algo.algo_id());
 }
 
 string NumBytesToString(int64 bytes) {
-  return tensorflow::strings::StrCat(
-      tensorflow::strings::HumanReadableNumBytes(bytes), " (", bytes, "B)");
+  return absl::StrCat(tensorflow::strings::HumanReadableNumBytes(bytes), " (",
+                      bytes, "B)");
 }
 
 // Acquires a process-global lock on the device pointed to by the given
@@ -361,7 +362,7 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
   return InternalError(
       "All algorithms tried for convolution %s failed.  Falling back to "
       "default algorithm.",
-      instr->ToString().c_str());
+      instr->ToString());
 }
 
 StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(

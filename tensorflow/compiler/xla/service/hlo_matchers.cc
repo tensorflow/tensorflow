@@ -15,14 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace xla {
 namespace testing {
-
-using ::tensorflow::str_util::Join;
 
 bool HloMatcher::MatchAndExplain(
     const HloInstruction* instruction,
@@ -210,8 +208,8 @@ bool HloDotWithContractingDimsMatcher::MatchAndExplain(
       dim_nums.lhs_contracting_dimensions(0) != lhs_contracting_dim_) {
     *listener << instruction->ToString()
               << " has wrong lhs_contracting_dimensions (got {"
-              << Join(dim_nums.lhs_contracting_dimensions(), ",") << "} want {"
-              << lhs_contracting_dim_ << "})";
+              << absl::StrJoin(dim_nums.lhs_contracting_dimensions(), ",")
+              << "} want {" << lhs_contracting_dim_ << "})";
     return false;
   }
 
@@ -219,8 +217,8 @@ bool HloDotWithContractingDimsMatcher::MatchAndExplain(
       dim_nums.rhs_contracting_dimensions(0) != rhs_contracting_dim_) {
     *listener << instruction->ToString()
               << " has wrong rhs_contracting_dimensions (got {"
-              << Join(dim_nums.rhs_contracting_dimensions(), ",") << "} want {"
-              << rhs_contracting_dim_ << "})";
+              << absl::StrJoin(dim_nums.rhs_contracting_dimensions(), ",")
+              << "} want {" << rhs_contracting_dim_ << "})";
     return false;
   }
 

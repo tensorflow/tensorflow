@@ -178,7 +178,7 @@ class MatrixDiagOp : public XlaOpKernel {
     int last_dim = dims.size() - 1;
     int64 last_dim_size = input_shape.dim_size(last_dim);
     tensorflow::gtl::ArraySlice<int64> other_dims(dims);
-    other_dims.pop_back();
+    other_dims.remove_suffix(1);
 
     xla::XlaOp input = ctx->Input(0);
     xla::XlaOp diag = CreateDiagonal(input, last_dim_size, other_dims,

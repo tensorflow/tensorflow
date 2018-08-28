@@ -33,7 +33,7 @@ class AdadeltaOptimizerTest(xla_test.XLATestCase):
   def testBasic(self):
     num_updates = 4  # number of ADADELTA steps to perform
     for dtype in self.float_types:
-      with self.test_session(), self.test_scope():
+      with self.cached_session(), self.test_scope():
         for grad in [0.2, 0.1, 0.01]:
           for lr in [1.0, 0.5, 0.1]:
             var0_init = [1.0, 2.0]

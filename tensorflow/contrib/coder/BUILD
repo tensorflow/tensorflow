@@ -3,6 +3,7 @@
 
 package(default_visibility = [
     "//learning/brain:__subpackages__",
+    "//research/vision/piedpiper:__subpackages__",
     "//tensorflow:__subpackages__",
 ])
 

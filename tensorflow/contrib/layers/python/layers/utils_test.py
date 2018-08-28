@@ -47,7 +47,7 @@ class ConstantValueTest(test.TestCase):
 
   def test_variable(self):
     for v in [True, False, 1, 0, 1.0]:
-      with ops.Graph().as_default() as g, self.test_session(g) as sess:
+      with ops.Graph().as_default() as g, self.session(g) as sess:
         x = variables.Variable(v)
         value = utils.constant_value(x)
         self.assertEqual(value, None)

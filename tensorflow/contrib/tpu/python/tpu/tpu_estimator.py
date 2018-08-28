@@ -762,9 +762,13 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
     if not is_dataset:
       raise TypeError('`input_fn` must return a `Dataset` for the PER_HOST_V2 '
                       'input pipeline configuration.')
+
     if ctx.mode == model_fn_lib.ModeKeys.PREDICT:
-      # TODO(b/XXX): Add predict support for PER_HOST_V2
-      raise TypeError('Most PREDICT not yet supported in PER_HOST_V2 mode.')
+      inputs = _InputsWithStoppingSignals(
+          dataset=inputs.dataset,
+          batch_size=ctx.batch_size_for_input_fn,
+          add_padding=True,
+          num_invocations_per_step=ctx.num_of_replicas_per_host)
 
     hooks.append(inputs.dataset_initializer_hook())
     tpu_ordinal_function_impl = ctx.tpu_ordinal_function(host_id)
@@ -774,6 +778,7 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
     control_deps = []
     per_host_sharded_inputs = []
     num_replicas_per_host = ctx.num_of_replicas_per_host
+    cached_signals = None
     with ops.device(device):
       if not inputs.is_dataset:
         raise TypeError('`input_fn` must return a `Dataset` for this mode.')
@@ -781,21 +786,32 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
         # Use control dependencies to ensure a deterministic ordering.
         with ops.control_dependencies(control_deps):
           features, labels = inputs.features_and_labels()  # Calls get_next()
+          signals = inputs.signals()
+
+          # All the replicas share the replica 0's stopping singal.
+          # This avoids inconsistent state among different model replcias.
+          if cached_signals:
+            signals['stopping'] = cached_signals['stopping']
+          else:
+            cached_signals = signals
 
         inputs_structure_recorder.validate_and_record_structure(
             features, labels)
         flattened_inputs = (
             inputs_structure_recorder.flatten_features_and_labels(
-                features, labels))
+                features, labels, signals))
         control_deps.extend(flattened_inputs)
         per_host_sharded_inputs.append(flattened_inputs)
 
       if inputs_structure_recorder.flattened_input_dims:
+        input_partition_dims = inputs_structure_recorder.flattened_input_dims
+        if signals:
+          input_partition_dims += [None] * len(signals)
         # pylint: disable=protected-access
         infeed_queue = tpu_feed._PartitionedInfeedQueue(
             number_of_tuple_elements=len(per_host_sharded_inputs[0]),
             host_id=host_id,
-            input_partition_dims=inputs_structure_recorder.flattened_input_dims,
+            input_partition_dims=input_partition_dims,
             device_assignment=ctx.device_assignment)
         per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
             per_host_sharded_inputs)
@@ -807,7 +823,13 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
             tpu_ordinal_function=tpu_ordinal_function_impl)
       captured_infeed_queue.capture(infeed_queue)
 
-    return per_host_enqueue_ops
+    if signals is None:
+      return per_host_enqueue_ops
+    else:
+      return {
+          'ops': per_host_enqueue_ops,
+          'signals': signals,
+      }
 
   return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
 
@@ -2124,9 +2146,10 @@ class TPUEstimator(estimator_lib.Estimator):
                                mode=model_fn_lib.ModeKeys.PREDICT,
                                export_tags=None,
                                check_variables=True):
-    if mode != model_fn_lib.ModeKeys.PREDICT:
+    if self._export_to_tpu and mode != model_fn_lib.ModeKeys.PREDICT:
       raise NotImplementedError(
-          'TPUEstimator only handles mode PREDICT for export_savedmodel(); '
+          'TPUEstimator only handles mode PREDICT for exporting '
+          'when `export_to_tpu` is `True`; '
           'got {}.'.format(mode))
 
     (super(TPUEstimator, self).
@@ -2424,16 +2447,12 @@ class TPUEstimator(estimator_lib.Estimator):
       with self._ctx.with_mode(mode) as ctx:
         model_fn_wrapper = _ModelFnWrapper(model_fn, config, params, ctx)
 
-        if mode != model_fn_lib.ModeKeys.PREDICT:
+        # `input_fn` is called in `train()`, `evaluate()`, and `predict()`,
+        # but not in `export_savedmodel()`.
+        if self._is_input_fn_invoked:
           is_export_mode = False
         else:
-          # For export_savedmodel, input_fn is never passed to Estimator. So, by
-          # checking the self._is_input_fn_invoked bit, we can know, given the
-          # mode == PREDICT, it is the .predict API, not export_savedmodel API.
-          if self._is_input_fn_invoked:
-            is_export_mode = False
-          else:
-            is_export_mode = True
+          is_export_mode = True
 
         # Clear the bit.
         self._is_input_fn_invoked = None
@@ -2805,8 +2824,6 @@ def _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
 
 def _predict_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   """Executes `model_fn_wrapper` multiple times on all TPU shards."""
-  num_cores = ctx.num_cores
-
   (single_tpu_predict_step, host_calls, captured_scaffold_fn,
    captured_predict_hooks
   ) = model_fn_wrapper.convert_to_single_tpu_predict_step(dequeue_fn)
@@ -2825,7 +2842,7 @@ def _predict_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   (dummy_predict_op,) = tpu.shard(
       multi_tpu_predict_steps_on_single_shard,
       inputs=[],
-      num_shards=num_cores,
+      num_shards=ctx.num_replicas,
       outputs_from_all_shards=False,
       device_assignment=ctx.device_assignment)
 
@@ -3043,16 +3060,48 @@ class _Inputs(object):
 class _InputsWithStoppingSignals(_Inputs):
   """Inputs with `_StopSignals` inserted into the dataset."""
 
-  def __init__(self, dataset, batch_size, add_padding=False):
+  def __init__(self,
+               dataset,
+               batch_size,
+               add_padding=False,
+               num_invocations_per_step=1):
 
     assert dataset is not None
-
     user_provided_dataset = dataset.map(
         _InputsWithStoppingSignals.insert_stopping_signal(
             stop=False, batch_size=batch_size, add_padding=add_padding))
-    final_batch_dataset = dataset.take(1).map(
-        _InputsWithStoppingSignals.insert_stopping_signal(
-            stop=True, batch_size=batch_size, add_padding=add_padding))
+    if num_invocations_per_step == 1:
+      final_batch_dataset = dataset.take(1).map(
+          _InputsWithStoppingSignals.insert_stopping_signal(
+              stop=True, batch_size=batch_size, add_padding=add_padding))
+    else:
+      # We append (2 * num_invocations_per_step - 1) batches for exhausting the
+      # user_provided_dataset and stop properly.
+      # For example, if num_invocations_per_step is 2, we append 3 additional
+      # padding batches: b1, b2, b3.
+      # If user_provided_dataset contains two batches: a1, a2
+      # Step 1: [a1, a2]
+      # Step 2: [b1, b2] -> STOP
+      # If user_provided_dataset contains three batches: a1, a2, a3.
+      # The training loops:
+      # Step 1: [a1, a2]
+      # Step 2: [a3, b1]
+      # Step 3: [b2, b3] -> STOP.
+      final_batch_dataset = dataset.take(1).map(
+          _InputsWithStoppingSignals.insert_stopping_signal(
+              stop=True, batch_size=batch_size, add_padding=add_padding))
+      final_batch_dataset = final_batch_dataset.repeat(
+          2 * num_invocations_per_step - 1)
+
+      def _set_mask(data_dict):
+        signals = data_dict['signals']
+        signals['padding_mask'] = array_ops.ones_like(signals['padding_mask'])
+        data_dict['signals'] = signals
+        return data_dict
+
+      # Mask out the extra batch.
+      final_batch_dataset = final_batch_dataset.map(_set_mask)
+
     dataset = user_provided_dataset.concatenate(final_batch_dataset).prefetch(2)
 
     super(_InputsWithStoppingSignals, self).__init__(dataset=dataset)

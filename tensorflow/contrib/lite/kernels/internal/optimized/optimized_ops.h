@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPS_H_
-#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPS_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPTIMIZED_OPS_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPTIMIZED_OPS_H_
 
 #include <assert.h>
 #include <stdint.h>
@@ -319,6 +319,7 @@ inline void AddBiasAndEvalActivationFunction(const float* bias_data,
 #endif
 }
 
+// Note: This to be converted to RuntimeShapes along with Conv.
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
 void AddBiasAndEvalActivationFunction(const float* bias_data,
@@ -2142,38 +2143,6 @@ void Conv(const uint8* input_data, const Dims<4>& input_dims,
        im2col_data, im2col_dims, gemm_context);
 }
 
-template <typename T>
-inline void DepthToSpace(const T* input_data, const Dims<4>& input_dims,
-                         int block_size, T* output_data,
-                         const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("DepthToSpace");
-
-  const int input_depth = ArraySize(input_dims, 0);
-  const int input_width = ArraySize(input_dims, 1);
-  const int input_height = ArraySize(input_dims, 2);
-
-  const int output_depth = ArraySize(output_dims, 0);
-  const int batch_size = ArraySize(output_dims, 3);
-
-  // Number of continuous values that we can copy in one interation.
-  const int stride = block_size * output_depth;
-
-  for (int batch = 0; batch < batch_size; ++batch) {
-    for (int in_h = 0; in_h < input_height; ++in_h) {
-      const T* input_ptr = input_data + Offset(input_dims, 0, 0, in_h, batch);
-      for (int offset_h = 0; offset_h < block_size; ++offset_h) {
-        const T* src = input_ptr;
-        for (int in_w = 0; in_w < input_width; ++in_w) {
-          memcpy(output_data, src, stride * sizeof(T));
-          output_data += stride;
-          src += input_depth;
-        }
-        input_ptr += stride;
-      }
-    }
-  }
-}
-
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac, typename T>
 void Im2col(const T* input_data, const Dims<4>& input_dims, int stride,
@@ -2249,25 +2218,87 @@ void ConvAsGemm(const uint8* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
-inline void SpaceToDepth(const T* input_data, const Dims<4>& input_dims,
-                         int block_size, T* output_data,
-                         const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("SpaceToDepth");
+inline void DepthToSpace(const tflite::DepthToSpaceParams& op_params,
+                         const RuntimeShape& unextended_input_shape,
+                         const T* input_data,
+                         const RuntimeShape& unextended_output_shape,
+                         T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("DepthToSpace");
 
-  const int output_depth = ArraySize(output_dims, 0);
-  const int output_width = ArraySize(output_dims, 1);
-  const int output_height = ArraySize(output_dims, 2);
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
-  const int input_depth = ArraySize(input_dims, 0);
-  const int batch_size = ArraySize(input_dims, 3);
+  const int input_depth = input_shape.Dims(3);
+  const int input_width = input_shape.Dims(2);
+  const int input_height = input_shape.Dims(1);
+
+  const int output_depth = output_shape.Dims(3);
+  const int batch_size = output_shape.Dims(0);
 
   // Number of continuous values that we can copy in one interation.
-  const int stride = block_size * input_depth;
+  const int stride = op_params.block_size * output_depth;
+
+  for (int batch = 0; batch < batch_size; ++batch) {
+    for (int in_h = 0; in_h < input_height; ++in_h) {
+      const T* input_ptr = input_data + Offset(input_shape, batch, in_h, 0, 0);
+      for (int offset_h = 0; offset_h < op_params.block_size; ++offset_h) {
+        const T* src = input_ptr;
+        for (int in_w = 0; in_w < input_width; ++in_w) {
+          memcpy(output_data, src, stride * sizeof(T));
+          output_data += stride;
+          src += input_depth;
+        }
+        input_ptr += stride;
+      }
+    }
+  }
+}
+
+// Legacy Dims<4>.
+template <typename T>
+inline void DepthToSpace(const T* input_data, const Dims<4>& input_dims,
+                         int block_size, T* output_data,
+                         const Dims<4>& output_dims) {
+  tflite::DepthToSpaceParams op_params;
+  op_params.block_size = block_size;
+
+  DepthToSpace(op_params, DimsToShape(input_dims), input_data,
+               DimsToShape(output_dims), output_data);
+}
+
+template <typename T>
+inline void SpaceToDepth(const tflite::SpaceToDepthParams& op_params,
+                         const RuntimeShape& unextended_input_shape,
+                         const T* input_data,
+                         const RuntimeShape& unextended_output_shape,
+                         T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("SpaceToDepth");
+
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
+  const int output_depth = output_shape.Dims(3);
+  const int output_width = output_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+
+  const int input_depth = input_shape.Dims(3);
+  const int batch_size = input_shape.Dims(0);
+
+  // Number of continuous values that we can copy in one interation.
+  const int stride = op_params.block_size * input_depth;
 
   for (int batch = 0; batch < batch_size; ++batch) {
     for (int out_h = 0; out_h < output_height; ++out_h) {
-      T* output_ptr = output_data + Offset(output_dims, 0, 0, out_h, batch);
-      for (int offset_h = 0; offset_h < block_size; ++offset_h) {
+      T* output_ptr = output_data + Offset(output_shape, batch, out_h, 0, 0);
+      for (int offset_h = 0; offset_h < op_params.block_size; ++offset_h) {
         T* dst = output_ptr;
         for (int out_w = 0; out_w < output_width; ++out_w) {
           memcpy(dst, input_data, stride * sizeof(T));
@@ -2278,6 +2309,18 @@ inline void SpaceToDepth(const T* input_data, const Dims<4>& input_dims,
       }
     }
   }
+}
+
+// Legacy Dims<4>.
+template <typename T>
+inline void SpaceToDepth(const T* input_data, const Dims<4>& input_dims,
+                         int block_size, T* output_data,
+                         const Dims<4>& output_dims) {
+  tflite::SpaceToDepthParams op_params;
+  op_params.block_size = block_size;
+
+  SpaceToDepth(op_params, DimsToShape(input_dims), input_data,
+               DimsToShape(output_dims), output_data);
 }
 
 template <FusedActivationFunctionType Ac>
@@ -2327,8 +2370,8 @@ void GlobalBatchNormalization(const float* input_data,
   }
 }
 
-inline void Relu(const float* input_data, const RuntimeShape& input_shape,
-                 float* output_data, const RuntimeShape& output_shape) {
+inline void Relu(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Relu (not fused)");
 
   const auto input = MapAsVector(input_data, input_shape);
@@ -4544,8 +4587,8 @@ inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Logistic(const float* input_data, const RuntimeShape& input_shape,
-                     float* output_data, const RuntimeShape& output_shape) {
+inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
+                     const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Logistic");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
@@ -4690,8 +4733,8 @@ inline void Logistic(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Logistic(const int16* input_data, const RuntimeShape& input_shape,
-                     int16* output_data, const RuntimeShape& output_shape) {
+inline void Logistic(const RuntimeShape& input_shape, const int16* input_data,
+                     const RuntimeShape& output_shape, int16* output_data) {
   gemmlowp::ScopedProfilingLabel label("Logistic/Int16");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
@@ -4750,8 +4793,14 @@ inline void Logistic(const int16* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Tanh(const float* input_data, const RuntimeShape& input_shape,
-                 float* output_data, const RuntimeShape& output_shape) {
+// Legacy version.
+inline void Logistic(const int16* input_data, const RuntimeShape& input_shape,
+                     int16* output_data, const RuntimeShape& output_shape) {
+  Logistic(input_shape, input_data, output_shape, output_data);
+}
+
+inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Tanh");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
@@ -5014,12 +5063,19 @@ inline void Cast(const SrcT* input_data, const Dims<4>& input_dims,
   output_map.array() = input_map.array().template cast<DstT>();
 }
 
+inline void Floor(const RuntimeShape& input_shape, const float* input_data,
+                  const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Floor");
+  auto input_map = MapAsVector(input_data, input_shape);
+  auto output_map = MapAsVector(output_data, output_shape);
+  output_map.array() = Eigen::floor(input_map.array());
+}
+
+// Legacy Dims<4> version.
 inline void Floor(const float* input_data, const Dims<4>& input_dims,
                   float* output_data, const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("Floor");
-  auto input_map = MapAsVector(input_data, input_dims);
-  auto output_map = MapAsVector(output_data, output_dims);
-  output_map.array() = Eigen::floor(input_map.array());
+  Floor(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+        output_data);
 }
 
 #ifdef USE_NEON
@@ -5121,12 +5177,14 @@ inline void ResizeBilinearKernel(const float* input_ptr, int32 depth,
 
 inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
                                     int32 x, int32 y, int32 depth, int32 batch,
+                                    const RuntimeShape& input_shape,
                                     const float* input_data,
-                                    const Dims<4>& input_dims,
-                                    float* output_data,
-                                    const Dims<4>& output_dims) {
-  const int32 input_width = ArraySize(input_dims, 1);
-  const int32 output_width = ArraySize(output_dims, 1);
+                                    const RuntimeShape& output_shape,
+                                    float* output_data) {
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+  const int32 input_width = input_shape.Dims(2);
+  const int32 output_width = output_shape.Dims(2);
 
   const int32 input_x_offset = (x1 - x0) * depth;
   const int32 input_y_offset = (y1 - y0) * depth * input_width;
@@ -5134,7 +5192,6 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
   const int32 output_y_offset = depth * output_width;
 
 #ifdef USE_NEON
-  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
   TFLITE_DCHECK(x1 >= x0);
   TFLITE_DCHECK(y1 >= y0);
 
@@ -5144,7 +5201,7 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
     const float* input_ptr = nullptr;
 
     float32x4x2_t x0y0;
-    input_ptr = &input_data[Offset(input_dims, ic, x0, y0, batch)];
+    input_ptr = &input_data[Offset(input_shape, batch, y0, x0, ic)];
     x0y0.val[0] = vld1q_f32(input_ptr);
     x0y0.val[1] = vld1q_f32(input_ptr + 4);
 
@@ -5164,7 +5221,7 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
     x1y1.val[1] = vld1q_f32(input_ptr + 4);
 
     // Top left corner.
-    float* output_ptr = &output_data[Offset(output_dims, ic, x, y, batch)];
+    float* output_ptr = &output_data[Offset(output_shape, batch, y, x, ic)];
     vst1q_f32(output_ptr, x0y0.val[0]);
     vst1q_f32(output_ptr + 4, x0y0.val[1]);
 
@@ -5203,14 +5260,15 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
   }
   // Handle 4 input channels at a time.
   for (; ic <= depth - 4; ic += 4) {
-    const float* input_ptr = &input_data[Offset(input_dims, ic, x0, y0, batch)];
+    const float* input_ptr =
+        &input_data[Offset(input_shape, batch, y0, x0, ic)];
     float32x4_t x0y0 = vld1q_f32(input_ptr);
     float32x4_t x1y0 = vld1q_f32(input_ptr + input_x_offset);
     float32x4_t x0y1 = vld1q_f32(input_ptr + input_y_offset);
     float32x4_t x1y1 = vld1q_f32(input_ptr + input_x_offset + input_y_offset);
 
     // Top left corner.
-    float* output_ptr = &output_data[Offset(output_dims, ic, x, y, batch)];
+    float* output_ptr = &output_data[Offset(output_shape, batch, y, x, ic)];
     vst1q_f32(output_ptr, x0y0);
 
     // Top right corner.
@@ -5234,7 +5292,7 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
   }
   // Handle one input channel at a time.
   for (; ic < depth; ic++) {
-    const int32 input_offset = Offset(input_dims, ic, x0, y0, batch);
+    const int32 input_offset = Offset(input_shape, batch, y0, x0, ic);
 
     float x0y0 = input_data[input_offset];
     float x1y0 = input_data[input_offset + input_x_offset];
@@ -5242,7 +5300,7 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
     float x1y1 = input_data[input_offset + input_x_offset + input_y_offset];
 
     // Top left corner.
-    const int32 output_offset = Offset(output_dims, ic, x, y, batch);
+    const int32 output_offset = Offset(output_shape, batch, y, x, ic);
     output_data[output_offset] = x0y0;
 
     // Top right corner.
@@ -5258,7 +5316,7 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
   }
 #else
   for (int ch = 0; ch < depth; ch++) {
-    const int32 input_offset = Offset(input_dims, ch, x0, y0, batch);
+    const int32 input_offset = Offset(input_shape, batch, y0, x0, ch);
 
     float x0y0 = input_data[input_offset];
     float x1y0 = input_data[input_offset + input_x_offset];
@@ -5266,7 +5324,7 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
     float x1y1 = input_data[input_offset + input_x_offset + input_y_offset];
 
     // Top left corner.
-    const int32 output_offset = Offset(output_dims, ch, x, y, batch);
+    const int32 output_offset = Offset(output_shape, batch, y, x, ch);
     output_data[output_offset] = x0y0;
 
     // Top right corner.
@@ -5283,31 +5341,30 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
 #endif
 }
 
-inline void ResizeBilinear2x2(const float* input_data,
-                              const Dims<4>& input_dims, float* output_data,
-                              const Dims<4>& output_dims, int32 batches,
-                              int32 input_height, int32 input_width,
-                              int32 depth, int32 output_height,
-                              int32 output_width) {
+inline void ResizeBilinear2x2(int32 batches, int32 input_height,
+                              int32 input_width, int32 depth,
+                              int32 output_height, int32 output_width,
+                              const RuntimeShape& input_shape,
+                              const float* input_data,
+                              const RuntimeShape& output_shape,
+                              float* output_data) {
   for (int b = 0; b < batches; b++) {
     for (int y0 = 0, y = 0; y <= output_height - 2; y += 2, y0++) {
       for (int x0 = 0, x = 0; x <= output_width - 2; x += 2, x0++) {
         int32 x1 = std::min(x0 + 1, input_width - 1);
         int32 y1 = std::min(y0 + 1, input_height - 1);
-        ResizeBilinearKernel2x2(x0, x1, y0, y1, x, y, depth, b, input_data,
-                                input_dims, output_data, output_dims);
+        ResizeBilinearKernel2x2(x0, x1, y0, y1, x, y, depth, b, input_shape,
+                                input_data, output_shape, output_data);
       }
     }
   }
 }
 
-inline void ResizeBilinearGeneric(const float* input_data,
-                                  const Dims<4>& input_dims, float* output_data,
-                                  const Dims<4>& output_dims, int32 batches,
-                                  int32 input_height, int32 input_width,
-                                  int32 depth, int32 output_height,
-                                  int32 output_width, float height_scale,
-                                  float width_scale) {
+inline void ResizeBilinearGeneric(
+    int32 batches, int32 input_height, int32 input_width, int32 depth,
+    int32 output_height, int32 output_width, float height_scale,
+    float width_scale, const RuntimeShape& input_shape, const float* input_data,
+    const RuntimeShape& output_shape, float* output_data) {
   memset(output_data, 0,
          batches * output_height * output_width * depth * sizeof(float));
 
@@ -5324,22 +5381,22 @@ inline void ResizeBilinearGeneric(const float* input_data,
         float* output_ptr = &output_data[output_offset];
 
         // Run kernel on the 4 corners of the bilinear resize algorithm.
-        int32 input_offset = Offset(input_dims, 0, x0, y0, b);
+        int32 input_offset = Offset(input_shape, b, y0, x0, 0);
         float scale = (1 - (input_y - y0)) * (1 - (input_x - x0));
         const float* input_ptr = &input_data[input_offset];
         ResizeBilinearKernel(input_ptr, depth, scale, output_ptr);
 
-        input_offset = Offset(input_dims, 0, x1, y0, b);
+        input_offset = Offset(input_shape, b, y0, x1, 0);
         scale = (1 - (input_y - y0)) * (input_x - x0);
         input_ptr = &input_data[input_offset];
         ResizeBilinearKernel(input_ptr, depth, scale, output_ptr);
 
-        input_offset = Offset(input_dims, 0, x0, y1, b);
+        input_offset = Offset(input_shape, b, y1, x0, 0);
         scale = (input_y - y0) * (1 - (input_x - x0));
         input_ptr = &input_data[input_offset];
         ResizeBilinearKernel(input_ptr, depth, scale, output_ptr);
 
-        input_offset = Offset(input_dims, 0, x1, y1, b);
+        input_offset = Offset(input_shape, b, y1, x1, 0);
         scale = (input_y - y0) * (input_x - x0);
         input_ptr = &input_data[input_offset];
         ResizeBilinearKernel(input_ptr, depth, scale, output_ptr);
@@ -5352,10 +5409,10 @@ inline void ResizeBilinearGeneric(const float* input_data,
 
 template <typename T>
 inline void ResizeBilinearGenericSmallChannel(
-    const T* input_data, const Dims<4>& input_dims, T* output_data,
-    const Dims<4>& output_dims, int32 batches, int32 input_height,
-    int32 input_width, int32 depth, int32 output_height, int32 output_width,
-    float height_scale, float width_scale) {
+    int32 batches, int32 input_height, int32 input_width, int32 depth,
+    int32 output_height, int32 output_width, float height_scale,
+    float width_scale, const RuntimeShape& input_shape, const T* input_data,
+    const RuntimeShape& output_shape, T* output_data) {
   memset(output_data, 0,
          batches * output_height * output_width * depth * sizeof(T));
 
@@ -5370,9 +5427,10 @@ inline void ResizeBilinearGenericSmallChannel(
         int32 x0 = static_cast<int32>(input_x);
         int32 x1 = std::min(x0 + 1, input_width - 1);
 
-        int32 input_offset[4] = {
-            Offset(input_dims, 0, x0, y0, b), Offset(input_dims, 0, x1, y0, b),
-            Offset(input_dims, 0, x0, y1, b), Offset(input_dims, 0, x1, y1, b)};
+        int32 input_offset[4] = {Offset(input_shape, b, y0, x0, 0),
+                                 Offset(input_shape, b, y0, x1, 0),
+                                 Offset(input_shape, b, y1, x0, 0),
+                                 Offset(input_shape, b, y1, x1, 0)};
         float scale[4] = {(1 - (input_y - y0)) * (1 - (input_x - x0)),
                           (1 - (input_y - y0)) * (input_x - x0),
                           (input_y - y0) * (1 - (input_x - x0)),
@@ -5390,79 +5448,123 @@ inline void ResizeBilinearGenericSmallChannel(
   }
 }
 
+inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
+                           const RuntimeShape& unextended_input_shape,
+                           const float* input_data,
+                           const RuntimeShape& unextended_output_size_shape,
+                           const int32* output_size_data,
+                           const RuntimeShape& unextended_output_shape,
+                           float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("ResizeBilinear");
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_size_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  RuntimeShape output_size_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_size_shape);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
+  int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
+  int32 input_height = input_shape.Dims(1);
+  int32 input_width = input_shape.Dims(2);
+  int32 depth = MatchingDim(input_shape, 3, output_shape, 3);
+
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(0), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(1), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(2), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(3), 2);
+  int32 output_height = output_size_data[Offset(output_size_shape, 0, 0, 0, 0)];
+  int32 output_width = output_size_data[Offset(output_size_shape, 0, 0, 0, 1)];
+
+  // Specialize for 2x2 upsample.
+  if (!op_params.align_corners && output_height == 2 * input_height &&
+      output_width == 2 * input_width) {
+    ResizeBilinear2x2(batches, input_height, input_width, depth, output_height,
+                      output_width, input_shape, input_data, output_shape,
+                      output_data);
+  } else {
+    float height_scale = static_cast<float>(input_height) / output_height;
+    float width_scale = static_cast<float>(input_width) / output_width;
+    if (op_params.align_corners && output_height > 1) {
+      height_scale = static_cast<float>(input_height - 1) / (output_height - 1);
+    }
+    if (op_params.align_corners && output_width > 1) {
+      width_scale = static_cast<float>(input_width - 1) / (output_width - 1);
+    }
+
+    ResizeBilinearGeneric(batches, input_height, input_width, depth,
+                          output_height, output_width, height_scale,
+                          width_scale, input_shape, input_data, output_shape,
+                          output_data);
+  }
+}
+
+// Legacy Dims<4>
 inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
                            const int32* output_size_data,
                            const Dims<4>& output_size_dims, float* output_data,
                            const Dims<4>& output_dims, bool align_corners) {
-  gemmlowp::ScopedProfilingLabel label("ResizeBilinear");
-  int32 batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  int32 input_height = ArraySize(input_dims, 2);
-  int32 input_width = ArraySize(input_dims, 1);
-  int32 depth = MatchingArraySize(input_dims, 0, output_dims, 0);
-
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 3), 1);
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 2), 1);
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 1), 1);
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 0), 2);
-  int32 output_height = output_size_data[Offset(output_size_dims, 0, 0, 0, 0)];
-  int32 output_width = output_size_data[Offset(output_size_dims, 1, 0, 0, 0)];
-
-  // Specialize for 2x2 upsample.
-  if (!align_corners && output_height == 2 * input_height &&
-      output_width == 2 * input_width) {
-    ResizeBilinear2x2(input_data, input_dims, output_data, output_dims, batches,
-                      input_height, input_width, depth, output_height,
-                      output_width);
-  } else {
-    float height_scale = static_cast<float>(input_height) / output_height;
-    float width_scale = static_cast<float>(input_width) / output_width;
-    if (align_corners && output_height > 1) {
-      height_scale = static_cast<float>(input_height - 1) / (output_height - 1);
-    }
-    if (align_corners && output_width > 1) {
-      width_scale = static_cast<float>(input_width - 1) / (output_width - 1);
-    }
-
-    ResizeBilinearGeneric(input_data, input_dims, output_data, output_dims,
-                          batches, input_height, input_width, depth,
-                          output_height, output_width, height_scale,
-                          width_scale);
-  }
+  tflite::ResizeBilinearParams op_params;
+  op_params.align_corners = align_corners;
+  ResizeBilinear(op_params, DimsToShape(input_dims), input_data,
+                 DimsToShape(output_size_dims), output_size_data,
+                 DimsToShape(output_dims), output_data);
 }
 
 // TODO(prabhumk): This is not a real quantized bilinear. It does not use int8
 // or int16 arithmetic.
-inline void ResizeBilinear(const uint8* input_data, const Dims<4>& input_dims,
+inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
+                           const RuntimeShape& input_shape,
+                           const uint8* input_data,
+                           const RuntimeShape& output_size_shape,
                            const int32* output_size_data,
-                           const Dims<4>& output_size_dims, uint8* output_data,
-                           const Dims<4>& output_dims, bool align_corners) {
+                           const RuntimeShape& output_shape,
+                           uint8* output_data) {
   gemmlowp::ScopedProfilingLabel label("ResizeBilinear");
-  int32 batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  int32 input_height = ArraySize(input_dims, 2);
-  int32 input_width = ArraySize(input_dims, 1);
-  int32 depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_size_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
 
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 3), 1);
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 2), 1);
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 1), 1);
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 0), 2);
-  int32 output_height = output_size_data[Offset(output_size_dims, 0, 0, 0, 0)];
-  int32 output_width = output_size_data[Offset(output_size_dims, 1, 0, 0, 0)];
+  int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
+  int32 input_height = input_shape.Dims(1);
+  int32 input_width = input_shape.Dims(2);
+  int32 depth = MatchingDim(input_shape, 3, output_shape, 3);
+
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(0), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(1), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(2), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(3), 2);
+  int32 output_height = output_size_data[Offset(output_size_shape, 0, 0, 0, 0)];
+  int32 output_width = output_size_data[Offset(output_size_shape, 0, 0, 0, 1)];
 
   float height_scale =
-      (align_corners && output_height > 1)
+      (op_params.align_corners && output_height > 1)
           ? (static_cast<float>(input_height - 1) / (output_height - 1))
           : (static_cast<float>(input_height) / output_height);
 
   float width_scale =
-      (align_corners && output_width > 1)
+      (op_params.align_corners && output_width > 1)
           ? (static_cast<float>(input_width - 1) / (output_width - 1))
           : (static_cast<float>(input_width) / output_width);
 
   ResizeBilinearGenericSmallChannel<uint8>(
-      input_data, input_dims, output_data, output_dims, batches, input_height,
-      input_width, depth, output_height, output_width, height_scale,
-      width_scale);
+      batches, input_height, input_width, depth, output_height, output_width,
+      height_scale, width_scale, input_shape, input_data, output_shape,
+      output_data);
+}
+
+// Legacy Dims<4>
+inline void ResizeBilinear(const uint8* input_data, const Dims<4>& input_dims,
+                           const int32* output_size_data,
+                           const Dims<4>& output_size_dims, uint8* output_data,
+                           const Dims<4>& output_dims, bool align_corners) {
+  tflite::ResizeBilinearParams op_params;
+  op_params.align_corners = align_corners;
+  ResizeBilinear(op_params, DimsToShape(input_dims), input_data,
+                 DimsToShape(output_size_dims), output_size_data,
+                 DimsToShape(output_dims), output_data);
 }
 
 // legacy, for compatibility with old checked-in code
@@ -5505,20 +5607,29 @@ inline void GetIndexRange(int spatial_index_dim, int block_shape_dim,
 }
 
 template <typename T>
-inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
-                           const int32* block_shape_data,
-                           const Dims<4>& block_shape_dims,
-                           const int32* crops_data, const Dims<4>& crops_dims,
-                           T* output_data, const Dims<4>& output_dims) {
+inline void BatchToSpaceND(
+    const RuntimeShape& unextended_input1_shape, const T* input1_data,
+    const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
+    const RuntimeShape& unextended_input3_shape, const int32* crops_data,
+    const RuntimeShape& unextended_output_shape, T* output_data) {
   gemmlowp::ScopedProfilingLabel label("BatchToSpaceND");
 
-  const int output_batch_size = ArraySize(output_dims, 3);
-  const int output_height = ArraySize(output_dims, 2);
-  const int output_width = ArraySize(output_dims, 1);
-  const int input_batch_size = ArraySize(input_dims, 3);
-  const int input_height = ArraySize(input_dims, 2);
-  const int input_width = ArraySize(input_dims, 1);
-  const int depth = ArraySize(input_dims, 0);
+  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape input1_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input1_shape);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
+  const int output_width = output_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+  const int output_batch_size = output_shape.Dims(0);
+
+  const int depth = input1_shape.Dims(3);
+  const int input_width = input1_shape.Dims(2);
+  const int input_height = input1_shape.Dims(1);
+  const int input_batch_size = input1_shape.Dims(0);
+
   const int block_shape_width = block_shape_data[1];
   const int block_shape_height = block_shape_data[0];
   const int crops_top = crops_data[0];
@@ -5553,12 +5664,26 @@ inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
                           spatial_offset % block_shape_width - crops_left;
         TFLITE_DCHECK_GE(out_w, 0);
         TFLITE_DCHECK_LT(out_w, output_width);
-        T* out = output_data + Offset(output_dims, 0, out_w, out_h, out_batch);
-        const T* in = input_data + Offset(input_dims, 0, in_w, in_h, in_batch);
+        T* out = output_data + Offset(output_shape, out_batch, out_h, out_w, 0);
+        const T* in =
+            input1_data + Offset(input1_shape, in_batch, in_h, in_w, 0);
         memcpy(out, in, depth * sizeof(T));
       }
     }
   }
+}
+
+// Legacy Dims<4>.
+template <typename T>
+inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
+                           const int32* block_shape_data,
+                           const Dims<4>& block_shape_dims,
+                           const int32* crops_data, const Dims<4>& crops_dims,
+                           T* output_data, const Dims<4>& output_dims) {
+  BatchToSpaceND(DimsToShape(input_dims), input_data,
+                 DimsToShape(block_shape_dims), block_shape_data,
+                 DimsToShape(crops_dims), crops_data, DimsToShape(output_dims),
+                 output_data);
 }
 
 template <typename T>
@@ -5598,12 +5723,14 @@ inline void PadImpl(const tflite::PadParams& op_params,
   // Runtime calls are currently fixed at 4 dimensions. Copy inputs so
   // we can pad them to 4 dims (yes, we are "padding the padding").
   std::vector<int> left_padding_copy(4, 0);
+  const int left_padding_extend = 4 - op_params.left_padding_count;
   for (int i = 0; i < op_params.left_padding_count; ++i) {
-    left_padding_copy[i] = op_params.left_padding[i];
+    left_padding_copy[left_padding_extend + i] = op_params.left_padding[i];
   }
   std::vector<int> right_padding_copy(4, 0);
+  const int right_padding_extend = 4 - op_params.right_padding_count;
   for (int i = 0; i < op_params.right_padding_count; ++i) {
-    right_padding_copy[i] = op_params.right_padding[i];
+    right_padding_copy[right_padding_extend + i] = op_params.right_padding[i];
   }
 
   const int output_batch = ext_output_shape.Dims(0);
@@ -5622,7 +5749,6 @@ inline void PadImpl(const tflite::PadParams& op_params,
   const int right_d_padding = right_padding_copy[3];
 
   const int input_depth = ext_input_shape.Dims(3);
-  // const T pad_value = ExtractFloatOrInt<T>(op_params.pad_value);
   const T pad_value = *pad_value_ptr;
 
   if (left_b_padding != 0) {
@@ -5732,7 +5858,6 @@ inline void PadV2(const T* input_data, const Dims<4>& input_dims,
     op_params.left_padding[i] = left_paddings[3 - i];
     op_params.right_padding[i] = right_paddings[3 - i];
   }
-  // SetFloatOrInt(pad_value, &op_params.pad_value);
   const T pad_value_copy = pad_value;
 
   Pad(op_params, DimsToShape(input_dims), input_data, &pad_value_copy,
@@ -5978,4 +6103,4 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
 #pragma GCC diagnostic pop
 #endif
 
-#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPS_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPTIMIZED_OPS_H_

@@ -24,8 +24,8 @@ REGISTER5(BinaryOp, CPU, "TruncateDiv", functor::safe_div, uint8, uint16, int16,
           int32, int64);
 REGISTER6(BinaryOp, CPU, "RealDiv", functor::div, float, Eigen::half, double,
           bfloat16, complex64, complex128);
-REGISTER5(BinaryOp, CPU, "UnsafeDiv", functor::unsafe_div, float, double, int16,
-          int32, int64);
+REGISTER2(BinaryOp, CPU, "DivNoNan", functor::div_no_nan, float, double);
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // ROCM TODO: re-enable complex64 / complex128 after compiler fix
 #if GOOGLE_CUDA
@@ -44,6 +44,8 @@ REGISTER5(BinaryOp, GPU, "RealDiv", functor::div, float, Eigen::half, double,
 #elif TENSORFLOW_USE_ROCM
 REGISTER3(BinaryOp, GPU, "RealDiv", functor::div, float, Eigen::half, double);
 #endif
+
+REGISTER2(BinaryOp, GPU, "DivNoNan", functor::div_no_nan, float, double);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

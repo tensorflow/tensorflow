@@ -378,6 +378,7 @@ cc_library(
         ":lib_platform",
         ":platform_base",
         "//tensorflow/core/platform/default/build_config:port",
+        "@com_google_absl//absl/base",
         "@snappy",
     ],
 )
@@ -671,8 +672,11 @@ cc_library(
         "lib/io/table_builder.h",
         "lib/io/table_options.h",
         "lib/math/math_util.h",
+        "lib/monitoring/collected_metrics.h",
+        "lib/monitoring/collection_registry.h",
         "lib/monitoring/counter.h",
         "lib/monitoring/gauge.h",
+        "lib/monitoring/metric_def.h",
         "lib/monitoring/sampler.h",
         "lib/random/distribution_sampler.h",
         "lib/random/philox_random.h",
@@ -1576,6 +1580,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":mobile_additional_lib_deps",
         ":protos_all_cc_impl",
         ":stats_calculator_portable",
         "//third_party/eigen3",
@@ -1584,6 +1589,11 @@ cc_library(
         "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "mobile_additional_lib_deps",
+    deps = tf_additional_lib_deps(),
 )
 
 # Native library support for iOS applications.
@@ -1617,6 +1627,7 @@ cc_library(
     copts = tf_copts() + ["-Os"] + ["-std=c++11"],
     visibility = ["//visibility:public"],
     deps = [
+        ":mobile_additional_lib_deps",
         ":protos_all_cc_impl",
         ":stats_calculator_portable",
         "//third_party/eigen3",
@@ -2021,9 +2032,6 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "lib/io/zlib_compression_options.h",
     "lib/io/zlib_inputstream.h",
     "lib/io/zlib_outputbuffer.h",
-    "lib/monitoring/collected_metrics.h",
-    "lib/monitoring/collection_registry.h",
-    "lib/monitoring/metric_def.h",
     "lib/monitoring/mobile_counter.h",
     "lib/monitoring/mobile_gauge.h",
     "lib/monitoring/mobile_sampler.h",
@@ -2275,6 +2283,8 @@ cc_library(
     srcs = if_android([
         "lib/gif/gif_io.cc",
         "platform/gif.h",
+        "lib/strings/strcat.h",
+        "lib/strings/numbers.h",
     ]),
     hdrs = [
         "lib/bfloat16/bfloat16.h",
@@ -2365,6 +2375,7 @@ tf_generate_proto_text_sources(
     srcs = COMMON_PROTO_SRCS,
     protodeps = ERROR_CODES_PROTO_SRCS,
     srcs_relative_dir = "tensorflow/core/",
+    visibility = ["//visibility:public"],
     deps = [
         ":error_codes_proto_text",
         ":lib_internal",
@@ -2477,6 +2488,7 @@ cc_header_only_library(
 
 cc_header_only_library(
     name = "core_cpu_headers_lib",
+    visibility = ["//visibility:public"],
     deps = [
         ":core_cpu_lib",
     ],
@@ -2600,6 +2612,7 @@ tf_gpu_library(
 # TODO(josh11b): Is this needed, or can we just use ":protos_all_cc"?
 cc_library(
     name = "protos_cc",
+    visibility = ["//visibility:public"],
     deps = ["//tensorflow/core/platform/default/build_config:protos_cc"],
 )
 
@@ -2709,12 +2722,13 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/allocator_retry.h",
     "common_runtime/base_collective_executor.h",
     "common_runtime/bfc_allocator.h",
-    "common_runtime/broadcaster.h",
+    "common_runtime/hierarchical_tree_broadcaster.h",
     "common_runtime/buf_rendezvous.h",
     "common_runtime/build_graph_options.h",
     "common_runtime/collective_executor_mgr.h",
     "common_runtime/collective_param_resolver_local.h",
     "common_runtime/collective_rma_local.h",
+    "common_runtime/collective_util.h",
     "common_runtime/constant_folding.h",
     "common_runtime/copy_tensor.h",
     "common_runtime/costmodel_manager.h",
@@ -2745,6 +2759,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/stats_publisher_interface.h",
     "common_runtime/step_stats_collector.h",
     "common_runtime/threadpool_device.h",
+    "common_runtime/tracing_device.h",
     "common_runtime/visitable_allocator.h",
     "common_runtime/process_state.h",
     "common_runtime/pool_allocator.h",
@@ -2759,12 +2774,12 @@ tf_gpu_library(
         "common_runtime/allocator_retry.cc",
         "common_runtime/base_collective_executor.cc",
         "common_runtime/bfc_allocator.cc",
-        "common_runtime/broadcaster.cc",
         "common_runtime/buf_rendezvous.cc",
         "common_runtime/build_graph_options.cc",
         "common_runtime/collective_executor_mgr.cc",
         "common_runtime/collective_param_resolver_local.cc",
         "common_runtime/collective_rma_local.cc",
+        "common_runtime/collective_util.cc",
         "common_runtime/constant_folding.cc",
         "common_runtime/copy_tensor.cc",
         "common_runtime/costmodel_manager.cc",
@@ -2779,6 +2794,7 @@ tf_gpu_library(
         "common_runtime/function.cc",
         "common_runtime/graph_optimizer.cc",
         "common_runtime/graph_runner.cc",
+        "common_runtime/hierarchical_tree_broadcaster.cc",
         "common_runtime/local_device.cc",
         "common_runtime/lower_if_op.cc",
         "common_runtime/memory_types.cc",
@@ -3665,10 +3681,10 @@ tf_cc_tests_gpu(
 )
 
 tf_cc_tests_gpu(
-    name = "broadcaster_test",
+    name = "hierarchical_tree_broadcaster_test",
     size = "small",
     srcs = [
-        "common_runtime/broadcaster_test.cc",
+        "common_runtime/hierarchical_tree_broadcaster_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_gpu_tests_tags(),

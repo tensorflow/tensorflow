@@ -25,6 +25,11 @@ class MarkForCompilationPassTestHelper {
   // `graph` to the CPU device.  To make testing easier, ignores device
   // registration, _XlaCompile attributes, input deadness and global jit level.
   static Status MarkForCompilation(std::unique_ptr<Graph>* graph,
+                                   FunctionLibraryDefinition* flib_def,
+                                   SessionOptions* session_options);
+
+  // Like `MarkForCompilation` but creates a default SessionOptions.
+  static Status MarkForCompilation(std::unique_ptr<Graph>* graph,
                                    FunctionLibraryDefinition* flib_def);
 
   // Like `MarkForCompilation` but creates `flib_def` from the op registry.

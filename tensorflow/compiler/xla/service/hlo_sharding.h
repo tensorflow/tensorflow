@@ -151,7 +151,7 @@ class HloSharding {
   // span a single device, the return value will be empty.
   // In order for a sharding to span a single device, every leaf sharding must
   // be maximal and not replicated, and the used device must match.
-  tensorflow::gtl::optional<int64> UniqueDevice() const;
+  absl::optional<int64> UniqueDevice() const;
 
   // Retrieves the unique device or fails with a CHECK.
   int64 GetUniqueDevice() const;
@@ -182,7 +182,7 @@ class HloSharding {
   // be returned. If it is a tuple, and all the tuple elements are common, the
   // common element will be returned. Otherwise the optional will contain no
   // value.
-  tensorflow::gtl::optional<HloSharding> ExtractSingleSharding() const;
+  absl::optional<HloSharding> ExtractSingleSharding() const;
 
   bool operator==(const HloSharding& other) const {
     return replicated_ == other.replicated_ && maximal_ == other.maximal_ &&
@@ -260,9 +260,9 @@ class HloSharding {
   bool maximal_;
   bool tuple_;
   Array<int64> tile_assignment_;
-  // Only non-empty when tuple_ is true, but because empty tuples are allowed
-  // may also be empty even then. This is a flattened list of all the leaf
-  // shardings in a tuple shape, by pre-order walk (ShapeTree iterator order).
+  // Only non-empty when tuple_ is true. If a tuple is empty then one entry is
+  // present for the root. This is a flattened list of all the leaf shardings in
+  // a tuple shape, by pre-order walk (ShapeTree iterator order).
   std::vector<HloSharding> tuple_elements_;
 };
 

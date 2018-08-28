@@ -398,7 +398,7 @@ Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
       TF_RETURN_IF_ERROR(NumericNpDTypeToTfDType(PyArray_TYPE(input), &dtype));
       CHECK(DataTypeCanUseMemcpy(dtype));
       if (reinterpret_cast<intptr_t>(PyArray_DATA(input)) %
-              EIGEN_MAX_ALIGN_BYTES !=
+              std::max(1, EIGEN_MAX_ALIGN_BYTES) !=
           0) {
         Tensor t(dtype, shape);
         StringPiece p = t.tensor_data();

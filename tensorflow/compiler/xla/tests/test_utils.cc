@@ -15,12 +15,13 @@ limitations under the License.
 
 #include <cmath>
 
-#include "tensorflow/compiler/xla/tests/test_utils.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
+#include "tensorflow/compiler/xla/tests/test_utils.h"
 
 namespace xla {
 
@@ -130,7 +131,7 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteralInternal(
   if (engine == nullptr) {
     return Literal::CreateFromShape(shape);
   }
-  auto literal = MakeUnique<Literal>(shape);
+  auto literal = absl::make_unique<Literal>(shape);
   switch (shape.element_type()) {
     case BF16:
       PopulateWithRandomFloatingPointData<bfloat16>(literal.get(), engine,
@@ -193,7 +194,7 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteralInternal(
       break;
     default:
       return Unimplemented("Unsupported type for fake literal generation: %s",
-                           ShapeUtil::HumanString(shape).c_str());
+                           ShapeUtil::HumanString(shape));
   }
   return std::move(literal);
 }
@@ -341,7 +342,7 @@ StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
       default:
         return Unimplemented(
             "Constrained operand generation not implemented for %s.",
-            use->ToString().c_str());
+            use->ToString());
     }
   }
   int constraint_count = 0;
@@ -383,13 +384,15 @@ StatusOr<std::unique_ptr<Literal>> MakeConstrainedArgument(
 
 StatusOr<std::unique_ptr<Literal>> MakeFakeLiteral(const Shape& shape,
                                                    bool pseudo_random) {
-  auto engine = pseudo_random ? MakeUnique<std::minstd_rand0>() : nullptr;
+  auto engine =
+      pseudo_random ? absl::make_unique<std::minstd_rand0>() : nullptr;
   return MakeFakeLiteralInternal(shape, engine.get(), /*no_duplicates=*/false);
 }
 
 StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
     HloModule* const module, bool pseudo_random) {
-  auto engine = pseudo_random ? MakeUnique<std::minstd_rand0>() : nullptr;
+  auto engine =
+      pseudo_random ? absl::make_unique<std::minstd_rand0>() : nullptr;
   return MakeFakeArguments(module, engine.get());
 }
 
@@ -405,8 +408,12 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
   return std::move(arguments);
 }
 
-Status VerifyHloModule(HloModule* const module, bool allow_mixed_precision) {
-  return HloVerifier(allow_mixed_precision).Run(module).status();
+Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
+                       bool allow_mixed_precision) {
+  return HloVerifier(/*layout_sensitive=*/layout_sensitive,
+                     /*allow_mixed_precision=*/allow_mixed_precision)
+      .Run(module)
+      .status();
 }
 
 }  // namespace xla
