@@ -249,3 +249,12 @@ cc_library(
         "@llvm//:core",
     ],
 )
+
+cc_library(
+    name = "ir_builder_mixin",
+    srcs = [],
+    hdrs = ["ir_builder_mixin.h"],
+    deps = [
+        "@llvm//:core",
+    ],
+)

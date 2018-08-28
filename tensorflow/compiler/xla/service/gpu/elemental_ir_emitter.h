@@ -48,50 +48,50 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
 
   llvm_ir::ElementGenerator MakeElementGenerator(
       const HloInstruction* hlo,
-      const HloToElementGeneratorMap& operand_to_generator) const override;
+      const HloToElementGeneratorMap& operand_to_generator) override;
 
  protected:
-  StatusOr<llvm::Value*> EmitFloatBinaryOp(
-      const HloInstruction* op, llvm::Value* lhs_value,
-      llvm::Value* rhs_value) const override;
+  StatusOr<llvm::Value*> EmitFloatBinaryOp(const HloInstruction* op,
+                                           llvm::Value* lhs_value,
+                                           llvm::Value* rhs_value) override;
 
   StatusOr<llvm::Value*> EmitErfcInv(PrimitiveType prim_type,
-                                     llvm::Value* value) const override;
+                                     llvm::Value* value) override;
 
   StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
-                                 llvm::Value* value) const override;
+                                 llvm::Value* value) override;
 
   StatusOr<llvm::Value*> EmitLog1p(PrimitiveType prim_type,
-                                   llvm::Value* value) const override;
+                                   llvm::Value* value) override;
 
   StatusOr<llvm::Value*> EmitSin(PrimitiveType prim_type,
-                                 llvm::Value* value) const override;
+                                 llvm::Value* value) override;
 
   StatusOr<llvm::Value*> EmitCos(PrimitiveType prim_type,
-                                 llvm::Value* value) const override;
+                                 llvm::Value* value) override;
 
   StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
-                                 llvm::Value* value) const override;
+                                 llvm::Value* value) override;
 
   StatusOr<llvm::Value*> EmitExpm1(PrimitiveType prim_type,
-                                   llvm::Value* value) const override;
+                                   llvm::Value* value) override;
 
   StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type, llvm::Value* lhs,
-                                 llvm::Value* rhs) const override;
+                                 llvm::Value* rhs) override;
 
   StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type, llvm::Value* lhs,
-                                   llvm::Value* rhs) const override;
+                                   llvm::Value* rhs) override;
 
   StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
-                                  llvm::Value* value) const override;
+                                  llvm::Value* value) override;
 
-  llvm::Value* EmitThreadId() const override;
+  llvm::Value* EmitThreadId() override;
 
  private:
   // Emits IR for op, which must have opcode kPower.
   StatusOr<llvm::Value*> EmitPowerOp(const HloInstruction* op,
                                      llvm::Value* lhs_value,
-                                     llvm::Value* rhs_value) const;
+                                     llvm::Value* rhs_value);
 
   // Emits IR to call a device function named "callee_name" on the given
   // operand. Returns the IR value that represents the return value.
@@ -100,7 +100,7 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       tensorflow::gtl::ArraySlice<llvm::Value*> operands,
       tensorflow::gtl::ArraySlice<PrimitiveType> input_type,
       PrimitiveType output_type,
-      tensorflow::gtl::ArraySlice<llvm::Attribute::AttrKind> attributes) const;
+      tensorflow::gtl::ArraySlice<llvm::Attribute::AttrKind> attributes);
 
   // Emits IR to call an LLVM intrinsic of type [T] -> T.  Adjusts
   // callee_name according to T.  Returns the IR value that represents the
@@ -109,7 +109,7 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       const string& callee_name,
       tensorflow::gtl::ArraySlice<llvm::Value*> operands,
       tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-      PrimitiveType output_type) const;
+      PrimitiveType output_type);
 
   // Emits IR to call a libdevice function of type [T] -> T.  Adjusts
   // callee_name according to T.  Returns the IR value that represents the
@@ -118,7 +118,7 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       const string& callee_name,
       tensorflow::gtl::ArraySlice<llvm::Value*> operands,
       tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-      PrimitiveType output_type) const;
+      PrimitiveType output_type);
 
   // Emits IR to call a function of type [T] -> T.  Does not munge callee_name.
   // Returns the IR value that represents the return value of the function.
@@ -126,7 +126,7 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       const string& callee_name,
       tensorflow::gtl::ArraySlice<llvm::Value*> operands,
       tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-      PrimitiveType output_type) const;
+      PrimitiveType output_type);
 
   const HloModuleConfig& hlo_module_config_;
   NestedComputer compute_nested_;

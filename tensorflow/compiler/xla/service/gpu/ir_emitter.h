@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/ir_builder_mixin.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -64,7 +65,8 @@ namespace gpu {
 // IrEmitterUnnested, but the code is generated using FusedIrEmitter, which is
 // not a subclass of gpu::IrEmitter, and in fact is better understood as an IR
 // generator generator.  See comments on that class.
-class IrEmitter : public DfsHloVisitorWithDefault {
+class IrEmitter : public DfsHloVisitorWithDefault,
+                  public IrBuilderMixin<IrEmitter> {
  public:
   IrEmitter(const IrEmitter&) = delete;
   IrEmitter& operator=(const IrEmitter&) = delete;
@@ -98,6 +100,8 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleIota(HloInstruction* iota) override;
 
   Status FinishVisit(HloInstruction* root) override { return Status::OK(); }
+
+  llvm::IRBuilder<>* builder() { return &b_; }
 
  protected:
   // Constructs an IrEmitter with the given IrEmitter context.
