@@ -23,8 +23,6 @@ py_library(
     deps = [
         ":input_ops",
         ":prefetching_ops_v2",
-        "//tensorflow/contrib/data/python/ops:batching",
-        "//tensorflow/contrib/eager/python:datasets",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:device_util",
