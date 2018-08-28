@@ -1101,6 +1101,29 @@ class FunctionTest(test.TestCase):
       with ops.device('cpu:1'):
         default_graph_function()
 
+  @test_util.run_in_graph_and_eager_modes
+  def testColocateWithRespected(self):
+    # TODO(b/113291792): Use multiple CPUs instead of a GPU.
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    with ops.device('cpu:0'):
+      x = constant_op.constant(1.0)
+
+    with ops.device('gpu:0'):
+      y = constant_op.constant(1.0)
+
+    @function.defun
+    def foo():
+      return iterator_ops.Iterator.from_structure(
+          (dtypes.float32,)).string_handle()
+
+    with ops.colocate_with(x):
+      self.assertIn(compat.as_bytes('CPU:0'), self.evaluate(foo()))
+
+    with ops.colocate_with(y):
+      self.assertIn(compat.as_bytes('GPU:0'), self.evaluate(foo()))
+
   def testVariablesAreTracked(self):
     v = resource_variable_ops.ResourceVariable(1.0)
 
