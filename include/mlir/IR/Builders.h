@@ -319,12 +319,14 @@ public:
     return cloneStmt;
   }
 
-  // Creates for statement. When step is not specified, it is set to 1.
+  // Create for statement. When step is not specified, it is set to 1.
   ForStmt *createFor(Location *location, ArrayRef<MLValue *> lbOperands,
                      AffineMap *lbMap, ArrayRef<MLValue *> ubOperands,
                      AffineMap *ubMap, int64_t step = 1);
 
-  IfStmt *createIf(Location *location, IntegerSet *condition);
+  /// Create if statement.
+  IfStmt *createIf(Location *location, ArrayRef<MLValue *> operands,
+                   IntegerSet *set);
 
 private:
   StmtBlock *block = nullptr;

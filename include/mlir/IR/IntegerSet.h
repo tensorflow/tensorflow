@@ -52,6 +52,7 @@ public:
 
   unsigned getNumDims() const { return dimCount; }
   unsigned getNumSymbols() const { return symbolCount; }
+  unsigned getNumOperands() const { return dimCount + symbolCount; }
   unsigned getNumConstraints() const { return numConstraints; }
 
   ArrayRef<AffineExpr *> getConstraints() const {

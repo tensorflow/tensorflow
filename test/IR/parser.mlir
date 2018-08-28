@@ -33,8 +33,8 @@
 // CHECK: #map{{[0-9]+}} = (d0)[s0] -> (d0 + s0, d0 - s0)
 #bound_map2 = (i)[s] -> (i + s, i - s)
 
-// CHECK-DAG: @@set0 = (d0)[s0] : (d0 >= 0, d0 * -1 + s0 >= 0, s0 - 5 == 0)
-@@set0 = (i)[N] : (i >= 0, -i + N >= 0, N - 5 == 0)
+// CHECK-DAG: @@set0 = (d0)[s0, s1] : (d0 >= 0, d0 * -1 + s0 >= 0, s0 - 5 == 0, d0 * -1 + s1 + 1 >= 0)
+@@set0 = (i)[N, M] : (i >= 0, -i + N >= 0, N - 5 == 0, -i + M + 1 >= 0)
 
 // CHECK-DAG: @@set1 = (d0)[s0] : (d0 - 2 >= 0, d0 * -1 + 4 >= 0)
 
@@ -237,15 +237,16 @@ mlfunc @loop_bounds(%N : affineint) {
   return    // CHECK:   return
 }           // CHECK: }
 
-// CHECK-LABEL: mlfunc @ifstmt(%arg0 : i32) {
-mlfunc @ifstmt(%N: i32) {
-  for %i = 1 to 10 {    // CHECK   for %i0 = 1 to 10 {
-    if (@@set0) {        // CHECK     if (@@set0) {
+// CHECK-LABEL: mlfunc @ifstmt(%arg0 : affineint) {
+mlfunc @ifstmt(%N: affineint) {
+  %c = constant 200 : affineint // CHECK   %c200 = constant 200
+  for %i = 1 to 10 {   	        // CHECK   for %i0 = 1 to 10 {
+    if @@set0(%i)[%N, %c] {     // CHECK     if @@set0(%i0)[%arg0, %c200] {
       %x = constant 1 : i32
        // CHECK: %c1_i32 = constant 1 : i32
       %y = "add"(%x, %i) : (i32, affineint) -> i32 // CHECK: %0 = "add"(%c1_i32, %i0) : (i32, affineint) -> i32
       %z = "mul"(%y, %y) : (i32, i32) -> i32 // CHECK: %1 = "mul"(%0, %0) : (i32, i32) -> i32
-    } else if ((i)[N] : (i - 2 >= 0, 4 - i >= 0))  {      // CHECK     } else if (@@set1) {
+    } else if (i)[N] : (i - 2 >= 0, 4 - i >= 0)(%i)[%N]  {      // CHECK     } else if (@@set1(%i0)[%arg0]) {
       // CHECK: %c1 = constant 1 : affineint
       %u = constant 1 : affineint
       // CHECK: %2 = affine_apply #map{{.*}}(%i0, %i0)[%c1]
@@ -280,8 +281,8 @@ bb42:       // CHECK: bb0:
   // CHECK: "foo"() {cfgfunc: [], d: 1.000000e-09, i123: 7, if: "foo"} : () -> ()
   "foo"() {if: "foo", cfgfunc: [], i123: 7, d: 1.e-9} : () -> ()
 
-  // CHECK: "foo"() {fn: @attributes : () -> (), if: @ifstmt : (i32) -> ()} : () -> ()
-  "foo"() {fn: @attributes : () -> (), if: @ifstmt : (i32) -> ()} : () -> ()
+  // CHECK: "foo"() {fn: @attributes : () -> (), if: @ifstmt : (affineint) -> ()} : () -> ()
+  "foo"() {fn: @attributes : () -> (), if: @ifstmt : (affineint) -> ()} : () -> ()
   return
 }
 

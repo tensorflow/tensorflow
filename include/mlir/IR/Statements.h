@@ -22,7 +22,6 @@
 #ifndef MLIR_IR_STATEMENTS_H
 #define MLIR_IR_STATEMENTS_H
 
-#include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLValue.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/StmtBlock.h"
@@ -32,6 +31,8 @@
 namespace mlir {
 class AffineMap;
 class AffineBound;
+class IntegerSet;
+class AffineCondition;
 
 /// Operation statements represent operations inside ML functions.
 class OperationStmt final
@@ -342,11 +343,11 @@ private:
 
 /// AffineBound represents a lower or upper bound in the for statement.
 /// This class does not own the underlying operands. Instead, it refers
-/// to the operands stored in the ForStmt. It's life span should not exceed
+/// to the operands stored in the ForStmt. Its life span should not exceed
 /// that of the for statement it refers to.
 class AffineBound {
 public:
-  const ForStmt *getOwner() const { return &stmt; }
+  const ForStmt *getForStmt() const { return &stmt; }
   AffineMap *getMap() const { return map; }
 
   unsigned getNumOperands() const { return opEnd - opStart; }
@@ -374,8 +375,12 @@ public:
   }
 
 private:
+  // 'for' statement that contains this bound.
   const ForStmt &stmt;
+  // Start and end positions of this affine bound operands in the list of
+  // the containing 'for' statement operands.
   unsigned opStart, opEnd;
+  // Affine map for this bound.
   AffineMap *map;
 
   AffineBound(const ForStmt &stmt, const unsigned opStart, const unsigned opEnd,
@@ -412,17 +417,73 @@ private:
 /// If statement restricts execution to a subset of the loop iteration space.
 class IfStmt : public Statement {
 public:
-  explicit IfStmt(Location *location, IntegerSet *condition);
+  static IfStmt *create(Location *location, ArrayRef<MLValue *> operands,
+                        IntegerSet *set);
   ~IfStmt();
+
+  //===--------------------------------------------------------------------===//
+  // Then, else, condition.
+  //===--------------------------------------------------------------------===//
 
   IfClause *getThen() const { return thenClause; }
   IfClause *getElse() const { return elseClause; }
-  IntegerSet *getCondition() const { return condition; }
   bool hasElse() const { return elseClause != nullptr; }
+
   IfClause *createElse() {
     assert(elseClause == nullptr && "already has an else clause!");
     return (elseClause = new IfClause(this));
   }
+
+  const AffineCondition getCondition() const;
+
+  IntegerSet *getIntegerSet() const { return set; }
+
+  //===--------------------------------------------------------------------===//
+  // Operands
+  //===--------------------------------------------------------------------===//
+
+  /// Operand iterators.
+  using operand_iterator = OperandIterator<IfStmt, MLValue>;
+  using const_operand_iterator = OperandIterator<const IfStmt, const MLValue>;
+
+  /// Operand iterator range.
+  using operand_range = llvm::iterator_range<operand_iterator>;
+  using const_operand_range = llvm::iterator_range<const_operand_iterator>;
+
+  unsigned getNumOperands() const { return operands.size(); }
+
+  MLValue *getOperand(unsigned idx) { return getStmtOperand(idx).get(); }
+  const MLValue *getOperand(unsigned idx) const {
+    return getStmtOperand(idx).get();
+  }
+  void setOperand(unsigned idx, MLValue *value) {
+    getStmtOperand(idx).set(value);
+  }
+
+  operand_iterator operand_begin() { return operand_iterator(this, 0); }
+  operand_iterator operand_end() {
+    return operand_iterator(this, getNumOperands());
+  }
+
+  const_operand_iterator operand_begin() const {
+    return const_operand_iterator(this, 0);
+  }
+  const_operand_iterator operand_end() const {
+    return const_operand_iterator(this, getNumOperands());
+  }
+
+  ArrayRef<StmtOperand> getStmtOperands() const { return operands; }
+  MutableArrayRef<StmtOperand> getStmtOperands() { return operands; }
+  StmtOperand &getStmtOperand(unsigned idx) { return getStmtOperands()[idx]; }
+  const StmtOperand &getStmtOperand(unsigned idx) const {
+    return getStmtOperands()[idx];
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Other
+  //===--------------------------------------------------------------------===//
+
+  MLIRContext *getContext() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Statement *stmt) {
@@ -434,11 +495,38 @@ private:
   // store the IfClause object for it inline to save an extra allocation.
   IfClause *thenClause;
   IfClause *elseClause;
-  // TODO(shpeisman): please name the ifStmt's conditional encapsulating
-  // IntegerSet + its operands as AffineCondition.
+
   // The integer set capturing the conditional guard.
-  IntegerSet *condition;
-  // TODO: arguments to integer set
+  IntegerSet *set;
+
+  // Condition operands.
+  std::vector<StmtOperand> operands;
+
+  explicit IfStmt(Location *location, unsigned numOperands, IntegerSet *set);
+};
+
+/// AffineCondition represents a condition of the 'if' statement.
+/// Its life span should not exceed that of the objects it refers to.
+/// AffineCondition does not provide its own methods for iterating over
+/// the operands since the iterators of the if statement accomplish
+/// the same purpose.
+///
+/// AffineCondition is trivially copyable, so it should be passed by value.
+class AffineCondition {
+public:
+  const IfStmt *getIfStmt() const { return &stmt; }
+  IntegerSet *getSet() const { return set; }
+
+private:
+  // 'if' statement that contains this affine condition.
+  const IfStmt &stmt;
+  // Integer set for this affine condition.
+  IntegerSet *set;
+
+  AffineCondition(const IfStmt &stmt, const IntegerSet *set)
+      : stmt(stmt), set(const_cast<IntegerSet *>(set)) {}
+
+  friend class IfStmt;
 };
 } // end namespace mlir
 

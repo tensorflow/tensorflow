@@ -186,7 +186,7 @@ void ModuleState::visitCFGFunction(const CFGFunction *fn) {
 }
 
 void ModuleState::visitIfStmt(const IfStmt *ifStmt) {
-  recordIntegerSetReference(ifStmt->getCondition());
+  recordIntegerSetReference(ifStmt->getIntegerSet());
   for (auto &childStmt : *ifStmt->getThen())
     visitStatement(&childStmt);
   if (ifStmt->hasElse())
@@ -1406,9 +1406,11 @@ void MLFunctionPrinter::printBound(AffineBound bound, const char *prefix) {
 }
 
 void MLFunctionPrinter::print(const IfStmt *stmt) {
-  os.indent(numSpaces) << "if (";
-  printIntegerSetReference(stmt->getCondition());
-  os << ") {\n";
+  os.indent(numSpaces) << "if ";
+  IntegerSet *set = stmt->getIntegerSet();
+  printIntegerSetReference(set);
+  printDimAndSymbolList(stmt->getStmtOperands(), set->getNumDims());
+  os << " {\n";
   print(stmt->getThen());
   os.indent(numSpaces) << "}";
   if (stmt->hasElse()) {

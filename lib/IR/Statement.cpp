@@ -15,7 +15,9 @@
 // limitations under the License.
 // =============================================================================
 
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/StandardOps.h"
@@ -115,8 +117,7 @@ unsigned Statement::getNumOperands() const {
   case Kind::For:
     return cast<ForStmt>(this)->getNumOperands();
   case Kind::If:
-    // TODO: query IfStmt once it has operands.
-    return 0;
+    return cast<IfStmt>(this)->getNumOperands();
   }
 }
 
@@ -127,8 +128,7 @@ MutableArrayRef<StmtOperand> Statement::getStmtOperands() {
   case Kind::For:
     return cast<ForStmt>(this)->getStmtOperands();
   case Kind::If:
-    // TODO: query IfStmt once it has operands.
-    return {};
+    return cast<IfStmt>(this)->getStmtOperands();
   }
 }
 
@@ -301,7 +301,9 @@ ForStmt::ForStmt(Location *location, unsigned numOperands, AffineMap *lbMap,
                  AffineMap *ubMap, int64_t step, MLIRContext *context)
     : Statement(Kind::For, location),
       MLValue(MLValueKind::ForStmt, Type::getAffineInt(context)),
-      StmtBlock(StmtBlockKind::For), lbMap(lbMap), ubMap(ubMap), step(step) {}
+      StmtBlock(StmtBlockKind::For), lbMap(lbMap), ubMap(ubMap), step(step) {
+  operands.reserve(numOperands);
+}
 
 const AffineBound ForStmt::getLowerBound() const {
   return AffineBound(*this, 0, lbMap->getNumOperands(), lbMap);
@@ -357,16 +359,45 @@ void ForStmt::setConstantUpperBound(int64_t value) {
 // IfStmt
 //===----------------------------------------------------------------------===//
 
-IfStmt::IfStmt(Location *location, IntegerSet *condition)
+IfStmt::IfStmt(Location *location, unsigned numOperands, IntegerSet *set)
     : Statement(Kind::If, location), thenClause(new IfClause(this)),
-      elseClause(nullptr), condition(condition) {}
+      elseClause(nullptr), set(set) {
+  operands.reserve(numOperands);
+}
 
 IfStmt::~IfStmt() {
   delete thenClause;
   if (elseClause)
     delete elseClause;
-  // An IfStmt's IntegerSet 'condition' should not be deleted since it is
+  // An IfStmt's IntegerSet 'set' should not be deleted since it is
   // allocated through MLIRContext's bump pointer allocator.
+}
+
+IfStmt *IfStmt::create(Location *location, ArrayRef<MLValue *> operands,
+                       IntegerSet *set) {
+  unsigned numOperands = operands.size();
+  assert(numOperands == set->getNumOperands() &&
+         "operand cound does not match the integer set operand count");
+
+  IfStmt *stmt = new IfStmt(location, numOperands, set);
+
+  for (auto *op : operands)
+    stmt->operands.emplace_back(StmtOperand(stmt, op));
+
+  return stmt;
+}
+
+const AffineCondition IfStmt::getCondition() const {
+  return AffineCondition(*this, set);
+}
+
+MLIRContext *IfStmt::getContext() const {
+  // Check for degenerate case of if statement with no operands.
+  // This is unlikely, but legal.
+  if (operands.empty())
+    return findFunction()->getContext();
+
+  return getOperand(0)->getType()->getContext();
 }
 
 //===----------------------------------------------------------------------===//
@@ -428,9 +459,7 @@ Statement *Statement::clone(DenseMap<const MLValue *, MLValue *> &operandMap,
 
   // Otherwise, we must have an If statement.
   auto *ifStmt = cast<IfStmt>(this);
-  auto *newIf = new IfStmt(getLoc(), ifStmt->getCondition());
-
-  // TODO: remap operands with remapOperand when if statements have them.
+  auto *newIf = IfStmt::create(getLoc(), operands, ifStmt->getIntegerSet());
 
   auto *resultThen = newIf->getThen();
   for (auto &childStmt : *ifStmt->getThen())

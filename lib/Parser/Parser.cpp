@@ -25,6 +25,7 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/MLIRContext.h"
@@ -2196,12 +2197,12 @@ private:
   ParseResult parseForStmt();
   ParseResult parseIntConstant(int64_t &val);
   ParseResult parseDimAndSymbolList(SmallVectorImpl<MLValue *> &operands,
-                                    const AffineMap *map);
+                                    unsigned numDims, unsigned numOperands,
+                                    const char *affineStructName);
   ParseResult parseBound(SmallVectorImpl<MLValue *> &operands, AffineMap *&map,
                          bool isLower);
   ParseResult parseIfStmt();
   ParseResult parseElseClause(IfClause *elseClause);
-  IntegerSet *parseCondition();
   ParseResult parseStatements(StmtBlock *block);
   ParseResult parseStmtBlock(StmtBlock *block);
 };
@@ -2306,7 +2307,8 @@ ParseResult MLFunctionParser::parseIntConstant(int64_t &val) {
 ///
 ParseResult
 MLFunctionParser::parseDimAndSymbolList(SmallVectorImpl<MLValue *> &operands,
-                                        const AffineMap *map) {
+                                        unsigned numDims, unsigned numOperands,
+                                        const char *affineStructName) {
   if (parseToken(Token::l_paren, "expected '('"))
     return ParseFailure;
 
@@ -2316,8 +2318,9 @@ MLFunctionParser::parseDimAndSymbolList(SmallVectorImpl<MLValue *> &operands,
   if (parseToken(Token::r_paren, "expected ')'"))
     return ParseFailure;
 
-  if (map->getNumDims() != opInfo.size())
-    return emitError("dim operand count and affine map dim count must match");
+  if (numDims != opInfo.size())
+    return emitError("dim operand count and " + Twine(affineStructName) +
+                     " dim count must match");
 
   if (consumeIf(Token::l_square)) {
     parseOptionalSSAUseList(opInfo);
@@ -2325,13 +2328,12 @@ MLFunctionParser::parseDimAndSymbolList(SmallVectorImpl<MLValue *> &operands,
       return ParseFailure;
   }
 
-  if (map->getNumOperands() != opInfo.size())
-    return emitError(
-        "symbol operand count and affine map symbol count must match");
+  if (numOperands != opInfo.size())
+    return emitError("symbol operand count and " + Twine(affineStructName) +
+                     " symbol count must match");
 
   // Resolve SSA uses.
   Type *affineIntType = builder.getAffineIntType();
-  unsigned numDims = map->getNumDims();
   for (unsigned i = 0, e = opInfo.size(); i != e; ++i) {
     SSAValue *sval = resolveSSAUse(opInfo[i], affineIntType);
     if (!sval)
@@ -2340,10 +2342,10 @@ MLFunctionParser::parseDimAndSymbolList(SmallVectorImpl<MLValue *> &operands,
     auto *v = cast<MLValue>(sval);
     if (i < numDims && !v->isValidDim())
       return emitError(opInfo[i].loc, "value '" + opInfo[i].name.str() +
-                                          "' cannot be used as dimension id");
+                                          "' cannot be used as a dimension id");
     if (i >= numDims && !v->isValidSymbol())
       return emitError(opInfo[i].loc, "value '" + opInfo[i].name.str() +
-                                          "' cannot be used as symbol");
+                                          "' cannot be used as a symbol");
     operands.push_back(v);
   }
 
@@ -2370,7 +2372,8 @@ ParseResult MLFunctionParser::parseBound(SmallVectorImpl<MLValue *> &operands,
     if (!map)
       return ParseFailure;
 
-    if (parseDimAndSymbolList(operands, map))
+    if (parseDimAndSymbolList(operands, map->getNumDims(),
+                              map->getNumOperands(), "affine map"))
       return ParseFailure;
     return ParseSuccess;
   }
@@ -2406,13 +2409,6 @@ ParseResult MLFunctionParser::parseBound(SmallVectorImpl<MLValue *> &operands,
     map = builder.getSymbolIdentityMap();
 
   return ParseSuccess;
-}
-
-/// Parse condition.
-IntegerSet *MLFunctionParser::parseCondition() {
-  return parseIntegerSetReference();
-
-  // TODO: Parse operands to the integer set.
 }
 
 /// Parse an affine constraint.
@@ -2509,6 +2505,7 @@ IntegerSet *Parser::parseIntegerSetInline() {
 ///  integer-set-id ::= `@@` suffix-id
 ///
 IntegerSet *Parser::parseIntegerSetReference() {
+  // TODO: change '@@' integer set prefix to '#'.
   if (getToken().is(Token::double_at_identifier)) {
     // Parse integer set identifier and verify that it exists.
     StringRef integerSetId = getTokenSpelling().drop_front(2);
@@ -2533,17 +2530,18 @@ ParseResult MLFunctionParser::parseIfStmt() {
   auto loc = getToken().getLoc();
   consumeToken(Token::kw_if);
 
-  if (parseToken(Token::l_paren, "expected '('"))
+  IntegerSet *set = parseIntegerSetReference();
+  if (!set)
     return ParseFailure;
 
-  IntegerSet *condition = parseCondition();
-  if (!condition)
+  SmallVector<MLValue *, 4> operands;
+  if (parseDimAndSymbolList(operands, set->getNumDims(), set->getNumOperands(),
+                            "integer set"))
     return ParseFailure;
 
-  if (parseToken(Token::r_paren, "expected ')'"))
-    return ParseFailure;
+  IfStmt *ifStmt =
+      builder.createIf(getEncodedSourceLocation(loc), operands, set);
 
-  IfStmt *ifStmt = builder.createIf(getEncodedSourceLocation(loc), condition);
   IfClause *thenClause = ifStmt->getThen();
 
   // When parsing of an if statement body fails, the IR contains

@@ -254,8 +254,9 @@ ForStmt *MLFuncBuilder::createFor(Location *location,
   return stmt;
 }
 
-IfStmt *MLFuncBuilder::createIf(Location *location, IntegerSet *condition) {
-  auto *stmt = new IfStmt(location, condition);
+IfStmt *MLFuncBuilder::createIf(Location *location,
+                                ArrayRef<MLValue *> operands, IntegerSet *set) {
+  auto *stmt = IfStmt::create(location, operands, set);
   block->getStatements().insert(insertPoint, stmt);
   return stmt;
 }

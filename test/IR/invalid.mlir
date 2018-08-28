@@ -181,7 +181,7 @@ mlfunc @non_statement() {
 
 mlfunc @invalid_if_conditional1() {
   for %i = 1 to 10 {
-    if () // expected-error {{expected '(' at start of dimensional identifiers list}}
+    if () { // expected-error {{expected ':' or '['}}
   }
 }
 
@@ -189,7 +189,7 @@ mlfunc @invalid_if_conditional1() {
 
 mlfunc @invalid_if_conditional2() {
   for %i = 1 to 10 {
-    if ((i)[N] : (i >= ))  // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
+    if (i)[N] : (i >= )  // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
   }
 }
 
@@ -197,7 +197,7 @@ mlfunc @invalid_if_conditional2() {
 
 mlfunc @invalid_if_conditional3() {
   for %i = 1 to 10 {
-    if ((i)[N] : (i == 1)) // expected-error {{expected '0' after '=='}}
+    if (i)[N] : (i == 1) // expected-error {{expected '0' after '=='}}
   }
 }
 
@@ -205,7 +205,7 @@ mlfunc @invalid_if_conditional3() {
 
 mlfunc @invalid_if_conditional4() {
   for %i = 1 to 10 {
-    if ((i)[N] : (i >= 2)) // expected-error {{expected '0' after '>='}}
+    if (i)[N] : (i >= 2) // expected-error {{expected '0' after '>='}}
   }
 }
 
@@ -213,7 +213,7 @@ mlfunc @invalid_if_conditional4() {
 
 mlfunc @invalid_if_conditional5() {
   for %i = 1 to 10 {
-    if ((i)[N] : (i <= 0 )) // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
+    if (i)[N] : (i <= 0 ) // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
   }
 }
 
@@ -221,7 +221,7 @@ mlfunc @invalid_if_conditional5() {
 
 mlfunc @invalid_if_conditional6() {
   for %i = 1 to 10 {
-    if ((i) : (i)) // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
+    if (i) : (i) // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
   }
 }
 
@@ -229,7 +229,7 @@ mlfunc @invalid_if_conditional6() {
 // TODO (support if (1)?
 mlfunc @invalid_if_conditional7() {
   for %i = 1 to 10 {
-    if ((i) : (1)) // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
+    if (i) : (1) // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
   }
 }
 
@@ -446,7 +446,7 @@ mlfunc @invalid_dim_nested(%N : affineint) {
   for %i = 1 to 100 {
     %a = "foo"(%N) : (affineint)->(affineint)
     for %j = 1 to #map1(%a)[%i] {
-    // expected-error@-1 {{value '%a' cannot be used as dimension id}}
+    // expected-error@-1 {{value '%a' cannot be used as a dimension id}}
     }
   }
   return
@@ -461,7 +461,7 @@ mlfunc @invalid_dim_affine_apply(%N : affineint) {
     %a = "foo"(%N) : (affineint)->(affineint)
     %w = affine_apply (i)->(i+1) (%a)
     for %j = 1 to #map1(%w)[%i] {
-    // expected-error@-1 {{value '%w' cannot be used as dimension id}}
+    // expected-error@-1 {{value '%w' cannot be used as a dimension id}}
     }
   }
   return
@@ -475,7 +475,7 @@ mlfunc @invalid_symbol_iv(%N : affineint) {
   for %i = 1 to 100 {
     %a = "foo"(%N) : (affineint)->(affineint)
     for %j = 1 to #map1(%N)[%i] {
-    // expected-error@-1 {{value '%i' cannot be used as symbol}}
+    // expected-error@-1 {{value '%i' cannot be used as a symbol}}
     }
   }
   return
@@ -489,7 +489,7 @@ mlfunc @invalid_symbol_nested(%N : affineint) {
   for %i = 1 to 100 {
     %a = "foo"(%N) : (affineint)->(affineint)
     for %j = 1 to #map1(%N)[%a] {
-    // expected-error@-1 {{value '%a' cannot be used as symbol}}
+    // expected-error@-1 {{value '%a' cannot be used as a symbol}}
     }
   }
   return
@@ -503,7 +503,7 @@ mlfunc @invalid_symbol_affine_apply(%N : affineint) {
   for %i = 1 to 100 {
     %w = affine_apply (i)->(i+1) (%i)
     for %j = 1 to #map1(%i)[%w] {
-    // expected-error@-1 {{value '%w' cannot be used as symbol}}
+    // expected-error@-1 {{value '%w' cannot be used as a symbol}}
     }
   }
   return
@@ -541,3 +541,28 @@ mlfunc @invalid_bound_map(%N : i32) {
   }
   return
 }
+
+// -----
+@@set0 = (i)[N] : (i >= 0, N - i >= 0)
+
+mlfunc @invalid_if_operands1(%N : affineint) {
+  for %i = 1 to 10 {
+    if @@set0(%i) {
+    // expected-error@-1 {{symbol operand count and integer set symbol count must match}}
+
+// -----
+@@set0 = (i)[N] : (i >= 0, N - i >= 0)
+
+mlfunc @invalid_if_operands2(%N : affineint) {
+  for %i = 1 to 10 {
+    if @@set0()[%N] {
+    // expected-error@-1 {{dim operand count and integer set dim count must match}}
+
+// -----
+@@set0 = (i)[N] : (i >= 0, N - i >= 0)
+
+mlfunc @invalid_if_operands3(%N : affineint) {
+  for %i = 1 to 10 {
+    if @@set0(%i)[%i] {
+    // expected-error@-1 {{value '%i' cannot be used as a symbol}}
+

@@ -372,7 +372,7 @@ struct MLFuncVerifier : public Verifier, public StmtWalker<MLFuncVerifier> {
 
     // TODO: check that operation is not a return statement unless it's
     // the last one in the function.
-    // TODO: check that loop bounds are properly formed.
+    // TODO: check that loop bounds and if conditions are properly formed.
     if (verifyReturn())
       return true;
 
