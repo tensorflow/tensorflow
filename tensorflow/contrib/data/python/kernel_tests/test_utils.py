@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
+
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
@@ -45,7 +47,11 @@ class DatasetTestBase(test.TestCase):
         for i in range(len(op1)):
           self.assertAllEqual(op1[i], op2[i])
 
-  def _assert_datasets_raise_same_error(self, dataset1, dataset2, exc_class):
+  def _assert_datasets_raise_same_error(self,
+                                        dataset1,
+                                        dataset2,
+                                        exception_class,
+                                        replacements=None):
     next1 = dataset1.make_one_shot_iterator().get_next()
     next2 = dataset2.make_one_shot_iterator().get_next()
     with self.test_session() as sess:
@@ -53,8 +59,12 @@ class DatasetTestBase(test.TestCase):
         sess.run(next1)
         raise ValueError(
             "Expected dataset to raise an error of type %s, but it did not." %
-            repr(exc_class))
-      except exc_class as e:
+            repr(exception_class))
+      except exception_class as e:
+        expected_message = e.message
+        for old, new, count in replacements:
+          expected_message = expected_message.replace(old, new, count)
         # Check that the first segment of the error messages are the same.
-        with self.assertRaisesRegexp(exc_class, e.message.split(". ")[0]):
+        with self.assertRaisesRegexp(exception_class,
+                                     re.escape(expected_message)):
           sess.run(next2)

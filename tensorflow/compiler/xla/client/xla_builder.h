@@ -21,6 +21,7 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/macros.h"
@@ -711,11 +711,15 @@ class XlaBuilder {
       const absl::optional<ChannelHandle>& channel_id = absl::nullopt);
 
   // Enqueues an operation that do an Alltoall of the operand cross cores.
-  //
-  // TODO(b/110096724): This is NOT YET ready to use.
   XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,
                  int64 concat_dimension, int64 split_count,
                  const std::vector<ReplicaGroup>& replica_groups);
+
+  // Enqueues an operation that do an CollectivePermute of the operand cross
+  // cores.
+  XlaOp CollectivePermute(
+      const XlaOp& operand,
+      const std::vector<std::pair<int64, int64>>& source_target_pairs);
 
   // Enqueues an operation that scatters the `source` array to the selected
   // indices of each window.
@@ -795,6 +799,12 @@ class XlaBuilder {
   // booleans with the same shape where entries are true iff the corresponding
   // entry was NaN.
   XlaOp IsFinite(const XlaOp& operand);
+
+  // Enqueues an iota operation onto the computation.
+  XlaOp IotaGen(const Shape& shape, int64 iota_dimension);
+
+  // Enqueues a rank-1 iota operation onto the computation.
+  XlaOp IotaGen(PrimitiveType type, int64 size);
 
   // Enqueues a convert instruction onto the computation that changes the
   // element type of the operand array to primitive_type.
@@ -1262,6 +1272,9 @@ class XlaBuilder {
   friend XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,
                         int64 concat_dimension, int64 split_count,
                         const std::vector<ReplicaGroup>& replica_groups);
+  friend XlaOp CollectivePermute(
+      const XlaOp& operand,
+      const std::vector<std::pair<int64, int64>>& source_target_pairs);
   friend XlaOp SelectAndScatter(
       const XlaOp& operand, const XlaComputation& select,
       tensorflow::gtl::ArraySlice<int64> window_dimensions,
@@ -1297,6 +1310,8 @@ class XlaBuilder {
   friend XlaOp IsFinite(const XlaOp& operand);
   // TODO(b/64798317): Finish CPU & GPU implementation, then replace xla::Iota
   // in xla/client/lib/numeric.h with this (renamed to xla::Iota).
+  friend XlaOp IotaGen(XlaBuilder* builder, const Shape& shape,
+                       int64 iota_dimension);
   friend XlaOp IotaGen(XlaBuilder* builder, PrimitiveType type, int64 size);
   friend XlaOp ConvertElementType(const XlaOp& operand,
                                   PrimitiveType new_element_type);
@@ -1859,11 +1874,21 @@ XlaOp CrossReplicaSum(
     const absl::optional<ChannelHandle>& channel_id = absl::nullopt);
 
 // Enqueues an operation that do an Alltoall of the operand cross cores.
-//
-// TODO(b/110096724): This is NOT YET ready to use.
 XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,
                int64 concat_dimension, int64 split_count,
                const std::vector<ReplicaGroup>& replica_groups = {});
+
+// Enqueues an collective operation that sends and receives data cross replicas.
+//
+// - `source_target_pair`: a list of (source_replica_id, target_replica_id)
+// pairs. For each pair, the operand is sent from source replica to target
+// replica. Note that, 1) any two pairs should not have the same target replica
+// id, and they should not have the same source replica id; 2) if a replica id
+// is not a target in any pair, then the output on that replica is a tensor
+// consists of 0(s) with the same shape as the input.
+XlaOp CollectivePermute(
+    const XlaOp& operand,
+    const std::vector<std::pair<int64, int64>>& source_target_pairs);
 
 // Enqueues an operation that scatters the `source` array to the selected
 // indices of each window.
@@ -1942,6 +1967,12 @@ XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
 // booleans with the same shape where entries are true iff the corresponding
 // entry was NaN.
 XlaOp IsFinite(const XlaOp& operand);
+
+// Enqueues an iota operation onto the computation.
+XlaOp IotaGen(XlaBuilder* builder, const Shape& shape, int64 iota_dimension);
+
+// Enqueues a rank-1 iota operation onto the computation.
+XlaOp IotaGen(XlaBuilder* builder, PrimitiveType type, int64 size);
 
 // Enqueues a convert instruction onto the computation that changes the
 // element type of the operand array to primitive_type.

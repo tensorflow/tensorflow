@@ -21,7 +21,9 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/core/lib/core/casts.h"
 
@@ -143,7 +145,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   Status DefaultAction(HloInstruction* hlo_instruction) override {
     return Unimplemented("unhandled HLO ops for HloEvaluator: %s.",
-                         HloOpcodeString(hlo_instruction->opcode()).c_str());
+                         HloOpcodeString(hlo_instruction->opcode()));
   }
 
   // TODO(b/35950897): many of the stl functions used in the handlers are not
@@ -2493,11 +2495,21 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                 std::is_same<NativeT, float>::value ||
                 std::is_same<NativeT, int32>::value ||
                 std::is_same<NativeT, uint32>::value>::type* = nullptr>
-  Status HandleIota(HloInstruction* iota) {
-    auto result = absl::make_unique<Literal>(iota->shape());
-    auto data = result->data<ReturnT>();
+  Status HandleIota(HloInstruction* instruction) {
+    auto* iota = Cast<HloIotaInstruction>(instruction);
+    std::vector<NativeT> data(iota->shape().dimensions(iota->iota_dimension()));
     std::iota(data.begin(), data.end(), 0);
-    parent_->evaluated_[iota] = std::move(result);
+    auto result = LiteralUtil::CreateR1<NativeT>(data);
+
+    if (ShapeUtil::Rank(iota->shape()) > 1) {
+      TF_ASSIGN_OR_RETURN(
+          parent_->evaluated_[iota],
+          result->Broadcast(iota->shape(), {iota->iota_dimension()}));
+    } else {
+      TF_RET_CHECK(ShapeUtil::Rank(iota->shape()) == 1);
+      parent_->evaluated_[iota] = std::move(result);
+    }
+
     return Status::OK();
   }
   template <typename NativeT,
@@ -2654,9 +2666,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       return Unimplemented(
           "Implicit broadcasting is currently unsupported in HLO evaluator "
           "Shape Mismatch: %s vs %s vs %s: ",
-          ShapeUtil::HumanString(shape).c_str(),
-          ShapeUtil::HumanString(lhs->shape()).c_str(),
-          ShapeUtil::HumanString(rhs->shape()).c_str());
+          ShapeUtil::HumanString(shape), ShapeUtil::HumanString(lhs->shape()),
+          ShapeUtil::HumanString(rhs->shape()));
     }
 
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
@@ -2690,10 +2701,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       return Unimplemented(
           "Implicit broadcasting is currently unsupported in HLO evaluator "
           "Shape Mismatch: %s vs %s vs %s vs %s: ",
-          ShapeUtil::HumanString(shape).c_str(),
-          ShapeUtil::HumanString(lhs->shape()).c_str(),
-          ShapeUtil::HumanString(rhs->shape()).c_str(),
-          ShapeUtil::HumanString(ehs->shape()).c_str());
+          ShapeUtil::HumanString(shape), ShapeUtil::HumanString(lhs->shape()),
+          ShapeUtil::HumanString(rhs->shape()),
+          ShapeUtil::HumanString(ehs->shape()));
     }
 
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);

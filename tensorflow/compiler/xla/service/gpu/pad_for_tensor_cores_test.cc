@@ -29,7 +29,12 @@ namespace {
 namespace op = xla::testing::opcode_matchers;
 using ::testing::_;
 
-using PadForTensorCoresTest = HloVerifiedTestBase;
+class PadForTensorCoresTest : public HloVerifiedTestBase {
+ public:
+  PadForTensorCoresTest()
+      : HloVerifiedTestBase(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false) {}
+};
 
 TEST_F(PadForTensorCoresTest, PadF16ForwardConvInputChannels) {
   ParseAndVerifyModule(R"(

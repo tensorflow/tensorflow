@@ -18,6 +18,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
@@ -25,19 +26,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 namespace llvm_ir {
 
-ForLoop::ForLoop(tensorflow::StringPiece prefix, tensorflow::StringPiece suffix,
+ForLoop::ForLoop(absl::string_view prefix, absl::string_view suffix,
                  llvm::Value* start_index, llvm::Value* end_index,
                  llvm::Value* step, UnrollMode unroll_mode,
                  bool prevent_vectorization)
-    : prefix_(std::string(prefix)),
-      suffix_(std::string(suffix)),
+    : prefix_(prefix),
+      suffix_(suffix),
       start_index_(start_index),
       end_index_(end_index),
       step_(step),
@@ -46,9 +45,9 @@ ForLoop::ForLoop(tensorflow::StringPiece prefix, tensorflow::StringPiece suffix,
       prevent_vectorization_(prevent_vectorization) {}
 
 /* static */ std::unique_ptr<ForLoop> ForLoop::EmitForLoop(
-    tensorflow::StringPiece prefix, llvm::Value* start_index,
-    llvm::Value* end_index, llvm::Value* step, llvm::IRBuilder<>* b,
-    UnrollMode unroll_mode, bool prevent_vectorization) {
+    absl::string_view prefix, llvm::Value* start_index, llvm::Value* end_index,
+    llvm::Value* step, llvm::IRBuilder<>* b, UnrollMode unroll_mode,
+    bool prevent_vectorization) {
   std::unique_ptr<ForLoop> loop(new ForLoop(prefix, /*suffix=*/"", start_index,
                                             end_index, step, unroll_mode,
                                             prevent_vectorization));
@@ -168,16 +167,16 @@ std::vector<llvm::Metadata*> ForLoop::GetLoopMetadata(llvm::IRBuilder<>* b) {
   return result;
 }
 
-string ForLoop::GetQualifiedName(tensorflow::StringPiece name) {
+string ForLoop::GetQualifiedName(absl::string_view name) {
   return llvm_ir::IrName(prefix_, llvm_ir::IrName(name, suffix_));
 }
 
-llvm::BasicBlock* ForLoop::CreateLoopBB(tensorflow::StringPiece name,
+llvm::BasicBlock* ForLoop::CreateLoopBB(absl::string_view name,
                                         llvm::IRBuilder<>* b) {
   return CreateBasicBlock(insert_before_bb_, GetQualifiedName(name), b);
 }
 
-std::unique_ptr<ForLoop> ForLoopNest::AddLoop(tensorflow::StringPiece suffix,
+std::unique_ptr<ForLoop> ForLoopNest::AddLoop(absl::string_view suffix,
                                               llvm::Value* start_index,
                                               llvm::Value* end_index,
                                               UnrollMode unroll_mode,
@@ -186,12 +185,9 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(tensorflow::StringPiece suffix,
                  unroll_mode, prevent_vectorization);
 }
 
-std::unique_ptr<ForLoop> ForLoopNest::AddLoop(tensorflow::StringPiece suffix,
-                                              llvm::Value* start_index,
-                                              llvm::Value* end_index,
-                                              llvm::Value* stride,
-                                              UnrollMode unroll_mode,
-                                              bool prevent_vectorization) {
+std::unique_ptr<ForLoop> ForLoopNest::AddLoop(
+    absl::string_view suffix, llvm::Value* start_index, llvm::Value* end_index,
+    llvm::Value* stride, UnrollMode unroll_mode, bool prevent_vectorization) {
   if (inner_loop_body_bb_ != nullptr) {
     // Create this loop inside the previous one.
     b_->SetInsertPoint(&*inner_loop_body_bb_->getFirstInsertionPt());
@@ -216,7 +212,7 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(tensorflow::StringPiece suffix,
 
 std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64 start_index,
                                               int64 end_index,
-                                              tensorflow::StringPiece suffix,
+                                              absl::string_view suffix,
                                               UnrollMode unroll_mode,
                                               bool prevent_vectorization) {
   CHECK_LE(start_index, end_index);
@@ -227,7 +223,7 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64 start_index,
 
 std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64 start_index,
                                               int64 end_index, int64 stride,
-                                              tensorflow::StringPiece suffix,
+                                              absl::string_view suffix,
                                               UnrollMode unroll_mode,
                                               bool prevent_vectorization) {
   CHECK_LE(start_index, end_index);
@@ -238,7 +234,7 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64 start_index,
 }
 
 IrArray::Index ForLoopNest::AddLoopsForShape(const Shape& shape,
-                                             tensorflow::StringPiece suffix) {
+                                             absl::string_view suffix) {
   std::vector<int64> dimensions(ShapeUtil::Rank(shape));
   std::iota(dimensions.begin(), dimensions.end(), 0);
   return AddLoopsForShapeOnDimensions(shape, dimensions, suffix);
@@ -246,14 +242,14 @@ IrArray::Index ForLoopNest::AddLoopsForShape(const Shape& shape,
 
 IrArray::Index ForLoopNest::AddLoopsForShapeOnDimensions(
     const Shape& shape, tensorflow::gtl::ArraySlice<int64> dimensions,
-    tensorflow::StringPiece suffix) {
+    absl::string_view suffix) {
   llvm_ir::IrArray::Index index(index_type_, shape.dimensions_size());
   for (int64 dimension : dimensions) {
     std::unique_ptr<llvm_ir::ForLoop> loop = AddLoop(
         /*start_index=*/0,
         /*end_index=*/shape.dimensions(dimension),
         /*suffix=*/
-        llvm_ir::IrName(suffix, tensorflow::strings::StrCat(dimension)));
+        llvm_ir::IrName(suffix, absl::StrCat(dimension)));
     index[dimension] = loop->GetIndVarValue();
   }
   return index;
@@ -261,7 +257,7 @@ IrArray::Index ForLoopNest::AddLoopsForShapeOnDimensions(
 
 IrArray::Index ForLoopNest::EmitOperandArrayLoopNest(
     const llvm_ir::IrArray& operand_array, int64 dimension_to_skip,
-    tensorflow::StringPiece name_suffix) {
+    absl::string_view name_suffix) {
   // Prepares the dimension list we will use to emit the loop nest. Outermost
   // loops are added first. Add loops in major-to-minor order, and skip the
   // 'dimension_to_skip' dimension.

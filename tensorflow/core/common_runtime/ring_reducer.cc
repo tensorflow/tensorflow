@@ -14,13 +14,29 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/ring_reducer.h"
 
+#include <stdlib.h>
+#include <atomic>
+#include <functional>
+#include <utility>
+
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
+#include "tensorflow/core/common_runtime/collective_util.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
+#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/types.h"
 
 // Set true for greater intelligibility of debug mode log messages.
 #define READABLE_KEYS false
@@ -36,7 +52,8 @@ string RingReduceBufKey(const string& exec_key, int pass, int section,
     return strings::StrCat("rred(", exec_key, "):pass(", pass, "):section(",
                            section, "):srcrank(", source_rank, ")");
   } else {
-    // TODO(tucker): Try out some kind of denser encoding, e.g. 128 bit hash.
+    // TODO(b/78352018): Try out some kind of denser encoding, e.g. 128 bit
+    // hash.
     return strings::StrCat(exec_key, ":", pass, ":", section, ":", source_rank);
   }
 }
@@ -65,105 +82,149 @@ RingReducer::RingField* RingReducer::PCQueue::Dequeue() {
   return rf;
 }
 
-RingReducer::RingReducer(CollectiveExecutor* col_exec, const DeviceMgr* dev_mgr,
-                         OpKernelContext* ctx,
-                         OpKernelContext::Params* op_params,
-                         const CollectiveParams& col_params,
-                         const string& exec_key, int64 step_id,
-                         const Tensor* input, Tensor* output)
-    : col_exec_(col_exec),
-      dev_mgr_(dev_mgr),
-      ctx_(ctx),
-      op_params_(op_params),
-      col_params_(col_params),
-      exec_key_(exec_key),
-      input_(input),
-      output_(output),
-      rank_(col_params.subdiv_rank[0]),
-      step_id_(step_id),
-      group_size_(col_params.group.group_size),
-      num_subdivs_(static_cast<int>(
-          col_params.instance.impl_details.subdiv_permutations.size())),
+RingReducer::RingReducer()
+    : col_ctx_(nullptr),
+      col_params_(nullptr),
       done_(nullptr),
-      device_(nullptr),
-      device_name_(
-          col_params_.instance.device_names[col_params_.default_rank]) {
-  CHECK_GT(group_size_, 0);
-  CHECK_GT(num_subdivs_, 0);
-}
+      group_size_(-1),
+      num_subdivs_(-1) {}
 
 RingReducer::~RingReducer() { group_size_tensor_ready_.WaitForNotification(); }
 
-string RingReducer::TensorDebugString(Tensor tensor) {
-  const DeviceBase::GpuDeviceInfo* gpu_device_info =
-      ctx_->device()->tensorflow_gpu_device_info();
-  if (gpu_device_info) {
-    Tensor cpu_tensor(tensor.dtype(), tensor.shape());
-    Notification note;
-    gpu_device_info->default_context->CopyDeviceTensorToCPU(
-        &tensor, "" /*tensor_name*/, device_, &cpu_tensor,
-        [&note](const Status& s) {
-          CHECK(s.ok());
-          note.Notify();
-        });
-    note.WaitForNotification();
-    return cpu_tensor.SummarizeValue(64);
-  } else {
-    return tensor.SummarizeValue(64);
+Status RingReducer::InitializeCollectiveParams(CollectiveParams* col_params) {
+  CHECK_EQ(col_params->instance.type, REDUCTION_COLLECTIVE);
+  CHECK_EQ(col_params->instance.impl_details.collective_name, "RingReduce");
+  const string& device_name =
+      col_params->instance.device_names[col_params->default_rank];
+  // Each subdiv permutation is a ring formed by rotating each
+  // single-task subsequence of devices by an offset.  This makes most
+  // sense when each task has the same number of devices but we can't
+  // depend on that being the case so we'll compute something that
+  // works in any case.
+
+  // Start by counting the devices in each task.
+  // Precondition: device_names must be sorted so that all devices in
+  // the same task are adjacent.
+  VLOG(2) << "Sorted task names: "
+          << str_util::Join(col_params->instance.task_names, ", ");
+  std::vector<int> dev_per_task;
+  const string* prior_task_name = &col_params->instance.task_names[0];
+  int dev_count = 1;
+  for (int di = 1; di < col_params->group.group_size; ++di) {
+    if (col_params->instance.task_names[di] != *prior_task_name) {
+      dev_per_task.push_back(dev_count);
+      dev_count = 1;
+      prior_task_name = &col_params->instance.task_names[di];
+    } else {
+      ++dev_count;
+    }
   }
+  dev_per_task.push_back(dev_count);
+  CHECK_EQ(col_params->group.num_tasks, dev_per_task.size());
+
+  // Generate a ring permutation for each requested offset.
+  if (col_params->instance.impl_details.subdiv_offsets.empty()) {
+    return errors::Internal(
+        "Subdiv offsets should be non-empty for ring reducer, size=",
+        col_params->instance.impl_details.subdiv_offsets.size());
+  }
+  VLOG(2) << "Setting up perms for col_params " << col_params
+          << " subdiv_permutations "
+          << &col_params->instance.impl_details.subdiv_permutations;
+  col_params->instance.impl_details.subdiv_permutations.resize(
+      col_params->instance.impl_details.subdiv_offsets.size());
+  col_params->subdiv_rank.resize(
+      col_params->instance.impl_details.subdiv_offsets.size(), -1);
+  for (int sdi = 0;
+       sdi < col_params->instance.impl_details.subdiv_offsets.size(); ++sdi) {
+    std::vector<int>& perm =
+        col_params->instance.impl_details.subdiv_permutations[sdi];
+    CHECK_EQ(perm.size(), 0);
+    int offset = col_params->instance.impl_details.subdiv_offsets[sdi];
+    // A negative subdivision offset is interpreted as follows:
+    //  1. Reverse the local device ordering.
+    //  2. Begin the subdivision at abs(offset) in the reversed ordering.
+    bool reverse = false;
+    if (offset < 0) {
+      offset = abs(offset);
+      reverse = true;
+    }
+    int prior_dev_count = 0;  // sum over prior worker device counts
+    for (int ti = 0; ti < col_params->group.num_tasks; ++ti) {
+      for (int di = 0; di < dev_per_task[ti]; ++di) {
+        int di_offset = (di + offset) % dev_per_task[ti];
+        int offset_di =
+            reverse ? (dev_per_task[ti] - (di_offset + 1)) : di_offset;
+        // Device index in global subdivision permutation.
+        int permuted_di = prior_dev_count + offset_di;
+        int rank = static_cast<int>(perm.size());
+        perm.push_back(permuted_di);
+        if (col_params->instance.device_names[permuted_di] == device_name) {
+          CHECK_EQ(permuted_di, col_params->default_rank);
+          col_params->subdiv_rank[sdi] = rank;
+        }
+      }
+      prior_dev_count += dev_per_task[ti];
+    }
+    CHECK_EQ(col_params->group.group_size, perm.size());
+  }
+
+  VLOG(2) << collective_util::SubdivPermDebugString(*col_params);
+  return Status::OK();
+}
+
+Status RingReducer::InitializeCollectiveContext(CollectiveContext* col_ctx) {
+  CHECK(col_ctx->dev_mgr);
+  col_ctx_ = col_ctx;
+  col_params_ = &col_ctx->col_params;
+  return collective_util::InitializeDeviceAndLocality(
+      col_ctx->dev_mgr, col_ctx->device_name, &col_ctx->device,
+      &col_ctx->device_locality);
 }
 
 void RingReducer::Run(StatusCallback done) {
+  CHECK(col_ctx_);
+  CHECK(col_params_);
   done_ = std::move(done);
+  group_size_ = col_params_->group.group_size;
+  num_subdivs_ = static_cast<int>(
+      col_params_->instance.impl_details.subdiv_permutations.size());
+  CHECK_GT(num_subdivs_, 0);
 
-  // Get local execution device.
   if (VLOG_IS_ON(1)) {
     string buf;
-    for (int r = 0; r < col_params_.instance.device_names.size(); ++r) {
+    for (int r = 0; r < col_params_->instance.device_names.size(); ++r) {
       strings::StrAppend(&buf, "dev ", r, " : ",
-                         col_params_.instance.device_names[r], "\n");
+                         col_params_->instance.device_names[r], "\n");
     }
     for (int sd = 0;
-         sd < col_params_.instance.impl_details.subdiv_permutations.size();
+         sd < col_params_->instance.impl_details.subdiv_permutations.size();
          ++sd) {
       strings::StrAppend(&buf, "\nsubdiv ", sd, " perm: ");
-      for (auto x : col_params_.instance.impl_details.subdiv_permutations[sd]) {
+      for (auto x :
+           col_params_->instance.impl_details.subdiv_permutations[sd]) {
         strings::StrAppend(&buf, x, ", ");
       }
     }
-    VLOG(1) << "RingReducer::Run for device " << device_name_
-            << " default_rank " << col_params_.default_rank << "\n"
+    VLOG(1) << "RingReducer::Run for device " << col_ctx_->device_name
+            << " default_rank " << col_params_->default_rank << "\n"
             << buf;
   }
-  CHECK(dev_mgr_);
-  Status status = dev_mgr_->LookupDevice(
-      col_params_.instance.device_names[col_params_.default_rank], &device_);
-  if (!status.ok()) {
-    LOG(ERROR) << "Failed to find device "
-               << col_params_.instance.device_names[col_params_.default_rank];
-    for (auto d : dev_mgr_->ListDevices()) {
-      LOG(ERROR) << "Available device " << d->name();
-    }
-    done_(status);
-    return;
-  }
-  CHECK(device_);
-  device_locality_ = device_->attributes().locality();
-
-  VLOG(1) << this << " default_rank " << col_params_.default_rank << " cp "
-          << &col_params_ << ": " << col_params_.ToString();
 
   // Start by copying input to output if they're not already the same, i.e. if
   // we're not computing in-place on the input tensor.
-  if ((input_ != output_) &&
-      (DMAHelper::base(input_) != DMAHelper::base(output_))) {
+  if ((col_ctx_->input != col_ctx_->output) &&
+      (DMAHelper::base(col_ctx_->input) != DMAHelper::base(col_ctx_->output))) {
     // We are running in a blockable thread and the callback can't block so
     // just wait here on the copy.
     Notification note;
+    Status status;
     CollectiveRemoteAccessLocal::MemCpyAsync(
-        ctx_->input_device_context(0), ctx_->op_device_context(), device_,
-        device_, ctx_->input_alloc_attr(0), ctx_->output_alloc_attr(0), input_,
-        output_, 0 /*dev_to_dev_stream_index*/,
+        col_ctx_->op_ctx->input_device_context(0),
+        col_ctx_->op_ctx->op_device_context(), col_ctx_->device,
+        col_ctx_->device, col_ctx_->op_ctx->input_alloc_attr(0),
+        col_ctx_->op_ctx->output_alloc_attr(0), col_ctx_->input,
+        col_ctx_->output, 0 /*dev_to_dev_stream_index*/,
         [this, &note, &status](const Status& s) {
           status.Update(s);
           note.Notify();
@@ -177,24 +238,43 @@ void RingReducer::Run(StatusCallback done) {
   ContinueAfterInputCopy();
 }
 
+string RingReducer::TensorDebugString(const Tensor& tensor) {
+  const DeviceBase::GpuDeviceInfo* gpu_device_info =
+      col_ctx_->op_ctx->device()->tensorflow_gpu_device_info();
+  if (gpu_device_info) {
+    Tensor cpu_tensor(tensor.dtype(), tensor.shape());
+    Notification note;
+    gpu_device_info->default_context->CopyDeviceTensorToCPU(
+        &tensor, "" /*tensor_name*/, col_ctx_->device, &cpu_tensor,
+        [&note](const Status& s) {
+          CHECK(s.ok());
+          note.Notify();
+        });
+    note.WaitForNotification();
+    return cpu_tensor.SummarizeValue(64);
+  } else {
+    return tensor.SummarizeValue(64);
+  }
+}
+
 // Note that this function is blocking and must not run in any thread
 // which cannot be blocked.
 void RingReducer::ContinueAfterInputCopy() {
-  AllocatorAttributes attr = ctx_->output_alloc_attr(0);
-  ca_.reset(MakeCollectiveAdapter(output_, group_size_ * num_subdivs_,
-                                  device_->GetAllocator(attr)));
+  AllocatorAttributes attr = col_ctx_->op_ctx->output_alloc_attr(0);
+  ca_.reset(MakeCollectiveAdapter(col_ctx_->output, group_size_ * num_subdivs_,
+                                  col_ctx_->device->GetAllocator(attr)));
 
-  if (col_params_.final_op) {
+  if (col_params_->final_op) {
     // Create an on-device scalar value from group_size_ that may be needed
     // later.
     // TODO(tucker): Cache and reuse across invocations? Or maybe the scalar
     // can be provided to the kernel in host memory?
     Tensor group_size_val = ca_->Scalar(group_size_);
-    if (col_params_.group.device_type != "CPU") {
-      group_size_tensor_ =
-          ca_->Scalar(device_->GetAllocator(ctx_->input_alloc_attr(0)));
-      DeviceContext* op_dev_ctx = ctx_->op_device_context();
-      op_dev_ctx->CopyCPUTensorToDevice(&group_size_val, device_,
+    if (col_params_->group.device_type != "CPU") {
+      group_size_tensor_ = ca_->Scalar(col_ctx_->device->GetAllocator(
+          col_ctx_->op_ctx->input_alloc_attr(0)));
+      DeviceContext* op_dev_ctx = col_ctx_->op_ctx->op_device_context();
+      op_dev_ctx->CopyCPUTensorToDevice(&group_size_val, col_ctx_->device,
                                         &group_size_tensor_,
                                         [this](const Status& s) {
                                           if (!s.ok()) {
@@ -231,14 +311,14 @@ void RingReducer::StartAbort(const Status& s) {
   // cancellation on all of the outstanding CollectiveRemoteAccess
   // actions.
   if (abort_started) {
-    col_exec_->StartAbort(s);
+    col_ctx_->col_exec->StartAbort(s);
   }
 }
 
 void RingReducer::Finish(bool ok) {
   if (ok) {
     // Recover the output from the adaptor.
-    ca_->ConsumeFinalValue(output_);
+    ca_->ConsumeFinalValue(col_ctx_->output);
   }
   Status s;
   {
@@ -275,7 +355,7 @@ Status RingReducer::ComputeBinOp(Device* device, OpKernel* op, Tensor* output,
   // TODO(tucker): Is it possible to cache and reuse these objects?  They're
   // mostly identical inside one device execution.
   std::unique_ptr<SubContext> sub_ctx(
-      new SubContext(ctx_, op_params_, op, output, input));
+      new SubContext(col_ctx_->op_ctx, col_ctx_->op_params, op, output, input));
   device->Compute(op, sub_ctx->sub_ctx_);
   return sub_ctx->sub_ctx_->status();
 }
@@ -295,18 +375,18 @@ void RingReducer::InitRingField(RingField* rf, int chunk_idx, int subdiv_idx,
   rf->chunk_idx = chunk_idx;
   rf->subdiv_idx = subdiv_idx;
   rf->sc_idx = field_idx;
-  rf->rank = col_params_.subdiv_rank[subdiv_idx];
+  rf->rank = col_params_->subdiv_rank[subdiv_idx];
   rf->second_pass = false;
   rf->action = RF_INIT;
   // Recv from the device with preceding rank within the subdivision.
   int recv_from_rank = (rf->rank + (group_size_ - 1)) % group_size_;
   int send_to_rank = (rf->rank + 1) % group_size_;
-  rf->recv_dev_idx = col_params_.instance.impl_details
+  rf->recv_dev_idx = col_params_->instance.impl_details
                          .subdiv_permutations[subdiv_idx][recv_from_rank];
-  int send_dev_idx = col_params_.instance.impl_details
+  int send_dev_idx = col_params_->instance.impl_details
                          .subdiv_permutations[subdiv_idx][send_to_rank];
-  rf->recv_is_remote = !col_params_.task.is_local[rf->recv_dev_idx];
-  rf->send_is_remote = !col_params_.task.is_local[send_dev_idx];
+  rf->recv_is_remote = !col_params_->task.is_local[rf->recv_dev_idx];
+  rf->send_is_remote = !col_params_->task.is_local[send_dev_idx];
   if (ca_->ChunkBytes(rf->sc_idx) > 0) {
     // In pass 0 we skip Recv when rank = chunk_idx
     rf->do_recv = (rf->chunk_idx != rf->rank);
@@ -360,45 +440,47 @@ string RingReducer::RingField::DebugString() const {
 
 void RingReducer::DispatchSend(RingField* rf, const StatusCallback& done) {
   CHECK(rf->do_send);
-  string send_buf_key =
-      RingReduceBufKey(exec_key_, rf->second_pass, rf->sc_idx, rf->rank);
-  VLOG(3) << "DispatchSend rank=" << col_params_.default_rank << " send key "
+  string send_buf_key = RingReduceBufKey(col_ctx_->exec_key, rf->second_pass,
+                                         rf->sc_idx, rf->rank);
+  VLOG(3) << "DispatchSend rank=" << col_params_->default_rank << " send key "
           << send_buf_key << " chunk " << ca_->TBounds(rf->chunk) << " sc_idx "
           << rf->sc_idx;
   int send_to_rank = (rf->rank + 1) % group_size_;
-  int send_to_dev_idx = col_params_.instance.impl_details
+  int send_to_dev_idx = col_params_->instance.impl_details
                             .subdiv_permutations[rf->subdiv_idx][send_to_rank];
-  col_exec_->PostToPeer(col_params_.instance.device_names[send_to_dev_idx],
-                        col_params_.instance.task_names[send_to_dev_idx],
-                        send_buf_key, device_, ctx_->op_device_context(),
-                        ctx_->output_alloc_attr(0), &rf->chunk,
-                        device_locality_, done);
+  col_ctx_->col_exec->PostToPeer(
+      col_params_->instance.device_names[send_to_dev_idx],
+      col_params_->instance.task_names[send_to_dev_idx], send_buf_key,
+      col_ctx_->device, col_ctx_->op_ctx->op_device_context(),
+      col_ctx_->op_ctx->output_alloc_attr(0), &rf->chunk,
+      col_ctx_->device_locality, done);
 }
 
 void RingReducer::DispatchRecv(RingField* rf, const StatusCallback& done) {
   CHECK(rf->do_recv);
   string recv_buf_key =
-      RingReduceBufKey(exec_key_, rf->second_pass, rf->sc_idx,
+      RingReduceBufKey(col_ctx_->exec_key, rf->second_pass, rf->sc_idx,
                        (rf->rank + (group_size_ - 1)) % group_size_);
-  VLOG(3) << "DispatchRecv rank=" << col_params_.default_rank << " recv key "
+  VLOG(3) << "DispatchRecv rank=" << col_params_->default_rank << " recv key "
           << recv_buf_key << " chunk " << ca_->TBounds(rf->chunk) << " into "
-          << ((col_params_.merge_op != nullptr) ? "tmp_chunk" : "chunk");
-  Tensor* dst_tensor = (!rf->second_pass && (col_params_.merge_op != nullptr))
+          << ((col_params_->merge_op != nullptr) ? "tmp_chunk" : "chunk");
+  Tensor* dst_tensor = (!rf->second_pass && (col_params_->merge_op != nullptr))
                            ? &rf->tmp_chunk
                            : &rf->chunk;
-  col_exec_->RecvFromPeer(col_params_.instance.device_names[rf->recv_dev_idx],
-                          col_params_.instance.task_names[rf->recv_dev_idx],
-                          col_params_.task.is_local[rf->recv_dev_idx],
-                          recv_buf_key, device_, ctx_->op_device_context(),
-                          ctx_->output_alloc_attr(0), dst_tensor,
-                          device_locality_, rf->subdiv_idx, done);
+  col_ctx_->col_exec->RecvFromPeer(
+      col_params_->instance.device_names[rf->recv_dev_idx],
+      col_params_->instance.task_names[rf->recv_dev_idx],
+      col_params_->task.is_local[rf->recv_dev_idx], recv_buf_key,
+      col_ctx_->device, col_ctx_->op_ctx->op_device_context(),
+      col_ctx_->op_ctx->output_alloc_attr(0), dst_tensor,
+      col_ctx_->device_locality, rf->subdiv_idx, done);
 }
 
 string RingReducer::FieldState() {
-  string s = strings::StrCat("RingReducer ",
-                             strings::Hex(reinterpret_cast<uint64>(this)),
-                             " exec ", exec_key_, " step_id=", step_id_,
-                             " state of all ", rfv_.size(), " fields:");
+  string s = strings::StrCat(
+      "RingReducer ", strings::Hex(reinterpret_cast<uint64>(this)), " exec ",
+      col_ctx_->exec_key, " step_id=", col_ctx_->step_id, " state of all ",
+      rfv_.size(), " fields:");
   for (int i = 0; i < rfv_.size(); ++i) {
     s.append("\n");
     s.append(rfv_[i].DebugString());
@@ -468,8 +550,9 @@ bool RingReducer::RunAsyncParts() {
           --recv_pending_count;
           if (!rf->second_pass) {
             rf->action = RF_REDUCE;
-            Status s = ComputeBinOp(device_, col_params_.merge_op.get(),
-                                    &rf->chunk, &rf->tmp_chunk);
+            Status s =
+                ComputeBinOp(col_ctx_->device, col_params_->merge_op.get(),
+                             &rf->chunk, &rf->tmp_chunk);
             if (!s.ok()) {
               aborted = true;
               StartAbort(s);
@@ -479,11 +562,12 @@ bool RingReducer::RunAsyncParts() {
           }
           break;
         case RF_REDUCE:
-          if (!rf->second_pass && col_params_.final_op.get() && rf->is_final) {
+          if (!rf->second_pass && col_params_->final_op.get() && rf->is_final) {
             rf->action = RF_FINALIZE;
             group_size_tensor_ready_.WaitForNotification();
-            Status s = ComputeBinOp(device_, col_params_.final_op.get(),
-                                    &rf->chunk, &group_size_tensor_);
+            Status s =
+                ComputeBinOp(col_ctx_->device, col_params_->final_op.get(),
+                             &rf->chunk, &group_size_tensor_);
             if (!s.ok()) {
               aborted = true;
               StartAbort(s);
@@ -552,9 +636,11 @@ bool RingReducer::RunAsyncParts() {
   CHECK_EQ(send_pending_count, 0);
   CHECK_EQ(recv_pending_count, 0);
 
-  VLOG(2) << this << " rank=" << rank_ << " finish;"
+  VLOG(2) << this << " device=" << col_ctx_->device_name << " finish;"
           << " final value " << TensorDebugString(ca_->Value());
   return !aborted;
 }
+
+REGISTER_COLLECTIVE(RingReduce, RingReducer);
 
 }  // namespace tensorflow

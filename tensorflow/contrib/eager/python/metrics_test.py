@@ -46,6 +46,18 @@ class MetricsTest(test.TestCase):
     self.assertEqual(dtypes.float64, m.dtype)
     self.assertEqual(dtypes.float64, m.result().dtype)
 
+  def testSummaryArg(self):
+    m = metrics.Mean()
+    m([1, 10, 100])
+    m(1000)
+    m([10000.0, 100000.0])
+    self.assertEqual(111111.0/6, m.result(write_summary=True).numpy())
+    self.assertEqual(111111.0/6, m.result(write_summary=False).numpy())
+    with self.assertRaises(ValueError):
+      m.result(write_summary=5)
+    with self.assertRaises(ValueError):
+      m.result(write_summary=[True])
+
   def testVariableCollections(self):
     with context.graph_mode(), ops.Graph().as_default():
       m = metrics.Mean()
@@ -92,6 +104,16 @@ class MetricsTest(test.TestCase):
     events = summary_test_util.events_from_logdir(logdir)
     self.assertEqual(len(events), 2)
     self.assertEqual(events[1].summary.value[0].simple_value, 37.0)
+
+    # Get result without saving the summary.
+    logdir = tempfile.mkdtemp()
+    with summary_ops.create_file_writer(
+        logdir, max_queue=0,
+        name="t0").as_default(), summary_ops.always_record_summaries():
+      m.result(write_summary=False)  # As a side-effect will write summaries.
+      # events_from_logdir(_) asserts the directory exists.
+    events = summary_test_util.events_from_logdir(logdir)
+    self.assertEqual(len(events), 1)
 
   def testWeightedMean(self):
     m = metrics.Mean()

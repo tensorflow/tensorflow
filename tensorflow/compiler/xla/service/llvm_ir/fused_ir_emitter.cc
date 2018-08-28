@@ -98,7 +98,7 @@ Status FusedIrEmitter::HandleGetTupleElement(
     return Unimplemented(
         "GetTupleElement fusion currently only supports"
         " parameter operands, but found operand: %s",
-        operand->name().c_str());
+        operand->name());
   }
   // Emit code to lookup tuple element pointer, and store it in 'gte_values_'.
   llvm::Value* tuple_element_ptr = llvm_ir::EmitGetTupleElement(

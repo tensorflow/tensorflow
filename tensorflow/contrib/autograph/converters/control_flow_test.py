@@ -48,6 +48,24 @@ class ControlFlowTest(converter_testing.TestCase):
 
     self.assertTransformedResult(test_fn, constant_op.constant(5), (10, 5, 5))
 
+  def test_while_nested(self):
+
+    def test_fn(n):
+      i = 0
+      j = 0
+      s = 0
+      while i < n:
+        while j < i:
+          j += 3
+        u = i + j  # 'u' is not defined within the inner loop
+        s += u
+        i += 1
+        j = 0
+      return s, i, j, n
+
+    self.assertTransformedResult(test_fn, constant_op.constant(5),
+                                 (25, 5, 0, 5))
+
   def test_while_single_output(self):
 
     def test_fn(n):
@@ -217,5 +235,13 @@ class ControlFlowTest(converter_testing.TestCase):
     with self.assertRaises(transformer.AutographParseError):
       control_flow.transform(node, ctx)
 
+  def test_for_tuple_unpacking(self):
+    def test_fn(x_list):
+      z = tf.constant(0)  # pylint:disable=undefined-variable
+      for i, x in enumerate(x_list):
+        z = z + x + i
+      return z
+
+    self.assertTransformedResult(test_fn, [3, 3], 7)
 if __name__ == '__main__':
   test.main()

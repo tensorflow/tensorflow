@@ -31,30 +31,9 @@ class HloDomainIsolator::RunContext {
   StatusOr<bool> Run();
 
  private:
-  // Inserts a kDomain instruction between operand and instruction in case
-  // the attribute (ie, sharding) values change between root and instruction.
-  // Returns the newly inserted kDomain instruction, or nullptr if no kDomain
-  // instruction was necessary.
-  StatusOr<HloInstruction*> CreateDomain(HloInstruction* instruction,
-                                         HloInstruction* root,
-                                         HloInstruction* operand);
-
   HloModule* module_;
   HloDomainIsolator* isolator_;
 };
-
-StatusOr<HloInstruction*> HloDomainIsolator::RunContext::CreateDomain(
-    HloInstruction* instruction, HloInstruction* root,
-    HloInstruction* operand) {
-  HloInstruction* domain = nullptr;
-  std::unique_ptr<HloInstruction> domain_instruction =
-      isolator_->creator_(instruction, root, operand);
-  if (domain_instruction != nullptr) {
-    domain = operand->parent()->AddInstruction(std::move(domain_instruction));
-    TF_RETURN_IF_ERROR(operand->ReplaceUseWith(instruction, domain));
-  }
-  return domain;
-}
 
 StatusOr<bool> HloDomainIsolator::RunContext::Run() {
   hlo_graph_dumper::MaybeDumpHloModule(*module_, "Before Domain Isolator");
@@ -76,10 +55,11 @@ StatusOr<bool> HloDomainIsolator::RunContext::Run() {
           root = root->mutable_operand(0);
         }
         // Check whether a kDomain is necessary between instruction and operand.
-        TF_ASSIGN_OR_RETURN(HloInstruction * domain,
-                            CreateDomain(instruction, root, operand));
+        HloInstruction* domain =
+            isolator_->creator_(instruction, root, operand);
         if (domain != nullptr) {
           VLOG(4) << "New domain: " << domain->ToString();
+          TF_RETURN_IF_ERROR(operand->ReplaceUseWith(instruction, domain));
           ++added_domains;
         }
       }

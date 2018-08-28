@@ -66,8 +66,7 @@ void RnnBatchStep(const float* input_ptr_batch, const int8_t* input_weights_ptr,
 //  - n_input: the input size,
 //  - n_output: the output size.
 //
-// The pointers to the cell and output state and the output are updated. Unless
-// projection is specified output and output state contain the same data.
+// The pointers to the cell and output state and the output are updated.
 //
 // The pointers with the suffix "_batch" point to data aligned in batch_major
 // order, and each step processes batch_size many inputs from input_ptr_batch,
@@ -77,6 +76,31 @@ void LstmStep(
     const float* input_to_forget_weights_ptr,
     const float* input_to_cell_weights_ptr,
     const float* input_to_output_weights_ptr,
+    const float* recurrent_to_input_weights_ptr,
+    const float* recurrent_to_forget_weights_ptr,
+    const float* recurrent_to_cell_weights_ptr,
+    const float* recurrent_to_output_weights_ptr,
+    const float* cell_to_input_weights_ptr,
+    const float* cell_to_forget_weights_ptr,
+    const float* cell_to_output_weights_ptr, const float* input_gate_bias_ptr,
+    const float* forget_gate_bias_ptr, const float* cell_bias_ptr,
+    const float* output_gate_bias_ptr, const float* projection_weights_ptr,
+    const float* projection_bias_ptr, const TfLiteLSTMParams* params,
+    int n_batch, int n_cell, int n_input, int n_output, float* output_state_ptr,
+    float* cell_state_ptr, float* input_gate_scratch,
+    float* forget_gate_scratch, float* cell_scratch, float* output_gate_scratch,
+    float* output_ptr_batch);
+
+// Same as above but includes an auxiliary input with the corresponding weights.
+void LstmStepWithAuxInput(
+    const float* input_ptr_batch, const float* input_to_input_weights_ptr,
+    const float* input_to_forget_weights_ptr,
+    const float* input_to_cell_weights_ptr,
+    const float* input_to_output_weights_ptr, const float* aux_input_ptr_batch,
+    const float* aux_input_to_input_weights_ptr,
+    const float* aux_input_to_forget_weights_ptr,
+    const float* aux_input_to_cell_weights_ptr,
+    const float* aux_input_to_output_weights_ptr,
     const float* recurrent_to_input_weights_ptr,
     const float* recurrent_to_forget_weights_ptr,
     const float* recurrent_to_cell_weights_ptr,
@@ -174,6 +198,46 @@ void LstmStep(
     int8_t* quantized_input_ptr_batch, int8_t* quantized_output_state_ptr,
     int8_t* quantized_cell_state_ptr, float* output_state_ptr,
     float* cell_state_ptr, float* output_ptr_batch);
+
+void LstmStepWithAuxInput(
+    const float* input_ptr_batch, const int8_t* input_to_input_weights_ptr,
+    float input_to_input_weights_scale,
+    const int8_t* input_to_forget_weights_ptr,
+    float input_to_forget_weights_scale,
+    const int8_t* input_to_cell_weights_ptr, float input_to_cell_weights_scale,
+    const int8_t* input_to_output_weights_ptr,
+    float input_to_output_weights_scale, const float* aux_input_ptr_batch,
+    const int8_t* aux_input_to_input_weights_ptr,
+    float aux_input_to_input_weights_scale,
+    const int8_t* aux_input_to_forget_weights_ptr,
+    float aux_input_to_forget_weights_scale,
+    const int8_t* aux_input_to_cell_weights_ptr,
+    float aux_input_to_cell_weights_scale,
+    const int8_t* aux_input_to_output_weights_ptr,
+    float aux_input_to_output_weights_scale,
+    const int8_t* recurrent_to_input_weights_ptr,
+    float recurrent_to_input_weights_scale,
+    const int8_t* recurrent_to_forget_weights_ptr,
+    float recurrent_to_forget_weights_scale,
+    const int8_t* recurrent_to_cell_weights_ptr,
+    float recurrent_to_cell_weights_scale,
+    const int8_t* recurrent_to_output_weights_ptr,
+    float recurrent_to_output_weights_scale,
+    const int8_t* cell_to_input_weights_ptr, float cell_to_input_weights_scale,
+    const int8_t* cell_to_forget_weights_ptr,
+    float cell_to_forget_weights_scale,
+    const int8_t* cell_to_output_weights_ptr,
+    float cell_to_output_weights_scale, const float* input_gate_bias_ptr,
+    const float* forget_gate_bias_ptr, const float* cell_bias_ptr,
+    const float* output_gate_bias_ptr, const int8_t* projection_weights_ptr,
+    float projection_weights_scale, const float* projection_bias_ptr,
+    const TfLiteLSTMParams* params, int n_batch, int n_cell, int n_input,
+    int n_output, float* input_gate_scratch, float* forget_gate_scratch,
+    float* cell_scratch, float* output_gate_scratch, float* scaling_factors,
+    float* product_scaling_factors, float* recovered_cell_weights,
+    int8_t* quantized_input_ptr_batch, int8_t* quantized_aux_input_ptr_batch,
+    int8_t* quantized_output_state_ptr, int8_t* quantized_cell_state_ptr,
+    float* output_state_ptr, float* cell_state_ptr, float* output_ptr_batch);
 
 }  // namespace kernel_utils
 }  // namespace tflite

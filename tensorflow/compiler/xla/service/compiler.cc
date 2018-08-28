@@ -101,7 +101,7 @@ Compiler::GetPlatformCompilers() {
     return NotFound(
         "could not find registered compiler for platform %s -- check "
         "target linkage",
-        platform->Name().c_str());
+        platform->Name());
   }
 
   // And then we invoke the factory, placing the result into the mapping.

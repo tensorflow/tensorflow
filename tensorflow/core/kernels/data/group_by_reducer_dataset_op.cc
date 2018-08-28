@@ -109,11 +109,10 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx->flib_def(), key_func().name()));
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx->flib_def(), init_func().name()));
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx->flib_def(), reduce_func().name()));
-      TF_RETURN_IF_ERROR(
-          b->AddFunction(ctx->flib_def(), finalize_func().name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, key_func().name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, init_func().name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, reduce_func().name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, finalize_func().name()));
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 

@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -130,7 +130,7 @@ class Backend {
 
   // Return a string identifier for the given device, eg: "GPU:3".
   string device_name(int device_ordinal) const {
-    return tensorflow::strings::StrCat(platform_->Name(), ":", device_ordinal);
+    return absl::StrCat(platform_->Name(), ":", device_ordinal);
   }
 
   // Returns true if the devices with the given ordinals are equivalent from

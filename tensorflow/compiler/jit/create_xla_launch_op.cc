@@ -126,7 +126,8 @@ Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
   const DataTypeVector& arg_types = (*fbody)->arg_types;
   std::vector<bool> const_args(arg_types.size());
   // If we can't analyze the const args. Bail out.
-  TF_RETURN_IF_ERROR(BackwardsConstAnalysis(*((*fbody)->graph), &const_args));
+  TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
+      *((*fbody)->graph), &const_args, /*compile_time_const_nodes=*/nullptr));
 
   for (int i = 0; i < const_args.size(); ++i) {
     if (const_args[i]) {
@@ -208,8 +209,13 @@ Status CreateXlaLaunchOp(FunctionLibraryRuntime* flr, const NodeDef& node_def,
   // device memory.
 
   // XlaLaunch kernel keeps all outputs (including constants, which it copies),
-  // in device memory
+  // in device memory except for resources.
   MemoryTypeVector output_memory_types(fbody->ret_types.size(), DEVICE_MEMORY);
+  for (int i = 0; i < fbody->ret_types.size(); ++i) {
+    if (fbody->ret_types[i] == DT_RESOURCE) {
+      output_memory_types[i] = HOST_MEMORY;
+    }
+  }
 
   // Create the kernel.
   NameAttrList function;

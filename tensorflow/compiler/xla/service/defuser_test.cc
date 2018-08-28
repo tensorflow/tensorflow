@@ -26,6 +26,11 @@ namespace xla {
 namespace {
 
 class DefuserTest : public HloVerifiedTestBase {
+ public:
+  DefuserTest()
+      : HloVerifiedTestBase(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false) {}
+
  protected:
   // Returns the number of fusion instructions in the module.
   int FusionCount() {

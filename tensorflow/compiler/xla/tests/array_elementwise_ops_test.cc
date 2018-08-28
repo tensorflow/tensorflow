@@ -296,6 +296,22 @@ XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantS64s) {
   ComputeAndCompareR1<int64>(&b, expected, {lhs_data.get(), rhs_data.get()});
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, CmpTwoConstantU64s) {
+  XlaBuilder b(TestName());
+
+  std::vector<uint64> lhs{static_cast<uint64>(0x8000000000000000ULL)};
+  std::unique_ptr<Literal> lhs_literal = LiteralUtil::CreateR1<uint64>({lhs});
+  auto lhs_param = Parameter(&b, 0, lhs_literal->shape(), "lhs_param");
+
+  std::vector<uint64> rhs{static_cast<uint64>(0x7FFFFFFFFFFFFFFFULL)};
+  std::unique_ptr<Literal> rhs_literal = LiteralUtil::CreateR1<uint64>({rhs});
+  auto rhs_param = Parameter(&b, 1, rhs_literal->shape(), "rhs_param");
+
+  Lt(lhs_param, rhs_param);
+
+  ComputeAndCompare(&b, {std::move(*lhs_literal), std::move(*rhs_literal)});
+}
+
 TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
   const int count = GetParam();
   XlaBuilder builder(TestName());
@@ -498,8 +514,7 @@ XLA_TEST_F(IntegerDivideOpTest, DivS32s) {
   TestDivRem<int32>(dividends, divisors, quotients, remainders);
 }
 
-XLA_TEST_F(IntegerDivideOpTest,
-           DISABLED_ON_CPU(DISABLED_ON_GPU(SignedOverflow))) {
+XLA_TEST_F(IntegerDivideOpTest, SignedOverflow) {
   std::vector<int32> dividends = {5, INT32_MIN}, divisors = {0, -1},
                      quotients = {-1, INT32_MIN}, remainders = {5, 0};
 
@@ -529,8 +544,7 @@ XLA_TEST_F(IntegerDivideOpTest, DivU32s) {
   TestDivRem<uint32>(dividends, divisors, quotients, remainders);
 }
 
-XLA_TEST_F(IntegerDivideOpTest,
-           DISABLED_ON_CPU(DISABLED_ON_GPU(UnsignedOverflow))) {
+XLA_TEST_F(IntegerDivideOpTest, UnsignedOverflow) {
   std::vector<int32> dividends = {5}, divisors = {0}, quotients = {-1},
                      remainders = {5};
 

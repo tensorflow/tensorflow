@@ -106,6 +106,7 @@ class XlaOpKernelContext {
   // expression cannot be evaluated, e.g., because it depends on unbound
   // parameters, returns a non-OK status.
   Status ConstantInput(int index, xla::Literal* constant_literal);
+  Status ConstantInput(StringPiece name, xla::Literal* constant_literal);
 
   // Evaluates input `index`, reshapes it to `new_shape` if new_shape !=
   // InputShape(index), and stores it in `*constant_literal`. If the input
@@ -117,15 +118,22 @@ class XlaOpKernelContext {
 
   // Converts a constant scalar int32 or int64 tensor into an int64.
   Status ConstantInputAsIntScalar(int index, int64* out);
+  Status ConstantInputAsIntScalar(StringPiece name, int64* out);
 
   // Converts a constant scalar float32 or float64 tensor into a float64.
   Status ConstantInputAsFloatScalar(int index, double* out);
 
   // Converts a constant 1D int32 or int64 tensor into a vector of int64s.
   Status ConstantInputAsIntVector(int index, std::vector<int64>* out);
+  Status ConstantInputAsIntVector(StringPiece name, std::vector<int64>* out);
+
+  // Reshapes and converts a constant int32 or int64 tensor into a vector of
+  // int64s.
+  Status ConstantInputReshapedToIntVector(int index, std::vector<int64>* out);
 
   // Converts a constant int32 or int64 Tensor into an xla int64 Literal.
   Status ConstantInputAsInt64Literal(int index, xla::Literal* out);
+  Status ConstantInputAsInt64Literal(StringPiece name, xla::Literal* out);
 
   // Converts a constant 1D int32 or int64 tensor into a TensorShape.
   Status ConstantInputAsShape(int index, TensorShape* shape);

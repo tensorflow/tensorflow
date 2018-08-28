@@ -25,6 +25,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -37,13 +40,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
-using ::tensorflow::strings::StrCat;
+using absl::StrCat;
 
 std::unique_ptr<HloComputation> HloComputation::Builder::Build(
     HloInstruction* root_instruction) {
@@ -136,7 +137,7 @@ string RenameFusionParameter(const string& original_name, int64 new_param_no) {
   }
   string after_param = original_name.substr(index + param_underscore.size());
   int64 numeric_suffix;
-  if (tensorflow::strings::safe_strto64(after_param, &numeric_suffix)) {
+  if (absl::SimpleAtoi(after_param, &numeric_suffix)) {
     return StrCat(original_name.substr(0, index + param_underscore.size()),
                   new_param_no);
   }
@@ -318,12 +319,12 @@ void ComputeComputationPostOrder(
   }
 }
 
-enum State { kVisiting, kVisited };
+}  // namespace
 
-void ComputeInstructionPostOrder(
-    std::map<int64, std::vector<HloInstruction*>> channel_dependency_map,
+void HloComputation::ComputeInstructionPostOrder(
+    const HloComputation::ChannelDependencyMap& channel_dependency_map,
     std::vector<HloInstruction*>* post_order, HloInstruction* root,
-    tensorflow::gtl::FlatMap<HloInstruction*, State>* visited) {
+    tensorflow::gtl::FlatMap<HloInstruction*, VisitState>* visited) const {
   std::vector<HloInstruction*> dfs_stack;
   dfs_stack.push_back(root);
   while (!dfs_stack.empty()) {
@@ -361,20 +362,22 @@ void ComputeInstructionPostOrder(
     // dependencies.
     switch (current->opcode()) {
       case HloOpcode::kRecvDone: {
-        const auto& dependencies =
-            channel_dependency_map[current->channel_id()];
-        for (HloInstruction* op : dependencies) {
-          dfs_stack.emplace_back(op);
+        auto it = channel_dependency_map.find(current->channel_id());
+        if (it != channel_dependency_map.end()) {
+          for (HloInstruction* op : it->second) {
+            dfs_stack.emplace_back(op);
+          }
         }
         break;
       }
       case HloOpcode::kCrossReplicaSum: {
         auto all_reduce_id = current->all_reduce_id();
         if (all_reduce_id) {
-          const auto& dependencies =
-              channel_dependency_map[all_reduce_id.value()];
-          for (HloInstruction* op : dependencies) {
-            dfs_stack.emplace_back(op);
+          auto it = channel_dependency_map.find(all_reduce_id.value());
+          if (it != channel_dependency_map.end()) {
+            for (HloInstruction* op : it->second) {
+              dfs_stack.emplace_back(op);
+            }
           }
         }
         break;
@@ -385,11 +388,9 @@ void ComputeInstructionPostOrder(
   }
 }
 
-}  // namespace
-
-std::map<int64, std::vector<HloInstruction*>>
+HloComputation::ChannelDependencyMap
 HloComputation::ComputeChannelDependencies() const {
-  std::map<int64, std::vector<HloInstruction*>> channel_dependency_map;
+  ChannelDependencyMap channel_dependency_map;
   for (const auto& instruction : instructions_) {
     switch (instruction->opcode()) {
       case HloOpcode::kSend: {
@@ -420,7 +421,7 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   std::vector<HloInstruction*> post_order;
   post_order.reserve(instruction_count());
   std::vector<HloInstruction*> trace_instructions;
-  tensorflow::gtl::FlatMap<HloInstruction*, State> visited;
+  tensorflow::gtl::FlatMap<HloInstruction*, VisitState> visited;
   for (auto& instruction : instructions_) {
     if (instruction->opcode() == HloOpcode::kTrace) {
       // Trace instructions aren't handled by the DFS visitor. Add trace
@@ -624,16 +625,15 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
   if (instruction->parent() != this) {
     return FailedPrecondition(
         "Can't deep copy instruction %s: instruction is not in computation %s",
-        instruction->name().c_str(), name().c_str());
+        instruction->name(), name());
   }
   if (indices_to_copy != nullptr &&
       !ShapeUtil::Compatible(instruction->shape(), indices_to_copy->shape())) {
     return FailedPrecondition(
         "Can't deep copy instruction %s: given shape tree of indices to copy "
         "has incompatible shapes: %s vs. %s",
-        instruction->name().c_str(),
-        ShapeUtil::HumanString(instruction->shape()).c_str(),
-        ShapeUtil::HumanString(indices_to_copy->shape()).c_str());
+        instruction->name(), ShapeUtil::HumanString(instruction->shape()),
+        ShapeUtil::HumanString(indices_to_copy->shape()));
   }
 
   ShapeIndex index;
@@ -663,7 +663,7 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyInstructionWithCustomCopier(
   if (instruction->parent() != this) {
     return FailedPrecondition(
         "Can't deep copy instruction %s: instruction is not in computation %s",
-        instruction->name().c_str(), name().c_str());
+        instruction->name(), name());
   }
   ShapeIndex index;
   return DeepCopyHelper(instruction, &index, copy_leaf);
@@ -682,6 +682,9 @@ ProgramShape HloComputation::ComputeProgramShape() const {
 }
 
 bool HloComputation::operator==(const HloComputation& other) const {
+  if (this == &other) {
+    return true;
+  }
   std::set<std::pair<const HloInstruction*, const HloInstruction*>> visited;
   std::function<bool(const HloInstruction*, const HloInstruction*)> eq =
       [&visited, &eq](const HloInstruction* a, const HloInstruction* b) {
@@ -743,16 +746,19 @@ std::unique_ptr<HloReachabilityMap> HloComputation::ComputeReachability()
 
     switch (hlo->opcode()) {
       case HloOpcode::kRecvDone: {
-        const auto& dependencies = channel_dependency_map[hlo->channel_id()];
-        absl::c_copy(dependencies, std::back_inserter(inputs));
+        auto it = channel_dependency_map.find(hlo->channel_id());
+        if (it != channel_dependency_map.end()) {
+          absl::c_copy(it->second, std::back_inserter(inputs));
+        }
         break;
       }
       case HloOpcode::kCrossReplicaSum: {
         auto all_reduce_id = hlo->all_reduce_id();
         if (all_reduce_id) {
-          const auto& dependencies =
-              channel_dependency_map[all_reduce_id.value()];
-          absl::c_copy(dependencies, std::back_inserter(inputs));
+          auto it = channel_dependency_map.find(all_reduce_id.value());
+          if (it != channel_dependency_map.end()) {
+            absl::c_copy(it->second, std::back_inserter(inputs));
+          }
         }
         break;
       }
@@ -802,11 +808,10 @@ std::vector<HloInstruction*> HloComputation::CollectUnreachableRoots() const {
     }
   }
   VLOG(3) << "Unreachable roots:"
-          << tensorflow::str_util::Join(
-                 unreachable_roots, "\n\t",
-                 [](string* out, const HloInstruction* hlo) {
-                   tensorflow::strings::StrAppend(out, hlo->ToString());
-                 });
+          << absl::StrJoin(unreachable_roots, "\n\t",
+                           [](string* out, const HloInstruction* hlo) {
+                             absl::StrAppend(out, hlo->ToString());
+                           });
   return unreachable_roots;
 }
 
@@ -977,8 +982,7 @@ void HloComputation::UniquifyName(NameUniquer* name_uniquer) {
   name_ = name_uniquer->GetUniqueName(name_);
 }
 
-HloInstruction* HloComputation::GetInstructionWithName(
-    tensorflow::StringPiece name) {
+HloInstruction* HloComputation::GetInstructionWithName(absl::string_view name) {
   auto instructions_in_computation = instructions();
   auto it = absl::c_find_if(
       instructions_in_computation,

@@ -570,6 +570,12 @@ message ReplicaGroup {
   repeated int64 replica_ids = 1;
 }
 
+// Describes the source target pair in the collective permute op.
+message SourceTarget {
+  int64 source = 1;
+  int64 target = 2;
+}
+
 // Used to indicate the precision configuration. It has backend specific
 // meaning.
 message PrecisionConfigProto {

@@ -126,7 +126,7 @@ bool ImplementedAsLibraryCall(const HloInstruction& hlo);
 bool IsReductionToVector(const HloInstruction& reduce);
 
 // Emits call to "vprintf" with given format and arguments.
-llvm::Value* EmitPrintf(tensorflow::StringPiece fmt,
+llvm::Value* EmitPrintf(absl::string_view fmt,
                         tensorflow::gtl::ArraySlice<llvm::Value*> arguments,
                         llvm::IRBuilder<>* builder);
 

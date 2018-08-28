@@ -131,12 +131,12 @@ class ShapeIndexView {
   }
   ShapeIndexView ConsumeFront() const {
     ShapeIndexView result = *this;
-    result.indices_.pop_front();
+    result.indices_.remove_prefix(1);
     return result;
   }
   ShapeIndexView ConsumeBack() const {
     ShapeIndexView result = *this;
-    result.indices_.pop_back();
+    result.indices_.remove_suffix(1);
     return result;
   }
   ShapeIndex ToShapeIndex() const { return ShapeIndex(begin(), end()); }
@@ -228,7 +228,7 @@ class ShapeUtil {
 
   // Parses a ShapeUtil::HumanString-format shape string back into a shape
   // object.
-  static StatusOr<Shape> ParseShapeString(tensorflow::StringPiece s);
+  static StatusOr<Shape> ParseShapeString(absl::string_view s);
 
   // Returns whether the LHS and RHS shapes have the same dimensions; note: does
   // not check element type.

@@ -229,6 +229,13 @@ class RNNTest(test.TestCase):
     self.assertAllEqual([[[1, 1], [2, 2], [3, 3], [4, 4]]], outputs[1])
     self.assertAllEqual(4, state)
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testEagerMemory(self):
+    with context.eager_mode():
+      cell = TensorArrayStateRNNCell()
+      inputs = np.array([[[1], [2], [3], [4]]], dtype=np.float32)
+      rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32, sequence_length=[4])
+
   @test_util.run_in_graph_and_eager_modes
   def testTensorArrayStateIsAccepted(self):
     cell = TensorArrayStateRNNCell()
@@ -441,11 +448,11 @@ class RNNTest(test.TestCase):
           cell, inputs, dtype=dtypes.float32)
       self.assertEqual(outputs.shape.as_list(), [None, timestep, output_shape])
       self.assertEqual(len(state), 4)
-      self.assertEqual(state[0].shape.as_list(), [None, output_shape])
-      self.assertEqual(state[1].shape.as_list(), [None, output_shape])
-      self.assertEqual(state[2].shape.as_list(), [None, 2 * output_shape])
-      self.assertEqual(state[3].shape.as_list(), [None, 2 * output_shape])
-      loss = losses.softmax_cross_entropy(predict, state[0])
+      self.assertEqual(state[0].shape.as_list(), [None, 2 * output_shape])
+      self.assertEqual(state[1].shape.as_list(), [None, 2 * output_shape])
+      self.assertEqual(state[2].shape.as_list(), [None, output_shape])
+      self.assertEqual(state[3].shape.as_list(), [None, output_shape])
+      loss = losses.softmax_cross_entropy(predict, state[2])
       train_op = training.GradientDescentOptimizer(0.001).minimize(loss)
 
       sess.run([variables_lib.global_variables_initializer()])

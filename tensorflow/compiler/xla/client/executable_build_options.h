@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace xla {
 
@@ -62,19 +62,19 @@ class ExecutableBuildOptions {
   // If set, specifies a dirpath to dump the end-of-optimization-pipeline HLO
   // protobuf to (as in DebugOptions).
   ExecutableBuildOptions& set_dump_optimized_hlo_proto_to(
-      tensorflow::StringPiece dirpath);
+      absl::string_view dirpath);
   const absl::optional<string>& dump_optimized_hlo_proto_to() const;
 
   // If set, specifies a dirpath to dump the start-of-optimization-pipeline HLO
   // protobuf to (as in DebugOptions).
   ExecutableBuildOptions& set_dump_unoptimized_hlo_proto_to(
-      tensorflow::StringPiece dirpath);
+      absl::string_view dirpath);
   const absl::optional<string>& dump_unoptimized_hlo_proto_to() const;
 
   // If set, specifies a dirpath to dump the per-pass-in-pipeline HLO protobufs
   // to (as in DebugOptions).
   ExecutableBuildOptions& set_dump_per_pass_hlo_proto_to(
-      tensorflow::StringPiece dirpath);
+      absl::string_view dirpath);
   const absl::optional<string>& dump_per_pass_hlo_proto_to() const;
 
   // If true, specifies that we should record an HLO profile during execution
@@ -83,7 +83,7 @@ class ExecutableBuildOptions {
   ExecutableBuildOptions& set_hlo_profile(bool enabled);
   absl::optional<bool> hlo_profile() const;
 
-  void add_disabled_hlo_pass(tensorflow::StringPiece pass_name) {
+  void add_disabled_hlo_pass(absl::string_view pass_name) {
     disabled_hlo_passes_.push_back(std::string(pass_name));
   }
   const tensorflow::gtl::ArraySlice<std::string> disabled_hlo_passes() const {

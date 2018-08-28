@@ -85,12 +85,14 @@ class HloTestBase : public ::testing::Test {
   // automatically finds another supported backend as the test backend. If the
   // interpreter is the only supported backend, it will be both the test backend
   // and the reference backend.
-  HloTestBase(bool allow_mixed_precision_in_hlo_verifier = true);
+  HloTestBase(bool verifier_layout_sensitive = false,
+              bool allow_mixed_precision_in_hlo_verifier = true);
 
   // If your test doesn't use interpreter as the reference backend, you can use
   // this constructor. Note that your test target is responsible for linking in
   // both needed backends.
   HloTestBase(se::Platform* test_platform, se::Platform* reference_platform,
+              bool verifier_layout_sensitive = false,
               bool allow_mixed_precision_in_hlo_verifier = true);
 
   ~HloTestBase() override {}
@@ -169,18 +171,18 @@ class HloTestBase : public ::testing::Test {
   // input. Module can be passed in directly, or parsed from an hlo_string,
   // or loaded from a file.
   ::testing::AssertionResult RunAndCompare(
-      const tensorflow::StringPiece hlo_string,
+      const absl::string_view hlo_string,
       const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
-  ::testing::AssertionResult Run(const tensorflow::StringPiece hlo_string)
+  ::testing::AssertionResult Run(const absl::string_view hlo_string)
       TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareFromFile(
       const string& filename, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareNoHloPasses(
-      const tensorflow::StringPiece hlo_string,
+      const absl::string_view hlo_string,
       const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
@@ -228,10 +230,8 @@ class HloTestBase : public ::testing::Test {
   //
   // This is useful for tests which create HLOs from a string and then want to
   // inspect a particular computation or instruction.
-  HloComputation* FindComputation(HloModule* module,
-                                  tensorflow::StringPiece name);
-  HloInstruction* FindInstruction(HloModule* module,
-                                  tensorflow::StringPiece name);
+  HloComputation* FindComputation(HloModule* module, absl::string_view name);
+  HloInstruction* FindInstruction(HloModule* module, absl::string_view name);
 
   // Return an HLO verifier constructed for the test backend.
   HloVerifier& verifier() const { return *hlo_verifier_; }

@@ -22,6 +22,11 @@ limitations under the License.
 namespace xla {
 namespace {
 class IndexedArrayAnalysisTest : public HloVerifiedTestBase {
+ public:
+  IndexedArrayAnalysisTest()
+      : HloVerifiedTestBase(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false) {}
+
  protected:
   void AssertArrayForRootExpressionIs(const string& hlo_text,
                                       const string& root_expression) {
@@ -634,9 +639,9 @@ ENTRY main {
 
   AssertArrayWithConstantsForRootExpressionIs(hlo_text, 1 + R"(
 (scalar-indexed-const (constant f32[3,4] f32[3,4] {
-  { 0.761594176, 0.964027584, 0.995054781, 0.999329329 },
-  { 0.761594176, 0.995054781, 0.964027584, 0.999329329 },
-  { 0.999329329, 0.995054781, 0.964027584, 0.761594176 }
+  { 0.761594, 0.964028, 0.995055, 0.999329 },
+  { 0.761594, 0.995055, 0.964028, 0.999329 },
+  { 0.999329, 0.995055, 0.964028, 0.761594 }
 }) %indices 0->[0]))");
 }
 

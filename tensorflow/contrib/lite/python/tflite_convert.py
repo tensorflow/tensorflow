@@ -312,7 +312,7 @@ def run_main(_):
             "quantization via \"dummy quantization\". (default None)"))
   parser.add_argument(
       "--quantize_weights",
-      type=bool,
+      action="store_true",
       help=("Store float weights as quantized weights followed by dequantize "
             "operations. Inference is still done in FLOAT, but reduces model "
             "size (at the cost of accuracy and latency)."))

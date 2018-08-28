@@ -22,6 +22,7 @@ from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import values
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.eager import context
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -94,11 +95,18 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
         cluster configurations.
       task_type: the current task type.
       task_id: the current task id.
+
+    Raises:
+      ValueError: if `cluster_spec` is given but `task_type` or `task_id` is
+        not.
     """
     super(ParameterServerStrategy, self).__init__()
     self._num_gpus_per_worker = num_gpus_per_worker
     if cluster_spec:
       cluster_spec = multi_worker_util.normalize_cluster_spec(cluster_spec)
+      if task_type is None or task_id is None:
+        raise ValueError("When `cluster_spec` is given, must also specify "
+                         "`task_type` and `task_id`.")
     self._cluster_spec = cluster_spec
 
     # We typically don't need to do all-reduce in this strategy.
@@ -233,8 +241,35 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
                          " for variable: " + kwargs["name"])
 
       def var_creator(*args, **kwargs):
+        # Record what collections this variable should be added to.
+        collections = kwargs.pop("collections", None)
+        if collections is None:
+          collections = [ops.GraphKeys.GLOBAL_VARIABLES]
+        kwargs["collections"] = []
+
+        # Create and wrap the variable.
         v = next_creator(*args, **kwargs)
-        return values.AggregatingVariable(v, aggregation)
+        wrapped = values.AggregatingVariable(v, aggregation)
+
+        # Add the wrapped variable to the requested collections.
+        # The handling of eager mode and the global step matches
+        # ResourceVariable._init_from_args().
+        if not context.executing_eagerly():
+          g = ops.get_default_graph()
+          # If "trainable" is True, next_creator() will add the contained
+          # variable to the TRAINABLE_VARIABLES collection, so we manually
+          # remove it and replace with the wrapper. We can't set "trainable"
+          # to False for next_creator() since that causes functions like
+          # implicit_gradients to skip those variables.
+          if kwargs.get("trainable", True):
+            collections.append(ops.GraphKeys.TRAINABLE_VARIABLES)
+            l = g.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES)
+            l.remove(v)
+          g.add_to_collections(collections, wrapped)
+        elif ops.GraphKeys.GLOBAL_STEP in collections:
+          ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, wrapped)
+
+        return wrapped
     else:
       var_creator = next_creator
 
@@ -345,6 +380,10 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
         cluster configurations.
       task_type: the current task type.
       task_id: the current task id.
+
+    Raises:
+      ValueError: if `cluster_spec` is given but `task_type` or `task_id` is
+        not.
     """
     del session_config
 
@@ -353,6 +392,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     if not self._cluster_spec and cluster_spec:
       self._cluster_spec = multi_worker_util.normalize_cluster_spec(
           cluster_spec)
+      if task_type is None or task_id is None:
+        raise ValueError("When `cluster_spec` is given, must also specify "
+                         "`task_type` and `task_id`.")
       self._initialize_devices(self._num_gpus_per_worker, self._cluster_spec,
                                task_type, task_id)
 

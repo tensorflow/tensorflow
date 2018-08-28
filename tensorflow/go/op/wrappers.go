@@ -23396,6 +23396,8 @@ func TensorListSetItem(scope *Scope, input_handle tf.Output, index tf.Output, it
 
 // Computes the matrix exponential of one or more square matrices:
 //
+// DEPRECATED at GraphDef version 27: Use Python implementation tf.linalg.matrix_exponential instead.
+//
 // \\(exp(A) = \sum_{n=0}^\infty A^n/n!\\)
 //
 // The exponential is computed using a combination of the scaling and squaring

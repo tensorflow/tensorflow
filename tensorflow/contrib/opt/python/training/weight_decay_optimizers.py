@@ -26,6 +26,7 @@ from tensorflow.python.training import adam
 from tensorflow.python.training import momentum as momentum_opt
 from tensorflow.python.training import optimizer
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.ops import array_ops
 
 
 class DecoupledWeightDecayExtension(object):
@@ -159,8 +160,8 @@ class DecoupledWeightDecayExtension(object):
 
   def _decay_weights_sparse_op(self, var, indices, scatter_add):
     if not self._decay_var_list or var in self._decay_var_list:
-      return scatter_add(var, indices, -self._weight_decay * var,
-                         self._use_locking)
+      update = -self._weight_decay * array_ops.gather(var, indices)
+      return scatter_add(var, indices, update, self._use_locking)
     return control_flow_ops.no_op()
 
   # Here, we overwrite the apply functions that the base optimizer calls.

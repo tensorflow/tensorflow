@@ -66,7 +66,6 @@ using mkldnn::reorder;
 typedef unsigned int uint;
 #endif
 
-
 namespace tensorflow {
 
 // The file contains a number of utility classes and functions used by MKL
@@ -644,6 +643,7 @@ class MklDnnShape {
       data_.map_[GetTensorDimIndex<2>(data_format, 'N')] = MklDnnDims::Dim_N;
     }
   }
+
 
   inline void SetTfDimOrder(const size_t dimension, memory::format format) {
     TensorFormat data_format = MklDnnDataFormatToTFDataFormat(format);
@@ -2059,16 +2059,20 @@ class FactoryKeyCreator {
   }
 };
 
-static inline memory::format get_desired_format(int channel) {
+
+static inline memory::format get_desired_format(int channel,
+                                                bool is_2d = true) {
   memory::format fmt_desired = memory::format::any;
 
-  if (port::TestCPUFeature(port::CPUFeature::AVX512F) && (channel % 16) == 0) {
-    fmt_desired = memory::format::nChw16c;
+  if (port::TestCPUFeature(port::CPUFeature::AVX512F)) {
+    fmt_desired = is_2d ? memory::format::nChw16c : memory::format::nCdhw16c;
   } else if (port::TestCPUFeature(port::CPUFeature::AVX2) &&
              (channel % 8) == 0) {
-    fmt_desired = memory::format::nChw8c;
+    fmt_desired = is_2d
+                      ? memory::format::nChw8c
+                      : memory::format::ncdhw;  //not support avx2 for 3d yet.
   } else {
-    fmt_desired = memory::format::nchw;
+    fmt_desired = is_2d ? memory::format::nchw : memory::format::ncdhw;
   }
   return fmt_desired;
 }

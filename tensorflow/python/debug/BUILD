@@ -576,7 +576,6 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
-        "nomac",
         "oss_serial",
     ],
     deps = [
@@ -1047,7 +1046,6 @@ cuda_py_test(
     tags = [
         "no_oss",  # Incompatible with bazel_pip.
         "no_windows",
-        "nomac",  # TODO(cais): Install of futures and grpcio on all macs.
         "notsan",
     ],
 )

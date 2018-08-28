@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 
 #include <numeric>
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -23,8 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 namespace {
@@ -849,13 +849,13 @@ TEST(ShapeUtilTest, PermuteDimensionsLayout) {
   std::iota(layout.begin(), layout.end(), 0);
   do {
     Shape s = ShapeUtil::MakeShapeWithLayout(F32, {10, 100, 1000}, layout);
-    SCOPED_TRACE(tensorflow::strings::StrCat("s=", ShapeUtil::HumanString(s)));
+    SCOPED_TRACE(absl::StrCat("s=", ShapeUtil::HumanString(s)));
 
     std::vector<int64> permutation(3);
     std::iota(permutation.begin(), permutation.end(), 0);
     do {
-      SCOPED_TRACE(tensorflow::strings::StrCat(
-          "permutation=", tensorflow::str_util::Join(permutation, ",")));
+      SCOPED_TRACE(
+          absl::StrCat("permutation=", absl::StrJoin(permutation, ",")));
 
       // TransposeIsBitcast takes the inverse of the permutation that
       // PermuteDimensions takes.

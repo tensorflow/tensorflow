@@ -35,5 +35,6 @@ py_library(
         "//tensorflow/contrib/distribute/python:tpu_strategy",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
+        "//tensorflow/python/distribute:distribute_config",
     ],
 )

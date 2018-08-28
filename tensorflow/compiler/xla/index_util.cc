@@ -18,10 +18,10 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -36,7 +36,7 @@ namespace xla {
     DCHECK_GE(multi_index[i], 0);
     DCHECK_LT(multi_index[i], shape.dimensions(i))
         << "indexing beyond extent in dimension " << i << ":"
-        << "\n\tindex: " << tensorflow::str_util::Join(multi_index, ",")
+        << "\n\tindex: " << absl::StrJoin(multi_index, ",")
         << "\n\tshape: " << ShapeUtil::HumanString(shape);
   }
 

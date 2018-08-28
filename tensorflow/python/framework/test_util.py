@@ -547,7 +547,7 @@ def assert_no_new_tensors(f):
         f(self, **kwargs)
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
-    context.get_default_context()._clear_caches()  # pylint: disable=protected-access
+    context.context()._clear_caches()  # pylint: disable=protected-access
     gc.collect()
     tensors_after = [
         obj for obj in gc.get_objects()

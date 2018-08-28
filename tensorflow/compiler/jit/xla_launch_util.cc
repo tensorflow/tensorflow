@@ -271,31 +271,36 @@ Status XlaComputationLaunchContext::PopulateOutputs(
       }
     } else {
       const TensorShape& shape = kernel->outputs[i].shape;
-      VLOG(2) << "Retval " << i << " shape " << shape.DebugString();
-
-      se::DeviceMemoryBase buffer = output.buffer({output_num});
-      if (allocate_xla_tensors_) {
-        Tensor* output_tensor;
-        TF_RETURN_IF_ERROR(ctx->allocate_output(i, shape, &output_tensor));
-        XlaTensor* xla_tensor = XlaTensor::FromTensor(output_tensor);
-        if (xla_tensor) {
-          xla_tensor->set_shaped_buffer(ScopedShapedBuffer(
-              ExtractSubShapedBuffer(&output, output_num, xla_allocator_)));
-          if (use_multiple_streams_) {
-            xla_tensor->SetDefinedOn(stream, definition_event);
+      const DataType& type = kernel->outputs[i].type;
+      VLOG(2) << "Retval " << i << " shape " << shape.DebugString() << " type "
+              << DataTypeString(type);
+      if (type == DT_RESOURCE) {
+        ctx->set_output(i, ctx->input(kernel->outputs[i].input_index));
+      } else {
+        se::DeviceMemoryBase buffer = output.buffer({output_num});
+        if (allocate_xla_tensors_) {
+          Tensor* output_tensor;
+          TF_RETURN_IF_ERROR(ctx->allocate_output(i, shape, &output_tensor));
+          XlaTensor* xla_tensor = XlaTensor::FromTensor(output_tensor);
+          if (xla_tensor) {
+            xla_tensor->set_shaped_buffer(ScopedShapedBuffer(
+                ExtractSubShapedBuffer(&output, output_num, xla_allocator_)));
+            if (use_multiple_streams_) {
+              xla_tensor->SetDefinedOn(stream, definition_event);
+            }
+          } else {
+            // xla_tensor wasn't valid, which must mean this is a zero-element
+            // tensor.
+            CHECK_EQ(output_tensor->TotalBytes(), 0);
           }
         } else {
-          // xla_tensor wasn't valid, which must mean this is a zero-element
-          // tensor.
-          CHECK_EQ(output_tensor->TotalBytes(), 0);
+          Tensor output_tensor = XlaTensorBuffer::MakeTensor(
+              ctx->expected_output_dtype(i), shape, buffer, allocator);
+          output.set_buffer(xla::OwningDeviceMemory(), {output_num});
+          ctx->set_output(i, output_tensor);
         }
-      } else {
-        Tensor output_tensor = XlaTensorBuffer::MakeTensor(
-            ctx->expected_output_dtype(i), shape, buffer, allocator);
-        output.set_buffer(xla::OwningDeviceMemory(), {output_num});
-        ctx->set_output(i, output_tensor);
+        ++output_num;
       }
-      ++output_num;
     }
 
     if (VLOG_IS_ON(3)) {

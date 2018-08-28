@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/lite/delegates/eager/kernel.h"
 
-#include "flatbuffers/flexbuffers.h"
+#include "flatbuffers/flexbuffers.h"  // flatbuffers
 #include "tensorflow/contrib/lite/builtin_ops.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/context_util.h"
@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 
 // Note: this is part of TF Lite's Eager delegation code which is to be
 // completed soon.
@@ -187,6 +188,14 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
         // We will just leave the nodedef empty and error out in Eval().
         node_data.nodedef.Clear();
       }
+    }
+
+    // Fill NodeDef with defaults if it's a valid op.
+    const tensorflow::OpRegistrationData* op_reg_data;
+    auto tf_status = tensorflow::OpRegistry::Global()->LookUp(
+        node_data.nodedef.op(), &op_reg_data);
+    if (tf_status.ok()) {
+      AddDefaultsToNodeDef(op_reg_data->op_def, &node_data.nodedef);
     }
 
     for (auto input_index : TfLiteIntArrayView(node->inputs)) {

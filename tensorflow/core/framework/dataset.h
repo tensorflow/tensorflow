@@ -41,6 +41,7 @@ limitations under the License.
 namespace tensorflow {
 
 class DatasetBase;
+class SerializationContext;
 
 // Interface for reading values from a key-value store.
 // Used for restoring iterator state.
@@ -155,11 +156,11 @@ class GraphDefBuilderWrapper {
   // Adds a user-defined function with name `function_name` to the graph and
   // recursively adds all functions it references. If a function with a matching
   // name has already been added, returns with OK status. If a user-defined with
-  // name `function_name` is not found in the FunctionLibraryDefinition, returns
-  // an InvalidArgumentError. If the function with name `function_name` or any
-  // of its dependent functions are stateful, returns an InvalidArgument error.
-  Status AddFunction(const FunctionLibraryDefinition& flib_def,
-                     const string& function_name);
+  // name `function_name` is not found in the context's function library,
+  // returns an InvalidArgumentError. If the function with name `function_name`
+  // or any of its dependent functions are stateful, and the context does not
+  // explicitly permit stateful functions, returns an InvalidArgument error.
+  Status AddFunction(SerializationContext* ctx, const string& function_name);
 
   template <typename T>
   void BuildAttrValue(const T& value, AttrValue* attr) {
@@ -220,13 +221,13 @@ class GraphDefBuilderWrapper {
     return false;
   }
 
-  Status AddAttrFunctions(const AttrValue& attr_value,
-                          const FunctionLibraryDefinition& flib_def) {
+  Status AddAttrFunctions(SerializationContext* ctx,
+                          const AttrValue& attr_value) {
     if (attr_value.has_func()) {
-      TF_RETURN_IF_ERROR(AddFunction(flib_def, attr_value.func().name()));
+      TF_RETURN_IF_ERROR(AddFunction(ctx, attr_value.func().name()));
     } else if (attr_value.has_list()) {
       for (const NameAttrList& name_attr_list : attr_value.list().func()) {
-        TF_RETURN_IF_ERROR(AddFunction(flib_def, name_attr_list.name()));
+        TF_RETURN_IF_ERROR(AddFunction(ctx, name_attr_list.name()));
       }
     }
     return Status::OK();
@@ -332,10 +333,13 @@ class IteratorContext {
 class SerializationContext {
  public:
   struct Params {
+    bool allow_stateful_functions = false;
     const FunctionLibraryDefinition* flib_def;  // Not owned.
   };
 
   explicit SerializationContext(Params params) : params_(std::move(params)) {}
+
+  bool allow_stateful_functions() { return params_.allow_stateful_functions; }
 
   const FunctionLibraryDefinition& flib_def() { return *params_.flib_def; }
 
