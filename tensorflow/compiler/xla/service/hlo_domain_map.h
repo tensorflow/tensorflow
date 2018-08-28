@@ -70,6 +70,11 @@ class HloDomainMap {
   int64 GetDomainId(HloInstruction* instruction) const;
 
  private:
+  // Map used for representing instruction ordering, i.e.
+  // order_map[a] < order_map[b] means a must be ordered before b.
+  using InstructionOrderMap =
+      tensorflow::gtl::FlatMap<const HloInstruction*, int64>;
+
   HloDomainMap(string domain_kind) : domain_kind_(std::move(domain_kind)) {}
 
   // Check if the kDomain instruction is facing (via its operand link) another
@@ -95,12 +100,14 @@ class HloDomainMap {
 
   // Creates a domain data structure using the ExpandDomain() API.
   StatusOr<std::unique_ptr<DomainMetadata::Domain>> CreateDomain(
-      HloInstruction* instruction) const;
+      HloInstruction* instruction,
+      const InstructionOrderMap& instructions_order) const;
 
   // Out of an instruction set, returns a vector of all the ones which are not
   // a kDomain kind.
   static std::vector<HloInstruction*> MakeNonDomainInstructions(
-      const tensorflow::gtl::FlatSet<HloInstruction*>& instruction_set);
+      const tensorflow::gtl::FlatSet<HloInstruction*>& instruction_set,
+      const InstructionOrderMap& instructions_order);
 
   string domain_kind_;
   std::vector<std::unique_ptr<DomainMetadata::Domain>> instruction_domains_;
