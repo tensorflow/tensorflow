@@ -499,6 +499,7 @@ def _rot90_4D(images, k, name_scope):
 
   def _rot180():
     return array_ops.reverse_v2(images, [1, 2])
+
   def _rot270():
     return array_ops.reverse_v2(array_ops.transpose(images, [0, 2, 1, 3]), [2])
 
@@ -510,6 +511,77 @@ def _rot90_4D(images, k, name_scope):
   shape = result.get_shape()
   result.set_shape([shape[0], None, None, shape[3]])
   return result
+
+@tf_export('image.rot90ND')
+def rot90ND(image, rot_dims, k=1, name=None):
+  """Rotate image(s) counter-clockwise by 90 degrees.
+
+  Args:
+    image: N-D Tensor where N >= 3 
+    k: A scalar integer. The number of times the image is rotated by 90 degrees.
+    rot_dims: A list of integers with length 2. The dimensions to be rotated. 
+    name: A name for this operation (optional).
+
+  Returns:
+    A rotated tensor of the same type and shape as `image`.
+
+  Raises:
+    ValueError: if the shape of `image` not supported.
+  """
+
+  if len(rot_dims) != 2:
+    raise ValueError("rot_dims must be exactly length 2 "
+                     "(length: {})".format(len(rot_dims)))
+  rot_dims.sort()
+
+  shape = image.get_shape()
+  if shape.ndims is None:
+    ndims = 3
+  else:
+    ndims = shape.ndims
+
+  def _swap(mylist, dims):
+    assert len(dims) == 2
+    tmp = mylist[dims[0]]
+    mylist[dims[0]] = mylist[dims[1]]
+    mylist[dims[1]] = tmp
+    return mylist
+
+  def _rot90():
+    t_pos = list(range(ndims))
+    t_pos = _swap(t_pos, rot_dims)
+    return array_ops.transpose(array_ops.reverse_v2(image, [rot_dims[1]]), t_pos)
+
+  def _rot180():
+    return array_ops.reverse_v2(image, rot_dims)
+
+  def _rot270():
+    t_pos = list(range(ndims))
+    t_pos = _swap(t_pos, rot_dims)
+    return array_ops.reverse_v2(array_ops.transpose(image, t_pos), [rot_dims[1]])
+
+  with ops.name_scope(name, 'rot90', [image, k]) as scope:
+    image = ops.convert_to_tensor(image, name='image')
+    image = _AssertAtLeast3DImage(image)
+    k = ops.convert_to_tensor(k, dtype=dtypes.int32, name='k')
+    k.get_shape().assert_has_rank(0)
+    k = math_ops.mod(k, 4)
+
+    if shape.ndims >= 3 or shape.ndims is None:
+      cases = [(math_ops.equal(k, 1), _rot90), (math_ops.equal(k, 2), _rot180),
+              (math_ops.equal(k, 3), _rot270)]
+
+      result = control_flow_ops.case(
+          cases, default=lambda: image, exclusive=True, name=scope)
+
+      if shape.ndims is not None:
+        shape = result.get_shape()
+      new_shape = [None if i in rot_dims else s for i, s in enumerate(shape)]
+      result.set_shape(new_shape)
+      return result
+    else:
+      raise ValueError('\'image\' must have at least 3 dimensions.')
+
 
 @tf_export('image.transpose_image')
 def transpose_image(image):
