@@ -43,6 +43,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops.gen_array_ops import *
 from tensorflow.python.ops.gen_array_ops import reverse_v2 as reverse  # pylint: disable=unused-import
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
 
@@ -948,6 +949,15 @@ def _get_dtype_from_nested_lists(list_or_tuple):
   return None
 
 
+def _cast_nested_seqs_to_dtype(dtype):
+  def _maybe_cast(elem):
+    if ops.is_dense_tensor_like(elem):
+      if dtype != elem.dtype.base_dtype:
+        elem = gen_math_ops.cast(elem, dtype)
+    return elem
+  return _maybe_cast
+
+
 def _autopacking_conversion_function(v, dtype=None, name=None, as_ref=False):
   """Tensor conversion function that automatically packs arguments."""
   if as_ref:
@@ -957,9 +967,11 @@ def _autopacking_conversion_function(v, dtype=None, name=None, as_ref=False):
     # We did not find any tensor-like objects in the nested lists, so defer to
     # other conversion functions.
     return NotImplemented
-  if dtype is not None and dtype != inferred_dtype:
-    return NotImplemented
-  return _autopacking_helper(v, inferred_dtype, name or "packed")
+  if dtype is None:
+    dtype = inferred_dtype
+  elif dtype != inferred_dtype:
+    v = nest.map_structure(_cast_nested_seqs_to_dtype(dtype), v)
+  return _autopacking_helper(v, dtype, name or "packed")
 
 
 # pylint: enable=invalid-name
@@ -1715,7 +1727,7 @@ def placeholder(dtype, shape=None, name=None):
   @compatibility(eager)
   Placeholders are not compatible with eager execution.
   @end_compatibility
-  
+
   Args:
     dtype: The type of elements in the tensor to be fed.
     shape: The shape of the tensor to be fed (optional). If the shape is not
