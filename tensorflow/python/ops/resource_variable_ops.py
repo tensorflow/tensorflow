@@ -355,6 +355,15 @@ class ResourceVariable(variables.RefVariable):
       raise ValueError("initial_value must be specified.")
     init_from_fn = callable(initial_value)
 
+    if isinstance(initial_value, ops.Tensor) and hasattr(
+        initial_value, "graph") and initial_value.graph.building_function:
+      raise ValueError("Tensor-typed variable initializers must either be "
+                       "wrapped in an init_scope or callable "
+                       "(e.g., `tf.Variable(lambda : "
+                       "tf.truncated_normal([10, 40]))`) when building "
+                       "functions. Please file a feature request if this "
+                       "restriction inconveniences you.")
+
     if collections is None:
       collections = [ops.GraphKeys.GLOBAL_VARIABLES]
     if not isinstance(collections, (list, tuple, set)):
@@ -585,6 +594,22 @@ class ResourceVariable(variables.RefVariable):
 
   def __bool__(self):
     return bool(self.read_value())
+
+  def __copy__(self):
+    return self
+
+  def __deepcopy__(self, memo):
+    if not context.executing_eagerly():
+      raise NotImplementedError(
+          "__deepcopy__() is only available when eager execution is enabled.")
+    copied_variable = ResourceVariable(
+        initial_value=self.read_value(),
+        trainable=self._trainable,
+        constraint=self._constraint,
+        dtype=self._dtype,
+        name=self._shared_name + "_copy")
+    memo[self._unique_id] = copied_variable
+    return copied_variable
 
   @property
   def dtype(self):
@@ -957,6 +982,9 @@ class ResourceVariable(variables.RefVariable):
       if read_value:
         return self._lazy_read(assign_op)
     return assign_op
+
+  def __reduce__(self):
+    return (ResourceVariable, (self.numpy(),))
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
     """Subtracts `IndexedSlices` from this variable.

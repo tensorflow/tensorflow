@@ -504,9 +504,7 @@ class Context(object):
     Args:
       fn: A wrapped TF_Function (returned from TF_GraphToFunction_wrapper).
     """
-    pywrap_tensorflow.TFE_ContextAddFunction(
-        self._handle,  # pylint: disable=protected-access
-        fn)
+    pywrap_tensorflow.TFE_ContextAddFunction(self._handle, fn)
 
   def add_function_def(self, fdef):
     """Add a function definition to the context.
@@ -519,9 +517,7 @@ class Context(object):
     """
     fdef_string = fdef.SerializeToString()
     pywrap_tensorflow.TFE_ContextAddFunctionDef(
-        self._handle,  # pylint: disable=protected-access
-        fdef_string,
-        len(fdef_string))
+        self._handle, fdef_string, len(fdef_string))
 
   def add_post_execution_callback(self, callback):
     """Add a post-execution callback to the context.
@@ -633,14 +629,7 @@ def context():
 
 
 def context_safe():
-  return _context
-
-
-# TODO(agarwal): remove this.
-def get_default_context():
-  """Same as context."""
-  if _context is None:
-    _initialize_context()
+  """Returns current context (or None if one hasn't been initialized)."""
   return _context
 
 

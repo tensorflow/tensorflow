@@ -43,7 +43,7 @@ namespace xla {
 namespace {
 
 using absl::optional;
-using tensorflow::StringPiece;
+using absl::string_view;
 using tensorflow::gtl::ArraySlice;
 
 constexpr char kInterpreter[] = "interpreter";
@@ -86,16 +86,20 @@ ProgramShape GetProgramShapeWithLayout(const HloModule& module) {
 
 }  // namespace
 
-HloTestBase::HloTestBase(bool allow_mixed_precision_in_hlo_verifier)
+HloTestBase::HloTestBase(bool verifier_layout_sensitive,
+                         bool allow_mixed_precision_in_hlo_verifier)
     : HloTestBase(GetTestPlatform(), GetReferencePlatform(),
+                  verifier_layout_sensitive,
                   allow_mixed_precision_in_hlo_verifier) {}
 
 HloTestBase::HloTestBase(se::Platform* test_platform,
                          se::Platform* reference_platform,
+                         bool verifier_layout_sensitive,
                          bool allow_mixed_precision_in_hlo_verifier)
     : test_runner_(test_platform), reference_runner_(reference_platform) {
-  hlo_verifier_ =
-      absl::make_unique<HloVerifier>(allow_mixed_precision_in_hlo_verifier);
+  hlo_verifier_ = absl::make_unique<HloVerifier>(
+      /*layout_sensitive=*/verifier_layout_sensitive,
+      /*allow_mixed_precision=*/allow_mixed_precision_in_hlo_verifier);
 }
 
 std::unique_ptr<HloModule> HloTestBase::CreateNewModule(const string& name) {
@@ -239,7 +243,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompare(
-    const StringPiece hlo_string, const absl::optional<ErrorSpec>& error,
+    string_view hlo_string, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
       HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
@@ -252,7 +256,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
                        reference_preprocessor);
 }
 
-::testing::AssertionResult HloTestBase::Run(const StringPiece hlo_string) {
+::testing::AssertionResult HloTestBase::Run(string_view hlo_string) {
   auto module_or_status =
       HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
   if (!module_or_status.ok()) {
@@ -289,7 +293,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
-    const StringPiece hlo_string, const absl::optional<ErrorSpec>& error,
+    string_view hlo_string, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
       HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
@@ -316,7 +320,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 }
 
 HloComputation* HloTestBase::FindComputation(HloModule* module,
-                                             tensorflow::StringPiece name) {
+                                             absl::string_view name) {
   auto computations = module->computations();
   auto it = absl::c_find_if(
       computations, [&](HloComputation* c) { return c->name() == name; });
@@ -327,7 +331,7 @@ HloComputation* HloTestBase::FindComputation(HloModule* module,
 }
 
 HloInstruction* HloTestBase::FindInstruction(HloModule* module,
-                                             tensorflow::StringPiece name) {
+                                             absl::string_view name) {
   for (const HloComputation* c : module->computations()) {
     auto instructions = c->instructions();
     auto it = absl::c_find_if(

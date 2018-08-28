@@ -335,7 +335,7 @@ class VariableScopeTest(test.TestCase):
         # reuse=True is for now only supported when eager execution is disabled.
         if not context.executing_eagerly():
           v = variable_scope.get_variable("v",
-                                          [])  # "v" is alredy there, reused
+                                          [])  # "v" is already there, reused
           losses = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
           self.assertEqual(3, len(losses))  # No new loss added.
 
@@ -388,6 +388,18 @@ class VariableScopeTest(test.TestCase):
       # If we initialize v0 we should be able to run 'add'.
       sess.run(v0.initializer)
       sess.run(add)
+
+  def testEnableResourceVariables(self):
+    old = variable_scope._DEFAULT_USE_RESOURCE
+    try:
+      variable_scope.enable_resource_variables()
+      self.assertTrue(isinstance(variables_lib.Variable(1.0),
+                                 resource_variable_ops.ResourceVariable))
+      variable_scope.disable_resource_variables()
+      self.assertFalse(isinstance(variables_lib.Variable(1.0),
+                                  resource_variable_ops.ResourceVariable))
+    finally:
+      variable_scope._DEFAULT_USE_RESOURCE = old
 
   def testControlFlow(self):
     with self.test_session() as sess:

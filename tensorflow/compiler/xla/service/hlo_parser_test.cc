@@ -16,20 +16,19 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
 #include <string>
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
-namespace op = ::xla::testing::opcode_matchers;
-
 namespace xla {
-
 namespace {
 
-using ::tensorflow::StringPiece;
+namespace op = ::xla::testing::opcode_matchers;
+using absl::string_view;
 
 struct TestData {
   string test_name;
@@ -1094,7 +1093,19 @@ R"(HloModule AllToAllWithSubgroups
 
 ENTRY AllToAllWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
-  ROOT a2a = f32[128,32]{0,1} all-to-all(input), replica_groups={{1,2},{3,0}}, barrier="abc"
+  ROOT a2a = f32[128,32]{0,1} all-to-all(input), replica_groups={{1,2},{3,0}}
+}
+
+)"
+},
+// collective-permute
+{
+"CollectivePermute",
+R"(HloModule CollectivePermute
+
+ENTRY CollectivePermute {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT root = f32[128,32]{0,1} collective-permute(input), source_target_pairs={{0,1},{1,2},{2,3}}
 }
 
 )"
@@ -1105,7 +1116,7 @@ ENTRY AllToAllWithSubgroups {
 R"(HloModule iota
 
 ENTRY Iota {
-  ROOT iota = f32[100]{0} iota()
+  ROOT iota = f32[100]{0} iota(), iota_dimension=0
 }
 
 )"
@@ -1128,8 +1139,8 @@ ENTRY Computation {
 class HloParserTest : public ::testing::Test,
                       public ::testing::WithParamInterface<TestData> {
  protected:
-  static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
-    EXPECT_TRUE(tensorflow::str_util::StrContains(s, expected))
+  static void ExpectHasSubstr(string_view s, string_view expected) {
+    EXPECT_TRUE(absl::StrContains(s, expected))
         << "'" << s << "' does not contain '" << expected << "'";
   }
 
@@ -1393,15 +1404,14 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 
 )";
 
-  ExpectHasSubstr(ParseHloString(tensorflow::strings::StrCat(
-                                     prefix, ",dim_labels=00_01_10", suffix))
-                      .status()
-                      .error_message(),
-                  "expects dim labels pattern");
+  ExpectHasSubstr(
+      ParseHloString(absl::StrCat(prefix, ",dim_labels=00_01_10", suffix))
+          .status()
+          .error_message(),
+      "expects dim labels pattern");
 
   ExpectHasSubstr(
-      ParseHloString(tensorflow::strings::StrCat(
-                         prefix, ",dim_labels=010_1100->010", suffix))
+      ParseHloString(absl::StrCat(prefix, ",dim_labels=010_1100->010", suffix))
           .status()
           .error_message(),
       "must have the same rank");

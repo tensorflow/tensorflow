@@ -19,15 +19,15 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -78,7 +78,7 @@ class ForLoop {
   // `unroll_mode` specifies the desired LLVM unrolling behavior for generated
   //  loop.
   static std::unique_ptr<ForLoop> EmitForLoop(
-      tensorflow::StringPiece prefix, llvm::Value* start_index,
+      absl::string_view prefix, llvm::Value* start_index,
       llvm::Value* end_index, llvm::Value* step, llvm::IRBuilder<>* b,
       UnrollMode unroll_mode = llvm_ir::UnrollMode::kDefaultUnroll,
       bool prevent_vectorization = false);
@@ -133,19 +133,18 @@ class ForLoop {
   // Allow ForLoopNest to call this private constructor.
   friend class ForLoopNest;
 
-  ForLoop(tensorflow::StringPiece prefix, tensorflow::StringPiece suffix,
+  ForLoop(absl::string_view prefix, absl::string_view suffix,
           llvm::Value* start_index, llvm::Value* end_index, llvm::Value* step,
           UnrollMode unroll_mode, bool prevent_vectorization);
 
   // Emit the loop at the insert point of the builder.
   void Emit(llvm::IRBuilder<>* b);
 
-  llvm::BasicBlock* CreateLoopBB(tensorflow::StringPiece name,
-                                 llvm::IRBuilder<>* b);
+  llvm::BasicBlock* CreateLoopBB(absl::string_view name, llvm::IRBuilder<>* b);
 
   // Creates a name for an LLVM construct, appending prefix_ and suffix_, if
   // they are set.
-  string GetQualifiedName(tensorflow::StringPiece name);
+  string GetQualifiedName(absl::string_view name);
 
   // Return a list of metadata nodes that should be associated with the
   // llvm::Loop for this `ForLoop`.
@@ -182,9 +181,9 @@ class ForLoopNest {
     SetIndexType(index_ty);
   }
 
-  ForLoopNest(tensorflow::StringPiece name, llvm::IRBuilder<>* b,
+  ForLoopNest(absl::string_view name, llvm::IRBuilder<>* b,
               llvm::Type* index_ty = nullptr)
-      : name_(std::string(name)),
+      : name_(name),
         outer_loop_preheader_bb_(nullptr),
         outer_loop_exit_bb_(nullptr),
         inner_loop_body_bb_(nullptr),
@@ -197,14 +196,14 @@ class ForLoopNest {
   // been added then emit loop inside the body of the last added loop.
   // unroll_mode is used to emit metadata that controls LLVM unrolling.
   std::unique_ptr<ForLoop> AddLoop(
-      tensorflow::StringPiece suffix, llvm::Value* start_index,
+      absl::string_view suffix, llvm::Value* start_index,
       llvm::Value* end_index, llvm::Value* stride,
       UnrollMode unroll_mode = xla::llvm_ir::UnrollMode::kDefaultUnroll,
       bool prevent_vectorization = false);
 
   // Like the above, except that it defaults to a stride of one.
   std::unique_ptr<ForLoop> AddLoop(
-      tensorflow::StringPiece suffix, llvm::Value* start_index,
+      absl::string_view suffix, llvm::Value* start_index,
       llvm::Value* end_index,
       UnrollMode unroll_mode = xla::llvm_ir::UnrollMode::kDefaultUnroll,
       bool prevent_vectorization = false);
@@ -213,13 +212,13 @@ class ForLoopNest {
   // end index are constant.
   std::unique_ptr<ForLoop> AddLoop(
       int64 start_index, int64 end_index, int64 stride,
-      tensorflow::StringPiece suffix,
+      absl::string_view suffix,
       UnrollMode unroll_mode = xla::llvm_ir::UnrollMode::kDefaultUnroll,
       bool prevent_vectorization = false);
 
   // Like the above, except that it defaults to a stride of one.
   std::unique_ptr<ForLoop> AddLoop(
-      int64 start_index, int64 end_index, tensorflow::StringPiece suffix,
+      int64 start_index, int64 end_index, absl::string_view suffix,
       UnrollMode unroll_mode = xla::llvm_ir::UnrollMode::kDefaultUnroll,
       bool prevent_vectorization = false);
 
@@ -234,8 +233,7 @@ class ForLoopNest {
   // within the shape. One possible order for that sequence would be:
   //
   //   (0,0), (0,1), (0,2), (1,0), (1,1), (1,2)
-  IrArray::Index AddLoopsForShape(const Shape& shape,
-                                  tensorflow::StringPiece suffix);
+  IrArray::Index AddLoopsForShape(const Shape& shape, absl::string_view suffix);
 
   // Add a loop for each dimension in "dimensions". "suffix" is the
   // name suffix of the indvar and basic blocks in this new loop nest.
@@ -245,7 +243,7 @@ class ForLoopNest {
   // dimension that is not in "dimensions".
   IrArray::Index AddLoopsForShapeOnDimensions(
       const Shape& shape, tensorflow::gtl::ArraySlice<int64> dimensions,
-      tensorflow::StringPiece suffix);
+      absl::string_view suffix);
 
   // Emits a series of nested loops for iterating over an operand array. Loops
   // are constructed in major to minor dimension layout order. No loop is
@@ -256,7 +254,7 @@ class ForLoopNest {
   // basic blocks) constructed by this method.
   IrArray::Index EmitOperandArrayLoopNest(const llvm_ir::IrArray& operand_array,
                                           int64 dimension_to_skip,
-                                          tensorflow::StringPiece name_suffix);
+                                          absl::string_view name_suffix);
 
   // Convenience methods which return particular basic blocks of the outermost
   // or innermost loops. These methods return nullptr if no loops have been

@@ -70,7 +70,7 @@ Status WhileThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
     if (!block_status.ok()) {
       return InternalError(
           "Failed to complete all kernels launched on stream %p: %s", stream,
-          block_status.error_message().c_str());
+          block_status.error_message());
     }
 
     if (!condition_result) {

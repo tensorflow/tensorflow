@@ -108,7 +108,7 @@ class BatchSequencesWithStatesTest(test.TestCase):
                   expected_seq4_batch1, expected_seq4_batch2,
                   key=None, make_keys_unique=False):
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       next_batch = sqss.batch_sequences_with_states(
           input_key=key if key is not None else self.key,
           input_sequences=self.sequences,
@@ -332,7 +332,7 @@ class BatchSequencesWithStatesTest(test.TestCase):
         "seq4": self.sequences["seq4"],
     }
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    ".*should be a multiple of: 3, but saw "
                                    "value: 4. Consider setting pad=True."):

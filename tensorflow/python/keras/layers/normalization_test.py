@@ -28,7 +28,7 @@ from tensorflow.python.platform import test
 class NormalizationLayersTest(test.TestCase):
 
   def test_basic_batchnorm(self):
-    with self.test_session():
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.BatchNormalization,
           kwargs={
@@ -54,7 +54,7 @@ class NormalizationLayersTest(test.TestCase):
           input_shape=(3, 3))
 
   def test_batchnorm_weights(self):
-    with self.test_session():
+    with self.cached_session():
       layer = keras.layers.BatchNormalization(scale=False, center=False)
       layer.build((None, 3, 4))
       self.assertEqual(len(layer.trainable_weights), 0)
@@ -66,7 +66,7 @@ class NormalizationLayersTest(test.TestCase):
       self.assertEqual(len(layer.weights), 4)
 
   def test_batchnorm_regularization(self):
-    with self.test_session():
+    with self.cached_session():
       layer = keras.layers.BatchNormalization(
           gamma_regularizer='l1', beta_regularizer='l1')
       layer.build((None, 3, 4))
@@ -79,7 +79,7 @@ class NormalizationLayersTest(test.TestCase):
       self.assertEqual(layer.beta.constraint, max_norm)
 
   def test_batchnorm_correctness(self):
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       norm = keras.layers.BatchNormalization(input_shape=(10,), momentum=0.8)
       model.add(norm)
@@ -96,7 +96,7 @@ class NormalizationLayersTest(test.TestCase):
       np.testing.assert_allclose(out.std(), 1.0, atol=1e-1)
 
   def test_batchnorm_mixed_precision(self):
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       norm = keras.layers.BatchNormalization(input_shape=(10,), momentum=0.8)
       model.add(norm)
@@ -133,7 +133,7 @@ class NormalizationLayersTest(test.TestCase):
         np.testing.assert_allclose(np.std(out, axis=(0, 2, 3)), 1.0, atol=1e-1)
 
   def test_batchnorm_convnet_channel_last(self):
-    with self.test_session():
+    with self.cached_session():
       # keras.backend.set_learning_phase(True)
 
       model = keras.models.Sequential()
@@ -155,7 +155,7 @@ class NormalizationLayersTest(test.TestCase):
   def test_shared_batchnorm(self):
     """Test that a BN layer can be shared across different data streams.
     """
-    with self.test_session():
+    with self.cached_session():
       # Test single layer reuse
       bn = keras.layers.BatchNormalization()
       x1 = keras.layers.Input(shape=(10,))
@@ -187,7 +187,7 @@ class NormalizationLayersTest(test.TestCase):
       new_model.train_on_batch(x, x)
 
   def test_that_trainable_disables_updates(self):
-    with self.test_session():
+    with self.cached_session():
       val_a = np.random.random((10, 4))
       val_out = np.random.random((10, 4))
 
@@ -230,7 +230,7 @@ class NormalizationLayersTest(test.TestCase):
     Computes mean and std for current inputs then
     applies batch normalization using them.
     """
-    with self.test_session():
+    with self.cached_session():
       bn_mean = 0.5
       bn_std = 10.
       val_a = np.expand_dims(np.arange(10.), axis=1)

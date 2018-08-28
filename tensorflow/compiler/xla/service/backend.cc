@@ -177,7 +177,7 @@ StatusOr<se::StreamExecutor*> Backend::stream_executor(
     }
   }
   return InvalidArgument("device %s not supported by XLA service",
-                         device_name(device_ordinal).c_str());
+                         device_name(device_ordinal));
 }
 
 StatusOr<bool> Backend::devices_equivalent(int device_ordinal_a,

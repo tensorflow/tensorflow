@@ -120,7 +120,9 @@ class Estimator(object):
                warm_start_from=None):
     """Constructs an `Estimator` instance.
 
-    See [estimators](https://tensorflow.org/guide/estimators) for more information.
+    See [estimators](https://tensorflow.org/guide/estimators) for more
+    information.
+
     To warm-start an `Estimator`:
 
     ```python
@@ -286,8 +288,8 @@ class Estimator(object):
 
     Args:
       input_fn: A function that provides input data for training as minibatches.
-        See [Premade
-        Estimators](https://tensorflow.org/guide/premade_estimators#create_input_functions)
+        See [Premade Estimators](
+        https://tensorflow.org/guide/premade_estimators#create_input_functions)
         for more information. The function should construct and return one of
         the following:  * A
         `tf.data.Dataset` object: Outputs of `Dataset` object must be a tuple
@@ -405,7 +407,8 @@ class Estimator(object):
 
     Args:
       input_fn: A function that constructs the input data for evaluation. See
-        [Premade Estimators](https://tensorflow.org/guide/premade#create_input_functions}
+        [Premade Estimators](
+        https://tensorflow.org/guide/premade#create_input_functions)
         for more information. The
         function should construct and return one of the following:  * A
         `tf.data.Dataset` object: Outputs of `Dataset` object must be a tuple
@@ -431,7 +434,11 @@ class Estimator(object):
     Returns:
       A dict containing the evaluation metrics specified in `model_fn` keyed by
       name, as well as an entry `global_step` which contains the value of the
-      global step for which this evaluation was performed.
+      global step for which this evaluation was performed. For canned
+      estimators, the dict contains the `loss` (mean loss per mini-batch) and
+      the `average_loss` (mean loss per sample). Canned classifiers also return
+      the `accuracy`. Canned regressors also return the `label/mean` and the
+      `prediction/mean`.
 
     Raises:
       ValueError: If `steps <= 0`.
@@ -488,8 +495,8 @@ class Estimator(object):
       input_fn: A function that constructs the features. Prediction continues
         until `input_fn` raises an end-of-input exception
         (`tf.errors.OutOfRangeError` or `StopIteration`).
-        See [Premade
-        Estimators](https://tensorflow.org/guide/premade_estimators#create_input_functions)
+        See [Premade Estimators](
+        https://tensorflow.org/guide/premade_estimators#create_input_functions)
         for more information. The function should construct and return one of
         the following:
 
@@ -602,6 +609,38 @@ class Estimator(object):
       as_text=False,
       checkpoint_path=None,
       strip_default_attrs=False):
+    # pylint: disable=line-too-long,g-doc-args,g-doc-return-or-yield
+    """Exports inference graph as a `SavedModel` into the given dir.
+
+    Note that `export_to_savedmodel` will be renamed to `export_to_saved_model`
+    in TensorFlow 2.0. At that time, `export_to_savedmodel` without the
+    additional underscore will be available only through tf.compat.v1.
+
+    Please see `tf.estimator.Estimator.export_saved_model` for more information.
+
+    There is one additional arg versus the new method:
+      strip_default_attrs: This parameter is going away in TF 2.0, and
+        the new behavior will automatically strip all default attributes.
+        Boolean. If `True`, default-valued attributes will be
+        removed from the `NodeDef`s. For a detailed guide, see [Stripping
+        Default-Valued Attributes](
+        https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+    """
+    # pylint: enable=line-too-long,g-doc-args,g-doc-return-or-yield
+    return self._export_saved_model_for_mode(
+        export_dir_base,
+        serving_input_receiver_fn,
+        assets_extra=assets_extra,
+        as_text=as_text,
+        checkpoint_path=checkpoint_path,
+        strip_default_attrs=strip_default_attrs,
+        mode=model_fn_lib.ModeKeys.PREDICT)
+
+  def export_saved_model(
+      self, export_dir_base, serving_input_receiver_fn,
+      assets_extra=None,
+      as_text=False,
+      checkpoint_path=None):
     # pylint: disable=line-too-long
     """Exports inference graph as a `SavedModel` into the given dir.
 
@@ -648,28 +687,25 @@ class Estimator(object):
       as_text: whether to write the `SavedModel` proto in text format.
       checkpoint_path: The checkpoint path to export.  If `None` (the default),
         the most recent checkpoint found within the model directory is chosen.
-      strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-        removed from the `NodeDef`s. For a detailed guide, see [Stripping
-        Default-Valued
-        Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
 
     Returns:
       The string path to the exported directory.
 
     Raises:
       ValueError: if no `serving_input_receiver_fn` is provided, no
-      `export_outputs`
-          are provided, or no checkpoint can be found.
+      `export_outputs` are provided, or no checkpoint can be found.
     """
     # pylint: enable=line-too-long
-    return self._export_saved_model_for_mode(
+    # TODO(b/111442174): `export_to_savedmodel` will be renamed to
+    # `export_to_saved_model` in TensorFlow 2.0. This function is a wrapper
+    # while staging the new version; do not add any logic here.
+    return self.export_savedmodel(
         export_dir_base,
         serving_input_receiver_fn,
         assets_extra=assets_extra,
         as_text=as_text,
         checkpoint_path=checkpoint_path,
-        strip_default_attrs=strip_default_attrs,
-        mode=model_fn_lib.ModeKeys.PREDICT)
+        strip_default_attrs=True)
 
   def _export_saved_model_for_mode(
       self, export_dir_base, input_receiver_fn,
@@ -1237,7 +1273,8 @@ class Estimator(object):
       # We want to create the iterations variable outside the distribution scope
       # as that is just stored on the host and mainly used to drive the loop
       # and doesn't need to be a Mirrored/Device variable.
-      steps_per_run_variable = training.get_or_create_steps_per_run_variable()
+      if is_tpu_strategy:
+        steps_per_run_variable = training.get_or_create_steps_per_run_variable()
       with self._train_distribution.scope():
         random_seed.set_random_seed(self._config.tf_random_seed)
         iterator, input_hooks = self._get_iterator_from_input_fn(
@@ -1252,7 +1289,7 @@ class Estimator(object):
 
         if is_tpu_strategy:
           # Create a step_fn from the train_op of grouped_estimator_spec
-          def step_fn(ctx, features, labels):
+          def step_fn(ctx, features, labels=None):
             """A single step that is passed to run_on_dataset."""
             estimator_spec = self._train_distribution.call_for_each_tower(
                 self._call_model_fn,
@@ -1277,7 +1314,8 @@ class Estimator(object):
           loss = ctx.last_step_outputs['loss']
           grouped_estimator_spec = ctx.non_tensor_outputs['estimator_spec']
         else:
-          features, labels = iterator.get_next()
+          features, labels = estimator_util.parse_iterator_result(
+              iterator.get_next())
           grouped_estimator_spec = self._train_distribution.call_for_each_tower(
               self._call_model_fn,
               features,
@@ -1466,7 +1504,7 @@ class Estimator(object):
         self._eval_distribution.__class__.__name__ == 'TPUStrategy')
 
     if is_tpu_strategy:
-      def step_fn(ctx, features, labels):
+      def step_fn(ctx, features, labels=None):
         """Runs one step of the eval computation and captures outputs."""
         estimator_spec = self._eval_distribution.call_for_each_tower(
             self._call_model_fn, features, labels, model_fn_lib.ModeKeys.EVAL,
@@ -1487,7 +1525,8 @@ class Estimator(object):
       eval_dict = ctx.non_tensor_outputs['eval_dict']
       grouped_estimator_spec = ctx.non_tensor_outputs['estimator_spec']
     else:
-      features, labels = iterator.get_next()
+      features, labels = estimator_util.parse_iterator_result(
+          iterator.get_next())
       grouped_estimator_spec = self._eval_distribution.call_for_each_tower(
           self._call_model_fn, features, labels,
           model_fn_lib.ModeKeys.EVAL, config)

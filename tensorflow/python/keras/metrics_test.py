@@ -40,7 +40,7 @@ from tensorflow.python.training.checkpointable import util as checkpointable_uti
 class KerasMetricsTest(test.TestCase):
 
   def test_metrics(self):
-    with self.test_session():
+    with self.cached_session():
       y_a = K.variable(np.random.random((6, 7)))
       y_b = K.variable(np.random.random((6, 7)))
       for metric in [metrics.binary_accuracy, metrics.categorical_accuracy]:
@@ -48,14 +48,14 @@ class KerasMetricsTest(test.TestCase):
         self.assertEqual(K.eval(output).shape, (6,))
 
   def test_sparse_categorical_accuracy(self):
-    with self.test_session():
+    with self.cached_session():
       metric = metrics.sparse_categorical_accuracy
       y_a = K.variable(np.random.randint(0, 7, (6,)))
       y_b = K.variable(np.random.random((6, 7)))
       self.assertEqual(K.eval(metric(y_a, y_b)).shape, (6,))
 
   def test_sparse_top_k_categorical_accuracy(self):
-    with self.test_session():
+    with self.cached_session():
       y_pred = K.variable(np.array([[0.3, 0.2, 0.1], [0.1, 0.2, 0.7]]))
       y_true = K.variable(np.array([[1], [0]]))
       result = K.eval(
@@ -69,7 +69,7 @@ class KerasMetricsTest(test.TestCase):
       self.assertEqual(result, 0.)
 
   def test_top_k_categorical_accuracy(self):
-    with self.test_session():
+    with self.cached_session():
       y_pred = K.variable(np.array([[0.3, 0.2, 0.1], [0.1, 0.2, 0.7]]))
       y_true = K.variable(np.array([[0, 1, 0], [1, 0, 0]]))
       result = K.eval(metrics.top_k_categorical_accuracy(y_true, y_pred, k=3))
@@ -80,7 +80,7 @@ class KerasMetricsTest(test.TestCase):
       self.assertEqual(result, 0.)
 
   def test_stateful_metrics(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1334)
 
       class BinaryTruePositives(layers.Layer):
@@ -266,7 +266,7 @@ class KerasMetricsTest(test.TestCase):
     self.assertEqual(np.round(self.evaluate(m.count), decimals=2), 5.6)
 
   def test_mean_graph_with_placeholder(self):
-    with context.graph_mode(), self.test_session() as sess:
+    with context.graph_mode(), self.cached_session() as sess:
       m = metrics.Mean()
       v = array_ops.placeholder(dtypes.float32)
       w = array_ops.placeholder(dtypes.float32)

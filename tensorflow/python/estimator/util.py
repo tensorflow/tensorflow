@@ -109,13 +109,17 @@ def parse_input_fn_result(result):
   else:
     input_hooks.append(_DatasetInitializerHook(iterator))
     result = iterator.get_next()
+  return parse_iterator_result(result) + (input_hooks,)
 
+
+def parse_iterator_result(result):
+  """Gets features, labels from result."""
   if isinstance(result, (list, tuple)):
     if len(result) != 2:
       raise ValueError(
           'input_fn should return (features, labels) as a len 2 tuple.')
-    return result[0], result[1], input_hooks
-  return result, None, input_hooks
+    return result[0], result[1]
+  return result, None
 
 
 class _DatasetInitializerHook(training.SessionRunHook):

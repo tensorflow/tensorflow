@@ -18,13 +18,13 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/service/interpreter/executor.h"
 #include "tensorflow/stream_executor/device_options.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/status_macros.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/platform.h"
 
@@ -77,9 +77,9 @@ XlaInterpreterPlatform::GetUncachedExecutor(
   if (!init_status.ok()) {
     return port::Status{
         port::error::INTERNAL,
-        port::Printf(
+        absl::StrFormat(
             "failed initializing StreamExecutor for device ordinal %d: %s",
-            config.ordinal, init_status.ToString().c_str())};
+            config.ordinal, init_status.ToString())};
   }
 
   return std::move(executor);

@@ -18,13 +18,13 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -86,7 +86,7 @@ LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
 }
 
 std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
-    tensorflow::StringPiece loop_name, llvm::Type* index_type) {
+    absl::string_view loop_name, llvm::Type* index_type) {
   CHECK_NE(index_type, nullptr);
   if (ShapeUtil::IsScalar(shape_)) {
     // No loop needed, so set exit_bb_ to nullptr.
@@ -105,7 +105,7 @@ std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
     std::unique_ptr<ForLoop> loop = loop_nest.AddLoop(
         /*start_index=*/0,
         /*end_index=*/shape_.dimensions(dimension),
-        /*suffix=*/tensorflow::strings::Printf("dim.%lld", dimension));
+        /*suffix=*/absl::StrFormat("dim.%d", dimension));
     array_index[dimension] = loop->GetIndVarValue();
   }
 
@@ -122,7 +122,7 @@ std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
   return {array_index};
 }
 
-Status LoopEmitter::EmitLoop(tensorflow::StringPiece loop_name,
+Status LoopEmitter::EmitLoop(absl::string_view loop_name,
                              llvm::Type* index_type) {
   if (index_type == nullptr) {
     index_type = b_->getInt64Ty();

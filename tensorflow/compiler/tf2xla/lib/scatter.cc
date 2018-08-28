@@ -58,7 +58,7 @@ xla::StatusOr<xla::XlaOp> XlaScatter(
           ") must be <= the rank of the buffer (shape: ",
           xla::ShapeUtil::HumanString(buffer_shape), ")");
     }
-    indices_dims.pop_back();
+    indices_dims.remove_suffix(1);
   }
 
   int64 num_indices = 1;

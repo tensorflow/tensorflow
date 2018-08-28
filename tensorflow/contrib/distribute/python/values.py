@@ -183,6 +183,14 @@ class Mirrored(DistributedDelegate):
       return self._index[device]
     return list(self._index.values())[0]
 
+  def _as_graph_element(self):
+    obj = self.get()
+    # pylint: disable=protected-access
+    conv_fn = getattr(obj, "_as_graph_element", None)
+    if conv_fn and callable(conv_fn):
+      return conv_fn()
+    return obj
+
 
 def _assign_on_device(device, variable, tensor):
   with ops.device(device):
@@ -296,6 +304,10 @@ class DistributedVariable(DistributedDelegate):
                               self._primary_var.op.type)
     return self.get().op
 
+  @property
+  def _in_graph_mode(self):
+    return self._primary_var._in_graph_mode   # pylint: disable=protected-access
+
   def read_value(self):
     return distribution_strategy_context.get_distribution_strategy().read_var(
         self)
@@ -354,8 +366,19 @@ class MirroredVariable(DistributedVariable, Mirrored,
 
       # We are calling assign on the mirrored variable in cross tower context,
       # use update to update the variable.
-      return distribution_strategy_context.get_distribution_strategy().update(
-          self, f, *args, **kwargs)
+      strategy = distribution_strategy_context.get_distribution_strategy()
+      updates = strategy.update(self, f, *args, **kwargs)
+      grouped = strategy.group(updates)
+      if isinstance(updates, DistributedValues) and updates.is_tensor_like:
+        # Make sure we run all updates. Without this, something like
+        # session.run(mirrored_var.assign*(...)) may only update one tower.
+        index = {}
+        for d in updates.devices:
+          with ops.device(d), ops.control_dependencies([grouped]):
+            index[d] = array_ops.identity(updates.get(d))
+        return Mirrored(index)
+      else:
+        return grouped
     else:
       _assert_tower_context()
       # We are calling an assign function on the mirrored variable in tower
@@ -1179,6 +1202,10 @@ class AggregatingVariable(checkpointable.CheckpointableBase):
 
   def __repr__(self):
     return repr(self._v)
+
+  def _should_act_as_resource_variable(self):
+    """Pass resource_variable_ops.is_resource_variable check."""
+    pass
 
 
 # Register a conversion function which reads the value of the variable,

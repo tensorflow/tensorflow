@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 
+#include "absl/strings/match.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/function_testlib.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
@@ -124,8 +124,8 @@ bool EqualFunctionNodeDef(const NodeDef& a, const NodeDef& b,
   std::unordered_set<string> control_input_a;
   std::unordered_set<string> control_input_b;
   for (int i = 0; i < a.input_size(); ++i) {
-    if (str_util::StartsWith(a.input(i), "^")) {
-      if (!str_util::StartsWith(b.input(i), "^")) {
+    if (absl::StartsWith(a.input(i), "^")) {
+      if (!absl::StartsWith(b.input(i), "^")) {
         if (diff) {
           *diff = strings::StrCat(
               diff_preamble, " mismatch for node ", a.name(), " input ", i,
@@ -768,7 +768,7 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Simple) {
         Graph* graph = graph_ptr->get();
         for (const Node* n : graph->nodes()) {
           if (n->type_string() == "_Arg" &&
-              str_util::StartsWith(n->name(), "const")) {
+              absl::StartsWith(n->name(), "const")) {
             ++guaranteed_consts;
             EXPECT_TRUE(HasGuaranteeConstAttr(*n));
           } else {
@@ -813,7 +813,7 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Add) {
         Graph* graph = graph_ptr->get();
         for (const Node* n : graph->nodes()) {
           if (n->type_string() == "_Arg" &&
-              str_util::StartsWith(n->name(), "const")) {
+              absl::StartsWith(n->name(), "const")) {
             ++guaranteed_consts;
             EXPECT_TRUE(HasGuaranteeConstAttr(*n));
           } else {

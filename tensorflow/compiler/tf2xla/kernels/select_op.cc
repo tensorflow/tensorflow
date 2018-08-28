@@ -67,7 +67,7 @@ class SelectOp : public XlaOpKernel {
       // to get the dimensions in the right order.
       const auto dim_sizes = then_shape.dim_sizes();
       gtl::ArraySlice<int64> bdims = dim_sizes;
-      bdims.pop_front();
+      bdims.remove_prefix(1);
       cond_handle = xla::Broadcast(cond_handle, bdims);
 
       std::vector<int64> dim_order(then_shape.dims());

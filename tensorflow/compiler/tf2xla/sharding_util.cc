@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 
+#include "absl/strings/match.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -65,8 +65,8 @@ xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
   if (explicit_sharding.has_value()) {
     return explicit_sharding;
   } else if (!parsed_device.has_type || !parsed_device.has_id ||
-             !str_util::StrContains(parsed_device.type,
-                                    kDeviceSuffixReplicatedCore)) {
+             !absl::StrContains(parsed_device.type,
+                                kDeviceSuffixReplicatedCore)) {
     return absl::optional<xla::OpSharding>();
   } else {
     const int core = parsed_device.id;

@@ -361,6 +361,9 @@ Status BuildComputation(
     if (retval.has_constant_value()) {
       output.is_constant = true;
       output.constant_value = retval.constant_value();
+    } else if (retval.resource() != nullptr) {
+      output.is_constant = false;
+      output.input_index = retval.resource()->arg_num();
     } else {
       output.is_constant = false;
       elems.push_back(retval.handle());
@@ -465,8 +468,6 @@ Status XlaCompiler::BuildArguments(
   // XLA computation as runtime parameters.
   input_mapping->clear();
   input_mapping->reserve(args.size());
-  std::vector<int> resources;
-  resources.reserve(args.size());
 
   // Fills in constant arguments, and computes non-constant argument order.
   for (std::vector<XlaCompiler::Argument>::size_type i = 0; i < args.size();
@@ -485,8 +486,9 @@ Status XlaCompiler::BuildArguments(
             /*tensor_array_gradients=*/arg.tensor_array_gradients, &resource));
         arg_expression.set_resource(resource);
         if (arg.initialized) {
-          resources.push_back(i);
+          input_mapping->push_back(i);
         }
+
         break;
       case XlaCompiler::Argument::kParameter: {
         input_mapping->push_back(i);
@@ -496,14 +498,11 @@ Status XlaCompiler::BuildArguments(
         arg_expression.set_constant_value(arg.constant_value);
         break;
       case XlaCompiler::Argument::kInvalid:
-        return errors::Internal("Unreachable case in BuildArguments()");
+        return errors::Internal(
+            "Unreachable case in BuildArguments() while filling constant args");
     }
   }
 
-  // Append parameters containing variable values after the other runtime
-  // parameters.
-  input_mapping->insert(input_mapping->end(), resources.begin(),
-                        resources.end());
   if (input_mapping->empty()) {
     return Status::OK();
   }
@@ -620,7 +619,8 @@ Status XlaCompiler::BuildArguments(
         break;
       case XlaCompiler::Argument::kConstant:
       case XlaCompiler::Argument::kInvalid:
-        return errors::Internal("Unreachable case in BuildArguments()");
+        return errors::Internal(
+            "Unreachable case in BuildArguments() while filling handles");
     }
   }
 

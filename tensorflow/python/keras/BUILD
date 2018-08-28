@@ -102,7 +102,6 @@ py_library(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
-        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
 )
@@ -140,6 +139,7 @@ py_library(
         ":backend",
         "//tensorflow/python/data",
         "//tensorflow/python/training/checkpointable:data_structures",
+        "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
     ],
 )

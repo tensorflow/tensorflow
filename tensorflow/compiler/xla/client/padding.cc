@@ -31,8 +31,8 @@ Status ValidatePaddingValues(
             input_dimensions.size() == window_strides.size();
   if (!ok) {
     return InvalidArgument(
-        "Want input dimensions size %zu = window dimensions size %zu = window "
-        "strides size %zu",
+        "Want input dimensions size %u = window dimensions size %u = window "
+        "strides size %u",
         input_dimensions.size(), window_dimensions.size(),
         window_strides.size());
   }

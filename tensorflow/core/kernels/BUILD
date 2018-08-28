@@ -1280,6 +1280,7 @@ tf_cuda_cc_test(
     srcs = ["gather_op_test.cc"],
     deps = [
         ":gather_op",
+        ":host_constant_op",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -3765,7 +3766,7 @@ tf_kernel_library(
         "spacetobatch_functor.h",
         "spacetobatch_functor_gpu.cu.cc",
     ],
-    visibility = ["//visibility:private"],
+    visibility = [":friends"],
     deps = [
         ":bounds_check",
         "//tensorflow/core:framework",

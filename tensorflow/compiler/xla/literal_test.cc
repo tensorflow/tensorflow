@@ -18,6 +18,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -97,42 +99,42 @@ class LiteralUtilTest : public ::testing::Test {
 
 TEST_F(LiteralUtilTest, LiteralScalarToString) {
   auto true_lit = LiteralUtil::CreateR0<bool>(true);
-  ASSERT_EQ("true", true_lit->ToString());
+  EXPECT_EQ("true", true_lit->ToString());
 
   auto false_lit = LiteralUtil::CreateR0<bool>(false);
-  ASSERT_EQ("false", false_lit->ToString());
+  EXPECT_EQ("false", false_lit->ToString());
 
   auto u32_lit = LiteralUtil::CreateR0<uint32>(42);
-  ASSERT_EQ("42", u32_lit->ToString());
+  EXPECT_EQ("42", u32_lit->ToString());
 
   auto s32_lit = LiteralUtil::CreateR0<int32>(-999);
-  ASSERT_EQ("-999", s32_lit->ToString());
+  EXPECT_EQ("-999", s32_lit->ToString());
 
   auto f32_lit = LiteralUtil::CreateR0<float>(3.14f);
-  ASSERT_EQ("3.14", f32_lit->ToString());
+  EXPECT_EQ("3.14", f32_lit->ToString());
 
   auto f16_lit = LiteralUtil::CreateR0<half>(static_cast<half>(0.5f));
-  ASSERT_EQ("0.5", f16_lit->ToString());
+  EXPECT_EQ("0.5", f16_lit->ToString());
 
   auto c64_lit = LiteralUtil::CreateR0<complex64>({3.14f, 2.78f});
-  ASSERT_EQ("(3.14, 2.78)", c64_lit->ToString());
+  EXPECT_EQ("(3.14, 2.78)", c64_lit->ToString());
 
   auto bf16_lit = LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(0.5f));
-  ASSERT_EQ("0.5", bf16_lit->ToString());
+  EXPECT_EQ("0.5", bf16_lit->ToString());
 
   // 3.14 will be truncated to 3.125 in bfloat16 format.
   auto bf16_lit_truncated =
       LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(3.14f));
-  ASSERT_EQ("3.125", bf16_lit_truncated->ToString());
+  EXPECT_EQ("3.125", bf16_lit_truncated->ToString());
 
   auto bf16_lit_truncated2 =
       LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(9.001f));
-  ASSERT_EQ("9", bf16_lit_truncated2->ToString());
+  EXPECT_EQ("9", bf16_lit_truncated2->ToString());
 }
 
 TEST_F(LiteralUtilTest, LiteralVectorToString) {
   auto pred_vec = LiteralUtil::CreateR1<bool>({true, false, true});
-  ASSERT_EQ("{101}", pred_vec->ToString());
+  EXPECT_EQ("{101}", pred_vec->ToString());
 }
 
 TEST_F(LiteralUtilTest, R2ToString) {
@@ -142,7 +144,7 @@ TEST_F(LiteralUtilTest, R2ToString) {
   { 3, 4 },
   { 5, 6 }
 })";
-  ASSERT_EQ(expected, literal->ToString());
+  EXPECT_EQ(expected, literal->ToString());
 }
 
 TEST_F(LiteralUtilTest, R3ToString) {
@@ -156,7 +158,7 @@ TEST_F(LiteralUtilTest, R3ToString) {
 { { 5 },
   { 6 } }
 })";
-  ASSERT_EQ(expected, literal->ToString());
+  EXPECT_EQ(expected, literal->ToString());
 }
 
 TEST_F(LiteralUtilTest, TupleToString) {
@@ -170,7 +172,7 @@ f32[2,2] {
   { 3, 4 }
 }
 ))";
-  ASSERT_EQ(expected, tuple->ToString());
+  EXPECT_EQ(expected, tuple->ToString());
 }
 
 TEST_F(LiteralUtilTest, CreateR3FromArray3d) {
@@ -196,7 +198,7 @@ TEST_F(LiteralUtilTest, CreateR3FromArray3d) {
   { 9, 10 },
   { 11, 12 } }
 })";
-  ASSERT_EQ(expected, result);
+  EXPECT_EQ(expected, result);
 }
 
 TEST_F(LiteralUtilTest, CreateSparse) {
@@ -249,7 +251,7 @@ TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
     }
   }
 })";
-  ASSERT_EQ(expected, result);
+  EXPECT_EQ(expected, result);
 }
 
 TEST_F(LiteralUtilTest, LiteralR4F32Stringifies) {
@@ -282,7 +284,7 @@ TEST_F(LiteralUtilTest, LiteralR4F32Stringifies) {
     }
   }
 })";
-  ASSERT_EQ(expected, result);
+  EXPECT_EQ(expected, result);
 }
 
 TEST_F(LiteralUtilTest, EachCellR2F32) {
@@ -1037,7 +1039,7 @@ TEST_F(LiteralUtilTest, CopyFromDifferentShapes) {
   auto vector = LiteralUtil::CreateR1<float>({5.0, 7.0});
   Status status = matrix->CopyFrom(*vector);
   ASSERT_FALSE(status.ok());
-  ASSERT_THAT(status.error_message(),
+  EXPECT_THAT(status.error_message(),
               HasSubstr("Destination subshape incompatible"));
 }
 
@@ -1324,8 +1326,8 @@ TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
   auto literal = LiteralUtil::CreateR0<uint32>(1234);
   Status status = literal->BitcastConvert(F64).status();
   EXPECT_NE(Status::OK(), status);
-  EXPECT_TRUE(tensorflow::str_util::StrContains(status.error_message(),
-                                                "bit widths are different"));
+  EXPECT_TRUE(
+      absl::StrContains(status.error_message(), "bit widths are different"));
 }
 
 TEST_F(LiteralUtilTest, CopyFromProto_Bool) {
@@ -1392,10 +1394,10 @@ TEST_F(LiteralUtilTest, CopyFromProto_f16) {
                           Literal::CreateFromProto(p));
   auto r = literal->data<half>();
   ASSERT_EQ(4, r.size());
-  ASSERT_EQ(h1, r[0]);
-  ASSERT_EQ(h2, r[1]);
-  ASSERT_EQ(h2, r[2]);
-  ASSERT_EQ(h1, r[3]);
+  EXPECT_EQ(h1, r[0]);
+  EXPECT_EQ(h2, r[1]);
+  EXPECT_EQ(h2, r[2]);
+  EXPECT_EQ(h1, r[3]);
 }
 
 TEST_F(LiteralUtilTest, LiteralSliceTest) {
@@ -1578,7 +1580,7 @@ TEST_F(LiteralUtilTest, MoveIntoTuple) {
 TEST_F(LiteralUtilTest, MoveIntoEmptyTuple) {
   Literal literal = Literal::MoveIntoTuple({});
   ASSERT_TRUE(ShapeUtil::IsTuple(literal.shape()));
-  ASSERT_EQ(ShapeUtil::TupleElementCount(literal.shape()), 0);
+  EXPECT_EQ(ShapeUtil::TupleElementCount(literal.shape()), 0);
 }
 
 TEST_F(LiteralUtilTest, LiteralMoveAssignment) {
@@ -1691,7 +1693,7 @@ TEST_F(LiteralUtilTest, InvalidProtoNoValues) {
   *proto.mutable_shape() = ShapeUtil::MakeShape(F32, {3});
   Status status = Literal::CreateFromProto(proto).status();
   ASSERT_FALSE(status.ok());
-  ASSERT_THAT(status.error_message(),
+  EXPECT_THAT(status.error_message(),
               HasSubstr("Expected 3 elements in LiteralProto"));
 }
 
@@ -1703,7 +1705,7 @@ TEST_F(LiteralUtilTest, InvalidProtoNoShape) {
   proto.add_preds(false);
   Status status = Literal::CreateFromProto(proto).status();
   ASSERT_FALSE(status.ok());
-  ASSERT_THAT(status.error_message(), HasSubstr("LiteralProto has no shape"));
+  EXPECT_THAT(status.error_message(), HasSubstr("LiteralProto has no shape"));
 }
 
 TEST_F(LiteralUtilTest, InvalidProtoWrongContainer) {
@@ -1715,7 +1717,7 @@ TEST_F(LiteralUtilTest, InvalidProtoWrongContainer) {
   proto.add_preds(false);
   Status status = Literal::CreateFromProto(proto).status();
   ASSERT_FALSE(status.ok());
-  ASSERT_THAT(status.error_message(),
+  EXPECT_THAT(status.error_message(),
               HasSubstr("Expected 3 elements in LiteralProto"));
 }
 
@@ -1728,7 +1730,7 @@ TEST_F(LiteralUtilTest, InvalidProtoTooFewValues) {
   proto.add_f32s(3.0);
   Status status = Literal::CreateFromProto(proto).status();
   ASSERT_FALSE(status.ok());
-  ASSERT_THAT(status.error_message(),
+  EXPECT_THAT(status.error_message(),
               HasSubstr("Expected 84 elements in LiteralProto"));
 }
 
@@ -1741,7 +1743,7 @@ TEST_F(LiteralUtilTest, InvalidProtoTooManyValues) {
   proto.add_s32s(100);
   Status status = Literal::CreateFromProto(proto).status();
   ASSERT_FALSE(status.ok());
-  ASSERT_THAT(status.error_message(),
+  EXPECT_THAT(status.error_message(),
               HasSubstr("Expected 2 elements in LiteralProto"));
 }
 
@@ -1756,7 +1758,7 @@ TEST_F(LiteralUtilTest, InvalidProtoMissingLayout) {
   proto.add_preds(false);
   Status status = Literal::CreateFromProto(proto).status();
   ASSERT_FALSE(status.ok());
-  ASSERT_THAT(status.error_message(), HasSubstr("LiteralProto has no layout"));
+  EXPECT_THAT(status.error_message(), HasSubstr("LiteralProto has no layout"));
 }
 
 TEST_F(LiteralUtilTest, InvalidProtoTooFewTupleElements) {
@@ -1772,7 +1774,7 @@ TEST_F(LiteralUtilTest, InvalidProtoTooFewTupleElements) {
 
   Status status = Literal::CreateFromProto(proto).status();
   ASSERT_FALSE(status.ok());
-  ASSERT_THAT(status.error_message(), HasSubstr("Expected 2 tuple elements"));
+  EXPECT_THAT(status.error_message(), HasSubstr("Expected 2 tuple elements"));
 }
 
 TEST_F(LiteralUtilTest, InvalidProtoTooManyTupleElements) {
@@ -1795,7 +1797,7 @@ TEST_F(LiteralUtilTest, InvalidProtoTooManyTupleElements) {
 
   Status status = Literal::CreateFromProto(proto).status();
   ASSERT_FALSE(status.ok());
-  ASSERT_THAT(status.error_message(), HasSubstr("Expected 2 tuple elements"));
+  EXPECT_THAT(status.error_message(), HasSubstr("Expected 2 tuple elements"));
 }
 
 TEST_F(LiteralUtilTest, SortSparseElements) {
@@ -1805,7 +1807,7 @@ TEST_F(LiteralUtilTest, SortSparseElements) {
   literal->AppendSparseElement<float>({3, 4, 5}, 3.0);
   literal->AppendSparseElement<float>({1, 2, 3}, 1.0);
   literal->SortSparseElements();
-  ASSERT_EQ(literal->ToString(false),
+  EXPECT_EQ(literal->ToString(false),
             "f32[10,10,10]{[1, 2, 3]: 1, [2, 3, 4]: 2, [3, 4, 5]: 3}");
 }
 
@@ -1813,27 +1815,26 @@ TEST_F(LiteralUtilTest, GetSparseElementAsString) {
   std::vector<int64> dimensions = {10, 10, 10};
   SparseIndexArray indices(10, {{1, 2, 3}, {2, 3, 4}, {3, 4, 5}});
 
-  ASSERT_EQ(
+  EXPECT_EQ(
       LiteralUtil::CreateSparse<bool>(dimensions, indices, {true, false, true})
           ->GetSparseElementAsString(1),
       "false");
-  ASSERT_EQ(LiteralUtil::CreateSparse<int64>(dimensions, indices, {1, 2, 3})
+  EXPECT_EQ(LiteralUtil::CreateSparse<int64>(dimensions, indices, {1, 2, 3})
                 ->GetSparseElementAsString(1),
-            tensorflow::strings::StrCat(int64{2}));
-  ASSERT_EQ(
+            absl::StrCat(int64{2}));
+  EXPECT_EQ(
       LiteralUtil::CreateSparse<double>(dimensions, indices, {1.0, 2.0, 3.0})
           ->GetSparseElementAsString(1),
-      tensorflow::strings::StrCat(double{2.0}));
-  ASSERT_EQ(LiteralUtil::CreateSparse<half>(dimensions, indices,
+      absl::StrCat(double{2.0}));
+  EXPECT_EQ(LiteralUtil::CreateSparse<half>(dimensions, indices,
                                             {half{1.0}, half{2.0}, half{3.0}})
                 ->GetSparseElementAsString(1),
-            tensorflow::strings::StrCat(static_cast<float>(half{2.0})));
-  ASSERT_EQ(
-      LiteralUtil::CreateSparse<complex64>(
-          dimensions, indices,
-          std::vector<complex64>{{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}})
-          ->GetSparseElementAsString(1),
-      tensorflow::strings::StrCat("(", float{3.0}, ", ", float{4.0}, ")"));
+            absl::StrCat(static_cast<float>(half{2.0})));
+  EXPECT_EQ(LiteralUtil::CreateSparse<complex64>(
+                dimensions, indices,
+                std::vector<complex64>{{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}})
+                ->GetSparseElementAsString(1),
+            absl::StrCat("(", float{3.0}, ", ", float{4.0}, ")"));
 }
 
 TEST_F(LiteralUtilTest, BroadcastVectorToMatrix0) {

@@ -32,9 +32,7 @@ namespace gpu {
 // TODO(jlebar): Also pad dots.
 class PadForTensorCores : public HloPassInterface {
  public:
-  tensorflow::StringPiece name() const override {
-    return "pad for tensor cores";
-  }
+  absl::string_view name() const override { return "pad for tensor cores"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 };

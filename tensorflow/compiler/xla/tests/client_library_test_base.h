@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/bitmap.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test.h"
@@ -202,7 +202,7 @@ class ClientLibraryTestBase : public ::testing::Test {
   // Compare the result of the computation to a strings. In XLA strings are
   // represented using rank-1 U8 shapes.
   void ComputeAndCompareR1U8(
-      XlaBuilder* builder, tensorflow::StringPiece expected,
+      XlaBuilder* builder, absl::string_view expected,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments);
 
   // Convenience method for running a built computation, transferring the

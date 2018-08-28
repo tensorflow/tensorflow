@@ -23,6 +23,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -31,8 +33,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -169,7 +169,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   } else if (ShapeUtil::IsArray(shape)) {
     if (!shape.has_layout()) {
       return InvalidArgument("shape %s does not have a layout",
-                             ShapeUtil::HumanString(shape).c_str());
+                             ShapeUtil::HumanString(shape));
     }
     return ValidateLayoutForShape(shape.layout(), shape);
   } else {
@@ -177,7 +177,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
     if (shape.has_layout()) {
       return InvalidArgument(
           "shape of primitive type %s should not have a layout",
-          PrimitiveType_Name(shape.element_type()).c_str());
+          PrimitiveType_Name(shape.element_type()));
     }
     return Status::OK();
   }
@@ -194,7 +194,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
         layout.padded_dimensions_size() != 0) {
       return InvalidArgument(
           "shape of primitive type %s should not have a non-trivial layout",
-          PrimitiveType_Name(shape.element_type()).c_str());
+          PrimitiveType_Name(shape.element_type()));
     }
     return Status::OK();
   }
@@ -202,17 +202,17 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   if (layout.format() == INVALID_FORMAT) {
     return InvalidArgument(
         "Layout does not have a valid format: layout {%s}, shape {%s}",
-        layout.ShortDebugString().c_str(), shape.ShortDebugString().c_str());
+        layout.ShortDebugString(), shape.ShortDebugString());
   }
 
   if (layout.format() == DENSE) {
     if (layout.minor_to_major_size() != ShapeUtil::Rank(shape)) {
       return InvalidArgument(
           "layout minor_to_major field contains %d elements, "
-          "but shape is rank %lld: {%s}; shape: %s",
+          "but shape is rank %d: {%s}; shape: %s",
           layout.minor_to_major_size(), ShapeUtil::Rank(shape),
-          tensorflow::str_util::Join(layout.minor_to_major(), ", ").c_str(),
-          shape.ShortDebugString().c_str());
+          absl::StrJoin(layout.minor_to_major(), ", "),
+          shape.ShortDebugString());
     }
 
     std::vector<bool> dimensions_in_layout(ShapeUtil::Rank(shape), false);
@@ -221,12 +221,12 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
       if (dim < 0 || dim >= ShapeUtil::Rank(shape)) {
         return InvalidArgument(
             "layout minor_to_major field has out-of-bounds value: %s",
-            HumanString(layout).c_str());
+            HumanString(layout));
       }
       if (dimensions_in_layout[dim]) {
         return InvalidArgument(
             "layout minor_to_major field has duplicate values: {%s}",
-            HumanString(layout).c_str());
+            HumanString(layout));
       }
       dimensions_in_layout[dim] = true;
     }
@@ -234,14 +234,14 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
     if (layout.padded_dimensions_size() > 0) {
       if (layout.padded_dimensions_size() != ShapeUtil::Rank(shape)) {
         return InvalidArgument(
-            "layout has %d padded dimensions, but shape is rank %lld",
+            "layout has %d padded dimensions, but shape is rank %d",
             layout.padded_dimensions_size(), ShapeUtil::Rank(shape));
       }
       for (int i = 0; i < layout.padded_dimensions_size(); ++i) {
         if (layout.padded_dimensions(i) < shape.dimensions(i)) {
           return InvalidArgument(
-              "for dimension %d, dimension padding (%lld) is smaller than "
-              "the dimension size (%lld) of the shape",
+              "for dimension %d, dimension padding (%d) is smaller than "
+              "the dimension size (%d) of the shape",
               i, layout.padded_dimensions(i), shape.dimensions(i));
         }
       }
@@ -403,12 +403,10 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 
 /* static */ string LayoutUtil::HumanString(const Layout& layout) {
   if (IsSparse(layout)) {
-    return tensorflow::strings::StrCat("sparse{", layout.max_sparse_elements(),
-                                       "}");
+    return absl::StrCat("sparse{", layout.max_sparse_elements(), "}");
   }
   CHECK(IsDense(layout));
-  return tensorflow::strings::StrCat(
-      "{", tensorflow::str_util::Join(layout.minor_to_major(), ","), "}");
+  return absl::StrCat("{", absl::StrJoin(layout.minor_to_major(), ","), "}");
 }
 
 namespace {

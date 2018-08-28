@@ -130,7 +130,8 @@ class DistributionTestBase(test.TestCase):
       # Error should go down
       self.assertLess(error_after, error_before)
 
-  def _test_minimize_loss_graph(self, d, soft_placement=False):
+  def _test_minimize_loss_graph(self, d, soft_placement=False,
+                                learning_rate=0.2):
     config = config_pb2.ConfigProto()
     config.allow_soft_placement = soft_placement
     config.gpu_options.per_process_gpu_memory_fraction = 0.3
@@ -150,7 +151,7 @@ class DistributionTestBase(test.TestCase):
       grad_fn = backprop.implicit_grad(loss)
 
       def update(v, g):
-        return v.assign_sub(0.2 * g)
+        return v.assign_sub(learning_rate * g)
 
       one = d.broadcast(constant_op.constant([[1.]]))
 

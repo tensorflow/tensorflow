@@ -279,6 +279,7 @@ tf_cuda_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:graph",

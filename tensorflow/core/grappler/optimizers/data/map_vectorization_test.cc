@@ -55,8 +55,8 @@ NodeDef MakeMapNodeHelper(
     const gtl::ArraySlice<const gtl::ArraySlice<int>>& output_shapes,
     const gtl::ArraySlice<DataType>& output_types) {
   return test::function::NDef(
-      name, map_op_name, {input_node_name.ToString()},
-      {{"f", FunctionDefHelper::FunctionRef(function_name.ToString())},
+      name, map_op_name, {string(input_node_name)},
+      {{"f", FunctionDefHelper::FunctionRef(string(function_name))},
        {"Targuments", {}},
        {"output_shapes", MakeShapeListAttr(output_shapes)},
        {"output_types", output_types}});
@@ -76,7 +76,7 @@ NodeDef MakeBatchNode(
     const gtl::ArraySlice<const gtl::ArraySlice<int>>& output_shapes,
     const gtl::ArraySlice<DataType>& output_types) {
   return NDef(name, "BatchDataset",
-              {input_node_name.ToString(), input_batch_size_name.ToString()},
+              {string(input_node_name), string(input_batch_size_name)},
               {{"output_types", output_types},
                {"output_shapes", MakeShapeListAttr(output_shapes)}});
 }
@@ -87,8 +87,8 @@ NodeDef MakeBatchV2Node(
     const gtl::ArraySlice<const gtl::ArraySlice<int>>& output_shapes,
     const gtl::ArraySlice<DataType>& output_types) {
   return NDef(name, "BatchDatasetV2",
-              {input_node_name.ToString(), input_batch_size_name.ToString(),
-               input_drop_remainder_name.ToString()},
+              {string(input_node_name), string(input_batch_size_name),
+               string(input_drop_remainder_name)},
               {{"output_types", output_types},
                {"output_shapes", MakeShapeListAttr(output_shapes)}});
 }

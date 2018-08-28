@@ -696,10 +696,9 @@ def _get_variables(graph=None):
   return variables
 
 
-def _initialize_variables(session, variables=None):
+def _initialize_variables(session):
   """Utility to initialize uninitialized variables on the fly."""
-  if variables is None:
-    variables = _get_variables(ops.get_default_graph())
+  variables = _get_variables(ops.get_default_graph())
   candidate_vars = []
   for v in variables:
     if not getattr(v, '_keras_initialized', False):

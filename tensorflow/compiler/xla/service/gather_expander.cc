@@ -323,7 +323,7 @@ StatusOr<HloInstruction*> GatherExpander::ExpandGather(
     return Unimplemented(
         "Gather operations with more than 2147483647 gather indices are not "
         "supported. This error occurred for %s.",
-        gather_instr->ToString().c_str());
+        gather_instr->ToString());
   }
 
   TF_ASSIGN_OR_RETURN(

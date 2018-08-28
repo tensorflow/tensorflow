@@ -19,6 +19,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -34,12 +36,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-
-using ::testing::ElementsAre;
 
 namespace xla {
 namespace {
+
+using ::testing::ElementsAre;
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -51,7 +52,12 @@ AlgebraicSimplifier::ValidBitcastCallback non_bitcasting_callback() {
   return [](const Shape&, const Shape&) { return false; };
 }
 
-class AlgebraicSimplifierTest : public HloVerifiedTestBase {};
+class AlgebraicSimplifierTest : public HloVerifiedTestBase {
+ public:
+  AlgebraicSimplifierTest()
+      : HloVerifiedTestBase(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false) {}
+};
 
 // Test that A + 0 is simplified to A
 TEST_F(AlgebraicSimplifierTest, AddZero) {
@@ -2143,9 +2149,8 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
         root->operand(0)->opcode() == HloOpcode::kDot) {
       auto lhs_shape = root->operand(0)->operand(0)->shape();
       auto rhs_shape = root->operand(0)->operand(1)->shape();
-      return tensorflow::strings::StrCat(
-          tensorflow::str_util::Join(lhs_shape.dimensions(), "x"), " DOT ",
-          tensorflow::str_util::Join(rhs_shape.dimensions(), "x"));
+      return absl::StrCat(absl::StrJoin(lhs_shape.dimensions(), "x"), " DOT ",
+                          absl::StrJoin(rhs_shape.dimensions(), "x"));
     }
     return "UNEXPECTED CHANGE";
   };
@@ -2660,11 +2665,10 @@ struct PadReduceWindowEffectiveBroadcastCase {
   bool should_become_broadcast;
 
   string ToTestCaseName() const {
-    return tensorflow::strings::StrCat(
-        tensorflow::str_util::Join(input_spatials, ","), ";",
-        tensorflow::str_util::Join(symmetric_pad_spatials, ","), ";",
-        tensorflow::str_util::Join(reduce_window_spatials, ","), ";", prepend_a,
-        ";", should_become_broadcast);
+    return absl::StrCat(absl::StrJoin(input_spatials, ","), ";",
+                        absl::StrJoin(symmetric_pad_spatials, ","), ";",
+                        absl::StrJoin(reduce_window_spatials, ","), ";",
+                        prepend_a, ";", should_become_broadcast);
   }
 };
 
@@ -2852,7 +2856,12 @@ struct DotOfConcatTestSpec {
 
 class DotOfConcatSimplificationTest
     : public HloVerifiedTestBase,
-      public ::testing::WithParamInterface<DotOfConcatTestSpec> {};
+      public ::testing::WithParamInterface<DotOfConcatTestSpec> {
+ public:
+  DotOfConcatSimplificationTest()
+      : HloVerifiedTestBase(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false) {}
+};
 
 // Test that we transform
 //  dot(const, concat(A, B, C))
@@ -3025,7 +3034,12 @@ struct DotOfGatherTestSpec {
 
 class DotOfGatherSimplificationTest
     : public HloVerifiedTestBase,
-      public ::testing::WithParamInterface<DotOfGatherTestSpec> {};
+      public ::testing::WithParamInterface<DotOfGatherTestSpec> {
+ public:
+  DotOfGatherSimplificationTest()
+      : HloVerifiedTestBase(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false) {}
+};
 
 // input: dot(DS(ctA), ctB))
 // where DS(ctA) = DS({M x K}, {s, 0}, {1, K}) and ctB = {K x N}.

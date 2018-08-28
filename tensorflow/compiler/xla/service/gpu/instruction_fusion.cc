@@ -26,7 +26,7 @@ namespace gpu {
 
 namespace {
 
-bool IsFusile(const HloInstruction& hlo) {
+bool IsFusible(const HloInstruction& hlo) {
   // Don't fuse get-tuple-element on GPU: We can, but it's slower than not
   // fusing.  We never generate kernels for unfused GTEs.  Instead, if an
   // unfused GTE is an input to a kernel (including a fusion kernel), we
@@ -245,7 +245,7 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return true;
   }
 
-  if (!IsFusile(*producer) || !IsFusile(*consumer) ||
+  if (!IsFusible(*producer) || !IsFusible(*consumer) ||
       !InstructionFusion::ShouldFuse(consumer, operand_index)) {
     return false;
   }

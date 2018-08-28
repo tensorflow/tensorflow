@@ -36,9 +36,8 @@ StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
   se::DeviceMemoryBase result = stream_executor->AllocateArray<uint8>(size);
   if (size > 0 && result == nullptr) {
     return ResourceExhausted(
-        "Failed to allocate request for %s (%lluB) on device ordinal %d",
-        tensorflow::strings::HumanReadableNumBytes(size).c_str(), size,
-        device_ordinal);
+        "Failed to allocate request for %s (%uB) on device ordinal %d",
+        tensorflow::strings::HumanReadableNumBytes(size), size, device_ordinal);
   }
   return OwningDeviceMemory(result, device_ordinal, this);
 }
@@ -61,12 +60,12 @@ StatusOr<se::StreamExecutor*> StreamExecutorMemoryAllocator::GetStreamExecutor(
   }
   if (device_ordinal >= stream_executors_.size()) {
     return InvalidArgument(
-        "device ordinal value (%d) >= number of devices (%zu)", device_ordinal,
+        "device ordinal value (%d) >= number of devices (%u)", device_ordinal,
         stream_executors_.size());
   }
   if (stream_executors_[device_ordinal] == nullptr) {
     return NotFound("Device %s:%d present but not supported",
-                    platform()->Name().c_str(), device_ordinal);
+                    platform()->Name(), device_ordinal);
   }
   return stream_executors_[device_ordinal];
 }

@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/bitmap.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -187,7 +187,7 @@ class LiteralUtil {
       const Array4D<NativeT>& values, const Layout& layout);
 
   // Creates a new vector of U8s literal value from a string.
-  static std::unique_ptr<Literal> CreateR1U8(tensorflow::StringPiece value);
+  static std::unique_ptr<Literal> CreateR1U8(absl::string_view value);
 
   // Creates a linspace-populated literal with the given number of rows and
   // columns.

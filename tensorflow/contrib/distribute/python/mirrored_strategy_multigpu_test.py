@@ -21,6 +21,7 @@ from __future__ import print_function
 import sys
 
 from tensorflow.contrib.distribute.python import mirrored_strategy
+from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.contrib.distribute.python import values
 from tensorflow.core.protobuf import config_pb2
@@ -41,6 +42,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribution_strategy_context
+from tensorflow.python.training import server_lib
 
 
 GPU_TEST = "test_gpu" in sys.argv[0]
@@ -886,8 +888,18 @@ class MirroredVariableUpdateTest(test.TestCase):
       self.assertIsInstance(mirrored_var, values.MirroredVariable)
       self.evaluate(variables.global_variables_initializer())
       self.assertEquals(1.0, self.evaluate(mirrored_var))
-      mirrored_var_result = self.evaluate(mirrored_var.assign_add(6.0))
+
+      # read_value == True
+      mirrored_var_result = self.evaluate(
+          mirrored_var.assign_add(6.0, read_value=True))
       self.assertEquals(7.0, mirrored_var_result)
+      self.assertEquals(7.0, self.evaluate(mirrored_var.get("/device:CPU:0")))
+      self.assertEquals(7.0, self.evaluate(mirrored_var.get("/device:GPU:0")))
+
+      # read_value == False
+      self.evaluate(mirrored_var.assign_add(2.0, read_value=False))
+      self.assertEquals(9.0, self.evaluate(mirrored_var.get("/device:CPU:0")))
+      self.assertEquals(9.0, self.evaluate(mirrored_var.get("/device:GPU:0")))
 
   @test_util.run_in_graph_and_eager_modes(config=config)
   def testAssignAddMirroredVarTowerContext(self):
@@ -954,6 +966,8 @@ class MirroredVariableUpdateTest(test.TestCase):
       self.assertEquals(5.0, self.evaluate(mirrored_var))
       mirrored_var_result = self.evaluate(mirrored_var.assign_sub(2.0))
       self.assertEquals(3.0, mirrored_var_result)
+      self.assertEquals(3.0, self.evaluate(mirrored_var.get("/device:GPU:0")))
+      self.assertEquals(3.0, self.evaluate(mirrored_var.get("/device:CPU:0")))
 
   @test_util.run_in_graph_and_eager_modes(config=config)
   def testAssignSubMirroredVarTowerContext(self):
@@ -1242,6 +1256,40 @@ class MirroredStrategyDefunTest(test.TestCase):
     expected_result = values.PerDevice({"CPU:0": 5.0 * 1.25,
                                         "GPU:0": 3.0 * 1.25})
     self._call_and_check(fn1, [factors], expected_result, [fn1])
+
+
+class MultiWorkerMirroredStrategyTest(
+    multi_worker_test_base.MultiWorkerTestBase,
+    strategy_test_lib.DistributionTestBase):
+
+  def _get_distribution_strategy(self):
+    cluster_spec = server_lib.ClusterSpec({
+        "worker": ["/job:worker/task:0", "/job:worker/task:1"]
+    })
+    strategy = mirrored_strategy.MirroredStrategy(num_gpus=context.num_gpus())
+    strategy.configure(cluster_spec=cluster_spec)
+    return strategy
+
+  def testMinimizeLossGraph(self):
+    self._test_minimize_loss_graph(self._get_distribution_strategy(),
+                                   learning_rate=0.05)
+
+
+class MultiWorkerMirroredStrategyTestWithChief(
+    multi_worker_test_base.MultiWorkerTestBase,
+    strategy_test_lib.DistributionTestBase):
+
+  @classmethod
+  def setUpClass(cls):
+    """Create a local cluster with 2 workers and 1 chief."""
+    cls._cluster_spec = multi_worker_test_base.create_in_process_cluster(
+        num_workers=2, num_ps=0, has_chief=True)
+    cls._default_target = "grpc://" + cls._cluster_spec["chief"][0]
+
+  def testMinimizeLossGraph(self):
+    strategy = mirrored_strategy.MirroredStrategy(num_gpus=context.num_gpus())
+    strategy.configure(cluster_spec=self._cluster_spec)
+    self._test_minimize_loss_graph(strategy, learning_rate=0.05)
 
 
 if __name__ == "__main__":

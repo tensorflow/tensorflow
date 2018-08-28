@@ -52,7 +52,10 @@ static std::array<bool, 2> use_bf16_params{true, false};
 class HloEvaluatorTest : public ::testing::WithParamInterface<bool>,
                          public HloVerifiedTestBase {
  protected:
-  HloEvaluatorTest() : use_bfloat16_(GetParam()) {
+  HloEvaluatorTest()
+      : HloVerifiedTestBase(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false),
+        use_bfloat16_(GetParam()) {
     evaluator_ = absl::make_unique<HloEvaluator>();
   }
 
@@ -1216,7 +1219,12 @@ TEST_P(HloEvaluatorTest,
   EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
 }
 
-class HloEvaluatorPreciseReduceTest : public HloVerifiedTestBase {};
+class HloEvaluatorPreciseReduceTest : public HloVerifiedTestBase {
+ public:
+  HloEvaluatorPreciseReduceTest()
+      : HloVerifiedTestBase(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false) {}
+};
 
 // Tests that Reduce doesn't lose precision when adding many numbers (because
 // it accumulates its result in a double).

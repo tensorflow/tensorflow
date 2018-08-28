@@ -89,7 +89,7 @@ int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
                                   PyObject* exception);
 
 // Returns the string associated with the passed-in python object.
-char* TFE_GetPythonString(PyObject* o);
+const char* TFE_GetPythonString(PyObject* o);
 
 // Returns a unique id on each call.
 int64_t get_uid();

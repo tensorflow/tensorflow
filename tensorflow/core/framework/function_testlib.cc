@@ -49,8 +49,8 @@ NodeDef NDef(StringPiece name, StringPiece op, gtl::ArraySlice<string> inputs,
              gtl::ArraySlice<std::pair<string, FDH::AttrValueWrapper>> attrs,
              const string& device) {
   NodeDef n;
-  n.set_name(name.ToString());
-  n.set_op(op.ToString());
+  n.set_name(string(name));
+  n.set_op(string(op));
   for (const auto& in : inputs) n.add_input(in);
   n.set_device(device);
   for (auto na : attrs) n.mutable_attr()->insert({na.first, na.second.proto});

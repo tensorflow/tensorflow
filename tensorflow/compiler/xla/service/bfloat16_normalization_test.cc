@@ -76,7 +76,8 @@ class BFloat16NormalizationTest : public HloTestBase {
     StatusOr<bool> result = normalization.Run(module);
     EXPECT_IS_OK(result.status());
 
-    HloVerifier verifier(/*allow_mixed_precision=*/true);
+    HloVerifier verifier(/*layout_sensitive=*/false,
+                         /*allow_mixed_precision=*/true);
     EXPECT_IS_OK(verifier.Run(module).status());
 
     return result.ValueOrDie();

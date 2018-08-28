@@ -194,7 +194,7 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteralInternal(
       break;
     default:
       return Unimplemented("Unsupported type for fake literal generation: %s",
-                           ShapeUtil::HumanString(shape).c_str());
+                           ShapeUtil::HumanString(shape));
   }
   return std::move(literal);
 }
@@ -342,7 +342,7 @@ StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
       default:
         return Unimplemented(
             "Constrained operand generation not implemented for %s.",
-            use->ToString().c_str());
+            use->ToString());
     }
   }
   int constraint_count = 0;
@@ -408,8 +408,12 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
   return std::move(arguments);
 }
 
-Status VerifyHloModule(HloModule* const module, bool allow_mixed_precision) {
-  return HloVerifier(allow_mixed_precision).Run(module).status();
+Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
+                       bool allow_mixed_precision) {
+  return HloVerifier(/*layout_sensitive=*/layout_sensitive,
+                     /*allow_mixed_precision=*/allow_mixed_precision)
+      .Run(module)
+      .status();
 }
 
 }  // namespace xla

@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -400,7 +400,7 @@ StatusOr<string> Client::ExecutionStatsAsString(
     int64 nanoseconds = profile.compute_time_ns();
     int64 cycle_count = profile.compute_cycle_count();
     double gflops = total_flops / nanoseconds;
-    return tensorflow::strings::StrCat(
+    return absl::StrCat(
         "[Execution Statistics] flop count: ", computation_stats.flop_count(),
         ", transcendental count: ", computation_stats.transcendental_count(),
         ", compute execution time: ", nanoseconds, " nsec",

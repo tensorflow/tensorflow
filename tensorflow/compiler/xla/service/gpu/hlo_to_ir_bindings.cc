@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 
+#include "absl/strings/str_cat.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
@@ -24,16 +25,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace gpu {
 
-using tensorflow::strings::StrAppend;
-using tensorflow::strings::StrCat;
+using absl::StrAppend;
+using absl::StrCat;
 
 void HloToIrBindings::EmitBasePointersForHlos(
     tensorflow::gtl::ArraySlice<const HloInstruction*> io_hlos,

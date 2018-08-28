@@ -32,7 +32,6 @@ cc_library(
     deps = [
         ":embedded_protocol_buffers",
         "//tensorflow/compiler/tf2xla",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:cpu_function_runtime",
         "//tensorflow/compiler/tf2xla:tf2xla_proto",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
@@ -56,6 +55,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -72,6 +72,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
         "@llvm//:support",  # fixdeps: keep
         "@llvm//:x86_code_gen",  # fixdeps: keep
     ],
@@ -100,6 +101,7 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -195,6 +197,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@llvm//:core",
         "@llvm//:support",
         "@llvm//:target",

@@ -39,7 +39,7 @@ class CudnnConvolutionAlgorithmPicker : public HloPassInterface {
                                   Compiler* compiler)
       : stream_exec_(stream_exec), allocator_(allocator), compiler_(compiler) {}
 
-  tensorflow::StringPiece name() const override {
+  absl::string_view name() const override {
     return "cudnn-convolution-algorithm-picker";
   }
 
