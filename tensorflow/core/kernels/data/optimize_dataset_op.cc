@@ -92,6 +92,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       DatasetGraphDefBuilder db(&b);
       Node* input_node = nullptr;
       SerializationContext::Params params;
+      params.allow_stateful_functions = true;
       params.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
       SerializationContext serialization_ctx(params);
       TF_RETURN_IF_ERROR(
