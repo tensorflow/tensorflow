@@ -94,7 +94,10 @@ class AttributeSpec {
   // jni_type: the type of this attribute in JNI layer (see OperationBuilder)
   // description: a description of this attribute, in javadoc
   // iterable: true if this attribute is a list
-  // default_value: default value for this attribute or nullptr if none
+  // default_value: default value for this attribute or nullptr if none. Any
+  //                value referenced by this pointer must outlive the lifetime
+  //                of the AttributeSpec. This is guaranteed if the value is
+  //                issued by an OpDef of the global OpRegistry.
   AttributeSpec(const string& op_def_name, const Variable& var,
                 const Type& type, const Type& jni_type,
                 const string& description, bool iterable,
