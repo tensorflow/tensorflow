@@ -960,7 +960,7 @@ REGISTER_OP("Dilation2DBackpropFilter")
 REGISTER_OP("Relu")
     .Input("features: T")
     .Output("activations: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: {realnumbertype, qint8}")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("ReluGrad")
