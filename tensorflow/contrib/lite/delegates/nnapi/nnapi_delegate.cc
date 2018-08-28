@@ -779,11 +779,9 @@ class NNAPIDelegateKernel {
           return nullptr;
         }
         break;
-#if 0
       case kTfLiteBuiltinRnn:
         // NNAPI only support float32 weights.
-        // TODO(miaowang): check the number of inputs before accessing it.
-        if (version == 1 &&
+        if (version == 1 && node->inputs->size == 5 &&
             context->tensors[node->inputs->data[/*kWeightsTensor*/ 1]].type ==
                 kTfLiteFloat32) {
           return [](const NNAPIOpMappingArgs& mapping_args)
@@ -791,11 +789,11 @@ class NNAPIDelegateKernel {
             // NNAPI need both state_in and state_out.
             int ann_index;
             mapping_args.builder->AddStateFloat32Tensor(
-                mapping_args.node->outputs->data[/*kHiddenStateTensor*/ 0],
+                mapping_args.node->inputs->data[/*kHiddenStateTensor*/ 4],
                 &ann_index);
             mapping_args.model_state_outputs->push_back(ann_index);
             mapping_args.model_state_tfl_inputs->push_back(
-                mapping_args.node->outputs->data[/*kHiddenStateTensor*/ 0]);
+                mapping_args.node->inputs->data[/*kHiddenStateTensor*/ 4]);
             auto builtin = reinterpret_cast<TfLiteRNNParams*>(
                 mapping_args.node->builtin_data);
             mapping_args.builder->AddScalarInt32Operand(builtin->activation);
@@ -805,10 +803,9 @@ class NNAPIDelegateKernel {
           return nullptr;
         }
         break;
-#endif
       case kTfLiteBuiltinSvdf:
         // NNAPI only support float32 weights.
-        if (version == 1 &&
+        if (version == 1 && node->inputs->size == 5 &&
             context->tensors[node->inputs->data[/*kWeightsFeatureTensor*/ 1]]
                     .type == kTfLiteFloat32) {
           return [](const NNAPIOpMappingArgs& mapping_args)

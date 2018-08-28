@@ -1773,15 +1773,16 @@ class RNNOpModel : public SingleOpModelWithNNAPI {
     weights_ = AddInput(weights);
     recurrent_weights_ = AddInput(recurrent_weights);
     bias_ = AddInput(TensorType_FLOAT32);
-    hidden_state_ = AddOutput(TensorType_FLOAT32);
+    hidden_state_ = AddInput(TensorType_FLOAT32, true);
     output_ = AddOutput(TensorType_FLOAT32);
     SetBuiltinOp(
         BuiltinOperator_RNN, BuiltinOptions_RNNOptions,
         CreateRNNOptions(builder_, ActivationFunctionType_RELU).Union());
-    BuildInterpreter({{batches_, input_size_},
-                      {units_, input_size_},
-                      {units_, units_},
-                      {units_}});
+    BuildInterpreter({{batches_, input_size_},  // input tensor
+                      {units_, input_size_},    // weights tensor
+                      {units_, units_},         // recurrent weights tensor
+                      {units_},                 // bias tensor
+                      {batches_, units_}});     // hidden state tensor
   }
 
   void SetBias(std::initializer_list<float> f) { PopulateTensor(bias_, f); }
@@ -1800,14 +1801,6 @@ class RNNOpModel : public SingleOpModelWithNNAPI {
 
   void SetInput(int offset, float* begin, float* end) {
     PopulateTensor(input_, offset, begin, end);
-  }
-
-  void ResetHiddenState() {
-    const int zero_buffer_size = units_ * batches_;
-    std::unique_ptr<float[]> zero_buffer(new float[zero_buffer_size]);
-    memset(zero_buffer.get(), 0, zero_buffer_size * sizeof(float));
-    PopulateTensor(hidden_state_, 0, zero_buffer.get(),
-                   zero_buffer.get() + zero_buffer_size);
   }
 
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
@@ -1829,13 +1822,12 @@ class RNNOpModel : public SingleOpModelWithNNAPI {
   int input_size_;
 };
 
-TEST(NNAPIDelegate, DISABLED_RnnBlackBoxTest) {
+TEST(NNAPIDelegate, RnnBlackBoxTest) {
   RNNOpModel rnn(2, 16, 8);
   rnn.SetWeights(rnn_weights);
   rnn.SetBias(rnn_bias);
   rnn.SetRecurrentWeights(rnn_recurrent_weights);
 
-  rnn.ResetHiddenState();
   const int input_sequence_size = sizeof(rnn_input) / sizeof(float) /
                                   (rnn.input_size() * rnn.num_batches());
 
