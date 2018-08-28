@@ -19,12 +19,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-const float DecisionTreeResource::get_prediction(const int32 id,
-                                                 const int32 dimension) const {
+const float TensorForestTreeResource::get_prediction(
+    const int32 id, const int32 dimension) const {
   return decision_tree_->nodes(id).leaf().vector().value(dimension);
 };
 
-const int32 DecisionTreeResource::TraverseTree(
+const int32 TensorForestTreeResource::TraverseTree(
     const std::unique_ptr<DenseTensorType>& input_data, int example_id) const {
   using boosted_trees::Node;
   using boosted_trees::Tree;
@@ -45,7 +45,7 @@ const int32 DecisionTreeResource::TraverseTree(
   }
 };
 
-bool DecisionTreeResource::InitFromSerialized(const string& serialized) {
+bool TensorForestTreeResource::InitFromSerialized(const string& serialized) {
   if (ParseProtoUnlimited(decision_tree_.get(), serialized)) {
     return true;
   }

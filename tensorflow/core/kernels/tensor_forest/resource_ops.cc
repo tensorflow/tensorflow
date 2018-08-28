@@ -32,7 +32,7 @@ class TensorForestCreateTreeVariableOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(tree_config_t->shape()),
                 errors::InvalidArgument("Tree config must be a scalar."));
 
-    auto* result = new DecisionTreeResource();
+    auto* result = new TensorForestTreeResource();
 
     if (!result->InitFromSerialized(tree_config_t->scalar<string>()())) {
       result->Unref();
@@ -56,7 +56,7 @@ class TensorForestTreeSerializeOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    DecisionTreeResource* decision_tree_resource;
+    TensorForestTreeResource* decision_tree_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &decision_tree_resource));
     mutex_lock l(*decision_tree_resource->get_mutex());
@@ -75,7 +75,7 @@ class TensorForestTreeDeserializeOp : public OpKernel {
   explicit TensorForestTreeDeserializeOp(OpKernelConstruction* context)
       : OpKernel(context) {}
   void Compute(OpKernelContext* context) override {
-    DecisionTreeResource* decision_tree_resource;
+    TensorForestTreeResource* decision_tree_resource;
     auto handle = HandleFromInput(context, 0);
     OP_REQUIRES_OK(context,
                    LookupResource(context, handle, &decision_tree_resource));
@@ -104,7 +104,7 @@ class TensorForestTreeSizeOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    DecisionTreeResource* decision_tree_resource;
+    TensorForestTreeResource* decision_tree_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &decision_tree_resource));
     mutex_lock l(*decision_tree_resource->get_mutex());
@@ -116,11 +116,11 @@ class TensorForestTreeSizeOp : public OpKernel {
   }
 };
 
-REGISTER_RESOURCE_HANDLE_KERNEL(DecisionTreeResource);
+REGISTER_RESOURCE_HANDLE_KERNEL(TensorForestTreeResource);
 
 REGISTER_KERNEL_BUILDER(
     Name("TensorForestTreeIsInitializedOp").Device(DEVICE_CPU),
-    IsResourceInitialized<DecisionTreeResource>);
+    IsResourceInitialized<TensorForestTreeResource>);
 
 REGISTER_KERNEL_BUILDER(
     Name("TensorForestCreateTreeVariable").Device(DEVICE_CPU),

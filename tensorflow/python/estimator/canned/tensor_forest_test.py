@@ -55,7 +55,9 @@ class TensorForestTest(test_util.TensorFlowTestCase):
                     ]}
     restored_tree_param = ParseDict(tree_weight,
                                     boosted_trees_pb2.Tree()).SerializeToString()
-    graph_builder = tensor_forest.RandomForestGraphs(hparams, None,
+
+    graph_builder = tensor_forest.RandomForestGraphs(hparams,
+                                                     None,
                                                      [restored_tree_param])
     probs, var = graph_builder.inference_graph(
         input_data)

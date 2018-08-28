@@ -29,7 +29,7 @@ class TensorForestTreePredictOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    DecisionTreeResource* decision_tree_resource;
+    TensorForestTreeResource* decision_tree_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &decision_tree_resource));
     mutex_lock l(*decision_tree_resource->get_mutex());
@@ -71,7 +71,7 @@ class TensorForestTreePredictOp : public OpKernel {
   };
 
   void set_output_value(const int32 example_id, const int32 leaf_id,
-                        const DecisionTreeResource* decision_tree_resource,
+                        const TensorForestTreeResource* decision_tree_resource,
                         TTypes<float, 2>::Tensor* out) const {
     for (int j = 0; j < logits_dimension_; ++j) {
       const float count = decision_tree_resource->get_prediction(leaf_id, j);

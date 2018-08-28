@@ -28,12 +28,12 @@ namespace tensorflow {
 typedef TTypes<const float, 2>::ConstTensor DenseTensorType;
 
 // Keep a tree ensemble in memory for efficient evaluation and mutation.
-class DecisionTreeResource : public ResourceBase {
+class TensorForestTreeResource : public ResourceBase {
  public:
-  DecisionTreeResource() : decision_tree_(new boosted_trees::Tree()){};
+  TensorForestTreeResource() : decision_tree_(new boosted_trees::Tree()){};
 
   string DebugString() override {
-    return strings::StrCat("DecisionTree[size=", get_size(), "]");
+    return strings::StrCat("TensorForestTree[size=", get_size(), "]");
   }
 
   mutex* get_mutex() { return &mu_; }

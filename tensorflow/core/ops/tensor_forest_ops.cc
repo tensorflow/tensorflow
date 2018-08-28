@@ -22,7 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_RESOURCE_HANDLE_OP(DecisionTreeResource);
+REGISTER_RESOURCE_HANDLE_OP(TensorForestTreeResource);
 
 REGISTER_OP("TensorForestTreeIsInitializedOp")
     .Input("tree_handle: resource")

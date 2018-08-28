@@ -27,7 +27,7 @@ from tensorflow.python.feature_column import feature_column as feature_column_li
 from tensorflow.python.ops import gen_tensor_forest_ops
 from tensorflow.python.ops import tensor_forest_ops, math_ops, array_ops
 
-from tensorflow.python.util.tf_export import estimator_export
+# from tensorflow.python.util.tf_export import estimator_export
 
 _ForestHParams = collections.namedtuple('TreeHParams', [
     'logits_dimension',
@@ -80,7 +80,14 @@ class RandomForestGraphs(object):
     return math_ops.reduce_mean(math_ops.to_float(array_ops.stack(sizes)))
 
 
-def _tf_model_fn(features, labels, mode, head, sorted_feature_columns, forest_hparams, config, name='tensor_forest'):
+def _tf_model_fn(features,
+                 labels,
+                 mode,
+                 head,
+                 sorted_feature_columns,
+                 forest_hparams,
+                 config,
+                 name='tensor_forest'):
   graph_builder = RandomForestGraphs(
       forest_hparams, config)
 
@@ -152,7 +159,8 @@ class TensorForestClassifier(estimator.Estimator):
 
     def _model_fn(features, labels, mode, config):
       return _tf_model_fn(
-          features, labels, mode, head, sorted_feature_columns, forest_hparams, config)
+          features, labels, mode, head,
+          sorted_feature_columns, forest_hparams, config)
 
     super(TensorForestClassifier, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config)

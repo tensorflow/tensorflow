@@ -26,8 +26,9 @@ from tensorflow.python.training import saver
 
 class VariableSavable(saver.BaseSaverBuilder.SaveableObject):
 
-  def __init__(self, type_name, name, container, config, resource_handle_func, create_op_func,
-               is_initialized_op_func, serialize_op_func, deserialize_op_func):
+  def __init__(self, type_name, name, container, config, resource_handle_func,
+               create_op_func, is_initialized_op_func, serialize_op_func,
+               deserialize_op_func):
 
     with ops.name_scope(name, type_name) as name:
       self._resource_handle = resource_handle_func(
@@ -43,8 +44,7 @@ class VariableSavable(saver.BaseSaverBuilder.SaveableObject):
     # It's not meaningful the tree variable. So we just pass an empty
     # value.
     slice_spec = ""
-    specs = [saver.BaseSaverBuilder.SaveSpec(
-        tensor, slice_spec, name), ]
+    specs = [saver.BaseSaverBuilder.SaveSpec(tensor, slice_spec, name)]
     super(VariableSavable,
           self).__init__(self._resource_handle, specs, name)
 
@@ -83,7 +83,7 @@ def tree_variable(tree_config, name, container=None):
       name,
       container,
       tree_config,
-      gen_tensor_forest_ops.decision_tree_resource_handle_op,
+      gen_tensor_forest_ops.tensor_forest_tree_resource_handle_op,
       gen_tensor_forest_ops.tensor_forest_create_tree_variable,
       gen_tensor_forest_ops.tensor_forest_tree_is_initialized_op,
       gen_tensor_forest_ops.tensor_forest_tree_serialize,
