@@ -107,6 +107,7 @@ class DfsHloVisitorBase {
   virtual Status HandleFft(HloInstructionPtr fft) = 0;
   virtual Status HandleCrossReplicaSum(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllToAll(HloInstructionPtr hlo) = 0;
+  virtual Status HandleCollectivePermute(HloInstructionPtr hlo) = 0;
   virtual Status HandleCompare(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }

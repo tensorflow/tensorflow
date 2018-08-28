@@ -715,6 +715,12 @@ class XlaBuilder {
                  int64 concat_dimension, int64 split_count,
                  const std::vector<ReplicaGroup>& replica_groups);
 
+  // Enqueues an operation that do an CollectivePermute of the operand cross
+  // cores.
+  XlaOp CollectivePermute(
+      const XlaOp& operand,
+      const std::vector<std::pair<int64, int64>>& source_target_pairs);
+
   // Enqueues an operation that scatters the `source` array to the selected
   // indices of each window.
   XlaOp SelectAndScatter(const XlaOp& operand, const XlaComputation& select,
@@ -1260,6 +1266,9 @@ class XlaBuilder {
   friend XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,
                         int64 concat_dimension, int64 split_count,
                         const std::vector<ReplicaGroup>& replica_groups);
+  friend XlaOp CollectivePermute(
+      const XlaOp& operand,
+      const std::vector<std::pair<int64, int64>>& source_target_pairs);
   friend XlaOp SelectAndScatter(
       const XlaOp& operand, const XlaComputation& select,
       tensorflow::gtl::ArraySlice<int64> window_dimensions,
@@ -1860,6 +1869,18 @@ XlaOp CrossReplicaSum(
 XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,
                int64 concat_dimension, int64 split_count,
                const std::vector<ReplicaGroup>& replica_groups = {});
+
+// Enqueues an collective operation that sends and receives data cross replicas.
+//
+// - `source_target_pair`: a list of (source_replica_id, target_replica_id)
+// pairs. For each pair, the operand is sent from source replica to target
+// replica. Note that, 1) any two pairs should not have the same target replica
+// id, and they should not have the same source replica id; 2) if a replica id
+// is not a target in any pair, then the output on that replica is a tensor
+// consists of 0(s) with the same shape as the input.
+XlaOp CollectivePermute(
+    const XlaOp& operand,
+    const std::vector<std::pair<int64, int64>>& source_target_pairs);
 
 // Enqueues an operation that scatters the `source` array to the selected
 // indices of each window.

@@ -320,6 +320,17 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                     proto.replica_groups().end()));
       break;
     }
+    case HloOpcode::kCollectivePermute: {
+      std::vector<std::pair<int64, int64>> source_target_pairs(
+          proto.source_target_pairs_size());
+      for (int i = 0; i < source_target_pairs.size(); i++) {
+        source_target_pairs[i].first = proto.source_target_pairs(i).source();
+        source_target_pairs[i].second = proto.source_target_pairs(i).target();
+      }
+      instruction = CreateCollectivePermute(proto.shape(), operands(0),
+                                            source_target_pairs);
+      break;
+    }
     case HloOpcode::kConvolution:
       TF_RET_CHECK(proto.operand_ids_size() == 2)
           << "Convolution instruction should have 2 operands but sees "
@@ -679,6 +690,14 @@ HloInstruction::CreateCrossReplicaSum(
     const std::vector<ReplicaGroup>& replica_groups) {
   return absl::make_unique<HloAllToAllInstruction>(shape, operands,
                                                    replica_groups);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateCollectivePermute(
+    const Shape& shape, HloInstruction* operand,
+    const std::vector<std::pair<int64, int64>>& source_target_pairs) {
+  return absl::make_unique<HloCollectivePermuteInstruction>(
+      shape, operand, source_target_pairs);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
@@ -1154,6 +1173,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kReducePrecision:
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectivePermute:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kConvolution:
@@ -1622,6 +1642,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kOutfeed:
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectivePermute:
     case HloOpcode::kConvolution:
     case HloOpcode::kCustomCall:
     case HloOpcode::kReduceWindow:
@@ -2275,6 +2296,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleCrossReplicaSum(this);
     case HloOpcode::kAllToAll:
       return visitor->HandleAllToAll(this);
+    case HloOpcode::kCollectivePermute:
+      return visitor->HandleCollectivePermute(this);
     case HloOpcode::kTuple:
       return visitor->HandleTuple(this);
     case HloOpcode::kMap:
@@ -3187,6 +3210,11 @@ const string& HloInstruction::outfeed_config() const {
 
 const std::vector<ReplicaGroup>& HloInstruction::replica_groups() const {
   return Cast<HloCollectiveInstruction>(this)->replica_groups();
+}
+
+const std::vector<std::pair<int64, int64>>&
+HloInstruction::source_target_pairs() const {
+  return Cast<HloCollectivePermuteInstruction>(this)->source_target_pairs();
 }
 
 string HloInstruction::cross_replica_sum_barrier() const {

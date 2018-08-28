@@ -136,6 +136,9 @@ class ShapeInference {
   static StatusOr<Shape> InferAllToAllTupleShape(
       tensorflow::gtl::ArraySlice<const Shape*> operand_shapes);
 
+  // Infers the shape of a collective permute operation.
+  static StatusOr<Shape> InferCollectivePermuteShape(const Shape& shape);
+
   // Infers the shape produced by applying the given reduction computation
   // shape to the given input operand shape.
   //
