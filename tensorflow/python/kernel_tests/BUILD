@@ -1442,6 +1442,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond_v2",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:data_flow_ops_gen",
