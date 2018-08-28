@@ -54,7 +54,7 @@ StatusOr<std::unique_ptr<Literal>> PackedLiteralReader::Read(
   if (shape.element_type() != F32) {
     return Unimplemented(
         "not yet implemented element type for packed literal reading: %s",
-        PrimitiveType_Name(shape.element_type()).c_str());
+        PrimitiveType_Name(shape.element_type()));
   }
 
   auto result = absl::make_unique<Literal>(literal_shape);

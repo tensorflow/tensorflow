@@ -73,7 +73,7 @@ TEST_F(XlaFusionOptimizerTest, Chains) {
   EXPECT_TRUE(clusters.find("D") == clusters.cend());
 }
 
-TEST_F(XlaFusionOptimizerTest, FusableOps) {
+TEST_F(XlaFusionOptimizerTest, FusibleOps) {
   GraphDef graph;
   {
     GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);

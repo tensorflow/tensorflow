@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -43,9 +44,9 @@ struct ReverseSpec {
   bool use_bfloat16;
 
   string ToTestCaseName() const {
-    return tensorflow::strings::Printf(
-        "reverse_%s_in_dims_%s_%s", absl::StrJoin(input_dims, "x").c_str(),
-        absl::StrJoin(reversal, "x").c_str(), use_bfloat16 ? "bf16" : "f32");
+    return absl::StrFormat(
+        "reverse_%s_in_dims_%s_%s", absl::StrJoin(input_dims, "x"),
+        absl::StrJoin(reversal, "x"), use_bfloat16 ? "bf16" : "f32");
   }
 };
 

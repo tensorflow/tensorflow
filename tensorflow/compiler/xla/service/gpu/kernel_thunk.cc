@@ -63,7 +63,7 @@ Status KernelThunk::Initialize(const GpuExecutable& executable,
   if (kernel_cache_.end() == it) {
     it = kernel_cache_.emplace(executor, se::KernelBase(executor)).first;
     if (!executor->GetKernel(*loader_spec_, &it->second)) {
-      return InternalError("Unable to load kernel %s", kernel_name_.c_str());
+      return InternalError("Unable to load kernel %s", kernel_name_);
     }
   }
 
@@ -107,7 +107,7 @@ Status KernelThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
           stream, se::ThreadDim(launch_dimensions.threads_per_block()),
           se::BlockDim(launch_dimensions.block_count()), *kernel,
           *kernel_args)) {
-    return InternalError("Unable to launch kernel %s", kernel_name_.c_str());
+    return InternalError("Unable to launch kernel %s", kernel_name_);
   }
   return Status::OK();
 }

@@ -27,11 +27,13 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/math/math_util.h"
@@ -205,43 +207,73 @@ void StridedCopy(tensorflow::gtl::MutableArraySlice<D> dest, int64 dest_base,
 Status AddStatus(Status prior, absl::string_view context);
 Status AppendStatus(Status prior, absl::string_view context);
 
-// Status error shorthands -- printfs the arguments to be
-// used as an error message and returns a status in the canonical
-// error space.
-Status InvalidArgument(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status Unimplemented(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status InternalError(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status FailedPrecondition(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status Cancelled(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status ResourceExhausted(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status NotFound(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status Unavailable(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-
-// Passed-varargs variant of the InvalidArgument factory above.
-Status InvalidArgumentV(const char* format, va_list args);
+// Status error shorthands -- StrFormat's the arguments to be used as an error
+// message and returns a status in the canonical error space.
+template <typename... Args>
+Status InvalidArgument(const absl::FormatSpec<Args...>& format,
+                       const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::InvalidArgument(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status Unimplemented(const absl::FormatSpec<Args...>& format,
+                     const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Unimplemented(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status InternalError(const absl::FormatSpec<Args...>& format,
+                     const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Internal(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status FailedPrecondition(const absl::FormatSpec<Args...>& format,
+                          const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::FailedPrecondition(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status Cancelled(const absl::FormatSpec<Args...>& format, const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Cancelled(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status ResourceExhausted(const absl::FormatSpec<Args...>& format,
+                         const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::ResourceExhausted(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status NotFound(const absl::FormatSpec<Args...>& format, const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::NotFound(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status Unavailable(const absl::FormatSpec<Args...>& format,
+                   const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Unavailable(absl::StrFormat(format, args...)));
+}
 
 template <typename... Args>
 Status InvalidArgumentStrCat(Args&&... concat) {
-  return InvalidArgument("%s",
-                         absl::StrCat(std::forward<Args>(concat)...).c_str());
+  return InvalidArgument("%s", absl::StrCat(std::forward<Args>(concat)...));
 }
 
 template <typename... Args>
 Status UnimplementedStrCat(Args&&... concat) {
-  return Unimplemented("%s",
-                       absl::StrCat(std::forward<Args>(concat)...).c_str());
+  return Unimplemented("%s", absl::StrCat(std::forward<Args>(concat)...));
 }
 
 template <typename... Args>
 Status InternalErrorStrCat(Args&&... concat) {
-  return InternalError("%s",
-                       absl::StrCat(std::forward<Args>(concat)...).c_str());
+  return InternalError("%s", absl::StrCat(std::forward<Args>(concat)...));
 }
 
 template <typename... Args>
 Status ResourceExhaustedStrCat(Args&&... concat) {
-  return ResourceExhausted("%s",
-                           absl::StrCat(std::forward<Args>(concat)...).c_str());
+  return ResourceExhausted("%s", absl::StrCat(std::forward<Args>(concat)...));
 }
 
 // Splits the lines of the original, replaces leading whitespace with the prefix

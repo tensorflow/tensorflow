@@ -1467,7 +1467,7 @@ Status DotOpEmitter::EmitCallToRuntime() {
       break;
     default:
       return Unimplemented("Invalid type %s for dot operation",
-                           PrimitiveType_Name(type).c_str());
+                           PrimitiveType_Name(type));
   }
 
   llvm::Type* float_ptr_type = float_type->getPointerTo();

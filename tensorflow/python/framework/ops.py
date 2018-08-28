@@ -5376,11 +5376,12 @@ def enable_eager_execution(config=None,
      TensorFlow graph, or if options provided conflict with a previous call
      to this function.
   """
-  return enable_eager_execution_internal(
-      config=config,
-      device_policy=device_policy,
-      execution_mode=execution_mode,
-      server_def=None)
+  if context._default_mode != context.EAGER_MODE:  # pylint: disable=protected-access
+    return enable_eager_execution_internal(
+        config=config,
+        device_policy=device_policy,
+        execution_mode=execution_mode,
+        server_def=None)
 
 
 def enable_eager_execution_internal(config=None,

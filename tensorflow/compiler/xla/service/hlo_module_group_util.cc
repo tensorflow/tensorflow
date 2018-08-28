@@ -282,7 +282,7 @@ Status HloModuleGroupUtil::VisitTopologicalOrder(
               "following nodes. Note that the order of the nodes is arbitrary "
               "and that the list may include nodes that are not part of the "
               "cycle.\n%s",
-              predecessor->ToString().c_str(), cyclic_instructions.c_str());
+              predecessor->ToString(), cyclic_instructions);
         }
         stack.push(predecessor);
       }

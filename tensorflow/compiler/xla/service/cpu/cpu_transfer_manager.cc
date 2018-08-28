@@ -104,7 +104,7 @@ Status CpuTransferManager::TransferLiteralToInfeed(
   if (ShapeUtil::IsNestedTuple(shape)) {
     return Unimplemented(
         "Infeed with a nested tuple shape is not supported: %s",
-        ShapeUtil::HumanString(literal.shape()).c_str());
+        ShapeUtil::HumanString(literal.shape()));
   }
 
   // For a tuple, we transfer each of its elements to the device and
@@ -152,11 +152,11 @@ CpuTransferManager::TransferBufferToInfeedInternal(se::StreamExecutor* executor,
                                                    int64 size,
                                                    const void* source) {
   if (size > std::numeric_limits<int32>::max()) {
-    return InvalidArgument("Infeed shape is too large: needs %lld bytes", size);
+    return InvalidArgument("Infeed shape is too large: needs %d bytes", size);
   }
 
   if (size <= 0) {
-    return InvalidArgument("Infeed shape must have positive size; got %lld",
+    return InvalidArgument("Infeed shape must have positive size; got %d",
                            size);
   }
 
@@ -244,12 +244,12 @@ StatusOr<Shape> CpuTransferManager::TransferBuffersFromOutfeedInternal(
   for (auto b : buffer_data) {
     int64 size = b.second;
     if (size > std::numeric_limits<int32>::max()) {
-      return InvalidArgument("Outfeed shape is too large: needs %lld bytes",
+      return InvalidArgument("Outfeed shape is too large: needs %d bytes",
                              size);
     }
 
     if (size <= 0) {
-      return InvalidArgument("Outfeed shape must have positive size; got %lld",
+      return InvalidArgument("Outfeed shape must have positive size; got %d",
                              size);
     }
 

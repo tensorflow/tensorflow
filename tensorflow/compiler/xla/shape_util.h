@@ -131,12 +131,12 @@ class ShapeIndexView {
   }
   ShapeIndexView ConsumeFront() const {
     ShapeIndexView result = *this;
-    result.indices_.pop_front();
+    result.indices_.remove_prefix(1);
     return result;
   }
   ShapeIndexView ConsumeBack() const {
     ShapeIndexView result = *this;
-    result.indices_.pop_back();
+    result.indices_.remove_suffix(1);
     return result;
   }
   ShapeIndex ToShapeIndex() const { return ShapeIndex(begin(), end()); }

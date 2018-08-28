@@ -62,7 +62,7 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
       if (reinterpret_cast<uintptr_t>(address.opaque()) % expected_alignment !=
           0) {
         return InternalError(
-            "Address of registered buffer %lld must be a multiple of %llx, but "
+            "Address of registered buffer %d must be a multiple of %x, but "
             "was %p",
             i, kEntryParameterAlignBytes, address.opaque());
       }
@@ -83,7 +83,7 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
             0) {
           return InternalError(
               "Address returned by memory_allocator->Allocate must be a "
-              "multiple of %llx, but was %p",
+              "multiple of %x, but was %p",
               kXlaAllocatedBufferAlignBytes, buffer.opaque());
         }
         // We do manual memory management within BufferAllocations.  Be sure not

@@ -238,6 +238,7 @@ class FuncGraph(CapturingGraph):
       self.seed = graph.seed
       self._xla_compile = getattr(graph, "_xla_compile", False)
       self._device_function_stack = graph._device_function_stack.copy()  # pylint: disable=protected-access
+      self._colocation_stack = graph._colocation_stack.copy()  # pylint: disable=protected-access
 
     # TODO(b/112165328, b/112906995): summaries depend on inheriting collections
     # from the default graph even in eager mode. It'd be nice to not have a
@@ -1018,13 +1019,19 @@ class PolymorphicFunction(object):
 
     # The graph, or whether we're executing eagerly, should be a part of the
     # cache key so we don't improperly capture tensors such as variables.
-    execution_context = ctx.executing_eagerly() or graph
+    executing_eagerly = ctx.executing_eagerly()
+    execution_context = executing_eagerly or graph
 
     # Putting the device in the cache key ensures that call-site device
     # annotations are respected.
     device_functions = _get_device_functions(ctx, graph)
 
-    return cache_key + (execution_context, device_functions)
+    # `ops.colocate_with` directives translate into `ops.device` directives when
+    # eager execution is enabled.
+    colocation_stack = (None if executing_eagerly else
+                        tuple(graph._colocation_stack.peek_objs()))  # pylint: disable=protected-access
+
+    return cache_key + (execution_context, device_functions, colocation_stack)
 
   def _canonicalize_function_inputs(self, *args, **kwds):
     """Canonicalizes `args` and `kwds`.
@@ -1213,6 +1220,7 @@ def defun(func=None, input_signature=None):
       self.dense2 = tf.keras.layers.Dense(5, activation=tf.nn.softmax)
       self.keep_probability = keep_probability
 
+    @tf.contrib.eager.defun
     def call(self, inputs, training=True):
       x = self.dense2(self.dense1(inputs))
       if training:
@@ -1221,7 +1229,6 @@ def defun(func=None, input_signature=None):
         return x
 
   model = MyModel()
-  model.call = tf.contrib.eager.defun(model.call)
   model(x, training=True)  # executes a graph, with dropout
   model(x, training=False) # executes a graph, without dropout
 

@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/types/optional.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/regexp.h"
@@ -57,31 +57,11 @@ using absl::nullopt;
 using absl::optional;
 using absl::StrAppend;
 using absl::StrCat;
+using absl::StrFormat;
 using absl::StrJoin;
 using tensorflow::Env;
 using tensorflow::WriteStringToFile;
 using tensorflow::io::JoinPath;
-
-// Helpers for Printf and Appendf.
-template <typename T>
-struct PrintfConvert {
-  const T& operator()(const T& t) const { return t; }
-};
-template <>
-struct PrintfConvert<string> {
-  const char* operator()(const string& s) const { return s.c_str(); }
-};
-
-// Like tensorflow::strings::Printf/Appendf, but you don't need to call c_str()
-// on strings.
-template <typename... Ts>
-string Printf(const char* fmt, const Ts&... ts) {
-  return tensorflow::strings::Printf(fmt, PrintfConvert<Ts>()(ts)...);
-}
-template <typename... Ts>
-void Appendf(string* s, const char* fmt, const Ts&... ts) {
-  tensorflow::strings::Appendf(s, fmt, PrintfConvert<Ts>()(ts)...);
-}
 
 // Used to indicate how we should treat a given HLOInstruction in the graph.
 // should we treat it like normal, hide it, and so on?
@@ -210,10 +190,9 @@ NodeColors NodeColorsForScheme(ColorScheme color) {
 string NodeColorAttributes(ColorScheme color) {
   NodeColors node_colors = NodeColorsForScheme(color);
 
-  return Printf(
-      R"(style="%s", fontcolor="%s", color="%s", fillcolor="%s")",
-      node_colors.style, node_colors.font_color, node_colors.stroke_color,
-      node_colors.fill_color);
+  return StrFormat(R"(style="%s", fontcolor="%s", color="%s", fillcolor="%s")",
+                   node_colors.style, node_colors.font_color,
+                   node_colors.stroke_color, node_colors.fill_color);
 }
 
 // Replaces <> with &lt;&gt;, so that this string is safe(er) for use in a
@@ -448,7 +427,7 @@ string HloDotDumper::Dump() {
 }
 
 string HloDotDumper::Header() {
-  const char* fmt = R"(digraph G {
+  constexpr char fmt[] = R"(digraph G {
 rankdir = TB;
 compound = true;
 label = <<b>%s</b>>;
@@ -481,8 +460,8 @@ stylesheet=<
   }
   if (profile_ != nullptr) {
     auto cycles = profile_->total_cycles_executed(*computation_);
-    Appendf(&graph_label, "<br/>total cycles = %lld (%s)", cycles,
-            tensorflow::strings::HumanReadableNum(cycles));
+    absl::StrAppendFormat(&graph_label, "<br/>total cycles = %d (%s)", cycles,
+                          tensorflow::strings::HumanReadableNum(cycles));
   }
 
   // Create CSS rules that say, when you hover over the given node or cluster,
@@ -509,14 +488,14 @@ stylesheet=<
       // One could imagine other ways of writing this CSS rule that involve
       // less duplication, but this way seems to be relatively performant.
       edge_css_rules.push_back(
-          Printf("  #%s%d:hover ~ #edge%lld text { fill: %s; }\n"
-                 "  #%s%d:hover ~ #edge%lld path { "
-                 "stroke: %s; stroke-width: .2em; }\n"
-                 "  #%s%d:hover ~ #edge%lld polygon { "
-                 "fill: %s; stroke: %s; stroke-width: .2em; }\n",
-                 elem_type, elem_id, edge_id, color,  //
-                 elem_type, elem_id, edge_id, color,  //
-                 elem_type, elem_id, edge_id, color, color));
+          StrFormat("  #%s%d:hover ~ #edge%d text { fill: %s; }\n"
+                    "  #%s%d:hover ~ #edge%d path { "
+                    "stroke: %s; stroke-width: .2em; }\n"
+                    "  #%s%d:hover ~ #edge%d polygon { "
+                    "fill: %s; stroke: %s; stroke-width: .2em; }\n",
+                    elem_type, elem_id, edge_id, color,  //
+                    elem_type, elem_id, edge_id, color,  //
+                    elem_type, elem_id, edge_id, color, color));
     };
 
     // The "to_node" value may be a NULL, indicating that this points to the
@@ -559,7 +538,7 @@ stylesheet=<
     }
   }
 
-  return Printf(fmt, graph_label, StrJoin(edge_css_rules, "\n"));
+  return StrFormat(fmt, graph_label, StrJoin(edge_css_rules, "\n"));
 }
 
 string HloDotDumper::Footer() { return StrCat(StrJoin(edges_, "\n"), "\n}"); }
@@ -600,9 +579,9 @@ string HloDotDumper::DumpSubcomputation(const HloComputation* subcomp,
     VLOG(2) << "Edge: from " << from->name() << " to " << parent_instr->name()
             << " as " << next_edge_id_;
     edge_ids_.insert({{from, parent_instr}, next_edge_id_++});
-    const char* edge_fmt =
+    constexpr char edge_fmt[] =
         R"(%s -> %s [ltail="%s", style="dashed" tooltip="%s -> %s"];)";
-    edges_.push_back(Printf(
+    edges_.push_back(StrFormat(
         edge_fmt, InstructionId(from), InstructionId(parent_instr),
         SubcomputationId(subcomp), subcomp->name(), parent_instr->name()));
   }
@@ -619,9 +598,10 @@ string HloDotDumper::DumpSubcomputation(const HloComputation* subcomp,
 
   string subcomp_label, style;
   if (parent_instr->opcode() == HloOpcode::kFusion) {
-    subcomp_label = Printf("Fused expression for <b>%s</b><br/>%s",
-                           HtmlLikeStringSanitize(parent_instr->name()),
-                           HtmlLikeStringSanitize(parent_instr->ToCategory()));
+    subcomp_label =
+        StrFormat("Fused expression for <b>%s</b><br/>%s",
+                  HtmlLikeStringSanitize(parent_instr->name()),
+                  HtmlLikeStringSanitize(parent_instr->ToCategory()));
     string extra_info = GetInstructionNodeExtraInfo(parent_instr);
     if (!extra_info.empty()) {
       StrAppend(&subcomp_label, "<br/>", extra_info);
@@ -647,18 +627,18 @@ string HloDotDumper::DumpSubcomputation(const HloComputation* subcomp,
       strokecolor = highlight ? "#b71c1c" : "#c2c2c2";
     }
     style =
-        Printf(R"(style="rounded,filled,bold"; fillcolor="%s"; color="%s;")",
-               fillcolor, strokecolor);
+        StrFormat(R"(style="rounded,filled,bold"; fillcolor="%s"; color="%s;")",
+                  fillcolor, strokecolor);
   } else {
-    subcomp_label = Printf("Subcomputation for <b>%s</b><br/>%s",
-                           HtmlLikeStringSanitize(parent_instr->name()),
-                           HtmlLikeStringSanitize(subcomp->name()));
+    subcomp_label = StrFormat("Subcomputation for <b>%s</b><br/>%s",
+                              HtmlLikeStringSanitize(parent_instr->name()),
+                              HtmlLikeStringSanitize(subcomp->name()));
     style = "style=rounded; color=black;";
   }
 
   string comp_body = DumpComputation(subcomp);
 
-  const char* computation_fmt = R"(subgraph %s {
+  constexpr char computation_fmt[] = R"(subgraph %s {
 %s
 label = <%s>;
 labelloc = t;
@@ -667,7 +647,7 @@ tooltip = " ";
 }  // %s
 
 )";
-  return Printf(computation_fmt, id, style, subcomp_label, comp_body, id);
+  return StrFormat(computation_fmt, id, style, subcomp_label, comp_body, id);
 }
 
 string HloDotDumper::DumpComputation(const HloComputation* comp) {
@@ -718,11 +698,11 @@ string HloDotDumper::DumpRootTag() {
   VLOG(2) << "Adding edge from " << from->name() << " to root tag as "
           << next_edge_id_;
   edge_ids_.insert({{from, to}, next_edge_id_++});
-  edges_.push_back(Printf(R"(%s -> %s [tooltip=" "];)", from_id, to_id));
+  edges_.push_back(StrFormat(R"(%s -> %s [tooltip=" "];)", from_id, to_id));
 
-  return Printf(R"(%s [label=<%s>, shape=%s, tooltip=" ", %s];)"
-                "\n",
-                to_id, node_body, node_shape, NodeColorAttributes(color));
+  return StrFormat(R"(%s [label=<%s>, shape=%s, tooltip=" ", %s];)"
+                   "\n",
+                   to_id, node_body, node_shape, NodeColorAttributes(color));
 }
 
 static const HloConstantInstruction* TryGetFusionParameterConstant(
@@ -817,10 +797,10 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
     }
   }
 
-  return Printf(R"(%s [label=<%s>, shape=%s, tooltip="%s", %s];)"
-                "\n",
-                InstructionId(instr), node_body, node_shape, node_metadata,
-                NodeColorAttributes(color));
+  return StrFormat(R"(%s [label=<%s>, shape=%s, tooltip="%s", %s];)"
+                   "\n",
+                   InstructionId(instr), node_body, node_shape, node_metadata,
+                   NodeColorAttributes(color));
 }
 
 string HloDotDumper::GetInstructionNodeInlinedOperands(
@@ -833,7 +813,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
     // enumerates all of its empty dimensions (e.g.  "{ { {}, {} }, ..."), which
     // is just noise.
     if (ShapeUtil::IsZeroElementArray(shape)) {
-      return Printf("{} (%s)", ShapeUtil::HumanString(constant->shape()));
+      return StrFormat("{} (%s)", ShapeUtil::HumanString(constant->shape()));
     }
 
     // Print the literal value of constants with <= K elements.
@@ -848,8 +828,8 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
     // collected from profiling tools. Those constants may not have a valid
     // literal.
     if (elem_count.has_value() && *elem_count <= 8 && constant->HasLiteral()) {
-      return Printf("%s (%s)", constant->literal().ToString(),
-                    ShapeUtil::HumanString(constant->shape()));
+      return StrFormat("%s (%s)", constant->literal().ToString(),
+                       ShapeUtil::HumanString(constant->shape()));
     }
 
     // Otherwise, print e.g. "%constant.42 (s32[100])".
@@ -859,8 +839,8 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
     } else {
       constant_name = StrCat("constant ", constant->name());
     }
-    return Printf("%s %s", constant_name,
-                  ShapeUtil::HumanString(constant->shape()));
+    return StrFormat("%s %s", constant_name,
+                     ShapeUtil::HumanString(constant->shape()));
   };
 
   std::vector<string> lines;
@@ -881,7 +861,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
                 TryGetFusionParameterConstant(operand)) {
           operand_str = stringify_constant(constant);
         } else {
-          operand_str = Printf("Parameter %lld", operand->parameter_number());
+          operand_str = StrFormat("Parameter %d", operand->parameter_number());
         }
       } else {
         operand_str = operand->name();
@@ -890,9 +870,9 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
 
     if (operand_str) {
       if (instr->operand_count() > 1) {
-        lines.push_back(Printf("<b>operand %lld</b> = %s", i, *operand_str));
+        lines.push_back(StrFormat("<b>operand %d</b> = %s", i, *operand_str));
       } else {
-        lines.push_back(Printf("<b>operand</b> = %s", *operand_str));
+        lines.push_back(StrFormat("<b>operand</b> = %s", *operand_str));
       }
     }
   }
@@ -1079,13 +1059,13 @@ string HloDotDumper::GetInstructionNodeShape(const HloInstruction* instr) {
 string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
   // If we have a parameter, put the param number in the name.
   if (instr->opcode() == HloOpcode::kParameter) {
-    return Printf("<b>Parameter %lld</b>", instr->parameter_number());
+    return StrFormat("<b>Parameter %d</b>", instr->parameter_number());
   }
 
   // The HLO instruction name contains usually the opcode, e.g. "%add.42" is
   // an add instruction.  In this case we render just the name.
   if (absl::StartsWith(instr->name(), HloOpcodeString(instr->opcode()))) {
-    return Printf("<b>%s</b>", HtmlLikeStringSanitize(instr->name()));
+    return StrFormat("<b>%s</b>", HtmlLikeStringSanitize(instr->name()));
   }
   string extended_opcode =
       StrCat(HloOpcodeString(instr->opcode()),
@@ -1093,8 +1073,8 @@ string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
                  ? ""
                  : StrCat(":", xla::ToString(instr->fusion_kind())));
   // If the name does not contain the opcode, render both.
-  return Printf("<b>%s</b><br/>%s", HtmlLikeStringSanitize(extended_opcode),
-                HtmlLikeStringSanitize(instr->name()));
+  return StrFormat("<b>%s</b><br/>%s", HtmlLikeStringSanitize(extended_opcode),
+                   HtmlLikeStringSanitize(instr->name()));
 }
 
 string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
@@ -1103,13 +1083,13 @@ string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
     lines.push_back(HtmlLikeStringSanitize(instr->metadata().op_name()));
   }
   if (!instr->metadata().op_type().empty()) {
-    lines.push_back(Printf(
+    lines.push_back(StrFormat(
         "op_type: %s", HtmlLikeStringSanitize(instr->metadata().op_type())));
   }
   if (!instr->metadata().source_file().empty() &&
       instr->metadata().source_line() != 0) {
-    lines.push_back(Printf("op_type: %s", instr->metadata().source_file(),
-                           instr->metadata().source_line()));
+    lines.push_back(StrFormat("op_type: %s:%d", instr->metadata().source_file(),
+                              instr->metadata().source_line()));
   }
 
   return StrJoin(lines, "<br/>");
@@ -1164,7 +1144,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
     lines.push_back(instr_shape);
   }
   if (debug_options_.xla_hlo_graph_addresses()) {
-    lines.push_back(Printf("[%p]", instr));
+    lines.push_back(StrFormat("[%p]", instr));
   }
   if (profile_ != nullptr) {
     double hlo_cycles_executed = profile_->GetCyclesTakenBy(*instr);
@@ -1172,8 +1152,8 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
         profile_->total_cycles_executed(*instr->parent());
     if (hlo_cycles_executed > 0 && total_cycles_executed > 0) {
       lines.push_back(
-          Printf("%% of cycles executed=%.2f",
-                 100 * hlo_cycles_executed / total_cycles_executed));
+          StrFormat("%% of cycles executed=%.2f",
+                    100 * hlo_cycles_executed / total_cycles_executed));
     }
   }
   return StrJoin(lines, "<br/>");
@@ -1208,7 +1188,8 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
 
     string edge_label;
     if (instr->operand_count() > 1 && !control_edge) {
-      edge_label = Printf(R"( headlabel="%lld", labeldistance=2)", operand_num);
+      edge_label =
+          StrFormat(R"( headlabel="%d", labeldistance=2)", operand_num);
     } else if (control_edge) {
       edge_label = "style=\"dotted\" color=\"gray\" label=\"ctrl\"";
     }
@@ -1218,10 +1199,11 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
     // means.
     bool is_big_array = TotalElementsInShape(from->shape()) >= 4096;
 
-    const char* kEdgeFmt = R"(%s -> %s [arrowhead=%s tooltip="%s -> %s" %s];)";
-    edges_.push_back(Printf(kEdgeFmt, InstructionId(from), InstructionId(to),
-                            (is_big_array ? "normal" : "empty"), from->name(),
-                            to->name(), edge_label));
+    constexpr char kEdgeFmt[] =
+        R"(%s -> %s [arrowhead=%s tooltip="%s -> %s" %s];)";
+    edges_.push_back(StrFormat(kEdgeFmt, InstructionId(from), InstructionId(to),
+                               (is_big_array ? "normal" : "empty"),
+                               from->name(), to->name(), edge_label));
   };
 
   // Add edges from instr's operands to instr.  Parameters within fusion
@@ -1262,11 +1244,11 @@ string HloDotDumper::GetInstructionTrivialComputationStr(
       continue;
     }
     if (instr->called_computations().size() == 1) {
-      lines.push_back(Printf("Subcomputation: <b>%s</b>",
-                             HtmlLikeStringSanitize(*computation_type)));
+      lines.push_back(StrFormat("Subcomputation: <b>%s</b>",
+                                HtmlLikeStringSanitize(*computation_type)));
     } else {
-      lines.push_back(Printf("Subcomputation %lld: <b>%s</b>", i,
-                             HtmlLikeStringSanitize(*computation_type)));
+      lines.push_back(StrFormat("Subcomputation %d: <b>%s</b>", i,
+                                HtmlLikeStringSanitize(*computation_type)));
     }
   }
   return StrJoin(lines, "<br/>");

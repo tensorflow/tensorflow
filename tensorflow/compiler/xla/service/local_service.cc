@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
@@ -149,7 +150,7 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   // Validate incoming layouts.
   if (argument_layouts.size() != program_shape.parameters_size()) {
     return InvalidArgument(
-        "Invalid number of arguments for computation: expected %d, got %zu.",
+        "Invalid number of arguments for computation: expected %d, got %u.",
         program_shape.parameters_size(), argument_layouts.size());
   }
 
@@ -167,16 +168,15 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
         CHECK(metadata.value() != nullptr);
         const OpMetadata& m = *metadata.value();
         if (!m.source_file().empty()) {
-          return tensorflow::strings::Printf(
-              " (%s:%d)", m.source_file().c_str(), m.source_line());
+          return absl::StrFormat(" (%s:%d)", m.source_file(), m.source_line());
         }
         return "";
       };
       return InvalidArgument(
           "Invalid argument shape for argument %d%s, expected %s, got %s.", i,
-          metadata_string().c_str(),
-          ShapeUtil::HumanString(program_shape.parameters(i)).c_str(),
-          ShapeUtil::HumanString(argument_shape).c_str());
+          metadata_string(),
+          ShapeUtil::HumanString(program_shape.parameters(i)),
+          ShapeUtil::HumanString(argument_shape));
     }
   }
   if (build_options.result_layout() != nullptr) {
@@ -214,7 +214,7 @@ StatusOr<const ShapedBuffer*> LocalService::GlobalDataToShapedBuffer(
   TF_ASSIGN_OR_RETURN(auto buffers, allocation_tracker_.Resolve(data));
   if (replica_number >= buffers.size()) {
     return InvalidArgument(
-        "replica_number %d out of range; must be less than num_replicas = %zu.",
+        "replica_number %d out of range; must be less than num_replicas = %u.",
         replica_number, buffers.size());
   }
   return buffers[replica_number];

@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -41,7 +41,7 @@ namespace xla {
 namespace {
 
 using absl::StrCat;
-using tensorflow::strings::Printf;
+using absl::StrFormat;
 
 constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 
@@ -303,7 +303,7 @@ MutableLiteralBase::CreateFromProto(const LiteralProto& proto) {
           if (proto_element->tuple_literals_size() !=
               ShapeUtil::TupleElementCount(piece->subshape())) {
             return InvalidArgument(
-                "Expected %lld tuple elements in LiteralProto, has %d",
+                "Expected %d tuple elements in LiteralProto, has %d",
                 ShapeUtil::TupleElementCount(piece->subshape()),
                 proto_element->tuple_literals_size());
           }
@@ -404,7 +404,7 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src) {
       default:
         return Unimplemented(
             "Copying a Literal object with element type %s is not implemented.",
-            PrimitiveType_Name(subshape().element_type()).c_str());
+            PrimitiveType_Name(subshape().element_type()));
     }
   }
   return Status::OK();
@@ -420,8 +420,8 @@ Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
   if (!ShapeUtil::Compatible(dest_subshape, src_subshape)) {
     return InvalidArgument(
         "Destination subshape incompatible with source subshape: %s vs %s",
-        ShapeUtil::HumanString(dest_subshape).c_str(),
-        ShapeUtil::HumanString(src_subshape).c_str());
+        ShapeUtil::HumanString(dest_subshape),
+        ShapeUtil::HumanString(src_subshape));
   }
   return root_piece_->ForEachMutableSubpieceWithStatus(
       [&](const ShapeIndex& index, Piece* piece) {
@@ -458,8 +458,8 @@ Status Literal::MoveFrom(Literal&& src_literal,
   if (!ShapeUtil::Equal(dest_subshape, src_literal.shape())) {
     return InvalidArgument(
         "Destination subshape not equal to source shape: %s vs %s",
-        ShapeUtil::HumanString(dest_subshape).c_str(),
-        ShapeUtil::HumanString(src_literal.shape()).c_str());
+        ShapeUtil::HumanString(dest_subshape),
+        ShapeUtil::HumanString(src_literal.shape()));
   }
 
   src_literal.root_piece_->ForEachSubpiece(
@@ -654,8 +654,8 @@ StatusOr<std::unique_ptr<Literal>> LiteralBase::Reshape(
     return InvalidArgument(
         "Shapes before and after Literal::Reshape have different numbers "
         "of elements: %s vs %s.",
-        ShapeUtil::HumanString(shape()).c_str(),
-        ShapeUtil::HumanString(output->shape()).c_str());
+        ShapeUtil::HumanString(shape()),
+        ShapeUtil::HumanString(output->shape()));
   }
   return std::move(output);
 }
@@ -874,9 +874,8 @@ StatusOr<int64> LiteralBase::GetIntegralAsS64(
     case U64:
       return Get<uint64>(multi_index);
     default:
-      return FailedPrecondition(
-          "Array element type is not integral: %s",
-          PrimitiveType_Name(shape().element_type()).c_str());
+      return FailedPrecondition("Array element type is not integral: %s",
+                                PrimitiveType_Name(shape().element_type()));
   }
 }
 
@@ -924,9 +923,8 @@ Status MutableLiteralBase::SetIntegralAsS64(
       Set<uint64>(multi_index, value);
       break;
     default:
-      return FailedPrecondition(
-          "Array element type is not integral: %s",
-          PrimitiveType_Name(shape().element_type()).c_str());
+      return FailedPrecondition("Array element type is not integral: %s",
+                                PrimitiveType_Name(shape().element_type()));
   }
   return Status::OK();
 }
@@ -1116,9 +1114,9 @@ void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
     pieces->push_back(shape_to_string(subshape));
     pieces->push_back(" {\n");
     for (int64 i0 = 0; i0 < subshape.dimensions(0); ++i0) {
-      pieces->push_back(Printf("  {  /*i0=%lld*/\n", i0));
+      pieces->push_back(StrFormat("  {  /*i0=%d*/\n", i0));
       for (int64 i1 = 0; i1 < subshape.dimensions(1); ++i1) {
-        pieces->push_back(Printf("    {  /*i1=%lld*/\n", i1));
+        pieces->push_back(StrFormat("    {  /*i1=%d*/\n", i1));
         for (int64 i2 = 0; i2 < subshape.dimensions(2); ++i2) {
           pieces->push_back("      {");
           for (int64 i3 = 0; i3 < subshape.dimensions(3); ++i3) {
@@ -1136,11 +1134,11 @@ void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
     pieces->push_back(shape_to_string(subshape));
     pieces->push_back(" {\n");
     for (int64 i0 = 0; i0 < subshape.dimensions(0); ++i0) {
-      pieces->push_back(Printf("  {  /*i0=%lld*/\n", i0));
+      pieces->push_back(StrFormat("  {  /*i0=%d*/\n", i0));
       for (int64 i1 = 0; i1 < subshape.dimensions(1); ++i1) {
-        pieces->push_back(Printf("    {  /*i1=%lld*/\n", i1));
+        pieces->push_back(StrFormat("    {  /*i1=%d*/\n", i1));
         for (int64 i2 = 0; i2 < subshape.dimensions(2); ++i2) {
-          pieces->push_back(Printf("      {  /*i2=%lld*/\n", i2));
+          pieces->push_back(StrFormat("      {  /*i2=%d*/\n", i2));
           for (int64 i3 = 0; i3 < subshape.dimensions(3); ++i3) {
             pieces->push_back("        {");
             for (int64 i4 = 0; i4 < subshape.dimensions(4); ++i4) {
@@ -1312,10 +1310,9 @@ StatusOr<std::unique_ptr<Literal>> ConvertIfDestTypeMatches(
     default:
       break;
   }
-  return Unimplemented(
-      "Converting from type %s to type %s is not implemented.",
-      PrimitiveType_Name(src_literal.shape().element_type()).c_str(),
-      PrimitiveType_Name(primitive_dest_type).c_str());
+  return Unimplemented("Converting from type %s to type %s is not implemented.",
+                       PrimitiveType_Name(src_literal.shape().element_type()),
+                       PrimitiveType_Name(primitive_dest_type));
 }
 
 StatusOr<std::unique_ptr<Literal>> ConvertSwitch(
@@ -1344,11 +1341,10 @@ StatusOr<std::unique_ptr<Literal>> ConvertSwitch(
 #undef CONVERT_IF_DEST_TYPE_MATCHES
       // Other types are not yet supported.
     default:
-      return Unimplemented(
-          "%s from type %s to type %s is not implemented.",
-          (bitcast ? "Bitcast converting" : "Converting"),
-          PrimitiveType_Name(literal.shape().element_type()).c_str(),
-          PrimitiveType_Name(primitive_dest_type).c_str());
+      return Unimplemented("%s from type %s to type %s is not implemented.",
+                           (bitcast ? "Bitcast converting" : "Converting"),
+                           PrimitiveType_Name(literal.shape().element_type()),
+                           PrimitiveType_Name(primitive_dest_type));
   }
 }
 
@@ -1366,8 +1362,8 @@ StatusOr<std::unique_ptr<Literal>> LiteralBase::BitcastConvert(
     return InvalidArgument(
         "Cannot bitcast convert from %s to %s, bit widths are different: %d != "
         "%d",
-        PrimitiveType_Name(shape().element_type()).c_str(),
-        PrimitiveType_Name(primitive_dest_type).c_str(),
+        PrimitiveType_Name(shape().element_type()),
+        PrimitiveType_Name(primitive_dest_type),
         primitive_util::BitWidth(shape().element_type()),
         primitive_util::BitWidth(primitive_dest_type));
   }

@@ -128,10 +128,9 @@ Status ShapeVerifier::CheckIsTokenOperand(const HloInstruction* instruction,
   const HloInstruction* token = instruction->operand(operand_no);
   if (!ShapeUtil::Equal(token->shape(), ShapeUtil::MakeTokenShape())) {
     return InternalError(
-        "Expected operand %lld to be token-shaped, actual shape is "
+        "Expected operand %d to be token-shaped, actual shape is "
         "%s:\n%s",
-        operand_no, StringifyShape(token->shape()).c_str(),
-        instruction->ToString().c_str());
+        operand_no, StringifyShape(token->shape()), instruction->ToString());
   }
   return Status::OK();
 }
@@ -144,9 +143,8 @@ Status ShapeVerifier::CheckOperandAndParameter(
       computation->parameter_instruction(parameter_number);
   if (!ShapesSame(operand->shape(), parameter->shape())) {
     return InternalError("Operand %s shape does not match parameter's %s in %s",
-                         operand->ToString().c_str(),
-                         parameter->ToString().c_str(),
-                         instruction->ToString().c_str());
+                         operand->ToString(), parameter->ToString(),
+                         instruction->ToString());
   }
   return Status::OK();
 }
@@ -171,9 +169,8 @@ Status ShapeVerifier::HandleOutfeed(HloInstruction* instruction) {
     return InternalError(
         "Expected outfeed shape to be equal to operand's shape %s, "
         "actual shape is %s:\n%s",
-        StringifyShape(outfeed->operand(0)->shape()).c_str(),
-        StringifyShape(outfeed->outfeed_shape()).c_str(),
-        outfeed->ToString().c_str());
+        StringifyShape(outfeed->operand(0)->shape()),
+        StringifyShape(outfeed->outfeed_shape()), outfeed->ToString());
   }
   return CheckShape(outfeed, ShapeUtil::MakeTokenShape());
 }
@@ -191,7 +188,7 @@ bool ShapeVerifier::HasCompatibleElementTypes(const Shape& shape_0,
 Status ShapeVerifier::HandleRng(HloInstruction* instruction) {
   if (instruction->operand_count() != 2) {
     return InternalError("Expected two operands for Rng instruction: %s",
-                         instruction->ToString().c_str());
+                         instruction->ToString());
   }
 
   const Shape& shape_0 = instruction->operand(0)->shape();
@@ -199,14 +196,14 @@ Status ShapeVerifier::HandleRng(HloInstruction* instruction) {
   if (!ShapeUtil::IsScalar(shape_0) || !ShapeUtil::IsScalar(shape_1)) {
     return InternalError(
         "Expected scalar types for the two operands of Rng instruction: %s",
-        instruction->ToString().c_str());
+        instruction->ToString());
   }
 
   if (!HasCompatibleElementTypes(shape_0, shape_1, instruction->shape())) {
     return InternalError(
         "Expected compatible element types for the result and the two operands"
         " of Rng instruction: %s",
-        instruction->ToString().c_str());
+        instruction->ToString());
   }
 
   PrimitiveType element_type = shape_0.element_type();
@@ -219,7 +216,7 @@ Status ShapeVerifier::HandleRng(HloInstruction* instruction) {
             "Element type not supported."
             " Expected element to be of floating point type, integral type or"
             " predicate type for RngUniform: %s",
-            instruction->ToString().c_str());
+            instruction->ToString());
       }
       break;
 
@@ -228,13 +225,13 @@ Status ShapeVerifier::HandleRng(HloInstruction* instruction) {
         return InternalError(
             "Element type not supported."
             " Expected element to be FloatingPointType for RngNormal: %s",
-            instruction->ToString().c_str());
+            instruction->ToString());
       }
       break;
     default:
       return InternalError(
           "Invalid Rng distribution %s",
-          RandomDistribution_Name(instruction->random_distribution()).c_str());
+          RandomDistribution_Name(instruction->random_distribution()));
   }
 
   return Status::OK();
@@ -253,8 +250,8 @@ Status ShapeVerifier::HandleSort(HloInstruction* sort) {
     return InternalError(
         "Expected sort to have to have the same dimensions for the keys and "
         "the values. Keys shape is: %s\n, Values shape is: %s",
-        StringifyShape(sort->operand(0)->shape()).c_str(),
-        StringifyShape(sort->operand(1)->shape()).c_str());
+        StringifyShape(sort->operand(0)->shape()),
+        StringifyShape(sort->operand(1)->shape()));
   }
   return CheckVariadicShape(sort);
 }
@@ -333,7 +330,7 @@ Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
     int64 param_no = fused_param->parameter_number();
     if (!ShapesSame(fused_param->shape(), fusion->operand(param_no)->shape())) {
       return InternalError(
-          "Shape mismatch between parameter number %lld and its operand in "
+          "Shape mismatch between parameter number %d and its operand in "
           "%s.",
           param_no, fusion->ToString().c_str());
     }
@@ -425,7 +422,7 @@ Status ShapeVerifier::HandleWhile(HloInstruction* xla_while) {
     return InternalError(
         "Conditional computation shape does not lead to a scalar predicate "
         "shape: %s",
-        StringifyShape(conditional_shape).c_str());
+        StringifyShape(conditional_shape));
   }
   // The shape of kWhile should match the shape of the body computation it
   // calls.
@@ -556,7 +553,7 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
                 return InternalError(
                     "Seen floating point types of different precisions in "
                     "%s, but mixed precision is disallowed.",
-                    instruction->ToString().c_str());
+                    instruction->ToString());
               }
               return Status::OK();
             }));
@@ -646,9 +643,8 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
     return InternalError(
         "Expected instruction to have shape equal to %s, actual "
         "shape is %s:\n%s",
-        StringifyShape(inferred_shape).c_str(),
-        StringifyShape(instruction->shape()).c_str(),
-        instruction->ToString().c_str());
+        StringifyShape(inferred_shape), StringifyShape(instruction->shape()),
+        instruction->ToString());
   }
   return Status::OK();
 }
@@ -713,23 +709,23 @@ Status VerifyHloStructure(HloModule* module) {
   for (const HloComputation* computation : module->computations()) {
     if (computation->parent() == nullptr) {
       return InternalError("Computation %s has a null parent pointer",
-                           computation->name().c_str());
+                           computation->name());
     }
     if (computation->parent() != module) {
       return InternalError(
           "Computation %s parent() does not point to parent module",
-          computation->name().c_str());
+          computation->name());
     }
 
     for (const HloInstruction* instruction : computation->instructions()) {
       if (instruction->parent() == nullptr) {
         return InternalError("Instruction %s has a null parent pointer",
-                             instruction->name().c_str());
+                             instruction->name());
       }
       if (instruction->parent() != computation) {
         return InternalError(
             "Instruction %s parent() does not point to parent computation",
-            instruction->name().c_str());
+            instruction->name());
       }
     }
   }
@@ -746,9 +742,8 @@ Status VerifyHloStructure(HloModule* module) {
           return InternalError(
               "Operand %d (%s) of instruction %s is in a different "
               "computation: %s vs %s",
-              i, operand->name().c_str(), instruction->name().c_str(),
-              operand->parent()->name().c_str(),
-              instruction->parent()->name().c_str());
+              i, operand->name(), instruction->name(),
+              operand->parent()->name(), instruction->parent()->name());
         }
       }
     }
@@ -764,7 +759,7 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
         "Instruction of fused computation does not match expected "
         "instruction "
         "%s.",
-        fusion->ToString().c_str());
+        fusion->ToString());
   }
 
   // Fused root instruction and fused parameters must all be owned by the
@@ -778,7 +773,7 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
     if (fused_root == instruction) {
       if (root_owned) {
         return InternalError("Root appears more than once in %s.",
-                             fusion->ToString().c_str());
+                             fusion->ToString());
       }
       root_owned = true;
     }
@@ -786,7 +781,7 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
       if (fused_parameters[i] == instruction) {
         if (parameter_owned[i]) {
           return InternalError("Parameter appears more than once in %s.",
-                               fusion->ToString().c_str());
+                               fusion->ToString());
         }
         parameter_owned[i] = true;
       }
@@ -794,20 +789,19 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
   }
   if (!root_owned) {
     return InternalError("Root not found in computation of %s.",
-                         fusion->ToString().c_str());
+                         fusion->ToString());
   }
   // Make sure all the parameter_owned entries are set
   for (int i = 0; i < parameter_owned.size(); i++) {
     if (!parameter_owned[i]) {
       return InternalError("Parameter %d not found in computation of %s.", i,
-                           fusion->ToString().c_str());
+                           fusion->ToString());
     }
   }
 
   // Fused root must have no users.
   if (fused_root->user_count() != 0) {
-    return InternalError("Root of %s may not have users.",
-                         fusion->ToString().c_str());
+    return InternalError("Root of %s may not have users.", fusion->ToString());
   }
 
   // All uses of fused instructions must be in the fusion computation, and
@@ -817,14 +811,13 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
     if (instruction != fused_root) {
       if (instruction->user_count() == 0) {
         return InternalError("Non-root instruction %s in %s must have users.",
-                             instruction->ToString().c_str(),
-                             fusion->ToString().c_str());
+                             instruction->ToString(), fusion->ToString());
       }
       for (auto& user : instruction->users()) {
         if (fused_computation != user->parent()) {
           return InternalError(
               "Non-root instruction %s in %s may not have external users.",
-              instruction->ToString().c_str(), fusion->ToString().c_str());
+              instruction->ToString(), fusion->ToString());
         }
       }
     }
@@ -837,19 +830,19 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
   for (auto fused_param : fused_parameters) {
     int64 param_no = fused_param->parameter_number();
     if (param_no < 0) {
-      return InternalError("Unexpected negative parameter number %lld in %s.",
-                           param_no, fusion->ToString().c_str());
+      return InternalError("Unexpected negative parameter number %d in %s.",
+                           param_no, fusion->ToString());
     }
     if (param_no >= fused_parameters.size()) {
       return InternalError(
-          "Unexpected parameter number %lld in %s: higher then number of "
+          "Unexpected parameter number %d in %s: higher then number of "
           "parameters %lu.",
-          param_no, fusion->ToString().c_str(), fused_parameters.size());
+          param_no, fusion->ToString(), fused_parameters.size());
     }
     if (parameter_numbers[param_no]) {
       return InternalError(
-          "Did not expect parameter number %lld more than once in %s.",
-          param_no, fusion->ToString().c_str());
+          "Did not expect parameter number %d more than once in %s.", param_no,
+          fusion->ToString());
     }
     parameter_numbers[param_no] = true;
   }
@@ -857,7 +850,7 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
   for (int i = 0; i < parameter_numbers.size(); i++) {
     if (!parameter_numbers[i]) {
       return InternalError("Did not see parameter number %d in %s.", i,
-                           fusion->ToString().c_str());
+                           fusion->ToString());
     }
   }
 
@@ -872,18 +865,18 @@ Status HloVerifier::CheckWhileInstruction(HloInstruction* instruction) {
   auto* while_body = instruction->while_body();
   if (while_cond->num_parameters() != 1) {
     return FailedPrecondition(
-        "While condition must have exactly 1 parameter; had %lld : %s",
-        while_cond->num_parameters(), while_cond->ToString().c_str());
+        "While condition must have exactly 1 parameter; had %d : %s",
+        while_cond->num_parameters(), while_cond->ToString());
   }
   if (while_body->num_parameters() != 1) {
     return FailedPrecondition(
-        "While body must have exactly 1 parameter; had %lld : %s",
-        while_body->num_parameters(), while_body->ToString().c_str());
+        "While body must have exactly 1 parameter; had %d : %s",
+        while_body->num_parameters(), while_body->ToString());
   }
   if (instruction->operand_count() != 1) {
     return FailedPrecondition(
-        "While loop must have exactly one operand; had %lld : %s",
-        instruction->operand_count(), instruction->ToString().c_str());
+        "While loop must have exactly one operand; had %d : %s",
+        instruction->operand_count(), instruction->ToString());
   }
   return Status::OK();
 }
@@ -891,16 +884,14 @@ Status HloVerifier::CheckWhileInstruction(HloInstruction* instruction) {
 Status HloVerifier::CheckConditionalInstruction(HloInstruction* instruction) {
   if (instruction->true_computation()->num_parameters() != 1) {
     return FailedPrecondition(
-        "True computation %s of %s must have 1 parameter insted of %lld",
-        instruction->true_computation()->name().c_str(),
-        instruction->ToString().c_str(),
+        "True computation %s of %s must have 1 parameter insted of %d",
+        instruction->true_computation()->name(), instruction->ToString(),
         instruction->true_computation()->num_parameters());
   }
   if (instruction->false_computation()->num_parameters() != 1) {
     return FailedPrecondition(
-        "False computation %s of %s must have 1 parameter insted of %lld",
-        instruction->false_computation()->name().c_str(),
-        instruction->ToString().c_str(),
+        "False computation %s of %s must have 1 parameter insted of %d",
+        instruction->false_computation()->name(), instruction->ToString(),
         instruction->false_computation()->num_parameters());
   }
   return Status::OK();
@@ -915,9 +906,9 @@ Status HloVerifier::CheckElementwiseInstruction(HloInstruction* instruction) {
           "Implicit broadcast is not allowed in HLO."
           "Found different shapes for instruction %s.\n"
           "output: %s\noperand: %s\n",
-          HloOpcodeString(instruction->opcode()).c_str(),
-          ShapeUtil::HumanString(out_shape).c_str(),
-          ShapeUtil::HumanString(operand_shape).c_str());
+          HloOpcodeString(instruction->opcode()),
+          ShapeUtil::HumanString(out_shape),
+          ShapeUtil::HumanString(operand_shape));
     }
   }
   return Status::OK();
@@ -948,7 +939,7 @@ Status VerifyEntryAndExitShapes(const HloModule& module) {
     if (ShapeContainsToken(param->shape())) {
       return InternalError(
           "Entry parameter %d is or contains a token shape: %s", i,
-          ShapeUtil::HumanString(param->shape()).c_str());
+          ShapeUtil::HumanString(param->shape()));
     }
   }
   return Status::OK();
@@ -960,9 +951,9 @@ Status CheckSameChannel(const HloInstruction* instr1,
   if (instr1->channel_id() != instr2->channel_id()) {
     return InternalError(
         "Expected to have the same channel id, actual channel ids are: %s "
-        "(%lld), %s (%lld)",
-        instr1->ToString().c_str(), instr1->channel_id(),
-        instr2->ToString().c_str(), instr2->channel_id());
+        "(%d), %s (%d)",
+        instr1->ToString(), instr1->channel_id(), instr2->ToString(),
+        instr2->channel_id());
   }
   return Status::OK();
 }
@@ -983,7 +974,7 @@ Status CheckSameIsHostTransfer(const HloInstruction* instr1,
         "Expected instructions to have the same is-host-transfer property: "
         "%s, "
         "%s ",
-        instr1->ToString().c_str(), instr2->ToString().c_str());
+        instr1->ToString(), instr2->ToString());
   }
   return Status::OK();
 }
@@ -1000,12 +991,12 @@ Status VerifySendsAndRecvs(const HloModule& module) {
           host_channels.insert({sendrecv->channel_id(), sendrecv});
       if (!it_inserted.second) {
         return FailedPrecondition(
-            "Channel %lld is used for multiple host send/recv instructions: "
+            "Channel %d is used for multiple host send/recv instructions: "
             "%s "
             "and "
             "%s",
-            sendrecv->channel_id(), sendrecv->ToString().c_str(),
-            it_inserted.first->second->ToString().c_str());
+            sendrecv->channel_id(), sendrecv->ToString(),
+            it_inserted.first->second->ToString());
       }
     }
 

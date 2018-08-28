@@ -2169,7 +2169,7 @@ void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
 
 bool HloInstruction::IsFused() const { return parent_->IsFusionComputation(); }
 
-bool HloInstruction::IsFusable() const {
+bool HloInstruction::IsFusible() const {
   // Instructions which are traced should not be fused.
   if (tracing()) {
     return false;
@@ -2381,7 +2381,7 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
   return InternalError(
       "Unhandled HloOpcode for DfsHloVisitor: %s. This should not happen - "
       "please file a bug for XLA.",
-      HloOpcodeString(opcode_).c_str());
+      HloOpcodeString(opcode_));
 }
 
 // Explicit instantiations.
@@ -2464,7 +2464,7 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
       if (!TF_PREDICT_TRUE(PushDFSChild(visitor, &dfs_stack, child))) {
         return FailedPrecondition(
             "A cycle is detected while visiting instruction %s",
-            current_node->ToString().c_str());
+            current_node->ToString());
       }
     }
 
@@ -2473,7 +2473,7 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
         if (!TF_PREDICT_TRUE(PushDFSChild(visitor, &dfs_stack, child))) {
           return FailedPrecondition(
               "A cycle is detected while visiting instruction %s",
-              current_node->ToString().c_str());
+              current_node->ToString());
         }
       }
     }
@@ -2789,7 +2789,7 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
   if (kind_name == "kCustom") {
     return HloInstruction::FusionKind::kCustom;
   }
-  return InvalidArgument("Unknown fusion kind: %s", kind_name.c_str());
+  return InvalidArgument("Unknown fusion kind: %s", kind_name);
 }
 
 string PaddingConfigToString(const PaddingConfig& padding) {

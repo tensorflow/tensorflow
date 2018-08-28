@@ -222,8 +222,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
       return Unimplemented(
           "Implicit broadcasting is currently unsupported in HLO evaluator "
           "Shape Mismatch: %s vs %s",
-          ShapeUtil::HumanString(shape).c_str(),
-          ShapeUtil::HumanString(operand->shape()).c_str());
+          ShapeUtil::HumanString(shape),
+          ShapeUtil::HumanString(operand->shape()));
     }
 
     auto result = absl::make_unique<Literal>(shape);

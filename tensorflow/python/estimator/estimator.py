@@ -1257,7 +1257,7 @@ class Estimator(object):
 
         if is_tpu_strategy:
           # Create a step_fn from the train_op of grouped_estimator_spec
-          def step_fn(ctx, features, labels):
+          def step_fn(ctx, features, labels=None):
             """A single step that is passed to run_on_dataset."""
             estimator_spec = self._train_distribution.call_for_each_tower(
                 self._call_model_fn,
@@ -1282,7 +1282,8 @@ class Estimator(object):
           loss = ctx.last_step_outputs['loss']
           grouped_estimator_spec = ctx.non_tensor_outputs['estimator_spec']
         else:
-          features, labels = iterator.get_next()
+          features, labels = estimator_util.parse_iterator_result(
+              iterator.get_next())
           grouped_estimator_spec = self._train_distribution.call_for_each_tower(
               self._call_model_fn,
               features,
@@ -1471,7 +1472,7 @@ class Estimator(object):
         self._eval_distribution.__class__.__name__ == 'TPUStrategy')
 
     if is_tpu_strategy:
-      def step_fn(ctx, features, labels):
+      def step_fn(ctx, features, labels=None):
         """Runs one step of the eval computation and captures outputs."""
         estimator_spec = self._eval_distribution.call_for_each_tower(
             self._call_model_fn, features, labels, model_fn_lib.ModeKeys.EVAL,
@@ -1492,7 +1493,8 @@ class Estimator(object):
       eval_dict = ctx.non_tensor_outputs['eval_dict']
       grouped_estimator_spec = ctx.non_tensor_outputs['estimator_spec']
     else:
-      features, labels = iterator.get_next()
+      features, labels = estimator_util.parse_iterator_result(
+          iterator.get_next())
       grouped_estimator_spec = self._eval_distribution.call_for_each_tower(
           self._call_model_fn, features, labels,
           model_fn_lib.ModeKeys.EVAL, config)

@@ -480,7 +480,7 @@ class EmbeddingLookupTest(test.TestCase):
               id_vals, shape=ids_shape, dtype=dtypes.int32)
           x, params, _ = _EmbeddingParams(num_shards, vocab_size, shape=[2])
           y = embedding_ops.embedding_lookup(x, ids)
-          y_shape = [num_ids] + list(params[_PName(0) + ":0"].shape[1:])
+          y_shape = ids_shape + tuple(params[_PName(0) + ":0"].shape[1:])
           x_name = [_PName(i) for i in range(num_shards)]
           x_init_value = [params[x_n + ":0"] for x_n in x_name]
           x_shape = [i.shape for i in x_init_value]

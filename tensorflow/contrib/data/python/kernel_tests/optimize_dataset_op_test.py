@@ -100,20 +100,6 @@ class OptimizeDatasetTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  # TODO(b/112914454): Remove the test or figure out way to copy only new
-  # functions in optimize_dataset_op instead of taking union of old and new
-  # functions.
-  def _testFunctionLibraryDefinitionModification(self):
-    dataset = dataset_ops.Dataset.from_tensors(0).map(lambda x: x).apply(
-        optimization.optimize(["_test_only_function_rename"]))
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
-
-    with self.test_session() as sess:
-      with self.assertRaisesRegexp(errors.NotFoundError,
-                                   "Function .* is not defined."):
-        sess.run(get_next)
-
 
 if __name__ == "__main__":
   test.main()

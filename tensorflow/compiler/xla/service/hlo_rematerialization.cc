@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -1353,12 +1353,11 @@ StatusOr<bool> HloRematerialization::Run(
   XLA_VLOG_LINES(3, "After HloRematerialization:\n" + module->ToString());
 
   if (current_peak_memory > memory_limit_bytes) {
-    LOG(WARNING) << tensorflow::strings::Printf(
-        "Can't reduce memory use below %s (%lld bytes) by rematerialization; "
-        "only reduced to %s (%lld bytes)",
-        HumanReadableNumBytes(memory_limit_bytes).c_str(), memory_limit_bytes,
-        HumanReadableNumBytes(current_peak_memory).c_str(),
-        current_peak_memory);
+    LOG(WARNING) << absl::StrFormat(
+        "Can't reduce memory use below %s (%d bytes) by rematerialization; "
+        "only reduced to %s (%d bytes)",
+        HumanReadableNumBytes(memory_limit_bytes), memory_limit_bytes,
+        HumanReadableNumBytes(current_peak_memory), current_peak_memory);
   }
 
   return changed;

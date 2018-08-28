@@ -42,7 +42,6 @@ from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint:
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import function_utils
@@ -483,8 +482,8 @@ class Layer(checkpointable.CheckpointableBase):
                  constraint=None,
                  partitioner=None,
                  use_resource=None,
-                 synchronization=vs.VariableSynchronization.AUTO,
-                 aggregation=vs.VariableAggregation.NONE,
+                 synchronization=tf_variables.VariableSynchronization.AUTO,
+                 aggregation=tf_variables.VariableAggregation.NONE,
                  **kwargs):
     """Adds a new variable to the layer, or gets an existing one; returns it.
 
@@ -541,7 +540,7 @@ class Layer(checkpointable.CheckpointableBase):
     regularizer = regularizers.get(regularizer)
     constraint = constraints.get(constraint)
 
-    if synchronization == vs.VariableSynchronization.ON_READ:
+    if synchronization == tf_variables.VariableSynchronization.ON_READ:
       if trainable:
         raise ValueError(
             'Synchronization value can be set to '
@@ -1906,8 +1905,8 @@ def make_variable(name,
                   constraint=None,
                   use_resource=None,
                   collections=None,
-                  synchronization=vs.VariableSynchronization.AUTO,
-                  aggregation=vs.VariableAggregation.NONE,
+                  synchronization=tf_variables.VariableSynchronization.AUTO,
+                  aggregation=tf_variables.VariableAggregation.NONE,
                   partitioner=None):  # pylint: disable=unused-argument
   """Temporary util to create a variable (relies on `variable_scope.variable`).
 
@@ -1935,8 +1934,8 @@ def make_variable(name,
       then this parameter is ignored and any added variables are also
       marked as non-trainable. `trainable` defaults to `True` unless
       `synchronization` is set to `ON_READ`.
-    caching_device: Passed to `vs.variable`.
-    validate_shape: Passed to `vs.variable`.
+    caching_device: Passed to `tf.Variable`.
+    validate_shape: Passed to `tf.Variable`.
     constraint: Constraint instance (callable).
     use_resource: Whether to use a `ResourceVariable`.
     collections: List of graph collections keys. The new variable is added to
@@ -1973,7 +1972,7 @@ def make_variable(name,
   if use_resource is None:
     use_resource = True
 
-  v = vs.variable(
+  v = tf_variables.Variable(
       initial_value=init_val,
       name=name,
       trainable=trainable,

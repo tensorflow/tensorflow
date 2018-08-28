@@ -837,7 +837,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
             return Unimplemented(
                 "Computation %s is called in both a parallel (eg, kMap) and "
                 "sequential (eg, kCall) context",
-                computation->name().c_str());
+                computation->name());
           }
           if (call_graph_node.caller_callsites().empty() ||
               call_graph_node.context() == CallContext::kParallel) {

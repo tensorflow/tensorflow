@@ -129,8 +129,8 @@ TEST_F(CpuFusionTest, FuseElementwiseOpChain) {
                                        error_spec_);
 }
 
-TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusableInstruction) {
-  // Test a chain of fusable ops with a non-fusable op (a reduce) thrown in the
+TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusibleInstruction) {
+  // Test a chain of fusible ops with a non-fusible op (a reduce) thrown in the
   // middle.
   auto module = CreateNewModule();
   auto builder = HloComputation::Builder(TestName());

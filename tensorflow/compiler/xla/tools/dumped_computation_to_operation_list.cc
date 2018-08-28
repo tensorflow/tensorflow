@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
@@ -49,10 +49,9 @@ class OperationDumper : public DfsHloVisitorWithDefault {
           absl::StrAppend(out, ShapeUtil::HumanString(operand->shape()));
         });
     // Spit `op_name(params...) -> result_type :: path` to stdout.
-    std::cout << tensorflow::strings::Printf(
-        "%s :: (%s) -> %s :: %s\n", HloOpcodeString(hlo->opcode()).c_str(),
-        params.c_str(), ShapeUtil::HumanString(hlo->shape()).c_str(),
-        path_.c_str());
+    std::cout << absl::StrFormat("%s :: (%s) -> %s :: %s\n",
+                                 HloOpcodeString(hlo->opcode()), params,
+                                 ShapeUtil::HumanString(hlo->shape()), path_);
     return Status::OK();
   }
 
@@ -106,7 +105,7 @@ int main(int argc, char** argv) {
   tensorflow::port::InitMain(argv[0], &argc, &argv);
 
   tensorflow::gtl::ArraySlice<char*> args(argv, argc);
-  args.pop_front();  // Pop off the binary name, argv[0]
+  args.remove_prefix(1);  // Pop off the binary name, argv[0]
   xla::tools::RealMain(args);
   return 0;
 }

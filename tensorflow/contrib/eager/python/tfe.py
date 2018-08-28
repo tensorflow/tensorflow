@@ -74,7 +74,7 @@ To use, at program startup, call `tf.enable_eager_execution()`.
 
 @@TensorSpec
 
-@@connect_to_cloud_tpu
+@@connect_to_remote_host
 
 @@DEVICE_PLACEMENT_EXPLICIT
 @@DEVICE_PLACEMENT_WARN

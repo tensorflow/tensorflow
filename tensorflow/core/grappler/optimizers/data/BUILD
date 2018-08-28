@@ -42,39 +42,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "function_rename",
-    srcs = ["function_rename.cc"],
-    hdrs = [
-        "function_rename.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":graph_utils",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/grappler:graph_view",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:op_types",
-        "//tensorflow/core/grappler:utils",
-        "//tensorflow/core/grappler/clusters:cluster",
-        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
-        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
-    ] + tf_protos_all(),
-)
-
-tf_cc_test(
-    name = "function_rename_test",
-    srcs = ["function_rename_test.cc"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":function_rename",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/grappler:grappler_item",
-    ] + tf_protos_all(),
-)
-
-cc_library(
     name = "fusion_utils",
     srcs = ["fusion_utils.cc"],
     hdrs = [
@@ -384,7 +351,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":filter_fusion",
-        ":function_rename",
         ":latency_all_edges",
         ":map_and_batch_fusion",
         ":map_and_filter_fusion",

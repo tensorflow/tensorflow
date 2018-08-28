@@ -199,6 +199,7 @@ class _NameBasedRestoreCoordinator(object):
     for saveable in self.globally_named_object_attributes(
         checkpointable):
       restored_tensors = []
+      tensor_missing = False
       for spec in saveable.specs:
         if spec.name in self.dtype_map:
           with ops.device("cpu:0"):
@@ -209,9 +210,15 @@ class _NameBasedRestoreCoordinator(object):
                 dtypes=[self.dtype_map[spec.name]],
                 name="%s_checkpoint_read" % (spec.name,))
           restored_tensors.append(array_ops.identity(restored))
+        else:
+          tensor_missing = True
 
-      saveable.restore(restored_tensors=restored_tensors,
-                       restored_shapes=None)
+      if not tensor_missing:
+        # Ignores values missing from the checkpoint, as with object-based
+        # restore. Status assertions can be used to check exact matches,
+        # although it's unlikely to ever happen for name-based checkpoints.
+        saveable.restore(restored_tensors=restored_tensors,
+                         restored_shapes=None)
 
 
 # TODO(allenl): If this ends up in a public API, consider adding LINT.IfChange
