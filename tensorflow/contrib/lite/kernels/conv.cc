@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
+#include "tensorflow/contrib/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
 #include "tensorflow/contrib/lite/kernels/op_macros.h"
 #include "tensorflow/contrib/lite/kernels/padding.h"
@@ -60,6 +61,8 @@ struct OpData {
   // memory buffers.
   int im2col_id = kTensorNotAllocated;
   int hwcn_weights_id = kTensorNotAllocated;
+  int input_quantized_id = kTensorNotAllocated;
+  int scaling_factors_id = kTensorNotAllocated;
 
   TfLitePaddingValues padding;
   // The scaling factor from input to output (aka the 'real multiplier') can
@@ -74,6 +77,8 @@ struct OpData {
   // of the allocated temporaries.
   int32_t im2col_index;
   int32_t hwcn_weights_index;
+  int32_t input_quantized_index;
+  int32_t scaling_factors_index;
   bool need_hwcn_weights;
   bool have_weights_been_transposed;
   bool need_im2col;
@@ -125,6 +130,9 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
   TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
   TfLiteTensor* filter = &context->tensors[node->inputs->data[1]];
 
+  const bool is_hybrid =
+      (input->type == kTfLiteFloat32 && filter->type == kTfLiteUInt8);
+
   int filter_width = filter->dims->data[2];
   int filter_height = filter->dims->data[1];
 
@@ -145,8 +153,8 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
   // buffer to store the results.
   // This path is only used for float processing, so only create the buffer if
   // we're running with that data type.
-  data->need_hwcn_weights =
-      (input->type == kTfLiteFloat32 && data->run_multithreaded_kernel);
+  data->need_hwcn_weights = (input->type == kTfLiteFloat32 &&
+                             data->run_multithreaded_kernel && !is_hybrid);
 
   int temporaries_count = 0;
   if (data->need_im2col) {
@@ -164,6 +172,25 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
     ++temporaries_count;
   }
 
+  if (is_hybrid) {
+    // Allocate tensor to store the on-the-fly quantized inputs.
+    data->input_quantized_index = temporaries_count;
+    if (data->input_quantized_id == kTensorNotAllocated) {
+      TF_LITE_ENSURE_OK(
+          context, context->AddTensors(context, 1, &data->input_quantized_id));
+    }
+    ++temporaries_count;
+
+    // Allocate tensor to store the quantization params computed during
+    // on-the-fly input quantization.
+    data->scaling_factors_index = temporaries_count;
+    if (data->scaling_factors_id == kTensorNotAllocated) {
+      TF_LITE_ENSURE_OK(
+          context, context->AddTensors(context, 1, &data->scaling_factors_id));
+    }
+    ++temporaries_count;
+  }
+
   TfLiteIntArrayFree(node->temporaries);
   node->temporaries = TfLiteIntArrayCreate(temporaries_count);
 
@@ -173,10 +200,6 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
-
-  data->run_multithreaded_kernel = context->recommended_num_threads != 1;
-
-  TF_LITE_ENSURE_STATUS(AllocateTemporaryTensorsIfRequired(context, node));
 
   bool has_bias = node->inputs->size == 3;
   // Check number of inputs/outputs
@@ -193,11 +216,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, input->dims->data[3], filter->dims->data[3]);
 
   // Check types. (We assume that UINT8 refers to quantized tensors)
-  TfLiteType data_type = input->type;
+  TfLiteType input_type = input->type;
   TF_LITE_ENSURE(context,
-                 data_type == kTfLiteFloat32 || data_type == kTfLiteUInt8);
-  TF_LITE_ENSURE_EQ(context, output->type, data_type);
-  TF_LITE_ENSURE_EQ(context, filter->type, data_type);
+                 input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8);
+  TF_LITE_ENSURE_EQ(context, output->type, input_type);
 
   TfLiteTensor* bias = nullptr;
 
@@ -207,14 +229,25 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   if (has_bias) {
     bias = &context->tensors[node->inputs->data[2]];
-    if (data_type == kTfLiteUInt8) {
+    if (input_type == kTfLiteUInt8) {
       TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt32);
       TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
     } else {
-      TF_LITE_ENSURE_EQ(context, bias->type, data_type);
+      TF_LITE_ENSURE_EQ(context, bias->type, input_type);
     }
     TF_LITE_ENSURE_EQ(context, NumElements(bias), SizeOfDimension(filter, 0));
   }
+
+  const bool is_hybrid =
+      (input->type == kTfLiteFloat32 && filter->type == kTfLiteUInt8);
+
+  data->run_multithreaded_kernel = context->recommended_num_threads != 1;
+  // Hybrid kernels don't support multithreading yet.
+  if (is_hybrid) {
+    data->run_multithreaded_kernel = false;
+  }
+
+  TF_LITE_ENSURE_STATUS(AllocateTemporaryTensorsIfRequired(context, node));
 
   int channels_out = filter->dims->data[0];
   int width = input->dims->data[2];
@@ -250,9 +283,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE(context, has_bias);
 
-  // Note that quantized inference requires that all tensors have their
+  // Note that full fixed-point inference requires that all tensors have their
   // parameters set. This is usually done during quantized training.
-  if (data_type != kTfLiteFloat32) {
+  if (input_type != kTfLiteFloat32) {
     double real_multiplier = 0.0;
     TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
         context, input, filter, bias, output, &real_multiplier));
@@ -287,7 +320,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
     TfLiteTensor* im2col =
         &context->tensors[node->temporaries->data[data->im2col_index]];
-    im2col->type = data_type;
+    im2col->type = input->type;
+    if (is_hybrid) {
+      im2col->type = kTfLiteUInt8;
+    }
     im2col->allocation_type = kTfLiteArenaRw;
     auto im2col_status = context->ResizeTensor(context, im2col, im2col_size);
     if (im2col_status != kTfLiteOk) return im2col_status;
@@ -307,7 +343,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
     TfLiteTensor* hwcn_weights =
         &context->tensors[node->temporaries->data[data->hwcn_weights_index]];
-    hwcn_weights->type = data_type;
+    hwcn_weights->type = input_type;
     hwcn_weights->allocation_type = kTfLiteArenaRwPersistent;
 
     auto hwcn_weights_status =
@@ -317,6 +353,35 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // TODO(petewarden): If Resize() is called when the size hasn't actually
     // changed, this will do extra redundant work.
     data->have_weights_been_transposed = false;
+  }
+
+  if (is_hybrid) {
+    node->temporaries->data[data->input_quantized_index] =
+        data->input_quantized_id;
+    TfLiteTensor* input_quantized =
+        GetTemporary(context, node, data->input_quantized_index);
+    input_quantized->type = kTfLiteUInt8;
+    input_quantized->allocation_type = kTfLiteArenaRw;
+    if (!TfLiteIntArrayEqual(input_quantized->dims, input->dims)) {
+      TfLiteIntArray* input_quantized_size = TfLiteIntArrayCopy(input->dims);
+      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_quantized,
+                                                       input_quantized_size));
+    }
+
+    node->temporaries->data[data->scaling_factors_index] =
+        data->scaling_factors_id;
+    TfLiteTensor* scaling_factors =
+        GetTemporary(context, node, data->scaling_factors_index);
+    scaling_factors->type = kTfLiteInt32;
+    scaling_factors->allocation_type = kTfLiteArenaRw;
+    TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
+    // Only one scale factor per batch is typically necessary. See optimized
+    // implementation for why we need to allocate for height elements here.
+    scaling_factors_size->data[0] = height;
+    if (!TfLiteIntArrayEqual(scaling_factors->dims, scaling_factors_size)) {
+      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
+                                                       scaling_factors_size));
+    }
   }
 
   return kTfLiteOk;
@@ -456,6 +521,57 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
 }
 
 template <KernelType kernel_type>
+void EvalHybrid(TfLiteContext* context, TfLiteNode* node,
+                TfLiteConvParams* params, OpData* data, TfLiteTensor* input,
+                TfLiteTensor* filter, TfLiteTensor* bias, TfLiteTensor* im2col,
+                TfLiteTensor* hwcn_weights, TfLiteTensor* output) {
+  float output_activation_min, output_activation_max;
+  CalculateActivationRange(params->activation, &output_activation_min,
+                           &output_activation_max);
+
+  const int input_size = NumElements(input) / SizeOfDimension(input, 0);
+  const int batch_size = SizeOfDimension(input, 0);
+
+  const TfLiteTensor* input_quantized =
+      GetTemporary(context, node, data->input_quantized_index);
+  int8_t* quantized_input_ptr_batch =
+      reinterpret_cast<int8_t*>(input_quantized->data.uint8);
+  float* scaling_factors_ptr =
+      GetTemporary(context, node, data->scaling_factors_index)->data.f;
+
+  // Per-batch input quantization for higher accuracy.
+  for (int b = 0; b < batch_size; ++b) {
+    float unused_min, unused_max;
+    const int offset = b * input_size;
+    tensor_utils::SymmetricQuantizeFloats(
+        input->data.f + offset, input_size, quantized_input_ptr_batch + offset,
+        &unused_min, &unused_max, &scaling_factors_ptr[b]);
+    scaling_factors_ptr[b] *= filter->params.scale;
+  }
+
+  int8_t* im2col_ptr = reinterpret_cast<int8_t*>(im2col->data.uint8);
+  int8_t* filter_ptr = reinterpret_cast<int8_t*>(filter->data.uint8);
+
+  switch (kernel_type) {
+    case kReference:
+    case kGenericOptimized:
+    case kMultithreadOptimized:
+    case kCblasOptimized:
+      // There is only one implementation for hybrid kernel. Note
+      // this does not make use of gemmlowp nor supports multithreading.
+      optimized_ops::HybridConv(
+          quantized_input_ptr_batch, GetTensorDims(input), filter_ptr,
+          GetTensorDims(filter), GetTensorData<float>(bias),
+          GetTensorDims(bias), params->stride_width, params->stride_height,
+          data->padding.width, data->padding.height, scaling_factors_ptr,
+          output_activation_min, output_activation_max,
+          GetTensorData<float>(output), GetTensorDims(output), im2col_ptr,
+          GetTensorDims(im2col));
+      break;
+  }
+}
+
+template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
@@ -484,7 +600,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // separate ops to avoid dispatch overhead here.
   switch (input->type) {  // Already know in/outtypes are same.
     case kTfLiteFloat32:
-      if (data->run_multithreaded_kernel) {
+      if (filter->type == kTfLiteUInt8) {
+        EvalHybrid<kernel_type>(context, node, params, data, input, filter,
+                                bias, im2col, hwcn_weights, output);
+      } else if (data->run_multithreaded_kernel) {
         EvalFloat<kernel_type>(context, node, params, data, input, filter, bias,
                                im2col, hwcn_weights, output);
       } else {
