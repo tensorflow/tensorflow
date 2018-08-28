@@ -295,7 +295,7 @@ tf_gpu_library(
     ]) + tf_custom_op_library_additional_deps(),
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "convert_graph_test",
     size = "medium",
     srcs = ["convert/convert_graph_test.cc"],
