@@ -515,6 +515,11 @@ class Tensor(_TensorLike):
     ==> TensorShape([Dimension(28), Dimension(28), Dimension(3)])
     ```
 
+    NOTE: This shape is not enforced at runtime. Setting incorrect shapes can
+    result in inconsistencies between the statically-known graph and the runtime
+    value of tensors. For runtime validation of the shape, use `tf.ensure_shape`
+    instead.
+
     Args:
       shape: A `TensorShape` representing the shape of this tensor, a
       `TensorShapeProto`, a list, a tuple, or None.
