@@ -232,7 +232,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_kernel_library(
     name = "parse_example_dataset_op",
     srcs = ["parse_example_dataset_op.cc"],
     deps = [
