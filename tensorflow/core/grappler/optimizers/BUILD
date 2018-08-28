@@ -110,7 +110,7 @@ cc_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "constant_folding_test",
     srcs = ["constant_folding_test.cc"],
     tags = ["requires-gpu-sm35"],
