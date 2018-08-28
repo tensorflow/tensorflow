@@ -1114,6 +1114,7 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_casting_utils",
+        ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",

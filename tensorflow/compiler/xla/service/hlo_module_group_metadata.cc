@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -131,6 +132,14 @@ Status HloModuleGroupMetadata::Build() {
   if (VLOG_IS_ON(4)) {
     DumpCollectedStats();
   }
+
+  for (HloModule* module : modules_) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
+        TuplePointsToAnalysis::Run(module));
+    points_to_analyses_[module] = std::move(points_to_analysis);
+  }
+
   return Status::OK();
 }
 
