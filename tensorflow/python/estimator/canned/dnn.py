@@ -25,6 +25,7 @@ from tensorflow.python.estimator import model_fn
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import optimizers
 from tensorflow.python.feature_column import feature_column as feature_column_lib
+from tensorflow.python.framework import ops
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.layers import normalization
 from tensorflow.python.ops import init_ops
@@ -33,6 +34,7 @@ from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
+from tensorflow.python.training import training
 from tensorflow.python.util.tf_export import estimator_export
 
 # The default learning rate of 0.05 is a historical artifact of the initial
@@ -212,7 +214,21 @@ def _dnn_model_fn(features,
         batch_norm=batch_norm)
     logits = logit_fn(features=features, mode=mode)
 
-    if tpu_estimator_spec:
+    def batch_norm_train_op(loss):
+      update_ops = ops.get_collection(ops.GraphKeys.UPDATE_OPS)
+      with ops.control_dependencies(update_ops):
+        train_op = optimizer.minimize(loss=loss,
+                                      global_step=training.get_global_step())
+      return train_op
+
+    if batch_norm:
+      return head.create_estimator_spec(
+          features=features,
+          mode=mode,
+          labels=labels,
+          train_op_fn=batch_norm_train_op,
+          logits=logits)
+    elif tpu_estimator_spec:
       return head._create_tpu_estimator_spec(  # pylint: disable=protected-access
           features=features,
           mode=mode,
