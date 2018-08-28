@@ -72,7 +72,7 @@ py_test(
 
 tf_xla_py_test(
     name = "adadelta_test",
-    size = "medium",
+    size = "large",
     srcs = ["adadelta_test.py"],
     deps = [
         ":xla_test",
