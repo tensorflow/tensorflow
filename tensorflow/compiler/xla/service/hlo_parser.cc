@@ -702,6 +702,27 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           HloInstruction::CreateAllToAll(shape, operands, replica_groups));
       break;
     }
+    case HloOpcode::kCollectivePermute: {
+      optional<std::vector<std::vector<int64>>> source_targets;
+      attrs["source_target_pairs"] = {
+          /*required=*/true, AttrTy::kBracedInt64ListList, &source_targets};
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      std::vector<std::pair<int64, int64>> pairs(source_targets->size());
+      for (int i = 0; i < pairs.size(); i++) {
+        if ((*source_targets)[i].size() != 2) {
+          return TokenError(
+              "expects 'source_target_pairs=' to be a list of pairs");
+        }
+        pairs[i].first = (*source_targets)[i][0];
+        pairs[i].second = (*source_targets)[i][1];
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateCollectivePermute(shape, operands[0], pairs));
+      break;
+    }
     case HloOpcode::kReshape: {
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {

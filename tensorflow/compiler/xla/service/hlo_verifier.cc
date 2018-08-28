@@ -116,6 +116,11 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
                     ShapeInference::InferAllToAllTupleShape(operand_shapes));
 }
 
+Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
+  return CheckShape(hlo, ShapeInference::InferCollectivePermuteShape(
+                             hlo->operand(0)->shape()));
+}
+
 Status ShapeVerifier::HandleReducePrecision(HloInstruction* reduce_precision) {
   return CheckShape(reduce_precision, ShapeInference::InferReducePrecisionShape(
                                           reduce_precision->operand(0)->shape(),

@@ -470,6 +470,15 @@ class HloInstruction {
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
       const std::vector<ReplicaGroup>& replica_groups);
 
+  // Creates a communitation instructions that permutes data cross replicas.
+  // Data is sent/received according to the (source_replica_id,
+  // target_replica_id) pairs in `source_target_pairs`. If a replica id is not a
+  // target_replica_id in any pair, the output on that replica is a tensor
+  // conssits of 0(s) in `shape`.
+  static std::unique_ptr<HloInstruction> CreateCollectivePermute(
+      const Shape& shape, HloInstruction* operand,
+      const std::vector<std::pair<int64, int64>>& source_target_pairs);
+
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.
   static std::unique_ptr<HloInstruction> CreateConvert(const Shape& shape,
@@ -1429,8 +1438,11 @@ class HloInstruction {
   // Returns the shape for the Outfeed instruction.
   const Shape& outfeed_shape() const;
 
-  // Delegates to HloAllToAllInstruction::replica_groups.
+  // Delegates to HloCollectiveInstruction::replica_groups.
   const std::vector<ReplicaGroup>& replica_groups() const;
+
+  // Delegates to HloCollectivePermuteInstruction::source_target_pairs.
+  const std::vector<std::pair<int64, int64>>& source_target_pairs() const;
 
   // Delegates to HloAllReduceInstruction::cross_replica_sum_barrier.
   string cross_replica_sum_barrier() const;

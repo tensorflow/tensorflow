@@ -1844,6 +1844,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   return InferVariadicOpShape(HloOpcode::kTuple, operand_shapes);
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferCollectivePermuteShape(
+    const Shape& shape) {
+  TF_RET_CHECK(ShapeUtil::IsArray(shape));
+  return shape;
+}
+
 /* static */ StatusOr<Shape> ShapeInference::InferReduceShape(
     tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
     tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
