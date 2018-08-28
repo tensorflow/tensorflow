@@ -629,14 +629,7 @@ def context():
 
 
 def context_safe():
-  return _context
-
-
-# TODO(agarwal): remove this.
-def get_default_context():
-  """Same as context."""
-  if _context is None:
-    _initialize_context()
+  """Returns current context (or None if one hasn't been initialized)."""
   return _context
 
 

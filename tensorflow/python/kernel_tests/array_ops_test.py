@@ -1145,7 +1145,7 @@ class IdentityTest(test_util.TensorFlowTestCase):
 
   def testEagerIdentity(self):
     with context.eager_mode():
-      ctx = context.get_default_context()
+      ctx = context.context()
       if not ctx.num_gpus():
         self.skipTest("No GPUs found")
 
