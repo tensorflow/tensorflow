@@ -483,7 +483,7 @@ const Edge* Graph::AddControlEdge(Node* source, Node* dest,
 void Graph::RemoveControlEdge(const Edge* e) {
   if (!e->src_->IsSource() && !e->dst_->IsSink()) {
     e->dst_->MaybeCopyOnWrite();
-    std::string e_src_name = strings::StrCat("^", e->src_->name());
+    string e_src_name = strings::StrCat("^", e->src_->name());
     auto* inputs = e->dst_->props_->node_def.mutable_input();
     for (auto it = inputs->begin(); it != inputs->end(); ++it) {
       if (*it == e_src_name) {
@@ -721,7 +721,7 @@ Status Graph::AddWhileContext(StringPiece frame_name,
                               std::vector<OutputTensor> body_outputs,
                               WhileContext** result) {
   auto pair = while_ctxs_.insert(std::pair<string, WhileContext>(
-      std::string(frame_name),
+      string(frame_name),
       WhileContext(frame_name, std::move(enter_nodes), std::move(exit_nodes),
                    cond_output, std::move(body_inputs),
                    std::move(body_outputs))));

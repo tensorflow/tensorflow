@@ -338,7 +338,7 @@ StatusOr<HloInstruction*> BroadcastZeros(
 StatusOr<std::unique_ptr<HloComputation>> CreateComputationWithSignature(
     ArraySlice<const Shape*> domain, const Shape& range,
     absl::string_view name) {
-  HloComputation::Builder b{std::string(name)};
+  HloComputation::Builder b{string(name)};
   int64 param_idx = 0;
   for (const Shape* param_shape : domain) {
     b.AddInstruction(HloInstruction::CreateParameter(
