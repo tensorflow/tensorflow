@@ -1363,16 +1363,35 @@ inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
 }
 
 template <typename T>
-inline void Mul(const T* input1_data, const Dims<4>& input1_dims,
-                const T* input2_data, const Dims<4>& input2_dims,
-                T output_activation_min, T output_activation_max,
-                T* output_data, const Dims<4>& output_dims) {
-  const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
+inline void Mul(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape, const T* input1_data,
+                const RuntimeShape& input2_shape, const T* input2_data,
+                const RuntimeShape& output_shape, T* output_data) {
+  T output_activation_min;
+  T output_activation_max;
+  GetActivationParams(params, &output_activation_min, &output_activation_max);
+
+  const int flat_size =
+      MatchingFlatSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] * input2_data[i], output_activation_min,
         output_activation_max);
   }
+}
+
+// Legacy Dims<4>.
+template <typename T>
+inline void Mul(const T* input1_data, const Dims<4>& input1_dims,
+                const T* input2_data, const Dims<4>& input2_dims,
+                T output_activation_min, T output_activation_max,
+                T* output_data, const Dims<4>& output_dims) {
+  tflite::ArithmeticParams op_params;
+  SetActivationParams(output_activation_min, output_activation_max, &op_params);
+
+  Mul(op_params, DimsToShape(input1_dims), input1_data,
+      DimsToShape(input2_dims), input2_data, DimsToShape(output_dims),
+      output_data);
 }
 
 // legacy, for compatibility with old checked-in code
@@ -1383,49 +1402,84 @@ void Mul(const float* input1_data, const Dims<4>& input1_dims,
   float output_activation_min, output_activation_max;
   GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
 
-  Mul(input1_data, input1_dims, input2_data, input2_dims, output_activation_min,
-      output_activation_max, output_data, output_dims);
+  tflite::ArithmeticParams op_params;
+  SetActivationParams(output_activation_min, output_activation_max, &op_params);
+
+  Mul(op_params, DimsToShape(input1_dims), input1_data,
+      DimsToShape(input2_dims), input2_data, DimsToShape(output_dims),
+      output_data);
 }
 
 // TODO(jiawen): We can implement BroadcastMul on buffers of arbitrary
 // dimensionality if the runtime code does a single loop over one dimension
 // that handles broadcasting as the base case. The code generator would then
 // generate max(D1, D2) nested for loops.
+// TODO(benoitjacob): BroadcastMul is intentionally duplicated from
+// reference_ops.h. Once an optimized version is implemented and NdArrayDesc<T>
+// is no longer referenced in this file, move NdArrayDesc<T> from types.h to
+// reference_ops.h.
 template <typename T>
-void BroadcastMul(const T* input1_data, const Dims<4>& input1_dims,
-                  const T* input2_data, const Dims<4>& input2_dims,
-                  T output_activation_min, T output_activation_max,
-                  T* output_data, const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastMul");
+void BroadcastMul4DSlow(const ArithmeticParams& params,
+                        const RuntimeShape& unextended_input1_shape,
+                        const T* input1_data,
+                        const RuntimeShape& unextended_input2_shape,
+                        const T* input2_data,
+                        const RuntimeShape& unextended_output_shape,
+                        T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("BroadcastMul4DSlow");
+  T output_activation_min;
+  T output_activation_max;
+  GetActivationParams(params, &output_activation_min, &output_activation_max);
+
+  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
+  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
+                                      unextended_input2_shape, &desc1, &desc2);
 
   // In Tensorflow, the dimensions are canonically named (batch_number, row,
   // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest
-  // stride, typically 1 element).
+  // trailing dimension changing most rapidly (channels has the smallest stride,
+  // typically 1 element).
   //
   // In generated C code, we store arrays with the dimensions reversed. The
   // first dimension has smallest stride.
   //
   // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for
-  // the best cache behavior.
-  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
-    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
-      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
-        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] =
+  // nesting loops such that the innermost loop has the smallest stride for the
+  // best cache behavior.
+  for (int b = 0; b < output_shape.Dims(0); ++b) {
+    for (int y = 0; y < output_shape.Dims(1); ++y) {
+      for (int x = 0; x < output_shape.Dims(2); ++x) {
+        for (int c = 0; c < output_shape.Dims(3); ++c) {
+          output_data[Offset(output_shape, b, y, x, c)] =
               ActivationFunctionWithMinMax(
-                  input1_data[SubscriptToIndex(desc1, c, x, y, b)] *
-                      input2_data[SubscriptToIndex(desc2, c, x, y, b)],
+                  input1_data[SubscriptToIndex(desc1, b, y, x, c)] *
+                      input2_data[SubscriptToIndex(desc2, b, y, x, c)],
                   output_activation_min, output_activation_max);
         }
       }
     }
   }
+}
+
+// Legacy.
+template <typename T>
+void BroadcastMul(const T* input1_data, const Dims<4>& input1_dims,
+                  const T* input2_data, const Dims<4>& input2_dims,
+                  T output_activation_min, T output_activation_max,
+                  T* output_data, const Dims<4>& output_dims) {
+  tflite::ArithmeticParams op_params;
+  SetActivationParams(output_activation_min, output_activation_max, &op_params);
+
+  BroadcastMul4DSlow(op_params, DimsToShape(input1_dims), input1_data,
+                     DimsToShape(input2_dims), input2_data,
+                     DimsToShape(output_dims), output_data);
 }
 
 // legacy, for compatibility with old checked-in code
@@ -1436,9 +1490,12 @@ void BroadcastMul(const T* input1_data, const Dims<4>& input1_dims,
   T output_activation_min, output_activation_max;
   GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
 
-  BroadcastMul(input1_data, input1_dims, input2_data, input2_dims,
-               output_activation_min, output_activation_max, output_data,
-               output_dims);
+  tflite::ArithmeticParams op_params;
+  SetActivationParams(output_activation_min, output_activation_max, &op_params);
+
+  BroadcastMul4DSlow(op_params, DimsToShape(input1_dims), input1_data,
+                     DimsToShape(input2_dims), input2_data,
+                     DimsToShape(output_dims), output_data);
 }
 
 // Element-wise mul that can often be used for inner loop of broadcast Mul as
@@ -1569,6 +1626,7 @@ inline void BroadcastMul4DSlow(const ArithmeticParams& params,
   }
 }
 
+// Legacy.
 // Transitional version that will be moved shortly to legacy_reference_ops, as
 // part of RuntimeShape revisions.
 inline void BroadcastMul4DSlow(const uint8* input1_data,
@@ -1579,52 +1637,27 @@ inline void BroadcastMul4DSlow(const uint8* input1_data,
                                int output_shift, int32 output_activation_min,
                                int32 output_activation_max, uint8* output_data,
                                const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastMul/8bit");
+  tflite::ArithmeticParams op_params;
+  SetActivationParams(output_activation_min, output_activation_max, &op_params);
+  op_params.input1_offset = input1_offset;
+  op_params.input2_offset = input2_offset;
+  op_params.output_offset = output_offset;
+  op_params.output_multiplier = output_multiplier;
+  op_params.output_shift = output_shift;
 
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest
-  // stride, typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for
-  // the best cache behavior.
-  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
-    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
-      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
-        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
-          const int32 input1_val =
-              input1_offset + input1_data[SubscriptToIndex(desc1, c, x, y, b)];
-          const int32 input2_val =
-              input2_offset + input2_data[SubscriptToIndex(desc2, c, x, y, b)];
-          const int32 unclamped_result =
-              output_offset +
-              MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                  input1_val * input2_val, output_multiplier, output_shift);
-          const int32 clamped_output =
-              std::min(output_activation_max,
-                       std::max(output_activation_min, unclamped_result));
-          output_data[Offset(output_dims, c, x, y, b)] =
-              static_cast<uint8>(clamped_output);
-        }
-      }
-    }
-  }
+  BroadcastMul4DSlow(op_params, DimsToShape(input1_dims), input1_data,
+                     DimsToShape(input2_dims), input2_data,
+                     DimsToShape(output_dims), output_data);
 }
 
-inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
-                const int16* input2_data, const Dims<4>& input2_dims,
-                int16* output_data, const Dims<4>& output_dims) {
+inline void Mul(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape, const int16* input1_data,
+                const RuntimeShape& input2_shape, const int16* input2_data,
+                const RuntimeShape& output_shape, int16* output_data) {
   gemmlowp::ScopedProfilingLabel label("Mul/Int16");
 
-  const int flat_size = MatchingFlatSize(output_dims, input1_dims, input2_dims);
+  const int flat_size =
+      MatchingFlatSize(input1_shape, input2_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
     // F0 uses 0 integer bits, range [-1, 1].
@@ -1636,15 +1669,30 @@ inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
   }
 }
 
+// Legacy Dims<4>.
 inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
                 const int16* input2_data, const Dims<4>& input2_dims,
-                int32 output_offset, int32 output_activation_min,
-                int32 output_activation_max, uint8* output_data,
-                const Dims<4>& output_dims) {
+                int16* output_data, const Dims<4>& output_dims) {
+  tflite::ArithmeticParams op_params;
+  // No params in this version.
+
+  Mul(op_params, DimsToShape(input1_dims), input1_data,
+      DimsToShape(input2_dims), input2_data, DimsToShape(output_dims),
+      output_data);
+}
+
+inline void Mul(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape, const int16* input1_data,
+                const RuntimeShape& input2_shape, const int16* input2_data,
+                const RuntimeShape& output_shape, uint8* output_data) {
   gemmlowp::ScopedProfilingLabel label("Mul/Int16Uint8");
+  int32 output_offset = params.output_offset;
+  int32 output_activation_min = params.quantized_activation_min;
+  int32 output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
-  const int flat_size = MatchingFlatSize(output_dims, input1_dims, input2_dims);
+  const int flat_size =
+      MatchingFlatSize(input1_shape, input2_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
     // F0 uses 0 integer bits, range [-1, 1].
@@ -1660,6 +1708,22 @@ inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
         std::max<int16>(output_activation_min - output_offset, clamped_result);
     output_data[i] = output_offset + clamped_result;
   }
+}
+
+// Legacy Dims<4>.
+inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
+                const int16* input2_data, const Dims<4>& input2_dims,
+                int32 output_offset, int32 output_activation_min,
+                int32 output_activation_max, uint8* output_data,
+                const Dims<4>& output_dims) {
+  tflite::ArithmeticParams op_params;
+  op_params.quantized_activation_min = output_activation_min;
+  op_params.quantized_activation_max = output_activation_max;
+  op_params.output_offset = output_offset;
+
+  Mul(op_params, DimsToShape(input1_dims), input1_data,
+      DimsToShape(input2_dims), input2_data, DimsToShape(output_dims),
+      output_data);
 }
 
 // TODO(jiawen): We can implement BroadcastDiv on buffers of arbitrary
