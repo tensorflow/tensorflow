@@ -403,8 +403,15 @@ class HloComputation {
   // instructions. For send&recv pairs it means the send instruction and for
   // cross-replica-sum the union of the dependencies for all participating
   // instructions.
-  std::map<int64, std::vector<HloInstruction*>> ComputeChannelDependencies()
-      const;
+  using ChannelDependencyMap =
+      tensorflow::gtl::FlatMap<int64, absl::InlinedVector<HloInstruction*, 1>>;
+  ChannelDependencyMap ComputeChannelDependencies() const;
+
+  enum VisitState { kVisiting, kVisited };
+  void ComputeInstructionPostOrder(
+      const HloComputation::ChannelDependencyMap& channel_dependency_map,
+      std::vector<HloInstruction*>* post_order, HloInstruction* root,
+      tensorflow::gtl::FlatMap<HloInstruction*, VisitState>* visited) const;
 
   string name_;
   int64 unique_id_;
