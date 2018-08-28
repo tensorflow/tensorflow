@@ -1829,7 +1829,7 @@ class RNNOpModel : public SingleOpModelWithNNAPI {
   int input_size_;
 };
 
-TEST(NNAPIDelegate, RnnBlackBoxTest) {
+TEST(NNAPIDelegate, DISABLED_RnnBlackBoxTest) {
   RNNOpModel rnn(2, 16, 8);
   rnn.SetWeights(rnn_weights);
   rnn.SetBias(rnn_bias);
