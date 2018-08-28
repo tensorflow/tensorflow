@@ -262,8 +262,8 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExpm1(
   return EmitROCDLMathCall("__ocml_expm1", {value}, {prim_type}, prim_type);
 }
 
-StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPow(PrimitiveType prim_type,
-                                                      llvm::Value* rhs) {
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPow(
+    PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs) {
   return EmitROCDLMathCall("__ocml_pow", {lhs, rhs}, {prim_type, prim_type},
                                prim_type);
 }

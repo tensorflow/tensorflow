@@ -100,7 +100,7 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       tensorflow::gtl::ArraySlice<llvm::Value*> operands,
       tensorflow::gtl::ArraySlice<PrimitiveType> input_type,
       PrimitiveType output_type,
-      tensorflow::gtl::ArraySlice<llvm::Attribute::AttrKind> attributes);
+      tensorflow::gtl::ArraySlice<llvm::Attribute::AttrKind>     attributes,  llvm::IRBuilder<>* ir_builder, llvm::Module* modu    le);
 
   // Emits IR to call an LLVM intrinsic of type [T] -> T.  Adjusts
   // callee_name according to T.  Returns the IR value that represents the
