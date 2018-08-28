@@ -111,15 +111,15 @@ def _get_workers(num_workers, period, workers, num_ps=1):
         if num_ps == 1:
           train_op = [
               opt.apply_gradients(([grads_0, var_0], [grads_1, var_1]),
-                                global_step)
+                                  global_step)
           ]
         else:
           train_op = [
               opt.apply_gradients(([grads_0, var_0],
-                                 [grads_1, var_1],
-                                 [grads_part_0, part_0],
-                                 [grads_part_1, part_1]),
-                                global_step)
+                                   [grads_1, var_1],
+                                   [grads_part_0, part_0],
+                                   [grads_part_1, part_1]),
+                                  global_step)
           ]
         hook = opt.make_session_run_hook(is_chief, worker_id)
       # Creates MonitoredSession
