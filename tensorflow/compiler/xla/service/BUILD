@@ -230,6 +230,7 @@ cc_library(
     hdrs = ["hlo_evaluator.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_query",
         ":shape_inference",
         "//tensorflow/compiler/xla:literal",
@@ -2290,6 +2291,7 @@ cc_library(
         ":hlo_pass",
         ":shape_inference",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -2682,6 +2684,7 @@ cc_library(
     hdrs = ["elemental_ir_emitter.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_module_config",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",

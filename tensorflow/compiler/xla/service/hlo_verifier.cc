@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 
@@ -265,10 +266,18 @@ Status ShapeVerifier::HandleConstant(HloInstruction* constant) {
   return CheckShape(constant, constant->literal().shape());
 }
 
-Status ShapeVerifier::HandleIota(HloInstruction* iota) {
-  return ShapeUtil::Rank(iota->shape()) == 1
-             ? Status::OK()
-             : InternalError("Iota only supports arrays of rank 1.");
+Status ShapeVerifier::HandleIota(HloInstruction* instruction) {
+  auto* iota = Cast<HloIotaInstruction>(instruction);
+  const int64 rank = ShapeUtil::Rank(iota->shape());
+  if (rank == 0) {
+    return InternalError("Iota does not support scalars.");
+  }
+  int64 iota_dimension = iota->iota_dimension();
+  if (iota_dimension >= rank) {
+    return InternalError(
+        "The iota dimension cannot go beyond the operation rank.");
+  }
+  return Status::OK();
 }
 
 Status ShapeVerifier::HandleGetTupleElement(HloInstruction* get_tuple_element) {

@@ -1116,7 +1116,7 @@ ENTRY CollectivePermute {
 R"(HloModule iota
 
 ENTRY Iota {
-  ROOT iota = f32[100]{0} iota()
+  ROOT iota = f32[100]{0} iota(), iota_dimension=0
 }
 
 )"

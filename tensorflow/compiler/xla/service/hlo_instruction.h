@@ -350,7 +350,8 @@ class HloInstruction {
       std::unique_ptr<Literal> literal);
 
   // Creates an Iota instruction.
-  static std::unique_ptr<HloInstruction> CreateIota(const Shape& shape);
+  static std::unique_ptr<HloInstruction> CreateIota(const Shape& shape,
+                                                    int64 iota_dimension);
 
   // Creates a get tuple element instruction.
   static std::unique_ptr<HloInstruction> CreateGetTupleElement(
