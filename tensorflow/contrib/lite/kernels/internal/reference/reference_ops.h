@@ -4133,6 +4133,23 @@ inline bool ReduceProd(const T* input_data, const int* input_dims,
                           resolved_axis, init_value, reducer);
 }
 
+// Computes the logical_or of elements across dimensions given in axis.
+inline bool ReduceAny(const bool* input_data, const int* input_dims,
+                      const int input_num_dims, bool* output_data,
+                      const int* output_dims, const int output_num_dims,
+                      const int* axis, const int64_t num_axis_dimensions,
+                      bool keep_dims, int* temp_index, int* resolved_axis) {
+  bool init_value = false;
+
+  auto reducer = [](const bool current, const bool in) -> bool {
+    return current || in;
+  };
+  return ReduceGeneric<bool>(input_data, input_dims, input_num_dims,
+                             output_data, output_dims, output_num_dims, axis,
+                             num_axis_dimensions, keep_dims, temp_index,
+                             resolved_axis, init_value, reducer);
+}
+
 // Computes the mean of elements across dimensions given in axis.
 // It does so in two stages, first calculates the sum of elements along the axis
 // then divides it by the number of element in axis.

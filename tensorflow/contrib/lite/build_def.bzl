@@ -266,6 +266,7 @@ def generated_test_models():
         "padv2",
         "prelu",
         "pow",
+        "reduce_any",
         "reduce_max",
         "reduce_min",
         "reduce_prod",

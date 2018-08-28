@@ -97,6 +97,16 @@ class OperatorTest : public ::testing::Test {
 
     ASSERT_NE(nullptr, output_toco_op.get());
   }
+
+  template <typename T>
+  void CheckReducerOperator(const string& name, OperatorType type) {
+    T op;
+
+    op.keep_dims = false;
+
+    auto output_toco_op = SerializeAndDeserialize(GetOperator(name, type), op);
+    EXPECT_EQ(op.keep_dims, output_toco_op->keep_dims);
+  }
 };
 
 TEST_F(OperatorTest, SimpleOperators) {
@@ -144,13 +154,16 @@ TEST_F(OperatorTest, BuiltinAdd) {
             output_toco_op->fused_activation_function);
 }
 
-TEST_F(OperatorTest, BuiltinMean) {
-  MeanOperator op;
-  op.keep_dims = false;
-
-  auto output_toco_op =
-      SerializeAndDeserialize(GetOperator("MEAN", OperatorType::kMean), op);
-  EXPECT_EQ(op.keep_dims, output_toco_op->keep_dims);
+TEST_F(OperatorTest, BuiltinReducerOps) {
+  CheckReducerOperator<MeanOperator>("MEAN", OperatorType::kMean);
+  CheckReducerOperator<TensorFlowSumOperator>("SUM", OperatorType::kSum);
+  CheckReducerOperator<TensorFlowProdOperator>("REDUCE_PROD",
+                                               OperatorType::kReduceProd);
+  CheckReducerOperator<TensorFlowMaxOperator>("REDUCE_MAX",
+                                              OperatorType::kReduceMax);
+  CheckReducerOperator<TensorFlowMinOperator>("REDUCE_MIN",
+                                              OperatorType::kReduceMin);
+  CheckReducerOperator<TensorFlowAnyOperator>("REDUCE_ANY", OperatorType::kAny);
 }
 
 TEST_F(OperatorTest, BuiltinCast) {
