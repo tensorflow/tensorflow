@@ -800,6 +800,12 @@ class XlaBuilder {
   // entry was NaN.
   XlaOp IsFinite(const XlaOp& operand);
 
+  // Enqueues an iota operation onto the computation.
+  XlaOp IotaGen(const Shape& shape, int64 iota_dimension);
+
+  // Enqueues a rank-1 iota operation onto the computation.
+  XlaOp IotaGen(PrimitiveType type, int64 size);
+
   // Enqueues a convert instruction onto the computation that changes the
   // element type of the operand array to primitive_type.
   XlaOp ConvertElementType(const XlaOp& operand,
@@ -1304,6 +1310,8 @@ class XlaBuilder {
   friend XlaOp IsFinite(const XlaOp& operand);
   // TODO(b/64798317): Finish CPU & GPU implementation, then replace xla::Iota
   // in xla/client/lib/numeric.h with this (renamed to xla::Iota).
+  friend XlaOp IotaGen(XlaBuilder* builder, const Shape& shape,
+                       int64 iota_dimension);
   friend XlaOp IotaGen(XlaBuilder* builder, PrimitiveType type, int64 size);
   friend XlaOp ConvertElementType(const XlaOp& operand,
                                   PrimitiveType new_element_type);
@@ -1959,6 +1967,12 @@ XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
 // booleans with the same shape where entries are true iff the corresponding
 // entry was NaN.
 XlaOp IsFinite(const XlaOp& operand);
+
+// Enqueues an iota operation onto the computation.
+XlaOp IotaGen(XlaBuilder* builder, const Shape& shape, int64 iota_dimension);
+
+// Enqueues a rank-1 iota operation onto the computation.
+XlaOp IotaGen(XlaBuilder* builder, PrimitiveType type, int64 size);
 
 // Enqueues a convert instruction onto the computation that changes the
 // element type of the operand array to primitive_type.

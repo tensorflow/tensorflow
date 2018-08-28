@@ -21,7 +21,9 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/core/lib/core/casts.h"
 
@@ -2493,11 +2495,21 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                 std::is_same<NativeT, float>::value ||
                 std::is_same<NativeT, int32>::value ||
                 std::is_same<NativeT, uint32>::value>::type* = nullptr>
-  Status HandleIota(HloInstruction* iota) {
-    auto result = absl::make_unique<Literal>(iota->shape());
-    auto data = result->data<ReturnT>();
+  Status HandleIota(HloInstruction* instruction) {
+    auto* iota = Cast<HloIotaInstruction>(instruction);
+    std::vector<NativeT> data(iota->shape().dimensions(iota->iota_dimension()));
     std::iota(data.begin(), data.end(), 0);
-    parent_->evaluated_[iota] = std::move(result);
+    auto result = LiteralUtil::CreateR1<NativeT>(data);
+
+    if (ShapeUtil::Rank(iota->shape()) > 1) {
+      TF_ASSIGN_OR_RETURN(
+          parent_->evaluated_[iota],
+          result->Broadcast(iota->shape(), {iota->iota_dimension()}));
+    } else {
+      TF_RET_CHECK(ShapeUtil::Rank(iota->shape()) == 1);
+      parent_->evaluated_[iota] = std::move(result);
+    }
+
     return Status::OK();
   }
   template <typename NativeT,

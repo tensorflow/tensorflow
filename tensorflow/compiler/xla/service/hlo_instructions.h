@@ -1279,6 +1279,30 @@ class HloScatterInstruction : public HloInstruction {
   std::unique_ptr<ScatterDimensionNumbers> scatter_dimension_numbers_;
 };
 
+class HloIotaInstruction : public HloInstruction {
+ public:
+  explicit HloIotaInstruction(const Shape& shape, int64 iota_dimension);
+  // Returns the dimension sizes or numbers associated with this instruction.
+  int64 iota_dimension() const { return iota_dimension_; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  const int64 iota_dimension_;
+};
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTIONS_H_

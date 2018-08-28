@@ -28,6 +28,8 @@ limitations under the License.
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -2094,6 +2096,50 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         return operand_to_generator.at(operand)(
             target_index.SourceIndexOfBroadcast(hlo->shape(), operand->shape(),
                                                 hlo->dimensions(), b_));
+      };
+    case HloOpcode::kIota:
+      return [this, hlo](
+                 const IrArray::Index& target_index) -> StatusOr<llvm::Value*> {
+        auto* iota = Cast<HloIotaInstruction>(hlo);
+        PrimitiveType element_type = iota->shape().element_type();
+        IrArray::Index elem_index =
+            ShapeUtil::Rank(iota->shape()) > 1
+                ? target_index.SourceIndexOfBroadcast(
+                      iota->shape(),
+                      ShapeUtil::MakeShapeWithDescendingLayout(
+                          element_type,
+                          {iota->shape().dimensions(iota->iota_dimension())}),
+                      {iota->iota_dimension()}, b_)
+                : target_index;
+        llvm::Value* elem_index_linear = elem_index.linear();
+        if (elem_index_linear == nullptr) {
+          std::vector<int64> iota_bound = {
+              iota->shape().dimensions(iota->iota_dimension())};
+          elem_index_linear = elem_index.Linearize(iota_bound, b_);
+        }
+        if (ShapeUtil::ElementIsIntegral(iota->shape())) {
+          return b_->CreateIntCast(
+              elem_index_linear,
+              llvm_ir::PrimitiveTypeToIrType(element_type, module_),
+              /*isSigned=*/false);
+        } else {
+          TF_RET_CHECK(ShapeUtil::ElementIsFloating(iota->shape()))
+              << element_type;
+          llvm::Type* float_ir_type;
+          if (element_type == BF16) {
+            float_ir_type = llvm_ir::PrimitiveTypeToIrType(F32, module_);
+          } else {
+            float_ir_type =
+                llvm_ir::PrimitiveTypeToIrType(element_type, module_);
+          }
+          llvm::Value* float_val =
+              b_->CreateUIToFP(elem_index_linear, float_ir_type);
+          if (element_type == BF16) {
+            return EmitF32ToBF16(float_val, b_);
+          } else {
+            return float_val;
+          }
+        }
       };
     case HloOpcode::kSlice:
       return [this, hlo, &operand_to_generator](

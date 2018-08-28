@@ -428,6 +428,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                         computations(0), *scatter_dimension_numbers);
       break;
     }
+    case HloOpcode::kIota:
+      TF_RET_CHECK(proto.dimensions_size() <= 1)
+          << "Iota instruction should have at most 1 dimension but sees "
+          << proto.dimensions_size();
+      instruction = CreateIota(proto.shape(), proto.dimensions(0));
+      break;
     default: {
       instruction = absl::WrapUnique(new HloInstruction(opcode, proto.shape()));
       for (const int64 operand_id : proto.operand_ids()) {
@@ -490,8 +496,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateIota(
-    const Shape& shape) {
-  return absl::WrapUnique(new HloInstruction(HloOpcode::kIota, shape));
+    const Shape& shape, int64 iota_dimension) {
+  return absl::make_unique<HloIotaInstruction>(shape, iota_dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -2053,13 +2059,12 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
       extra.push_back(
           StrCat("to_apply=", PrintName(to_apply()->name(), options)));
     } else if (!called_computations().empty()) {
-      extra.push_back(
-          StrCat("calls=",
-                 StrJoin(called_computations(), ", ",
-                         [&](string* out, const HloComputation* computation) {
-                           StrAppend(out,
-                                     PrintName(computation->name(), options));
-                         })));
+      extra.push_back(StrCat(
+          "calls=",
+          StrJoin(called_computations(), ", ",
+                  [&](string* out, const HloComputation* computation) {
+                    StrAppend(out, PrintName(computation->name(), options));
+                  })));
     }
   } else if (options.print_subcomputation_mode() ==
              HloPrintOptions::PrintSubcomputationMode::kFullBodies) {
@@ -3218,12 +3223,12 @@ HloInstruction::source_target_pairs() const {
 }
 
 string HloInstruction::cross_replica_sum_barrier() const {
-    return Cast<HloAllReduceInstruction>(this)->cross_replica_sum_barrier();
+  return Cast<HloAllReduceInstruction>(this)->cross_replica_sum_barrier();
 }
 
 void HloInstruction::set_cross_replica_sum_barrier(const string& barrier) {
-    return Cast<HloAllReduceInstruction>(this)->set_cross_replica_sum_barrier(
-        barrier);
+  return Cast<HloAllReduceInstruction>(this)->set_cross_replica_sum_barrier(
+      barrier);
 }
 
 absl::optional<int64> HloInstruction::all_reduce_id() const {

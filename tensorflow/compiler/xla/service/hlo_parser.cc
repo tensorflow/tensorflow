@@ -562,11 +562,15 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kIota: {
+      optional<tensorflow::int64> iota_dimension;
+      attrs["iota_dimension"] = {/*required=*/true, AttrTy::kInt64,
+                                 &iota_dimension};
       if (!ParseOperands(&operands, /*expected_size=*/0) ||
           !ParseAttributes(attrs)) {
         return false;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateIota(shape));
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateIota(shape, *iota_dimension));
       break;
     }
     // Unary ops.
