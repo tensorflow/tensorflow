@@ -54,7 +54,7 @@ NameUniquer::NameUniquer(const string& separator) {
 }
 
 string NameUniquer::GetUniqueName(absl::string_view prefix) {
-  string root = GetSanitizedName(prefix.empty() ? "name" : std::string(prefix));
+  string root = GetSanitizedName(prefix.empty() ? "name" : string(prefix));
 
   // Strip away numeric suffix (if any). Only recognize separator if it is in
   // the middle of the name.

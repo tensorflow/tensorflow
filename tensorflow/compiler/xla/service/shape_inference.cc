@@ -52,7 +52,7 @@ bool AllUnique(tensorflow::gtl::ArraySlice<int64> slice) {
 Status ExpectArray(const Shape& shape, absl::string_view op_type) {
   if (!ShapeUtil::IsArray(shape)) {
     return InvalidArgument("Expected array argument for %s, but got %s.",
-                           std::string(op_type), ShapeUtil::HumanString(shape));
+                           string(op_type), ShapeUtil::HumanString(shape));
   }
   return Status::OK();
 }
