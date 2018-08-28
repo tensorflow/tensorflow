@@ -20,6 +20,7 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IntegerSet.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/Types.h"
 using namespace mlir;
@@ -31,6 +32,21 @@ Identifier Builder::getIdentifier(StringRef str) {
 }
 
 Module *Builder::createModule() { return new Module(context); }
+
+//===----------------------------------------------------------------------===//
+// Locations.
+//===----------------------------------------------------------------------===//
+
+UnknownLoc *Builder::getUnknownLoc() { return UnknownLoc::get(context); }
+
+UniquedFilename Builder::getUniquedFilename(StringRef filename) {
+  return UniquedFilename::get(filename, context);
+}
+
+FileLineColLoc *Builder::getFileLineColLoc(UniquedFilename filename,
+                                           unsigned line, unsigned column) {
+  return FileLineColLoc::get(filename, line, column, context);
+}
 
 //===----------------------------------------------------------------------===//
 // Types.
@@ -227,7 +243,7 @@ OperationStmt *MLFuncBuilder::createOperation(const OperationState &state) {
   return op;
 }
 
-ForStmt *MLFuncBuilder::createFor(Attribute *location,
+ForStmt *MLFuncBuilder::createFor(Location *location,
                                   ArrayRef<MLValue *> lbOperands,
                                   AffineMap *lbMap,
                                   ArrayRef<MLValue *> ubOperands,
@@ -238,7 +254,7 @@ ForStmt *MLFuncBuilder::createFor(Attribute *location,
   return stmt;
 }
 
-IfStmt *MLFuncBuilder::createIf(Attribute *location, IntegerSet *condition) {
+IfStmt *MLFuncBuilder::createIf(Location *location, IntegerSet *condition) {
   auto *stmt = new IfStmt(location, condition);
   block->getStatements().insert(insertPoint, stmt);
   return stmt;

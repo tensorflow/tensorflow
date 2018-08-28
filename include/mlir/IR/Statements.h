@@ -40,7 +40,7 @@ class OperationStmt final
       private llvm::TrailingObjects<OperationStmt, StmtOperand, StmtResult> {
 public:
   /// Create a new OperationStmt with the specific fields.
-  static OperationStmt *create(Attribute *location, Identifier name,
+  static OperationStmt *create(Location *location, Identifier name,
                                ArrayRef<MLValue *> operands,
                                ArrayRef<Type *> resultTypes,
                                ArrayRef<NamedAttribute> attributes,
@@ -180,7 +180,7 @@ public:
 private:
   const unsigned numOperands, numResults;
 
-  OperationStmt(Attribute *location, Identifier name, unsigned numOperands,
+  OperationStmt(Location *location, Identifier name, unsigned numOperands,
                 unsigned numResults, ArrayRef<NamedAttribute> attributes,
                 MLIRContext *context);
   ~OperationStmt();
@@ -198,7 +198,7 @@ private:
 /// For statement represents an affine loop nest.
 class ForStmt : public Statement, public MLValue, public StmtBlock {
 public:
-  static ForStmt *create(Attribute *location, ArrayRef<MLValue *> lbOperands,
+  static ForStmt *create(Location *location, ArrayRef<MLValue *> lbOperands,
                          AffineMap *lbMap, ArrayRef<MLValue *> ubOperands,
                          AffineMap *ubMap, int64_t step, MLIRContext *context);
 
@@ -336,7 +336,7 @@ private:
   // Operands for the lower and upper bounds.
   std::vector<StmtOperand> operands;
 
-  explicit ForStmt(Attribute *location, unsigned numOperands, AffineMap *lbMap,
+  explicit ForStmt(Location *location, unsigned numOperands, AffineMap *lbMap,
                    AffineMap *ubMap, int64_t step, MLIRContext *context);
 };
 
@@ -412,7 +412,7 @@ private:
 /// If statement restricts execution to a subset of the loop iteration space.
 class IfStmt : public Statement {
 public:
-  explicit IfStmt(Attribute *location, IntegerSet *condition);
+  explicit IfStmt(Location *location, IntegerSet *condition);
   ~IfStmt();
 
   IfClause *getThen() const { return thenClause; }

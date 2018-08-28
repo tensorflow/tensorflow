@@ -49,9 +49,8 @@ public:
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
 
-  /// The source location the operation was defined or derived from.  Note that
-  /// it is possible for this pointer to be null.
-  Attribute *getLoc() const { return location; }
+  /// The source location the operation was defined or derived from.
+  Location *getLoc() const { return location; }
 
   /// Return the BasicBlock containing this instruction.
   BasicBlock *getBlock() const { return block; }
@@ -138,8 +137,9 @@ public:
   void emitNote(const Twine &message) const;
 
 protected:
-  Instruction(Kind kind, Attribute *location)
-      : kind(kind), location(location) {}
+  Instruction(Kind kind, Location *location) : kind(kind), location(location) {
+    assert(location && "location can never be null");
+  }
 
   // Instructions are deleted through the destroy() member because this class
   // does not have a virtual destructor.  A vtable would bloat the size of
@@ -153,7 +153,7 @@ private:
 
   /// This holds information about the source location the operation was defined
   /// or derived from.
-  Attribute *location;
+  Location *location;
 
   friend struct llvm::ilist_traits<OperationInst>;
   friend class BasicBlock;
@@ -172,8 +172,8 @@ class OperationInst final
       public llvm::ilist_node_with_parent<OperationInst, BasicBlock>,
       private llvm::TrailingObjects<OperationInst, InstOperand, InstResult> {
 public:
-  /// Create a new OperationInst with the specific fields.
-  static OperationInst *create(Attribute *location, Identifier name,
+  /// Create a new OperationInst with the specified fields.
+  static OperationInst *create(Location *location, Identifier name,
                                ArrayRef<CFGValue *> operands,
                                ArrayRef<Type *> resultTypes,
                                ArrayRef<NamedAttribute> attributes,
@@ -312,7 +312,7 @@ public:
 private:
   const unsigned numOperands, numResults;
 
-  OperationInst(Attribute *location, Identifier name, unsigned numOperands,
+  OperationInst(Location *location, Identifier name, unsigned numOperands,
                 unsigned numResults, ArrayRef<NamedAttribute> attributes,
                 MLIRContext *context);
   ~OperationInst();
@@ -358,8 +358,7 @@ public:
   }
 
 protected:
-  TerminatorInst(Kind kind, Attribute *location)
-      : Instruction(kind, location) {}
+  TerminatorInst(Kind kind, Location *location) : Instruction(kind, location) {}
   ~TerminatorInst() {}
 };
 
@@ -367,7 +366,7 @@ protected:
 /// and may pass basic block arguments to the successor.
 class BranchInst : public TerminatorInst {
 public:
-  static BranchInst *create(Attribute *location, BasicBlock *dest,
+  static BranchInst *create(Location *location, BasicBlock *dest,
                             ArrayRef<CFGValue *> operands = {}) {
     return new BranchInst(location, dest, operands);
   }
@@ -400,9 +399,8 @@ public:
   }
 
 private:
-  explicit BranchInst(Attribute *location, BasicBlock *dest,
+  explicit BranchInst(Location *location, BasicBlock *dest,
                       ArrayRef<CFGValue *> operands);
-
   BasicBlockOperand dest;
   std::vector<InstOperand> operands;
 };
@@ -415,7 +413,7 @@ class CondBranchInst : public TerminatorInst {
   enum { trueIndex = 0, falseIndex = 1 };
 
 public:
-  static CondBranchInst *create(Attribute *location, CFGValue *condition,
+  static CondBranchInst *create(Location *location, CFGValue *condition,
                                 BasicBlock *trueDest, BasicBlock *falseDest) {
     return new CondBranchInst(location, condition, trueDest, falseDest);
   }
@@ -561,7 +559,7 @@ public:
   }
 
 private:
-  CondBranchInst(Attribute *location, CFGValue *condition, BasicBlock *trueDest,
+  CondBranchInst(Location *location, CFGValue *condition, BasicBlock *trueDest,
                  BasicBlock *falseDest);
 
   CFGValue *condition;
@@ -581,7 +579,7 @@ class ReturnInst final
       private llvm::TrailingObjects<ReturnInst, InstOperand> {
 public:
   /// Create a new ReturnInst with the specific fields.
-  static ReturnInst *create(Attribute *location, ArrayRef<CFGValue *> operands);
+  static ReturnInst *create(Location *location, ArrayRef<CFGValue *> operands);
 
   unsigned getNumOperands() const { return numOperands; }
 
@@ -606,7 +604,7 @@ private:
     return numOperands;
   }
 
-  ReturnInst(Attribute *location, unsigned numOperands);
+  ReturnInst(Location *location, unsigned numOperands);
   ~ReturnInst();
 
   unsigned numOperands;

@@ -23,6 +23,7 @@
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/IntegerSet.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/OperationSet.h"
 #include "mlir/IR/StandardOps.h"
 #include "mlir/IR/Types.h"
@@ -182,11 +183,25 @@ namespace mlir {
 /// This class is completely private to this file, so everything is public.
 class MLIRContextImpl {
 public:
-  /// We put immortal objects into this allocator.
-  llvm::BumpPtrAllocator allocator;
-
   /// This is the set of all operations that are registered with the system.
   OperationSet operationSet;
+
+  /// We put location info into this allocator, since it is generally not
+  /// touched by compiler passes.
+  llvm::BumpPtrAllocator locationAllocator;
+
+  /// The singleton for UnknownLoc.
+  UnknownLoc *theUnknownLoc = nullptr;
+
+  /// These are filename locations uniqued into this MLIRContext.
+  llvm::StringMap<char, llvm::BumpPtrAllocator &> filenames;
+
+  /// FileLineColLoc uniquing.
+  DenseMap<std::tuple<const char *, unsigned, unsigned>, FileLineColLoc *>
+      fileLineColLocs;
+
+  /// We put immortal objects into this allocator.
+  llvm::BumpPtrAllocator allocator;
 
   /// This is the handler to use to report diagnostics, or null if not
   /// registered.
@@ -258,7 +273,7 @@ public:
   DenseMap<const Function *, FunctionAttr *> functionAttrs;
 
 public:
-  MLIRContextImpl() : identifiers(allocator) {
+  MLIRContextImpl() : filenames(locationAllocator), identifiers(allocator) {
     registerStandardOperations(operationSet);
   }
 
@@ -293,8 +308,7 @@ auto MLIRContext::getDiagnosticHandler() const -> DiagnosticHandlerTy {
 /// This emits a diagnostic using the registered issue handle if present, or
 /// with the default behavior if not.  The MLIR compiler should not generally
 /// interact with this, it should use methods on Operation instead.
-void MLIRContext::emitDiagnostic(Attribute *location,
-                                 const llvm::Twine &message,
+void MLIRContext::emitDiagnostic(Location *location, const llvm::Twine &message,
                                  DiagnosticKind kind) const {
   // If we had a handler registered, emit the diagnostic using it.
   auto handler = getImpl().diagnosticHandler;
@@ -304,6 +318,8 @@ void MLIRContext::emitDiagnostic(Attribute *location,
   // The default behavior for notes and warnings is to ignore them.
   if (kind != DiagnosticKind::Error)
     return;
+
+  // TODO(clattner): can improve this now!
 
   // The default behavior for errors is to emit them to stderr and exit.
   llvm::errs() << message.str() << "\n";
@@ -335,6 +351,39 @@ Identifier Identifier::get(StringRef str, const MLIRContext *context) {
   auto &impl = context->getImpl();
   auto it = impl.identifiers.insert({str, char()}).first;
   return Identifier(it->getKeyData());
+}
+
+//===----------------------------------------------------------------------===//
+// Location uniquing
+//===----------------------------------------------------------------------===//
+
+UnknownLoc *UnknownLoc::get(MLIRContext *context) {
+  auto &impl = context->getImpl();
+  if (auto *result = impl.theUnknownLoc)
+    return result;
+
+  impl.theUnknownLoc = impl.allocator.Allocate<UnknownLoc>();
+  new (impl.theUnknownLoc) UnknownLoc();
+  return impl.theUnknownLoc;
+}
+
+UniquedFilename UniquedFilename::get(StringRef filename, MLIRContext *context) {
+  auto &impl = context->getImpl();
+  auto it = impl.filenames.insert({filename, char()}).first;
+  return UniquedFilename(it->getKeyData());
+}
+
+FileLineColLoc *FileLineColLoc::get(UniquedFilename filename, unsigned line,
+                                    unsigned column, MLIRContext *context) {
+  auto &impl = context->getImpl();
+  auto &entry =
+      impl.fileLineColLocs[std::make_tuple(filename.data(), line, column)];
+  if (!entry) {
+    entry = impl.allocator.Allocate<FileLineColLoc>();
+    new (entry) FileLineColLoc(filename, line, column);
+  }
+
+  return entry;
 }
 
 //===----------------------------------------------------------------------===//

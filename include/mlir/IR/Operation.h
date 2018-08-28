@@ -27,6 +27,7 @@ namespace mlir {
 class Attribute;
 class AttributeListStorage;
 class AbstractOperation;
+class Location;
 template <typename OpType> class ConstOpPointer;
 template <typename OpType> class OpPointer;
 template <typename ObjectType, typename ElementType> class OperandIterator;
@@ -46,7 +47,7 @@ typedef std::pair<Identifier, Attribute*> NamedAttribute;
 /// this in a collection.
 struct OperationState {
   MLIRContext *const context;
-  Attribute *location;
+  Location *location;
   Identifier name;
   SmallVector<SSAValue *, 4> operands;
   /// Types of the results of this operation.
@@ -54,14 +55,14 @@ struct OperationState {
   SmallVector<NamedAttribute, 4> attributes;
 
 public:
-  OperationState(MLIRContext *context, Attribute *location, StringRef name)
+  OperationState(MLIRContext *context, Location *location, StringRef name)
       : context(context), location(location),
         name(Identifier::get(name, context)) {}
 
-  OperationState(MLIRContext *context, Attribute *location, Identifier name)
+  OperationState(MLIRContext *context, Location *location, Identifier name)
       : context(context), location(location), name(name) {}
 
-  OperationState(MLIRContext *context, Attribute *location, StringRef name,
+  OperationState(MLIRContext *context, Location *location, StringRef name,
                  ArrayRef<SSAValue *> operands, ArrayRef<Type *> types,
                  ArrayRef<NamedAttribute> attributes = {})
       : context(context), location(location),
@@ -92,9 +93,8 @@ public:
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
 
-  /// The source location the operation was defined or derived from.  Note that
-  /// it is possible for this pointer to be null.
-  Attribute *getLoc() const;
+  /// The source location the operation was defined or derived from.
+  Location *getLoc() const;
 
   /// Return the function this operation is defined in.  This has a verbose
   /// name to avoid name lookup ambiguities.

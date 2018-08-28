@@ -209,7 +209,7 @@ void Statement::eraseFromBlock() {
 //===----------------------------------------------------------------------===//
 
 /// Create a new OperationStmt with the specific fields.
-OperationStmt *OperationStmt::create(Attribute *location, Identifier name,
+OperationStmt *OperationStmt::create(Location *location, Identifier name,
                                      ArrayRef<MLValue *> operands,
                                      ArrayRef<Type *> resultTypes,
                                      ArrayRef<NamedAttribute> attributes,
@@ -233,7 +233,7 @@ OperationStmt *OperationStmt::create(Attribute *location, Identifier name,
   return stmt;
 }
 
-OperationStmt::OperationStmt(Attribute *location, Identifier name,
+OperationStmt::OperationStmt(Location *location, Identifier name,
                              unsigned numOperands, unsigned numResults,
                              ArrayRef<NamedAttribute> attributes,
                              MLIRContext *context)
@@ -275,7 +275,7 @@ bool OperationStmt::isReturn() const { return is<ReturnOp>(); }
 // ForStmt
 //===----------------------------------------------------------------------===//
 
-ForStmt *ForStmt::create(Attribute *location, ArrayRef<MLValue *> lbOperands,
+ForStmt *ForStmt::create(Location *location, ArrayRef<MLValue *> lbOperands,
                          AffineMap *lbMap, ArrayRef<MLValue *> ubOperands,
                          AffineMap *ubMap, int64_t step, MLIRContext *context) {
   assert(lbOperands.size() == lbMap->getNumOperands() &&
@@ -297,7 +297,7 @@ ForStmt *ForStmt::create(Attribute *location, ArrayRef<MLValue *> lbOperands,
   return stmt;
 }
 
-ForStmt::ForStmt(Attribute *location, unsigned numOperands, AffineMap *lbMap,
+ForStmt::ForStmt(Location *location, unsigned numOperands, AffineMap *lbMap,
                  AffineMap *ubMap, int64_t step, MLIRContext *context)
     : Statement(Kind::For, location),
       MLValue(MLValueKind::ForStmt, Type::getAffineInt(context)),
@@ -357,7 +357,7 @@ void ForStmt::setConstantUpperBound(int64_t value) {
 // IfStmt
 //===----------------------------------------------------------------------===//
 
-IfStmt::IfStmt(Attribute *location, IntegerSet *condition)
+IfStmt::IfStmt(Location *location, IntegerSet *condition)
     : Statement(Kind::If, location), thenClause(new IfClause(this)),
       elseClause(nullptr), condition(condition) {}
 

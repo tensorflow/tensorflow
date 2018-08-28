@@ -25,6 +25,7 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
@@ -43,6 +44,14 @@ using llvm::SourceMgr;
 /// bool value.  Failure is "true" in a boolean context.
 enum ParseResult { ParseSuccess, ParseFailure };
 
+/// Return a uniqued filename for the main file the specified SourceMgr is
+/// looking at.
+static UniquedFilename getUniquedFilename(llvm::SourceMgr &sourceMgr,
+                                          MLIRContext *context) {
+  auto *buffer = sourceMgr.getMemoryBuffer(sourceMgr.getMainFileID());
+  return UniquedFilename::get(buffer->getBufferIdentifier(), context);
+}
+
 namespace {
 class Parser;
 
@@ -54,6 +63,7 @@ public:
   ParserState(llvm::SourceMgr &sourceMgr, Module *module,
               SMDiagnosticHandlerTy errorReporter)
       : context(module->getContext()), module(module),
+        filename(getUniquedFilename(sourceMgr, context)),
         lex(sourceMgr, errorReporter), curToken(lex.lexToken()),
         errorReporter(errorReporter), operationSet(OperationSet::get(context)) {
   }
@@ -80,6 +90,9 @@ private:
 
   // This is the module we are parsing into.
   Module *const module;
+
+  /// The filename to use for location generation.
+  UniquedFilename filename;
 
   // The lexer for the source file we're parsing.
   Lexer lex;
@@ -122,7 +135,7 @@ public:
 
   /// Encode the specified source location information into an attribute for
   /// attachment to the IR.
-  Attribute *getEncodedSourceLocation(llvm::SMLoc loc);
+  Location *getEncodedSourceLocation(llvm::SMLoc loc);
 
   /// Emit an error and return failure.
   ParseResult emitError(const Twine &message) {
@@ -209,16 +222,13 @@ private:
 
 /// Encode the specified source location information into an attribute for
 /// attachment to the IR.
-Attribute *Parser::getEncodedSourceLocation(llvm::SMLoc loc) {
-  // TODO(clattner): Switch to an more structured form that includes
-  // file/line/column instead of just byte offset in the file.  This will
-  // eliminate this block of low level code poking at the SourceMgr directly.
+Location *Parser::getEncodedSourceLocation(llvm::SMLoc loc) {
   auto &sourceMgr = getSourceMgr();
-  auto fileID = sourceMgr.FindBufferContainingLoc(loc);
+  auto lineAndColumn =
+      sourceMgr.getLineAndColumn(loc, sourceMgr.getMainFileID());
 
-  auto *srcBuffer = sourceMgr.getMemoryBuffer(fileID);
-  unsigned locationEncoding = loc.getPointer() - srcBuffer->getBufferStart();
-  return builder.getIntegerAttr(locationEncoding);
+  return FileLineColLoc::get(state.filename, lineAndColumn.first,
+                             lineAndColumn.second, getContext());
 }
 
 ParseResult Parser::emitError(SMLoc loc, const Twine &message) {
@@ -1389,11 +1399,9 @@ SSAValue *FunctionParser::createForwardReferencePlaceholder(SMLoc loc,
   // We create these placeholders as having an empty name, which we know cannot
   // be created through normal user input, allowing us to distinguish them.
   auto name = Identifier::get("placeholder", getContext());
-  auto *inst =
-      // FIXME(clattner): encode the location into the placeholder instead of
-      // into the forwardReferencePlaceholders map!
-      OperationInst::create(/*location=*/nullptr, name, /*operands=*/{}, type,
-                            /*attrs=*/{}, getContext());
+  auto *inst = OperationInst::create(getEncodedSourceLocation(loc), name,
+                                     /*operands=*/{}, type,
+                                     /*attributes=*/{}, getContext());
   forwardReferencePlaceholders[inst->getResult(0)] = loc;
   return inst->getResult(0);
 }
@@ -3038,11 +3046,8 @@ Module *mlir::parseSourceFile(llvm::SourceMgr &sourceMgr, MLIRContext *context,
   auto existingContextHandler = context->getDiagnosticHandler();
 
   // Install a new handler that uses the error reporter.
-  context->registerDiagnosticHandler([&](Attribute *location, StringRef message,
+  context->registerDiagnosticHandler([&](Location *location, StringRef message,
                                          MLIRContext::DiagnosticKind kind) {
-    auto offset = cast<IntegerAttr>(location)->getValue();
-    auto *mainBuffer = sourceMgr.getMemoryBuffer(sourceMgr.getMainFileID());
-    auto ptr = mainBuffer->getBufferStart() + offset;
     SourceMgr::DiagKind diagKind;
     switch (kind) {
     case MLIRContext::DiagnosticKind::Error:
@@ -3055,8 +3060,20 @@ Module *mlir::parseSourceFile(llvm::SourceMgr &sourceMgr, MLIRContext *context,
       diagKind = SourceMgr::DK_Note;
       break;
     }
-    errorReporter(
-        sourceMgr.GetMessage(SMLoc::getFromPointer(ptr), diagKind, message));
+
+    StringRef filename;
+    unsigned line = 0, column = 0;
+    if (auto fileLoc = dyn_cast<FileLineColLoc>(location)) {
+      filename = fileLoc->getFilename();
+      line = fileLoc->getLine();
+      column = fileLoc->getColumn();
+    }
+
+    auto diag = llvm::SMDiagnostic(sourceMgr, SMLoc(), filename, line, column,
+                                   diagKind, message, /*LineStr=*/StringRef(),
+                                   /*Ranges=*/{}, /*FixIts=*/{});
+
+    errorReporter(diag);
   });
 
   // This is the result module we are parsing into.

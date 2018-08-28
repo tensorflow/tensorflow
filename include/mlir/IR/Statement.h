@@ -29,7 +29,7 @@
 #include "llvm/ADT/ilist_node.h"
 
 namespace mlir {
-class Attribute;
+class Location;
 class MLFunction;
 class StmtBlock;
 class ForStmt;
@@ -52,9 +52,8 @@ public:
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
 
-  /// The source location the operation was defined or derived from.  Note that
-  /// it is possible for this pointer to be null.
-  Attribute *getLoc() const { return location; }
+  /// The source location the operation was defined or derived from.
+  Location *getLoc() const { return location; }
 
   /// Remove this statement from its block and delete it.
   void eraseFromBlock();
@@ -156,7 +155,10 @@ public:
   void emitNote(const Twine &message) const;
 
 protected:
-  Statement(Kind kind, Attribute *location) : kind(kind), location(location) {}
+  Statement(Kind kind, Location *location) : kind(kind), location(location) {
+    assert(location && "location should never be null");
+  }
+
   // Statements are deleted through the destroy() member because this class
   // does not have a virtual destructor.
   ~Statement();
@@ -168,7 +170,7 @@ private:
 
   /// This holds information about the source location the operation was defined
   /// or derived from.
-  Attribute *location;
+  Location *location;
 
   // allow ilist_traits access to 'block' field.
   friend struct llvm::ilist_traits<Statement>;

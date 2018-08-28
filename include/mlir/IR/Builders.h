@@ -18,7 +18,6 @@
 #ifndef MLIR_IR_BUILDERS_H
 #define MLIR_IR_BUILDERS_H
 
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Statements.h"
@@ -26,6 +25,9 @@
 namespace mlir {
 class MLIRContext;
 class Module;
+class UnknownLoc;
+class UniquedFilename;
+class FileLineColLoc;
 class Type;
 class PrimitiveType;
 class IntegerType;
@@ -58,6 +60,12 @@ public:
 
   Identifier getIdentifier(StringRef str);
   Module *createModule();
+
+  // Locations.
+  UnknownLoc *getUnknownLoc();
+  UniquedFilename getUniquedFilename(StringRef filename);
+  FileLineColLoc *getFileLineColLoc(UniquedFilename filename, unsigned line,
+                                    unsigned column);
 
   // Types.
   FloatType *getBF16Type();
@@ -185,7 +193,7 @@ public:
 
   /// Create operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
-  OpPointer<OpTy> create(Attribute *location, Args... args) {
+  OpPointer<OpTy> create(Location *location, Args... args) {
     OperationState state(getContext(), location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
     auto *inst = createOperation(state);
@@ -202,16 +210,16 @@ public:
 
   // Terminators.
 
-  ReturnInst *createReturn(Attribute *location, ArrayRef<CFGValue *> operands) {
+  ReturnInst *createReturn(Location *location, ArrayRef<CFGValue *> operands) {
     return insertTerminator(ReturnInst::create(location, operands));
   }
 
-  BranchInst *createBranch(Attribute *location, BasicBlock *dest,
+  BranchInst *createBranch(Location *location, BasicBlock *dest,
                            ArrayRef<CFGValue *> operands = {}) {
     return insertTerminator(BranchInst::create(location, dest, operands));
   }
 
-  CondBranchInst *createCondBranch(Attribute *location, CFGValue *condition,
+  CondBranchInst *createCondBranch(Location *location, CFGValue *condition,
                                    BasicBlock *trueDest,
                                    BasicBlock *falseDest) {
     return insertTerminator(
@@ -290,7 +298,7 @@ public:
 
   /// Create operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
-  OpPointer<OpTy> create(Attribute *location, Args... args) {
+  OpPointer<OpTy> create(Location *location, Args... args) {
     OperationState state(getContext(), location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
     auto *stmt = createOperation(state);
@@ -311,15 +319,12 @@ public:
     return cloneStmt;
   }
 
-  /// Create a 'for' statement with bounds that may involve MLValue operands.
-  /// When step is not specified, it is set to 1.
-  ForStmt *createFor(Attribute *location, ArrayRef<MLValue *> lbOperands,
+  // Creates for statement. When step is not specified, it is set to 1.
+  ForStmt *createFor(Location *location, ArrayRef<MLValue *> lbOperands,
                      AffineMap *lbMap, ArrayRef<MLValue *> ubOperands,
                      AffineMap *ubMap, int64_t step = 1);
 
-  /// Create if statement.
-  /// TODO: pass operands.
-  IfStmt *createIf(Attribute *location, IntegerSet *condition);
+  IfStmt *createIf(Location *location, IntegerSet *condition);
 
 private:
   StmtBlock *block = nullptr;
