@@ -5217,6 +5217,7 @@ _default_graph_stack = _DefaultGraphStack()
 
 
 # pylint: disable=g-doc-return-or-yield,line-too-long
+@tf_export("init_scope")
 @tf_contextlib.contextmanager
 def init_scope():
   """A context manager that lifts ops out of control-flow scopes and function-building graphs.
@@ -5245,6 +5246,23 @@ def init_scope():
         `init_scope` will simply install a fresh graph as the default one.
 
     (3) The gradient tape is paused while the scope is active.
+
+  When eager execution is enabled, code inside an init_scope block runs with
+  eager execution enabled even when defining graph functions via
+  tf.contrib.eager.defun. For example:
+
+  ```python
+  tf.enable_eager_execution()
+
+  @tf.contrib.eager.defun
+  def func():
+    # A defun-decorated function constructs TensorFlow graphs,
+    # it does not execute eagerly.
+    assert not tf.executing_eagerly()
+    with tf.init_scope():
+      # Initialization runs with eager execution enabled
+      assert tf.executing_eagerly()
+  ```
 
   Raises:
     RuntimeError: if graph state is incompatible with this initialization.
