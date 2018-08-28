@@ -780,10 +780,15 @@ def make_binary_op_tests(zip_path, binary_operator):
       "input_shape_2": [[5]],
       "activation": [False, True]
   }, {
-      "dtype": [tf.float32],
+      "dtype": [tf.float32, tf.int32],
       "input_shape_1": [[1, 3, 4, 3]],
       "input_shape_2": [[3]],
-      "activation": [True]
+      "activation": [True, False]
+  }, {
+      "dtype": [tf.float32, tf.int32],
+      "input_shape_1": [[3]],
+      "input_shape_2": [[1, 3, 4, 3]],
+      "activation": [True, False]
   }, {
       "dtype": [tf.float32],
       "input_shape_1": [[]],
@@ -1096,6 +1101,10 @@ def make_mul_tests(zip_path):
 
 def make_pow_tests(zip_path):
   make_binary_op_tests(zip_path, tf.pow)
+
+
+def make_floor_div_tests(zip_path):
+  make_binary_op_tests(zip_path, tf.floor_div)
 
 
 def make_gather_tests(zip_path):

@@ -143,6 +143,7 @@ TEST_F(OperatorTest, SimpleOperators) {
                                           OperatorType::kLogicalAnd);
   CheckSimpleOperator<LogicalNotOperator>("LOGICAL_NOT",
                                           OperatorType::kLogicalNot);
+  CheckSimpleOperator<FloorDivOperator>("FLOOR_DIV", OperatorType::kFloorDiv);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
