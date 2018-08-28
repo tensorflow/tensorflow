@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/tensor_forest/resources.h"
 #include "tensorflow/core/kernels/boosted_trees/boosted_trees.pb.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 
@@ -43,4 +44,11 @@ const int32 DecisionTreeResource::TraverseTree(
     }
   }
 };
+
+bool DecisionTreeResource::InitFromSerialized(const string& serialized) {
+  if (ParseProtoUnlimited(decision_tree_.get(), serialized)) {
+    return true;
+  }
+  return false;
+}
 }  // namespace tensorflow

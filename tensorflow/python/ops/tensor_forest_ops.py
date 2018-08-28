@@ -102,7 +102,7 @@ class ForestVariables(object):
       if tree_configs is not None:
         tree_config = tree_configs[i]
       self._variables.append(tree_variable(
-          tree_configs,
+          tree_config,
           'tree-%s' % i,
       ))
 

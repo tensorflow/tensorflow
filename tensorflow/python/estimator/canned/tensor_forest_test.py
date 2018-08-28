@@ -60,7 +60,6 @@ class TensorForestTest(test_util.TensorFlowTestCase):
     probs, var = graph_builder.inference_graph(
         input_data)
     self.assertTrue(isinstance(probs, ops.Tensor))
-    self.assertTrue(isinstance(paths, ops.Tensor))
     self.assertTrue(isinstance(var, ops.Tensor))
     with self.test_session():
       variables.global_variables_initializer().run()

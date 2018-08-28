@@ -49,27 +49,26 @@ class RandomForestGraphs(object):
     self._configs = configs
     self._variables = tensor_forest_ops.ForestVariables(
         self._params,
-        tree_configs=tree_configs,
-        tree_stats=tree_stats)
+        tree_configs=tree_configs)
 
   def inference_graph(self, input_data, **inference_args):
-    logits = [gen_tensor_forest_ops.predict(
+    logits = [gen_tensor_forest_ops.tensor_forest_tree_predict(
         tree_variable,
         input_data,
         self._params.logits_dimension)
-            for tree_variable in self._variables
-      ]
+        for tree_variable in self._variables
+    ]
 
     # shape of all_predict should be [batch_size, n_trees, logits_dimension]
     all_predict = array_ops.stack(logits, axis=1)
     average_values = math_ops.div(
         math_ops.reduce_sum(all_predict, 1),
-        self.params.n_trees,
+        self._params.n_trees,
         name='probabilities')
 
     expected_squares = math_ops.div(
         math_ops.reduce_sum(all_predict * all_predict, 1),
-        self.params.n_trees)
+        self._params.n_trees)
     regression_variance = math_ops.maximum(
         0., expected_squares - average_values * average_values)
 
@@ -77,12 +76,11 @@ class RandomForestGraphs(object):
 
   def average_size(self):
     sizes = [gen_tensor_forest_ops.tensor_forest_tree_size(tree_variable)
-                for tree_variable in self._variables]
+             for tree_variable in self._variables]
     return math_ops.reduce_mean(math_ops.to_float(array_ops.stack(sizes)))
 
 
 def _tf_model_fn(features, labels, mode, head, sorted_feature_columns, forest_hparams, config, name='tensor_forest'):
-    for
   graph_builder = RandomForestGraphs(
       forest_hparams, config)
 
@@ -109,14 +107,13 @@ def _tf_model_fn(features, labels, mode, head, sorted_feature_columns, forest_hp
       logits=logits)
 
   extra_predictions = {
-          VARIANCE_PREDICTION_KEY:regression_variance
+      VARIANCE_PREDICTION_KEY: regression_variance
   }
 
   estimator_spec = estimator_spec._replace(
       predictions=estimator_spec.predictions.update(extra_predictions))
 
   return estimator_spec
-
 
 
 # @estimator_export('estimator.TensorForestClassifier')

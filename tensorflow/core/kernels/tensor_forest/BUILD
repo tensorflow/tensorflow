@@ -8,10 +8,6 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_proto_library",
-)
 
 cc_library(
     name = "resources",
