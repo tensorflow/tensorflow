@@ -4949,6 +4949,21 @@ inline void BroadcastBinaryFunction(const T1* input1_data,
                                 DimsToShape(output_dims), output_data, func);
 }
 
+// Legacy Dims<4> version.
+//
+// R: Result type. T1: Input 1 type. T2: Input 2 type.
+// TODO(renjieliu): Refactor other binary functions to use this one.
+template <typename R, typename T1, typename T2>
+inline void BinaryFunction(const T1* input1_data, const Dims<4>& input1_dims,
+                           const T2* input2_data, const Dims<4>& input2_dims,
+                           R* output_data, const Dims<4>& output_dims,
+                           R (*func)(T1, T2)) {
+  const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = func(input1_data[i], input2_data[i]);
+  }
+}
+
 }  // namespace reference_ops
 }  // namespace tflite
 

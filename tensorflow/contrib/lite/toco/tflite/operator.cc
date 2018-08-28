@@ -1458,6 +1458,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       "LOGICAL_AND", OperatorType::kLogicalAnd));
   ops.emplace_back(new SimpleOperator<LogicalNotOperator>(
       "LOGICAL_NOT", OperatorType::kLogicalNot));
+  ops.emplace_back(new SimpleOperator<FloorDivOperator>(
+      "FLOOR_DIV", OperatorType::kFloorDiv));
   // Element-wise operator
   ops.push_back(
       MakeUnique<SimpleOperator<SinOperator>>("SIN", OperatorType::kSin));
