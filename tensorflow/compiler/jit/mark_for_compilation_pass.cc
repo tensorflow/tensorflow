@@ -668,6 +668,82 @@ static void VLogClusteringSummary(const Graph& g) {
       VLOG(3) << "  " << pair.first << ": " << pair.second << " instances";
     }
   }
+
+  struct EdgeInfo {
+    StringPiece node_name;
+    absl::optional<StringPiece> cluster_name;
+
+    StringPiece GetClusterName() const {
+      return cluster_name ? *cluster_name : "[none]";
+    }
+
+    std::pair<StringPiece, absl::optional<StringPiece>> AsPair() const {
+      return {node_name, cluster_name};
+    }
+
+    bool operator<(const EdgeInfo& other) const {
+      return AsPair() < other.AsPair();
+    }
+  };
+
+  using EdgeInfoMap = std::map<StringPiece, std::map<EdgeInfo, int64>>;
+
+  EdgeInfoMap incoming_edge_infos;
+  EdgeInfoMap outgoing_edge_infos;
+
+  std::set<StringPiece> cluster_names_to_print;
+
+  for (const Edge* e : g.edges()) {
+    const Node* from = e->src();
+    absl::optional<StringPiece> from_cluster_name = GetXlaClusterForNode(*from);
+
+    const Node* to = e->dst();
+    absl::optional<StringPiece> to_cluster_name = GetXlaClusterForNode(*to);
+
+    if (to_cluster_name == from_cluster_name) {
+      continue;
+    }
+
+    if (to_cluster_name) {
+      incoming_edge_infos[*to_cluster_name]
+                         [EdgeInfo{from->name(), from_cluster_name}]++;
+      cluster_names_to_print.insert(*to_cluster_name);
+    }
+
+    if (from_cluster_name) {
+      outgoing_edge_infos[*from_cluster_name][{to->name(), to_cluster_name}]++;
+      cluster_names_to_print.insert(*from_cluster_name);
+    }
+  }
+
+  VLOG(2) << "*** Inter-Cluster edges:";
+  if (cluster_names_to_print.empty()) {
+    VLOG(2) << "   [none]";
+  }
+
+  auto print_edge_info_set_for_cluster = [&](StringPiece cluster_name,
+                                             const EdgeInfoMap& edge_info_map,
+                                             StringPiece desc) {
+    auto it = edge_info_map.find(cluster_name);
+    if (it != edge_info_map.end()) {
+      VLOG(2) << "  " << it->second.size() << " " << desc << " edges";
+      for (const auto& edge_info_count_pair : it->second) {
+        VLOG(2) << "   " << edge_info_count_pair.first.GetClusterName() << " "
+                << edge_info_count_pair.first.node_name << " # "
+                << edge_info_count_pair.second;
+      }
+    } else {
+      VLOG(2) << "  No " << desc << " edges.";
+    }
+  };
+
+  for (StringPiece cluster_name : cluster_names_to_print) {
+    VLOG(2) << " ** Cluster " << cluster_name;
+    print_edge_info_set_for_cluster(cluster_name, incoming_edge_infos,
+                                    "incoming");
+    print_edge_info_set_for_cluster(cluster_name, outgoing_edge_infos,
+                                    "outgoing");
+  }
 }
 
 // Is 'node' an operator that consumes only the shape of its input, not the
