@@ -1,14 +1,6 @@
 licenses(["notice"])  # 3-Clause BSD
 
-exports_files(["license.txt"])
-
-filegroup(
-    name = "LICENSE",
-    srcs = [
-        "license.txt",
-    ],
-    visibility = ["//visibility:public"],
-)
+exports_files(["LICENSE"])
 
 load(
     "@org_tensorflow//tensorflow:tensorflow.bzl",
