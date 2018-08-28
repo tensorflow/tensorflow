@@ -72,6 +72,11 @@ Status HloDomainMap::TryProcessEmptyDomain(HloInstruction* instruction) {
 }
 
 Status HloDomainMap::Populate(HloComputation* computation) {
+  InstructionOrderMap instructions_post_order;
+  int64 count = 0;
+  for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
+    instructions_post_order.insert(std::make_pair(instruction, count++));
+  }
   for (HloInstruction* instruction : computation->instructions()) {
     if (IsDomainInstruction(instruction)) {
       // If this is a kDomain of the kind we are currently processing, check
@@ -85,7 +90,7 @@ Status HloDomainMap::Populate(HloComputation* computation) {
       continue;
     }
     TF_ASSIGN_OR_RETURN(std::unique_ptr<DomainMetadata::Domain> domain,
-                        CreateDomain(instruction));
+                        CreateDomain(instruction, instructions_post_order));
     TF_RETURN_IF_ERROR(InsertDomain(std::move(domain)));
   }
   return Status::OK();
@@ -143,10 +148,12 @@ Status HloDomainMap::ExpandDomain(HloInstruction* instruction,
 }
 
 StatusOr<std::unique_ptr<DomainMetadata::Domain>> HloDomainMap::CreateDomain(
-    HloInstruction* instruction) const {
+    HloInstruction* instruction,
+    const InstructionOrderMap& instructions_order) const {
   auto domain = absl::make_unique<DomainMetadata::Domain>();
   TF_RETURN_IF_ERROR(ExpandDomain(instruction, domain.get()));
-  domain->instructions = MakeNonDomainInstructions(domain->reach_set);
+  domain->instructions =
+      MakeNonDomainInstructions(domain->reach_set, instructions_order);
   return std::move(domain);
 }
 
@@ -168,7 +175,8 @@ bool HloDomainMap::IsDomainInstruction(HloInstruction* instruction) const {
 
 /* static */ std::vector<HloInstruction*>
 HloDomainMap::MakeNonDomainInstructions(
-    const tensorflow::gtl::FlatSet<HloInstruction*>& instruction_set) {
+    const tensorflow::gtl::FlatSet<HloInstruction*>& instruction_set,
+    const InstructionOrderMap& instructions_order) {
   std::vector<HloInstruction*> instructions;
   instructions.reserve(instruction_set.size());
   for (HloInstruction* instruction : instruction_set) {
@@ -176,9 +184,10 @@ HloDomainMap::MakeNonDomainInstructions(
       instructions.push_back(instruction);
     }
   }
+  // sort instructions according to instructions_order
   std::sort(instructions.begin(), instructions.end(),
-            [](HloInstruction* a, HloInstruction* b) {
-              return a->unique_id() < b->unique_id();
+            [&instructions_order](HloInstruction* a, HloInstruction* b) {
+              return instructions_order.at(a) < instructions_order.at(b);
             });
   return instructions;
 }
