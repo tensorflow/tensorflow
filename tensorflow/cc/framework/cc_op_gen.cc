@@ -466,7 +466,7 @@ string AvoidCPPKeywords(StringPiece name) {
   if (IsCPPKeyword(name)) {
     return strings::StrCat(name, "_");
   }
-  return std::string(name);
+  return string(name);
 }
 
 void InferArgAttributes(const OpDef::ArgDef& arg,
