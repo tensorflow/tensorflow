@@ -899,7 +899,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfInv(PrimitiveType prim_type,
   auto multiply_add = [&](tensorflow::gtl::ArraySlice<float> coefficients,
                           llvm::Value* w) {
     llvm::Value* p = getFloat(coefficients.front());
-    coefficients.pop_front();
+    coefficients.remove_prefix(1);
     for (float coefficient : coefficients) {
       p = b_->CreateFAdd(b_->CreateFMul(p, w), getFloat(coefficient));
     }

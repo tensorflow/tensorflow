@@ -187,8 +187,6 @@ class ArraySlice {
 
   void remove_prefix(size_type n) { impl_.remove_prefix(n); }
   void remove_suffix(size_type n) { impl_.remove_suffix(n); }
-  void pop_back() { remove_suffix(1); }
-  void pop_front() { remove_prefix(1); }
 
   // These relational operators have the same semantics as the
   // std::vector<T> relational operators: they do deep (element-wise)
@@ -286,8 +284,6 @@ class MutableArraySlice {
 
   void remove_prefix(size_type n) { impl_.remove_prefix(n); }
   void remove_suffix(size_type n) { impl_.remove_suffix(n); }
-  void pop_back() { remove_suffix(1); }
-  void pop_front() { remove_prefix(1); }
 
   bool operator==(ArraySlice<T> other) const {
     return ArraySlice<T>(*this) == other;
@@ -295,9 +291,6 @@ class MutableArraySlice {
   bool operator!=(ArraySlice<T> other) const {
     return ArraySlice<T>(*this) != other;
   }
-
-  // DEPRECATED(jacobsa): Please use data() instead.
-  pointer mutable_data() const { return impl_.data(); }
 
  private:
   Impl impl_;

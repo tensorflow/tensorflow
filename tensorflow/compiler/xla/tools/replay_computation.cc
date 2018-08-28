@@ -345,6 +345,6 @@ int main(int argc, char** argv) {
   }
 
   tensorflow::gtl::ArraySlice<char*> args(argv, argc);
-  args.pop_front();  // Pop off the binary name, argv[0]
+  args.remove_prefix(1);  // Pop off the binary name, argv[0]
   return xla::tools::RealMain(args, opts);
 }

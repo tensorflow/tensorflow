@@ -73,13 +73,13 @@ static void TestHelper(const IntSlice& vorig, const IntVec& vec) {
   if (len > 0) {
     EXPECT_EQ(0, v.front());
     EXPECT_EQ(len - 1, v.back());
-    v.pop_back();
+    v.remove_suffix(1);
     EXPECT_EQ(len - 1, v.size());
     for (size_t i = 0; i < v.size(); ++i) {
       EXPECT_EQ(i, v[i]);
     }
     if (len > 1) {
-      v.pop_front();
+      v.remove_prefix(1);
       EXPECT_EQ(len - 2, v.size());
       for (size_t i = 0; i < v.size(); ++i) {
         EXPECT_EQ(i + 1, v[i]);
@@ -128,7 +128,7 @@ static void MutableTestHelper(const MutableIntSlice& vorig, int* ptr,
 
   MutableIntSlice other;  // To test the assignment return value.
   MutableIntSlice v = other = vorig;
-  EXPECT_EQ(ptr, v.mutable_data());
+  EXPECT_EQ(ptr, v.data());
 
   int counter = 0;
   for (MutableIntSlice::iterator it = v.begin(); it != v.end(); ++it) {
@@ -142,17 +142,17 @@ static void MutableTestHelper(const MutableIntSlice& vorig, int* ptr,
     v[0] = 1;
     v.front() = 2;
     v.back() = 5;
-    *v.mutable_data() = 4;
+    *v.data() = 4;
     std::fill(v.begin(), v.end(), 5);
     std::fill(v.rbegin(), v.rend(), 6);
     // Test size-changing methods.
-    v.pop_back();
+    v.remove_suffix(1);
     EXPECT_EQ(len - 1, v.size());
     for (size_t i = 0; i < v.size(); ++i) {
       EXPECT_EQ(ptr + i, &v[i]);
     }
     if (len > 1) {
-      v.pop_front();
+      v.remove_prefix(1);
       EXPECT_EQ(len - 2, v.size());
       for (size_t i = 0; i < v.size(); ++i) {
         EXPECT_EQ(ptr + i + 1, &v[i]);
@@ -605,7 +605,6 @@ TEST(MutableIntSlice, IteratorsAndReferences) {
   MutableIntSlice s = a;
 
   accept_pointer(s.data());
-  accept_pointer(s.mutable_data());
   accept_iterator(s.begin());
   accept_iterator(s.end());
   accept_reverse_iterator(s.rbegin());
@@ -627,7 +626,6 @@ TEST(MutableIntSlice, IteratorsAndReferences_Const) {
   const MutableIntSlice s = a;
 
   accept_pointer(s.data());
-  accept_pointer(s.mutable_data());
   accept_iterator(s.begin());
   accept_iterator(s.end());
   accept_reverse_iterator(s.rbegin());
