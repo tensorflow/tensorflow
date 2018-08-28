@@ -484,7 +484,7 @@ def _rot90_4D(images, k, name_scope):
   """Rotate batch of images counter-clockwise by 90 degrees `k` times.
 
   Args:
-    images: 4-D Tensor of shape `[height, width, channels]`.
+    images: 4-D Tensor of shape `[batch, height, width, channels]`.
     k: A scalar integer. The number of times the images are rotated by 90
       degrees.
     name_scope: A valid TensorFlow name scope.
