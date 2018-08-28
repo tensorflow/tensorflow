@@ -147,8 +147,8 @@ RUN apt-get update --allow-insecure-repositories && \
     rm -rf /var/lib/apt/lists/*
 
 # COPY and install llvm built in the previous stage
-RUN mkdir -p /opt/rocm && rm -rf /opt/rocm/llvm
-COPY --from=tool_builder /opt/rocm/llvm /opt/rocm/
+RUN rm -rf /opt/rocm/llvm && mkdir -p /opt/rocm/llvm
+COPY --from=tool_builder /opt/rocm/llvm/ /opt/rocm/llvm/
 
 # COPY and install the ROCDL package built in the previous stage
 RUN mkdir -p $HOME/pkgs/ROCm-Device-Libs
