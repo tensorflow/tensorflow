@@ -72,9 +72,9 @@ def _get_workers(num_workers, period, workers, num_ps=1):
     with graph.as_default():
       worker_device = "/job:worker/task:%d/cpu:0" % (worker_id)
       ps_device = device_setter.replica_device_setter(
-                  worker_device=worker_device,
-                  ps_device="/job:ps/task:0/cpu:0",
-                  ps_tasks=1)
+          worker_device=worker_device,
+          ps_device="/job:ps/task:0/cpu:0",
+          ps_tasks=1)
       agn_getter = AGNCustomGetter(worker_device=worker_device)
       with variable_scope.variable_scope(
           "", custom_getter=agn_getter), ops.device(ps_device):
@@ -82,7 +82,8 @@ def _get_workers(num_workers, period, workers, num_ps=1):
         var_0 = variable_scope.get_variable(initializer=0.0, name="v0")
         var_1 = variable_scope.get_variable(initializer=0.5, name="v1")
       if num_ps > 1:
-        with variable_scope.variable_scope("",
+        with variable_scope.variable_scope(
+            "",
             partitioner=partitioned_variables.fixed_size_partitioner(
                 num_ps, axis=0),
             custom_getter=agn_getter), ops.device(ps_device):
@@ -109,12 +110,12 @@ def _get_workers(num_workers, period, workers, num_ps=1):
             custom_getter=agn_getter)
         if num_ps == 1:
           train_op = [
-            opt.apply_gradients(([grads_0, var_0], [grads_1, var_1]),
+              opt.apply_gradients(([grads_0, var_0], [grads_1, var_1]),
                                 global_step)
           ]
         else:
           train_op = [
-            opt.apply_gradients(([grads_0, var_0],
+              opt.apply_gradients(([grads_0, var_0],
                                  [grads_1, var_1],
                                  [grads_part_0, part_0],
                                  [grads_part_1, part_1]),
@@ -232,20 +233,20 @@ class AGNOptimizerTest(test.TestCase):
     sessions[0].run(train_ops[0])
     self.assertNear(0.1, sessions[0].run(var_0_g), 1e-6)
     self.assertNDArrayNear([0.1, 0.1, 0.1, 0.1],
-                            sessions[0].run(part_0_g),
-                            1e-6)
+                           sessions[0].run(part_0_g),
+                           1e-6)
     self.assertNDArrayNear([0.1, 0.1, 0.1, 0.1],
-                            sessions[0].run(part_1_g),
-                            1e-6)
+                           sessions[0].run(part_1_g),
+                           1e-6)
 
     sessions[1].run(train_ops[1])
     self.assertNear(0.2, sessions[0].run(var_0_g), 1e-6)
     self.assertNDArrayNear([0.2, 0.2, 0.2, 0.2],
-                            sessions[0].run(part_0_g),
-                            1e-6)
+                           sessions[0].run(part_0_g),
+                           1e-6)
     self.assertNDArrayNear([0.2, 0.2, 0.2, 0.2],
-                            sessions[0].run(part_1_g),
-                            1e-6)
+                           sessions[0].run(part_1_g),
+                           1e-6)
 
     sessions[0].run(train_ops[0])
     sessions[1].run(train_ops[1])
@@ -254,11 +255,11 @@ class AGNOptimizerTest(test.TestCase):
     sessions[1].run(train_ops[1])
     self.assertNear(0.6, sessions[0].run(var_0_g), 1e-6)
     self.assertNDArrayNear([0.6, 0.6, 0.6, 0.6],
-                            sessions[0].run(part_0_g),
-                            1e-6)
+                           sessions[0].run(part_0_g),
+                           1e-6)
     self.assertNDArrayNear([0.6, 0.6, 0.6, 0.6],
-                            sessions[0].run(part_1_g),
-                            1e-6)
+                           sessions[0].run(part_1_g),
+                           1e-6)
 
   def testAGNCustomGetter(self):
     cluster_spec = server_lib.ClusterSpec({

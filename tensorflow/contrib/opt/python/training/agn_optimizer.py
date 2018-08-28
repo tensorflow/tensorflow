@@ -19,7 +19,6 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -132,20 +131,6 @@ class AGNOptimizer(optimizer.Optimizer):
         name='local_step')
     self._opt._prepare()
 
-  def _adjust_optimizer_variable_collection(self, opt_vars):
-    """ Move optimizer created variables to local collection
-    """
-    g = ops.get_default_graph()
-    idx = 0
-    for _ in range(len(g._collections[ops.GraphKeys.GLOBAL_VARIABLES])):
-      var = g._collections[ops.GraphKeys.GLOBAL_VARIABLES][idx]
-      name = var.op.name
-      if name in opt_vars:
-        ops.add_to_collection(ops.GraphKeys.LOCAL_VARIABLES, var)
-        del g._collections[ops.GraphKeys.GLOBAL_VARIABLES][idx]
-      else:
-        idx += 1
-
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     """Apply gradients to global variables.
 
@@ -182,7 +167,7 @@ class AGNOptimizer(optimizer.Optimizer):
     update_ops = []
     update_ops.append(local_update_op)
     grad_vars = [self._grad_map[var] for var in local_vars]
-    for g, grad_var in zip (grads, grad_vars):
+    for g, grad_var in zip(grads, grad_vars):
       update_ops.append(state_ops.assign_add(grad_var, g))
 
     global_center_vars = [self._global_map[var] for var in local_vars]
@@ -215,7 +200,7 @@ class AGNOptimizer(optimizer.Optimizer):
       return variable_update
 
     local_update = state_ops.assign_add(
-      self._local_step, 1, name='local_step_update').op
+        self._local_step, 1, name='local_step_update').op
 
     with ops.control_dependencies([local_update]):
       condition = math_ops.equal(
