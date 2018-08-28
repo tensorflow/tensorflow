@@ -54,6 +54,7 @@ class ExtractVolumePatches(test.TestCase):
           name="im2col_3d")
       self.assertAllClose(patches, out_tensor.eval())
 
+  # pylint: disable=bad-whitespace
   def testKsize1x1x1Stride1x1x1(self):
     """Verifies that for 1x1x1 kernel the output equals the input."""
     image = np.arange(2 * 3 * 4 * 5 * 6).reshape([2, 3, 4, 5, 6]) + 1
