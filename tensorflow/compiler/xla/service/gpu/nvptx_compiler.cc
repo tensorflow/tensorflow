@@ -211,6 +211,10 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // TODO(b/31709653): Directly use the grouped convolution support of Cudnn.
     pipeline.AddPass<ConvolutionFeatureGroupConverter>();
     pipeline.AddPass<CudnnConvolutionRewriter>();
+    // CudnnConvolutionRewriter may add instructions of the form
+    // reverse(constant), which it expects will be simplified by constant
+    // folding.
+    pipeline.AddPass<HloConstantFolding>();
     pipeline.AddPass<PadInsertion>();
     if (IsVoltaOrLater(*stream_exec)) {
       pipeline.AddPass<PadForTensorCores>();
