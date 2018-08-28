@@ -2323,53 +2323,6 @@ inline void SpaceToDepth(const T* input_data, const Dims<4>& input_dims,
                DimsToShape(output_dims), output_data);
 }
 
-template <FusedActivationFunctionType Ac>
-void NonGlobalBatchNormalization(
-    const float* input_data, const Dims<4>& input_dims, const float* mean_data,
-    const Dims<4>& mean_dims, const float* multiplier_data,
-    const Dims<4>& multiplier_dims, const float* offset_data,
-    const Dims<4>& offset_dims, float* output_data,
-    const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("NonGlobalBatchNormalization");
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int inner_size = MatchingFlatSizeSkipDim(
-      input_dims, 3, mean_dims, multiplier_dims, offset_dims, output_dims);
-
-  for (int b = 0; b < batches; ++b) {
-    for (int i = 0; i < inner_size; ++i) {
-      *output_data = ActivationFunction<Ac>(
-          (*input_data - mean_data[i]) * multiplier_data[i] + offset_data[i]);
-      ++output_data;
-      ++input_data;
-    }
-  }
-}
-
-template <FusedActivationFunctionType Ac>
-void GlobalBatchNormalization(const float* input_data,
-                              const Dims<4>& input_dims, const float* mean_data,
-                              const Dims<4>& mean_dims,
-                              const float* multiplier_data,
-                              const Dims<4>& multiplier_dims,
-                              const float* offset_data,
-                              const Dims<4>& offset_dims, float* output_data,
-                              const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("GlobalBatchNormalization");
-  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
-  const int depth =
-      MatchingArraySize(input_dims, 0, mean_dims, 0, multiplier_dims, 0,
-                        offset_dims, 0, output_dims, 0);
-
-  for (int i = 0; i < outer_size; ++i) {
-    for (int c = 0; c < depth; ++c) {
-      *output_data = ActivationFunction<Ac>(
-          (*input_data - mean_data[c]) * multiplier_data[c] + offset_data[c]);
-      ++output_data;
-      ++input_data;
-    }
-  }
-}
-
 inline void Relu(const RuntimeShape& input_shape, const float* input_data,
                  const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Relu (not fused)");
@@ -2379,11 +2332,12 @@ inline void Relu(const RuntimeShape& input_shape, const float* input_data,
   output = input.cwiseMax(0.0f);
 }
 
-template <FusedActivationFunctionType Ac>
-void L2Normalization(const float* input_data, const RuntimeShape& input_shape,
-                     float* output_data, const RuntimeShape& output_shape) {
+inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
+                            const RuntimeShape& input_shape,
+                            const float* input_data,
+                            const RuntimeShape& output_shape,
+                            float* output_data) {
   gemmlowp::ScopedProfilingLabel label("L2Normalization");
-  static_assert(Ac == FusedActivationFunctionType::kNone, "");
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
@@ -2402,6 +2356,18 @@ void L2Normalization(const float* input_data, const RuntimeShape& input_shape,
       ++input_data;
     }
   }
+}
+
+// Legacy.
+template <FusedActivationFunctionType Ac>
+void L2Normalization(const float* input_data, const RuntimeShape& input_shape,
+                     float* output_data, const RuntimeShape& output_shape) {
+  static_assert(Ac == FusedActivationFunctionType::kNone, "");
+  tflite::L2NormalizationParams op_params;
+  // No params need to be set for float.
+
+  L2Normalization(op_params, input_shape, input_data, output_shape,
+                  output_data);
 }
 
 inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
@@ -2452,16 +2418,18 @@ inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
   *output_shift *= kReverseShift;
 }
 
-inline void L2Normalization(const uint8* input_data,
+inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
                             const RuntimeShape& input_shape,
-                            int32 input_zero_point, uint8* output_data,
-                            const RuntimeShape& output_shape) {
+                            const uint8* input_data,
+                            const RuntimeShape& output_shape,
+                            uint8* output_data) {
   gemmlowp::ScopedProfilingLabel label("L2Normalization/8bit");
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int depth =
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
   const int outer_size =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+  const int32 input_zero_point = op_params.input_zero_point;
   for (int i = 0; i < outer_size; ++i) {
     int32 square_l2_norm = 0;
     for (int c = 0; c < depth; c++) {
@@ -2485,6 +2453,18 @@ inline void L2Normalization(const uint8* input_data,
       ++output_data;
     }
   }
+}
+
+// Legacy.
+inline void L2Normalization(const uint8* input_data,
+                            const RuntimeShape& input_shape,
+                            int32 input_zero_point, uint8* output_data,
+                            const RuntimeShape& output_shape) {
+  tflite::L2NormalizationParams op_params;
+  op_params.input_zero_point = input_zero_point;
+
+  L2Normalization(op_params, input_shape, input_data, output_shape,
+                  output_data);
 }
 
 inline void Add(const ArithmeticParams& params,
@@ -4077,29 +4057,28 @@ inline void L2Pool(const PoolParams& params, const RuntimeShape& input_shape,
   }
 }
 
-inline void LocalResponseNormalization(const float* input_data,
-                                       const Dims<4>& input_dims, int range,
-                                       float bias, float alpha, float beta,
-                                       float* output_data,
-                                       const Dims<4>& output_dims) {
+inline void LocalResponseNormalization(
+    const tflite::LocalResponseNormalizationParams& op_params,
+    const RuntimeShape& input_shape, const float* input_data,
+    const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("LocalResponseNormalization");
-  MatchingFlatSize(input_dims, output_dims);
+  MatchingFlatSize(input_shape, output_shape);
 
-  const auto data_in = MapAsMatrixWithFirstDimAsRows(input_data, input_dims);
-  auto data_out = MapAsMatrixWithFirstDimAsRows(output_data, output_dims);
+  const auto data_in = MapAsMatrixWithLastDimAsRows(input_data, input_shape);
+  auto data_out = MapAsMatrixWithLastDimAsRows(output_data, output_shape);
 
   // Carry out local response normalization, vector by vector.
   // Since the data are stored column major, making row-wise operation
   // probably not memory efficient anyway, we do an explicit for loop over
   // the columns.
-  const int double_range = range * 2;
+  const int double_range = op_params.range * 2;
   Eigen::VectorXf padded_square(data_in.rows() + double_range);
   padded_square.setZero();
   for (int r = 0; r < data_in.cols(); ++r) {
     // Do local response normalization for data_in(:, r)
     // first, compute the square and store them in buffer for repeated use
-    padded_square.block(range, 0, data_in.rows(), 1) =
-        data_in.col(r).cwiseProduct(data_in.col(r)) * alpha;
+    padded_square.block(op_params.range, 0, data_in.rows(), 1) =
+        data_in.col(r).cwiseProduct(data_in.col(r)) * op_params.alpha;
     // Then, compute the scale and writes them to data_out
     float accumulated_scale = 0;
     for (int i = 0; i < double_range; ++i) {
@@ -4107,19 +4086,35 @@ inline void LocalResponseNormalization(const float* input_data,
     }
     for (int i = 0; i < data_in.rows(); ++i) {
       accumulated_scale += padded_square(i + double_range);
-      data_out(i, r) = bias + accumulated_scale;
+      data_out(i, r) = op_params.bias + accumulated_scale;
       accumulated_scale -= padded_square(i);
     }
   }
 
   // In a few cases, the pow computation could benefit from speedups.
-  if (beta == 1) {
+  if (op_params.beta == 1) {
     data_out.array() = data_in.array() * data_out.array().inverse();
-  } else if (beta == 0.5) {
+  } else if (op_params.beta == 0.5) {
     data_out.array() = data_in.array() * data_out.array().sqrt().inverse();
   } else {
-    data_out.array() = data_in.array() * data_out.array().pow(-beta);
+    data_out.array() = data_in.array() * data_out.array().pow(-op_params.beta);
   }
+}
+
+// Legacy Dims<4>.
+inline void LocalResponseNormalization(const float* input_data,
+                                       const Dims<4>& input_dims, int range,
+                                       float bias, float alpha, float beta,
+                                       float* output_data,
+                                       const Dims<4>& output_dims) {
+  tflite::LocalResponseNormalizationParams op_params;
+  op_params.range = range;
+  op_params.bias = bias;
+  op_params.alpha = alpha;
+  op_params.beta = beta;
+
+  LocalResponseNormalization(op_params, DimsToShape(input_dims), input_data,
+                             DimsToShape(output_dims), output_data);
 }
 
 inline void Softmax(const float* input_data, const RuntimeShape& input_shape,
@@ -5055,12 +5050,20 @@ inline void Tanh(const int16* input_data, const RuntimeShape& input_shape,
 }
 
 template <typename SrcT, typename DstT>
-inline void Cast(const SrcT* input_data, const Dims<4>& input_dims,
-                 DstT* output_data, const Dims<4>& output_dims) {
+inline void Cast(const RuntimeShape& input_shape, const SrcT* input_data,
+                 const RuntimeShape& output_shape, DstT* output_data) {
   gemmlowp::ScopedProfilingLabel label("Cast");
-  auto input_map = MapAsVector(input_data, input_dims);
-  auto output_map = MapAsVector(output_data, output_dims);
+  auto input_map = MapAsVector(input_data, input_shape);
+  auto output_map = MapAsVector(output_data, output_shape);
   output_map.array() = input_map.array().template cast<DstT>();
+}
+
+// Legacy Dims<4> version.
+template <typename SrcT, typename DstT>
+void Cast(const SrcT* input_data, const Dims<4>& input_dims, DstT* output_data,
+          const Dims<4>& output_dims) {
+  Cast(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+       output_data);
 }
 
 inline void Floor(const RuntimeShape& input_shape, const float* input_data,

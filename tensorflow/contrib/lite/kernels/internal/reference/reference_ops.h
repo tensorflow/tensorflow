@@ -849,49 +849,6 @@ void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
                  output_activation_max, output_data, output_dims, gemm_context);
 }
 
-template <FusedActivationFunctionType Ac>
-void NonGlobalBatchNormalization(
-    const float* input_data, const Dims<4>& input_dims, const float* mean_data,
-    const Dims<4>& mean_dims, const float* multiplier_data,
-    const Dims<4>& multiplier_dims, const float* offset_data,
-    const Dims<4>& offset_dims, float* output_data,
-    const Dims<4>& output_dims) {
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int inner_size = MatchingFlatSizeSkipDim(
-      input_dims, 3, mean_dims, multiplier_dims, offset_dims, output_dims);
-
-  for (int b = 0; b < batches; ++b) {
-    for (int i = 0; i < inner_size; ++i) {
-      output_data[b * inner_size + i] = ActivationFunction<Ac>(
-          (input_data[b * inner_size + i] - mean_data[i]) * multiplier_data[i] +
-          offset_data[i]);
-    }
-  }
-}
-
-template <FusedActivationFunctionType Ac>
-void GlobalBatchNormalization(const float* input_data,
-                              const Dims<4>& input_dims, const float* mean_data,
-                              const Dims<4>& mean_dims,
-                              const float* multiplier_data,
-                              const Dims<4>& multiplier_dims,
-                              const float* offset_data,
-                              const Dims<4>& offset_dims, float* output_data,
-                              const Dims<4>& output_dims) {
-  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
-  const int depth =
-      MatchingArraySize(input_dims, 0, mean_dims, 0, multiplier_dims, 0,
-                        offset_dims, 0, output_dims, 0);
-
-  for (int i = 0; i < outer_size; ++i) {
-    for (int c = 0; c < depth; ++c) {
-      output_data[depth * i + c] = ActivationFunction<Ac>(
-          (input_data[depth * i + c] - mean_data[c]) * multiplier_data[c] +
-          offset_data[c]);
-    }
-  }
-}
-
 inline void Relu(const RuntimeShape& input_shape, const float* input_data,
                  const RuntimeShape& output_shape, float* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
@@ -955,10 +912,11 @@ inline void ReluX(uint8 min_value, uint8 max_value, const uint8* input_data,
   ReluX(params, input_shape, input_data, output_shape, output_data);
 }
 
-template <FusedActivationFunctionType Ac>
-void L2Normalization(const float* input_data, const RuntimeShape& input_shape,
-                     float* output_data, const RuntimeShape& output_shape) {
-  static_assert(Ac == FusedActivationFunctionType::kNone, "");
+inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
+                            const RuntimeShape& input_shape,
+                            const float* input_data,
+                            const RuntimeShape& output_shape,
+                            float* output_data) {
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
@@ -975,6 +933,18 @@ void L2Normalization(const float* input_data, const RuntimeShape& input_shape,
       output_data[depth * i + c] = input_data[depth * i + c] / l2_norm;
     }
   }
+}
+
+// Legacy .
+template <FusedActivationFunctionType Ac>
+void L2Normalization(const float* input_data, const RuntimeShape& input_shape,
+                     float* output_data, const RuntimeShape& output_shape) {
+  static_assert(Ac == FusedActivationFunctionType::kNone, "");
+  tflite::L2NormalizationParams op_params;
+  // No params need to be set for float.
+
+  L2Normalization(op_params, input_shape, input_data, output_shape,
+                  output_data);
 }
 
 inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
@@ -1025,15 +995,17 @@ inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
   *output_shift *= kReverseShift;
 }
 
-inline void L2Normalization(const uint8* input_data,
+inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
                             const RuntimeShape& input_shape,
-                            int32 input_zero_point, uint8* output_data,
-                            const RuntimeShape& output_shape) {
+                            const uint8* input_data,
+                            const RuntimeShape& output_shape,
+                            uint8* output_data) {
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int depth =
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
   const int outer_size =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+  const int32 input_zero_point = op_params.input_zero_point;
   for (int i = 0; i < outer_size; ++i) {
     int32 square_l2_norm = 0;
     for (int c = 0; c < depth; c++) {
@@ -1054,6 +1026,18 @@ inline void L2Normalization(const uint8* input_data,
       output_data[depth * i + c] = static_cast<uint8>(output_val);
     }
   }
+}
+
+// Legacy.
+inline void L2Normalization(const uint8* input_data,
+                            const RuntimeShape& input_shape,
+                            int32 input_zero_point, uint8* output_data,
+                            const RuntimeShape& output_shape) {
+  tflite::L2NormalizationParams op_params;
+  op_params.input_zero_point = input_zero_point;
+
+  L2Normalization(op_params, input_shape, input_data, output_shape,
+                  output_data);
 }
 
 template <typename T>
@@ -2836,27 +2820,46 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
   }
 }
 
-inline void LocalResponseNormalization(const float* input_data,
-                                       const Dims<4>& input_dims, int range,
-                                       float bias, float alpha, float beta,
-                                       float* output_data,
-                                       const Dims<4>& output_dims) {
-  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+inline void LocalResponseNormalization(
+    const tflite::LocalResponseNormalizationParams& op_params,
+    const RuntimeShape& input_shape, const float* input_data,
+    const RuntimeShape& output_shape, float* output_data) {
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
   for (int i = 0; i < outer_size; ++i) {
     for (int c = 0; c < depth; ++c) {
-      const int begin_input_c = std::max(0, c - range);
-      const int end_input_c = std::min(depth, c + range);
+      const int begin_input_c = std::max(0, c - op_params.range);
+      const int end_input_c = std::min(depth, c + op_params.range);
       float accum = 0.f;
       for (int input_c = begin_input_c; input_c < end_input_c; ++input_c) {
         const float input_val = input_data[i * depth + input_c];
         accum += input_val * input_val;
       }
-      const float multiplier = std::pow(bias + alpha * accum, -beta);
+      const float multiplier =
+          std::pow(op_params.bias + op_params.alpha * accum, -op_params.beta);
       output_data[i * depth + c] = input_data[i * depth + c] * multiplier;
     }
   }
+}
+
+// Legacy Dims<4>.
+inline void LocalResponseNormalization(const float* input_data,
+                                       const Dims<4>& input_dims, int range,
+                                       float bias, float alpha, float beta,
+                                       float* output_data,
+                                       const Dims<4>& output_dims) {
+  tflite::LocalResponseNormalizationParams op_params;
+  op_params.range = range;
+  op_params.bias = bias;
+  op_params.alpha = alpha;
+  op_params.beta = beta;
+
+  LocalResponseNormalization(op_params, DimsToShape(input_dims), input_data,
+                             DimsToShape(output_dims), output_data);
 }
 
 inline void Softmax(const float* input_data, const RuntimeShape& input_shape,
@@ -3388,14 +3391,22 @@ inline void FakeQuant(const float* input_data, const Dims<4>& input_dims,
 }
 
 template <typename SrcT, typename DstT>
-inline void Cast(const SrcT* input_data, const Dims<4>& input_dims,
-                 DstT* output_data, const Dims<4>& output_dims) {
-  const int flat_size = MatchingFlatSize(output_dims, input_dims);
+inline void Cast(const RuntimeShape& input_shape, const SrcT* input_data,
+                 const RuntimeShape& output_shape, DstT* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
     int offset = i;
     output_data[offset] = static_cast<DstT>(input_data[offset]);
   }
+}
+
+// Legacy Dims<4> version.
+template <typename SrcT, typename DstT>
+void Cast(const SrcT* input_data, const Dims<4>& input_dims, DstT* output_data,
+          const Dims<4>& output_dims) {
+  Cast(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+       output_data);
 }
 
 inline void Floor(const RuntimeShape& input_shape, const float* input_data,
