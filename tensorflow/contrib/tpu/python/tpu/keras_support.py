@@ -619,7 +619,7 @@ class TPUDatasetInfeedManager(TPUInfeedManager):
               'currently requires static shapes. The provided '
               'dataset only has a partially defined shape. '
               '(Dimension %d of output tensor %d is not statically known '
-              'for output shapes: %s.%s)' % (i, j, dataset.output_shapes, hint))
+              'for output shapes: %s.%s)' % (j, i, dataset.output_shapes, hint))
 
   @property
   def dummy_x(self):
