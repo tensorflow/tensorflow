@@ -429,12 +429,23 @@ Shape HloSharding::TileShape(const Shape& shape) const {
 HloSharding HloSharding::GetSubSharding(const Shape& shape,
                                         const ShapeIndex& index) const {
   CHECK(IsTuple());
-
-  Shape sub_shape = ShapeUtil::GetSubshape(shape, index);
-  ShapeTree<HloSharding> sub_shape_tree(sub_shape, Replicate());
-  sub_shape_tree.CopySubtreeFrom(GetAsShapeTree(shape), index, {});
-  return ShapeUtil::IsTuple(sub_shape) ? Tuple(sub_shape_tree)
-                                       : sub_shape_tree.element(ShapeIndex({}));
+  int64 sharding_index = 0;
+  const Shape* sub_shape = &shape;
+  for (int64 idx : index) {
+    for (int64 i = 0; i < idx; ++i) {
+      sharding_index +=
+          ShapeUtil::GetLeafCount(ShapeUtil::GetSubshape(*sub_shape, {i}));
+    }
+    sub_shape = &ShapeUtil::GetSubshape(*sub_shape, {idx});
+  }
+  if (ShapeUtil::IsTuple(*sub_shape)) {
+    auto begin_it = tuple_elements_.begin() + sharding_index;
+    std::vector<HloSharding> sub_shardings(
+        begin_it, begin_it + ShapeUtil::GetLeafCount(*sub_shape));
+    return HloSharding::Tuple(*sub_shape, sub_shardings);
+  } else {
+    return tuple_elements_[sharding_index];
+  }
 }
 
 absl::optional<HloSharding> HloSharding::ExtractSingleSharding() const {
