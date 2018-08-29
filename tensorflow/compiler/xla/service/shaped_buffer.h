@@ -84,6 +84,14 @@ class ShapedBuffer {
     *buffers_.mutable_element(index) = buffer;
   }
 
+  // Sets all buffers.
+  //
+  // Precondition: buffers.shape == on_device_shape_
+  void set_buffers(ShapeTree<se::DeviceMemoryBase> buffers) {
+    CHECK(ShapeUtil::Equal(buffers.shape(), on_device_shape_));
+    buffers_ = std::move(buffers);
+  }
+
   // Returns the underlying ShapeTree containing all the device addresses in the
   // ShapedBuffer.
   const ShapeTree<se::DeviceMemoryBase>& buffers() const { return buffers_; }
