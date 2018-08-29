@@ -1100,6 +1100,23 @@ py_test(
     ],
 )
 
+py_test(
+    name = "disk_usage_test",
+    size = "small",
+    srcs = ["wrappers/disk_usage_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dumping_wrapper",
+        ":hooks",
+        "//tensorflow/python:client",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+    ],
+)
+
 sh_test(
     name = "examples_test",
     size = "medium",
