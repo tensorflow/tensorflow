@@ -158,16 +158,26 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           CreateConcatenate(proto.shape(), all_operands(), proto.dimensions(0));
       break;
     case HloOpcode::kReduce:
-      TF_RET_CHECK(proto.operand_ids_size() == 2)
-          << "Reduce instruction should have 2 operands but sees "
+      TF_RET_CHECK(proto.operand_ids_size() % 2 == 0)
+          << "Reduce instruction should have an even number of operands but "
+             "sees "
           << proto.operand_ids_size();
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
           << "Reduce instruction should have 1 called computation but sees "
           << proto.called_computation_ids_size();
-      instruction = CreateReduce(proto.shape(), operands(0), operands(1),
-                                 std::vector<int64>(proto.dimensions().begin(),
-                                                    proto.dimensions().end()),
-                                 computations(0));
+      {
+        const auto reduce_operands = all_operands();
+        tensorflow::gtl::ArraySlice<HloInstruction*> inputs(
+            reduce_operands, 0, reduce_operands.size() / 2);
+        tensorflow::gtl::ArraySlice<HloInstruction*> init_values(
+            reduce_operands, reduce_operands.size() / 2,
+            reduce_operands.size());
+        instruction =
+            CreateReduce(proto.shape(), inputs, init_values,
+                         std::vector<int64>(proto.dimensions().begin(),
+                                            proto.dimensions().end()),
+                         computations(0));
+      }
       break;
     case HloOpcode::kSort: {
       TF_RET_CHECK(proto.operand_ids_size() == 1 ||
@@ -2749,10 +2759,13 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
     case HloOpcode::kTranspose:
       return UseKind::kUsePermutingElements;
     case HloOpcode::kPad:
-    case HloOpcode::kReduce:
       // Pad reuses the padding value but not the padded array elements.
-      // Reduce reuses the init value but not the operand array elements.
       return i > 0 ? UseKind::kReuse : UseKind::kUsePermutingElements;
+    case HloOpcode::kReduce:
+      // Reduce reuses the init values but not the operand array elements.
+      return i >= Cast<HloReduceInstruction>(this)->input_count()
+                 ? UseKind::kReuse
+                 : UseKind::kUsePermutingElements;
     case HloOpcode::kFusion:
       // Uses the memoizing, recursive computation defined above.
       return FusionReusesParamElements::Compute(i, *fused_expression_root());

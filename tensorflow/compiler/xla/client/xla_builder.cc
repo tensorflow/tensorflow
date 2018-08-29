@@ -1733,18 +1733,37 @@ XlaOp XlaBuilder::Reduce(
     const XlaOp& operand, const XlaOp& init_value,
     const XlaComputation& computation,
     tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce) {
+  return Reduce(tensorflow::gtl::ArraySlice<XlaOp>({operand}),
+                tensorflow::gtl::ArraySlice<XlaOp>({init_value}), computation,
+                dimensions_to_reduce);
+}
+
+XlaOp XlaBuilder::Reduce(
+    tensorflow::gtl::ArraySlice<XlaOp> operands,
+    tensorflow::gtl::ArraySlice<XlaOp> init_values,
+    const XlaComputation& computation,
+    tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
 
-    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
-    TF_ASSIGN_OR_RETURN(const Shape& init_shape, GetShape(init_value));
     TF_ASSIGN_OR_RETURN(const ProgramShape& called_program_shape,
                         computation.GetProgramShape());
 
-    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
-                        ShapeInference::InferReduceShape(
-                            {&operand_shape, &init_shape}, dimensions_to_reduce,
-                            called_program_shape));
+    std::vector<XlaOp> all_operands;
+    all_operands.insert(all_operands.end(), operands.begin(), operands.end());
+    all_operands.insert(all_operands.end(), init_values.begin(),
+                        init_values.end());
+
+    std::vector<const Shape*> operand_shape_ptrs;
+    TF_ASSIGN_OR_RETURN(const auto& operand_shapes,
+                        GetOperandShapes(all_operands));
+    absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
+
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferReduceShape(
+            operand_shape_ptrs, dimensions_to_reduce, called_program_shape));
 
     for (int64 dim : dimensions_to_reduce) {
       instr.add_dimensions(dim);
@@ -1752,8 +1771,7 @@ XlaOp XlaBuilder::Reduce(
 
     AddCalledComputation(computation, &instr);
 
-    return AddInstruction(std::move(instr), HloOpcode::kReduce,
-                          {operand, init_value});
+    return AddInstruction(std::move(instr), HloOpcode::kReduce, all_operands);
   });
 }
 
@@ -2768,6 +2786,16 @@ XlaOp Reduce(const XlaOp& operand, const XlaOp& init_value,
              tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce) {
   return operand.builder()->Reduce(operand, init_value, computation,
                                    dimensions_to_reduce);
+}
+
+// Reduces several arrays simultaneously among the provided dimensions, given
+// "computation" as a reduction operator.
+XlaOp Reduce(XlaBuilder* builder, tensorflow::gtl::ArraySlice<XlaOp> operands,
+             tensorflow::gtl::ArraySlice<XlaOp> init_values,
+             const XlaComputation& computation,
+             tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce) {
+  return builder->Reduce(operands, init_values, computation,
+                         dimensions_to_reduce);
 }
 
 XlaOp ReduceAll(const XlaOp& operand, const XlaOp& init_value,
