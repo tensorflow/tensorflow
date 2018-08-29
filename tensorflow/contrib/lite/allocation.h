@@ -30,6 +30,13 @@ namespace tflite {
 // A memory allocation handle. This could be a mmap or shared memory.
 class Allocation {
  public:
+  enum class Type {
+    kMMAP,      // Backed by mmap.
+    kFileCopy,  // Backed by memory copied from a file.
+    kMemory,    // Backed by an existing memory buffer.
+    kNNAPI,     // Backed by mmap and an associated NNAPI buffer.
+  };
+
   Allocation(ErrorReporter* error_reporter) : error_reporter_(error_reporter) {}
   virtual ~Allocation() {}
 
@@ -39,6 +46,8 @@ class Allocation {
   virtual size_t bytes() const = 0;
   // Whether the allocation is valid
   virtual bool valid() const = 0;
+  // The type of the allocation
+  virtual Type type() const = 0;
 
  protected:
   ErrorReporter* error_reporter_;
@@ -51,6 +60,7 @@ class MMAPAllocation : public Allocation {
   const void* base() const override;
   size_t bytes() const override;
   bool valid() const override;
+  Type type() const override;
 
   static bool IsSupported();
 
@@ -68,6 +78,7 @@ class FileCopyAllocation : public Allocation {
   const void* base() const override;
   size_t bytes() const override;
   bool valid() const override;
+  Type type() const override;
 
  private:
   // Data required for mmap.
@@ -86,6 +97,7 @@ class MemoryAllocation : public Allocation {
   const void* base() const override;
   size_t bytes() const override;
   bool valid() const override;
+  Type type() const override;
 
  private:
   const void* buffer_;
