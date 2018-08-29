@@ -3,8 +3,11 @@ licenses(["notice"])  # 3-Clause BSD
 exports_files(["LICENSE"])
 
 # Taken from: https://github.com/rnburn/satyr/blob/master/bazel/tbb.BUILD
-# License: MIT
+# License for this BUILD file: MIT
 # See: https://github.com/rnburn/satyr/blob/master/LICENSE
+#
+# License for TBB: Apache 2.0 
+# See: https://github.com/01org/tbb/blob/tbb_2018/LICENSE
 
 genrule(
     name = "build_tbb",

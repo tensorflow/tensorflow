@@ -124,8 +124,6 @@ cc_library(
         "src/ngraph/pass/*.hpp",
         "src/ngraph/runtime/*.cpp",
         "src/ngraph/type/*.cpp",
-        #"src/ngraph/runtime/interpreter/*.cpp",
-        #"src/ngraph/runtime/interpreter/*.hpp",
     ]),
     deps = [
         ":ngraph_headers",
