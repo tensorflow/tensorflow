@@ -36,14 +36,14 @@ constexpr int kInputTensor = 0;
 constexpr int kFwWeightsTensor = 1;
 constexpr int kFwRecurrentWeightsTensor = 2;
 constexpr int kFwBiasTensor = 3;
-constexpr int kBwWeightsTensor = 4;
-constexpr int kBwRecurrentWeightsTensor = 5;
-constexpr int kBwBiasTensor = 6;
-// State and output tensors.
-constexpr int kFwHiddenStateTensor = 0;
-constexpr int kFwOutputTensor = 1;
-constexpr int kBwHiddenStateTensor = 2;
-constexpr int kBwOutputTensor = 3;
+constexpr int kFwHiddenStateTensor = 4;
+constexpr int kBwWeightsTensor = 5;
+constexpr int kBwRecurrentWeightsTensor = 6;
+constexpr int kBwBiasTensor = 7;
+constexpr int kBwHiddenStateTensor = 8;
+// Output tensors.
+constexpr int kFwOutputTensor = 0;
+constexpr int kBwOutputTensor = 1;
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* scratch_tensor_index = new int;
@@ -57,8 +57,8 @@ void Free(TfLiteContext* context, void* buffer) {
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Check we have all the inputs and outputs we need.
-  TF_LITE_ENSURE_EQ(context, node->inputs->size, 7);
-  TF_LITE_ENSURE_EQ(context, node->outputs->size, 4);
+  TF_LITE_ENSURE_EQ(context, node->inputs->size, 9);
+  TF_LITE_ENSURE_EQ(context, node->outputs->size, 2);
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* fw_input_weights =
@@ -66,11 +66,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* fw_recurrent_weights =
       GetInput(context, node, kFwRecurrentWeightsTensor);
   const TfLiteTensor* fw_bias = GetInput(context, node, kFwBiasTensor);
+  const TfLiteTensor* fw_hidden_state =
+      GetInput(context, node, kFwHiddenStateTensor);
   const TfLiteTensor* bw_input_weights =
       GetInput(context, node, kBwWeightsTensor);
   const TfLiteTensor* bw_recurrent_weights =
       GetInput(context, node, kBwRecurrentWeightsTensor);
   const TfLiteTensor* bw_bias = GetInput(context, node, kBwBiasTensor);
+  const TfLiteTensor* bw_hidden_state =
+      GetInput(context, node, kBwHiddenStateTensor);
 
   // Check all the parameters of tensor match within themselves and match the
   // input configuration.
@@ -88,30 +92,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     fw_bias->dims->data[0]);
   TF_LITE_ASSERT_EQ(bw_recurrent_weights->dims->data[1],
                     bw_bias->dims->data[0]);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(fw_hidden_state), 2);
+  TF_LITE_ENSURE_EQ(context, fw_hidden_state->dims->data[0], batch_size);
+  TF_LITE_ENSURE_EQ(context, fw_hidden_state->dims->data[1], fw_num_units);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(bw_hidden_state), 2);
+  TF_LITE_ENSURE_EQ(context, bw_hidden_state->dims->data[0], batch_size);
+  TF_LITE_ENSURE_EQ(context, bw_hidden_state->dims->data[1], bw_num_units);
 
   TfLiteTensor* fw_output = GetOutput(context, node, kFwOutputTensor);
   TfLiteTensor* bw_output = GetOutput(context, node, kBwOutputTensor);
-
-  // Resize hidden states.
-  TfLiteIntArray* fw_hidden_state_size_array = TfLiteIntArrayCreate(2);
-  fw_hidden_state_size_array->data[0] = batch_size;
-  fw_hidden_state_size_array->data[1] = fw_num_units;
-  TfLiteTensor* fw_hidden_state =
-      GetOutput(context, node, kFwHiddenStateTensor);
-  TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, fw_hidden_state,
-                                                   fw_hidden_state_size_array));
-
-  TfLiteIntArray* bw_hidden_state_size_array = TfLiteIntArrayCreate(2);
-  bw_hidden_state_size_array->data[0] = batch_size;
-  bw_hidden_state_size_array->data[1] = fw_num_units;
-  TfLiteTensor* bw_hidden_state =
-      GetOutput(context, node, kBwHiddenStateTensor);
-  TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, bw_hidden_state,
-                                                   bw_hidden_state_size_array));
-
-  // Mark hidden states as a persistent tensor.
-  fw_hidden_state->allocation_type = kTfLiteArenaRwPersistent;
-  bw_hidden_state->allocation_type = kTfLiteArenaRwPersistent;
 
   const bool is_hybrid_op =
       (fw_input_weights->type == kTfLiteUInt8 && input->type == kTfLiteFloat32);
@@ -326,12 +315,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       GetInput(context, node, kBwRecurrentWeightsTensor);
   const TfLiteTensor* bw_bias = GetInput(context, node, kBwBiasTensor);
 
-  TfLiteTensor* fw_output = GetOutput(context, node, kFwOutputTensor);
   TfLiteTensor* fw_hidden_state =
-      GetOutput(context, node, kFwHiddenStateTensor);
-  TfLiteTensor* bw_output = GetOutput(context, node, kBwOutputTensor);
+      const_cast<TfLiteTensor*>(GetInput(context, node, kFwHiddenStateTensor));
   TfLiteTensor* bw_hidden_state =
-      GetOutput(context, node, kBwHiddenStateTensor);
+      const_cast<TfLiteTensor*>(GetInput(context, node, kBwHiddenStateTensor));
+
+  TfLiteTensor* fw_output = GetOutput(context, node, kFwOutputTensor);
+  TfLiteTensor* bw_output = GetOutput(context, node, kBwOutputTensor);
 
   switch (fw_input_weights->type) {
     case kTfLiteFloat32:
