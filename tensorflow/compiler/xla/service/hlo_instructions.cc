@@ -586,7 +586,7 @@ std::unique_ptr<HloInstruction> HloReduceInstruction::CloneWithNewOperandsImpl(
     const Shape& shape,
     tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
     HloCloneContext* context) const {
-  CHECK_EQ(new_operands.size(), 2);
+  CHECK_EQ(new_operands.size() % 2, 0);
   return absl::make_unique<HloReduceInstruction>(shape, new_operands,
                                                  dimensions(), to_apply());
 }

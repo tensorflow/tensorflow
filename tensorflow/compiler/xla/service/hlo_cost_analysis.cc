@@ -274,15 +274,21 @@ Status HloCostAnalysis::HandleMap(const HloInstruction* map) {
 }
 
 Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
-  auto arg = reduce->operand(0);
   HloComputation* function = reduce->to_apply();
   // Compute the cost of the user function.
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
                       ProcessSubcomputation(function));
 
   // Compute the cost of all elements for this Reduce operation.
-  int64 reduction_count = ShapeUtil::ElementsIn(arg->shape()) -
-                          ShapeUtil::ElementsIn(reduce->shape());
+  // This counts the number of times the reduction function is applied, so it
+  // does not need to be multiplied by the number of input tensors - that's
+  // already "priced in" by the sub-computation doing more work.
+  auto arg = reduce->operand(0);
+  auto output_shape = ShapeUtil::IsArray(reduce->shape())
+                          ? reduce->shape()
+                          : reduce->shape().tuple_shapes(0);
+  int64 reduction_count =
+      ShapeUtil::ElementsIn(arg->shape()) - ShapeUtil::ElementsIn(output_shape);
   for (const auto& property : sub_properties) {
     if (property.first != kBytesAccessedKey) {
       current_properties_[property.first] = property.second * reduction_count;
