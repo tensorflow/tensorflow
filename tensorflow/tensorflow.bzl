@@ -1523,12 +1523,6 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-def tf_extension_linkopts():
-  return ["-lrt"]  # No extension link opts
-
-def tf_extension_copts():
-  return []  # No extension c opts
-
 # In tf_py_wrap_cc generated libraries
 # module init functions are not exported unless
 # they contain one of the keywords in the version file

@@ -208,7 +208,7 @@ toolchain {
       action: "c++-link-dynamic-library"
       action: "c++-link-nodeps-dynamic-library"
       flag_group {
-        flag: "-B/opt/rh/devtoolset-4/root/usr/bin/"
+        flag: "-B/usr/bin/"
       }
     }
   }
@@ -283,16 +283,16 @@ toolchain {
   tool_path { name: "gcc" path: "%{host_compiler_path}" }
 
   # Use the default system toolchain for everything else.
-  tool_path { name: "ar" path: "/opt/rh/devtoolset-4/root/usr/bin/ar" }
-  tool_path { name: "compat-ld" path: "/opt/rh/devtoolset-4/root/usr/bin/ld" }
-  tool_path { name: "cpp" path: "/opt/rh/devtoolset-4/root/usr/bin/cpp" }
-  tool_path { name: "dwp" path: "/opt/rh/devtoolset-4/root/usr/bin/dwp" }
-  tool_path { name: "gcov" path: "/opt/rh/devtoolset-4/root/usr/bin/gcov" }
-  tool_path { name: "ld" path: "/opt/rh/devtoolset-4/root/usr/bin/ld" }
-  tool_path { name: "nm" path: "/opt/rh/devtoolset-4/root/usr/bin/nm" }
-  tool_path { name: "objcopy" path: "/opt/rh/devtoolset-4/root/usr/bin/objcopy" }
-  tool_path { name: "objdump" path: "/opt/rh/devtoolset-4/root/usr/bin/objdump" }
-  tool_path { name: "strip" path: "/opt/rh/devtoolset-4/root/usr/bin/strip" }
+  tool_path { name: "ar" path: "/usr/bin/ar" }
+  tool_path { name: "compat-ld" path: "/usr/bin/ld" }
+  tool_path { name: "cpp" path: "/usr/bin/cpp" }
+  tool_path { name: "dwp" path: "/usr/bin/dwp" }
+  tool_path { name: "gcov" path: "/usr/bin/gcov" }
+  tool_path { name: "ld" path: "/usr/bin/ld" }
+  tool_path { name: "nm" path: "/usr/bin/nm" }
+  tool_path { name: "objcopy" path: "/usr/bin/objcopy" }
+  tool_path { name: "objdump" path: "/usr/bin/objdump" }
+  tool_path { name: "strip" path: "/usr/bin/strip" }
 
   # Enabled dynamic linking.
   linking_mode_flags { mode: DYNAMIC }

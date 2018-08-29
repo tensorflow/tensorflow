@@ -374,7 +374,6 @@ tf_cc_binary(
         "//conditions:default": [
             "-z defs",
             "-s",
-            "-lrt",
             "-Wl,--version-script",  #  This line must be directly followed by LINKER_VERSION_SCRIPT
             "$(location {})".format(LINKER_VERSION_SCRIPT),
         ],

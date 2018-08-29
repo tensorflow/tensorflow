@@ -14,7 +14,7 @@ exports_files([
     "leakr_badfiles.dic",
 ])
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object", "tf_extension_linkopts")
+load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_additional_binary_deps",
