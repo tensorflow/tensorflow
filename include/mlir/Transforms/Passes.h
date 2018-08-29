@@ -28,9 +28,15 @@ namespace mlir {
 class MLFunctionPass;
 class ModulePass;
 
-// Loop unrolling passes.
-/// Creates a loop unrolling pass.
-MLFunctionPass *createLoopUnrollPass(int unrollFactor, int unrollFull);
+/// Creates a loop unrolling pass. Default option or command-line options take
+/// effect if -1 is passed as parameter.
+MLFunctionPass *createLoopUnrollPass(int unrollFactor = -1,
+                                     int unrollFull = -1);
+
+/// Creates a loop unroll jam pass to unroll jam by the specified factor. A
+/// factor of -1 lets the pass use the default factor or the one on the command
+/// line if provided.
+MLFunctionPass *createLoopUnrollAndJamPass(int unrollJamFactor = -1);
 
 /// Replaces all ML functions in the module with equivalent CFG functions.
 /// Function references are appropriately patched to refer to the newly

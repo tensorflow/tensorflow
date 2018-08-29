@@ -132,11 +132,11 @@ public:
   // Define walkers for MLFunction and all MLFunction statement kinds.
   void walk(MLFunction *f) {
     static_cast<SubClass *>(this)->visitMLFunction(f);
-    walk(f->begin(), f->end());
+    static_cast<SubClass *>(this)->walk(f->begin(), f->end());
   }
 
   void walkPostOrder(MLFunction *f) {
-    walkPostOrder(f->begin(), f->end());
+    static_cast<SubClass *>(this)->walkPostOrder(f->begin(), f->end());
     static_cast<SubClass *>(this)->visitMLFunction(f);
   }
 
@@ -146,23 +146,28 @@ public:
 
   void walkForStmt(ForStmt *forStmt) {
     static_cast<SubClass *>(this)->visitForStmt(forStmt);
-    walk(forStmt->begin(), forStmt->end());
+    static_cast<SubClass *>(this)->walk(forStmt->begin(), forStmt->end());
   }
 
   void walkForStmtPostOrder(ForStmt *forStmt) {
-    walkPostOrder(forStmt->begin(), forStmt->end());
+    static_cast<SubClass *>(this)->walkPostOrder(forStmt->begin(),
+                                                 forStmt->end());
     static_cast<SubClass *>(this)->visitForStmt(forStmt);
   }
 
   void walkIfStmt(IfStmt *ifStmt) {
     static_cast<SubClass *>(this)->visitIfStmt(ifStmt);
-    walk(ifStmt->getThen()->begin(), ifStmt->getThen()->end());
-    walk(ifStmt->getElse()->begin(), ifStmt->getElse()->end());
+    static_cast<SubClass *>(this)->walk(ifStmt->getThen()->begin(),
+                                        ifStmt->getThen()->end());
+    static_cast<SubClass *>(this)->walk(ifStmt->getElse()->begin(),
+                                        ifStmt->getElse()->end());
   }
 
   void walkIfStmtPostOrder(IfStmt *ifStmt) {
-    walkPostOrder(ifStmt->getThen()->begin(), ifStmt->getThen()->end());
-    walkPostOrder(ifStmt->getElse()->begin(), ifStmt->getElse()->end());
+    static_cast<SubClass *>(this)->walkPostOrder(ifStmt->getThen()->begin(),
+                                                 ifStmt->getThen()->end());
+    static_cast<SubClass *>(this)->walkPostOrder(ifStmt->getElse()->begin(),
+                                                 ifStmt->getElse()->end());
     static_cast<SubClass *>(this)->visitIfStmt(ifStmt);
   }
 

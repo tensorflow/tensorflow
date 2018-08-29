@@ -162,16 +162,16 @@ void LoopUnroll::runOnMLFunction(MLFunction *f) {
 
 /// Unroll a for stmt. Default unroll factor is 4.
 bool LoopUnroll::runOnForStmt(ForStmt *forStmt) {
+  // Unroll by the factor passed, if any.
+  if (unrollFactor.hasValue())
+    return loopUnrollByFactor(forStmt, unrollFactor.getValue());
+  // Unroll by the command line factor if one was specified.
+  if (clUnrollFactor.getNumOccurrences() > 0)
+    return loopUnrollByFactor(forStmt, clUnrollFactor);
   // Unroll completely if full loop unroll was specified.
   if (clUnrollFull.getNumOccurrences() > 0 ||
       (unrollFull.hasValue() && unrollFull.getValue()))
     return loopUnrollFull(forStmt);
-
-  // Unroll by the specified factor if one was specified.
-  if (clUnrollFactor.getNumOccurrences() > 0)
-    return loopUnrollByFactor(forStmt, clUnrollFactor);
-  else if (unrollFactor.hasValue())
-    return loopUnrollByFactor(forStmt, unrollFactor.getValue());
 
   // Unroll by four otherwise.
   return loopUnrollByFactor(forStmt, 4);

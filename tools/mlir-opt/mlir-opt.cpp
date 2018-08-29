@@ -54,6 +54,7 @@ checkParserErrors("check-parser-errors", cl::desc("Check for parser errors"),
 enum Passes {
   ConvertToCFG,
   LoopUnroll,
+  LoopUnrollAndJam,
   TFRaiseControlFlow,
 };
 
@@ -62,6 +63,8 @@ static cl::list<Passes> passList(
     cl::values(clEnumValN(ConvertToCFG, "convert-to-cfg",
                           "Convert all ML functions in the module to CFG ones"),
                clEnumValN(LoopUnroll, "loop-unroll", "Unroll loops"),
+               clEnumValN(LoopUnrollAndJam, "loop-unroll-jam",
+                          "Unroll and jam loops"),
                clEnumValN(TFRaiseControlFlow, "tf-raise-control-flow",
                           "Dynamic TensorFlow Switch/Match nodes to a CFG")));
 
@@ -109,7 +112,10 @@ OptResult parseAndPrintMemoryBuffer(std::unique_ptr<MemoryBuffer> buffer) {
       pass = createConvertToCFGPass();
       break;
     case LoopUnroll:
-      pass = createLoopUnrollPass(-1, -1);
+      pass = createLoopUnrollPass();
+      break;
+    case LoopUnrollAndJam:
+      pass = createLoopUnrollAndJamPass();
       break;
     case TFRaiseControlFlow:
       pass = createRaiseTFControlFlowPass();
