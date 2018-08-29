@@ -288,13 +288,14 @@ Status ShapeVerifier::HandleGetTupleElement(HloInstruction* get_tuple_element) {
 }
 
 Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
-  std::vector<const Shape*> operand_shapes;
-  for (const HloInstruction* operand : reduce->operands()) {
-    operand_shapes.push_back(&operand->shape());
+  if (!ShapeUtil::IsArray(reduce->shape())) {
+    return InvalidArgument("Variadic reduce is not supported.");
   }
-  return CheckShape(reduce, ShapeInference::InferReduceShape(
-                                operand_shapes, reduce->dimensions(),
-                                reduce->to_apply()->ComputeProgramShape()));
+  return CheckShape(
+      reduce,
+      ShapeInference::InferReduceShape(
+          {&reduce->operand(0)->shape(), &reduce->operand(1)->shape()},
+          reduce->dimensions(), reduce->to_apply()->ComputeProgramShape()));
 }
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {

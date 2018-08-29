@@ -359,7 +359,6 @@ Status BFloat16NormalizationVisitor::DefaultAction(HloInstruction* hlo) {
       hlo->opcode() == HloOpcode::kConditional) {
     return Status::OK();
   }
-  // TODO(b/112040122): Correctly normalize variadic reduce.
   if ((hlo->opcode() == HloOpcode::kSort ||
        hlo->opcode() == HloOpcode::kCrossReplicaSum) &&
       ShapeUtil::IsTuple(hlo->shape())) {

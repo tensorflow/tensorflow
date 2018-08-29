@@ -1262,7 +1262,7 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
   const int64 rank = ShapeUtil::Rank(sort->operand(0)->shape());
   if (sort_dim != rank - 1) {
     return Unimplemented(
-        "Trying to sort along dimension %d, which is not the last "
+        "Trying to support along dimension %d, which is not the last "
         "dimension",
         sort_dim);
   }
@@ -1278,22 +1278,6 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
     } else {
       return result.status();
     }
-  }
-}
-
-Status HloEvaluator::HandleReduce(HloInstruction* reduce) {
-  if (!ShapeUtil::IsTuple(reduce->shape())) {
-    return DefaultAction(reduce);
-  } else {
-    auto first_element_type = reduce->shape().tuple_shapes(0).element_type();
-    for (const auto& tuple_shape : reduce->shape().tuple_shapes()) {
-      if (tuple_shape.element_type() != first_element_type) {
-        return Unimplemented(
-            "Reduce with several outputs that have mixed element types is "
-            "unsupported");
-      }
-    }
-    return reduce->Visit(typed_visitors_.at(first_element_type).get());
   }
 }
 
