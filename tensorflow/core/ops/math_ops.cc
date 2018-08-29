@@ -751,6 +751,7 @@ REGISTER_OP("Lu")
     .Output("l: T")
     .Output("u: T")
     .Output("p: Tperm")
+    .Output("info: Tperm")
     .Attr("T: {double, float}")
     .Attr("Tperm: {int32, int64} = DT_INT32")
      .SetShapeFn([](InferenceContext* c) {            
@@ -758,6 +759,7 @@ REGISTER_OP("Lu")
       c->set_output(0, c->input(0));
       c->set_output(1, c->input(0));
       c->set_output(2, c->Vector(perm_shape));
+      c->set_output(3, c->Scalar());
       return Status::OK();
 });
 

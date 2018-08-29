@@ -37,12 +37,17 @@ from tensorflow.python.platform import test
 class LuOpTest(test.TestCase):
 
   def _verifyLU(self, x):
-    # TODO(hzhuang): add test cases for the singular matrix, etc.
+    # TODO(hzhuang): 
+    # - add test cases for the singular matrix.
     for np_type in [np.float32, np.float64]: #, np.complex64, np.complex128]:
       if np_type == np.float32 or np_type == np.complex64:
         tol = 1e-2
         a = x.astype(np_type) 
-      l, u, p = math_ops.lu(a)
+      l, u, p, info = math_ops.lu(a)
+      # "info" is the index for the first zero index or illegal (small) 
+      # value, which might causes potential singular matrix problem for the 
+      # downstream matrix solve.
+      # TODO(hzhuang): how to test here?
       pp = np.zeros(p.shape)
       pl = math_ops.matmul(l, u) 
       #pinv = array_ops.invert_permutation(p);

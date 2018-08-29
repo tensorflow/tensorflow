@@ -66,10 +66,12 @@ class LuOp : public OpKernel {
     Tensor * output_l = nullptr;
     Tensor * output_u = nullptr;
     Tensor * perm_idx = nullptr;
+    Tensor * info_tensor = nullptr;
     
     OP_REQUIRES_OK(context, context->allocate_output(0, mtx_shape, &output_l));
     OP_REQUIRES_OK(context, context->allocate_output(1, mtx_shape, &output_u));
     OP_REQUIRES_OK(context, context->allocate_output(2, perm_shape, &perm_idx));
+    OP_REQUIRES_OK(context, context->allocate_output(3, TensorShape({}), &info_tensor));
     
     T * ltensor = output_l->flat<T>().data();    
     auto &l = lu_decomposition.matrixLU().template triangularView<Eigen::UnitLower>();
@@ -80,6 +82,28 @@ class LuOp : public OpKernel {
     auto &u = lu_decomposition.matrixLU().template triangularView<Eigen::Upper>();
     auto um = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 
                 Eigen::Dynamic, Eigen::RowMajor> >(utensor, u.rows(), u.cols());
+    // check the index of the first zero 
+    /*
+    info is a scalar integer 
+          = 0:  successful exit
+          < 0:  if info = -i, the i-th argument had an small value
+          > 0:  if info = i, u(i,i) is exactly zero. 
+    */
+    double eps = 1e-9; // TODO (hzhuang): what is a good value
+    int info = 0;
+    for(int i = 0; i < u.rows(); i++){
+      if(u(i,i) < eps && u(i,i) > -eps){
+        info = -(i+1);
+        break;
+      }
+      else if(u(i,i) == 0.){
+        info = i+1;
+        break;
+      }
+    }
+
+    info_tensor->flat<int32>().setConstant(info);
+
     um = u;
     int32 * ptensor = perm_idx->flat<int32>().data();
     auto & p = lu_decomposition.permutationP().indices().array(); 
@@ -87,6 +111,7 @@ class LuOp : public OpKernel {
     for(int i = 0; i < p.size(); i++){
       ptensor[i] = p[i];
     }        
+
   }
 };
 
