@@ -132,7 +132,8 @@ def _convert_model(flags):
   if flags.reorder_across_fake_quant:
     converter.reorder_across_fake_quant = flags.reorder_across_fake_quant
   if flags.change_concat_input_ranges:
-    converter.change_concat_input_ranges = flags.change_concat_input_ranges
+    converter.change_concat_input_ranges = (
+        flags.change_concat_input_ranges == "TRUE")
   if flags.allow_custom_ops:
     converter.allow_custom_ops = flags.allow_custom_ops
   if flags.quantize_weights:
@@ -333,9 +334,14 @@ def run_main(_):
             "the graph. Results in a graph that differs from the quantized "
             "training graph, potentially causing differing arithmetic "
             "behavior. (default False)"))
+  # Usage for this flag is --change_concat_input_ranges=true or
+  # --change_concat_input_ranges=false in order to make it clear what the flag
+  # is set to. This keeps the usage consistent with other usages of the flag
+  # where the default is different. The default value here is False.
   parser.add_argument(
       "--change_concat_input_ranges",
-      action="store_true",
+      type=str.upper,
+      choices=["TRUE", "FALSE"],
       help=("Boolean to change behavior of min/max ranges for inputs and "
             "outputs of the concat operator for quantized models. Changes the "
             "ranges of concat operator overlap when true. (default False)"))
