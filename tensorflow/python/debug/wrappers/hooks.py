@@ -188,6 +188,7 @@ class DumpingDebugHook(session_run_hook.SessionRunHook):
     pass
 
   def before_run(self, run_context):
+    reset_disk_byte_usage = False
     if not self._session_wrapper:
       self._session_wrapper = dumping_wrapper.DumpingDebugWrapperSession(
           run_context.session,
@@ -195,6 +196,7 @@ class DumpingDebugHook(session_run_hook.SessionRunHook):
           watch_fn=self._watch_fn,
           thread_name_filter=self._thread_name_filter,
           log_usage=self._log_usage)
+      reset_disk_byte_usage = True
 
     self._session_wrapper.increment_run_call_count()
 
@@ -212,7 +214,8 @@ class DumpingDebugHook(session_run_hook.SessionRunHook):
         op_type_regex_whitelist=watch_options.op_type_regex_whitelist,
         tensor_dtype_regex_whitelist=watch_options.tensor_dtype_regex_whitelist,
         tolerate_debug_op_creation_failures=(
-            watch_options.tolerate_debug_op_creation_failures))
+            watch_options.tolerate_debug_op_creation_failures),
+        reset_disk_byte_usage=reset_disk_byte_usage)
 
     run_args = session_run_hook.SessionRunArgs(
         None, feed_dict=None, options=run_options)

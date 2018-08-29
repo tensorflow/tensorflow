@@ -133,22 +133,25 @@ Status GraphDefBuilderWrapper::AddDataset(
   return Status::OK();
 }
 
-Status GraphDefBuilderWrapper::AddFunction(
-    const FunctionLibraryDefinition& flib_def, const string& function_name) {
+Status GraphDefBuilderWrapper::AddFunction(SerializationContext* ctx,
+                                           const string& function_name) {
   if (b_->HasFunction(function_name)) {
     VLOG(1) << "Function with name " << function_name << "already exists in"
             << " the graph. It will not be added again.";
     return Status::OK();
   }
-  TF_RETURN_IF_ERROR(EnsureFunctionIsStateless(flib_def, function_name));
-  const FunctionDef* f_def = flib_def.Find(function_name);
+  if (!ctx->allow_stateful_functions()) {
+    TF_RETURN_IF_ERROR(
+        EnsureFunctionIsStateless(ctx->flib_def(), function_name));
+  }
+  const FunctionDef* f_def = ctx->flib_def().Find(function_name);
   if (f_def == nullptr) {
     return errors::InvalidArgument("Unable to find FunctionDef for ",
                                    function_name, " in the registry.");
   }
   FunctionDefLibrary def;
   *def.add_function() = *f_def;
-  const string gradient_func = flib_def.FindGradient(function_name);
+  const string gradient_func = ctx->flib_def().FindGradient(function_name);
   if (!gradient_func.empty()) {
     GradientDef* g_def = def.add_gradient();
     g_def->set_function_name(function_name);
@@ -159,19 +162,19 @@ Status GraphDefBuilderWrapper::AddFunction(
   // Recursively add functions in inputs of function_name.
   for (const NodeDef& node_def : f_def->node_def()) {
     const OpRegistrationData* op_reg_data = nullptr;
-    TF_RETURN_IF_ERROR(flib_def.LookUp(node_def.op(), &op_reg_data));
+    TF_RETURN_IF_ERROR(ctx->flib_def().LookUp(node_def.op(), &op_reg_data));
     if (op_reg_data->is_function_op) {
-      TF_RETURN_IF_ERROR(AddFunction(flib_def, op_reg_data->op_def.name()));
+      TF_RETURN_IF_ERROR(AddFunction(ctx, op_reg_data->op_def.name()));
     }
     // Recursively add functions in attrs of this NodeDef.
     for (const auto& pair : node_def.attr()) {
-      TF_RETURN_IF_ERROR(AddAttrFunctions(pair.second, flib_def));
+      TF_RETURN_IF_ERROR(AddAttrFunctions(ctx, pair.second));
     }
   }
 
   // Recursively add functions in attrs of function_name.
   for (auto iter = f_def->attr().begin(); iter != f_def->attr().end(); iter++) {
-    TF_RETURN_IF_ERROR(AddAttrFunctions(iter->second, flib_def));
+    TF_RETURN_IF_ERROR(AddAttrFunctions(ctx, iter->second));
   }
   return Status::OK();
 }

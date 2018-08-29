@@ -31,47 +31,57 @@ from tensorflow.python.platform import test
 
 class MapDefunTest(test.TestCase):
 
-  def testMapDefun_Simple(self):
+  def testMapDefunSimple(self):
 
     @function.Defun(dtypes.int32)
     def simple_fn(x):
       return x * 2 + 3
 
-    with self.test_session():
-      nums = [[1, 2], [3, 4], [5, 6]]
-      elems = constant_op.constant(nums, dtype=dtypes.int32, name="data")
-      r = map_defun.map_defun(simple_fn, [elems], [dtypes.int32], [(2,)])[0]
-      expected = elems * 2 + 3
-      self.assertAllEqual(self.evaluate(r), self.evaluate(expected))
+    nums = [[1, 2], [3, 4], [5, 6]]
+    elems = constant_op.constant(nums, dtype=dtypes.int32, name="data")
+    r = map_defun.map_defun(simple_fn, [elems], [dtypes.int32], [(2,)])[0]
+    expected = elems * 2 + 3
+    self.assertAllEqual(self.evaluate(r), self.evaluate(expected))
 
-  def testMapDefun_MismatchedTypes(self):
+  def testMapDefunMismatchedTypes(self):
 
     @function.Defun(dtypes.int32)
     def fn(x):
       return math_ops.cast(x, dtypes.float64)
 
-    with self.test_session():
-      nums = [1, 2, 3, 4, 5, 6]
-      elems = constant_op.constant(nums, dtype=dtypes.int32, name="data")
-      r = map_defun.map_defun(fn, [elems], [dtypes.int32], [()])[0]
-      with self.assertRaises(errors.InvalidArgumentError):
-        self.evaluate(r)
+    nums = [1, 2, 3, 4, 5, 6]
+    elems = constant_op.constant(nums, dtype=dtypes.int32, name="data")
+    r = map_defun.map_defun(fn, [elems], [dtypes.int32], [()])[0]
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(r)
 
-  def testMapDefun_MultipleOutputs(self):
+  def testMapDefunReduceDim(self):
+    # Tests where the output has a different rank from the input
+
+    @function.Defun(dtypes.int32)
+    def fn(x):
+      return array_ops.gather(x, 0)
+
+    nums = [[1, 2], [3, 4], [5, 6]]
+    elems = constant_op.constant(nums, dtype=dtypes.int32, name="data")
+    r = map_defun.map_defun(fn, [elems], [dtypes.int32], [()])[0]
+    expected = constant_op.constant([1, 3, 5])
+    self.assertAllEqual(self.evaluate(r), self.evaluate(expected))
+
+  def testMapDefunMultipleOutputs(self):
 
     @function.Defun(dtypes.int32)
     def fn(x):
       return (x, math_ops.cast(x * 2 + 3, dtypes.float64))
 
-    with self.test_session():
-      nums = [[1, 2], [3, 4], [5, 6]]
-      elems = constant_op.constant(nums, dtype=dtypes.int32, name="data")
-      r = map_defun.map_defun(fn, [elems], [dtypes.int32, dtypes.float64],
-                              [(2,), (2,)])
-      expected = [elems, elems * 2 + 3]
-      self.assertAllEqual(self.evaluate(r), self.evaluate(expected))
+    nums = [[1, 2], [3, 4], [5, 6]]
+    elems = constant_op.constant(nums, dtype=dtypes.int32, name="data")
+    r = map_defun.map_defun(fn, [elems], [dtypes.int32, dtypes.float64], [(2,),
+                                                                          (2,)])
+    expected = [elems, elems * 2 + 3]
+    self.assertAllEqual(self.evaluate(r), self.evaluate(expected))
 
-  def testMapDefun_ShapeInference(self):
+  def testMapDefunShapeInference(self):
 
     @function.Defun(dtypes.int32)
     def fn(x):
@@ -82,7 +92,7 @@ class MapDefunTest(test.TestCase):
     result = map_defun.map_defun(fn, [elems], [dtypes.int32], [(2,)])[0]
     self.assertEqual(result.get_shape(), (3, 2))
 
-  def testMapDefun_PartialShapeInference(self):
+  def testMapDefunPartialShapeInference(self):
 
     @function.Defun(dtypes.int32)
     def fn(x):
@@ -92,7 +102,7 @@ class MapDefunTest(test.TestCase):
     result = map_defun.map_defun(fn, [elems], [dtypes.int32], [(2,)])
     self.assertEqual(result[0].get_shape().as_list(), [None, 2])
 
-  def testMapDefun_RaisesErrorOnRuntimeShapeMismatch(self):
+  def testMapDefunRaisesErrorOnRuntimeShapeMismatch(self):
 
     @function.Defun(dtypes.int32, dtypes.int32)
     def fn(x, y):
@@ -108,7 +118,7 @@ class MapDefunTest(test.TestCase):
           "All inputs must have the same dimension 0."):
         sess.run(result, feed_dict={elems1: [1, 2, 3, 4, 5], elems2: [1, 2, 3]})
 
-  def testMapDefun_RaisesDefunError(self):
+  def testMapDefunRaisesDefunError(self):
 
     @function.Defun(dtypes.int32)
     def fn(x):
@@ -117,9 +127,8 @@ class MapDefunTest(test.TestCase):
 
     elems = constant_op.constant([0, 0, 0, 37, 0])
     result = map_defun.map_defun(fn, [elems], [dtypes.int32], [()])
-    with self.test_session():
-      with self.assertRaises(errors.InvalidArgumentError):
-        self.evaluate(result)
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(result)
 
 
 if __name__ == "__main__":

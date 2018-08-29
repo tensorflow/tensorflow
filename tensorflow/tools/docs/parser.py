@@ -1695,15 +1695,18 @@ class _Metadata(object):
 
   Attributes:
     name: The name of the page being described by the Metadata block.
+    version: The source version.
   """
 
-  def __init__(self, name):
+  def __init__(self, name, version='stable'):
     """Creates a Metadata builder.
 
     Args:
       name: The name of the page being described by the Metadata block.
+      version: The source version.
     """
     self.name = name
+    self.version = version
     self._content = []
 
   def append(self, item):
@@ -1720,6 +1723,7 @@ class _Metadata(object):
     parts = ['<div itemscope itemtype="%s">' % schema]
 
     parts.append('<meta itemprop="name" content="%s" />' % self.name)
+    parts.append('<meta itemprop="path" content="%s" />' % self.version)
     for item in self._content:
       parts.append('<meta itemprop="property" content="%s"/>' % item)
 

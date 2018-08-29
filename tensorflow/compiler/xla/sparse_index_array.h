@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -139,7 +140,7 @@ void SparseIndexArray::SortWithValues(
 
   // Reorder the array elements according to sort_order.  Work through the array
   // and follow cycles so we can do the reorder in-place.
-  tensorflow::gtl::InlinedVector<int64, 8> saved_index(rank());
+  absl::InlinedVector<int64, 8> saved_index(rank());
   for (int64 i = 0; i < num_elements; ++i) {
     // sort_order[i] == -1 indicates the element has already been copied.
     if (sort_order[i] < 0) {

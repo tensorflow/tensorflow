@@ -116,6 +116,13 @@ class IteratorGetNextOp : public AsyncOpKernel {
   BackgroundWorker background_worker_;
 };
 
+class IteratorGetNextSyncOp : public OpKernel {
+ public:
+  explicit IteratorGetNextSyncOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override;
+};
+
 class IteratorToStringHandleOp : public OpKernel {
  public:
   explicit IteratorToStringHandleOp(OpKernelConstruction* ctx)

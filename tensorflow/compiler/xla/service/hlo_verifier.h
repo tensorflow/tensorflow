@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 
 namespace xla {
@@ -27,9 +28,9 @@ namespace xla {
 // TODO(b/26024837): Check output shape for all instruction types.
 class ShapeVerifier : public DfsHloVisitor {
  public:
-  explicit ShapeVerifier() : allow_mixed_precision_(false) {}
-  explicit ShapeVerifier(bool allow_mixed_precision)
-      : allow_mixed_precision_(allow_mixed_precision) {}
+  explicit ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision)
+      : layout_sensitive_(layout_sensitive),
+        allow_mixed_precision_(allow_mixed_precision) {}
 
   Status HandleElementwiseUnary(HloInstruction* hlo) override;
   Status HandleElementwiseBinary(HloInstruction* hlo) override;
@@ -46,6 +47,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleFft(HloInstruction* fft) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
   Status HandleAllToAll(HloInstruction* hlo) override;
+  Status HandleCollectivePermute(HloInstruction* hlo) override;
   Status HandleReducePrecision(HloInstruction* reduce_precision) override;
   Status HandleInfeed(HloInstruction*) override;
   Status HandleOutfeed(HloInstruction*) override;
@@ -63,7 +65,6 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleFusion(HloInstruction*) override;
   Status HandleCall(HloInstruction* call) override;
   Status HandleCustomCall(HloInstruction*) override;
-  Status HandleHostCompute(HloInstruction*) override;
   Status HandleSlice(HloInstruction* slice) override;
   Status HandleDynamicSlice(HloInstruction* dynamic_slice) override;
   Status HandleDynamicUpdateSlice(
@@ -106,12 +107,41 @@ class ShapeVerifier : public DfsHloVisitor {
   Status CheckVariadicShape(const HloInstruction* instruction);
 
  private:
-  // Return true if the shapes of the two operands have the same element type,
-  // and the result shape either has the same element type as the operand
-  // shapes or mixed precision is allowed and the result shape and the operand
-  // shapes have floating point element types.
+  // Helpers that switch on layout_sensitive_.
+  bool ShapesSame(const Shape& a, const Shape& b) {
+    return layout_sensitive_ ? ShapeUtil::Equal(a, b)
+                             : ShapeUtil::Compatible(a, b);
+  }
+  bool ShapesSameIgnoringFpPrecision(const Shape& a, const Shape& b) {
+    return layout_sensitive_ ? ShapeUtil::EqualIgnoringFpPrecision(a, b)
+                             : ShapeUtil::CompatibleIgnoringFpPrecision(a, b);
+  }
+  string StringifyShape(const Shape& s) {
+    return layout_sensitive_ ? ShapeUtil::HumanStringWithLayout(s)
+                             : ShapeUtil::HumanString(s);
+  }
+
+  // Checks that the given operand of the given instruction is of type TOKEN.
+  Status CheckIsTokenOperand(const HloInstruction* instruction,
+                             int64 operand_no);
+
+  // Checks that the shape of the given operand of the given instruction matches
+  // the given parameter of the given computation.
+  Status CheckOperandAndParameter(const HloInstruction* instruction,
+                                  int64 operand_number,
+                                  const HloComputation* computation,
+                                  int64 parameter_number);
+
+  // Returns true if the shapes of the two operands have the same element type,
+  // and the result shape either has the same element type as the operand shapes
+  // or mixed precision is allowed and the result shape and the operand shapes
+  // have floating point element types.
   bool HasCompatibleElementTypes(const Shape& shape_0, const Shape& shape_1,
                                  const Shape& result_shape);
+
+  // If the verifier is layout-sensitive, shapes must be equal to what's
+  // expected.  Otherwise, the shapes must simply be compatible.
+  bool layout_sensitive_;
 
   // Whether the inputs and output of an instruction can contain both F32s and
   // BF16s. Tuples that include both F32s and BF16s are allowed regardless of
@@ -125,14 +155,10 @@ class HloVerifier : public HloPassInterface {
  public:
   using ShapeVerifierFactory = std::function<std::unique_ptr<ShapeVerifier>()>;
 
-  // Uses standard shape inference.
-  explicit HloVerifier()
-      : shape_verifier_factory_(
-            [] { return MakeUnique<ShapeVerifier>(false); }) {}
-
-  explicit HloVerifier(bool allow_mixed_precision)
-      : shape_verifier_factory_([allow_mixed_precision] {
-          return MakeUnique<ShapeVerifier>(allow_mixed_precision);
+  explicit HloVerifier(bool layout_sensitive, bool allow_mixed_precision)
+      : shape_verifier_factory_([layout_sensitive, allow_mixed_precision] {
+          return absl::make_unique<ShapeVerifier>(layout_sensitive,
+                                                  allow_mixed_precision);
         }) {}
 
   // Uses custom shape verification.
@@ -140,10 +166,9 @@ class HloVerifier : public HloPassInterface {
       : shape_verifier_factory_(std::move(shape_verifier_factory)) {}
 
   ~HloVerifier() override = default;
-  tensorflow::StringPiece name() const override { return "verifier"; }
+  absl::string_view name() const override { return "verifier"; }
 
-  // Note: always returns false (no instructions are ever modified by this
-  // pass).
+  // Never returns true; no instructions are ever modified by this pass.
   StatusOr<bool> Run(HloModule* module) override;
 
  private:

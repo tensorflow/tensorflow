@@ -11,6 +11,8 @@ cc_library(
     srcs = ["xla_ops.cc"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
     ],
     alwayslink = 1,
 )

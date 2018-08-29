@@ -629,76 +629,12 @@ def _parse_example_raw(serialized,
   Returns:
     A `dict` mapping keys to `Tensor`s and `SparseTensor`s.
 
-  Raises:
-    ValueError: If sparse and dense key sets intersect, or input lengths do not
-      match up.
   """
   with ops.name_scope(name, "ParseExample", [serialized, names]):
-    names = [] if names is None else names
-    dense_defaults = collections.OrderedDict(
-    ) if dense_defaults is None else dense_defaults
-    sparse_keys = [] if sparse_keys is None else sparse_keys
-    sparse_types = [] if sparse_types is None else sparse_types
-    dense_keys = [] if dense_keys is None else dense_keys
-    dense_types = [] if dense_types is None else dense_types
-    dense_shapes = (
-        [[]] * len(dense_keys) if dense_shapes is None else dense_shapes)
-
-    num_dense = len(dense_keys)
-    num_sparse = len(sparse_keys)
-
-    if len(dense_shapes) != num_dense:
-      raise ValueError("len(dense_shapes) != len(dense_keys): %d vs. %d"
-                       % (len(dense_shapes), num_dense))
-    if len(dense_types) != num_dense:
-      raise ValueError("len(dense_types) != len(num_dense): %d vs. %d"
-                       % (len(dense_types), num_dense))
-    if len(sparse_types) != num_sparse:
-      raise ValueError("len(sparse_types) != len(sparse_keys): %d vs. %d"
-                       % (len(sparse_types), num_sparse))
-    if num_dense + num_sparse == 0:
-      raise ValueError("Must provide at least one sparse key or dense key")
-    if not set(dense_keys).isdisjoint(set(sparse_keys)):
-      raise ValueError(
-          "Dense and sparse keys must not intersect; intersection: %s" %
-          set(dense_keys).intersection(set(sparse_keys)))
-
-    # Convert dense_shapes to TensorShape object.
-    dense_shapes = [tensor_shape.as_shape(shape) for shape in dense_shapes]
-
-    dense_defaults_vec = []
-    for i, key in enumerate(dense_keys):
-      default_value = dense_defaults.get(key)
-      dense_shape = dense_shapes[i]
-      if (dense_shape.ndims is not None and dense_shape.ndims > 0 and
-          dense_shape[0].value is None):
-        # Variable stride dense shape, the default value should be a
-        # scalar padding value
-        if default_value is None:
-          default_value = ops.convert_to_tensor(
-              "" if dense_types[i] == dtypes.string else 0,
-              dtype=dense_types[i])
-        else:
-          # Reshape to a scalar to ensure user gets an error if they
-          # provide a tensor that's not intended to be a padding value
-          # (0 or 2+ elements).
-          key_name = "padding_" + re.sub("[^A-Za-z0-9_.\\-/]", "_", key)
-          default_value = ops.convert_to_tensor(
-              default_value, dtype=dense_types[i], name=key_name)
-          default_value = array_ops.reshape(default_value, [])
-      else:
-        if default_value is None:
-          default_value = constant_op.constant([], dtype=dense_types[i])
-        elif not isinstance(default_value, ops.Tensor):
-          key_name = "key_" + re.sub("[^A-Za-z0-9_.\\-/]", "_", key)
-          default_value = ops.convert_to_tensor(
-              default_value, dtype=dense_types[i], name=key_name)
-          default_value = array_ops.reshape(default_value, dense_shape)
-
-      dense_defaults_vec.append(default_value)
-
-    # Finally, convert dense_shapes to TensorShapeProto
-    dense_shapes = [shape.as_proto() for shape in dense_shapes]
+    (names, dense_defaults_vec, sparse_keys, sparse_types,
+     dense_keys, dense_shapes, _) = _process_raw_parameters(
+         names, dense_defaults, sparse_keys, sparse_types, dense_keys,
+         dense_types, dense_shapes)
 
     outputs = gen_parsing_ops.parse_example(
         serialized=serialized,
@@ -717,6 +653,112 @@ def _parse_example_raw(serialized,
         in zip(sparse_indices, sparse_values, sparse_shapes)]
 
     return dict(zip(sparse_keys + dense_keys, sparse_tensors + dense_values))
+
+
+def _process_raw_parameters(names, dense_defaults, sparse_keys, sparse_types,
+                            dense_keys, dense_types, dense_shapes):
+  """Process raw parameters to params used by `gen_parsing_ops`.
+
+  Args:
+    names: A vector (1-D Tensor) of strings (optional), the names of
+      the serialized protos.
+    dense_defaults: A dict mapping string keys to `Tensor`s.
+      The keys of the dict must match the dense_keys of the feature.
+    sparse_keys: A list of string keys in the examples' features.
+      The results for these keys will be returned as `SparseTensor` objects.
+    sparse_types: A list of `DTypes` of the same length as `sparse_keys`.
+      Only `tf.float32` (`FloatList`), `tf.int64` (`Int64List`),
+      and `tf.string` (`BytesList`) are supported.
+    dense_keys: A list of string keys in the examples' features.
+      The results for these keys will be returned as `Tensor`s
+    dense_types: A list of DTypes of the same length as `dense_keys`.
+      Only `tf.float32` (`FloatList`), `tf.int64` (`Int64List`),
+      and `tf.string` (`BytesList`) are supported.
+    dense_shapes: A list of tuples with the same length as `dense_keys`.
+      The shape of the data for each dense feature referenced by `dense_keys`.
+      Required for any input tensors identified by `dense_keys`.  Must be
+      either fully defined, or may contain an unknown first dimension.
+      An unknown first dimension means the feature is treated as having
+      a variable number of blocks, and the output shape along this dimension
+      is considered unknown at graph build time.  Padding is applied for
+      minibatch elements smaller than the maximum number of blocks for the
+      given feature along this dimension.
+
+  Returns:
+    Tuple of `names`, `dense_defaults_vec`, `sparse_keys`, `sparse_types`,
+    `dense_keys`, `dense_shapes`.
+
+  Raises:
+    ValueError: If sparse and dense key sets intersect, or input lengths do not
+      match up.
+  """
+  names = [] if names is None else names
+  dense_defaults = collections.OrderedDict(
+  ) if dense_defaults is None else dense_defaults
+  sparse_keys = [] if sparse_keys is None else sparse_keys
+  sparse_types = [] if sparse_types is None else sparse_types
+  dense_keys = [] if dense_keys is None else dense_keys
+  dense_types = [] if dense_types is None else dense_types
+  dense_shapes = ([[]] * len(dense_keys)
+                  if dense_shapes is None else dense_shapes)
+
+  num_dense = len(dense_keys)
+  num_sparse = len(sparse_keys)
+
+  if len(dense_shapes) != num_dense:
+    raise ValueError("len(dense_shapes) != len(dense_keys): %d vs. %d" %
+                     (len(dense_shapes), num_dense))
+  if len(dense_types) != num_dense:
+    raise ValueError("len(dense_types) != len(num_dense): %d vs. %d" %
+                     (len(dense_types), num_dense))
+  if len(sparse_types) != num_sparse:
+    raise ValueError("len(sparse_types) != len(sparse_keys): %d vs. %d" %
+                     (len(sparse_types), num_sparse))
+  if num_dense + num_sparse == 0:
+    raise ValueError("Must provide at least one sparse key or dense key")
+  if not set(dense_keys).isdisjoint(set(sparse_keys)):
+    raise ValueError(
+        "Dense and sparse keys must not intersect; intersection: %s" %
+        set(dense_keys).intersection(set(sparse_keys)))
+
+  # Convert dense_shapes to TensorShape object.
+  dense_shapes = [tensor_shape.as_shape(shape) for shape in dense_shapes]
+
+  dense_defaults_vec = []
+  for i, key in enumerate(dense_keys):
+    default_value = dense_defaults.get(key)
+    dense_shape = dense_shapes[i]
+    if (dense_shape.ndims is not None and dense_shape.ndims > 0 and
+        dense_shape[0].value is None):
+      # Variable stride dense shape, the default value should be a
+      # scalar padding value
+      if default_value is None:
+        default_value = ops.convert_to_tensor(
+            "" if dense_types[i] == dtypes.string else 0, dtype=dense_types[i])
+      else:
+        # Reshape to a scalar to ensure user gets an error if they
+        # provide a tensor that's not intended to be a padding value
+        # (0 or 2+ elements).
+        key_name = "padding_" + re.sub("[^A-Za-z0-9_.\\-/]", "_", key)
+        default_value = ops.convert_to_tensor(
+            default_value, dtype=dense_types[i], name=key_name)
+        default_value = array_ops.reshape(default_value, [])
+    else:
+      if default_value is None:
+        default_value = constant_op.constant([], dtype=dense_types[i])
+      elif not isinstance(default_value, ops.Tensor):
+        key_name = "key_" + re.sub("[^A-Za-z0-9_.\\-/]", "_", key)
+        default_value = ops.convert_to_tensor(
+            default_value, dtype=dense_types[i], name=key_name)
+        default_value = array_ops.reshape(default_value, dense_shape)
+
+    dense_defaults_vec.append(default_value)
+
+  # Finally, convert dense_shapes to TensorShapeProto
+  dense_shapes_as_proto = [shape.as_proto() for shape in dense_shapes]
+
+  return (names, dense_defaults_vec, sparse_keys, sparse_types, dense_keys,
+          dense_shapes_as_proto, dense_shapes)
 
 
 @tf_export("parse_single_example")

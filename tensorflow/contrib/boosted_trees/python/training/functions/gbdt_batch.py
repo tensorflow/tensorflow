@@ -762,7 +762,8 @@ class GradientBoostedDecisionTreeModel(object):
                 hessian_shape=self._hessian_shape,
                 multiclass_strategy=strategy_tensor,
                 init_stamp_token=init_stamp_token,
-                loss_uses_sum_reduction=loss_uses_sum_reduction))
+                loss_uses_sum_reduction=loss_uses_sum_reduction,
+                weak_learner_type=weak_learner_type))
         fc_name_idx += 1
 
       # Create ensemble stats variables.
@@ -1063,6 +1064,12 @@ class GradientBoostedDecisionTreeModel(object):
         # Grow the ensemble given the current candidates.
         sizes = array_ops.unstack(split_sizes)
         partition_ids_list = list(array_ops.split(partition_ids, sizes, axis=0))
+        # When using the oblivious decision tree as weak learner, it produces
+        # one gain and one split per handler and not number of partitions.
+        if self._learner_config.weak_learner_type == (
+            learner_pb2.LearnerConfig.OBLIVIOUS_DECISION_TREE):
+          sizes = len(training_state.handlers)
+
         gains_list = list(array_ops.split(gains, sizes, axis=0))
         split_info_list = list(array_ops.split(split_infos, sizes, axis=0))
         return training_ops.grow_tree_ensemble(
@@ -1076,7 +1083,8 @@ class GradientBoostedDecisionTreeModel(object):
             learner_config=self._learner_config_serialized,
             dropout_seed=dropout_seed,
             center_bias=self._center_bias,
-            max_tree_depth=self._max_tree_depth)
+            max_tree_depth=self._max_tree_depth,
+            weak_learner_type=self._learner_config.weak_learner_type)
 
       def _grow_ensemble_not_ready_fn():
         # Don't grow the ensemble, just update the stamp.
@@ -1091,7 +1099,8 @@ class GradientBoostedDecisionTreeModel(object):
             learner_config=self._learner_config_serialized,
             dropout_seed=dropout_seed,
             center_bias=self._center_bias,
-            max_tree_depth=self._max_tree_depth)
+            max_tree_depth=self._max_tree_depth,
+            weak_learner_type=self._learner_config.weak_learner_type)
 
       def _grow_ensemble_fn():
         # Conditionally grow an ensemble depending on whether the splits

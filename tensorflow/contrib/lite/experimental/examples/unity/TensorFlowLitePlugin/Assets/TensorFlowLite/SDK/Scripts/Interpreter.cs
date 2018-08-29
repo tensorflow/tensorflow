@@ -29,15 +29,16 @@ namespace TensorFlowLite
   {
     private const string TensorFlowLibrary = "tensorflowlite_c";
 
-    private TFL_Interpreter handle;
+    private TFL_Model model;
+    private TFL_Interpreter interpreter;
 
     public Interpreter(byte[] modelData) {
       GCHandle modelDataHandle = GCHandle.Alloc(modelData, GCHandleType.Pinned);
       IntPtr modelDataPtr = modelDataHandle.AddrOfPinnedObject();
-      TFL_Model model = TFL_NewModel(modelDataPtr, modelData.Length);
-      handle = TFL_NewInterpreter(model, /*options=*/IntPtr.Zero);
-      TFL_DeleteModel(model);
-      if (handle == IntPtr.Zero) throw new Exception("Failed to create TensorFlowLite Interpreter");
+      model = TFL_NewModel(modelDataPtr, modelData.Length);
+      if (model == IntPtr.Zero) throw new Exception("Failed to create TensorFlowLite Model");
+      interpreter = TFL_NewInterpreter(model, /*options=*/IntPtr.Zero);
+      if (interpreter == IntPtr.Zero) throw new Exception("Failed to create TensorFlowLite Interpreter");
     }
 
     ~Interpreter() {
@@ -45,43 +46,45 @@ namespace TensorFlowLite
     }
 
     public void Dispose() {
-      if (handle != IntPtr.Zero) TFL_DeleteInterpreter(handle);
-      handle = IntPtr.Zero;
+      if (interpreter != IntPtr.Zero) TFL_DeleteInterpreter(interpreter);
+      interpreter = IntPtr.Zero;
+      if (model != IntPtr.Zero) TFL_DeleteModel(model);
+      model = IntPtr.Zero;
     }
 
     public void Invoke() {
-      ThrowIfError(TFL_InterpreterInvoke(handle));
+      ThrowIfError(TFL_InterpreterInvoke(interpreter));
     }
 
     public int GetInputTensorCount() {
-      return TFL_InterpreterGetInputTensorCount(handle);
+      return TFL_InterpreterGetInputTensorCount(interpreter);
     }
 
     public void SetInputTensorData(int inputTensorIndex, Array inputTensorData) {
       GCHandle tensorDataHandle = GCHandle.Alloc(inputTensorData, GCHandleType.Pinned);
       IntPtr tensorDataPtr = tensorDataHandle.AddrOfPinnedObject();
-      TFL_Tensor tensor = TFL_InterpreterGetInputTensor(handle, inputTensorIndex);
+      TFL_Tensor tensor = TFL_InterpreterGetInputTensor(interpreter, inputTensorIndex);
       ThrowIfError(TFL_TensorCopyFromBuffer(
           tensor, tensorDataPtr, Buffer.ByteLength(inputTensorData)));
     }
 
     public void ResizeInputTensor(int inputTensorIndex, int[] inputTensorShape) {
       ThrowIfError(TFL_InterpreterResizeInputTensor(
-          handle, inputTensorIndex, inputTensorShape, inputTensorShape.Length));
+          interpreter, inputTensorIndex, inputTensorShape, inputTensorShape.Length));
     }
 
     public void AllocateTensors() {
-      ThrowIfError(TFL_InterpreterAllocateTensors(handle));
+      ThrowIfError(TFL_InterpreterAllocateTensors(interpreter));
     }
 
     public int GetOutputTensorCount() {
-      return TFL_InterpreterGetOutputTensorCount(handle);
+      return TFL_InterpreterGetOutputTensorCount(interpreter);
     }
 
     public void GetOutputTensorData(int outputTensorIndex, Array outputTensorData) {
       GCHandle tensorDataHandle = GCHandle.Alloc(outputTensorData, GCHandleType.Pinned);
       IntPtr tensorDataPtr = tensorDataHandle.AddrOfPinnedObject();
-      TFL_Tensor tensor = TFL_InterpreterGetOutputTensor(handle, outputTensorIndex);
+      TFL_Tensor tensor = TFL_InterpreterGetOutputTensor(interpreter, outputTensorIndex);
       ThrowIfError(TFL_TensorCopyToBuffer(
           tensor, tensorDataPtr, Buffer.ByteLength(outputTensorData)));
     }

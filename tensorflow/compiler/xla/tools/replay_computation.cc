@@ -160,7 +160,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   // concurrent infeed occur via the fake_infeed_shape, or when
   // --generate_fake_infeed is passed and there exists an infeed operation in
   // the HloSnapshot.
-  tensorflow::gtl::optional<tensorflow::thread::ThreadPool> pool;
+  absl::optional<tensorflow::thread::ThreadPool> pool;
   std::unique_ptr<Literal> data;
   if (provide_infeed) {
     data = std::move(MakeFakeLiteral(infeed_shape)).ValueOrDie();
@@ -196,7 +196,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   StreamExecutorMemoryAllocator allocator(
       client->platform(),
       {client->platform()->ExecutorForDevice(0).ValueOrDie()});
-  tensorflow::gtl::optional<ScopedShapedBuffer> result;
+  absl::optional<ScopedShapedBuffer> result;
   for (int i = 0; i < opts.num_runs; ++i) {
     // If xla_hlo_profile is enabled, print a noisy message before the last run,
     // making it easier to separate this profile from the others in the logspam.
@@ -250,7 +250,7 @@ StatusOr<HloSnapshot> ParseInputFile(const string& filename,
   }
   fprintf(stderr, "%s: is not HLO text.  Nothing left to try.\n",
           filename.c_str());
-  return InvalidArgument("Could not parse %s.", filename.c_str());
+  return InvalidArgument("Could not parse %s.", filename);
 }
 
 int RealMain(tensorflow::gtl::ArraySlice<char*> args, const Options& opts) {
@@ -345,6 +345,6 @@ int main(int argc, char** argv) {
   }
 
   tensorflow::gtl::ArraySlice<char*> args(argv, argc);
-  args.pop_front();  // Pop off the binary name, argv[0]
+  args.remove_prefix(1);  // Pop off the binary name, argv[0]
   return xla::tools::RealMain(args, opts);
 }

@@ -21,8 +21,8 @@ limitations under the License.
 #include <stdlib.h>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/test.h"
@@ -106,8 +106,8 @@ TEST(ParseFlagsFromEnv, File) {
   if (tmp_dir == nullptr) {
     tmp_dir = kTempDir;
   }
-  string tmp_file = tensorflow::strings::Printf("%s/parse_flags_from_env.%d",
-                                                tmp_dir, getpid());
+  string tmp_file =
+      absl::StrFormat("%s/parse_flags_from_env.%d", tmp_dir, getpid());
   FILE* fp = fopen(tmp_file.c_str(), "w");
   CHECK_NE(fp, nullptr) << "can't write to " << tmp_file;
   for (int i = 0; kTestFlagString[i] != '\0'; i++) {

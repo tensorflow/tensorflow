@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_PATTERN_MATCHER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_PATTERN_MATCHER_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace xla {
 
@@ -622,7 +622,7 @@ template <typename Previous>
 class HloInstructionPatternNameImpl {
  public:
   explicit HloInstructionPatternNameImpl(const Previous& previous,
-                                         tensorflow::StringPiece name)
+                                         absl::string_view name)
       : previous_(previous), name_(name) {}
 
   bool Match(const ::xla::HloInstruction* inst) const {
@@ -631,7 +631,7 @@ class HloInstructionPatternNameImpl {
 
  private:
   Previous previous_;
-  tensorflow::StringPiece name_;
+  absl::string_view name_;
 };
 
 // An HloInstructionPattern implementation that matches only if the instruction
@@ -784,7 +784,7 @@ class HloInstructionPattern {
 
   // Modifies the pattern to match only if the instruction has the given name.
   HloInstructionPattern<HloInstructionType, HloInstructionPatternNameImpl<Impl>>
-  WithName(tensorflow::StringPiece name) const {
+  WithName(absl::string_view name) const {
     return HloInstructionPattern<HloInstructionType,
                                  HloInstructionPatternNameImpl<Impl>>(
         HloInstructionPatternNameImpl<Impl>(impl_, name), matched_inst_);
@@ -918,6 +918,7 @@ Op(::xla::HloInstruction** matched_inst) {
   }
 XLA_NULLOP_PATTERN(Constant)
 XLA_NULLOP_PATTERN(Parameter)
+XLA_NULLOP_PATTERN(Iota)
 #undef XLA_NULLOP_PATTERN
 
 // Helpers for unary instructions.

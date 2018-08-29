@@ -68,7 +68,7 @@ class EmbeddingTest(test.TestCase):
         expected_output_dtype='float32')
 
   def test_embedding_correctness(self):
-    with self.test_session():
+    with self.cached_session():
       layer = keras.layers.Embedding(output_dim=2, input_dim=2)
       layer.build((None, 2))
       matrix = np.array([[1, 1], [2, 2]])

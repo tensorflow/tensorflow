@@ -24,6 +24,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_clone_context.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
@@ -142,7 +142,7 @@ class HloModule {
 
   // Returns the computation in this module that has the name `name`.  Returns
   // null if there is no such computation.
-  HloComputation* GetComputationWithName(tensorflow::StringPiece name);
+  HloComputation* GetComputationWithName(absl::string_view name);
 
   // Gets the number of computations in this module.
   int64 computation_count() const { return computations_.size(); }

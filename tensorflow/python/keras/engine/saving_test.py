@@ -687,7 +687,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
 
   def test_keras_optimizer_warning(self):
     graph = ops.Graph()
-    with graph.as_default(), self.test_session(graph):
+    with graph.as_default(), self.session(graph):
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.Dense(3))
@@ -741,7 +741,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
   def test_no_graph_pollution(self):
     with context.graph_mode():
       graph = ops.Graph()
-      with graph.as_default(), self.test_session(graph) as session:
+      with graph.as_default(), self.session(graph) as session:
         model = SubclassedModel()
         temp_dir = self.get_temp_dir()
         prefix = os.path.join(temp_dir, 'ckpt')

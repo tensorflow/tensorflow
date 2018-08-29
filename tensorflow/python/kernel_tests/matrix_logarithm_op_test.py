@@ -30,6 +30,7 @@ from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.linalg import linalg_impl
 from tensorflow.python.platform import test
 
 
@@ -39,7 +40,7 @@ class LogarithmOpTest(test.TestCase):
     inp = x.astype(np_type)
     with self.test_session(use_gpu=True):
       # Verify that expm(logm(A)) == A.
-      tf_ans = gen_linalg_ops.matrix_exponential(
+      tf_ans = linalg_impl.matrix_exponential(
           gen_linalg_ops.matrix_logarithm(inp))
       out = tf_ans.eval()
       self.assertAllClose(inp, out, rtol=1e-4, atol=1e-3)
@@ -98,16 +99,25 @@ class LogarithmOpTest(test.TestCase):
     self._verifyLogarithmComplex(np.empty([0, 2, 2], dtype=np.complex64))
     self._verifyLogarithmComplex(np.empty([2, 0, 0], dtype=np.complex64))
 
-  def testRandomSmallAndLarge(self):
+  def testRandomSmallAndLargeComplex64(self):
     np.random.seed(42)
-    for dtype in np.complex64, np.complex128:
-      for batch_dims in [(), (1,), (3,), (2, 2)]:
-        for size in 8, 31, 32:
-          shape = batch_dims + (size, size)
-          matrix = np.random.uniform(
-              low=-1.0, high=1.0,
-              size=np.prod(shape)).reshape(shape).astype(dtype)
-          self._verifyLogarithmComplex(matrix)
+    for batch_dims in [(), (1,), (3,), (2, 2)]:
+      for size in 8, 31, 32:
+        shape = batch_dims + (size, size)
+        matrix = np.random.uniform(
+            low=-1.0, high=1.0,
+            size=np.prod(shape)).reshape(shape).astype(np.complex64)
+        self._verifyLogarithmComplex(matrix)
+
+  def testRandomSmallAndLargeComplex128(self):
+    np.random.seed(42)
+    for batch_dims in [(), (1,), (3,), (2, 2)]:
+      for size in 8, 31, 32:
+        shape = batch_dims + (size, size)
+        matrix = np.random.uniform(
+            low=-1.0, high=1.0,
+            size=np.prod(shape)).reshape(shape).astype(np.complex128)
+        self._verifyLogarithmComplex(matrix)
 
   def testConcurrentExecutesWithoutError(self):
     with self.test_session(use_gpu=True) as sess:

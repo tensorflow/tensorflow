@@ -16,6 +16,7 @@ config_setting(
 py_binary(
     name = "predict",
     srcs = ["predict.py"],
+    data = ["data/period_trend.csv"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = select({

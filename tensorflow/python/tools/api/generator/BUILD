@@ -14,14 +14,13 @@ exports_files(
     ],
 )
 
-py_binary(
+py_library(
     name = "create_python_api",
     srcs = ["//tensorflow/python/tools/api/generator:create_python_api.py"],
-    main = "//tensorflow/python/tools/api/generator:create_python_api.py",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python:no_contrib",
+        "//tensorflow/python:util",
         "//tensorflow/python/tools/api/generator:doc_srcs",
     ],
 )

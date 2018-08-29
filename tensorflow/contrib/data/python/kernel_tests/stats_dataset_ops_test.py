@@ -190,7 +190,7 @@ class FeatureStatsDatasetTest(
         batch_size=batch_size,
         shuffle=True,
         shuffle_seed=5,
-        drop_final_batch=True).apply(
+        drop_final_batch=False).apply(
             stats_ops.set_stats_aggregator(stats_aggregator))
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
@@ -198,7 +198,8 @@ class FeatureStatsDatasetTest(
 
     with self.test_session() as sess:
       sess.run(iterator.initializer)
-      for _ in range(total_records // batch_size):
+      for _ in range(total_records // batch_size + 1 if total_records %
+                     batch_size else total_records // batch_size):
         sess.run(next_element)
 
       with self.assertRaises(errors.OutOfRangeError):

@@ -92,24 +92,33 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       DatasetGraphDefBuilder db(&b);
       Node* input_node = nullptr;
       SerializationContext::Params params;
+      params.allow_stateful_functions = true;
       params.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
       SerializationContext serialization_ctx(params);
       TF_RETURN_IF_ERROR(
           db.AddInputDataset(&serialization_ctx, input_, &input_node));
       string output_node = input_node->name();
+
       GraphDef graph_def;
       TF_RETURN_IF_ERROR(b.ToGraphDef(&graph_def));
       VLOG(3) << "Before optimization: " << graph_def.DebugString();
+
       TF_RETURN_IF_ERROR(ApplyOptimizations(ctx, &graph_def, &output_node));
       VLOG(3) << "After optimization: " << graph_def.DebugString();
-      flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(),
-                                                    graph_def.library()));
+
+      // Instantiate the optimized input pipeline by running the optimized graph
+      // using the optimized function library.
+      TF_RETURN_IF_ERROR(
+          ctx->function_library()->Clone(&flib_def_, &pflr_, &lib_));
+      TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph_def.library()));
+
       Graph graph(OpRegistry::Global());
       TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, nullptr));
       std::vector<Tensor> outputs;
       GraphRunner graph_runner(ctx->function_library()->device());
-      TF_RETURN_IF_ERROR(graph_runner.Run(&graph, ctx->function_library(), {},
-                                          {output_node}, &outputs));
+
+      TF_RETURN_IF_ERROR(
+          graph_runner.Run(&graph, lib_, {}, {output_node}, &outputs));
       TF_RETURN_IF_ERROR(
           GetDatasetFromVariantTensor(outputs[0], &optimized_input_));
       optimized_input_->Ref();
@@ -142,8 +151,14 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->optimized_input_->MakeIterator(ctx, prefix(),
-                                                         &input_impl_);
+        IteratorContext::Params params;
+        params.env = ctx->env();
+        params.runner = *(ctx->runner());
+        params.stats_aggregator_getter = ctx->stats_aggregator_getter();
+        params.lib = dataset()->lib_;
+        params.allocator_getter = ctx->allocator_getter();
+        return dataset()->optimized_input_->MakeIterator(
+            IteratorContext(params), prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -153,8 +168,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
         params.env = ctx->env();
         params.runner = *(ctx->runner());
         params.stats_aggregator_getter = ctx->stats_aggregator_getter();
-        params.lib = ctx->lib();
-        params.function_library = dataset()->flib_def_;
+        params.lib = dataset()->lib_;
         params.allocator_getter = ctx->allocator_getter();
         IteratorContext iter_ctx(params);
         return input_impl_->GetNext(&iter_ctx, out_tensors, end_of_sequence);
@@ -236,7 +250,9 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
     }
 
     DatasetBase* optimized_input_;
-    std::shared_ptr<FunctionLibraryDefinition> flib_def_;
+    FunctionLibraryRuntime* lib_ = nullptr;
+    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_ = nullptr;
+    std::unique_ptr<FunctionLibraryDefinition> flib_def_ = nullptr;
     const DatasetBase* input_;
     const std::vector<string> optimizations_;
     const DataTypeVector output_types_;

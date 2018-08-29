@@ -24,17 +24,20 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -54,7 +57,7 @@ Status WithLogBacktrace(const Status& status);
 // the InlinedVector will just behave like an std::vector<> and allocate the
 // memory to store its values.
 static constexpr int kInlineRank = 8;
-using DimensionVector = tensorflow::gtl::InlinedVector<int64, kInlineRank>;
+using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
 
 // RAII timer that logs with a given label the wall clock time duration in human
 // readable form. This differs from base's ElapsedTimer primarily in that it
@@ -201,46 +204,76 @@ void StridedCopy(tensorflow::gtl::MutableArraySlice<D> dest, int64 dest_base,
 // Adds some context information to the error message in a
 // Status.  This is useful as Statuses are
 // propagated upwards.
-Status AddStatus(Status prior, tensorflow::StringPiece context);
-Status AppendStatus(Status prior, tensorflow::StringPiece context);
+Status AddStatus(Status prior, absl::string_view context);
+Status AppendStatus(Status prior, absl::string_view context);
 
-// Status error shorthands -- printfs the arguments to be
-// used as an error message and returns a status in the canonical
-// error space.
-Status InvalidArgument(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status Unimplemented(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status InternalError(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status FailedPrecondition(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status Cancelled(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status ResourceExhausted(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status NotFound(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status Unavailable(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-
-// Passed-varargs variant of the InvalidArgument factory above.
-Status InvalidArgumentV(const char* format, va_list args);
+// Status error shorthands -- StrFormat's the arguments to be used as an error
+// message and returns a status in the canonical error space.
+template <typename... Args>
+Status InvalidArgument(const absl::FormatSpec<Args...>& format,
+                       const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::InvalidArgument(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status Unimplemented(const absl::FormatSpec<Args...>& format,
+                     const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Unimplemented(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status InternalError(const absl::FormatSpec<Args...>& format,
+                     const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Internal(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status FailedPrecondition(const absl::FormatSpec<Args...>& format,
+                          const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::FailedPrecondition(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status Cancelled(const absl::FormatSpec<Args...>& format, const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Cancelled(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status ResourceExhausted(const absl::FormatSpec<Args...>& format,
+                         const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::ResourceExhausted(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status NotFound(const absl::FormatSpec<Args...>& format, const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::NotFound(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status Unavailable(const absl::FormatSpec<Args...>& format,
+                   const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Unavailable(absl::StrFormat(format, args...)));
+}
 
 template <typename... Args>
 Status InvalidArgumentStrCat(Args&&... concat) {
-  return InvalidArgument(
-      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+  return InvalidArgument("%s", absl::StrCat(std::forward<Args>(concat)...));
 }
 
 template <typename... Args>
 Status UnimplementedStrCat(Args&&... concat) {
-  return Unimplemented(
-      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+  return Unimplemented("%s", absl::StrCat(std::forward<Args>(concat)...));
 }
 
 template <typename... Args>
 Status InternalErrorStrCat(Args&&... concat) {
-  return InternalError(
-      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+  return InternalError("%s", absl::StrCat(std::forward<Args>(concat)...));
 }
 
 template <typename... Args>
 Status ResourceExhaustedStrCat(Args&&... concat) {
-  return ResourceExhausted(
-      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+  return ResourceExhausted("%s", absl::StrCat(std::forward<Args>(concat)...));
 }
 
 // Splits the lines of the original, replaces leading whitespace with the prefix
@@ -249,8 +282,7 @@ Status ResourceExhaustedStrCat(Args&&... concat) {
 //
 // Note: even different amounts of leading whitespace on different lines will be
 // uniformly replaced with "indentation".
-string Reindent(tensorflow::StringPiece original,
-                tensorflow::StringPiece indentation);
+string Reindent(absl::string_view original, absl::string_view indentation);
 
 // Checks whether permutation is a permutation of the [0, rank) integer range.
 bool IsPermutation(tensorflow::gtl::ArraySlice<int64> permutation, int64 rank);
@@ -312,7 +344,7 @@ string CommaSeparatedString(const Container& c, const char* prefix = "",
   string comma_separated = prefix;
   const char* separator = "";
   for (const auto& entry : c) {
-    tensorflow::strings::StrAppend(&comma_separated, separator, entry);
+    absl::StrAppend(&comma_separated, separator, entry);
     separator = ", ";
   }
   comma_separated += suffix;
@@ -394,8 +426,7 @@ string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
 
 // Split the text into multiple lines and log each line with the given
 // severity, filename, and line number.
-void LogLines(int sev, tensorflow::StringPiece text, const char* fname,
-              int lineno);
+void LogLines(int sev, absl::string_view text, const char* fname, int lineno);
 
 template <typename T>
 inline bool IsPowerOfTwo(T x) {
@@ -434,122 +465,15 @@ std::vector<std::pair<int64, int64>> CommonFactors(
 // Removes illegal characters from filenames.
 string SanitizeFileName(string file_name);
 
-template <typename Container, typename Predicate>
-bool c_all_of(const Container& container, Predicate&& predicate) {
-  return std::all_of(std::begin(container), std::end(container),
-                     std::forward<Predicate>(predicate));
-}
-
-template <typename Container, typename Predicate>
-bool c_any_of(const Container& container, Predicate&& predicate) {
-  return std::any_of(std::begin(container), std::end(container),
-                     std::forward<Predicate>(predicate));
-}
-
-template <typename InputContainer, typename OutputIterator,
-          typename UnaryOperation>
-OutputIterator c_transform(const InputContainer& input_container,
-                           OutputIterator output_iterator,
-                           UnaryOperation&& unary_op) {
-  return std::transform(std::begin(input_container), std::end(input_container),
-                        output_iterator,
-                        std::forward<UnaryOperation>(unary_op));
-}
-
-template <class InputContainer, class OutputIterator, class UnaryPredicate>
-OutputIterator c_copy_if(const InputContainer& input_container,
-                         OutputIterator output_iterator,
-                         UnaryPredicate&& predicate) {
-  return std::copy_if(std::begin(input_container), std::end(input_container),
-                      output_iterator, std::forward<UnaryPredicate>(predicate));
-}
-
-template <class InputContainer, class OutputIterator>
-OutputIterator c_copy(const InputContainer& input_container,
-                      OutputIterator output_iterator) {
-  return std::copy(std::begin(input_container), std::end(input_container),
-                   output_iterator);
-}
-
-template <class InputContainer>
-void c_sort(InputContainer& input_container) {
-  std::sort(std::begin(input_container), std::end(input_container));
-}
-
-template <class InputContainer, class Comparator>
-void c_sort(InputContainer& input_container, Comparator&& comparator) {
-  std::sort(std::begin(input_container), std::end(input_container),
-            std::forward<Comparator>(comparator));
-}
-
-template <typename Sequence, typename T>
-bool c_binary_search(const Sequence& sequence, T&& value) {
-  return std::binary_search(std::begin(sequence), std::end(sequence),
-                            std::forward<T>(value));
-}
-
-template <typename C>
-bool c_is_sorted(const C& c) {
-  return std::is_sorted(std::begin(c), std::end(c));
-}
-
-template <typename C, typename Compare>
-bool c_is_sorted(const C& c, Compare&& comp) {
-  return std::is_sorted(std::begin(c), std::end(c),
-                        std::forward<Compare>(comp));
-}
-
-template <typename C>
-auto c_adjacent_find(C& c) -> decltype(std::begin(c)) {
-  return std::adjacent_find(std::begin(c), std::end(c));
-}
-
-template <typename C, typename Pred>
-auto c_find_if(C& c, Pred&& pred) -> decltype(std::begin(c)) {
-  return std::find_if(std::begin(c), std::end(c), std::forward<Pred>(pred));
-}
-
-template <typename C, typename Value>
-auto c_find(C& c, Value&& value) -> decltype(std::begin(c)) {
-  return std::find(std::begin(c), std::end(c), std::forward<Value>(value));
-}
-
-template <typename Sequence>
-void c_reverse(Sequence& sequence) {
-  std::reverse(std::begin(sequence), std::end(sequence));
-}
-
-template <typename Sequence, typename T, typename BinaryOp>
-typename std::decay<T>::type c_accumulate(const Sequence& sequence, T&& init,
-                                          BinaryOp&& binary_op) {
-  return std::accumulate(std::begin(sequence), std::end(sequence),
-                         std::forward<T>(init),
-                         std::forward<BinaryOp>(binary_op));
-}
-
-template <typename C, typename Pred>
-typename std::iterator_traits<
-    decltype(std::begin(std::declval<C>()))>::difference_type
-c_count_if(const C& c, Pred&& pred) {
-  return std::count_if(std::begin(c), std::end(c), std::forward<Pred>(pred));
-}
-
-// Determines whether `value` is present in `c`.
-template <typename C, typename T>
-bool c_linear_search(const C& c, T&& value) {
-  auto last = std::end(c);
-  return std::find(std::begin(c), last, std::forward<T>(value)) != last;
-}
-
 template <typename C, typename Value>
 int64 FindIndex(const C& c, Value&& value) {
-  auto it = c_find(c, std::forward<Value>(value));
+  auto it = absl::c_find(c, std::forward<Value>(value));
   return std::distance(c.begin(), it);
 }
 
 template <typename T>
 bool ArrayContains(tensorflow::gtl::ArraySlice<T> c, const T& value) {
-  return c_find(c, value) != c.end();
+  return absl::c_find(c, value) != c.end();
 }
 
 template <typename C, typename Value>
@@ -567,9 +491,9 @@ std::vector<T> ArraySliceToVector(tensorflow::gtl::ArraySlice<T> slice) {
   return std::vector<T>(slice.begin(), slice.end());
 }
 
-template <typename T, int N>
+template <typename T, size_t N>
 std::vector<T> InlinedVectorToVector(
-    const tensorflow::gtl::InlinedVector<T, N>& inlined_vector) {
+    const absl::InlinedVector<T, N>& inlined_vector) {
   return std::vector<T>(inlined_vector.begin(), inlined_vector.end());
 }
 
@@ -584,8 +508,8 @@ bool IsInt32(T x) {
 
 template <typename T>
 Status EraseElementFromVector(std::vector<T>* container, const T& value) {
-  // c_find returns a const_iterator which does not seem to work on gcc 4.8.4,
-  // and this breaks the ubuntu/xla_gpu build bot.
+  // absl::c_find returns a const_iterator which does not seem to work on
+  // gcc 4.8.4, and this breaks the ubuntu/xla_gpu build bot.
   auto it = std::find(container->begin(), container->end(), value);
   TF_RET_CHECK(it != container->end());
   container->erase(it);

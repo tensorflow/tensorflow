@@ -28,7 +28,7 @@ from tensorflow.python.platform import test
 class BinomialTest(test.TestCase):
 
   def testSimpleShapes(self):
-    with self.test_session():
+    with self.cached_session():
       p = np.float32(np.random.beta(1, 1))
       binom = binomial.Binomial(total_count=1., probs=p)
       self.assertAllEqual([], binom.event_shape_tensor().eval())
@@ -37,7 +37,7 @@ class BinomialTest(test.TestCase):
       self.assertEqual(tensor_shape.TensorShape([]), binom.batch_shape)
 
   def testComplexShapes(self):
-    with self.test_session():
+    with self.cached_session():
       p = np.random.beta(1, 1, size=(3, 2)).astype(np.float32)
       n = [[3., 2], [4, 5], [6, 7]]
       binom = binomial.Binomial(total_count=n, probs=p)
@@ -50,14 +50,14 @@ class BinomialTest(test.TestCase):
   def testNProperty(self):
     p = [[0.1, 0.2, 0.7], [0.2, 0.3, 0.5]]
     n = [[3.], [4]]
-    with self.test_session():
+    with self.cached_session():
       binom = binomial.Binomial(total_count=n, probs=p)
       self.assertEqual((2, 1), binom.total_count.get_shape())
       self.assertAllClose(n, binom.total_count.eval())
 
   def testPProperty(self):
     p = [[0.1, 0.2, 0.7]]
-    with self.test_session():
+    with self.cached_session():
       binom = binomial.Binomial(total_count=3., probs=p)
       self.assertEqual((1, 3), binom.probs.get_shape())
       self.assertEqual((1, 3), binom.logits.get_shape())
@@ -65,7 +65,7 @@ class BinomialTest(test.TestCase):
 
   def testLogitsProperty(self):
     logits = [[0., 9., -0.5]]
-    with self.test_session():
+    with self.cached_session():
       binom = binomial.Binomial(total_count=3., logits=logits)
       self.assertEqual((1, 3), binom.probs.get_shape())
       self.assertEqual((1, 3), binom.logits.get_shape())
@@ -74,7 +74,7 @@ class BinomialTest(test.TestCase):
   def testPmfAndCdfNandCountsAgree(self):
     p = [[0.1, 0.2, 0.7]]
     n = [[5.]]
-    with self.test_session():
+    with self.cached_session():
       binom = binomial.Binomial(total_count=n, probs=p, validate_args=True)
       binom.prob([2., 3, 2]).eval()
       binom.prob([3., 1, 2]).eval()
@@ -92,7 +92,7 @@ class BinomialTest(test.TestCase):
   def testPmfAndCdfNonIntegerCounts(self):
     p = [[0.1, 0.2, 0.7]]
     n = [[5.]]
-    with self.test_session():
+    with self.cached_session():
       # No errors with integer n.
       binom = binomial.Binomial(total_count=n, probs=p, validate_args=True)
       binom.prob([2., 3, 2]).eval()
@@ -116,7 +116,7 @@ class BinomialTest(test.TestCase):
       binom.cdf([1.0, 2.5, 1.5]).eval()
 
   def testPmfAndCdfBothZeroBatches(self):
-    with self.test_session():
+    with self.cached_session():
       # Both zero-batches.  No broadcast
       p = 0.5
       counts = 1.
@@ -129,7 +129,7 @@ class BinomialTest(test.TestCase):
       self.assertEqual((), cdf.get_shape())
 
   def testPmfAndCdfBothZeroBatchesNontrivialN(self):
-    with self.test_session():
+    with self.cached_session():
       # Both zero-batches.  No broadcast
       p = 0.1
       counts = 3.
@@ -142,7 +142,7 @@ class BinomialTest(test.TestCase):
       self.assertEqual((), cdf.get_shape())
 
   def testPmfAndCdfPStretchedInBroadcastWhenSameRank(self):
-    with self.test_session():
+    with self.cached_session():
       p = [[0.1, 0.9]]
       counts = [[1., 2.]]
       binom = binomial.Binomial(total_count=3., probs=p)
@@ -154,7 +154,7 @@ class BinomialTest(test.TestCase):
       self.assertEqual((1, 2), cdf.get_shape())
 
   def testPmfAndCdfPStretchedInBroadcastWhenLowerRank(self):
-    with self.test_session():
+    with self.cached_session():
       p = [0.1, 0.4]
       counts = [[1.], [0.]]
       binom = binomial.Binomial(total_count=1., probs=p)
@@ -166,7 +166,7 @@ class BinomialTest(test.TestCase):
       self.assertEqual((2, 2), cdf.get_shape())
 
   def testBinomialMean(self):
-    with self.test_session():
+    with self.cached_session():
       n = 5.
       p = [0.1, 0.2, 0.7]
       binom = binomial.Binomial(total_count=n, probs=p)
@@ -175,7 +175,7 @@ class BinomialTest(test.TestCase):
       self.assertAllClose(expected_means, binom.mean().eval())
 
   def testBinomialVariance(self):
-    with self.test_session():
+    with self.cached_session():
       n = 5.
       p = [0.1, 0.2, 0.7]
       binom = binomial.Binomial(total_count=n, probs=p)
@@ -184,7 +184,7 @@ class BinomialTest(test.TestCase):
       self.assertAllClose(expected_variances, binom.variance().eval())
 
   def testBinomialMode(self):
-    with self.test_session():
+    with self.cached_session():
       n = 5.
       p = [0.1, 0.2, 0.7]
       binom = binomial.Binomial(total_count=n, probs=p)
@@ -193,7 +193,7 @@ class BinomialTest(test.TestCase):
       self.assertAllClose(expected_modes, binom.mode().eval())
 
   def testBinomialMultipleMode(self):
-    with self.test_session():
+    with self.cached_session():
       n = 9.
       p = [0.1, 0.2, 0.7]
       binom = binomial.Binomial(total_count=n, probs=p)

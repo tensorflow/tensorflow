@@ -22,6 +22,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -35,9 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
@@ -171,20 +171,18 @@ Status CpuExecutable::ExecuteComputeFunction(
   void* result_buffer = buffer_pointers[result_slice.index()];
   if (VLOG_IS_ON(3)) {
     VLOG(3) << "Executing compute function:";
-    VLOG(3) << tensorflow::strings::Printf(
-        "  func(void* result, void* params[null], void* temps[%zu], "
-        "uint64 profile_counters[%zu])",
+    VLOG(3) << absl::StrFormat(
+        "  func(void* result, void* params[null], void* temps[%u], "
+        "uint64 profile_counters[%u])",
         buffer_pointers.size(), profile_counters_size);
-    VLOG(3) << tensorflow::strings::Printf("    result = %p", result_buffer);
+    VLOG(3) << absl::StrFormat("    result = %p", result_buffer);
     auto ptr_printer = [](string* out, const void* p) {
-      tensorflow::strings::StrAppend(out, tensorflow::strings::Printf("%p", p));
+      absl::StrAppend(out, absl::StrFormat("%p", p));
     };
     VLOG(3) << "    params = nullptr";
-    VLOG(3) << tensorflow::strings::Printf(
-        "    temps = [%s]",
-        tensorflow::str_util::Join(buffer_pointers, ", ", ptr_printer).c_str());
-    VLOG(3) << tensorflow::strings::Printf("    profile_counters = %p",
-                                           profile_counters);
+    VLOG(3) << absl::StrFormat(
+        "    temps = [%s]", absl::StrJoin(buffer_pointers, ", ", ptr_printer));
+    VLOG(3) << absl::StrFormat("    profile_counters = %p", profile_counters);
   }
 
   compute_function_(result_buffer, run_options, nullptr, buffer_pointers.data(),

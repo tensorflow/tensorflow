@@ -1,5 +1,4 @@
-# Description:
-#   BUILD rules for generating flatbuffer files.
+"""BUILD rules for generating flatbuffer files."""
 
 flatc_path = "@flatbuffers//:flatc"
 

@@ -119,7 +119,7 @@ class ScatterNdTest(xla_test.XLATestCase):
         self._VariableRankTest(np_scatter, tf_scatter, vtype, itype)
 
   def _runScatterNd(self, indices, updates, shape):
-    with self.test_session():
+    with self.cached_session():
       updates_placeholder = array_ops.placeholder(updates.dtype)
       indices_placeholder = array_ops.placeholder(indices.dtype)
       with self.test_scope():

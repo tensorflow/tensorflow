@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_DOT_OP_EMITTER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_DOT_OP_EMITTER_H_
 
+#include "absl/strings/string_view.h"
 #include "llvm/IR/IRBuilder.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -38,7 +38,7 @@ bool PotentiallyImplementedAsEigenDot(
 // Returns the index for an operand to `hlo` that should ideally be column
 // major.  Returns nullopt if there is no such operand or if `hlo` is not a dot
 // or a fusion containing a dot.
-tensorflow::gtl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
+absl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo);
 
 // Returns true to indicate that we can generate a tiled LLVM IR implementation
@@ -121,7 +121,7 @@ class DotOpEmitter {
   // of rank 2 as well).
   MatMultDims GetMatMultDims() const;
 
-  bool EmitExperimentalGebpDotIfEnabled(const MatMultDims& mat_mult_dims);
+  bool EmitSmallGemmIfProfitable(const MatMultDims& mat_mult_dims);
 
   // When doing a tiled GEMV in LLVM IR, a "tile" consists of this many vector
   // registers.

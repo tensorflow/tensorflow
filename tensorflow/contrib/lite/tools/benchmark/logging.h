@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_LITE_TOOLS_LOGGING_H_
-#define TENSORFLOW_CONTRIB_LITE_TOOLS_LOGGING_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TOOLS_BENCHMARK_LOGGING_H_
+#define TENSORFLOW_CONTRIB_LITE_TOOLS_BENCHMARK_LOGGING_H_
 
 // LOG and CHECK macros for benchmarks.
 

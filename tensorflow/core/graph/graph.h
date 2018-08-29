@@ -680,10 +680,6 @@ class Graph {
   // AddWhileContext() or Node::while_ctx(), but this manages the lifetime.
   std::map<string, WhileContext> while_ctxs_;
 
-  // Searches through edges_ for the Edge whose destination node and index
-  // matches dst. An edge with destination `dst` must exist in the graph.
-  const Edge* FindEdge(const Node* dst, int index);
-
   TF_DISALLOW_COPY_AND_ASSIGN(Graph);
 };
 

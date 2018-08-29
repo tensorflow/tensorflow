@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/reference_util.h"
@@ -51,8 +52,11 @@ static std::array<bool, 2> use_bf16_params{true, false};
 class HloEvaluatorTest : public ::testing::WithParamInterface<bool>,
                          public HloVerifiedTestBase {
  protected:
-  HloEvaluatorTest() : use_bfloat16_(GetParam()) {
-    evaluator_ = MakeUnique<HloEvaluator>();
+  HloEvaluatorTest()
+      : HloVerifiedTestBase(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false),
+        use_bfloat16_(GetParam()) {
+    evaluator_ = absl::make_unique<HloEvaluator>();
   }
 
   std::unique_ptr<Literal> Evaluate(
@@ -523,7 +527,7 @@ TEST_P(HloEvaluatorTest, Pad4DFloatArrayWithInteriorPadding) {
 
   std::unique_ptr<Literal> result = Evaluate();
 
-  auto expected_array = MakeUnique<Array4D<float>>(8, 5, 1, 1);
+  auto expected_array = absl::make_unique<Array4D<float>>(8, 5, 1, 1);
   expected_array->Fill(kPadValue);
   (*expected_array)(1, 0, 0, 0) = 1.0f;
   (*expected_array)(1, 2, 0, 0) = 2.0f;
@@ -547,7 +551,7 @@ TEST_P(HloEvaluatorTest, NegativePadding2D) {
   //  { 9, 10, 11 },
   //  { 13, 14, 15 },
   // }
-  auto input_array = MakeUnique<Array2D<float>>(4, 3);
+  auto input_array = absl::make_unique<Array2D<float>>(4, 3);
   input_array->FillUnique(1.0f);
   auto input = LiteralUtil::CreateR2FromArray2D<float>(*input_array);
   HloInstruction* input_instruction =
@@ -568,7 +572,7 @@ TEST_P(HloEvaluatorTest, NegativePadding2D) {
   std::unique_ptr<Literal> result = Evaluate();
 
   // f32[1,5] { 7.0, 2.718, 2.718, 2.718, 2.718 }
-  auto expected_array = MakeUnique<Array2D<float>>(1, 5);
+  auto expected_array = absl::make_unique<Array2D<float>>(1, 5);
   (*expected_array)(0, 0) = 7.0f;
   (*expected_array)(0, 1) = 2.718f;
   (*expected_array)(0, 2) = 2.718f;
@@ -588,7 +592,7 @@ TEST_P(HloEvaluatorTest, NegativeAndInteriorPadding2D) {
   //  { 9, 10, 11 },
   //  { 13, 14, 15 },
   // }
-  auto input_array = MakeUnique<Array2D<float>>(4, 3);
+  auto input_array = absl::make_unique<Array2D<float>>(4, 3);
   input_array->FillUnique(1.0f);
   auto input = LiteralUtil::CreateR2FromArray2D<float>(*input_array);
   HloInstruction* input_instruction =
@@ -612,7 +616,7 @@ TEST_P(HloEvaluatorTest, NegativeAndInteriorPadding2D) {
 
   std::unique_ptr<Literal> result = Evaluate();
 
-  auto expected_array = MakeUnique<Array2D<float>>(0, 9);
+  auto expected_array = absl::make_unique<Array2D<float>>(0, 9);
   auto expected = LiteralUtil::CreateR2FromArray2D<float>(*expected_array);
 
   EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
@@ -628,7 +632,7 @@ TEST_P(HloEvaluatorTest, DotRank2AndRank1) {
   //  { 3 },
   //  { 4 },
   // }
-  auto lhs_array = MakeUnique<Array2D<float>>(4, 1);
+  auto lhs_array = absl::make_unique<Array2D<float>>(4, 1);
   lhs_array->FillUnique(1.0f);
   auto lhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*lhs_array);
   HloInstruction* lhs_instruction =
@@ -679,7 +683,7 @@ TEST_P(HloEvaluatorTest, DotRank1AndRank2) {
   //  { 3, 4 },
   //  { 5, 6 },
   // }
-  auto rhs_array = MakeUnique<Array2D<float>>(3, 2);
+  auto rhs_array = absl::make_unique<Array2D<float>>(3, 2);
   rhs_array->FillUnique(1.0f);
   auto rhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*rhs_array);
   HloInstruction* rhs_instruction =
@@ -710,7 +714,7 @@ TEST_P(HloEvaluatorTest, DotRank2AndRank2) {
   //  { 9, 10, 11 },
   //  { 13, 14, 15 },
   // }
-  auto lhs_array = MakeUnique<Array2D<float>>(4, 3);
+  auto lhs_array = absl::make_unique<Array2D<float>>(4, 3);
   lhs_array->FillUnique(1.0f);
   auto lhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*lhs_array);
   HloInstruction* lhs_instruction =
@@ -722,7 +726,7 @@ TEST_P(HloEvaluatorTest, DotRank2AndRank2) {
   //  { 3, 4 },
   //  { 5, 6 },
   // }
-  auto rhs_array = MakeUnique<Array2D<float>>(3, 2);
+  auto rhs_array = absl::make_unique<Array2D<float>>(3, 2);
   rhs_array->FillUnique(1.0f);
   auto rhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*rhs_array);
   HloInstruction* rhs_instruction =
@@ -1215,7 +1219,12 @@ TEST_P(HloEvaluatorTest,
   EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
 }
 
-class HloEvaluatorPreciseReduceTest : public HloVerifiedTestBase {};
+class HloEvaluatorPreciseReduceTest : public HloVerifiedTestBase {
+ public:
+  HloEvaluatorPreciseReduceTest()
+      : HloVerifiedTestBase(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false) {}
+};
 
 // Tests that Reduce doesn't lose precision when adding many numbers (because
 // it accumulates its result in a double).
@@ -1297,7 +1306,7 @@ TEST_P(HloEvaluatorTest, ReduceAdd) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto arg_array = MakeUnique<Array2D<float>>(2, 3);
+  auto arg_array = absl::make_unique<Array2D<float>>(2, 3);
   arg_array->FillUnique(1.0f);
   auto arg_literal = LiteralUtil::CreateR2FromArray2D<float>(*arg_array);
 
@@ -1339,7 +1348,7 @@ TEST_P(HloEvaluatorTest, ReduceWindowMax) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto arg_array = MakeUnique<Array2D<float>>(2, 3);
+  auto arg_array = absl::make_unique<Array2D<float>>(2, 3);
   arg_array->FillUnique(1.0f);
   auto arg_literal = LiteralUtil::CreateR2FromArray2D<float>(*arg_array);
 
@@ -1390,7 +1399,7 @@ TEST_P(HloEvaluatorTest, ReduceWindowAdd) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto arg_array = MakeUnique<Array2D<float>>(2, 3);
+  auto arg_array = absl::make_unique<Array2D<float>>(2, 3);
   arg_array->FillUnique(1.0f);
   auto arg_literal = LiteralUtil::CreateR2FromArray2D<float>(*arg_array);
 
@@ -1511,7 +1520,7 @@ TEST_P(HloEvaluatorTest, StridedSlice) {
   //  { 9, 10, 11, 12, 13 },
   //  { 17, 18, 19, 20, 21 },
   // }
-  auto operand_array = MakeUnique<Array2D<float>>(3, 5);
+  auto operand_array = absl::make_unique<Array2D<float>>(3, 5);
   operand_array->FillUnique(1.0f);
   auto operand_literal =
       LiteralUtil::CreateR2FromArray2D<float>(*operand_array);
@@ -1544,7 +1553,7 @@ TEST_P(HloEvaluatorTest, DynamicSlice) {
   //  { 1, 2, 3, 4 },
   //  { 5, 6, 7, 8 },
   // }
-  auto operand_array = MakeUnique<Array2D<float>>(2, 4);
+  auto operand_array = absl::make_unique<Array2D<float>>(2, 4);
   operand_array->FillUnique(1.0f);
   auto operand_literal =
       LiteralUtil::CreateR2FromArray2D<float>(*operand_array);
@@ -1580,7 +1589,7 @@ TEST_P(HloEvaluatorTest, DynamicSliceModSlice) {
   //  { 1, 2, 3, 4 },
   //  { 5, 6, 7, 8 },
   // }
-  auto operand_array = MakeUnique<Array2D<float>>(2, 4);
+  auto operand_array = absl::make_unique<Array2D<float>>(2, 4);
   operand_array->FillUnique(1.0f);
   auto operand_literal =
       LiteralUtil::CreateR2FromArray2D<float>(*operand_array);
@@ -1614,7 +1623,7 @@ TEST_P(HloEvaluatorTest, DynamicSliceUpdate) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto operand_array = MakeUnique<Array2D<double>>(2, 3);
+  auto operand_array = absl::make_unique<Array2D<double>>(2, 3);
   operand_array->FillUnique(1.0);
   auto operand_literal =
       LiteralUtil::CreateR2FromArray2D<double>(*operand_array);
@@ -1651,7 +1660,7 @@ TEST_P(HloEvaluatorTest, SetAndGetTuples) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto operand_array = MakeUnique<Array2D<double>>(2, 3);
+  auto operand_array = absl::make_unique<Array2D<double>>(2, 3);
   operand_array->FillUnique(1.0);
   auto operand_literal2 =
       LiteralUtil::CreateR2FromArray2D<double>(*operand_array);
@@ -1687,7 +1696,7 @@ TEST_P(HloEvaluatorTest, SetAndGetNestedTuples) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto operand_array = MakeUnique<Array2D<double>>(2, 3);
+  auto operand_array = absl::make_unique<Array2D<double>>(2, 3);
   operand_array->FillUnique(1.0);
 
   HloInstruction* operand2 = b.AddInstruction(HloInstruction::CreateConstant(

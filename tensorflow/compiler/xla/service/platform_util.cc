@@ -19,19 +19,18 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/ascii.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
-
-using tensorflow::str_util::Lowercase;
 
 // Minimum supported CUDA compute capability is 3.5.
 constexpr int kMinCudaComputeCapabilityMajor = 3;
@@ -43,7 +42,7 @@ constexpr char kInterpreter[] = "interpreter";
 namespace {
 
 string CanonicalPlatformName(const string& name) {
-  string platform_str = Lowercase(name);
+  string platform_str = absl::AsciiStrToLower(name);
   // "cpu" and "host" mean the same thing.
   if (platform_str == "cpu") {
     platform_str = "host";
@@ -94,12 +93,12 @@ PlatformUtil::GetSupportedPlatforms() {
   }
 
   // Multiple platforms present and we can't pick a reasonable default.
-  string platforms_string = tensorflow::str_util::Join(
+  string platforms_string = absl::StrJoin(
       platforms, ", ",
       [](string* out, const se::Platform* p) { out->append(p->Name()); });
   return InvalidArgument(
       "must specify platform because more than one platform found: %s",
-      platforms_string.c_str());
+      platforms_string);
 }
 
 /* static */ StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
@@ -110,21 +109,21 @@ PlatformUtil::GetSupportedPlatforms() {
     return platforms[0];
   } else if (platforms.size() == 2) {
     for (int i = 0; i < 2; i++) {
-      if (Lowercase(platforms[i]->Name()) == kInterpreter &&
-          Lowercase(platforms[1 - i]->Name()) != kInterpreter) {
+      if (absl::AsciiStrToLower(platforms[i]->Name()) == kInterpreter &&
+          absl::AsciiStrToLower(platforms[1 - i]->Name()) != kInterpreter) {
         return platforms[1 - i];
       }
     }
   }
 
   // Multiple platforms present and we can't pick a reasonable default.
-  string platforms_string = tensorflow::str_util::Join(
+  string platforms_string = absl::StrJoin(
       platforms, ", ",
       [](string* out, const se::Platform* p) { out->append(p->Name()); });
   return InvalidArgument(
       "must specify platform because more than one platform (except for the "
       "interpreter platform) found: %s",
-      platforms_string.c_str());
+      platforms_string);
 }
 
 /*static*/ StatusOr<se::Platform*> PlatformUtil::GetPlatform(
@@ -132,11 +131,11 @@ PlatformUtil::GetSupportedPlatforms() {
   string platform_str = CanonicalPlatformName(platform_name);
   TF_ASSIGN_OR_RETURN(auto platforms, PlatformUtil::GetSupportedPlatforms());
   for (se::Platform* platform : platforms) {
-    if (Lowercase(platform->Name()) == platform_str) {
+    if (absl::AsciiStrToLower(platform->Name()) == platform_str) {
       return platform;
     }
   }
-  return InvalidArgument("platform %s not found", platform_name.c_str());
+  return InvalidArgument("platform %s not found", platform_name);
 }
 
 /*static*/ StatusOr<se::Platform*> PlatformUtil::GetPlatformExceptFor(
@@ -146,23 +145,23 @@ PlatformUtil::GetSupportedPlatforms() {
   TF_ASSIGN_OR_RETURN(auto platforms, PlatformUtil::GetSupportedPlatforms());
   std::vector<se::Platform*> matched;
   for (se::Platform* platform : platforms) {
-    if (Lowercase(platform->Name()) != platform_name) {
+    if (absl::AsciiStrToLower(platform->Name()) != platform_name) {
       matched.push_back(platform);
     }
   }
   if (matched.empty()) {
     return InvalidArgument("unable to find platform that is not %s",
-                           platform_name.c_str());
+                           platform_name);
   }
   if (matched.size() == 1) {
     return matched[0];
   }
-  string matched_string = tensorflow::str_util::Join(
+  string matched_string = absl::StrJoin(
       matched, ", ",
       [](string* out, const se::Platform* p) { out->append(p->Name()); });
   return InvalidArgument(
       "found multiple platforms %s, but expected one platform except for %s",
-      matched_string.c_str(), platform_name.c_str());
+      matched_string, platform_name);
 }
 
 // Returns whether the device underlying the given StreamExecutor is supported
@@ -193,7 +192,7 @@ static bool IsDeviceSupported(se::StreamExecutor* executor) {
 PlatformUtil::GetStreamExecutors(se::Platform* platform) {
   int device_count = platform->VisibleDeviceCount();
   if (device_count <= 0) {
-    return NotFound("no %s devices found", platform->Name().c_str());
+    return NotFound("no %s devices found", platform->Name());
   }
   if (platform->id() == se::host::kHostPlatformId) {
     // On host "devices", StreamExecutor exports a device for each hardware
@@ -232,7 +231,7 @@ PlatformUtil::GetStreamExecutors(se::Platform* platform) {
   if (std::all_of(stream_executors.begin(), stream_executors.end(),
                   [](se::StreamExecutor* s) { return s == nullptr; })) {
     return InternalError("no supported devices found for platform %s",
-                         platform->Name().c_str());
+                         platform->Name());
   }
   return stream_executors;
 }

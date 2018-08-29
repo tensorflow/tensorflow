@@ -35,13 +35,13 @@ cc_library(
         "requires-gpu-sm35",
     ],
     deps = [
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -60,6 +60,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -94,6 +95,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -150,6 +152,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -168,6 +171,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/memory",
     ],
 )
 

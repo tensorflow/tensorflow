@@ -30,6 +30,7 @@ using mkldnn::algorithm;
 using mkldnn::eltwise_elu;
 using mkldnn::eltwise_relu;
 using mkldnn::eltwise_tanh;
+using mkldnn::memory;
 using mkldnn::prop_kind;
 using mkldnn::relu_backward;
 using mkldnn::relu_forward;
@@ -56,25 +57,27 @@ class MklEltwiseFwdParams {
   T beta;
 
   MklEltwiseFwdParams(memory::dims src_dims, memory::desc src_md,
-      algorithm alg_kind, T alpha, T beta) :
-      src_dims(src_dims), src_md(src_md),
-      alg_kind(alg_kind), alpha(alpha), beta(beta) {
-  }
+                      algorithm alg_kind, T alpha, T beta)
+      : src_dims(src_dims),
+        src_md(src_md),
+        alg_kind(alg_kind),
+        alpha(alpha),
+        beta(beta) {}
 };
 
 template <typename T>
 class MklEltwiseFwdPrimitive : public MklPrimitive {
  public:
-  explicit MklEltwiseFwdPrimitive(const MklEltwiseFwdParams<T>& fwdParams) :
-           cpu_engine_(engine::cpu, 0) {
+  explicit MklEltwiseFwdPrimitive(const MklEltwiseFwdParams<T>& fwdParams)
+      : cpu_engine_(engine::cpu, 0) {
     // store expected format
-    context_.src_fmt = static_cast<mkldnn::memory::format>(
-        fwdParams.src_md.data.format);
+    context_.src_fmt =
+        static_cast<mkldnn::memory::format>(fwdParams.src_md.data.format);
     context_.fwd_stream.reset(new stream(stream::kind::eager));
 
     // create eltwise primitive
     if (context_.eltwise_fwd == nullptr) {
-        Setup(fwdParams);
+      Setup(fwdParams);
     }
   }
 
@@ -98,9 +101,7 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
     return context_.fwd_pd;
   }
 
-  memory::format GetSrcMemoryFormat() {
-    return context_.src_fmt;
-  }
+  memory::format GetSrcMemoryFormat() { return context_.src_fmt; }
 
  private:
   // Primitive reuse context for eltwise Fwd ops: Relu, Elu, Tanh
@@ -129,19 +130,25 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
     std::shared_ptr<stream> fwd_stream;
     std::vector<mkldnn::primitive> fwd_primitives;
 
-    EltwiseFwdContext() :
-       src_fmt(memory::format::any), src_mem(nullptr), dst_mem(nullptr),
-       fwd_desc(nullptr), fwd_pd(nullptr), src_md(nullptr), dst_md(nullptr),
-       src_mpd(nullptr), eltwise_fwd(nullptr), fwd_stream(nullptr) {
-    }
+    EltwiseFwdContext()
+        : src_fmt(memory::format::any),
+          src_mem(nullptr),
+          dst_mem(nullptr),
+          fwd_desc(nullptr),
+          fwd_pd(nullptr),
+          src_md(nullptr),
+          dst_md(nullptr),
+          src_mpd(nullptr),
+          eltwise_fwd(nullptr),
+          fwd_stream(nullptr) {}
   };
 
   // Eltwise forward primitive setup
   void Setup(const MklEltwiseFwdParams<T>& fwdParams) {
     // create memory descriptors for eltwise data with specified format
     context_.src_md.reset(new memory::desc(fwdParams.src_md.data));
-    context_.src_mpd.reset(new memory::primitive_desc(
-        *context_.src_md, cpu_engine_));
+    context_.src_mpd.reset(
+        new memory::primitive_desc(*context_.src_md, cpu_engine_));
 
     // create a eltwise
     context_.fwd_desc.reset(new mkldnn::eltwise_forward::desc(
@@ -152,12 +159,12 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
 
     // create memory primitive based on dummy data
     context_.src_mem.reset(new memory(*context_.src_mpd, DummyData));
-    context_.dst_mem.reset(new memory(
-        context_.fwd_pd.get()->dst_primitive_desc(), DummyData));
+    context_.dst_mem.reset(
+        new memory(context_.fwd_pd.get()->dst_primitive_desc(), DummyData));
 
     // create eltwise primitive and add it to net
-    context_.eltwise_fwd.reset(new mkldnn::eltwise_forward(*context_.fwd_pd,
-        *context_.src_mem, *context_.dst_mem));
+    context_.eltwise_fwd.reset(new mkldnn::eltwise_forward(
+        *context_.fwd_pd, *context_.src_mem, *context_.dst_mem));
 
     context_.fwd_primitives.push_back(*context_.eltwise_fwd);
   }
@@ -173,13 +180,13 @@ class MklEltwiseFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
       const MklEltwiseFwdParams<T>& fwdParams) {
     MklEltwiseFwdPrimitive<T>* eltwise_forward = nullptr;
 
-    auto src_fmt = static_cast<mkldnn::memory::format>(
-        fwdParams.src_md.data.format);
+    auto src_fmt =
+        static_cast<mkldnn::memory::format>(fwdParams.src_md.data.format);
 
     // Get a eltwise fwd primitive from the cached pool
     eltwise_forward = static_cast<MklEltwiseFwdPrimitive<T>*>(
-        MklEltwiseFwdPrimitiveFactory<T>::GetInstance().GetEltwiseFwd(
-            fwdParams, src_fmt));
+        MklEltwiseFwdPrimitiveFactory<T>::GetInstance().GetEltwiseFwd(fwdParams,
+                                                                      src_fmt));
     if (eltwise_forward == nullptr) {
       eltwise_forward = new MklEltwiseFwdPrimitive<T>(fwdParams);
       MklEltwiseFwdPrimitiveFactory<T>::GetInstance().SetEltwiseFwd(
@@ -197,9 +204,9 @@ class MklEltwiseFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   MklEltwiseFwdPrimitiveFactory() {}
   ~MklEltwiseFwdPrimitiveFactory() {}
 
-  static std::string CreateKey(
-      const MklEltwiseFwdParams<T>& fwdParams, memory::format src_fmt) {
-    std::string prefix = "eltwise_fwd";
+  static string CreateKey(const MklEltwiseFwdParams<T>& fwdParams,
+                               memory::format src_fmt) {
+    string prefix = "eltwise_fwd";
     FactoryKeyCreator key_creator;
     key_creator.AddAsKey(prefix);
     key_creator.AddAsKey(fwdParams.src_dims);
@@ -211,14 +218,14 @@ class MklEltwiseFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 
   MklPrimitive* GetEltwiseFwd(const MklEltwiseFwdParams<T>& fwdParams,
-      memory::format src_fmt) {
-    std::string key = CreateKey(fwdParams, src_fmt);
+                              memory::format src_fmt) {
+    string key = CreateKey(fwdParams, src_fmt);
     return this->GetOp(key);
   }
 
   void SetEltwiseFwd(const MklEltwiseFwdParams<T>& fwdParams,
-      memory::format src_fmt, MklPrimitive* op) {
-    std::string key = CreateKey(fwdParams, src_fmt);
+                     memory::format src_fmt, MklPrimitive* op) {
+    string key = CreateKey(fwdParams, src_fmt);
     this->SetOp(key, op);
   }
 };
@@ -232,27 +239,29 @@ class MklEltwiseBwdParams {
   T alpha;
   T beta;
 
-  MklEltwiseBwdParams(const memory::dims &src_dims,
-      const memory::desc &common_md,
-      algorithm alg_kind, T alpha, T beta) :
-      src_dims(src_dims), common_md(common_md),
-      alg_kind(alg_kind), alpha(alpha), beta(beta) {
-  }
+  MklEltwiseBwdParams(const memory::dims& src_dims,
+                      const memory::desc& common_md, algorithm alg_kind,
+                      T alpha, T beta)
+      : src_dims(src_dims),
+        common_md(common_md),
+        alg_kind(alg_kind),
+        alpha(alpha),
+        beta(beta) {}
 };
 
 template <typename T>
 class MklEltwiseBwdPrimitive : public MklPrimitive {
  public:
-  explicit MklEltwiseBwdPrimitive(const MklEltwiseBwdParams<T>& bwdParams) :
-           cpu_engine_(engine::cpu, 0) {
-    context_.src_fmt = static_cast<mkldnn::memory::format>(
-        bwdParams.common_md.data.format);
-    context_.diff_dst_fmt = static_cast<mkldnn::memory::format>(
-        bwdParams.common_md.data.format);
+  explicit MklEltwiseBwdPrimitive(const MklEltwiseBwdParams<T>& bwdParams)
+      : cpu_engine_(engine::cpu, 0) {
+    context_.src_fmt =
+        static_cast<mkldnn::memory::format>(bwdParams.common_md.data.format);
+    context_.diff_dst_fmt =
+        static_cast<mkldnn::memory::format>(bwdParams.common_md.data.format);
     context_.bwd_stream.reset(new stream(stream::kind::eager));
     // create eltwise primitive
     if (context_.eltwise_bwd == nullptr) {
-        Setup(bwdParams);
+      Setup(bwdParams);
     }
   }
 
@@ -280,13 +289,9 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
     return context_.bwd_pd;
   }
 
-  memory::format GetSrcMemoryFormat() {
-    return context_.src_fmt;
-  }
+  memory::format GetSrcMemoryFormat() { return context_.src_fmt; }
 
-  memory::format GetDiffDstMemoryFormat() {
-    return context_.diff_dst_fmt;
-  }
+  memory::format GetDiffDstMemoryFormat() { return context_.diff_dst_fmt; }
 
  private:
   // Primitive reuse context for eltwise Bwd ops: Relu, Elu, Tanh
@@ -323,14 +328,22 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
     std::shared_ptr<stream> bwd_stream;
     std::vector<mkldnn::primitive> bwd_primitives;
 
-    EltwiseBwdContext() :
-       src_fmt(memory::format::any), diff_dst_fmt(memory::format::any),
-       src_mem(nullptr), diff_dst_mem(nullptr), diff_src_mem(nullptr),
-       src_md(nullptr), diff_dst_md(nullptr), common_md(nullptr),
-       src_mpd(nullptr), diff_dst_mpd(nullptr),
-       fwd_desc(nullptr), fwd_pd(nullptr), bwd_pd(nullptr),
-       eltwise_bwd(nullptr), bwd_stream(nullptr) {
-    }
+    EltwiseBwdContext()
+        : src_fmt(memory::format::any),
+          diff_dst_fmt(memory::format::any),
+          src_mem(nullptr),
+          diff_dst_mem(nullptr),
+          diff_src_mem(nullptr),
+          src_md(nullptr),
+          diff_dst_md(nullptr),
+          common_md(nullptr),
+          src_mpd(nullptr),
+          diff_dst_mpd(nullptr),
+          fwd_desc(nullptr),
+          fwd_pd(nullptr),
+          bwd_pd(nullptr),
+          eltwise_bwd(nullptr),
+          bwd_stream(nullptr) {}
   };
 
   // Eltwise backward primitive setup
@@ -339,20 +352,20 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
     context_.src_md.reset(new memory::desc(bwdParams.common_md.data));
     context_.diff_dst_md.reset(new memory::desc(bwdParams.common_md.data));
 
-    context_.src_mpd.reset(new memory::primitive_desc(
-         *context_.src_md, cpu_engine_));
-    context_.diff_dst_mpd.reset(new memory::primitive_desc(
-         *context_.diff_dst_md, cpu_engine_));
+    context_.src_mpd.reset(
+        new memory::primitive_desc(*context_.src_md, cpu_engine_));
+    context_.diff_dst_mpd.reset(
+        new memory::primitive_desc(*context_.diff_dst_md, cpu_engine_));
 
     // create forward eltwise primitive
     context_.fwd_desc.reset(new mkldnn::eltwise_forward::desc(
-        prop_kind::forward_training, bwdParams.alg_kind,
-        *context_.src_md, bwdParams.alpha, bwdParams.beta));
+        prop_kind::forward_training, bwdParams.alg_kind, *context_.src_md,
+        bwdParams.alpha, bwdParams.beta));
     context_.fwd_pd.reset(new mkldnn::eltwise_forward::primitive_desc(
         *context_.fwd_desc, cpu_engine_));
     context_.bwd_desc.reset(new mkldnn::eltwise_backward::desc(
-        bwdParams.alg_kind, *context_.diff_dst_md,
-        *context_.src_md, bwdParams.alpha, bwdParams.beta));
+        bwdParams.alg_kind, *context_.diff_dst_md, *context_.src_md,
+        bwdParams.alpha, bwdParams.beta));
     context_.bwd_pd.reset(new mkldnn::eltwise_backward::primitive_desc(
         *context_.bwd_desc, cpu_engine_, *context_.fwd_pd));
 
@@ -363,8 +376,9 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
         context_.bwd_pd.get()->diff_src_primitive_desc(), DummyData));
 
     // create eltwise primitive and add it to net
-    context_.eltwise_bwd.reset(new mkldnn::eltwise_backward(*context_.bwd_pd,
-        *context_.src_mem, *context_.diff_dst_mem, *context_.diff_src_mem));
+    context_.eltwise_bwd.reset(new mkldnn::eltwise_backward(
+        *context_.bwd_pd, *context_.src_mem, *context_.diff_dst_mem,
+        *context_.diff_src_mem));
 
     context_.bwd_primitives.push_back(*context_.eltwise_bwd);
   }
@@ -372,7 +386,6 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
   struct EltwiseBwdContext context_;
   engine cpu_engine_;
 };
-
 
 template <typename T>
 class MklEltwiseBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
@@ -385,20 +398,20 @@ class MklEltwiseBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
       const MklEltwiseBwdParams<T>& bwdParams) {
     MklEltwiseBwdPrimitive<T>* eltwise_backward = nullptr;
 
-    auto src_fmt = static_cast<mkldnn::memory::format>(
-        bwdParams.common_md.data.format);
-    auto diff_dst_fmt = static_cast<mkldnn::memory::format>(
-        bwdParams.common_md.data.format);
+    auto src_fmt =
+        static_cast<mkldnn::memory::format>(bwdParams.common_md.data.format);
+    auto diff_dst_fmt =
+        static_cast<mkldnn::memory::format>(bwdParams.common_md.data.format);
 
     // try to find a suitable one in pool
-    eltwise_backward = static_cast<MklEltwiseBwdPrimitive<T>*> (
+    eltwise_backward = static_cast<MklEltwiseBwdPrimitive<T>*>(
         MklEltwiseBwdPrimitiveFactory<T>::GetInstance().GetEltwiseBwd(
             bwdParams, src_fmt, diff_dst_fmt));
 
     if (eltwise_backward == nullptr) {
       eltwise_backward = new MklEltwiseBwdPrimitive<T>(bwdParams);
-        MklEltwiseBwdPrimitiveFactory<T>::GetInstance().SetEltwiseBwd(
-            bwdParams, src_fmt, diff_dst_fmt, eltwise_backward);
+      MklEltwiseBwdPrimitiveFactory<T>::GetInstance().SetEltwiseBwd(
+          bwdParams, src_fmt, diff_dst_fmt, eltwise_backward);
     }
     return eltwise_backward;
   }
@@ -409,11 +422,10 @@ class MklEltwiseBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 
  private:
-  static std::string CreateKey(
-      const MklEltwiseBwdParams<T>& bwdParams,
-      const memory::format &src_fmt,
-      const memory::format &diff_dst_fmt) {
-    std::string prefix = "eltwise_bwd";
+  static string CreateKey(const MklEltwiseBwdParams<T>& bwdParams,
+                               const memory::format& src_fmt,
+                               const memory::format& diff_dst_fmt) {
+    string prefix = "eltwise_bwd";
     FactoryKeyCreator key_creator;
     key_creator.AddAsKey(prefix);
     key_creator.AddAsKey(bwdParams.src_dims);
@@ -426,15 +438,16 @@ class MklEltwiseBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 
   MklPrimitive* GetEltwiseBwd(const MklEltwiseBwdParams<T>& bwdParams,
-      const memory::format &src_fmt, const memory::format &diff_dst_fmt) {
-    std::string key = CreateKey(bwdParams, src_fmt, diff_dst_fmt);
+                              const memory::format& src_fmt,
+                              const memory::format& diff_dst_fmt) {
+    string key = CreateKey(bwdParams, src_fmt, diff_dst_fmt);
     return this->GetOp(key);
   }
 
   void SetEltwiseBwd(const MklEltwiseBwdParams<T>& bwdParams,
-      const memory::format &src_fmt,
-      const memory::format &diff_dst_fmt, MklPrimitive *op) {
-    std::string key = CreateKey(bwdParams, src_fmt, diff_dst_fmt);
+                     const memory::format& src_fmt,
+                     const memory::format& diff_dst_fmt, MklPrimitive* op) {
+    string key = CreateKey(bwdParams, src_fmt, diff_dst_fmt);
     this->SetOp(key, op);
   }
 };
@@ -806,9 +819,8 @@ class MklReluOpBase : public OpKernel {
       T alpha = 0, beta = 0;
 
       // get a eltwise fwd from primitive pool
-      MklEltwiseFwdParams<T> fwdParams(src_dims, src_md,
-          alg_kind, alpha, beta);
-      MklEltwiseFwdPrimitive<T> *eltwise_fwd =
+      MklEltwiseFwdParams<T> fwdParams(src_dims, src_md, alg_kind, alpha, beta);
+      MklEltwiseFwdPrimitive<T>* eltwise_fwd =
           MklEltwiseFwdPrimitiveFactory<T>::Get(fwdParams);
 
       // prepare for execuation
@@ -816,16 +828,17 @@ class MklReluOpBase : public OpKernel {
       // check wehther src need to reorder
       if (src_md.data.format != eltwise_fwd->GetSrcMemoryFormat()) {
         src.SetUsrMem(src_md, &src_tensor);
-        auto src_target_pd = memory::primitive_desc({{src_dims},
-            MklDnnType<T>(), eltwise_fwd->GetSrcMemoryFormat()}, cpu_engine);
+        auto src_target_pd = memory::primitive_desc(
+            {{src_dims}, MklDnnType<T>(), eltwise_fwd->GetSrcMemoryFormat()},
+            cpu_engine);
         src.CheckReorderToOpMem(src_target_pd);
         src_data = const_cast<T*>(
             reinterpret_cast<T*>(src.GetOpMem().get_data_handle()));
       }
 
       // allocate dst tensor, always set it as MKL-DNN layout
-      std::shared_ptr<mkldnn::eltwise_forward::primitive_desc>
-      eltwise_fwd_pd = eltwise_fwd->GetEltwiseFwdPd();
+      std::shared_ptr<mkldnn::eltwise_forward::primitive_desc> eltwise_fwd_pd =
+          eltwise_fwd->GetEltwiseFwdPd();
       MklDnnShape dnn_shape_dst;
       TensorShape tf_shape_dst;
       if (dnn_shape_src.IsMklTensor()) {
@@ -853,7 +866,7 @@ class MklReluOpBase : public OpKernel {
 
       // execute eltwise
       eltwise_fwd->Execute(src_data, dst_data);
-    } catch (mkldnn::error &e) {
+    } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) +
                          ", in file " + string(__FILE__) + ":" +
@@ -961,9 +974,9 @@ class MklReluGradOpBase : public OpKernel {
         common_md = src_md;
       }
 
-      MklEltwiseBwdParams<T> bwdParams(src_dims, common_md,
-          alg_kind, alpha, beta);
-      MklEltwiseBwdPrimitive<T> *eltwise_bwd =
+      MklEltwiseBwdParams<T> bwdParams(src_dims, common_md, alg_kind, alpha,
+                                       beta);
+      MklEltwiseBwdPrimitive<T>* eltwise_bwd =
           MklEltwiseBwdPrimitiveFactory<T>::Get(bwdParams);
       auto eltwise_bwd_pd = eltwise_bwd->GetEltwiseBwdPd();
 
@@ -1010,23 +1023,22 @@ class MklReluGradOpBase : public OpKernel {
         tf_shape_diff_src = src_tensor.shape();
       }
 
-     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                    {diff_dst_index}, diff_src_index, tf_shape_diff_src,
-                     &diff_src_tensor));
-     AllocateOutputSetMklShape(context, diff_src_index, dnn_shape_diff_src);
+      OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                  {diff_dst_index}, diff_src_index,
+                                  tf_shape_diff_src, &diff_src_tensor));
+      AllocateOutputSetMklShape(context, diff_src_index, dnn_shape_diff_src);
 
-     T* diff_src_data = diff_src_tensor->flat<T>().data();
+      T* diff_src_data = diff_src_tensor->flat<T>().data();
 
       // execute eltwise bwd
       eltwise_bwd->Execute(src_data, diff_dst_data, diff_src_data);
-    } catch (mkldnn::error &e) {
-       string error_msg = "Status: " + std::to_string(e.status) +
-                          ", message: " + string(e.message) +
-                          ", in file " + string(__FILE__) + ":" +
-                          std::to_string(__LINE__);
-       OP_REQUIRES_OK(context,
-                      errors::Aborted("Operation received an exception:",
-                                      error_msg));
+    } catch (mkldnn::error& e) {
+      string error_msg = "Status: " + std::to_string(e.status) +
+                         ", message: " + string(e.message) + ", in file " +
+                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      OP_REQUIRES_OK(
+          context,
+          errors::Aborted("Operation received an exception:", error_msg));
     }
   }
 

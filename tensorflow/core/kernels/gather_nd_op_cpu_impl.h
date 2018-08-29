@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_GATHER_ND_OP_CPU_IMPL_H_
-#define TENSORFLOW_KERNELS_GATHER_ND_OP_CPU_IMPL_H_
+#ifndef TENSORFLOW_CORE_KERNELS_GATHER_ND_OP_CPU_IMPL_H_
+#define TENSORFLOW_CORE_KERNELS_GATHER_ND_OP_CPU_IMPL_H_
 
 // Specialization of GatherNdSlice to CPU
 
@@ -142,4 +142,4 @@ TF_CALL_ALL_TYPES(REGISTER_GATHER_ND_CPU);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_GATHER_ND_OP_CPU_IMPL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_GATHER_ND_OP_CPU_IMPL_H_

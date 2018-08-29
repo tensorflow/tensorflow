@@ -70,7 +70,7 @@ class KroneckerDenseTest(test.TestCase):
         [10., 15., -2., -3.],
         [5., 10., -1., -2.]], dtype=dtypes.float32)
 
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(_kronecker_dense([x, y]).eval(), z.eval())
       self.assertAllClose(_kronecker_dense([y, x]).eval(), w.eval())
 

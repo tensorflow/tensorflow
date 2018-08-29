@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -72,8 +72,7 @@ class HloTestBase : public ::testing::Test {
   // options from command-line flags. If you want a fresh HloModule object and
   // then add HloComputations to it, it's recommended to use this method in your
   // tests.
-  static std::unique_ptr<HloModule> CreateNewModule(
-      const string& name = TestName());
+  std::unique_ptr<HloModule> CreateNewModule(const string& name = TestName());
 
   // Runs the hlo_pass with the provided module and returns the result. This
   // function also verifies that the module remains unchanged when hlo_pass
@@ -86,12 +85,14 @@ class HloTestBase : public ::testing::Test {
   // automatically finds another supported backend as the test backend. If the
   // interpreter is the only supported backend, it will be both the test backend
   // and the reference backend.
-  HloTestBase(bool allow_mixed_precision_in_hlo_verifier = true);
+  HloTestBase(bool verifier_layout_sensitive = false,
+              bool allow_mixed_precision_in_hlo_verifier = true);
 
   // If your test doesn't use interpreter as the reference backend, you can use
   // this constructor. Note that your test target is responsible for linking in
   // both needed backends.
   HloTestBase(se::Platform* test_platform, se::Platform* reference_platform,
+              bool verifier_layout_sensitive = false,
               bool allow_mixed_precision_in_hlo_verifier = true);
 
   ~HloTestBase() override {}
@@ -99,10 +100,13 @@ class HloTestBase : public ::testing::Test {
   // Populates debug options from command-line flags and adjusts the options for
   // testing. It is recommended to use this when you need to pass in
   // DebugOptions, e.g. when creating a module from a string or a file.
-  static DebugOptions GetDebugOptionsForTest();
+  //
+  // This function is virtual so tests can specify an alternative set of debug
+  // options (e.g. disabling additional passes).
+  virtual DebugOptions GetDebugOptionsForTest();
 
   // Gets an HloModuleConfig with options appropriate for tests.
-  static HloModuleConfig GetModuleConfigForTest() {
+  HloModuleConfig GetModuleConfigForTest() {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     return config;
@@ -137,7 +141,7 @@ class HloTestBase : public ::testing::Test {
   ::testing::AssertionResult RunAndCompare(
       std::unique_ptr<HloModule> module,
       const tensorflow::gtl::ArraySlice<Literal*> arguments,
-      const tensorflow::gtl::optional<ErrorSpec>& error,
+      const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
@@ -146,22 +150,20 @@ class HloTestBase : public ::testing::Test {
   ::testing::AssertionResult RunAndCompareNoHloPasses(
       std::unique_ptr<HloModule> module,
       const tensorflow::gtl::ArraySlice<Literal*> arguments,
-      const tensorflow::gtl::optional<ErrorSpec>& error,
+      const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
   // Executes an hlo module with fake inputs and compares the results.
   ::testing::AssertionResult RunAndCompare(
-      std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::optional<ErrorSpec>& error,
+      std::unique_ptr<HloModule> module, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
   // Same as above, except that the module will be executed without Hlo
   // optimization.
   ::testing::AssertionResult RunAndCompareNoHloPasses(
-      std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::optional<ErrorSpec>& error,
+      std::unique_ptr<HloModule> module, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
@@ -169,23 +171,23 @@ class HloTestBase : public ::testing::Test {
   // input. Module can be passed in directly, or parsed from an hlo_string,
   // or loaded from a file.
   ::testing::AssertionResult RunAndCompare(
-      const tensorflow::StringPiece hlo_string,
-      const tensorflow::gtl::optional<ErrorSpec>& error,
+      const absl::string_view hlo_string,
+      const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
-  ::testing::AssertionResult Run(const tensorflow::StringPiece hlo_string)
+  ::testing::AssertionResult Run(const absl::string_view hlo_string)
       TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareFromFile(
-      const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
+      const string& filename, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareNoHloPasses(
-      const tensorflow::StringPiece hlo_string,
-      const tensorflow::gtl::optional<ErrorSpec>& error,
+      const absl::string_view hlo_string,
+      const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareNoHloPassesFromFile(
-      const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
+      const string& filename, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
@@ -228,10 +230,8 @@ class HloTestBase : public ::testing::Test {
   //
   // This is useful for tests which create HLOs from a string and then want to
   // inspect a particular computation or instruction.
-  HloComputation* FindComputation(HloModule* module,
-                                  tensorflow::StringPiece name);
-  HloInstruction* FindInstruction(HloModule* module,
-                                  tensorflow::StringPiece name);
+  HloComputation* FindComputation(HloModule* module, absl::string_view name);
+  HloInstruction* FindInstruction(HloModule* module, absl::string_view name);
 
   // Return an HLO verifier constructed for the test backend.
   HloVerifier& verifier() const { return *hlo_verifier_; }
@@ -262,7 +262,7 @@ class HloTestBase : public ::testing::Test {
   StatusOr<::testing::AssertionResult> RunAndCompareInternal(
       std::unique_ptr<HloModule> module,
       const tensorflow::gtl::ArraySlice<Literal*> arguments,
-      const tensorflow::gtl::optional<ErrorSpec>& error, bool run_hlo_passes,
+      const absl::optional<ErrorSpec>& error, bool run_hlo_passes,
       const std::function<void(HloModule*)>& reference_preprocessor);
 };
 

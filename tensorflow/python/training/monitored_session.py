@@ -1363,3 +1363,6 @@ class _HookedSession(_WrappedSession):
 
     options.debug_options.debug_tensor_watch_opts.extend(
         incoming_options.debug_options.debug_tensor_watch_opts)
+    options.debug_options.reset_disk_byte_usage = (
+        options.debug_options.reset_disk_byte_usage or
+        incoming_options.debug_options.reset_disk_byte_usage)

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
@@ -146,9 +147,9 @@ class GemvConfig {
   bool has_addend() const { return has_addend_; }
 
   string GetCacheKey() const {
-    return tensorflow::strings::StrCat(
-        name_, "_", PrimitiveType_Name(scalar_type()), "_", tile_rows(), "_",
-        tile_cols(), "_", m(), "_", k(), has_addend() ? "_with_addend" : "");
+    return absl::StrCat(name_, "_", PrimitiveType_Name(scalar_type()), "_",
+                        tile_rows(), "_", tile_cols(), "_", m(), "_", k(),
+                        has_addend() ? "_with_addend" : "");
   }
 
  protected:
@@ -621,19 +622,19 @@ void RowMajorMatrixVectorProductEmitter::EmitInnerLoopEpilogue(
 }
 
 // This class implements a tiled matrix multiplication algorithm, intended for
-// use as the innermost GEBP loop in a GEMM kernel (GEBP is described in "Goto,
-// Kazushige, and Robert Van De Geijn. "High-performance implementation of the
-// level-3 BLAS." ACM Transactions on Mathematical Software (TOMS) 35.1 (2008):
-// 4).
+// multiplying small matrices that don't need cache tiling.
+//
+// In the future this can be used as the innermost GEBP loop in a GEMM kernel as
+// described in "Goto, Kazushige, and Robert A. Geijn. "Anatomy of
+// high-performance matrix multiplication." ACM Transactions on Mathematical
+// Software (TOMS) 34.3 (2008): 12.".
 //
 // This only supports canonical dot operations (i.e. where the lhs contraction
 // dimension is 1 and the rhs contraction dimension is 0) over row major
 // matrices.
-class MatrixMatrixBlockPanelEmitter {
+class TiledSmallGemmEmitter {
  public:
-  // Describe the dimensions of the GEBP kernel.  These will usually not be the
-  // dimensions of the GEMM itself, the GEMM will usually be broken up into GEBP
-  // kernels with smaller dimensions.
+  // Describe the dimensions of the kernel.
   class Dimensions {
    public:
     explicit Dimensions(int64 m, int64 k, int64 n) : m_(m), k_(k), n_(n) {}
@@ -642,9 +643,7 @@ class MatrixMatrixBlockPanelEmitter {
     int64 k() const { return k_; }
     int64 n() const { return n_; }
 
-    string ToString() const {
-      return tensorflow::strings::StrCat(m(), "x", k(), "x", n());
-    }
+    string ToString() const { return absl::StrCat(m(), "x", k(), "x", n()); }
 
    private:
     const int64 m_;
@@ -652,9 +651,9 @@ class MatrixMatrixBlockPanelEmitter {
     const int64 n_;
   };
 
-  // Represents the configuration of the GEBP emitter.  The LLVM IR emitted by
-  // the emitter, modulo the LLVM values holding the input and output buffers,
-  // must be a function of the instance of `Config` passed to it.
+  // Represents the configuration of the emitter.  The LLVM IR emitted by the
+  // emitter, modulo the LLVM values holding the input and output buffers, must
+  // be a function of the instance of `Config` passed to it.
   //
   // `dims` holds the matrix multiplication dimensions.
   //
@@ -687,10 +686,10 @@ class MatrixMatrixBlockPanelEmitter {
           tile_size_k_(tile_size_k) {}
 
     string GetCacheKey() const {
-      return tensorflow::strings::StrCat(
-          "gebp_", PrimitiveType_Name(scalar_type()), "_", dims().ToString(),
-          "_", max_vectorization_width(), "_", min_vectorization_width(), "_",
-          tile_size_m(), "_", tile_size_k());
+      return absl::StrCat("gemm_", PrimitiveType_Name(scalar_type()), "_",
+                          dims().ToString(), "_", max_vectorization_width(),
+                          "_", min_vectorization_width(), "_", tile_size_m(),
+                          "_", tile_size_k());
     }
 
     PrimitiveType scalar_type() const { return scalar_type_; }
@@ -712,11 +711,11 @@ class MatrixMatrixBlockPanelEmitter {
     int64 tile_size_k_;
   };
 
-  // Creates an instance of MatrixMatrixBlockPanelEmitter that matrix-multiplies
+  // Creates an instance of TiledSmallGemmEmitter that matrix-multiplies
   // `lhs` with `rhs` and stores the result in `result`.
-  explicit MatrixMatrixBlockPanelEmitter(Config config, llvm::Value* lhs,
-                                         llvm::Value* rhs, llvm::Value* result,
-                                         llvm::IRBuilder<>* b)
+  explicit TiledSmallGemmEmitter(Config config, llvm::Value* lhs,
+                                 llvm::Value* rhs, llvm::Value* result,
+                                 llvm::IRBuilder<>* b)
       : lhs_(lhs),
         rhs_(rhs),
         result_(result),
@@ -780,9 +779,9 @@ class MatrixMatrixBlockPanelEmitter {
   KernelSupportLibrary ksl_;
 };
 
-void MatrixMatrixBlockPanelEmitter::Emit() { HandleResiduesOnN(); }
+void TiledSmallGemmEmitter::Emit() { HandleResiduesOnN(); }
 
-void MatrixMatrixBlockPanelEmitter::HandleResiduesOnN() {
+void TiledSmallGemmEmitter::HandleResiduesOnN() {
   // We can only iterate the `n` dimension for an extent that is divisible by
   // the vectorization width.  So we emit an outer loop that first processes the
   // largest extent in `n` that is divisible by max_vectorization_width, then
@@ -799,7 +798,7 @@ void MatrixMatrixBlockPanelEmitter::HandleResiduesOnN() {
     int64 n_end = dims().n() - (dims().n() % current_vectorization_width);
     if (n_start != n_end) {
       VectorSupportLibrary vsl(scalar_type(), current_vectorization_width, b_,
-                               "gebp");
+                               "gemm");
       HandleResiduesOnK(&vsl, GetInt64(n_start), GetInt64(n_end));
       n_start = n_end;
     }
@@ -813,7 +812,7 @@ void MatrixMatrixBlockPanelEmitter::HandleResiduesOnN() {
   }
 
   if (n_start != dims().n()) {
-    VectorSupportLibrary vsl(scalar_type(), 1, b_, "gebp");
+    VectorSupportLibrary vsl(scalar_type(), 1, b_, "gemm");
     ksl_.ForReturnVoid("epi.n", n_start, dims().n(), 1, [&](llvm::Value* n_i) {
       llvm::Value* n_i_next = b_->CreateAdd(n_i, b_->getInt64(1));
       HandleResiduesOnK(&vsl, n_i, n_i_next);
@@ -821,9 +820,9 @@ void MatrixMatrixBlockPanelEmitter::HandleResiduesOnN() {
   }
 }
 
-void MatrixMatrixBlockPanelEmitter::HandleResiduesOnK(VectorSupportLibrary* vsl,
-                                                      llvm::Value* n_start,
-                                                      llvm::Value* n_end) {
+void TiledSmallGemmEmitter::HandleResiduesOnK(VectorSupportLibrary* vsl,
+                                              llvm::Value* n_start,
+                                              llvm::Value* n_end) {
   int64 k_start = 0;
   int64 k_end = dims().k() - (dims().k() % tile_size_k());
   if (k_end != k_start) {
@@ -838,7 +837,7 @@ void MatrixMatrixBlockPanelEmitter::HandleResiduesOnK(VectorSupportLibrary* vsl,
   }
 }
 
-void MatrixMatrixBlockPanelEmitter::HandleResiduesOnM(
+void TiledSmallGemmEmitter::HandleResiduesOnM(
     VectorSupportLibrary* vsl, int64 tile_size_k, llvm::Value* k_start,
     llvm::Value* k_end, llvm::Value* n_start, llvm::Value* n_end) {
   const int64 m_end = dims().m() - dims().m() % tile_size_m();
@@ -921,7 +920,7 @@ void MatrixMatrixBlockPanelEmitter::HandleResiduesOnM(
 //   +-------------------+-------------------+-------------------+---------
 //   | a0*p0+b0*q0+c0*r0 | a0*p1+b0*q1+c0*r1 | a0*p2+b0*q2+c0*r2 |  ...
 //   +-------------------+-------------------+-------------------+---------
-void MatrixMatrixBlockPanelEmitter::EmitTiledGemm(
+void TiledSmallGemmEmitter::EmitTiledGemm(
     VectorSupportLibrary* vsl, int64 tile_size_k, llvm::Value* k_start,
     llvm::Value* k_end, llvm::Value* n_start, llvm::Value* n_end,
     int64 tile_size_m, llvm::Value* m_start, llvm::Value* m_end) {
@@ -1001,10 +1000,20 @@ DotOpEmitter::DotOpEmitter(const HloInstruction& dot,
   return dot_emitter.Emit();
 }
 
-bool DotOpEmitter::EmitExperimentalGebpDotIfEnabled(
+bool DotOpEmitter::EmitSmallGemmIfProfitable(
     const DotOpEmitter::MatMultDims& mat_mult_dims) {
-  if (!EnableExperimentalLlvmIrGemm() || ShouldUseMultiThreadedEigen()) {
+  if (ShouldUseMultiThreadedEigen()) {
     return false;
+  }
+
+  if (!EnableExperimentalLlvmIrGemm()) {
+    // TODO(sanjoy):  We should make these numbers micro-arch specific.
+    bool small_gemm = mat_mult_dims.k <= 128 &&
+                      ((mat_mult_dims.m <= 32 && mat_mult_dims.n <= 128) ||
+                       (mat_mult_dims.m <= 128 && mat_mult_dims.n <= 32));
+    if (!small_gemm) {
+      return false;
+    }
   }
 
   if (mat_mult_dims.lhs_non_canonical || mat_mult_dims.rhs_non_canonical) {
@@ -1054,15 +1063,15 @@ bool DotOpEmitter::EmitExperimentalGebpDotIfEnabled(
   std::tie(tile_size_m, tile_size_k, tile_size_n_in_vector_width) =
       GetGemmTileSize();
 
-  MatrixMatrixBlockPanelEmitter::Config config(
+  TiledSmallGemmEmitter::Config config(
       /*scalar_type=*/primitive_type,
-      MatrixMatrixBlockPanelEmitter::Dimensions{/*m=*/m, /*k=*/k, /*n=*/n},
+      TiledSmallGemmEmitter::Dimensions{/*m=*/m, /*k=*/k, /*n=*/n},
       /*max_vectorization_width=*/max_target_vector_width,
       /*max_vector_count=*/tile_size_n_in_vector_width,
       /*min_vectorization_width=*/std::min<int64>(4, max_target_vector_width),
       /*tile_size_m=*/tile_size_m, /*tile_size_k=*/tile_size_k);
 
-  VLOG(2) << "Emitting GEBP kernel in LLVM IR with config "
+  VLOG(2) << "Emitting GEMM kernel in LLVM IR with config "
           << config.GetCacheKey();
 
   const bool enable_fast_math =
@@ -1075,10 +1084,10 @@ bool DotOpEmitter::EmitExperimentalGebpDotIfEnabled(
       /*optimize_for_size=*/optimize_for_size, b_, config.GetCacheKey(), lhs,
       rhs, target,
       [this, config](llvm::Value* lhs, llvm::Value* rhs, llvm::Value* target) {
-        MatrixMatrixBlockPanelEmitter gebp_emitter(config, /*lhs=*/lhs,
-                                                   /*rhs=*/rhs,
-                                                   /*result=*/target, b_);
-        gebp_emitter.Emit();
+        TiledSmallGemmEmitter small_gemm_emitter(config, /*lhs=*/lhs,
+                                                 /*rhs=*/rhs,
+                                                 /*result=*/target, b_);
+        small_gemm_emitter.Emit();
       });
 
   return true;
@@ -1136,7 +1145,7 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
   }
 
   if (!is_column_major_matrix_vector && !is_row_major_matrix_vector) {
-    return EmitExperimentalGebpDotIfEnabled(mat_mult_dims);
+    return EmitSmallGemmIfProfitable(mat_mult_dims);
   }
 
   int64 tiling_factor = GetGemvTilingFactor();
@@ -1458,7 +1467,7 @@ Status DotOpEmitter::EmitCallToRuntime() {
       break;
     default:
       return Unimplemented("Invalid type %s for dot operation",
-                           PrimitiveType_Name(type).c_str());
+                           PrimitiveType_Name(type));
   }
 
   llvm::Type* float_ptr_type = float_type->getPointerTo();
@@ -1610,7 +1619,7 @@ bool PotentiallyImplementedAsEigenDot(
 
 // For vector-matrix dot products, it is always profitable to make the Rhs
 // column major.
-tensorflow::gtl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
+absl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo) {
   if (hlo.opcode() == HloOpcode::kDot && hlo.shape().dimensions_size() == 2 &&
       hlo.shape().dimensions(0) == 1) {

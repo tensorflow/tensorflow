@@ -141,7 +141,7 @@ class EstimatorSpec(
         prediction.
       predictions: Predictions `Tensor` or dict of `Tensor`.
       loss: Training loss `Tensor`. Must be either scalar, or with shape `[1]`.
-      train_op: Op for the training step.
+      train_op: Op to run one training step.
       eval_metric_ops: Dict of metric results keyed by name. The values of the
         dict are the results of calling a metric function, namely a
         `(metric_tensor, update_op)` tuple. `metric_tensor` should be evaluated

@@ -14,18 +14,19 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/while_loop_invariant_code_motion.h"
+#include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
 
 namespace xla {
 
+using absl::InlinedVector;
 using tensorflow::gtl::FlatMap;
 using tensorflow::gtl::FlatSet;
-using tensorflow::gtl::InlinedVector;
 
 // Copies `to_hoist` to the computation containing `while_instr`, hoisting its
 // operands as needed.  All of its transitive operands are expected to be either
@@ -65,8 +66,8 @@ static void CreateLoopInvariantCopy(
       };
 
       InlinedVector<HloInstruction*, 4> new_operands;
-      c_transform(old_instruction->operands(), std::back_inserter(new_operands),
-                  get_new_operand);
+      absl::c_transform(old_instruction->operands(),
+                        std::back_inserter(new_operands), get_new_operand);
 
       HloInstruction* new_instruction =
           parent_of_while->AddInstruction(old_instruction->CloneWithNewOperands(
@@ -197,7 +198,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
              op->opcode() == HloOpcode::kConstant;
     };
 
-    if (!c_all_of(instruction->operands(), is_invariant)) {
+    if (!absl::c_all_of(instruction->operands(), is_invariant)) {
       continue;
     }
 
@@ -257,10 +258,10 @@ StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
   bool changed = false;
   std::vector<HloInstruction*> while_instrs;
   for (auto* comp : module->computations()) {
-    c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
-              [](const HloInstruction* instr) {
-                return instr->opcode() == HloOpcode::kWhile;
-              });
+    absl::c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
+                    [](const HloInstruction* instr) {
+                      return instr->opcode() == HloOpcode::kWhile;
+                    });
   }
 
   for (HloInstruction* while_instr : while_instrs) {

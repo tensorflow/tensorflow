@@ -177,7 +177,7 @@ StatusOr<HloInstruction*> BroadcastZeros(
 // a value of type `range`.
 StatusOr<std::unique_ptr<HloComputation>> CreateComputationWithSignature(
     tensorflow::gtl::ArraySlice<const Shape*> domain, const Shape& range,
-    tensorflow::StringPiece name);
+    absl::string_view name);
 
 }  // namespace xla
 

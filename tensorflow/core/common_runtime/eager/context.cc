@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
@@ -78,6 +79,12 @@ void EagerContext::InitDeviceMapAndAsync() {
       }
     }
   }
+
+  DeviceSet ds;
+  for (Device* d : devices_) {
+    ds.AddDevice(d);
+  }
+  prioritized_device_type_list_ = ds.PrioritizedDeviceTypeList();
 }
 
 bool EagerContext::Async() const {

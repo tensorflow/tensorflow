@@ -235,6 +235,7 @@ def generated_test_models():
         "exp",
         "expand_dims",
         "floor",
+        "floor_div",
         "fully_connected",
         "fused_batch_norm",
         "gather",
@@ -266,7 +267,9 @@ def generated_test_models():
         "padv2",
         "prelu",
         "pow",
+        "reduce_any",
         "reduce_max",
+        "reduce_min",
         "reduce_prod",
         "relu",
         "relu1",
@@ -292,6 +295,7 @@ def generated_test_models():
         "topk",
         "transpose",
         #"transpose_conv",   # disabled due to b/111213074
+        "unpack",
         "where",
     ]
 

@@ -800,18 +800,18 @@ class Model(Network):
       RuntimeError: If the model was never compiled.
     """
     if sample_weight is not None and sample_weight.all():
-      raise NotImplementedError('sample_weight is currently not supported when '
-                                'using DistributionStrategy.')
+      raise NotImplementedError('`sample_weight` is currently not supported '
+                                'when using DistributionStrategy.')
     if class_weight:
-      raise NotImplementedError('class_weight is currently not supported when '
-                                'using DistributionStrategy.')
+      raise NotImplementedError('`class_weight` is currently not supported '
+                                'when using DistributionStrategy.')
 
     # TODO(anjalisridhar): Can we use the iterator and getnext op cache?
     # We require users to pass Datasets since we distribute the dataset across
     # multiple devices.
     if not isinstance(x, dataset_ops.Dataset):
-      raise ValueError('When using DistributionStrategy you must specify a '
-                       'Dataset object instead of a %s.' % type(x))
+      raise ValueError('When using DistributionStrategy, model inputs should be'
+                       ' Dataset instances; found instead %s.' % type(x))
     # TODO(anjalisridhar): We want distribute_dataset() to accept a Dataset or a
     # function which returns a Dataset. Currently distribute_dataset() only
     # accepts a function that returns a Dataset. Once we add support for being
@@ -834,8 +834,9 @@ class Model(Network):
     next_element = iterator.get_next()
 
     if not isinstance(next_element, (list, tuple)) or len(next_element) != 2:
-      raise ValueError('Please provide data as a list or tuple of 2 elements '
-                       ' - input and target pair. Received %s' % next_element)
+      raise ValueError('Please provide model inputs as a list or tuple of 2 '
+                       'elements: input and target pair. '
+                       'Received %s' % next_element)
     x, y = next_element
     # Validate that all the elements in x and y are of the same type and shape.
     # We can then pass the first element of x and y to `_standardize_weights`
@@ -971,8 +972,9 @@ class Model(Network):
                            'required number of samples.')
 
       if not isinstance(next_element, (list, tuple)) or len(next_element) != 2:
-        raise ValueError('Please provide data as a list or tuple of 2 elements '
-                         ' - input and target pair. Received %s' % next_element)
+        raise ValueError('Please provide model inputs as a list or tuple of 2 '
+                         'elements: input and target pair. '
+                         'Received %s' % next_element)
       x, y = next_element
     x, y, sample_weights = self._standardize_weights(x, y, sample_weight,
                                                      class_weight, batch_size)
@@ -980,6 +982,10 @@ class Model(Network):
 
   def _standardize_weights(self, x, y, sample_weight=None, class_weight=None,
                            batch_size=None,):
+    if sample_weight is not None and class_weight is not None:
+      logging.warning(
+          'Received both a `sample_weight` and `class_weight` argument. '
+          'The `class_weight` argument will be ignored.')
     # First, we build/compile the model on the fly if necessary.
     all_inputs = []
     is_build_called = False
@@ -1721,6 +1727,13 @@ class Model(Network):
     if batch_size is None and steps is None:
       batch_size = 32
 
+    # Turn off prefetching since this is currently not deterministic. Once
+    # b/112498930 is fixed we can turn it back on.
+    # `_prefetch_on_device` is currently a property of only `MirroredStrategy`.
+    if (self._distribution_strategy and
+        hasattr(self._distribution_strategy, '_prefetch_on_device')):
+      self._distribution_strategy._prefetch_on_device = False  # pylint: disable=protected-access
+
     # Validate and standardize user data.
     x, _, _ = self._standardize_user_data(
         x, check_steps=True, steps_name='steps', steps=steps)
@@ -1729,8 +1742,12 @@ class Model(Network):
       return training_eager.predict_loop(
           self, x, batch_size=batch_size, verbose=verbose, steps=steps)
     elif self._distribution_strategy:
-      return training_distributed.predict_loop(
+      results = training_distributed.predict_loop(
           self, x, verbose=verbose, steps=steps)
+      # Turn prefetching back on since we turned it off previously.
+      if hasattr(self._distribution_strategy, '_prefetch_on_device'):
+        self._distribution_strategy._prefetch_on_device = True  # pylint: disable=protected-access
+      return results
     else:
       return training_arrays.predict_loop(
           self, x, batch_size=batch_size, verbose=verbose, steps=steps)

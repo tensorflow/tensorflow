@@ -248,6 +248,7 @@ class DistributionStrategy(object):
     devices.
 
   We have then a few approaches we want to support:
+
   * Code written (as if) with no knowledge of class `DistributionStrategy`.
     This code should work as before, even if some of the layers, etc.
     used by that code are written to be distribution-aware. This is done

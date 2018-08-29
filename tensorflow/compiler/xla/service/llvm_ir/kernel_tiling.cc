@@ -55,10 +55,10 @@ Shape MergeDimensions(tensorflow::gtl::ArraySlice<size_t> segs,
 }
 }  // namespace
 
-tensorflow::gtl::optional<std::vector<int64> > FindTranspose021(
-    const Shape& a, const Shape& b) {
+absl::optional<std::vector<int64> > FindTranspose021(const Shape& a,
+                                                     const Shape& b) {
   if (!ShapeUtil::CompatibleIgnoringElementType(a, b)) {
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
 
   std::vector<int64> perm(a.dimensions().size());
@@ -88,7 +88,7 @@ tensorflow::gtl::optional<std::vector<int64> > FindTranspose021(
     return dims_021;
   }
 
-  return tensorflow::gtl::nullopt;
+  return absl::nullopt;
 }
 
 IrArray::Index GetUnreducedOutputIndex(

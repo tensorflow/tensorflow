@@ -69,10 +69,10 @@ class LoopEmitter {
   }
 
   virtual std::vector<IrArray::Index> EmitIndexAndSetExitBasicBlock(
-      tensorflow::StringPiece loop_name, llvm::Type* index_type);
+      absl::string_view loop_name, llvm::Type* index_type);
 
   // Emits a complete loop nest for every element in the given shape.
-  Status EmitLoop(tensorflow::StringPiece loop_name = "",
+  Status EmitLoop(absl::string_view loop_name = "",
                   llvm::Type* index_type = nullptr);
 
  protected:

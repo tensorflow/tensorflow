@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import pickle
 import threading
 
 import numpy as np
@@ -184,6 +186,17 @@ class TFETest(test_util.TensorFlowTestCase):
     ctx = context.Context(config=config_pb2.ConfigProto(
         device_count={'GPU': 0}))
     self.assertEquals(0, ctx.num_gpus())
+
+  def testPickle(self):
+    tmp_dir = self.get_temp_dir()
+    fname = os.path.join(tmp_dir, 't.pickle')
+    with open(fname, 'wb') as f:
+      t = constant_op.constant(10.0)
+      pickle.dump(t, f)
+
+    with open(fname, 'rb') as f:
+      t = pickle.load(f)
+      self.assertAllEqual(t.numpy(), 10.0)
 
   def testTensorPlacement(self):
     if not context.context().num_gpus():

@@ -18,11 +18,15 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
@@ -34,12 +38,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-
-using ::testing::ElementsAre;
 
 namespace xla {
 namespace {
+
+using ::testing::ElementsAre;
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -51,7 +54,12 @@ AlgebraicSimplifier::ValidBitcastCallback non_bitcasting_callback() {
   return [](const Shape&, const Shape&) { return false; };
 }
 
-class AlgebraicSimplifierTest : public HloVerifiedTestBase {};
+class AlgebraicSimplifierTest : public HloVerifiedTestBase {
+ public:
+  AlgebraicSimplifierTest()
+      : HloVerifiedTestBase(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false) {}
+};
 
 // Test that A + 0 is simplified to A
 TEST_F(AlgebraicSimplifierTest, AddZero) {
@@ -1820,6 +1828,105 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_4_3x2x4x2_6x8) {
               op::Reshape(op::Broadcast(param)));
 }
 
+TEST_F(AlgebraicSimplifierTest, IotaAndReshapeMerged) {
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(HloInstruction::CreateIota(
+      ShapeUtil::MakeShape(F32, {1, 2, 3, 7, 12, 1}), 2));
+  Shape result_shape = ShapeUtil::MakeShape(F32, {2, 3, 7, 2, 1, 3, 2});
+  builder.AddInstruction(HloInstruction::CreateReshape(result_shape, iota));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), op::Iota());
+  EXPECT_TRUE(
+      ShapeUtil::Equal(computation->root_instruction()->shape(), result_shape));
+}
+
+TEST_F(AlgebraicSimplifierTest, IotaAndReshape_1_3x1_3) {
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {3, 1}), 1));
+  builder.AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {3}), iota));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  EXPECT_FALSE(simplifier.Run(&module()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+}
+
+TEST_F(AlgebraicSimplifierTest, IotaAndReshape_4_3x2x4_6x1x1x4) {
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {3, 2, 4}), 2));
+  builder.AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(F32, {6, 1, 1, 4}), iota));
+
+  HloComputation* computation = module().AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), op::Iota());
+  EXPECT_EQ(Cast<HloIotaInstruction>(computation->root_instruction())
+                ->iota_dimension(),
+            3);
+}
+
+TEST_F(AlgebraicSimplifierTest, IotaAndReshape_1_3x2x1_6x1x1x1) {
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {3, 2, 1}), 2));
+  builder.AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(F32, {6, 1, 1, 1}), iota));
+
+  HloComputation* computation = module().AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), op::Iota());
+  const int64 iota_dim =
+      Cast<HloIotaInstruction>(computation->root_instruction())
+          ->iota_dimension();
+  EXPECT_THAT(iota_dim, ::testing::AnyOf(1, 2, 3));
+}
+
+TEST_F(AlgebraicSimplifierTest, IotaAndReshape_4_3x2x4x2_6x8) {
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {3, 2, 4, 2}), 2));
+  builder.AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {6, 8}), iota));
+
+  HloComputation* computation = module().AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  EXPECT_FALSE(simplifier.Run(&module()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+}
+
 TEST_F(AlgebraicSimplifierTest, RemoveNoopPad) {
   HloComputation::Builder builder(TestName());
   HloInstruction* param =
@@ -2037,7 +2144,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
   // Builds a convolution from <options> and runs algebraic simplification on
   // the computation. Returns a string description of the result of
   // simplification.
-  auto build_and_simplify = [&options]() -> string {
+  auto build_and_simplify = [&]() -> string {
     HloComputation::Builder b(TestName());
 
     Window window;
@@ -2143,9 +2250,8 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
         root->operand(0)->opcode() == HloOpcode::kDot) {
       auto lhs_shape = root->operand(0)->operand(0)->shape();
       auto rhs_shape = root->operand(0)->operand(1)->shape();
-      return tensorflow::strings::StrCat(
-          tensorflow::str_util::Join(lhs_shape.dimensions(), "x"), " DOT ",
-          tensorflow::str_util::Join(rhs_shape.dimensions(), "x"));
+      return absl::StrCat(absl::StrJoin(lhs_shape.dimensions(), "x"), " DOT ",
+                          absl::StrJoin(rhs_shape.dimensions(), "x"));
     }
     return "UNEXPECTED CHANGE";
   };
@@ -2648,6 +2754,47 @@ TEST_F(AlgebraicSimplifierTest, MergeBroadcasts2) {
   EXPECT_THAT(root->dimensions(), ElementsAre(1, 3));
 }
 
+// Test that a broadcast of an iota can be merged to one iota.
+TEST_F(AlgebraicSimplifierTest, MergeBroadcastAndIota) {
+  HloComputation::Builder builder(TestName());
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
+  HloInstruction* iota =
+      builder.AddInstruction(HloInstruction::CreateIota(r2f32, 1));
+  Shape r3f32 = ShapeUtil::MakeShape(F32, {2, 2, 2});
+  builder.AddInstruction(HloInstruction::CreateBroadcast(r3f32, iota, {0, 2}));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_THAT(root, op::Iota());
+  EXPECT_EQ(Cast<HloIotaInstruction>(root)->iota_dimension(), 2);
+}
+
+// Test that a broadcast of an iota can be merged to one iota.
+TEST_F(AlgebraicSimplifierTest, MergeBroadcastAndIota2) {
+  HloComputation::Builder builder(TestName());
+  Shape r3f32 = ShapeUtil::MakeShape(F32, {2, 5, 3});
+  HloInstruction* iota =
+      builder.AddInstruction(HloInstruction::CreateIota(r3f32, 1));
+  Shape r4f32 = ShapeUtil::MakeShape(F32, {4, 2, 5, 3});
+  builder.AddInstruction(
+      HloInstruction::CreateBroadcast(r4f32, iota, {1, 2, 3}));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_THAT(root, op::Iota());
+  EXPECT_EQ(Cast<HloIotaInstruction>(root)->iota_dimension(), 2);
+}
+
 struct PadReduceWindowEffectiveBroadcastCase {
   std::vector<int64> input_spatials;
   std::vector<int64> symmetric_pad_spatials;
@@ -2660,11 +2807,10 @@ struct PadReduceWindowEffectiveBroadcastCase {
   bool should_become_broadcast;
 
   string ToTestCaseName() const {
-    return tensorflow::strings::StrCat(
-        tensorflow::str_util::Join(input_spatials, ","), ";",
-        tensorflow::str_util::Join(symmetric_pad_spatials, ","), ";",
-        tensorflow::str_util::Join(reduce_window_spatials, ","), ";", prepend_a,
-        ";", should_become_broadcast);
+    return absl::StrCat(absl::StrJoin(input_spatials, ","), ";",
+                        absl::StrJoin(symmetric_pad_spatials, ","), ";",
+                        absl::StrJoin(reduce_window_spatials, ","), ";",
+                        prepend_a, ";", should_become_broadcast);
   }
 };
 
@@ -2852,7 +2998,12 @@ struct DotOfConcatTestSpec {
 
 class DotOfConcatSimplificationTest
     : public HloVerifiedTestBase,
-      public ::testing::WithParamInterface<DotOfConcatTestSpec> {};
+      public ::testing::WithParamInterface<DotOfConcatTestSpec> {
+ public:
+  DotOfConcatSimplificationTest()
+      : HloVerifiedTestBase(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false) {}
+};
 
 // Test that we transform
 //  dot(const, concat(A, B, C))
@@ -3025,7 +3176,12 @@ struct DotOfGatherTestSpec {
 
 class DotOfGatherSimplificationTest
     : public HloVerifiedTestBase,
-      public ::testing::WithParamInterface<DotOfGatherTestSpec> {};
+      public ::testing::WithParamInterface<DotOfGatherTestSpec> {
+ public:
+  DotOfGatherSimplificationTest()
+      : HloVerifiedTestBase(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false) {}
+};
 
 // input: dot(DS(ctA), ctB))
 // where DS(ctA) = DS({M x K}, {s, 0}, {1, K}) and ctB = {K x N}.

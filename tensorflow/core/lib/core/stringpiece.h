@@ -23,8 +23,8 @@ limitations under the License.
 // non-const method, all threads accessing the same StringPiece must use
 // external synchronization.
 
-#ifndef TENSORFLOW_LIB_CORE_STRINGPIECE_H_
-#define TENSORFLOW_LIB_CORE_STRINGPIECE_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_
+#define TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_
 
 #include <assert.h>
 #include <stddef.h>
@@ -92,10 +92,6 @@ class StringPiece {
 
   StringPiece substr(size_t pos, size_t n = npos) const;
 
-  // Return a string that contains the copy of the referenced data.
-  // DEPRECATED: use std::string(sv) instead.
-  std::string ToString() const { return std::string(data_, size_); }
-
   // Three-way comparison.  Returns value:
   //   <  0 iff "*this" <  "b",
   //   == 0 iff "*this" == "b",
@@ -156,4 +152,4 @@ extern std::ostream& operator<<(std::ostream& o, tensorflow::StringPiece piece);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_CORE_STRINGPIECE_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_

@@ -29,12 +29,12 @@ py_library(
         "//tensorflow/contrib/distribute/python:cross_tower_ops",
         "//tensorflow/contrib/distribute/python:mirrored_strategy",
         "//tensorflow/contrib/distribute/python:monitor",
-        "//tensorflow/contrib/distribute/python:multi_worker_strategy",
         "//tensorflow/contrib/distribute/python:one_device_strategy",
         "//tensorflow/contrib/distribute/python:parameter_server_strategy",
         "//tensorflow/contrib/distribute/python:step_fn",
         "//tensorflow/contrib/distribute/python:tpu_strategy",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
+        "//tensorflow/python/distribute:distribute_config",
     ],
 )

@@ -104,9 +104,9 @@ TEST(PathTest, CleanPath) {
     StringPiece u(uri);                            \
     StringPiece s, h, p;                           \
     ParseURI(u, &s, &h, &p);                       \
-    EXPECT_EQ(scheme, s.ToString());               \
-    EXPECT_EQ(host, h.ToString());                 \
-    EXPECT_EQ(path, p.ToString());                 \
+    EXPECT_EQ(scheme, s);                          \
+    EXPECT_EQ(host, h);                            \
+    EXPECT_EQ(path, p);                            \
     EXPECT_EQ(uri, CreateURI(scheme, host, path)); \
     EXPECT_LE(u.begin(), s.begin());               \
     EXPECT_GE(u.end(), s.begin());                 \
