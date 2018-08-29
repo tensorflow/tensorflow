@@ -35,10 +35,10 @@ struct BucketizeV2Functor<CPUDevice, T> {
   // PRECONDITION: boundaries must be sorted.
   static Status Compute(OpKernelContext* context,
                         const typename TTypes<T, 1>::ConstTensor& input,
-                        const typename TTypes<float, 1>::ConstTensor& boundaries,
+                        const typename TTypes<T, 1>::ConstTensor& boundaries,
                         typename TTypes<int32, 1>::Tensor& output) {
     const int N = input.size();
-    std::vector<float> boundaries_vector(boundaries.size());
+    std::vector<T> boundaries_vector(boundaries.size());
     for(int i = 0; i < boundaries.size(); ++i){
       boundaries_vector[i] = boundaries(i);
     }
@@ -65,7 +65,7 @@ class BucketizeV2Op : public OpKernel {
     const auto input = input_tensor.flat<T>();
 
     const Tensor& boundaries_tensor = context->input(1);
-    const auto boundaries = boundaries_tensor.flat<float>();
+    const auto boundaries = boundaries_tensor.flat<T>();
 
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(),

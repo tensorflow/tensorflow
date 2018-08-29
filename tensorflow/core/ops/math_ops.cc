@@ -1620,7 +1620,7 @@ REGISTER_OP("Bucketize")
 
 REGISTER_OP("BucketizeV2")
     .Input("input: T")
-    .Input("boundaries: float")
+    .Input("boundaries: T")
     .Output("output: int32")
     .Attr("T: {int32, int64, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape);

@@ -9,7 +9,7 @@ END
   in_arg {
     name: "boundaries"
     description: <<END
-A sorted 1-D Tensor of floats gives the boundary of the buckets.
+A sorted 1-D Tensor with the same type of 'input' gives the boundary of the buckets.
 END
   }
   out_arg {

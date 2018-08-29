@@ -35,9 +35,9 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename T, bool useSharedMem>
 __global__ void BucketizeCustomKernel(
     const int32 size_in, const T* in, const int32 size_boundaries,
-    const float* boundaries, int32* out) {
-  extern __shared__ __align__(sizeof(float)) unsigned char shared_mem[];
-  float* shared_mem_boundaries = reinterpret_cast<float*>(shared_mem);
+    const T* boundaries, int32* out) {
+  extern __shared__ __align__(sizeof(T)) unsigned char shared_mem[];
+  T* shared_mem_boundaries = reinterpret_cast<T*>(shared_mem);
 
   if (useSharedMem) {
     int32 lidx = threadIdx.y * blockDim.x + threadIdx.x;
@@ -60,7 +60,7 @@ __global__ void BucketizeCustomKernel(
       int32 l = bucket;
       int32 step = count / 2;
       l += step;
-      if (!(value < static_cast<T>(boundaries[l]))) {
+      if (!(value < boundaries[l])) {
         bucket = ++l;
         count -= step + 1;
       } else {
@@ -78,12 +78,12 @@ struct BucketizeV2Functor<GPUDevice, T> {
   // PRECONDITION: boundaries must be sorted.
   static Status Compute(OpKernelContext* context,
                         const typename TTypes<T, 1>::ConstTensor& input,
-                        const typename TTypes<float, 1>::ConstTensor& boundaries,
+                        const typename TTypes<T, 1>::ConstTensor& boundaries,
                         typename TTypes<int32, 1>::Tensor& output) {
     const GPUDevice& d = context->eigen_device<GPUDevice>();
 
     CudaLaunchConfig config = GetCudaLaunchConfig(input.size(), d);
-    int32 shared_mem_size = sizeof(float) * boundaries.size();
+    int32 shared_mem_size = sizeof(T) * boundaries.size();
     const int32 kMaxSharedMemBytes = 16384;
     if (shared_mem_size < d.sharedMemPerBlock() &&
         shared_mem_size < kMaxSharedMemBytes) {

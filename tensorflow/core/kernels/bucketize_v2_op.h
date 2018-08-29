@@ -31,7 +31,7 @@ template <typename Device, typename T>
 struct BucketizeV2Functor {
   static Status Compute(OpKernelContext* context,
                         const typename TTypes<T, 1>::ConstTensor& input,
-                        const typename TTypes<float, 1>::ConstTensor& boundaries,
+                        const typename TTypes<T, 1>::ConstTensor& boundaries,
                         typename TTypes<int32, 1>::Tensor& output);
 };
 
