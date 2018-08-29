@@ -171,10 +171,10 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   ServiceExecutableRunOptions run_options(
       exec_run_options, /*borrow_stream=*/nullptr,
       backend->eigen_intra_op_thread_pool());
+  std::vector<const ShapedBuffer*> args = {&lhs_arg, &rhs_arg};
   TF_ASSERT_OK_AND_ASSIGN(
       auto execution_result,
-      executable->ExecuteOnStream(&run_options, {&lhs_arg, &rhs_arg},
-                                  &hlo_execution_profile));
+      executable->ExecuteOnStream(&run_options, args, &hlo_execution_profile));
   TF_ASSERT_OK(stream_ptr->BlockHostUntilDone());
   (void)execution_result;
 
