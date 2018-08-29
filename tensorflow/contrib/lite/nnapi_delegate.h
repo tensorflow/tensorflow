@@ -40,7 +40,6 @@ class NNAPIAllocation : public MMAPAllocation {
 
   ANeuralNetworksMemory* memory() const { return handle_; }
   bool valid() const override { return handle_ != nullptr; }
-  Type type() const override { return Type::kNNAPI; }
 
  private:
   mutable ANeuralNetworksMemory* handle_ = nullptr;

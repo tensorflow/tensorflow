@@ -56,8 +56,6 @@ size_t MMAPAllocation::bytes() const { return buffer_size_bytes_; }
 
 bool MMAPAllocation::valid() const { return mmapped_buffer_ != MAP_FAILED; }
 
-Allocation::Type MMAPAllocation::type() const { return Type::kMMAP; }
-
 bool MMAPAllocation::IsSupported() { return true; }
 
 }  // namespace tflite
