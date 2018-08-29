@@ -602,8 +602,10 @@ class AllReduceCrossTowerOps(CrossTowerOps):
                                     [v[0] for v in value_destination_pairs])
     else:
       if not all_devices_match:
-        logging.warning("Efficient batch_reduce is not supported if "
-                        "destinations are different.")
+        logging.log_first_n(logging.WARN,
+                            "Efficient batch_reduce is not supported if "
+                            "destinations are different.",
+                            10)
 
       return [
           self._reduce(aggregation, t, destinations=v)
@@ -782,7 +784,7 @@ class CollectiveAllReduce(CrossTowerOps):
   def __init__(self,
                num_workers=1,
                num_gpus_per_worker=0,
-               all_reduce_merge_scope=1,
+               all_reduce_merge_scope=32,
                collective_keys=None):
     """Initializes the object.
 
@@ -803,6 +805,13 @@ class CollectiveAllReduce(CrossTowerOps):
 
   # TODO(yuefengz, tucker): is indexed slices supported by collective ops?
   def _reduce(self, aggregation, per_device_value, destinations):
+    if cross_tower_utils.contains_indexed_slices(per_device_value):
+      raise ValueError(
+          "`IndexSlices` is not supported for Collective All-Reduce.")
+    if context.executing_eagerly():
+      raise ValueError(
+          "Eager execution is not supported for Collective All-Reduce")
+
     all_reduced = self._batch_all_reduce(aggregation, [per_device_value])[0]
     if destinations is None or _devices_match(per_device_value, destinations):
       return all_reduced
@@ -820,15 +829,33 @@ class CollectiveAllReduce(CrossTowerOps):
       return value_lib.Mirrored(index)
 
   def _batch_reduce(self, aggregation, value_destination_pairs):
-    return [
-        self._reduce(aggregation, t, destinations=v)
-        for t, v in value_destination_pairs
-    ]
+    if cross_tower_utils.contains_indexed_slices(value_destination_pairs):
+      raise ValueError(
+          "`IndexSlices` is not supported for Collective All-Reduce.")
+    if context.executing_eagerly():
+      raise ValueError(
+          "Eager execution is not supported for Collective All-Reduce")
+
+    all_devices_match = _all_devices_match(value_destination_pairs)
+    if all_devices_match:
+      return self._batch_all_reduce(aggregation,
+                                    [v[0] for v in value_destination_pairs])
+    else:
+      if not all_devices_match:
+        logging.log_first_n(
+            logging.WARN, "Efficient batch_reduce is not supported if "
+            "destinations are different.", 10)
+
+      return [
+          self._reduce(aggregation, t, destinations=v)
+          for t, v in value_destination_pairs
+      ]
 
   def _batch_all_reduce(self, aggregation, per_device_values):
     """All-reduce across all workers in a batch."""
     if context.executing_eagerly():
-      raise ValueError("Eager mode with collective ops is not supported yet.")
+      raise ValueError(
+          "Eager execution with collective ops is not supported yet.")
 
     logging.log_first_n(
         logging.INFO, "Collective All-reduce invoked with batches size = %d, "
