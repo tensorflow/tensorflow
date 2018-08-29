@@ -692,15 +692,11 @@ class TFOptimizer(Optimizer, checkpointable.CheckpointableBase):
   """Wrapper class for native TensorFlow optimizers.
   """
 
-  def __init__(self, optimizer, iterations=None):  # pylint: disable=super-init-not-called
+  def __init__(self, optimizer):  # pylint: disable=super-init-not-called
     self.optimizer = optimizer
     self._track_checkpointable(optimizer, name='optimizer')
-    if iterations is None:
-      with K.name_scope(self.__class__.__name__):
-        self.iterations = K.variable(0, dtype='int64', name='iterations')
-    else:
-      self.iterations = iterations
-    self._track_checkpointable(self.iterations, name='global_step')
+    with K.name_scope(self.__class__.__name__):
+      self.iterations = K.variable(0, dtype='int64', name='iterations')
 
   def apply_gradients(self, grads):
     self.optimizer.apply_gradients(grads, global_step=self.iterations)

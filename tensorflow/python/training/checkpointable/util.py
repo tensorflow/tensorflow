@@ -685,11 +685,6 @@ def _serialize_object_graph(root_checkpointable, saveables_cache):
       saveables_cache=saveables_cache)
 
 
-def named_saveables(root_checkpointable):
-  """Gather list of all SaveableObjects in the Checkpointable object."""
-  return _serialize_object_graph(root_checkpointable, None)[0]
-
-
 def list_objects(root_checkpointable):
   """Traverse the object graph and list all accessible objects.
 
