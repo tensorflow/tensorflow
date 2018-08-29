@@ -30,6 +30,7 @@ from tensorflow.python.keras.engine.input_layer import InputLayer
 from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
+from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.training.checkpointable import data_structures
 from tensorflow.python.util.tf_export import tf_export
@@ -393,11 +394,10 @@ def in_place_subclassed_model_state_restoration(model):
 
 def clone_and_build_model(
     model, input_tensors=None, target_tensors=None, custom_objects=None,
-    compile_clone=True, in_place_reset=False, optimizer_iterations=None):
+    compile_clone=True, in_place_reset=False):
   """Clone a `Model` and build/compile it with the same settings used before.
 
-  This function can be be run in the same graph or in a separate graph from the
-  model. When using a separate graph, `in_place_reset` must be `False`.
+  This function should be run in the same graph as the model.
 
   Args:
     model: `tf.keras.Model` object. Can be Functional, Sequential, or
@@ -414,10 +414,6 @@ def clone_and_build_model(
       this argument must be set to `True` (default `False`). To restore the
       original model, use the function
       `in_place_subclassed_model_state_restoration(model)`.
-    optimizer_iterations: An iterations variable to pass to the optimizer if
-      the model uses a TFOptimizer, and if the clone is compiled. This is used
-      when a Keras model is cloned into an Estimator model function, because
-      Estimators create their own global step variable.
 
   Returns:
     Clone of the model.
@@ -452,12 +448,14 @@ def clone_and_build_model(
       clone.build()
   elif model.optimizer:
     if isinstance(model.optimizer, optimizers.TFOptimizer):
-      optimizer = optimizers.TFOptimizer(
-          model.optimizer.optimizer, optimizer_iterations)
+      optimizer = model.optimizer
       K.track_tf_optimizer(optimizer)
     else:
       optimizer_config = model.optimizer.get_config()
       optimizer = model.optimizer.__class__.from_config(optimizer_config)
+    global_step = training_util.get_or_create_global_step()
+    K.track_variable(global_step)
+    optimizer.iterations = global_step
 
     clone.compile(
         optimizer,
