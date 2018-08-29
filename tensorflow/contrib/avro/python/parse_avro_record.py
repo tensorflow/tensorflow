@@ -216,8 +216,8 @@ def _build_keys_for_sparse_features(features):
             feature = features[key]
             if isinstance(feature, SparseFeature):
                 features[key] = SparseFeature(
-                    index_key=key + '.[*].' + feature.index_key,
-                    value_key=key + '.[*].' + feature.value_key,
+                    index_key=key + '[*].' + feature.index_key,
+                    value_key=key + '[*].' + feature.value_key,
                     dtype=feature.dtype,
                     size=feature.size,
                     already_sorted=feature.already_sorted)
