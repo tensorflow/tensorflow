@@ -23,8 +23,10 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
@@ -1826,6 +1828,105 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_4_3x2x4x2_6x8) {
               op::Reshape(op::Broadcast(param)));
 }
 
+TEST_F(AlgebraicSimplifierTest, IotaAndReshapeMerged) {
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(HloInstruction::CreateIota(
+      ShapeUtil::MakeShape(F32, {1, 2, 3, 7, 12, 1}), 2));
+  Shape result_shape = ShapeUtil::MakeShape(F32, {2, 3, 7, 2, 1, 3, 2});
+  builder.AddInstruction(HloInstruction::CreateReshape(result_shape, iota));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), op::Iota());
+  EXPECT_TRUE(
+      ShapeUtil::Equal(computation->root_instruction()->shape(), result_shape));
+}
+
+TEST_F(AlgebraicSimplifierTest, IotaAndReshape_1_3x1_3) {
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {3, 1}), 1));
+  builder.AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {3}), iota));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  EXPECT_FALSE(simplifier.Run(&module()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+}
+
+TEST_F(AlgebraicSimplifierTest, IotaAndReshape_4_3x2x4_6x1x1x4) {
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {3, 2, 4}), 2));
+  builder.AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(F32, {6, 1, 1, 4}), iota));
+
+  HloComputation* computation = module().AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), op::Iota());
+  EXPECT_EQ(Cast<HloIotaInstruction>(computation->root_instruction())
+                ->iota_dimension(),
+            3);
+}
+
+TEST_F(AlgebraicSimplifierTest, IotaAndReshape_1_3x2x1_6x1x1x1) {
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {3, 2, 1}), 2));
+  builder.AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(F32, {6, 1, 1, 1}), iota));
+
+  HloComputation* computation = module().AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), op::Iota());
+  const int64 iota_dim =
+      Cast<HloIotaInstruction>(computation->root_instruction())
+          ->iota_dimension();
+  EXPECT_THAT(iota_dim, ::testing::AnyOf(1, 2, 3));
+}
+
+TEST_F(AlgebraicSimplifierTest, IotaAndReshape_4_3x2x4x2_6x8) {
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {3, 2, 4, 2}), 2));
+  builder.AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {6, 8}), iota));
+
+  HloComputation* computation = module().AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  EXPECT_FALSE(simplifier.Run(&module()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+}
+
 TEST_F(AlgebraicSimplifierTest, RemoveNoopPad) {
   HloComputation::Builder builder(TestName());
   HloInstruction* param =
@@ -2651,6 +2752,47 @@ TEST_F(AlgebraicSimplifierTest, MergeBroadcasts2) {
   root = computation->root_instruction();
   EXPECT_THAT(root, op::Broadcast(op::Parameter(0)));
   EXPECT_THAT(root->dimensions(), ElementsAre(1, 3));
+}
+
+// Test that a broadcast of an iota can be merged to one iota.
+TEST_F(AlgebraicSimplifierTest, MergeBroadcastAndIota) {
+  HloComputation::Builder builder(TestName());
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
+  HloInstruction* iota =
+      builder.AddInstruction(HloInstruction::CreateIota(r2f32, 1));
+  Shape r3f32 = ShapeUtil::MakeShape(F32, {2, 2, 2});
+  builder.AddInstruction(HloInstruction::CreateBroadcast(r3f32, iota, {0, 2}));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_THAT(root, op::Iota());
+  EXPECT_EQ(Cast<HloIotaInstruction>(root)->iota_dimension(), 2);
+}
+
+// Test that a broadcast of an iota can be merged to one iota.
+TEST_F(AlgebraicSimplifierTest, MergeBroadcastAndIota2) {
+  HloComputation::Builder builder(TestName());
+  Shape r3f32 = ShapeUtil::MakeShape(F32, {2, 5, 3});
+  HloInstruction* iota =
+      builder.AddInstruction(HloInstruction::CreateIota(r3f32, 1));
+  Shape r4f32 = ShapeUtil::MakeShape(F32, {4, 2, 5, 3});
+  builder.AddInstruction(
+      HloInstruction::CreateBroadcast(r4f32, iota, {1, 2, 3}));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_THAT(root, op::Iota());
+  EXPECT_EQ(Cast<HloIotaInstruction>(root)->iota_dimension(), 2);
 }
 
 struct PadReduceWindowEffectiveBroadcastCase {

@@ -918,6 +918,7 @@ Op(::xla::HloInstruction** matched_inst) {
   }
 XLA_NULLOP_PATTERN(Constant)
 XLA_NULLOP_PATTERN(Parameter)
+XLA_NULLOP_PATTERN(Iota)
 #undef XLA_NULLOP_PATTERN
 
 // Helpers for unary instructions.
