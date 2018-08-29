@@ -1350,6 +1350,7 @@ cc_library(
     hdrs = ["algebraic_simplifier.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_creation_utils",
         ":hlo_pass",
         ":hlo_query",
@@ -1376,6 +1377,7 @@ tf_cc_test(
     deps = [
         ":algebraic_simplifier",
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_matchers",
         ":hlo_pass",
         "//tensorflow/compiler/xla:literal",
