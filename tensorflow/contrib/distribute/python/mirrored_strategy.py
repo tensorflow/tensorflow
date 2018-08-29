@@ -564,8 +564,15 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
 
     if self._cross_tower_ops is None:
       if self._cluster_spec:
-        self._cross_tower_ops = cross_tower_ops_lib.MultiWorkerAllReduce(
-            self._workers, self._num_gpus)
+        # It currently cannot detect the toplogy of remote workers. So we
+        # hard-code the multi-worker all-reduce algorithm for now.
+        if len(self._workers) == 1:
+          # The default is "nccl".
+          self._cross_tower_ops = cross_tower_ops_lib.AllReduceCrossTowerOps()
+        else:
+          # The default is hierarchical reduce and broadcast.
+          self._cross_tower_ops = cross_tower_ops_lib.MultiWorkerAllReduce(
+              self._workers, self._num_gpus)
       else:
         self._cross_tower_ops = cross_tower_ops_lib.choose_the_best(
             self._devices, session_config=session_config)
