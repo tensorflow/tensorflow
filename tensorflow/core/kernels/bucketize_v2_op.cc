@@ -79,7 +79,7 @@ class BucketizeV2Op : public OpKernel {
 #define REGISTER_KERNEL(T)                                         \
   REGISTER_KERNEL_BUILDER(                                         \
       Name("BucketizeV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      BucketizeOp<CPUDevice, T>);
+      BucketizeV2Op<CPUDevice, T>);
 
 REGISTER_KERNEL(int32);
 REGISTER_KERNEL(int64);
@@ -91,7 +91,7 @@ REGISTER_KERNEL(double);
 #define REGISTER_KERNEL(T)                                         \
   REGISTER_KERNEL_BUILDER(                                         \
       Name("BucketizeV2").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
-      BucketizeOp<GPUDevice, T>);
+      BucketizeV2Op<GPUDevice, T>);
 
 REGISTER_KERNEL(int32);
 REGISTER_KERNEL(int64);
