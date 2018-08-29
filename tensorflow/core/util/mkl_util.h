@@ -2054,7 +2054,7 @@ class FactoryKeyCreator {
   const char delimiter = 'x';
   const int kMaxKeyLength = 256;
   void Append(StringPiece s) {
-    key_.append(s.ToString());
+    key_.append(string(s));
     key_.append(1, delimiter);
   }
 };
