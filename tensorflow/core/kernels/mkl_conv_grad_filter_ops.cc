@@ -300,10 +300,10 @@ template <typename T>
 class MklConvBwdFilterPrimitiveFactory : public MklPrimitiveFactory<T> {
  public:
   static MklConvBwdFilterPrimitive<T>* Get(
-      const MklConvBwdFilterParams& convBwdFilterDims, bool not_cache) {
+      const MklConvBwdFilterParams& convBwdFilterDims, bool do_not_cache) {
     MklConvBwdFilterPrimitive<T>* conv_bwd_filter = nullptr;
 
-    if (not_cache) { /* Create new primitive always */
+    if (do_not_cache) { /* Create new primitive always */
       conv_bwd_filter = new MklConvBwdFilterPrimitive<T>(convBwdFilterDims);
     } else {
       // look into the pool for reusable primitive
@@ -854,9 +854,9 @@ class MklConvCustomBackpropFilterOp
       // MKL DNN allocates large buffers when a conv gradient filter primtive is
       // created. So we don't cache conv backward primitives when the env
       // variable TF_MKL_OPTIMIZE_PRIMITVE_MEMUSE is set to true.
-      not_cache_ = MklPrimitiveFactory<T>::IsPrimitiveMemOptEnabled();
+      do_not_cache_ = MklPrimitiveFactory<T>::IsPrimitiveMemOptEnabled();
       conv_bwd_filter = MklConvBwdFilterPrimitiveFactory<T>::Get(
-          convBwdFilterDims, not_cache_);
+          convBwdFilterDims, do_not_cache_);
       auto bwd_filter_pd = conv_bwd_filter->GetPrimitiveDesc();
 
       // allocate output tensors: diff_fitler and diff_bias (w bias)
@@ -950,7 +950,7 @@ class MklConvCustomBackpropFilterOp
       }
 
       // delete primitive since it is not cached.
-      if (not_cache_) delete conv_bwd_filter;
+      if (do_not_cache_) delete conv_bwd_filter;
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
@@ -966,7 +966,7 @@ class MklConvCustomBackpropFilterOp
   const int kInputIndex_InputSizes = 0;
   const int kDilationH = 0, kDilationW = 1;
   engine cpu_engine_ = engine(engine::cpu, 0);
-  bool not_cache_;
+  bool do_not_cache_;
 
   // Validate input shapes.
   // Function asserts that input shapes are valid.

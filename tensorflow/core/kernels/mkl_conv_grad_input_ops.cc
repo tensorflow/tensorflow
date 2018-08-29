@@ -241,10 +241,10 @@ class MklConvBwdInputPrimitiveFactory : public MklPrimitiveFactory<T> {
 
  public:
   static MklConvBwdInputPrimitive<T>* Get(
-      const MklConvBwdInputParams& convBwdInputDims, bool not_cache) {
+      const MklConvBwdInputParams& convBwdInputDims, bool do_not_cache) {
     MklConvBwdInputPrimitive<T>* conv_bwd_input = nullptr;
 
-    if (not_cache) { /* Always allocate primitive */
+    if (do_not_cache) { /* Always allocate primitive */
       conv_bwd_input = new MklConvBwdInputPrimitive<T>(convBwdInputDims);
     } else {
       // look into the pool for reusable primitive
@@ -718,11 +718,11 @@ class MklConvCustomBackpropInputOp : public MklConvBackpropCommonOp<Device, T> {
       // in the following cases
       //   1. Legacy CPU without AVX512/AVX2, or
       //   2. 1x1 convolution with stride != 1
-      not_cache_ = MklPrimitiveFactory<T>::IsPrimitiveMemOptEnabled() &&
+      do_not_cache_ = MklPrimitiveFactory<T>::IsPrimitiveMemOptEnabled() &&
                    (MklPrimitiveFactory<T>::IsLegacyPlatform() ||
                     IsConv1x1StrideNot1(fwd_filter_dims, strides));
       conv_bwd_input = MklConvBwdInputPrimitiveFactory<T>::Get(convBwdInputDims,
-                                                               not_cache_);
+                                                               do_not_cache_);
       auto bwd_input_pd = conv_bwd_input->GetPrimitiveDesc();
 
       // allocate output tensor
@@ -770,7 +770,7 @@ class MklConvCustomBackpropInputOp : public MklConvBackpropCommonOp<Device, T> {
       conv_bwd_input->Execute(diff_src_data, filter_data, diff_dst_data);
 
       // delete primitive since it is not cached.
-      if (not_cache_) {
+      if (do_not_cache_) {
         delete conv_bwd_input;
       }
     } catch (mkldnn::error& e) {
@@ -787,7 +787,7 @@ class MklConvCustomBackpropInputOp : public MklConvBackpropCommonOp<Device, T> {
   const int kInputIndex_Filter = 1, kInputIndex_InputSizes = 0;
   const int kDilationH = 0, kDilationW = 1;
   engine cpu_engine = engine(engine::cpu, 0);
-  bool not_cache_;
+  bool do_not_cache_;
 
   // Validate input shapes.
   // Function asserts that input shapes are valid.
