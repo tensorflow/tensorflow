@@ -4,7 +4,6 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_shared_object",
     "tf_cc_test",
-    "tf_opts_nortti_if_android",
 )
 
 def tflite_copts():
@@ -35,7 +34,7 @@ def tflite_copts():
     }) + select({
         str(Label("//tensorflow:with_default_optimizations")): [],
         "//conditions:default": ["-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK"],
-    }) + tf_opts_nortti_if_android()
+    })
 
     return copts
 

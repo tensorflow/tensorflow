@@ -191,10 +191,8 @@ TfLiteStatus addTensorOperands(tflite::Interpreter* interpreter,
     // TODO(aselle): Based on Michael's suggestion, limiting this to read
     // only memory
     if (tensor->allocation_type == kTfLiteMmapRo) {
-      if (static_cast<const Allocation*>(tensor->allocation)->type() ==
-          Allocation::Type::kNNAPI) {
-        const NNAPIAllocation* alloc =
-            static_cast<const NNAPIAllocation*>(tensor->allocation);
+      if (const NNAPIAllocation* alloc = dynamic_cast<const NNAPIAllocation*>(
+              static_cast<const Allocation*>(tensor->allocation))) {
         RETURN_ERROR_IF_NN_FAILED(
             ANeuralNetworksModel_setOperandValueFromMemory(
                 nn_model, next_id, alloc->memory(),

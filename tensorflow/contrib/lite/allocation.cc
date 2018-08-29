@@ -72,8 +72,6 @@ const void* FileCopyAllocation::base() const { return copied_buffer_.get(); }
 size_t FileCopyAllocation::bytes() const { return buffer_size_bytes_; }
 
 bool FileCopyAllocation::valid() const { return copied_buffer_ != nullptr; }
-
-Allocation::Type FileCopyAllocation::type() const { return Type::kFileCopy; }
 #endif
 
 MemoryAllocation::MemoryAllocation(const void* ptr, size_t num_bytes,
@@ -90,7 +88,5 @@ const void* MemoryAllocation::base() const { return buffer_; }
 size_t MemoryAllocation::bytes() const { return buffer_size_bytes_; }
 
 bool MemoryAllocation::valid() const { return buffer_ != nullptr; }
-
-Allocation::Type MemoryAllocation::type() const { return Type::kMemory; }
 
 }  // namespace tflite
