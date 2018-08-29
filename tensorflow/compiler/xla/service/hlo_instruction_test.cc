@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
@@ -39,9 +39,11 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::UnorderedElementsAre;
 
-class HloInstructionTest : public HloTestBase {
+class HloInstructionTest : public HloVerifiedTestBase {
  protected:
-  HloInstructionTest() {}
+  HloInstructionTest()
+      : HloVerifiedTestBase(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false) {}
 
   Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
 };
@@ -1086,16 +1088,14 @@ TEST_F(HloInstructionTest, PartiallyElementwise) {
 
 TEST_F(HloInstructionTest, PartiallyElementwiseWithReuse) {
   // Fused expression:
-  //
-  // x     y
-  //  \   / \
-  //   min   broadcast
+  //         y
+  //        /
+  // x   broadcast
+  //  \   /  |
+  //   min   |
   //     \   /
   //      sub
   //
-  // The fusion instruction is elementwise on `x` because the only path from x
-  // to sub contains only elementwise operations. It is not elementwise on `y`
-  // because the path y->broadcast->sub is not all elementwise.
   const Shape r0f32 = ShapeUtil::MakeShape(F32, {});
   const Shape r1f32 = ShapeUtil::MakeShape(F32, {5});
 
@@ -1104,10 +1104,10 @@ TEST_F(HloInstructionTest, PartiallyElementwiseWithReuse) {
       builder.AddInstruction(HloInstruction::CreateParameter(0, r1f32, "x"));
   HloInstruction* y =
       builder.AddInstruction(HloInstruction::CreateParameter(1, r0f32, "y"));
-  HloInstruction* min = builder.AddInstruction(
-      HloInstruction::CreateBinary(r1f32, HloOpcode::kMinimum, x, y));
   HloInstruction* broadcast =
-      builder.AddInstruction(HloInstruction::CreateBroadcast(r1f32, y, {0}));
+      builder.AddInstruction(HloInstruction::CreateBroadcast(r1f32, y, {}));
+  HloInstruction* min = builder.AddInstruction(
+      HloInstruction::CreateBinary(r1f32, HloOpcode::kMinimum, x, broadcast));
   HloInstruction* sub = builder.AddInstruction(HloInstruction::CreateBinary(
       r1f32, HloOpcode::kSubtract, min, broadcast));
 
@@ -1118,10 +1118,10 @@ TEST_F(HloInstructionTest, PartiallyElementwiseWithReuse) {
   EXPECT_FALSE(fusion->IsElementwise());
   for (int64 operand_idx = 0; operand_idx < fusion->operand_count();
        ++operand_idx) {
-    if (fusion->operand(operand_idx) == x) {
-      EXPECT_TRUE(fusion->IsElementwiseOnOperand(operand_idx));
-    } else {
+    if (fusion->operand(operand_idx) == y) {
       EXPECT_FALSE(fusion->IsElementwiseOnOperand(operand_idx));
+    } else {
+      EXPECT_TRUE(fusion->IsElementwiseOnOperand(operand_idx));
     }
   }
 }
@@ -1248,7 +1248,7 @@ TEST_F(HloInstructionTest, NestedFusionEquality) {
   auto one = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto add_operand = builder.AddInstruction(
-      HloInstruction::CreateBroadcast(data_shape, one, {1}));
+      HloInstruction::CreateBroadcast(data_shape, one, {}));
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
       data_shape, HloOpcode::kAdd, dot, add_operand));
   auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
