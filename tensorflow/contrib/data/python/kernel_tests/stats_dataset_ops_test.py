@@ -209,10 +209,10 @@ class FeatureStatsDatasetTest(
       self._assertSummaryHasCount(
           sess.run(summary_t), "record_stats:feature-values", total_records)
       self._assertSummaryHasSum(
-          sess.run(summary_t), "record_stats:features", total_records * 3)
+          sess.run(summary_t), "record_stats:features", total_records * 4)
       self._assertSummaryHasSum(
           sess.run(summary_t), "record_stats:feature-values",
-          self._sum_keywords(1) * num_epochs + 2 * total_records)
+          self._sum_keywords(1) * num_epochs + 3 * total_records)
 
 
 if __name__ == "__main__":
