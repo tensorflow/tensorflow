@@ -172,7 +172,8 @@ bool InstructionFusion::EffectivelyAtMostUnary(HloInstruction* hlo) {
       });
   return std::count_if(hlo->operands().begin(), hlo->operands().end(),
                        [output_rank](HloInstruction* operand) {
-                         if (operand->opcode() == HloOpcode::kBroadcast) {
+                         if (operand->opcode() == HloOpcode::kBroadcast ||
+                             operand->opcode() == HloOpcode::kIota) {
                            return false;
                          }
                          if (operand->opcode() == HloOpcode::kConstant &&
