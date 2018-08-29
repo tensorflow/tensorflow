@@ -59,6 +59,7 @@ COMMON_PIP_DEPS = [
     "setup.py",
     ":included_headers",
     "//tensorflow:tensorflow_py",
+    "//tensorflow:libtensorflow_cc.so",
     "//tensorflow/contrib/autograph:autograph",
     "//tensorflow/contrib/autograph/converters:converters",
     "//tensorflow/contrib/autograph/core:core",
