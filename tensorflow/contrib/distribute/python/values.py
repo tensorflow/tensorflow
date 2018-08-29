@@ -523,6 +523,8 @@ class TowerLocalVariable(DistributedVariable, PerDevice,
     return self._aggregation
 
   def _get_cross_tower(self):
+    if self._aggregation == vs.VariableAggregation.ONLY_FIRST_TOWER:
+      return self._primary_var
     all_components = tuple(self._index.values())
     # TODO(josh11b): Use a strategy-specific method.
     total = math_ops.add_n(all_components)

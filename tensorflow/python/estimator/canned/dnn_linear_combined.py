@@ -31,10 +31,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
-from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
 from tensorflow.python.util.tf_export import estimator_export
@@ -222,7 +222,7 @@ def _dnn_linear_combined_model_fn(features,
 
     train_op = control_flow_ops.group(*train_ops)
     with ops.control_dependencies([train_op]):
-      return distribute_lib.increment_var(global_step)
+      return state_ops.assign_add(global_step, 1).op
 
   return head.create_estimator_spec(
       features=features,

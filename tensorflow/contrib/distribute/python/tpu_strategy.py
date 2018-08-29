@@ -238,6 +238,9 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
         if aggregation == vs.VariableAggregation.MEAN:
           # TODO(jhseu):  Revisit once we support model-parallelism.
           value *= (1. / self.num_towers)
+        elif aggregation != vs.VariableAggregation.SUM:
+          raise NotImplementedError(
+              'Currently only support sum & mean in TPUStrategy.')
         return tpu_ops.cross_replica_sum(value)
       cf_context = cf_context.outer_context
 
@@ -251,6 +254,8 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     else:
       raise ValueError('Multiple devices are not supported for TPUStrategy')
 
+    if aggregation == vs.VariableAggregation.ONLY_FIRST_TOWER:
+      return value[0]
     output = math_ops.add_n(value)
     if aggregation == vs.VariableAggregation.MEAN:
       return output * (1. / len(value))
