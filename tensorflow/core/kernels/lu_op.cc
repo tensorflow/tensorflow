@@ -42,10 +42,13 @@ class LuOp : public OpKernel {
  public:
   explicit LuOp(OpKernelConstruction* context) : OpKernel(context) {}
   
-  void Compute(OpKernelContext* context) override {   
+  void Compute(OpKernelContext* context) override {
+    // TODO(hzhuang): Check the instability inside LU_op. 
+    // return an integer containing the index of the first zero diagonal in U,
+    // like INFO argument in LAPACK function xGETRF.    
     const Tensor & in = context->input(0);  
     TensorShape mtx_shape = in.shape();         
-    // zhuangh: assume square at this moment        
+    // hzhuang: assume square at this moment        
     auto matrix = in.matrix<T>();
     
     auto & input = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, 
@@ -87,7 +90,7 @@ class LuOp : public OpKernel {
   }
 };
 
-#define REGISTER_KERNEL(T)                                                  \
+#define REGISTER_KERNEL(T)                                               \
   REGISTER_KERNEL_BUILDER(                                               \
       Name("Lu").Device(DEVICE_CPU).TypeConstraint<T>("T"),              \
       LuOp<CPUDevice, T>)

@@ -32,9 +32,12 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
+
+
 class LuOpTest(test.TestCase):
 
   def _verifyLU(self, x):
+    # TODO(hzhuang): add test cases for the singular matrix, etc.
     for np_type in [np.float32, np.float64]: #, np.complex64, np.complex128]:
       if np_type == np.float32 or np_type == np.complex64:
         tol = 1e-2
