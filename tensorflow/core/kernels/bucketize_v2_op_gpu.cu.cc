@@ -37,7 +37,7 @@ __global__ void BucketizeCustomKernel(
     const int32 size_in, const T* in, const int32 size_boundaries,
     const float* boundaries, int32* out) {
   extern __shared__ __align__(sizeof(float)) unsigned char shared_mem[];
-  const float* shared_mem_boundaries = reinterpret_cast<const float*>(shared_mem);
+  float* shared_mem_boundaries = reinterpret_cast<float*>(shared_mem);
 
   if (useSharedMem) {
     int32 lidx = threadIdx.y * blockDim.x + threadIdx.x;
