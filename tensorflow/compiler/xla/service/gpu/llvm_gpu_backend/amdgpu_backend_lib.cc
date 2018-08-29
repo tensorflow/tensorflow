@@ -95,9 +95,9 @@ static std::vector<string> GetROCDLFilenames(int amdgpu_version) {
 // Convenience function for producing a name of a temporary compilation product
 // from the input filename.
 string MakeNameForTempProduct(const std::string& input_filename,
-                              tensorflow::StringPiece extension) {
+                              absl::string_view extension) {
   return ReplaceFilenameExtension(
-      tensorflow::io::Basename(llvm_ir::AsString(input_filename)), extension);
+      absl::string_view(tensorflow::io::Basename(llvm_ir::AsString(input_filename))), extension);
 }
 
 // Initializes LLVM passes. Uses the PassRegistry mechanism.
@@ -116,14 +116,14 @@ void InitializePasses(llvm::PassRegistry* pass_registry) {
   llvm::initializeCodeGenPreparePass(*pass_registry);
 }
 
-// Returns the TargetMachine, given a triple.
+// returns the targetmachine, given a triple.
 std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
-    llvm::Triple triple, tensorflow::StringPiece cpu_name,
+    llvm::Triple triple, absl::string_view cpu_name,
     const HloModuleConfig& hlo_module_config) {
   std::string error;
   const llvm::Target* target = TargetRegistry::lookupTarget("", triple, error);
   if (target == nullptr) {
-    LOG(FATAL) << "Unable to find Target for triple '" << triple.str() << "'"
+    LOG(FATAL) << "unable to find target for triple '" << triple.str() << "'"
                << " -- " << error;
     return nullptr;
   }
@@ -134,15 +134,15 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
           .xla_gpu_enable_fast_math(),
       &target_options);
 
-  // Enable FMA synthesis.
+  // enable fma synthesis.
   target_options.AllowFPOpFusion = FPOpFusion::Fast;
-
-  // Set the verbose assembly options.
+  
+  // set the verbose assembly options.
   target_options.MCOptions.AsmVerbose = false;
-
-  // The selection of codegen optimization level is copied from function
-  // GetCodeGenOptLevel in //external/llvm/tools/opt/opt.cpp.
-  CodeGenOpt::Level codegen_opt_level;
+  
+  // the selection of codegen optimization level is copied from function
+  // getcodegenoptlevel in //external/llvm/tools/opt/opt.cpp.
+  CodeGenOpt::Level codegen_opt_level; 
   switch (hlo_module_config.debug_options().xla_backend_optimization_level()) {
     case 1:
       codegen_opt_level = CodeGenOpt::Less;
@@ -156,7 +156,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
     default:
       codegen_opt_level = CodeGenOpt::None;
   }
-  return WrapUnique(target->createTargetMachine(
+  return absl::WrapUnique(target->createTargetMachine(
       triple.str(), llvm_ir::AsStringRef(cpu_name), "", target_options,
       Optional<Reloc::Model>(RelocModel), Optional<CodeModel::Model>(CMModel),
       codegen_opt_level));
@@ -193,10 +193,10 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
 }
 
 // Emits the given module to a bit code file.
-void EmitBitcodeToFile(const Module& module, tensorflow::StringPiece filename) {
+void EmitBitcodeToFile(const Module& module, absl::string_view filename) {
   std::error_code error_code;
-  llvm::ToolOutputFile outfile(filename.ToString().c_str(), error_code,
-                               llvm::sys::fs::F_None);
+  llvm::ToolOutputFile outfile(string(filename).c_str(), error_code,
+                                     llvm::sys::fs::F_None); 
   if (error_code) {
     LOG(FATAL) << "opening bitcode file for writing: " << error_code.message();
   }
@@ -241,7 +241,8 @@ std::vector<char> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_
     // get creative to add a suffix.
     string module_id(llvm_ir::AsString(module->getModuleIdentifier()));
     IrDumpingPassManager codegen_passes(
-        ReplaceFilenameExtension(tensorflow::io::Basename(module_id),
+        ReplaceFilenameExtension(
+                     absl::string_view(tensorflow::io::Basename(module_id)), 
                                  "-amdgpu.dummy"),
         "", false);
     codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
@@ -386,9 +387,11 @@ StatusOr<std::vector<char>> CompileModuleToHsaco(llvm::Module* module,
 
   // Figure out the exact name of the processor as known to the AMDGPU backend
   // from the gpu_architecture flag.
-  std::unique_ptr<llvm::TargetMachine> target_machine = GetTargetMachine(
-      target_triple, tensorflow::strings::StrCat("gfx", amdgpu_version),
-      hlo_module_config);
+  std::unique_ptr<llvm::TargetMachine> target_machine;
+  // TODO(ROCM) figure out why GetTargtetMahine is not in scope
+   // = GetTargetMachine(
+    //  target_triple, absl::StrCat("gfx", amdgpu_version),
+     // hlo_module_config);
   module_passes.add(llvm::createTargetTransformInfoWrapperPass(
       target_machine->getTargetIRAnalysis()));
 
