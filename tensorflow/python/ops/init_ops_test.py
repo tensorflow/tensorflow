@@ -55,7 +55,7 @@ class InitializersTest(test.TestCase):
 
   def test_uniform(self):
     tensor_shape = (9, 6, 7)
-    with self.test_session():
+    with self.cached_session():
       self._runner(
           init_ops.RandomUniform(minval=-1, maxval=1, seed=124),
           tensor_shape,
@@ -65,7 +65,7 @@ class InitializersTest(test.TestCase):
 
   def test_normal(self):
     tensor_shape = (8, 12, 99)
-    with self.test_session():
+    with self.cached_session():
       self._runner(
           init_ops.RandomNormal(mean=0, stddev=1, seed=153),
           tensor_shape,
@@ -74,7 +74,7 @@ class InitializersTest(test.TestCase):
 
   def test_truncated_normal(self):
     tensor_shape = (12, 99, 7)
-    with self.test_session():
+    with self.cached_session():
       self._runner(
           init_ops.TruncatedNormal(mean=0, stddev=1, seed=126),
           tensor_shape,
@@ -84,7 +84,7 @@ class InitializersTest(test.TestCase):
 
   def test_constant(self):
     tensor_shape = (5, 6, 4)
-    with self.test_session():
+    with self.cached_session():
       self._runner(
           init_ops.Constant(2),
           tensor_shape,
@@ -94,7 +94,7 @@ class InitializersTest(test.TestCase):
 
   def test_lecun_uniform(self):
     tensor_shape = (5, 6, 4, 2)
-    with self.test_session():
+    with self.cached_session():
       fan_in, _ = init_ops._compute_fans(tensor_shape)
       std = np.sqrt(1. / fan_in)
       self._runner(
@@ -105,7 +105,7 @@ class InitializersTest(test.TestCase):
 
   def test_glorot_uniform_initializer(self):
     tensor_shape = (5, 6, 4, 2)
-    with self.test_session():
+    with self.cached_session():
       fan_in, fan_out = init_ops._compute_fans(tensor_shape)
       std = np.sqrt(2. / (fan_in + fan_out))
       self._runner(
@@ -116,7 +116,7 @@ class InitializersTest(test.TestCase):
 
   def test_he_uniform(self):
     tensor_shape = (5, 6, 4, 2)
-    with self.test_session():
+    with self.cached_session():
       fan_in, _ = init_ops._compute_fans(tensor_shape)
       std = np.sqrt(2. / fan_in)
       self._runner(
@@ -127,7 +127,7 @@ class InitializersTest(test.TestCase):
 
   def test_lecun_normal(self):
     tensor_shape = (5, 6, 4, 2)
-    with self.test_session():
+    with self.cached_session():
       fan_in, _ = init_ops._compute_fans(tensor_shape)
       std = np.sqrt(1. / fan_in)
       self._runner(
@@ -138,7 +138,7 @@ class InitializersTest(test.TestCase):
 
   def test_glorot_normal_initializer(self):
     tensor_shape = (5, 6, 4, 2)
-    with self.test_session():
+    with self.cached_session():
       fan_in, fan_out = init_ops._compute_fans(tensor_shape)
       std = np.sqrt(2. / (fan_in + fan_out))
       self._runner(
@@ -149,7 +149,7 @@ class InitializersTest(test.TestCase):
 
   def test_he_normal(self):
     tensor_shape = (5, 6, 4, 2)
-    with self.test_session():
+    with self.cached_session():
       fan_in, _ = init_ops._compute_fans(tensor_shape)
       std = np.sqrt(2. / fan_in)
       self._runner(
@@ -160,11 +160,11 @@ class InitializersTest(test.TestCase):
 
   def test_Orthogonal(self):
     tensor_shape = (20, 20)
-    with self.test_session():
+    with self.cached_session():
       self._runner(init_ops.Orthogonal(seed=123), tensor_shape, target_mean=0.)
 
   def test_Identity(self):
-    with self.test_session():
+    with self.cached_session():
       tensor_shape = (3, 4, 5)
       with self.assertRaises(ValueError):
         self._runner(
@@ -182,13 +182,13 @@ class InitializersTest(test.TestCase):
 
   def test_Zeros(self):
     tensor_shape = (4, 5)
-    with self.test_session():
+    with self.cached_session():
       self._runner(
           init_ops.Zeros(), tensor_shape, target_mean=0., target_max=0.)
 
   def test_Ones(self):
     tensor_shape = (4, 5)
-    with self.test_session():
+    with self.cached_session():
       self._runner(init_ops.Ones(), tensor_shape, target_mean=1., target_max=1.)
 
 

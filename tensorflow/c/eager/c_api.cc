@@ -244,8 +244,8 @@ void TFE_ContextOptionsSetConfig(TFE_ContextOptions* options, const void* proto,
 }
 
 void TFE_ContextOptionsSetAsync(TFE_ContextOptions* options,
-                                unsigned char async) {
-  options->async = async;
+                                unsigned char enable) {
+  options->async = enable;
 }
 void TFE_ContextOptionsSetDevicePlacementPolicy(
     TFE_ContextOptions* options, TFE_ContextDevicePlacementPolicy policy) {
@@ -253,9 +253,9 @@ void TFE_ContextOptionsSetDevicePlacementPolicy(
 }
 
 TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context* ctx,
-                                                        unsigned char async,
+                                                        unsigned char enable,
                                                         TF_Status* status) {
-  status->status = ctx->context.SetAsyncForThread(async);
+  status->status = ctx->context.SetAsyncForThread(enable);
 }
 
 void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }

@@ -26,6 +26,7 @@ import tempfile
 from google.protobuf import text_format
 
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import test_util
@@ -272,7 +273,7 @@ class SaverUtilsTest(test.TestCase):
   def testCheckpointExists(self):
     for sharded in (False, True):
       for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
-        with self.test_session(graph=ops_lib.Graph()) as sess:
+        with self.session(graph=ops_lib.Graph()) as sess:
           unused_v = variables.Variable(1.0, name="v")
           variables.global_variables_initializer().run()
           saver = saver_module.Saver(sharded=sharded, write_version=version)
@@ -290,7 +291,7 @@ class SaverUtilsTest(test.TestCase):
   def testGetCheckpointMtimes(self):
     prefixes = []
     for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
-      with self.test_session(graph=ops_lib.Graph()) as sess:
+      with self.session(graph=ops_lib.Graph()) as sess:
         unused_v = variables.Variable(1.0, name="v")
         variables.global_variables_initializer().run()
         saver = saver_module.Saver(write_version=version)
@@ -304,7 +305,7 @@ class SaverUtilsTest(test.TestCase):
   def testRemoveCheckpoint(self):
     for sharded in (False, True):
       for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
-        with self.test_session(graph=ops_lib.Graph()) as sess:
+        with self.session(graph=ops_lib.Graph()) as sess:
           unused_v = variables.Variable(1.0, name="v")
           variables.global_variables_initializer().run()
           saver = saver_module.Saver(sharded=sharded, write_version=version)
@@ -333,6 +334,49 @@ class CheckpointManagerTest(test.TestCase):
     self.assertFalse(checkpoint_management.checkpoint_exists(first_path))
 
   @test_util.run_in_graph_and_eager_modes
+  def testKeepAll(self):
+    checkpoint = util.Checkpoint()
+    directory = os.path.join(
+        self.get_temp_dir(),
+        # Avoid sharing directories between eager and graph
+        # TODO(allenl): stop run_in_graph_and_eager_modes reusing directories
+        str(context.executing_eagerly()))
+    manager = checkpoint_management.CheckpointManager(
+        checkpoint, directory, max_to_keep=None)
+    first_path = manager.save()
+    second_path = manager.save()
+    third_path = manager.save()
+    self.assertTrue(checkpoint_management.checkpoint_exists(third_path))
+    self.assertTrue(checkpoint_management.checkpoint_exists(second_path))
+    self.assertTrue(checkpoint_management.checkpoint_exists(first_path))
+    self.assertEqual(third_path, manager.latest_checkpoint)
+    self.assertEqual([first_path, second_path, third_path],
+                     manager.checkpoints)
+    del manager
+    manager = checkpoint_management.CheckpointManager(
+        checkpoint, directory, max_to_keep=None)
+    fourth_path = manager.save()
+    self.assertEqual([first_path, second_path, third_path, fourth_path],
+                     manager.checkpoints)
+    del manager
+    manager = checkpoint_management.CheckpointManager(
+        checkpoint, directory, max_to_keep=3)
+    self.assertEqual([first_path, second_path, third_path, fourth_path],
+                     manager.checkpoints)
+    self.assertTrue(checkpoint_management.checkpoint_exists(fourth_path))
+    self.assertTrue(checkpoint_management.checkpoint_exists(third_path))
+    self.assertTrue(checkpoint_management.checkpoint_exists(second_path))
+    self.assertTrue(checkpoint_management.checkpoint_exists(first_path))
+    fifth_path = manager.save()
+    self.assertEqual([third_path, fourth_path, fifth_path],
+                     manager.checkpoints)
+    self.assertTrue(checkpoint_management.checkpoint_exists(fifth_path))
+    self.assertTrue(checkpoint_management.checkpoint_exists(fourth_path))
+    self.assertTrue(checkpoint_management.checkpoint_exists(third_path))
+    self.assertFalse(checkpoint_management.checkpoint_exists(second_path))
+    self.assertFalse(checkpoint_management.checkpoint_exists(first_path))
+
+  @test_util.run_in_graph_and_eager_modes
   @test.mock.patch.object(checkpoint_management, "time")
   def testSaveRestoreState(self, mock_time):
     directory = self.get_temp_dir()
@@ -345,8 +389,6 @@ class CheckpointManagerTest(test.TestCase):
     mock_time.time.return_value = first_time
     first_manager.save()
     state = checkpoint_management.get_checkpoint_state(directory)
-    self.assertEqual([first_time], state.all_model_checkpoint_timestamps)
-    self.assertEqual(3., state.last_preserved_timestamp)
     second_time = first_time + 3610.
     second_name = os.path.join(directory, "ckpt-2")
     mock_time.time.return_value = second_time
@@ -354,7 +396,6 @@ class CheckpointManagerTest(test.TestCase):
     state = checkpoint_management.get_checkpoint_state(directory)
     self.assertEqual([first_time, second_time],
                      state.all_model_checkpoint_timestamps)
-    self.assertEqual(3., state.last_preserved_timestamp)
     self.assertEqual([first_name, second_name], first_manager.checkpoints)
     self.assertEqual(second_name, first_manager.latest_checkpoint)
     del first_manager

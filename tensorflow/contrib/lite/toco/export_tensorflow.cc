@@ -1900,21 +1900,6 @@ void ConvertPowOperator(const Model& model, const PowOperator& src_op,
   (*pow_op->mutable_attr())["T"].set_type(data_type);
 }
 
-void ConvertAnyOperator(const Model& model, const AnyOperator& src_op,
-                        GraphDef* tensorflow_graph) {
-  tensorflow::NodeDef* any_op = tensorflow_graph->add_node();
-  any_op->set_op("Any");
-  any_op->set_name(src_op.outputs[0]);
-  CHECK_EQ(src_op.inputs.size(), 2);
-  for (int i = 0; i < 2; ++i) {
-    *any_op->add_input() = src_op.inputs[i];
-  }
-  const tensorflow::DataType data_type =
-      GetTensorFlowDataType(model, src_op.inputs[1]);
-  (*any_op->mutable_attr())["Tidx"].set_type(data_type);
-  (*any_op->mutable_attr())["keep_dims"].set_b(src_op.keep_dims);
-}
-
 void ConvertLogicalAndOperator(const Model& model,
                                const LogicalAndOperator& src_op,
                                GraphDef* tensorflow_graph) {
@@ -1965,6 +1950,20 @@ void ConvertCTCBeamSearchDecoderOperator(
   (*op->mutable_attr())["beam_width"].set_i(src_op.beam_width);
   (*op->mutable_attr())["top_paths"].set_i(src_op.top_paths);
   (*op->mutable_attr())["merge_repeated"].set_b(src_op.merge_repeated);
+}
+
+void ConvertUnpackOperator(const Model& model, const UnpackOperator& src_op,
+                           const char* op_name, GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* unpack_op = tensorflow_graph->add_node();
+  unpack_op->set_op(op_name);
+  unpack_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *unpack_op->add_input() = src_op.inputs[0];
+  const tensorflow::DataType data_type =
+      GetTensorFlowDataType(model, src_op.inputs[0]);
+  (*unpack_op->mutable_attr())["T"].set_type(data_type);
+  (*unpack_op->mutable_attr())["num"].set_i(src_op.num);
+  (*unpack_op->mutable_attr())["axis"].set_i(src_op.axis);
 }
 
 void ConvertOperator(const Model& model, const Operator& src_op,
@@ -2118,7 +2117,7 @@ void ConvertOperator(const Model& model, const Operator& src_op,
                           tensorflow_graph, "Prod");
   } else if (src_op.type == OperatorType::kReduceMin) {
     ConvertReduceOperator(model,
-                          static_cast<const TensorFlowMaxOperator&>(src_op),
+                          static_cast<const TensorFlowMinOperator&>(src_op),
                           tensorflow_graph, "Min");
   } else if (src_op.type == OperatorType::kReduceMax) {
     ConvertReduceOperator(model,
@@ -2207,8 +2206,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
     ConvertPowOperator(model, static_cast<const PowOperator&>(src_op), "Pow",
                        tensorflow_graph);
   } else if (src_op.type == OperatorType::kAny) {
-    ConvertAnyOperator(model, static_cast<const AnyOperator&>(src_op),
-                       tensorflow_graph);
+    ConvertReduceOperator(model,
+                          static_cast<const TensorFlowAnyOperator&>(src_op),
+                          tensorflow_graph, "Any");
   } else if (src_op.type == OperatorType::kLogicalAnd) {
     ConvertLogicalAndOperator(model,
                               static_cast<const LogicalAndOperator&>(src_op),
@@ -2228,6 +2228,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
     ConvertCTCBeamSearchDecoderOperator(
         model, static_cast<const CTCBeamSearchDecoderOperator&>(src_op),
         "CTCBeamSearchDecoder", tensorflow_graph);
+  } else if (src_op.type == OperatorType::kUnpack) {
+    ConvertUnpackOperator(model, static_cast<const UnpackOperator&>(src_op),
+                          "Unpack", tensorflow_graph);
   } else {
     LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(src_op.type);
   }

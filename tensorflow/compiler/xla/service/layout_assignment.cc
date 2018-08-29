@@ -26,9 +26,12 @@ limitations under the License.
 #include <string>
 #include <tuple>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -49,19 +52,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
-
-// For now moving only one API here, but we should have a single top level
-// anonymous namespace, instead of three or four spread all over this file.
-namespace {
-
-}  // namespace
 
 std::ostream& operator<<(std::ostream& out,
                          const LayoutConstraint& constraint) {
@@ -77,9 +71,8 @@ BufferLayoutConstraint::BufferLayoutConstraint(const Layout& layout,
 }
 
 string BufferLayoutConstraint::ToString() const {
-  return tensorflow::strings::Printf("BufferLayoutConstraint %s: %s",
-                                     buffer_->ToString().c_str(),
-                                     LayoutUtil::HumanString(layout_).c_str());
+  return absl::StrFormat("BufferLayoutConstraint %s: %s", buffer_->ToString(),
+                         LayoutUtil::HumanString(layout_));
 }
 
 OperandLayoutConstraint::OperandLayoutConstraint(
@@ -98,15 +91,14 @@ OperandLayoutConstraint::OperandLayoutConstraint(
 }
 
 string OperandLayoutConstraint::ToString() const {
-  return tensorflow::strings::Printf(
-      "OperandLayoutConstraint %s, operand %lld: %s",
-      instruction_->name().c_str(), operand_no_,
-      shape_layout_.ToString().c_str());
+  return absl::StrFormat("OperandLayoutConstraint %s, operand %d: %s",
+                         instruction_->name(), operand_no_,
+                         shape_layout_.ToString());
 }
 
 string ResultLayoutConstraint::ToString() const {
-  return tensorflow::strings::Printf("ResultLayoutConstraint: %s",
-                                     shape_layout_.ToString().c_str());
+  return absl::StrFormat("ResultLayoutConstraint: %s",
+                         shape_layout_.ToString());
 }
 
 LayoutConstraints::LayoutConstraints(
@@ -137,7 +129,7 @@ PointsToSet::BufferSet* LayoutConstraints::GetBufferSet(
   }
   auto& buffer_set =
       buffer_sets_cache_
-          .emplace(instruction, MakeUnique<PointsToSet::BufferSet>())
+          .emplace(instruction, absl::make_unique<PointsToSet::BufferSet>())
           .first->second;
   const auto& points_to_set = points_to_analysis_.GetPointsToSet(instruction);
   points_to_set.ForEachElement(
@@ -174,8 +166,7 @@ Status LayoutConstraints::SetBufferLayout(const Layout& layout,
     return FailedPrecondition(
         "Layout of buffer %s cannot be constrained because buffer is not "
         "array-shaped, has shape: %s",
-        buffer.ToString().c_str(),
-        ShapeUtil::HumanString(buffer.shape()).c_str());
+        buffer.ToString(), ShapeUtil::HumanString(buffer.shape()));
   }
   TF_RETURN_IF_ERROR(
       LayoutUtil::ValidateLayoutForShape(layout, buffer.shape()));
@@ -191,9 +182,8 @@ Status LayoutConstraints::SetBufferLayout(const Layout& layout,
       return FailedPrecondition(
           "Buffer %s already has the layout constraint %s, cannot add "
           "incompatible constraint %s",
-          buffer.ToString().c_str(),
-          LayoutUtil::HumanString(curr_constraint.layout()).c_str(),
-          LayoutUtil::HumanString(layout).c_str());
+          buffer.ToString(), LayoutUtil::HumanString(curr_constraint.layout()),
+          LayoutUtil::HumanString(layout));
     }
     iter->second = BufferLayoutConstraint(layout, buffer, mandatory, dfs);
   } else {
@@ -227,11 +217,11 @@ Status LayoutConstraints::SetOperandLayout(const Shape& shape_with_layout,
     }
     if (curr_shape_layout->mandatory()) {
       return FailedPrecondition(
-          "Operand %lld of instruction %s already has a layout constraint "
+          "Operand %d of instruction %s already has a layout constraint "
           "%s, cannot add incompatible constraint %s",
-          operand_no, instruction->name().c_str(),
-          curr_shape_layout->shape_layout().ToString().c_str(),
-          ShapeUtil::HumanStringWithLayout(shape_with_layout).c_str());
+          operand_no, instruction->name(),
+          curr_shape_layout->shape_layout().ToString(),
+          ShapeUtil::HumanStringWithLayout(shape_with_layout));
     }
   }
 
@@ -240,9 +230,9 @@ Status LayoutConstraints::SetOperandLayout(const Shape& shape_with_layout,
   // layouts beyond this immediate use and is complicated to handle.
   if (OperandBufferForwarded(instruction, operand_no)) {
     return FailedPrecondition(
-        "Cannot constraint layout of operand %lld of instruction %s "
+        "Cannot constraint layout of operand %d of instruction %s "
         "because instruction forwards operand's LogicalBuffer(s)",
-        operand_no, instruction->name().c_str());
+        operand_no, instruction->name());
   }
 
   auto key = std::make_pair(instruction, operand_no);
@@ -284,8 +274,8 @@ Status LayoutConstraints::SetResultLayout(const Shape& shape_with_layout,
       return FailedPrecondition(
           "Result of computation %s already has the layout constraint %s, "
           "cannot add incompatible constraint %s",
-          computation_->name().c_str(), curr_shape_layout->ToString().c_str(),
-          ShapeUtil::HumanStringWithLayout(shape_with_layout).c_str());
+          computation_->name(), curr_shape_layout->ToString(),
+          ShapeUtil::HumanStringWithLayout(shape_with_layout));
     }
     // New constraint matches existing constraint. Nothing to do.
     return Status::OK();
@@ -307,9 +297,8 @@ Status LayoutConstraints::SetInstructionLayout(
   if (!ShapeUtil::Compatible(shape_with_layout, instruction->shape())) {
     return FailedPrecondition(
         "Instruction %s of shape %s cannot be assigned incompatible layout %s",
-        instruction->name().c_str(),
-        ShapeUtil::HumanString(instruction->shape()).c_str(),
-        ShapeUtil::HumanStringWithLayout(shape_with_layout).c_str());
+        instruction->name(), ShapeUtil::HumanString(instruction->shape()),
+        ShapeUtil::HumanStringWithLayout(shape_with_layout));
   }
 
   // Create a BufferLayoutConstraint for each array shape in the output of the
@@ -368,31 +357,27 @@ const ShapeLayout* LayoutConstraints::ResultLayout() const {
 
 string LayoutConstraints::ToString() const {
   string output;
-  tensorflow::strings::StrAppend(&output, "LayoutConstraints for computation ",
-                                 computation_->name(), ":\n");
+  absl::StrAppend(&output, "LayoutConstraints for computation ",
+                  computation_->name(), ":\n");
   for (auto* instruction : computation_->MakeInstructionPostOrder()) {
-    tensorflow::strings::StrAppend(&output, "  ", instruction->ToShortString(),
-                                   "\n");
+    absl::StrAppend(&output, "  ", instruction->ToShortString(), "\n");
     for (int64 i = 0; i < instruction->operand_count(); ++i) {
       if (OperandLayout(instruction, i) != nullptr) {
-        tensorflow::strings::StrAppend(
-            &output, "    operand (", i,
-            "): ", OperandLayout(instruction, i)->ToString(), "\n");
+        absl::StrAppend(&output, "    operand (", i,
+                        "): ", OperandLayout(instruction, i)->ToString(), "\n");
       }
     }
     for (const LogicalBuffer* buffer :
          points_to_analysis_.GetBuffersDefinedByInstruction(instruction)) {
       if (BufferLayout(*buffer) != nullptr) {
-        tensorflow::strings::StrAppend(
-            &output, "    ", buffer->ToString(), " : ",
-            LayoutUtil::HumanString(*BufferLayout(*buffer)), "\n");
+        absl::StrAppend(&output, "    ", buffer->ToString(), " : ",
+                        LayoutUtil::HumanString(*BufferLayout(*buffer)), "\n");
       }
     }
   }
 
   if (ResultLayout() != nullptr) {
-    tensorflow::strings::StrAppend(&output, "  => ", ResultLayout()->ToString(),
-                                   "\n");
+    absl::StrAppend(&output, "  => ", ResultLayout()->ToString(), "\n");
   }
   return output;
 }
@@ -763,7 +748,7 @@ Status CheckParameterLayout(HloInstruction* parameter,
     return InternalError(
         "parameter instruction %s does not match layout of computation "
         "shape: %s",
-        parameter->ToString().c_str(), parameter_layout.ToString().c_str());
+        parameter->ToString(), parameter_layout.ToString());
   }
   return Status::OK();
 }
@@ -774,8 +759,8 @@ Status CheckConstantLayout(HloInstruction* constant) {
                                         constant->shape())) {
     return InternalError(
         "constant instruction %s does not match the layout of its literal %s",
-        constant->ToString().c_str(),
-        ShapeUtil::HumanStringWithLayout(constant->literal().shape()).c_str());
+        constant->ToString(),
+        ShapeUtil::HumanStringWithLayout(constant->literal().shape()));
   }
   return Status::OK();
 }
@@ -908,13 +893,10 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
                   return InternalError(
                       "Layout of instruction %s at index {%s} does not match "
                       "source LogicalBuffer %s: %s vs %s",
-                      instruction->name().c_str(),
-                      tensorflow::str_util::Join(index, ",").c_str(),
-                      buffer->ToString().c_str(),
-                      ShapeUtil::HumanStringWithLayout(instruction_subshape)
-                          .c_str(),
-                      ShapeUtil::HumanStringWithLayout(buffer->shape())
-                          .c_str());
+                      instruction->name(), absl::StrJoin(index, ","),
+                      buffer->ToString(),
+                      ShapeUtil::HumanStringWithLayout(instruction_subshape),
+                      ShapeUtil::HumanStringWithLayout(buffer->shape()));
                 }
               }
             }
@@ -998,17 +980,18 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
   CHECK(ShapeUtil::IsArray(instruction->shape()));
   CHECK(ShapeUtil::IsArray(operand->shape()));
 
-  if (instruction->IsElementwiseOnOperand(operand_no) &&
-      !ShapeUtil::IsScalar(operand->shape()) &&
+  if (!ShapeUtil::IsScalar(operand->shape()) &&
       ShapeUtil::Rank(operand->shape()) ==
-          ShapeUtil::Rank(instruction->shape())) {
-    // Assign operands the same layout as the instruction, so that
+          ShapeUtil::Rank(instruction->shape()) &&
+      InstructionRequiresInputLayoutEqualToOutputLayout(instruction)) {
+    // Propagate the result layout to the operand layout if the instruction
+    // requires the same layout out for the result and the operand.
+    //
+    // For elementwise operations, using the same layout for the operands and
+    // the result also has the following benefits:
     // 1) the elementwise operation can reuse its operand's buffer, and
     // 2) the input and output elements can reuse the same linear index.
-    //
-    // TODO(jingyue): Other operations, such as kSlice and kConcat, can benefit
-    // from assigning the same layout to input and output.
-    return MakeUnique<Layout>(output_layout);
+    return absl::make_unique<Layout>(output_layout);
   }
 
   if (instruction->opcode() == HloOpcode::kReshape) {
@@ -1031,13 +1014,13 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     *operand_shape.mutable_layout() =
         LayoutUtil::GetDefaultLayoutForShape(operand_shape);
     if (ShapeUtil::ReshapeIsBitcast(operand_shape, output_shape_with_layout)) {
-      return MakeUnique<Layout>(operand_shape.layout());
+      return absl::make_unique<Layout>(operand_shape.layout());
     }
     if (ShapeUtil::Rank(operand_shape) == ShapeUtil::Rank(output_shape)) {
       *operand_shape.mutable_layout() = output_layout;
       if (ShapeUtil::ReshapeIsBitcast(operand_shape,
                                       output_shape_with_layout)) {
-        return MakeUnique<Layout>(output_layout);
+        return absl::make_unique<Layout>(output_layout);
       }
     }
     auto aligned_operand_shape =
@@ -1046,7 +1029,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
       auto operand_layout = aligned_operand_shape.value().layout();
       TF_CHECK_OK(
           LayoutUtil::ValidateLayoutForShape(operand_layout, operand_shape));
-      return MakeUnique<Layout>(operand_layout);
+      return absl::make_unique<Layout>(operand_layout);
     }
   }
 
@@ -1062,7 +1045,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     Layout operand_layout = LayoutUtil::MakeLayout(new_minor_to_major);
     TF_CHECK_OK(
         LayoutUtil::ValidateLayoutForShape(operand_layout, operand->shape()));
-    return MakeUnique<Layout>(operand_layout);
+    return absl::make_unique<Layout>(operand_layout);
   }
 
   return nullptr;
@@ -1076,11 +1059,11 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
   CHECK(ShapeUtil::IsArray(user->shape()) &&
         ShapeUtil::IsArray(operand->shape()));
 
-  if (user->IsElementwiseOnOperand(operand_no) &&
-      !ShapeUtil::IsScalar(operand->shape()) &&
-      ShapeUtil::Rank(operand->shape()) == ShapeUtil::Rank(user->shape())) {
+  if (!ShapeUtil::IsScalar(operand->shape()) &&
+      ShapeUtil::Rank(operand->shape()) == ShapeUtil::Rank(user->shape()) &&
+      InstructionRequiresInputLayoutEqualToOutputLayout(user)) {
     // Assign users the same layout as the operand.
-    return MakeUnique<Layout>(operand_layout);
+    return absl::make_unique<Layout>(operand_layout);
   }
 
   if (user->opcode() == HloOpcode::kReshape) {
@@ -1103,13 +1086,13 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
     *output_shape.mutable_layout() =
         LayoutUtil::GetDefaultLayoutForShape(output_shape);
     if (ShapeUtil::ReshapeIsBitcast(output_shape, operand_shape_with_layout)) {
-      return MakeUnique<Layout>(output_shape.layout());
+      return absl::make_unique<Layout>(output_shape.layout());
     }
     if (ShapeUtil::Rank(operand->shape()) == ShapeUtil::Rank(output_shape)) {
       *output_shape.mutable_layout() = operand_layout;
       if (ShapeUtil::ReshapeIsBitcast(output_shape,
                                       operand_shape_with_layout)) {
-        return MakeUnique<Layout>(operand_layout);
+        return absl::make_unique<Layout>(operand_layout);
       }
     }
     auto aligned_user_shape =
@@ -1118,7 +1101,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
       auto user_layout = aligned_user_shape.value().layout();
       TF_CHECK_OK(
           LayoutUtil::ValidateLayoutForShape(user_layout, output_shape));
-      return MakeUnique<Layout>(user_layout);
+      return absl::make_unique<Layout>(user_layout);
     }
   }
 
@@ -1134,7 +1117,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
     }
     Layout user_layout = LayoutUtil::MakeLayout(new_minor_to_major);
     TF_CHECK_OK(LayoutUtil::ValidateLayoutForShape(user_layout, user->shape()));
-    return MakeUnique<Layout>(user_layout);
+    return absl::make_unique<Layout>(user_layout);
   }
 
   return nullptr;
@@ -1385,7 +1368,7 @@ StatusOr<Layout> InferArrayLayout(
       // This should not happen because we've assigned layouts to all
       // instructions preceding this one.
       return InternalError("LogicalBuffer %s does not have a layout",
-                           source_buffer->ToString().c_str());
+                           source_buffer->ToString());
     }
 
     if (first_buffer_layout == nullptr) {
@@ -1400,9 +1383,8 @@ StatusOr<Layout> InferArrayLayout(
       return FailedPrecondition(
           "Array at index {%s} in instruction %s aliases buffers %s "
           "and %s which have different layouts",
-          tensorflow::str_util::Join(index, ",").c_str(),
-          instruction->name().c_str(), source_buffers[0]->ToString().c_str(),
-          source_buffer->ToString().c_str());
+          absl::StrJoin(index, ","), instruction->name(),
+          source_buffers[0]->ToString(), source_buffer->ToString());
     }
   }
 
@@ -1570,7 +1552,7 @@ Status LayoutAssignment::ClearComputationLayouts(HloComputation* computation) {
       // present in the IR before layout assignment is a bug.
       return InternalError(
           "Unexpected bitcast operation seen during layout assignment: %s.",
-          instruction->ToString().c_str());
+          instruction->ToString());
     }
     if (instruction->opcode() != HloOpcode::kInfeed) {
       LayoutUtil::ClearLayout(instruction->mutable_shape());
@@ -1820,6 +1802,107 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
   }
   // All layouts are reset then reassigned by this pass.
   return true;
+}
+
+bool LayoutAssignment::InstructionRequiresInputLayoutEqualToOutputLayout(
+    const HloInstruction* instruction) {
+  switch (instruction->opcode()) {
+    case HloOpcode::kAbs:
+    case HloOpcode::kAdd:
+    case HloOpcode::kAnd:
+    case HloOpcode::kAtan2:
+    case HloOpcode::kBitcastConvert:
+    case HloOpcode::kCeil:
+    case HloOpcode::kClamp:
+    case HloOpcode::kClz:
+    case HloOpcode::kComplex:
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kConditional:
+    case HloOpcode::kConvert:
+    case HloOpcode::kCos:
+    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCustomCall:
+    case HloOpcode::kDivide:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kEq:
+    case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
+    case HloOpcode::kFft:
+    case HloOpcode::kFloor:
+    case HloOpcode::kGe:
+    case HloOpcode::kGt:
+    case HloOpcode::kImag:
+    case HloOpcode::kIsFinite:
+    case HloOpcode::kLe:
+    case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
+    case HloOpcode::kLt:
+    case HloOpcode::kMap:
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+    case HloOpcode::kMultiply:
+    case HloOpcode::kNe:
+    case HloOpcode::kNegate:
+    case HloOpcode::kNot:
+    case HloOpcode::kOr:
+    case HloOpcode::kXor:
+    case HloOpcode::kPad:
+    case HloOpcode::kPower:
+    case HloOpcode::kReal:
+    case HloOpcode::kReducePrecision:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kRemainder:
+    case HloOpcode::kReverse:
+    case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kSelect:
+    case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kSign:
+    case HloOpcode::kSin:
+    case HloOpcode::kSlice:
+    case HloOpcode::kSort:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kTanh:
+    case HloOpcode::kTupleSelect:
+    case HloOpcode::kWhile:
+      return true;
+    case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kBitcast:
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kCall:
+    case HloOpcode::kConstant:
+    case HloOpcode::kConvolution:
+    case HloOpcode::kCopy:
+    case HloOpcode::kDomain:
+    case HloOpcode::kDot:
+    case HloOpcode::kFusion:
+    case HloOpcode::kGather:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kInfeed:
+    case HloOpcode::kIota:
+    case HloOpcode::kOutfeed:
+    case HloOpcode::kParameter:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReshape:
+    case HloOpcode::kRng:
+    case HloOpcode::kScatter:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
+    case HloOpcode::kAfterAll:
+    case HloOpcode::kTrace:
+    case HloOpcode::kTranspose:
+    case HloOpcode::kTuple:
+      return false;
+  }
 }
 
 Status LayoutAssignment::Init() {

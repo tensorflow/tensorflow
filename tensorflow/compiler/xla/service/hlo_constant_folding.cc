@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -38,7 +39,7 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
   // Limit the constant folding to 0 iterations to skip folding loops. This
   // retains the behavior from before while loop support in HloEvaluator and may
   // be revised.
-  auto evaluator = MakeUnique<HloEvaluator>(/*max_loop_iterations=*/0);
+  auto evaluator = absl::make_unique<HloEvaluator>(/*max_loop_iterations=*/0);
 
   XLA_VLOG_LINES(2,
                  "HloConstantFolding::Run(), before:\n" + module->ToString());
@@ -51,9 +52,7 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
           computation->root_instruction() != instruction) {
         continue;
       }
-      // Skip Constant, Parameter, Reduce, and AfterAll operation.
-      // TODO(b/35975797): Enable Reduce operation once arbitrary computation
-      // are supported by the evaluator.
+      // Skip Constant, Parameter, and AfterAll operation.
       // TODO(b/64407269): Enable Tuple once the timeout issue is resolved.
       // TODO(b/110532604): Enable AfterAll once AfterAll requires at least one
       // operand in which case constant folding will be impossible and this
@@ -61,7 +60,6 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
       if (instruction->opcode() == HloOpcode::kParameter ||
           instruction->opcode() == HloOpcode::kConstant ||
           instruction->opcode() == HloOpcode::kTuple ||
-          instruction->opcode() == HloOpcode::kReduce ||
           instruction->opcode() == HloOpcode::kAfterAll) {
         continue;
       }

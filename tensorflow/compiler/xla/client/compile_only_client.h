@@ -57,7 +57,7 @@ class CompileOnlyClient : public Client {
       std::unique_ptr<AotCompilationMetadata>* metadata = nullptr);
 
   // Returns the size of a pointer in bytes for a given triple.
-  static int64 PointerSizeForTriple(tensorflow::StringPiece triple);
+  static int64 PointerSizeForTriple(absl::string_view triple);
 
  private:
   CompileOnlyService* compiler_service_;

@@ -34,8 +34,8 @@ namespace cpu {
 // instruction stream.
 
 namespace {
-using ::tensorflow::gtl::nullopt;
-using ::tensorflow::gtl::optional;
+using absl::nullopt;
+using absl::optional;
 
 using ShouldMakeOperandColMajorCache =
     tensorflow::gtl::FlatMap<const HloInstruction*, bool>;

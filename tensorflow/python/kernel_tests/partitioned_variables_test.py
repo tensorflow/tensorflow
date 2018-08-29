@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -25,15 +27,13 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import saver as saver_lib
 
 
 class PartitionerCreatorsTest(test.TestCase):
@@ -546,6 +546,32 @@ class PartitionedVariablesTestCase(test.TestCase):
         partitioned_variables.create_partitioned_variables(
             [10, 43], [1, 50], rnd.initialized_value())
 
+  def testControlDepsNone(self):
+    with self.test_session() as session:
+      c = constant_op.constant(1.0)
+      with ops.control_dependencies([c]):
+        # d get the control dependency.
+        d = constant_op.constant(2.0)
+        # Partitioned variables do not.
+        var_x = variable_scope.get_variable(
+            "x",
+            shape=[2],
+            initializer=init_ops.ones_initializer(),
+            partitioner=partitioned_variables.variable_axis_size_partitioner(4))
+
+        ops_before_read = session.graph.get_operations()
+        var_x.as_tensor()  # Caches the ops for subsequent reads.
+        reading_ops = [
+            op for op in session.graph.get_operations()
+            if op not in ops_before_read
+        ]
+
+      self.assertEqual([c.op], d.op.control_inputs)
+      # Tests that no control dependencies are added to reading a partitioned
+      # variable which is similar to reading a variable.
+      for op in reading_ops:
+        self.assertEqual([], op.control_inputs)
+
   def testConcat(self):
     with self.test_session() as session:
       var_x = variable_scope.get_variable(
@@ -571,57 +597,38 @@ class PartitionedVariablesTestCase(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertAllClose(value.eval(), var_x.as_tensor().eval())
 
-  def testVariableCreationInALoop(self):
-    """Tests the variable created inside a loop can be used outside the loop."""
-    with self.test_session():
-      with variable_scope.variable_scope("ascope") as scope:
-        def Body(i, _):
-          var_x = variable_scope.get_variable(
-              "x",
-              shape=[2],
-              initializer=init_ops.ones_initializer(),
-              partitioner=partitioned_variables.variable_axis_size_partitioner(
-                  4))
-          return (i + 1, var_x.as_tensor())
-
-        cond = lambda i, _: i < 2
-        _, x = control_flow_ops.while_loop(
-            cond, Body, (0, constant_op.constant([7, 8], dtypes.float32)))
+  def testMetaGraphSaveLoad(self):
+    save_prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    save_graph = ops.Graph()
+    with save_graph.as_default(), self.test_session(
+        graph=save_graph) as session:
+      partitioner = partitioned_variables.fixed_size_partitioner(5, axis=0)
+      with variable_scope.variable_scope("root", partitioner=partitioner):
+        v0 = variable_scope.get_variable(
+            "v0", dtype=dtypes.float32, shape=(10, 10))
+        v0_list = v0._get_variable_list()
+        v0_part = v0._get_partitions()
+        self.assertEqual(len(v0_list), 5)
+        self.assertAllEqual(v0_part, (5, 1))
         variables.global_variables_initializer().run()
-        self.assertAllClose([1.0, 1.0], x.eval())
 
-        scope.reuse_variables()
-        var_x = variable_scope.get_variable(
-            "x",
-            shape=[2],
-            initializer=init_ops.ones_initializer(),
-            partitioner=partitioned_variables.variable_axis_size_partitioner(4))
+        save_graph.get_collection_ref("partvar").append(v0)
+        saver = saver_lib.Saver()
+        save_graph.finalize()
+        save_path = saver.save(sess=session, save_path=save_prefix)
+        previous_value = session.run(
+            save_graph.get_tensor_by_name(v0.name + ":0"))
 
-        self.assertAllClose([1.0, 1.0], var_x.as_tensor().eval())
-
-  def testReadInWhileLoop(self):
-    """Tests the value is current (not cached) when read within a loop."""
-    with self.test_session():
-      var_x = variable_scope.get_variable(
-          "x",
-          shape=[2],
-          initializer=init_ops.ones_initializer(),
-          partitioner=partitioned_variables.variable_axis_size_partitioner(4))
-
-      def Body(i, _):
-        # Use a SGD step to update the variable's value.
-        loss = math_ops.reduce_sum(var_x)
-        optimizer = gradient_descent.GradientDescentOptimizer(1.0)
-        minimize = optimizer.minimize(loss * 0.7)
-        with ops.control_dependencies([minimize]):
-          return (i + 1, var_x.as_tensor())
-
-      cond = lambda i, _: i < 2
-      _, x = control_flow_ops.while_loop(
-          cond, Body, (0, constant_op.constant([7, 8], dtypes.float32)))
-      variables.global_variables_initializer().run()
-      self.assertAllClose([-0.4, -0.4], x.eval())
-
+    restore_graph = ops.Graph()
+    with restore_graph.as_default(), self.test_session(
+        graph=restore_graph) as session:
+      saver = saver_lib.import_meta_graph(save_path + ".meta")
+      saver.restore(sess=session, save_path=save_path)
+      v0, = save_graph.get_collection_ref("partvar")
+      self.assertIsInstance(v0, variables.PartitionedVariable)
+      self.assertAllEqual(
+          previous_value,
+          session.run(restore_graph.get_tensor_by_name(v0.name + ":0")))
 
 if __name__ == "__main__":
   test.main()

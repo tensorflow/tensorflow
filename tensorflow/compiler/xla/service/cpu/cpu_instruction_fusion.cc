@@ -78,7 +78,7 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   }
 
   if (!CanBeLoopFused(*producer)) {
-    VLOG(2) << "Producer is not fusile.";
+    VLOG(2) << "Producer is not fusible.";
     return false;
   }
 
@@ -140,7 +140,7 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   }
 
   if (CanBeLoopFused(*consumer)) {
-    VLOG(2) << "Fusing: consumer is elementwise or fusile.";
+    VLOG(2) << "Fusing: consumer is elementwise or fusible.";
     return true;
   }
 

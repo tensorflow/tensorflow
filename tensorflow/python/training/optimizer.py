@@ -772,16 +772,15 @@ class Optimizer(
     Returns:
       A list of variables.
     """
-    executing_eagerly = context.executing_eagerly()
     current_graph = ops.get_default_graph()
 
     def _from_current_graph(variable):
-      if executing_eagerly:
+      if variable._in_graph_mode:  # pylint: disable=protected-access
+        return variable.op.graph is current_graph
+      else:
         # No variable.op in eager mode. We don't expect lots of eager graphs,
         # but behavior should be consistent with graph mode.
         return variable._graph_key == current_graph._graph_key  # pylint: disable=protected-access
-      else:
-        return variable.op.graph is current_graph
 
     optimizer_variables = [v for v in self._non_slot_variables()
                            if _from_current_graph(v)]

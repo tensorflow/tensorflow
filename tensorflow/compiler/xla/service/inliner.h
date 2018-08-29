@@ -27,7 +27,7 @@ namespace xla {
 class Inliner : public HloPassInterface {
  public:
   ~Inliner() override = default;
-  tensorflow::StringPiece name() const override { return "inline"; }
+  absl::string_view name() const override { return "inline"; }
 
   // Run inlining on the given computation. Returns whether the computation was
   // changed.

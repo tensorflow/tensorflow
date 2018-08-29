@@ -58,7 +58,7 @@ class DataFeederTest(test.TestCase):
         self.assertEqual(expected_np_dtype, v)
     else:
       self.assertEqual(expected_np_dtype, feeder.input_dtype)
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       inp, _ = feeder.input_builder()
       if isinstance(inp, dict):
         for v in list(inp.values()):

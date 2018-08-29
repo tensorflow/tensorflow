@@ -42,9 +42,9 @@ _BLACKLISTED_OPS = set([
     "Placeholder",
 ])
 
-# These operations will currently fail to compile, but we should be able to
-# support them eventually via CPU offload or extending our operation set.
-_NOT_IMPLEMENTED_OPS = set([
+# XLA doesn't currently support reading of intermediate tensors, thus some ops
+# are not supported.
+_UNSUPPORTED_OPS = set([
     "AudioSummary",
     "AudioSummaryV2",
     "HistogramSummary",
@@ -149,6 +149,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._gradient_colocation_stack = []
     self._host_compute_core = []
     self._name = name
+    self._name_as_bytes = compat.as_bytes(name)
     self._unsupported_ops = []
     self._pivot = pivot
     self._replicated_vars = {}
@@ -323,16 +324,13 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     return self._host_compute_core
 
   def AddOp(self, op):
-    self._AddOpInternal(op)
-
-  def _AddOpInternal(self, op):
     # pylint: disable=protected-access
     if op.type in _BLACKLISTED_OPS:
       logging.error("Operation of type %s (%s) is not supported on the TPU. "
                     "Execution will fail if this op is used in the graph. " %
                     (op.type, op.name))
 
-    if op.type in _NOT_IMPLEMENTED_OPS:
+    if op.type in _UNSUPPORTED_OPS:
       self._unsupported_ops.append(op)
 
     if any(x.dtype._is_ref_dtype for x in op.inputs):
@@ -342,7 +340,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     if _TPU_REPLICATE_ATTR in op.node_def.attr:
       raise ValueError("TPU computations cannot be nested")
     op._set_attr(_TPU_REPLICATE_ATTR,
-                 attr_value_pb2.AttrValue(s=compat.as_bytes(self._name)))
+                 attr_value_pb2.AttrValue(s=self._name_as_bytes))
     if self._outside_compilation_cluster:
       op._set_attr(
           _OUTSIDE_COMPILATION_ATTR,
@@ -356,11 +354,12 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
     # Remove any control edges from outer control flow contexts. These may cause
     # mismatched frame errors.
-    control_inputs, external_inputs = self._RemoveExternalControlEdges(op)
+    (internal_control_inputs,
+     external_control_inputs) = self._RemoveExternalControlEdges(op)
 
     if not op.inputs:
       # Add a control edge from the control pivot to this op.
-      if not control_inputs:
+      if not internal_control_inputs:
         # pylint: disable=protected-access
         op._add_control_input(self.GetControlPivot())
         # pylint: enable=protected-access
@@ -371,19 +370,19 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
         if real_x != x:
           op._update_input(index, real_x)  # pylint: disable=protected-access
 
-    if external_inputs:
+    if external_control_inputs:
       # Use an identity to pull control inputs as data inputs. Note that we
       # ignore ops which don't have outputs. TODO(phawkins): fix that.
       with ops.control_dependencies(None):
         self.Enter()
-        external_inputs = [
+        external_control_inputs = [
             array_ops.identity(x.outputs[0]).op
-            for x in external_inputs
+            for x in external_control_inputs
             if x.outputs
         ]
         self.Exit()
       # pylint: disable=protected-access
-      op._add_control_inputs(external_inputs)
+      op._add_control_inputs(external_control_inputs)
       # pylint: enable=protected-access
 
     # Mark op's outputs as seen by this context and any outer contexts.
@@ -399,6 +398,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       self._outer_context.AddInnerOp(op)
 
   def AddValue(self, val):
+    """Add `val` to the current context and its outer context recursively."""
     if val.name in self._values:
       # Use the real value if it comes from outer context.
       result = self._external_values.get(val.name)
@@ -415,7 +415,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     return result
 
   def AddInnerOp(self, op):
-    self._AddOpInternal(op)
+    self.AddOp(op)
     if self._outer_context:
       self._outer_context.AddInnerOp(op)
 

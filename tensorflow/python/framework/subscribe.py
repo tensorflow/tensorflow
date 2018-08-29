@@ -137,12 +137,7 @@ def _subscribe_new(tensor, side_effects, control_cache):
     # are subscribed at the same time, we remove the control dependency from
     # the original op only once and we add the dependencies to all the
     # new identities.
-    if ops._USE_C_API:  # pylint: disable=protected-access
-      new_control_inputs = consumer_op.control_inputs
-    else:
-      # Make a copy so we don't modify the actual control inputs (this is fixed
-      # in the C API).
-      new_control_inputs = list(consumer_op.control_inputs)
+    new_control_inputs = consumer_op.control_inputs
     if tensor.op in new_control_inputs:
       new_control_inputs.remove(tensor.op)
     new_control_inputs.append(out.op)

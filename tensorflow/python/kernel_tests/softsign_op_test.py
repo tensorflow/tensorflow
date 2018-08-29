@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
@@ -65,11 +66,12 @@ class SoftsignTest(test.TestCase):
     print("softsign (float) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
-  def testWarnInts(self):
-    # NOTE(irving): Actually I don't know how to intercept the warning, but
-    # let's make sure it runs.  I promised I've looked, and there was a warning.
+  def testNoInts(self):
     with self.test_session():
-      nn_ops.softsign(constant_op.constant(7)).eval()
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "No OpKernel was registered to support Op 'Softsign'"):
+        nn_ops.softsign(constant_op.constant(7)).eval()
 
 
 if __name__ == "__main__":

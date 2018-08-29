@@ -148,7 +148,7 @@ Status RunMainOp(const RunOptions& run_options, const string& export_dir,
     AddAssetsTensorsToInputs(export_dir, asset_file_defs, &inputs);
     RunMetadata run_metadata;
     const StringPiece main_op_name = main_op_it->second.node_list().value(0);
-    return RunOnce(run_options, inputs, {}, {main_op_name.ToString()},
+    return RunOnce(run_options, inputs, {}, {string(main_op_name)},
                    nullptr /* outputs */, &run_metadata, session);
   }
   return Status::OK();
@@ -182,12 +182,12 @@ Status RunRestore(const RunOptions& run_options, const string& export_dir,
   variables_path_tensor.scalar<string>()() = variables_path;
 
   std::vector<std::pair<string, Tensor>> inputs = {
-      {variable_filename_const_op_name.ToString(), variables_path_tensor}};
+      {string(variable_filename_const_op_name), variables_path_tensor}};
 
   AddAssetsTensorsToInputs(export_dir, asset_file_defs, &inputs);
 
   RunMetadata run_metadata;
-  return RunOnce(run_options, inputs, {}, {restore_op_name.ToString()},
+  return RunOnce(run_options, inputs, {}, {string(restore_op_name)},
                  nullptr /* outputs */, &run_metadata, session);
 }
 

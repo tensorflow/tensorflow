@@ -190,25 +190,6 @@ XLA_TEST_F(UnaryOpTest, SignAbsTestR1) {
   SignAbsTestHelper<complex64>();
 }
 
-XLA_TEST_F(UnaryOpTest, UnsignedAbsTestR1) {
-  XlaBuilder builder(TestName());
-  auto arg = ConstantR1<unsigned int>(
-      &builder, {2, 25, 0, 123, std::numeric_limits<unsigned int>::max()});
-  Abs(arg);
-
-  ComputeAndCompareR1<unsigned int>(
-      &builder, {2, 25, 0, 123, std::numeric_limits<unsigned int>::max()}, {});
-}
-
-XLA_TEST_F(UnaryOpTest, UnsignedSignTestR1) {
-  XlaBuilder builder(TestName());
-  auto arg = ConstantR1<unsigned int>(
-      &builder, {2, 25, 0, 123, std::numeric_limits<unsigned int>::max()});
-  Sign(arg);
-
-  ComputeAndCompareR1<unsigned int>(&builder, {1, 1, 0, 1, 1}, {});
-}
-
 XLA_TEST_F(UnaryOpTest, SignAbsTestR2) {
   XlaBuilder builder(TestName());
   auto arg = ConstantR2<float>(&builder, {{1.0, -2.0}, {-3.0, 4.0}});

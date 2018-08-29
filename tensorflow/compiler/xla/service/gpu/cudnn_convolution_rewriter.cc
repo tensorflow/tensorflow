@@ -234,6 +234,23 @@ std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardInput(
           << "Backward input convolution should reverse all kernel dimensions.";
       return no_match_result;
     }
+  } else if (reverse_filter->IsConstant()) {
+    // If the filter is a constant, we're willing to pattern-match to a
+    // backwards-input conv, on the theory that
+    //
+    //  a) reversing a constant is free, and
+    //  b) even if the user specified this filter as reverse(constant), we would
+    //     long ago have constant-folded away the reverse.
+    //
+    // If the constant has any other uses, reversing it isn't entirely free,
+    // since we'd now have two constants to keep in memory.  But hopefully it's
+    // free enough.
+    //
+    // TODO(jlebar): Should we do this even if the filter is not a constant?
+    // Reversing a non-constant filter is probably cheaper than padding the
+    // input!
+
+    // Nothing to do, just fall through.
   } else {
     // Possibly 1x1 filter.
     for (int64 i = 0; i < kernel_spatial_dims.size(); ++i) {
@@ -373,22 +390,25 @@ std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardInput(
     }
   }
 
-  // Fuse the matched HLOs into a backward convolution instruction.
-  //
-  // If the reverse is omitted (for 1x1 filters) in the original pattern, we add
-  // it back in the fusion instruction so that later passes (such as
-  // PadInsertion) can handle such fusion instructions easily.
+  // OK, it's a match!  Canonicalize the conv's filter so that it's a reverse.
+  // This simplifies things for our caller, and algebraic-simplifier will later
+  // remove any unnecessary reverses.
   if (reverse_filter->opcode() != HloOpcode::kReverse) {
-    reverse_filter = reverse_filter->parent()->AddInstruction(
+    // Create a double-reverse, which is a nop.
+    HloComputation* c = conv->parent();
+    reverse_filter = c->AddInstruction(
+        HloInstruction::CreateReverse(reverse_filter->shape(), reverse_filter,
+                                      AsInt64Slice(kernel_spatial_dims)));
+    reverse_filter = c->AddInstruction(
         HloInstruction::CreateReverse(reverse_filter->shape(), reverse_filter,
                                       AsInt64Slice(kernel_spatial_dims)));
     TF_CHECK_OK(conv->ReplaceOperandWith(/*operand_no=*/1, reverse_filter));
   }
+
   dnums.set_kernel_input_feature_dimension(
       conv->convolution_dimension_numbers().kernel_output_feature_dimension());
   dnums.set_kernel_output_feature_dimension(
       conv->convolution_dimension_numbers().kernel_input_feature_dimension());
-
   return std::make_tuple(true, new_window, dnums);
 }
 

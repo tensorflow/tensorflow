@@ -1,6 +1,6 @@
 # Distribution Strategy
 
-> *NOTE*: This is a experimental feature. The API and performance
+> *NOTE*: This is an experimental feature. The API and performance
 > characteristics are subject to change.
 
 ## Overview
@@ -9,7 +9,7 @@
 API is an easy way to distribute your training
 across multiple devices/machines. Our goal is to allow users to use existing
 models and training code with minimal changes to enable distributed training.
-Moreover, we've design the API in such a way that it works with both eager and
+Moreover, we've designed the API in such a way that it works with both eager and
 graph execution.
 
 Currently we support one type of strategy, called

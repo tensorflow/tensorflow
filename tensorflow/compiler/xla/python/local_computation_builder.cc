@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/python/local_computation_builder.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
@@ -137,8 +137,7 @@ static StatusOr<ScopedShapedBuffer> ToBuffer(LocalClient* client,
 
 /* static */
 StatusOr<LocalShapedBuffer*> LocalShapedBuffer::FromLiteral(
-    const Literal& argument,
-    const tensorflow::gtl::optional<Shape>& shape_with_layout) {
+    const Literal& argument, const absl::optional<Shape>& shape_with_layout) {
   LocalClient* client = GetOrCreateLocalClient();
   StatusOr<ScopedShapedBuffer> buf = [&] {
     if (shape_with_layout) {
@@ -163,7 +162,7 @@ CompiledLocalComputation::CompiledLocalComputation(
 
 StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
     const std::vector<Literal>& arguments,
-    const std::vector<tensorflow::gtl::optional<Shape>>& shapes_with_layout) {
+    const std::vector<absl::optional<Shape>>& shapes_with_layout) {
   LocalClient* client = GetOrCreateLocalClient();
 
   VLOG(1) << "Execution requested with " << GetReplicaCount() << " replicas.";
@@ -194,7 +193,7 @@ StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
             scoped_buffers.reserve(arguments.size());
             for (int i = 0; i < arguments.size(); ++i) {
               const Literal& argument = arguments[i];
-              const tensorflow::gtl::optional<Shape>& shape_with_layout =
+              const absl::optional<Shape>& shape_with_layout =
                   shapes_with_layout[i];
 
               StatusOr<ScopedShapedBuffer> pushed;
@@ -252,7 +251,7 @@ StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
       return InternalError(
           "Failed running replica %d (other replicas may have failed as well): "
           "%s.",
-          replica, statusor.status().ToString().c_str());
+          replica, statusor.status().ToString());
     }
   }
 
@@ -575,6 +574,16 @@ StatusOr<bool> LocalComputationBuilder::IsConstant(const LocalOp& operand) {
   return builder_.IsConstant(operand.op());
 }
 
+LocalOp LocalComputationBuilder::Sort(const LocalOp& operand, int64 dimension) {
+  return xla::Sort(operand.op(), absl::nullopt, dimension);
+}
+
+LocalOp LocalComputationBuilder::SortKeyVal(const LocalOp& keys,
+                                            const LocalOp& values,
+                                            int64 dimension) {
+  return xla::Sort(keys.op(), values.op(), dimension);
+}
+
 StatusOr<LocalComputation*> LocalComputationBuilder::BuildConstantSubGraph(
     const LocalOp& operand) {
   TF_ASSIGN_OR_RETURN(XlaComputation computation,
@@ -640,7 +649,6 @@ _FORWARD_UNOP(Sin)
 _FORWARD_UNOP(Tanh)
 _FORWARD_UNOP(IsFinite)
 _FORWARD_UNOP(Neg)
-_FORWARD_UNOP(Sort)
 _FORWARD_UNOP(Sqrt)
 _FORWARD_UNOP(Rsqrt)
 _FORWARD_UNOP(Square)
@@ -688,8 +696,7 @@ StatusOr<LocalShapedBufferTuple*> DestructureLocalShapedBufferTuple(
         "Attemped to destructure a LocalShapedBuffer that did not have a tuple "
         "shape; shape: %s",
         ShapeUtil::HumanString(
-            local_shaped_buffer->shaped_buffer()->on_device_shape())
-            .c_str());
+            local_shaped_buffer->shaped_buffer()->on_device_shape()));
   }
 
   DeviceMemoryAllocator* allocator =

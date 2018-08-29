@@ -406,8 +406,8 @@ class MklInputConversionOp : public OpKernel {
     }
 
     // Broadcast is needed if the shapes are not the same
-    if (mkl_shape->GetTfShape().num_elements()
-            == tf_tensor->shape().num_elements() ) {
+    if (mkl_shape->GetTfShape().num_elements() ==
+        tf_tensor->shape().num_elements()) {
       // Both shapes are same, convert the TF input to MKL
       VLOG(1) << "MklInputConversionOp: No broadcast needed.";
       VLOG(1) << "MklInputConversionOp: Converting input " << tf_tensor_index

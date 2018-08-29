@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_BCAST_H_
-#define TENSORFLOW_UTIL_BCAST_H_
+#ifndef TENSORFLOW_CORE_UTIL_BCAST_H_
+#define TENSORFLOW_CORE_UTIL_BCAST_H_
 
 #include <algorithm>
 
@@ -132,4 +132,4 @@ class BCast {
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_BCAST_H_
+#endif  // TENSORFLOW_CORE_UTIL_BCAST_H_

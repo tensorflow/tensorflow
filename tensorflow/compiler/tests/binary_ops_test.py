@@ -36,7 +36,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
   """Test cases for binary operators."""
 
   def _testBinary(self, op, a, b, expected, equality_test=None):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       with self.test_scope():
         pa = array_ops.placeholder(dtypes.as_dtype(a.dtype), a.shape, name="a")
         pb = array_ops.placeholder(dtypes.as_dtype(b.dtype), b.shape, name="b")
@@ -1010,7 +1010,38 @@ class BinaryOpsTest(xla_test.XLATestCase):
                [7, 7, 7, 7, 7, 7]],
               dtype=dtype))
 
-  def testMirrorPad(self):
+  def testSymmetricMirrorPad(self):
+    mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "SYMMETRIC")
+    for dtype in self.numeric_types:
+      self._testBinary(
+          mirror_pad,
+          np.array(
+              [
+                  [1, 2, 3],  #
+                  [4, 5, 6],  #
+              ],
+              dtype=dtype),
+          np.array([[
+              2,
+              2,
+          ], [3, 3]], dtype=np.int32),
+          expected=np.array(
+              [
+                  [6, 5, 4, 4, 5, 6, 6, 5, 4],  #
+                  [3, 2, 1, 1, 2, 3, 3, 2, 1],  #
+                  [3, 2, 1, 1, 2, 3, 3, 2, 1],  #
+                  [6, 5, 4, 4, 5, 6, 6, 5, 4],  #
+                  [6, 5, 4, 4, 5, 6, 6, 5, 4],  #
+                  [3, 2, 1, 1, 2, 3, 3, 2, 1],  #
+              ],
+              dtype=dtype))
+      self._testBinary(
+          mirror_pad,
+          np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype),
+          np.array([[0, 0], [0, 0]], dtype=np.int32),
+          expected=np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype))
+
+  def testReflectMirrorPad(self):
     mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "REFLECT")
     for dtype in self.numeric_types:
       self._testBinary(
@@ -1165,6 +1196,16 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
   def testTile(self):
     for dtype in self.numeric_types:
+      self._testBinary(
+          array_ops.tile,
+          np.array([[6], [3], [4]], dtype=dtype),
+          np.array([2, 0], dtype=np.int32),
+          expected=np.empty([6, 0], dtype=dtype))
+      self._testBinary(
+          array_ops.tile,
+          np.array([[6, 3, 4]], dtype=dtype),
+          np.array([2, 0], dtype=np.int32),
+          expected=np.empty([2, 0], dtype=dtype))
       self._testBinary(
           array_ops.tile,
           np.array([[6]], dtype=dtype),
@@ -1361,6 +1402,41 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([[[-1.0, 0.0, 3.0], [0.0, -2.0, 0.0]],
                              [[-4.0, 0.0, 4.0], [0.0, -5.0, 0.0]]],
                             dtype=dtype))
+
+  def testBroadcastTo(self):
+    for dtype in self.all_types:
+      x = np.random.randint(0, high=100, size=[2, 3])
+      self._testBinary(
+          array_ops.broadcast_to,
+          x,
+          np.array([2, 3], dtype=np.int32),
+          expected=x)
+      self._testBinary(
+          array_ops.broadcast_to,
+          x,
+          np.array([6, 6], dtype=np.int32),
+          expected=np.tile(x, [3, 2]))
+      self._testBinary(
+          array_ops.broadcast_to,
+          x,
+          np.array([7, 4, 3], dtype=np.int32),
+          expected=np.tile(x, [7, 2, 1]))
+      self._testBinary(
+          array_ops.broadcast_to,
+          x,
+          np.array([7, 0, 3], dtype=np.int32),
+          expected=np.zeros([7, 0, 3], dtype=dtype))
+      self._testBinary(
+          array_ops.broadcast_to,
+          x,
+          np.array([7, 1, 2, 9], dtype=np.int32),
+          expected=np.tile(x, [7, 1, 1, 3]))
+      self._testBinary(
+          array_ops.broadcast_to,
+          np.zeros([2, 0], dtype=dtype),
+          np.array([4, 0], dtype=np.int32),
+          expected=np.zeros([4, 0], dtype=dtype))
+
 
 if __name__ == "__main__":
   googletest.main()

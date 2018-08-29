@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/kernels/bounds_check.h"
@@ -185,14 +186,14 @@ Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles) {
   return Status::OK();
 }
 
-gtl::optional<StringPiece> GetXlaClusterForNode(const Node& node) {
+absl::optional<StringPiece> GetXlaClusterForNode(const Node& node) {
   const AttrValue* attr_value = node.attrs().Find(kXlaClusterAttr);
   if (attr_value == nullptr) {
-    return gtl::nullopt;
+    return absl::nullopt;
   }
   Status s = AttrValueHasType(*attr_value, "string");
   if (!s.ok()) {
-    return gtl::nullopt;
+    return absl::nullopt;
   }
   return attr_value->s();
 }
@@ -207,4 +208,27 @@ bool HasResourceInputOrOutput(const Node& node) {
 void RemoveFromXlaCluster(NodeDef* node_def) {
   node_def->mutable_attr()->erase(kXlaClusterAttr);
 }
+
+Status AdjustCycleDetectionGraphForResourceOps(
+    const Graph* graph, const FunctionLibraryDefinition* flib_def,
+    const std::function<Status(const Node&, bool*)>& resource_ops_to_ignore,
+    GraphCycles* cycles) {
+  std::vector<std::pair<int, int>> unsafe_deps;
+  TF_RETURN_IF_ERROR(ComputeIncompatibleResourceOperationPairs(
+      *graph, flib_def, resource_ops_to_ignore, &unsafe_deps));
+
+  // An edge {P,Q} in `unsafe_deps` denotes that P and Q, both of which are
+  // operations that interact with resource variables, must not be put in the
+  // same cluster.  We enforce this constraint by creating a phantom node, X,
+  // and adding edges P->X and X->Q.  MarkForCompilation then cannot cluster P
+  // and Q together since that would create a cycle with X.
+
+  for (std::pair<int, int> unsafe_dep : unsafe_deps) {
+    int phantom_node_id = cycles->NewNode();
+    CHECK(cycles->InsertEdge(unsafe_dep.first, phantom_node_id));
+    CHECK(cycles->InsertEdge(phantom_node_id, unsafe_dep.second));
+  }
+  return Status::OK();
+}
+
 }  // namespace tensorflow

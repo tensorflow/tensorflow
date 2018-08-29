@@ -25,13 +25,14 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/sparse_index_array.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/bitmap.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -312,7 +312,7 @@ class LiteralBase {
   // Note: It's an antipattern to use this method then immediately call
   // MutableLiteralBase::Populate on the result (since that results in zero
   // initialization, then reinitialization. Conside if a call to
-  // MakeUnique<Literal>(shape), followed by the call to
+  // absl::make_unique<Literal>(shape), followed by the call to
   // MutableLiteralBase::Populate can be used instead.
   static std::unique_ptr<Literal> CreateFromShape(const Shape& shape);
 
@@ -1154,8 +1154,8 @@ std::unique_ptr<Literal> LiteralBase::Replicate(int64 times) const {
   for (int64 bound : shape().dimensions()) {
     bounds.push_back(bound);
   }
-  auto literal =
-      MakeUnique<Literal>(ShapeUtil::MakeShape(shape().element_type(), bounds));
+  auto literal = absl::make_unique<Literal>(
+      ShapeUtil::MakeShape(shape().element_type(), bounds));
   int64 elements = ShapeUtil::ElementsIn(literal->shape());
   if (elements == 0) {
     return literal;

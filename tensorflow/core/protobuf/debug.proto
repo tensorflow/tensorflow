@@ -60,6 +60,12 @@ message DebugOptions {
   // Note that this is distinct from the session run count and the executor
   // step count.
   int64 global_step = 10;
+
+  // Whether the total disk usage of tfdbg is to be reset to zero
+  // in this Session.run call. This is used by wrappers and hooks
+  // such as the local CLI ones to indicate that the dumped tensors
+  // are cleaned up from the disk after each Session.run.
+  bool reset_disk_byte_usage = 11;
 }
 
 message DebuggedSourceFile {

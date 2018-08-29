@@ -16,13 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_DFS_HLO_VISITOR_WITH_DEFAULT_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_DFS_HLO_VISITOR_WITH_DEFAULT_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -94,8 +94,11 @@ class DfsHloVisitorWithDefaultBase
   Status HandleCrossReplicaSum(HloInstructionPtr crs) override {
     return DefaultAction(crs);
   }
-  Status HandleAllToAll(HloInstructionPtr crs) override {
-    return DefaultAction(crs);
+  Status HandleAllToAll(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
+  Status HandleCollectivePermute(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
   }
   Status HandleRng(HloInstructionPtr random) override {
     return DefaultAction(random);
@@ -105,9 +108,6 @@ class DfsHloVisitorWithDefaultBase
   }
   Status HandleOutfeed(HloInstructionPtr outfeed) override {
     return DefaultAction(outfeed);
-  }
-  Status HandleHostCompute(HloInstructionPtr host_compute) override {
-    return DefaultAction(host_compute);
   }
   Status HandleReverse(HloInstructionPtr reverse) override {
     return DefaultAction(reverse);

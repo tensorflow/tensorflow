@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "llvm/ADT/Triple.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/source_map_util.h"
@@ -59,7 +59,7 @@ Status LocalExecutable::ValidateExecutionOptions(
   // Check argument number, shapes, and layouts.
   if (arguments.size() != computation_layout.parameter_count()) {
     return InvalidArgument(
-        "invalid number of arguments for computation: expected %d, got %zu",
+        "invalid number of arguments for computation: expected %d, got %u",
         computation_layout.parameter_count(), arguments.size());
   }
   for (int i = 0; i < arguments.size(); ++i) {
@@ -71,9 +71,9 @@ Status LocalExecutable::ValidateExecutionOptions(
           "parameter "
           "%d: want %s, got %s",
           i,
-          ShapeUtil::HumanString(computation_layout.parameter_layout(i).shape())
-              .c_str(),
-          ShapeUtil::HumanString(arguments[i]->on_host_shape()).c_str());
+          ShapeUtil::HumanString(
+              computation_layout.parameter_layout(i).shape()),
+          ShapeUtil::HumanString(arguments[i]->on_host_shape()));
     }
   }
 
@@ -88,8 +88,7 @@ Status LocalExecutable::ValidateExecutionOptions(
     if (stream_platform != backend_->platform()) {
       return InvalidArgument(
           "stream is for platform %s, but service targets platform %s",
-          stream_platform->Name().c_str(),
-          backend_->platform()->Name().c_str());
+          stream_platform->Name(), backend_->platform()->Name());
     }
 
     // Cannot specify device_ordinal with a stream. The stream determines these
@@ -120,10 +119,10 @@ Status LocalExecutable::ValidateExecutionOptions(
     return InvalidArgument(
         "executable is built for device %s of type \"%s\"; cannot run it on "
         "device %s of type \"%s\"",
-        backend_->device_name(build_device_ordinal()).c_str(),
-        build_executor->GetDeviceDescription().name().c_str(),
-        backend_->device_name(run_device_ordinal).c_str(),
-        run_executor->GetDeviceDescription().name().c_str());
+        backend_->device_name(build_device_ordinal()),
+        build_executor->GetDeviceDescription().name(),
+        backend_->device_name(run_device_ordinal),
+        run_executor->GetDeviceDescription().name());
   }
 
   if (!run_options.allocator()) {
@@ -133,8 +132,8 @@ Status LocalExecutable::ValidateExecutionOptions(
   if (run_options.allocator()->platform() != backend.platform()) {
     return InvalidArgument(
         "allocator platform (%s) does not match service platform (%s)",
-        run_options.allocator()->platform()->Name().c_str(),
-        backend.platform()->Name().c_str());
+        run_options.allocator()->platform()->Name(),
+        backend.platform()->Name());
   }
 
   return Status::OK();
@@ -257,9 +256,9 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       local_service_->CompileExecutable(
                           computation, argument_layouts, updated_options));
-  return WrapUnique(new LocalExecutable(std::move(executable),
-                                        local_service_->mutable_backend(),
-                                        updated_options));
+  return absl::WrapUnique(new LocalExecutable(std::move(executable),
+                                              local_service_->mutable_backend(),
+                                              updated_options));
 }
 
 StatusOr<ScopedShapedBuffer> LocalClient::LiteralToShapedBuffer(

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_INPLACE_FUNCTOR_H_
-#define TENSORFLOW_KERNELS_INPLACE_FUNCTOR_H_
+#ifndef TENSORFLOW_CORE_KERNELS_INPLACE_OPS_FUNCTOR_H_
+#define TENSORFLOW_CORE_KERNELS_INPLACE_OPS_FUNCTOR_H_
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -46,4 +46,4 @@ Status DoCopy(const Device& device, const Tensor& x, Tensor* y);
 }  // end namespace functor
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_INPLACE_FUNCTOR_H_
+#endif  // TENSORFLOW_CORE_KERNELS_INPLACE_OPS_FUNCTOR_H_

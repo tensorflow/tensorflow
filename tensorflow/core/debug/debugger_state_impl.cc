@@ -27,6 +27,9 @@ DebuggerState::DebuggerState(const DebugOptions& debug_options) {
       debug_urls_.insert(url);
     }
   }
+  if (debug_options.reset_disk_byte_usage()) {
+    DebugFileIO::resetDiskByteUsage();
+  }
 }
 
 DebuggerState::~DebuggerState() {

@@ -33,7 +33,7 @@ class ListLiteralsTest(tf.test.TestCase):
     converted = ag.to_graph(list_used_as_tuple)
     result = converted()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual(sess.run(result), [1, 2, 3])
 
 

@@ -20,6 +20,7 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond as smart_module
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util import nest
@@ -109,10 +110,10 @@ def get_reachable_from_inputs(inputs, targets=None):
     if isinstance(x, ops.Operation):
       outputs = x.outputs[:] or []
       outputs += x._control_outputs  # pylint: disable=protected-access
-    elif isinstance(x, ops.Tensor):
-      outputs = x.consumers()
     elif isinstance(x, variables.Variable):
       outputs = [x.op]
+    elif tensor_util.is_tensor(x):
+      outputs = x.consumers()
     else:
       raise TypeError('Expected Operation, Variable, or Tensor, got ' + str(x))
 

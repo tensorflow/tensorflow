@@ -136,11 +136,14 @@ class api_export(object):  # pylint: disable=invalid-name
           has no effect on exporting a constant.
         api_name: Name of the API you want to generate (e.g. `tensorflow` or
           `estimator`). Default is `tensorflow`.
+        allow_multiple_exports: Allow symbol to be exported multiple time under
+          different names.
     """
     self._names = args
     self._names_v1 = kwargs.get('v1', args)
     self._api_name = kwargs.get('api_name', TENSORFLOW_API_NAME)
     self._overrides = kwargs.get('overrides', [])
+    self._allow_multiple_exports = kwargs.get('allow_multiple_exports', False)
 
   def __call__(self, func):
     """Calls this decorator.
@@ -173,9 +176,10 @@ class api_export(object):  # pylint: disable=invalid-name
     # __dict__ instead of using hasattr to verify that subclasses have
     # their own _tf_api_names as opposed to just inheriting it.
     if api_names_attr in func.__dict__:
-      raise SymbolAlreadyExposedError(
-          'Symbol %s is already exposed as %s.' %
-          (func.__name__, getattr(func, api_names_attr)))  # pylint: disable=protected-access
+      if not self._allow_multiple_exports:
+        raise SymbolAlreadyExposedError(
+            'Symbol %s is already exposed as %s.' %
+            (func.__name__, getattr(func, api_names_attr)))  # pylint: disable=protected-access
     setattr(func, api_names_attr, names)
 
   def export_constant(self, module_name, name):
@@ -213,4 +217,5 @@ class api_export(object):  # pylint: disable=invalid-name
 
 
 tf_export = functools.partial(api_export, api_name=TENSORFLOW_API_NAME)
-estimator_export = functools.partial(tf_export, api_name=ESTIMATOR_API_NAME)
+estimator_export = functools.partial(
+    api_export, api_name=ESTIMATOR_API_NAME, allow_multiple_exports=True)

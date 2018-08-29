@@ -186,14 +186,15 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
     with self.test_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Dense Quantile |
-      # i0      |  (0.2, 0.12)  | 0         | 2              |
-      # i1      |  (-0.5, 0.07) | 0         | 2              |
-      # i2      |  (1.2, 0.2)   | 0         | 0              |
-      # i3      |  (4.0, 0.13)  | 1         | 1              |
-      dense_column = array_ops.constant([0.62, 0.62, 0.3, 0.52])
+      # i0      |  (0.2, 0.12)  | 1         | 3              |
+      # i1      |  (-0.5, 0.07) | 1         | 3              |
+      # i2      |  (1.2, 0.2)   | 1         | 1              |
+      # i3      |  (4.0, 0.13)  | 2         | 2              |
+      dense_column = array_ops.placeholder(
+          dtypes.float32, shape=(4, 1), name="dense_column")
       gradients = array_ops.constant([0.2, -0.5, 1.2, 4.0])
       hessians = array_ops.constant([0.12, 0.07, 0.2, 0.13])
-      partition_ids = array_ops.constant([0, 0, 0, 1], dtype=dtypes.int32)
+      partition_ids = array_ops.constant([1, 1, 1, 2], dtype=dtypes.int32)
       class_id = -1
 
       gradient_shape = tensor_shape.scalar()
@@ -230,84 +231,93 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       with ops.control_dependencies([update_1]):
         are_splits_ready = split_handler.make_splits(
             np.int64(0), np.int64(1), class_id)[0]
+        # Forcing the creation of four buckets.
+        are_splits_ready = sess.run(
+            [are_splits_ready],
+            feed_dict={dense_column: [[0.2], [0.62], [0.3], [0.52]]})[0]
 
-      with ops.control_dependencies([are_splits_ready]):
-        update_2 = split_handler.update_stats_sync(
-            1,
-            partition_ids,
-            gradients,
-            hessians,
-            empty_gradients,
-            empty_hessians,
-            example_weights,
-            is_active=array_ops.constant([True, True]))
+      update_2 = split_handler.update_stats_sync(
+          1,
+          partition_ids,
+          gradients,
+          hessians,
+          empty_gradients,
+          empty_hessians,
+          example_weights,
+          is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_2]):
         are_splits_ready2, partitions, gains, splits = (
             split_handler.make_splits(np.int64(1), np.int64(2), class_id))
-        are_splits_ready, are_splits_ready2, partitions, gains, splits = (
-            sess.run([
-                are_splits_ready, are_splits_ready2, partitions, gains, splits
-            ]))
+        # Only using the last three buckets.
+        are_splits_ready2, partitions, gains, splits = (
+            sess.run(
+                [are_splits_ready2, partitions, gains, splits],
+                feed_dict={dense_column: [[0.62], [0.62], [0.3], [0.52]]}))
 
     # During the first iteration, inequality split handlers are not going to
     # have any splits. Make sure that we return not_ready in that case.
     self.assertFalse(are_splits_ready)
     self.assertTrue(are_splits_ready2)
 
-    self.assertAllEqual([0, 1], partitions)
+    self.assertAllEqual([1, 2], partitions)
 
     oblivious_split_info = split_info_pb2.ObliviousSplitInfo()
     oblivious_split_info.ParseFromString(splits[0])
-    split_node = oblivious_split_info.split_node.dense_float_binary_split
-
+    split_node = oblivious_split_info.split_node
+    split_node = split_node.oblivious_dense_float_binary_split
     self.assertAllClose(0.3, split_node.threshold, 0.00001)
     self.assertEqual(0, split_node.feature_column)
 
-    # Check the split on partition 0.
+    # Check the split on partition 1.
     # -(1.2 - 0.1) / (0.2 + 1)
-    expected_left_weight_0 = -0.9166666666666666
+    expected_left_weight_1 = -0.9166666666666666
 
-    # expected_left_weight_0 * -(1.2 - 0.1)
-    expected_left_gain_0 = 1.008333333333333
+    # expected_left_weight_1 * -(1.2 - 0.1)
+    expected_left_gain_1 = 1.008333333333333
 
     # (-0.5 + 0.2 + 0.1) / (0.19 + 1)
-    expected_right_weight_0 = 0.1680672
+    expected_right_weight_1 = 0.1680672
 
-    # expected_right_weight_0 * -(-0.5 + 0.2 + 0.1))
-    expected_right_gain_0 = 0.033613445378151252
+    # expected_right_weight_1 * -(-0.5 + 0.2 + 0.1))
+    expected_right_gain_1 = 0.033613445378151252
 
     # (0.2 + -0.5 + 1.2 - 0.1) ** 2 / (0.12 + 0.07 + 0.2 + 1)
-    expected_bias_gain_0 = 0.46043165467625896
+    expected_bias_gain_1 = 0.46043165467625896
 
-    left_child = oblivious_split_info.children_leaves[0].vector
-    right_child = oblivious_split_info.children_leaves[1].vector
-
-    self.assertAllClose([expected_left_weight_0], left_child.value, 0.00001)
-
-    self.assertAllClose([expected_right_weight_0], right_child.value, 0.00001)
-
-    # Check the split on partition 1.
-    expected_left_weight_1 = 0
-    expected_left_gain_1 = 0
-    # -(4 - 0.1) / (0.13 + 1)
-    expected_right_weight_1 = -3.4513274336283186
-    # expected_right_weight_1 * -(4 - 0.1)
-    expected_right_gain_1 = 13.460176991150442
-    # (-4 + 0.1) ** 2 / (0.13 + 1)
-    expected_bias_gain_1 = 13.460176991150442
-
-    left_child = oblivious_split_info.children_leaves[2].vector
-    right_child = oblivious_split_info.children_leaves[3].vector
+    left_child = oblivious_split_info.children[0].vector
+    right_child = oblivious_split_info.children[1].vector
 
     self.assertAllClose([expected_left_weight_1], left_child.value, 0.00001)
 
     self.assertAllClose([expected_right_weight_1], right_child.value, 0.00001)
 
+    # Check the split on partition 2.
+    expected_left_weight_2 = 0
+    expected_left_gain_2 = 0
+    # -(4 - 0.1) / (0.13 + 1)
+    expected_right_weight_2 = -3.4513274336283186
+    # expected_right_weight_2 * -(4 - 0.1)
+    expected_right_gain_2 = 13.460176991150442
+    # (-4 + 0.1) ** 2 / (0.13 + 1)
+    expected_bias_gain_2 = 13.460176991150442
+
+    left_child = oblivious_split_info.children[2].vector
+    right_child = oblivious_split_info.children[3].vector
+
+    self.assertAllClose([expected_left_weight_2], left_child.value, 0.00001)
+
+    self.assertAllClose([expected_right_weight_2], right_child.value, 0.00001)
+
     # The layer gain is the sum of the gains of each partition
     layer_gain = (
-        expected_left_gain_0 + expected_right_gain_0 - expected_bias_gain_0) + (
-            expected_left_gain_1 + expected_right_gain_1 - expected_bias_gain_1)
+        expected_left_gain_1 + expected_right_gain_1 - expected_bias_gain_1) + (
+            expected_left_gain_2 + expected_right_gain_2 - expected_bias_gain_2)
     self.assertAllClose(layer_gain, gains[0], 0.00001)
+
+    # We have examples in both partitions, then we get both ids.
+    self.assertEqual(2, len(oblivious_split_info.children_parent_id))
+    self.assertEqual(1, oblivious_split_info.children_parent_id[0])
+    self.assertEqual(2, oblivious_split_info.children_parent_id[1])
 
   def testGenerateFeatureSplitCandidatesLossUsesSumReduction(self):
     with self.test_session() as sess:

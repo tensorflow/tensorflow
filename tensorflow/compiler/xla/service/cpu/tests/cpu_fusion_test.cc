@@ -17,8 +17,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -129,8 +129,8 @@ TEST_F(CpuFusionTest, FuseElementwiseOpChain) {
                                        error_spec_);
 }
 
-TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusableInstruction) {
-  // Test a chain of fusable ops with a non-fusable op (a reduce) thrown in the
+TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusibleInstruction) {
+  // Test a chain of fusible ops with a non-fusible op (a reduce) thrown in the
   // middle.
   auto module = CreateNewModule();
   auto builder = HloComputation::Builder(TestName());

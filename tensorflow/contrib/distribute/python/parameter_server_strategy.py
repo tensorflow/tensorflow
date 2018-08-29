@@ -22,10 +22,12 @@ from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import values
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.eager import context
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribute as distribute_lib
@@ -55,7 +57,11 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   assigned to.
 
   This class assumes between-graph replication will be used and works on a graph
-  for a particular worker.
+  for a particular worker. Note that each graph and worker is independent.
+  This means that while each worker will synchronously compute a single gradient
+  update across all GPUs, updates between workers proceed asynchronously.
+  Operations that occur only on the first tower (such as incrementing the global
+  step), will occur on the first tower *of every worker*.
 
   It is expected to call `call_for_each_tower(fn, *args, **kwargs)` for any
   operations which potentially can be replicated across towers (i.e. multiple
@@ -73,7 +79,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   3) It is also not recommended to open a colocation scope (i.e. calling
   `tf.colocate_with`) under the strategy's scope. For colocating variables,
   use `distribution.colocate_vars_with` instead. Colocation of ops will possibly
-  create conflicts of device assignement.
+  create conflicts of device assignment.
   """
 
   def __init__(self,
@@ -81,7 +87,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
                cluster_spec=None,
                task_type=None,
                task_id=None):
-    """Initiailizes this strategy.
+    """Initializes this strategy.
 
     Args:
       num_gpus_per_worker: number of local GPUs or GPUs per worker.
@@ -89,11 +95,18 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
         cluster configurations.
       task_type: the current task type.
       task_id: the current task id.
+
+    Raises:
+      ValueError: if `cluster_spec` is given but `task_type` or `task_id` is
+        not.
     """
     super(ParameterServerStrategy, self).__init__()
     self._num_gpus_per_worker = num_gpus_per_worker
     if cluster_spec:
       cluster_spec = multi_worker_util.normalize_cluster_spec(cluster_spec)
+      if task_type is None or task_id is None:
+        raise ValueError("When `cluster_spec` is given, must also specify "
+                         "`task_type` and `task_id`.")
     self._cluster_spec = cluster_spec
 
     # We typically don't need to do all-reduce in this strategy.
@@ -217,14 +230,57 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   # TODO(yuefengz): not all ops in device_setter.STANDARD_PS_OPS will go through
   # this creator, such as "MutableHashTable".
   def _create_variable(self, next_creator, *args, **kwargs):
+    if self.num_towers > 1:
+      aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
+      if aggregation not in (
+          vs.VariableAggregation.NONE,
+          vs.VariableAggregation.SUM,
+          vs.VariableAggregation.MEAN
+      ):
+        raise ValueError("Invalid variable aggregation mode: " + aggregation +
+                         " for variable: " + kwargs["name"])
+
+      def var_creator(*args, **kwargs):
+        # Record what collections this variable should be added to.
+        collections = kwargs.pop("collections", None)
+        if collections is None:
+          collections = [ops.GraphKeys.GLOBAL_VARIABLES]
+        kwargs["collections"] = []
+
+        # Create and wrap the variable.
+        v = next_creator(*args, **kwargs)
+        wrapped = values.AggregatingVariable(v, aggregation)
+
+        # Add the wrapped variable to the requested collections.
+        # The handling of eager mode and the global step matches
+        # ResourceVariable._init_from_args().
+        if not context.executing_eagerly():
+          g = ops.get_default_graph()
+          # If "trainable" is True, next_creator() will add the contained
+          # variable to the TRAINABLE_VARIABLES collection, so we manually
+          # remove it and replace with the wrapper. We can't set "trainable"
+          # to False for next_creator() since that causes functions like
+          # implicit_gradients to skip those variables.
+          if kwargs.get("trainable", True):
+            collections.append(ops.GraphKeys.TRAINABLE_VARIABLES)
+            l = g.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES)
+            l.remove(v)
+          g.add_to_collections(collections, wrapped)
+        elif ops.GraphKeys.GLOBAL_STEP in collections:
+          ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, wrapped)
+
+        return wrapped
+    else:
+      var_creator = next_creator
+
     if "colocate_with" in kwargs:
       with ops.device(None):
         with ops.colocate_with(kwargs["colocate_with"]):
-          return next_creator(*args, **kwargs)
+          return var_creator(*args, **kwargs)
 
     with ops.colocate_with(None, ignore_existing=True):
       with ops.device(self._variable_device):
-        return next_creator(*args, **kwargs)
+        return var_creator(*args, **kwargs)
 
   def _call_for_each_tower(self, fn, *args, **kwargs):
     # pylint: disable=protected-access
@@ -246,7 +302,6 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
       # pylint: disable=protected-access
       return mirrored_strategy._reduce_non_distributed_value(
           self, aggregation, value, destinations)
-
     return self._cross_tower_ops.reduce(
         aggregation, value, destinations=destinations)
 
@@ -279,6 +334,8 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     return nest.map_structure(_select_fn, structured)
 
   def _update(self, var, fn, *args, **kwargs):
+    if isinstance(var, values.AggregatingVariable):
+      var = var.get()
     if not isinstance(var, resource_variable_ops.ResourceVariable):
       raise ValueError(
           "You can not update `var` %r. It must be a Variable." % var)
@@ -323,6 +380,10 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
         cluster configurations.
       task_type: the current task type.
       task_id: the current task id.
+
+    Raises:
+      ValueError: if `cluster_spec` is given but `task_type` or `task_id` is
+        not.
     """
     del session_config
 
@@ -331,6 +392,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     if not self._cluster_spec and cluster_spec:
       self._cluster_spec = multi_worker_util.normalize_cluster_spec(
           cluster_spec)
+      if task_type is None or task_id is None:
+        raise ValueError("When `cluster_spec` is given, must also specify "
+                         "`task_type` and `task_id`.")
       self._initialize_devices(self._num_gpus_per_worker, self._cluster_spec,
                                task_type, task_id)
 

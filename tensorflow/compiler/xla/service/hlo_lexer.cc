@@ -17,19 +17,19 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/strings/escaping.h"
+#include "absl/strings/numbers.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/regexp.h"
 
 namespace xla {
-
-using ::tensorflow::StringPiece;
-
 namespace {
+
+using absl::string_view;
 
 constexpr int kEOF = -1;
 constexpr int kError = -2;
@@ -66,12 +66,12 @@ bool HloLexer::CanDereference(const char* ptr) const {
   return ptr < buf_.end() && ptr >= buf_.begin();
 }
 
-tensorflow::StringPiece HloLexer::StringPieceFromPointers(
-    const char* begin, const char* end) const {
+absl::string_view HloLexer::StringPieceFromPointers(const char* begin,
+                                                    const char* end) const {
   CHECK(begin <= end);
   CHECK(begin == buf_.end() || CanDereference(begin));
   CHECK(end == buf_.end() || CanDereference(end));
-  return tensorflow::StringPiece(begin, end - begin);
+  return absl::string_view(begin, end - begin);
 }
 
 tensorflow::RegexpStringPiece HloLexer::RegexpStringPieceFromPointers(
@@ -235,7 +235,7 @@ TokKind HloLexer::LexIdentifier() {
     return TokKind::kAttributeName;
   }
 
-  tensorflow::StringPiece identifier =
+  absl::string_view identifier =
       StringPieceFromPointers(token_start_, current_ptr_);
 
   // See if this is a keyword.
@@ -269,7 +269,7 @@ TokKind HloLexer::LexIdentifier() {
     }
   }
 
-  str_val_ = std::string(identifier);
+  str_val_ = string(identifier);
   return TokKind::kIdent;
 }
 
@@ -306,8 +306,7 @@ TokKind HloLexer::LexNumberOrPattern() {
       R"([-]?((\d+|\d+[.]\d*|\d*[.]\d+)([eE][+-]?\d+))|[-]?(\d+[.]\d*|\d*[.]\d+))"};
   if (RE2::Consume(&consumable, *float_pattern)) {
     current_ptr_ = consumable.begin();
-    tensorflow::strings::safe_strtod(string(token_start_, current_ptr_).c_str(),
-                                     &decimal_val_);
+    CHECK(absl::SimpleAtod(string(token_start_, current_ptr_), &decimal_val_));
     return TokKind::kDecimal;
   }
 
@@ -339,7 +338,7 @@ TokKind HloLexer::LexNumberOrPattern() {
   if (RE2::Consume(&consumable, *int_pattern)) {
     current_ptr_ = consumable.begin();
     auto slice = StringPieceFromPointers(token_start_, current_ptr_);
-    if (tensorflow::strings::safe_strto64(slice, &int64_val_)) {
+    if (absl::SimpleAtoi(slice, &int64_val_)) {
       return TokKind::kInt;
     }
     LOG(ERROR) << "Failed to parse int literal: " << slice;
@@ -365,6 +364,7 @@ std::pair<unsigned, unsigned> HloLexer::GetLineAndColumn(LocTy location) const {
     line_no = line_no_cache_.line_no_of_query;
   }
   for (; ptr != location; ptr++) {
+    CHECK_LT(ptr, buf_.end());
     if (*ptr == '\n') {
       line_no++;
     }
@@ -374,24 +374,24 @@ std::pair<unsigned, unsigned> HloLexer::GetLineAndColumn(LocTy location) const {
   line_no_cache_.last_query = ptr;
   line_no_cache_.line_no_of_query = line_no;
   size_t line_offset = StringPieceFromPointers(start, ptr).rfind('\n');
-  if (line_offset == tensorflow::StringPiece::npos) {
+  if (line_offset == absl::string_view::npos) {
     line_offset = 0;
   }
   return {line_no, ptr - start - line_offset};
 }
 
-tensorflow::StringPiece HloLexer::GetLine(LocTy loc) const {
+absl::string_view HloLexer::GetLine(LocTy loc) const {
   if (!CanDereference(loc)) {
     return "LINE OUT OF RANGE";
   }
   size_t line_start =
       StringPieceFromPointers(buf_.begin(), loc + 1).rfind('\n');
-  const char* start = line_start == tensorflow::StringPiece::npos
+  const char* start = line_start == absl::string_view::npos
                           ? buf_.begin()
                           : buf_.begin() + line_start + 1;
   size_t line_end = StringPieceFromPointers(loc, buf_.end()).find('\n');
   const char* end =
-      line_end == tensorflow::StringPiece::npos ? buf_.end() : loc + line_end;
+      line_end == absl::string_view::npos ? buf_.end() : loc + line_end;
 
   return StringPieceFromPointers(start, end);
 }
@@ -403,10 +403,14 @@ TokKind HloLexer::LexString() {
   static LazyRE2 escaping_pattern = {R"("([^"\\]|\\.)*")"};
   if (RE2::Consume(&consumable, *escaping_pattern)) {
     current_ptr_ = consumable.begin();
-    tensorflow::StringPiece raw =
+    absl::string_view raw =
         StringPieceFromPointers(token_start_ + 1, current_ptr_ - 1);
     string error;
-    if (!tensorflow::str_util::CUnescape(raw, &str_val_, &error)) {
+    // TODO(b/113077997): Change to absl::CUnescape once it works properly with
+    // copy-on-write std::string implementations.
+    if (!tensorflow::str_util::CUnescape(                     // non-absl ok
+            tensorflow::StringPiece(raw.data(), raw.size()),  // non-absl ok
+            &str_val_, &error)) {
       LOG(ERROR) << "Failed unescaping string: " << raw << ". error: " << error;
       return TokKind::kError;
     }

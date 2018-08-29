@@ -20,6 +20,10 @@ limitations under the License.
 #include <set>
 #include <string>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
@@ -37,16 +41,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
-using ::tensorflow::strings::HumanReadableNumBytes;
-
 namespace xla {
-
 namespace {
+
+using ::tensorflow::strings::HumanReadableNumBytes;
 
 // Potential optimizations:
 // . TODO(b/35244891): Avoid N^2 behavior by keeping a priority queue
@@ -88,7 +88,7 @@ bool CanBeRematerialized(
 
 // Type holding a unique identifier for each Buffer object.
 using BufferId = int64;
-using BufferIdList = tensorflow::gtl::InlinedVector<BufferId, 3>;
+using BufferIdList = absl::InlinedVector<BufferId, 3>;
 
 // We wrap HloInstruction* with an Item that holds auxiliary
 // per-instruction state.
@@ -123,7 +123,7 @@ struct Item {
   int64 position;
 };
 
-using ItemList = tensorflow::gtl::InlinedVector<Item*, 3>;
+using ItemList = absl::InlinedVector<Item*, 3>;
 
 // Class which maintains an ordered list of instructions with fast insertion
 // before arbitrary elements.
@@ -206,11 +206,10 @@ class InstructionList {
       Item* to_insert, tensorflow::gtl::ArraySlice<Item*> before_instructions) {
     VLOG(3) << "InsertBeforeInstructions: " << to_insert->instruction->name()
             << " before {"
-            << tensorflow::str_util::Join(before_instructions, ", ",
-                                          [](string* out, Item* item) {
-                                            tensorflow::strings::StrAppend(
-                                                out, item->instruction->name());
-                                          })
+            << absl::StrJoin(before_instructions, ", ",
+                             [](string* out, Item* item) {
+                               absl::StrAppend(out, item->instruction->name());
+                             })
             << "}";
 
     // Find the minimal position number of any instruction in
@@ -393,10 +392,9 @@ class MemoryUsageTracker {
     int64 unfinished_user_count;
 
     string ToString() const {
-      return tensorflow::strings::StrCat(
-          "Buffer ", id, " (defined by ",
-          defining_instruction->instruction->name(), ", size ", size,
-          " bytes)");
+      return absl::StrCat("Buffer ", id, " (defined by ",
+                          defining_instruction->instruction->name(), ", size ",
+                          size, " bytes)");
     }
   };
 
@@ -740,29 +738,27 @@ Status MemoryUsageTracker::AddRematerializedInstruction(Item* original_item,
 }
 
 string MemoryUsageTracker::ToString() const {
-  string output = tensorflow::strings::StrCat("MemoryUsageTracker for ",
-                                              computation_->name(), "\n");
-  tensorflow::strings::StrAppend(
-      &output, "Memory usage: ", HumanReadableNumBytes(memory_usage()), " (",
-      memory_usage(), " bytes)");
+  string output =
+      absl::StrCat("MemoryUsageTracker for ", computation_->name(), "\n");
+  absl::StrAppend(&output,
+                  "Memory usage: ", HumanReadableNumBytes(memory_usage()), " (",
+                  memory_usage(), " bytes)");
   for (auto* item = instruction_list_.first(); item != nullptr;
        item = instruction_list_.next(item)) {
     const HloInstruction* instruction = item->instruction;
     string inprogress = item == in_progress_item_ ? " in-progress" : "";
     string placed = item->placed ? " placed" : "";
-    tensorflow::strings::StrAppend(&output, "  ", instruction->name(),
-                                   inprogress, placed, "\n    Defines:\n");
+    absl::StrAppend(&output, "  ", instruction->name(), inprogress, placed,
+                    "\n    Defines:\n");
     for (BufferId buffer_id : item->buffers_defined) {
       const Buffer& buffer = buffers_[buffer_id];
       string live = IsCurrentlyLive(buffer_id) ? " live" : "";
-      tensorflow::strings::StrAppend(&output, "      ", buffer.ToString(), live,
-                                     ", ", buffer.unfinished_user_count,
-                                     " unfinished uses\n");
+      absl::StrAppend(&output, "      ", buffer.ToString(), live, ", ",
+                      buffer.unfinished_user_count, " unfinished uses\n");
     }
-    tensorflow::strings::StrAppend(&output, "    Uses:\n");
+    absl::StrAppend(&output, "    Uses:\n");
     for (BufferId buffer_id : item->buffers_used) {
-      tensorflow::strings::StrAppend(&output, "      ",
-                                     buffers_[buffer_id].ToString(), "\n");
+      absl::StrAppend(&output, "      ", buffers_[buffer_id].ToString(), "\n");
     }
   }
   return output;
@@ -780,10 +776,9 @@ bool MemoryUsageTracker::Check() const {
     CHECK(elements_are_unique(defined_buffers))
         << "Instruction " << instruction->name()
         << " does not have unique defined buffers: "
-        << tensorflow::str_util::Join(
+        << absl::StrJoin(
                defined_buffers, ", ", [this](string* out, BufferId buffer_id) {
-                 tensorflow::strings::StrAppend(
-                     out, buffers_.at(buffer_id).ToString());
+                 absl::StrAppend(out, buffers_.at(buffer_id).ToString());
                });
 
     for (const Buffer& buffer : buffers_) {
@@ -803,10 +798,9 @@ bool MemoryUsageTracker::Check() const {
     CHECK(elements_are_unique(used_buffers))
         << "Instruction " << instruction->name()
         << " does not have unique used buffers: "
-        << tensorflow::str_util::Join(
+        << absl::StrJoin(
                used_buffers, ", ", [this](string* out, BufferId buffer_id) {
-                 tensorflow::strings::StrAppend(
-                     out, buffers_.at(buffer_id).ToString());
+                 absl::StrAppend(out, buffers_.at(buffer_id).ToString());
                });
   }
   for (const Buffer& buffer : buffers_) {
@@ -1209,6 +1203,49 @@ StatusOr<bool> HloRematerialization::Run(
 
   VLOG(1) << "HloRematerialization() with memory limit of "
           << HumanReadableNumBytes(memory_limit_bytes);
+  XLA_VLOG_LINES(3, "Before HloRematerialization:\n" + module->ToString());
+
+  // Create initial sequence of HLO instructions.
+  TF_ASSIGN_OR_RETURN(*sequence, ScheduleComputationsInModule(
+                                     *module,
+                                     [this](const BufferValue& buffer) {
+                                       return size_function_(buffer.shape());
+                                     },
+                                     scheduler_algorithm_));
+  if (copy_insertion) {
+    // We run a separate pass of copy elision here because the sequential
+    // ordering from the HLO schedule allows for more copies to be eliminated.
+    // TODO(b/80249101): Instead of a separate copy elision pass, use the
+    // ordering from the HLO schedule directly for copy insertion.
+
+    // First create a copy of the schedule which contains HloInstruction unique
+    // ids instead of HloInstruction*. This is necessary for updating the
+    // schedule below.
+    // TODO(b/113175018): Remove this when the HLO schedule is self-contained
+    // and can update itself.
+    tensorflow::gtl::FlatMap<const HloComputation*, std::vector<int>>
+        id_sequence = ComputeIdSchedule(*sequence);
+
+    SequentialHloOrdering ordering(module, *sequence);
+    TF_RETURN_IF_ERROR(
+        copy_insertion->RemoveUnnecessaryCopies(ordering, module));
+
+    // RemoveUnnecessaryCopies only considers interference when determining
+    // whether it is legal to remove a copy. However, copies in the graph may be
+    // necessary for other reason such as preventing a constant from being live
+    // out of the graph. So run AddSpecialCaseCopies to re-insert these copies.
+    // TODO(b/80249101): Break copy insertion into several passes and run each
+    // one once in the regular HLO pipeline.
+    TF_RETURN_IF_ERROR(copy_insertion->AddSpecialCaseCopies(module));
+
+    // The passes above can add and remove copies, update the schedule to
+    // account for these transformations. Newly added instructions will be
+    // placed ASAP in the schedule.
+    TF_RETURN_IF_ERROR(UpdateSchedule(*module, id_sequence, sequence));
+
+    TF_DCHECK_OK(copy_insertion->VerifyNoLiveRangeInterference(
+        SequentialHloOrdering(module, *sequence), module));
+  }
 
   TF_ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module));
 
@@ -1229,24 +1266,6 @@ StatusOr<bool> HloRematerialization::Run(
   VLOG(1) << "Adjusted memory limit accounting for output ("
           << HumanReadableNumBytes(module_output_size)
           << "): " << HumanReadableNumBytes(adjusted_memory_limit_bytes);
-
-  XLA_VLOG_LINES(3, "Before HloRematerialization:\n" + module->ToString());
-  // Create initial sequence of HLO instructions.
-  TF_ASSIGN_OR_RETURN(*sequence, ScheduleComputationsInModule(
-                                     *module,
-                                     [this](const BufferValue& buffer) {
-                                       return size_function_(buffer.shape());
-                                     },
-                                     scheduler_algorithm_));
-  if (copy_insertion) {
-    // We run a separate pass of copy elision here because the sequential
-    // ordering from the HLO schedule allows for more copies to be eliminated.
-    // TODO(b/80249101): Instead of a separate copy elision pass, use the
-    // ordering from the HLO schedule directly for copy insertion.
-    SequentialHloOrdering ordering(module, *sequence);
-    TF_RETURN_IF_ERROR(
-        copy_insertion->RemoveUnnecessaryCopies(ordering, module));
-  }
 
   // Compute peak memory usage of all computations in the module called in a
   // sequential context.
@@ -1334,12 +1353,11 @@ StatusOr<bool> HloRematerialization::Run(
   XLA_VLOG_LINES(3, "After HloRematerialization:\n" + module->ToString());
 
   if (current_peak_memory > memory_limit_bytes) {
-    LOG(WARNING) << tensorflow::strings::Printf(
-        "Can't reduce memory use below %s (%lld bytes) by rematerialization; "
-        "only reduced to %s (%lld bytes)",
-        HumanReadableNumBytes(memory_limit_bytes).c_str(), memory_limit_bytes,
-        HumanReadableNumBytes(current_peak_memory).c_str(),
-        current_peak_memory);
+    LOG(WARNING) << absl::StrFormat(
+        "Can't reduce memory use below %s (%d bytes) by rematerialization; "
+        "only reduced to %s (%d bytes)",
+        HumanReadableNumBytes(memory_limit_bytes), memory_limit_bytes,
+        HumanReadableNumBytes(current_peak_memory), current_peak_memory);
   }
 
   return changed;

@@ -31,6 +31,10 @@ load(
     "//third_party/mkl_dnn:build_defs.bzl",
     "if_mkl_open_source_only",
 )
+load(
+    "//third_party/ngraph:build_defs.bzl",
+    "if_ngraph",
+)
 def register_extension_info(**kwargs):
     pass
 
@@ -233,6 +237,7 @@ def tf_copts(android_optimization_level_override = "-O2", is_external = False):
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"]) +
         if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
+        if_ngraph(["-DINTEL_NGRAPH=1"]) +
         if_mkl_lnx_x64(["-fopenmp"]) +
         if_android_arm(["-mfpu=neon"]) +
         if_linux_x86_64(["-msse3"]) +
@@ -391,7 +396,7 @@ def tf_cc_binary(
         srcs = srcs + tf_binary_additional_srcs(),
         deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
             [
-              "//third_party/mkl:intel_binary_blob",
+                clean_dep("//third_party/mkl:intel_binary_blob"),
             ],
         ),
         data = data + tf_binary_dynamic_kernel_dsos(kernels),
@@ -729,7 +734,7 @@ def tf_cc_test(
         }) + linkopts + _rpath_linkopts(name),
         deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
             [
-              "//third_party/mkl:intel_binary_blob",
+                clean_dep("//third_party/mkl:intel_binary_blob"),
             ],
         ),
         data = data + tf_binary_dynamic_kernel_dsos(kernels),

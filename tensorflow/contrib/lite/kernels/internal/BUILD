@@ -160,6 +160,7 @@ cc_library(
         ":types",
         ":reference_base",
         ":round",
+        ":tensor_utils",
         "//third_party/eigen3",
         "@gemmlowp",
         "//tensorflow/contrib/lite:builtin_op_data",
@@ -191,6 +192,7 @@ cc_library(
     deps = [
         ":quantization_util",
         ":strided_slice_logic",
+        ":tensor_utils",
         ":types",
         ":legacy_reference_base",
         ":round",
@@ -293,7 +295,6 @@ cc_library(
         ":round",
         ":strided_slice_logic",
         ":types",
-        "//third_party/eigen3",
         "@gemmlowp",
         "//tensorflow/contrib/lite:builtin_op_data",
     ] + select({
@@ -324,7 +325,6 @@ cc_library(
         ":round",
         ":strided_slice_logic",
         ":types",
-        "//third_party/eigen3",
         "@gemmlowp",
         "//tensorflow/contrib/lite:builtin_op_data",
     ] + select({

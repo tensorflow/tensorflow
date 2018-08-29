@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_GTL_PRIORITY_QUEUE_UTIL_H_
-#define TENSORFLOW_LIB_GTL_PRIORITY_QUEUE_UTIL_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_PRIORITY_QUEUE_UTIL_H_
+#define TENSORFLOW_CORE_LIB_GTL_PRIORITY_QUEUE_UTIL_H_
 
 #include <algorithm>
 #include <queue>
@@ -52,4 +52,4 @@ T ConsumeTop(std::priority_queue<T, Container, Comparator>* q) {
 }  // namespace gtl
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_GTL_PRIORITY_QUEUE_UTIL_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_PRIORITY_QUEUE_UTIL_H_

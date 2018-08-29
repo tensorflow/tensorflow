@@ -139,7 +139,7 @@ class MapDatasetTest(test.TestCase):
 
     with ops.Graph().as_default() as g:
       captured_init_op, init_op, get_next = _build_graph()
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(captured_init_op)
         sess.run(init_op)
         for i in range(10):

@@ -235,8 +235,8 @@ TEST_F(BFloat16ConversionFoldingTest, FoldCrossReplicaSumTupleOutput) {
   HloInstruction* crs =
       builder.AddInstruction(HloInstruction::CreateCrossReplicaSum(
           ShapeUtil::MakeTupleShape({f32_shape, f32_shape}), {convert_a, b},
-          sum, /*replica_group_ids=*/{}, /*barrier=*/"",
-          /*all_reduce_id=*/tensorflow::gtl::nullopt));
+          sum, /*replica_groups=*/{}, /*barrier=*/"",
+          /*all_reduce_id=*/absl::nullopt));
   HloInstruction* gte_a = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(f32_shape, crs, 0));
   HloInstruction* gte_b = builder.AddInstruction(

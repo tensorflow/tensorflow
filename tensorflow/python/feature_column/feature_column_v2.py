@@ -142,6 +142,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.layers import base
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -155,7 +156,6 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
-from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
@@ -164,66 +164,147 @@ from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.util import nest
 
 
-def _internal_input_layer(features,
-                          feature_columns,
-                          weight_collections=None,
-                          trainable=True,
-                          cols_to_vars=None,
-                          scope=None):
-  """See input_layer. `scope` is a name or variable scope to use."""
+class StateManager(object):
+  """Manages the state associated with FeatureColumns.
 
-  feature_columns = fc_old._normalize_feature_columns(feature_columns)  # pylint: disable=protected-access
-  for column in feature_columns:
-    if not isinstance(column, fc_old._DenseColumn):  # pylint: disable=protected-access
-      raise ValueError(
-          'Items of feature_columns must be a _DenseColumn. '
-          'You can wrap a categorical column with an '
-          'embedding_column or indicator_column. Given: {}'.format(column))
-  weight_collections = list(weight_collections or [])
-  if ops.GraphKeys.GLOBAL_VARIABLES not in weight_collections:
-    weight_collections.append(ops.GraphKeys.GLOBAL_VARIABLES)
-  if ops.GraphKeys.MODEL_VARIABLES not in weight_collections:
-    weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
+  Some `FeatureColumn`s create variables or resources to assist their
+  computation. The `StateManager` is responsible for creating and storing these
+  objects since `FeatureColumn`s are supposed to be stateless configuration
+  only.
+  """
 
-  # a non-None `scope` can allow for variable reuse, when, e.g., this function
-  # is wrapped by a `make_template`.
-  with variable_scope.variable_scope(
-      scope, default_name='input_layer', values=features.values()):
-    builder = fc_old._LazyBuilder(features)  # pylint: disable=protected-access
-    output_tensors = []
-    ordered_columns = []
+  def create_variable(self,
+                      feature_column,
+                      name,
+                      shape,
+                      dtype=None,
+                      trainable=True,
+                      initializer=None):
+    """Creates a new variable.
+
+    Args:
+      feature_column: A `FeatureColumn` object this variable corresponds to.
+      name: variable name.
+      shape: variable shape.
+      dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
+      trainable: Whether this variable is trainable or not.
+      initializer: initializer instance (callable).
+
+    Returns:
+      The created variable.
+    """
+    del feature_column, name, shape, dtype, trainable, initializer
+    raise NotImplementedError('StateManager.create_variable')
+
+  def add_variable(self, feature_column, var):
+    """Adds an existing variable to the state.
+
+    Args:
+      feature_column: A `FeatureColumn` object to associate this variable with.
+      var: The variable.
+    """
+    del feature_column, var
+    raise NotImplementedError('StateManager.add_variable')
+
+  def get_variable(self, feature_column, name):
+    """Returns an existing variable.
+
+    Args:
+      feature_column: A `FeatureColumn` object this variable corresponds to.
+      name: variable name.
+    """
+    del feature_column, name
+    raise NotImplementedError('StateManager.get_var')
+
+  def add_resource(self, feature_column, name, resource):
+    """Creates a new resource.
+
+    Resources can be things such as tables etc.
+
+    Args:
+      feature_column: A `FeatureColumn` object this resource corresponds to.
+      name: Name of the resource.
+      resource: The resource.
+
+    Returns:
+      The created resource.
+    """
+    del feature_column, name, resource
+    raise NotImplementedError('StateManager.add_resource')
+
+  def get_resource(self, feature_column, name):
+    """Returns an already created resource.
+
+    Resources can be things such as tables etc.
+
+    Args:
+      feature_column: A `FeatureColumn` object this variable corresponds to.
+      name: Name of the resource.
+    """
+    del feature_column, name
+    raise NotImplementedError('StateManager.get_resource')
+
+
+class _InputLayerStateManager(StateManager):
+  """Manages the state of InputLayer."""
+
+  def __init__(self, layer, feature_columns, trainable):
+    """Creates an _InputLayerStateManager object.
+
+    Args:
+      layer: The input layer this state manager is associated with.
+      feature_columns: List of feature columns for the input layer
+      trainable: Whether by default, variables created are trainable or not.
+    """
+    self._trainable = trainable
+    self._layer = layer
+    self._cols_to_vars_map = {}
+    self._cols_to_names_map = {}
     for column in sorted(feature_columns, key=lambda x: x.name):
-      ordered_columns.append(column)
-      with variable_scope.variable_scope(
-          None, default_name=column._var_scope_name):  # pylint: disable=protected-access
-        tensor = column._get_dense_tensor(  # pylint: disable=protected-access
-            builder,
-            weight_collections=weight_collections,
-            trainable=trainable)
-        num_elements = column._variable_shape.num_elements()  # pylint: disable=protected-access
-        batch_size = array_ops.shape(tensor)[0]
-        output_tensors.append(
-            array_ops.reshape(tensor, shape=(batch_size, num_elements)))
-        if cols_to_vars is not None:
-          # Retrieve any variables created (some _DenseColumn's don't create
-          # variables, in which case an empty list is returned).
-          cols_to_vars[column] = ops.get_collection(
-              ops.GraphKeys.GLOBAL_VARIABLES,
-              scope=variable_scope.get_variable_scope().name)
-    _verify_static_batch_size_equality(output_tensors, ordered_columns)
-    return array_ops.concat(output_tensors, 1)
+      self._cols_to_vars_map[column] = {}
+      base_name = column.name
+      if isinstance(column, SharedEmbeddingColumn):
+        base_name = column.shared_collection_name
+      with variable_scope.variable_scope(base_name) as vs:
+        self._cols_to_names_map[column] = _strip_leading_slashes(vs.name)
+
+  def create_variable(self,
+                      feature_column,
+                      name,
+                      shape,
+                      dtype=None,
+                      trainable=True,
+                      initializer=None):
+    if name in self._cols_to_vars_map[feature_column]:
+      raise ValueError('Variable already exists.')
+    with variable_scope.variable_scope(self._cols_to_names_map[feature_column]):
+      var = self._layer.add_variable(
+          name=name,
+          shape=shape,
+          dtype=dtype,
+          initializer=initializer,
+          trainable=self._trainable and trainable,
+          # TODO(rohanj): Get rid of this hack once we have a mechanism for
+          # specifying a default partitioner for an entire layer. In that case,
+          # the default getter for Layers should work.
+          getter=variable_scope.get_variable)
+      self._cols_to_vars_map[feature_column][name] = var
+      return var
+
+  def get_variable(self, feature_column, name):
+    if name in self._cols_to_vars_map[feature_column]:
+      return self._cols_to_vars_map[feature_column][name]
+    raise ValueError('Variable does not exist.')
 
 
-def input_layer(features,
-                feature_columns,
-                weight_collections=None,
-                trainable=True,
-                cols_to_vars=None):
-  """Returns a dense `Tensor` as input layer based on given `feature_columns`.
+class FeatureLayer(Layer):
+  """A layer that produces a dense `Tensor` based on given `feature_columns`.
 
   Generally a single example in training data is described with FeatureColumns.
   At the first layer of the model, this column oriented data should be converted
   to a single `Tensor`.
+
+  This layer can be called multiple times with different features.
 
   Example:
 
@@ -233,105 +314,122 @@ def input_layer(features,
       categorical_column_with_hash_bucket("keywords", 10K), dimensions=16)
   columns = [price, keywords_embedded, ...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  dense_tensor = input_layer(features, columns)
+  feature_layer = FeatureLayer(columns)
+  dense_tensor = feature_layer(features)
   for units in [128, 64, 32]:
     dense_tensor = tf.layers.dense(dense_tensor, units, tf.nn.relu)
-  prediction = tf.layers.dense(dense_tensor, 1)
-  ```
-
-  Args:
-    features: A mapping from key to tensors. `_FeatureColumn`s look up via these
-      keys. For example `numeric_column('price')` will look at 'price' key in
-      this dict. Values can be a `SparseTensor` or a `Tensor` depends on
-      corresponding `_FeatureColumn`.
-    feature_columns: An iterable containing the FeatureColumns to use as inputs
-      to your model. All items should be instances of classes derived from
-      `_DenseColumn` such as `numeric_column`, `embedding_column`,
-      `bucketized_column`, `indicator_column`. If you have categorical features,
-      you can wrap them with an `embedding_column` or `indicator_column`.
-    weight_collections: A list of collection names to which the Variable will be
-      added. Note that variables will also be added to collections
-      `tf.GraphKeys.GLOBAL_VARIABLES` and `ops.GraphKeys.MODEL_VARIABLES`.
-    trainable: If `True` also add the variable to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-    cols_to_vars: If not `None`, must be a dictionary that will be filled with a
-      mapping from `_FeatureColumn` to list of `Variable`s.  For example, after
-      the call, we might have cols_to_vars =
-      {_EmbeddingColumn(
-        categorical_column=_HashedCategoricalColumn(
-          key='sparse_feature', hash_bucket_size=5, dtype=tf.string),
-        dimension=10): [<tf.Variable 'some_variable:0' shape=(5, 10),
-                        <tf.Variable 'some_variable:1' shape=(5, 10)]}
-      If a column creates no variables, its value will be an empty list.
-
-  Returns:
-    A `Tensor` which represents input layer of a model. Its shape
-    is (batch_size, first_layer_dimension) and its dtype is `float32`.
-    first_layer_dimension is determined based on given `feature_columns`.
-
-  Raises:
-    ValueError: if an item in `feature_columns` is not a `_DenseColumn`.
-  """
-  return _internal_input_layer(features, feature_columns, weight_collections,
-                               trainable, cols_to_vars)
-
-
-# TODO(akshayka): InputLayer should be a subclass of Layer, and it
-# should implement the logic in input_layer using Layer's build-and-call
-# paradigm; input_layer should create an instance of InputLayer and
-# return the result of invoking its apply method, just as functional layers do.
-class InputLayer(object):
-  """An object-oriented version of `input_layer` that reuses variables."""
+  prediction = tf.layers.dense(dense_tensor, 1)."""
 
   def __init__(self,
                feature_columns,
-               weight_collections=None,
                trainable=True,
-               cols_to_vars=None):
-    """See `input_layer`."""
+               name=None,
+               shared_state_manager=None,
+               **kwargs):
+    """Constructs a FeatureLayer.
 
-    self._feature_columns = feature_columns
-    self._weight_collections = weight_collections
-    self._trainable = trainable
-    self._cols_to_vars = cols_to_vars
-    self._input_layer_template = template.make_template(
-        'feature_column_input_layer',
-        _internal_input_layer,
-        create_scope_now_=True)
-    self._scope = self._input_layer_template.variable_scope
+    Args:
+      feature_columns: An iterable containing the FeatureColumns to use as
+        inputs to your model. All items should be instances of classes derived
+        from `DenseColumn` such as `numeric_column`, `embedding_column`,
+        `bucketized_column`, `indicator_column`. If you have categorical
+        features, you can wrap them with an `embedding_column` or
+        `indicator_column`.
+      trainable: If `True` also add the variable to the graph collection
+        `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+      name: Name to give to the FeatureLayer.
+      shared_state_manager: SharedEmbeddingStateManager that manages the state
+        of SharedEmbeddingColumns. The state of SharedEmbeddingColumns, unlike
+        regular embedding columns cannot be owned by the InputLayer itself since
+        SharedEmbeddingColumns can be shared across different InputLayers. As a
+        result users are expected to create a SharedEmbeddingStateManager object
+        which would be responsible for managing the shared state and can be
+        passed into different InputLayer objects to share state. For example,
 
-  def __call__(self, features):
-    return self._input_layer_template(
-        features=features,
-        feature_columns=self._feature_columns,
-        weight_collections=self._weight_collections,
-        trainable=self._trainable,
-        cols_to_vars=None,
-        scope=self._scope)
+        ```python
+        sc_1, sc_2 = shared_embedding_column_v2(...)
+        sc_3, sc_4 = shared_embedding_column_v2(...)
+        ssm = SharedEmbeddingStateManager()
+        feature_layer1 = FeatureLayer([sc_1, sc_3], ...,
+                                      shared_state_manager=ssm)
+        feature_layer2 = FeatureLayer([sc_2, sc_4], ...,
+                                      shared_state_manager=ssm)
+        ```
+        now input_layer1 and input_layer2 will share variables across. If
+        sharing is not desired, one can create 2 separate
+        SharedEmbeddingStateManager objects
 
-  @property
-  def non_trainable_variables(self):
-    return self._input_layer_template.non_trainable_variables
+        ```python
+        ssm1 = SharedEmbeddingStateManager()
+        ssm2 = SharedEmbeddingStateManager()
+        feature_layer1 = FeatureLayer([sc_1, sc_3], ...,
+                                      shared_state_manager=ssm1)
+        feature_layer2 = FeatureLayer([sc_2, sc_4], ...,
+                                      shared_state_manager=ssm2)
+        ```
+      **kwargs: Keyword arguments to construct a layer.
 
-  @property
-  def non_trainable_weights(self):
-    return self._input_layer_template.non_trainable_weights
+    Raises:
+      ValueError: if an item in `feature_columns` is not a `DenseColumn`.
+    """
+    super(FeatureLayer, self).__init__(name=name, trainable=trainable, **kwargs)
 
-  @property
-  def trainable_variables(self):
-    return self._input_layer_template.trainable_variables
+    self._feature_columns = _normalize_feature_columns(feature_columns)
+    self._state_manager = _InputLayerStateManager(self, self._feature_columns,
+                                                  self.trainable)
+    self._shared_state_manager = shared_state_manager
+    for column in sorted(self._feature_columns, key=lambda x: x.name):
+      if not isinstance(column, DenseColumn):
+        raise ValueError(
+            'Items of feature_columns must be a DenseColumn. '
+            'You can wrap a categorical column with an '
+            'embedding_column or indicator_column. Given: {}'.format(column))
 
-  @property
-  def trainable_weights(self):
-    return self._input_layer_template.trainable_weights
+  def build(self, _):
+    for column in sorted(self._feature_columns, key=lambda x: x.name):
+      if isinstance(column, SharedEmbeddingColumn):
+        column.create_state(self._shared_state_manager)
+      else:
+        with variable_scope.variable_scope(None, default_name=self.name):
+          column.create_state(self._state_manager)
+      super(FeatureLayer, self).build(None)
 
-  @property
-  def variables(self):
-    return self._input_layer_template.variables
+  def call(self, features, cols_to_output_tensors=None):
+    """Returns a dense tensor corresponding to the `feature_columns`.
 
-  @property
-  def weights(self):
-    return self._input_layer_template.weights
+    Args:
+      features: A mapping from key to tensors. `FeatureColumn`s look up via
+        these keys. For example `numeric_column('price')` will look at 'price'
+        key in this dict. Values can be a `SparseTensor` or a `Tensor` depends
+        on corresponding `FeatureColumn`.
+      cols_to_output_tensors: If not `None`, this will be filled with a dict
+        mapping feature columns to output tensors created.
+
+    Returns:
+      A `Tensor` which represents input layer of a model. Its shape
+      is (batch_size, first_layer_dimension) and its dtype is `float32`.
+      first_layer_dimension is determined based on given `feature_columns`.
+    """
+    transformation_cache = FeatureTransformationCache(features)
+    output_tensors = []
+    ordered_columns = []
+    for column in sorted(self._feature_columns, key=lambda x: x.name):
+      ordered_columns.append(column)
+      if isinstance(column, SharedEmbeddingColumn):
+        tensor = column.get_dense_tensor(transformation_cache,
+                                         self._shared_state_manager)
+      else:
+        tensor = column.get_dense_tensor(transformation_cache,
+                                         self._state_manager)
+      num_elements = column.variable_shape.num_elements()
+      batch_size = array_ops.shape(tensor)[0]
+      tensor = array_ops.reshape(tensor, shape=(batch_size, num_elements))
+      output_tensors.append(tensor)
+      if cols_to_output_tensors is not None:
+        cols_to_output_tensors[column] = tensor
+
+    _verify_static_batch_size_equality(output_tensors, ordered_columns)
+    return array_ops.concat(output_tensors, 1)
 
 
 def linear_model(features,
@@ -565,12 +663,15 @@ class _BiasLayer(base.Layer):
     return self._bias_variable
 
 
-def _get_expanded_variable_list(variable):
-  if (isinstance(variable, variables.Variable) or
-      resource_variable_ops.is_resource_variable(variable)):
-    return [variable]  # Single variable case.
-  else:  # Must be a PartitionedVariable, so convert into a list.
-    return list(variable)
+def _get_expanded_variable_list(var_list):
+  returned_list = []
+  for variable in var_list:
+    if (isinstance(variable, variables.Variable) or
+        resource_variable_ops.is_resource_variable(variable)):
+      returned_list.append(variable)  # Single variable case.
+    else:  # Must be a PartitionedVariable, so convert into a list.
+      returned_list.extend(list(variable))
+  return returned_list
 
 
 def _strip_leading_slashes(name):
@@ -661,7 +762,7 @@ class _LinearModel(training.Model):
               scope=variable_scope.get_variable_scope()),  # pylint: disable=not-callable
           name='weighted_sum')
       bias = self._bias_layer.variables[0]
-      self._cols_to_vars['bias'] = _get_expanded_variable_list(bias)
+      self._cols_to_vars['bias'] = _get_expanded_variable_list([bias])
     return predictions
 
   def _add_layers(self, layers):
@@ -877,10 +978,15 @@ def embedding_column(
       trainable=trainable)
 
 
-def shared_embedding_columns(
-    categorical_columns, dimension, combiner='mean', initializer=None,
-    shared_embedding_collection_name=None, ckpt_to_load_from=None,
-    tensor_name_in_ckpt=None, max_norm=None, trainable=True):
+def shared_embedding_columns_v2(categorical_columns,
+                                dimension,
+                                combiner='mean',
+                                initializer=None,
+                                shared_embedding_collection_name=None,
+                                ckpt_to_load_from=None,
+                                tensor_name_in_ckpt=None,
+                                max_norm=None,
+                                trainable=True):
   """List of dense columns that convert from sparse, categorical input.
 
   This is similar to `embedding_column`, except that it produces a list of
@@ -1803,51 +1909,6 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
       keys=tuple(keys), hash_bucket_size=hash_bucket_size, hash_key=hash_key)
 
 
-class StateManager(object):
-  """Manages the state associated with FeatureColumns.
-
-  Some `FeatureColumn`s create variables or resources to assist their
-  computation. The `StateManager` is responsible for creating and storing these
-  objects since `FeatureColumn`s are supposed to be stateless configuration
-  only.
-  """
-
-  def get_variable(self,
-                   feature_column,
-                   name,
-                   shape,
-                   dtype=None,
-                   initializer=None):
-    """Creates a new variable or returns an existing one.
-
-    Args:
-      feature_column: A `FeatureColumn` object this variable corresponds to.
-      name: variable name.
-      shape: variable shape.
-      dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
-      initializer: initializer instance (callable).
-
-    Returns:
-      The variable.
-    """
-    raise NotImplementedError('StateManager.get_variable')
-
-  def get_resource(self, feature_column, name, resource_creator):
-    """Creates a new resource or returns an existing one.
-
-    Resources can be things such as tables etc.
-
-    Args:
-      feature_column: A `FeatureColumn` object this variable corresponds to.
-      name: Name of the resource.
-      resource_creator: A callable that can create the resource.
-
-    Returns:
-      The resource.
-    """
-    raise NotImplementedError('StateManager.get_resource')
-
-
 class FeatureColumn(object):
   """Represents a feature column abstraction.
 
@@ -2550,6 +2611,17 @@ class EmbeddingColumn(
     """See `DenseColumn` base class."""
     return tensor_shape.vector(self.dimension)
 
+  def create_state(self, state_manager):
+    """Creates the embedding lookup variable."""
+    embedding_shape = (self.categorical_column.num_buckets, self.dimension)
+    state_manager.create_variable(
+        self,
+        name='embedding_weights',
+        shape=embedding_shape,
+        dtype=dtypes.float32,
+        trainable=self.trainable,
+        initializer=self.initializer)
+
   def _get_dense_tensor_internal(self, transformation_cache, state_manager):
     """Private method that follows the signature of _get_dense_tensor."""
     # Get sparse IDs and weights.
@@ -2558,13 +2630,8 @@ class EmbeddingColumn(
     sparse_ids = sparse_tensors.id_tensor
     sparse_weights = sparse_tensors.weight_tensor
 
-    embedding_shape = (self.categorical_column.num_buckets, self.dimension)
     embedding_weights = state_manager.get_variable(
-        self,
-        name='embedding_weights',
-        shape=embedding_shape,
-        dtype=dtypes.float32,
-        initializer=self.initializer)
+        self, name='embedding_weights')
 
     if self.ckpt_to_load_from is not None:
       to_restore = embedding_weights
@@ -2637,6 +2704,68 @@ def _get_graph_for_variable(var):
     return var.graph
 
 
+class SharedEmbeddingStateManager(Layer):
+  """A state manager that handle the state of shared embedding columns.
+
+  This can handle multiple sets of columns that share variables."""
+
+  def __init__(self, trainable=True, name=None, **kwargs):
+    """Constructs a `SharedEmbeddingStateManager`.
+
+    Args:
+      trainable: If true, variables created are trainable.
+      name: Name of the State Manager.
+      **kwargs: Keyword arguments.
+    """
+    super(SharedEmbeddingStateManager, self).__init__(
+        name=name, trainable=trainable, **kwargs)
+    self._var_dict = {}
+
+  def create_variable(self,
+                      name,
+                      shape,
+                      dtype=None,
+                      trainable=True,
+                      initializer=None):
+    """Creates a variable.
+
+    Makes sure only one var is created per `shared_collection_name`. `name` is
+    ignored here as the variable is named `shared_collection_name` instead.
+
+    Args:
+      name: Name of the variable. Not used.
+      shape: Variable shape.
+      dtype: Variable type.
+      trainable: If variable created should be trainable or not.
+      initializer: Variable initializer.
+
+    Returns:
+      A variable or partitioned variable.
+    """
+    if name in self._var_dict:
+      var = self._var_dict[name]
+      return var
+    with variable_scope.variable_scope(
+        self.name, reuse=variable_scope.AUTO_REUSE):
+      var = self.add_variable(
+          name=name,
+          shape=shape,
+          dtype=dtype,
+          trainable=self.trainable and trainable,
+          initializer=initializer,
+          # TODO(rohanj): Get rid of this hack once we have a mechanism for
+          # specifying a default partitioner for an entire layer. In that case,
+          # the default getter for Layers should work.
+          getter=variable_scope.get_variable)
+    self._var_dict[name] = var
+    return var
+
+  def get_variable(self, feature_column, name):
+    if name not in self._var_dict:
+      raise ValueError('Variable name: {} not recognized.'.format(name))
+    return self._var_dict[name]
+
+
 class SharedEmbeddingColumn(
     DenseColumn, SequenceDenseColumn,
     collections.namedtuple(
@@ -2675,6 +2804,16 @@ class SharedEmbeddingColumn(
     """See `DenseColumn` base class."""
     return tensor_shape.vector(self.dimension)
 
+  def create_state(self, state_manager):
+    """Creates the shared embedding lookup variable."""
+    embedding_shape = (self.categorical_column.num_buckets, self.dimension)
+    state_manager.create_variable(
+        name=self.shared_collection_name,
+        shape=embedding_shape,
+        dtype=dtypes.float32,
+        trainable=self.trainable,
+        initializer=self.initializer)
+
   def _get_dense_tensor_internal(self, transformation_cache, state_manager):
     """Private method that follows the signature of _get_dense_tensor."""
     # This method is called from a variable_scope with name _var_scope_name,
@@ -2687,13 +2826,8 @@ class SharedEmbeddingColumn(
       sparse_ids = sparse_tensors.id_tensor
       sparse_weights = sparse_tensors.weight_tensor
 
-      embedding_shape = (self.categorical_column.num_buckets, self.dimension)
       embedding_weights = state_manager.get_variable(
-          self,
-          name='embedding_weights',
-          shape=embedding_shape,
-          dtype=dtypes.float32,
-          initializer=self.initializer)
+          self, name=self.shared_collection_name)
 
       if self.ckpt_to_load_from is not None:
         to_restore = embedding_weights

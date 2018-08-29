@@ -107,6 +107,19 @@ Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
   return Status::OK();
 }
 
+Status XlaContext::AddResourceRetval(int retval_index, XlaResource* resource) {
+  VLOG(1) << "Adding retval index " << retval_index << " with resource "
+          << resource->name() << ":" << resource->shape().DebugString()
+          << " to XLA computation";
+  if (retvals_.size() <= retval_index) {
+    retvals_.resize(retval_index + 1);
+  }
+  XlaExpression e;
+  e.set_resource(resource);
+  retvals_[retval_index] = Retval{DT_RESOURCE, resource->shape(), e};
+  return Status::OK();
+}
+
 xla::XlaBuilder* XlaContext::builder() { return builder_; }
 
 Status XlaContext::CreateResource(

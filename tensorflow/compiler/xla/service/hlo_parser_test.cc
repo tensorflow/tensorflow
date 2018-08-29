@@ -16,17 +16,19 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
 #include <string>
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
-
 namespace {
 
-using ::tensorflow::StringPiece;
+namespace op = ::xla::testing::opcode_matchers;
+using absl::string_view;
 
 struct TestData {
   string test_name;
@@ -1049,7 +1051,7 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  ROOT crs = f32[8]{0} cross-replica-sum(input), replica_group_ids={}, to_apply=add
+  ROOT crs = f32[8]{0} cross-replica-sum(input), replica_groups={}, to_apply=add
 }
 
 )"
@@ -1067,7 +1069,7 @@ add {
 
 ENTRY CrossReplicaSumWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
-  ROOT cross-replica-sum = f32[128,32]{0,1} cross-replica-sum(input), replica_group_ids={0,0,1,1}, barrier="abc", to_apply=add
+  ROOT cross-replica-sum = f32[128,32]{0,1} cross-replica-sum(input), replica_groups={{0,1},{2,3}}, barrier="abc", to_apply=add
 }
 
 )"
@@ -1091,7 +1093,19 @@ R"(HloModule AllToAllWithSubgroups
 
 ENTRY AllToAllWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
-  ROOT a2a = f32[128,32]{0,1} all-to-all(input), replica_groups={{1,2},{3,0}}, barrier="abc"
+  ROOT a2a = f32[128,32]{0,1} all-to-all(input), replica_groups={{1,2},{3,0}}
+}
+
+)"
+},
+// collective-permute
+{
+"CollectivePermute",
+R"(HloModule CollectivePermute
+
+ENTRY CollectivePermute {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT root = f32[128,32]{0,1} collective-permute(input), source_target_pairs={{0,1},{1,2},{2,3}}
 }
 
 )"
@@ -1102,7 +1116,7 @@ ENTRY AllToAllWithSubgroups {
 R"(HloModule iota
 
 ENTRY Iota {
-  ROOT iota = f32[100]{0} iota()
+  ROOT iota = f32[100]{0} iota(), iota_dimension=0
 }
 
 )"
@@ -1125,8 +1139,8 @@ ENTRY Computation {
 class HloParserTest : public ::testing::Test,
                       public ::testing::WithParamInterface<TestData> {
  protected:
-  static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
-    EXPECT_TRUE(tensorflow::str_util::StrContains(s, expected))
+  static void ExpectHasSubstr(string_view s, string_view expected) {
+    EXPECT_TRUE(absl::StrContains(s, expected))
         << "'" << s << "' does not contain '" << expected << "'";
   }
 
@@ -1390,15 +1404,14 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 
 )";
 
-  ExpectHasSubstr(ParseHloString(tensorflow::strings::StrCat(
-                                     prefix, ",dim_labels=00_01_10", suffix))
-                      .status()
-                      .error_message(),
-                  "expects dim labels pattern");
+  ExpectHasSubstr(
+      ParseHloString(absl::StrCat(prefix, ",dim_labels=00_01_10", suffix))
+          .status()
+          .error_message(),
+      "expects dim labels pattern");
 
   ExpectHasSubstr(
-      ParseHloString(tensorflow::strings::StrCat(
-                         prefix, ",dim_labels=010_1100->010", suffix))
+      ParseHloString(absl::StrCat(prefix, ",dim_labels=010_1100->010", suffix))
           .status()
           .error_message(),
       "must have the same rank");
@@ -1720,6 +1733,27 @@ ENTRY nontuple_infeed {
 })";
   ExpectHasSubstr(ParseHloString(original).status().error_message(),
                   "infeed must have a non-empty tuple shape");
+}
+
+TEST(HloParserSingleOpTest, SingleOp) {
+  const string text =
+      "%multiply = f32[2,4]{1,0} multiply(f32[2,4]{1,0} %broadcast, "
+      "f32[2,4]{1,0} %x)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloOpToModule(text));
+  const HloComputation* computation = module->entry_computation();
+  ASSERT_NE(computation, nullptr);
+  EXPECT_THAT(computation->root_instruction(),
+              op::Multiply(op::Parameter(0), op::Parameter(1)));
+}
+
+TEST(HloParserSingleOpTest, SingleOpNoShapesProducesError) {
+  const string text = "%multiply = f32[2,4]{1,0} multiply(%broadcast, %x)";
+  StatusOr<std::unique_ptr<HloModule>> module = ParseHloOpToModule(text);
+  ASSERT_TRUE(!module.status().ok());
+  LOG(INFO) << "Status: " << module.status();
+  EXPECT_THAT(
+      module.status().ToString(),
+      ::testing::HasSubstr("Operand broadcast had no shape in HLO text"));
 }
 
 }  // namespace

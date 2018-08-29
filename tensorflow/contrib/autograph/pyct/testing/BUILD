@@ -34,8 +34,10 @@ py_test(
     srcs = ["codegen_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "manual",
         "no_windows",
         "nomsan",
+        "notap",
     ],
     deps = [
         ":testing",

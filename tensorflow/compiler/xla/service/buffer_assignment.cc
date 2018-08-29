@@ -22,8 +22,10 @@ limitations under the License.
 #include <ostream>
 #include <utility>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value_containers.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -36,20 +38,15 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
+namespace {
 
+using absl::StrAppend;
+using absl::StrAppendFormat;
 using ::tensorflow::gtl::FlatMap;
 using ::tensorflow::gtl::FlatSet;
-using ::tensorflow::strings::Appendf;
 using ::tensorflow::strings::HumanReadableNumBytes;
-using ::tensorflow::strings::Printf;
-using ::tensorflow::strings::StrAppend;
-
-namespace {
 
 template <typename T>
 string ColocatedBufferSetsToString(const T& container, const char* title) {
@@ -107,7 +104,7 @@ Status GatherComputationsByAllocationType(
       return InvalidArgument(
           "computation %s has conflicting allocation requirements (global "
           "and thread-local)",
-          computation->name().c_str());
+          computation->name());
     }
 
     if (is_thread_local) {
@@ -130,7 +127,7 @@ Status GatherComputationsByAllocationType(
               return InvalidArgument(
                   "computation %s cannot contain call/while op because it "
                   "requires thread-local buffer allocations",
-                  computation->name().c_str());
+                  computation->name());
             }
             worklist.push_back(std::make_pair(subcomputation,
                                               false));  // Not thread local.
@@ -147,9 +144,8 @@ Status GatherComputationsByAllocationType(
                                               true));  // Thread local.
             break;
           default:
-            return InternalError(
-                "Unexpected calling opcode: %s",
-                HloOpcodeString(instruction->opcode()).c_str());
+            return InternalError("Unexpected calling opcode: %s",
+                                 HloOpcodeString(instruction->opcode()));
         }
       }
     }
@@ -236,8 +232,8 @@ size_t BufferAllocation::Slice::Hasher::operator()(Slice s) const {
 }
 
 string BufferAllocation::Slice::ToString() const {
-  return tensorflow::strings::StrCat("{index:", index(), ", offset:", offset_,
-                                     ", size:", size_, "}");
+  return absl::StrCat("{index:", index(), ", offset:", offset_,
+                      ", size:", size_, "}");
 }
 
 BufferAllocation::Slice BufferAllocation::GetSlice(
@@ -298,7 +294,7 @@ BufferAllocationProto BufferAllocation::ToProto() const {
 
 string BufferAllocation::ToString() const {
   string output;
-  Appendf(&output, "allocation %lld: %p, size %lld", index_, this, size());
+  StrAppendFormat(&output, "allocation %d: %p, size %d", index_, this, size());
   if (color().value() != 0) {
     StrAppend(&output, ", color ", color().value());
   }
@@ -330,11 +326,10 @@ string BufferAllocation::ToString() const {
             });
   for (const LogicalBuffer* buffer : sorted_buffers) {
     const OffsetSize& offset_size = FindOrDie(assigned_buffers_, buffer);
-    StrAppend(&output,
-              tensorflow::strings::Printf(
-                  "  %s [%lld,%lld]: %s\n", buffer->ToString().c_str(),
-                  offset_size.offset, offset_size.size,
-                  ShapeUtil::HumanStringWithLayout(buffer->shape()).c_str()));
+    StrAppend(&output, absl::StrFormat(
+                           "  %s [%d,%d]: %s\n", buffer->ToString(),
+                           offset_size.offset, offset_size.size,
+                           ShapeUtil::HumanStringWithLayout(buffer->shape())));
   }
   return output;
 }
@@ -427,7 +422,7 @@ StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
         return FailedPrecondition(
             "BufferAllocation::Slice for instruction %s at index %s cannot "
             "be determined at compile-time.",
-            instruction->name().c_str(), index.ToString().c_str());
+            instruction->name(), index.ToString());
       }
     } else {
       VLOG(3) << "No allocation";
@@ -436,7 +431,7 @@ StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
   if (result.allocation() == nullptr) {
     return FailedPrecondition(
         "BufferAllocation::Slice not assigned for instruction %s at index %s",
-        instruction->name().c_str(), index.ToString().c_str());
+        instruction->name(), index.ToString());
   }
   return result;
 }
@@ -627,7 +622,7 @@ Status BufferAssignment::ComputeSummaryStats() {
     stats_.total_allocation_bytes += allocation.size();
   }
 
-  // Only compute total fragmentation if all computations are sequential.
+  // Only compute total fragmentation if all computations have schedules.
   SequentialHloOrdering::HloModuleSequence module_sequence;
   for (const auto& computation : module_->computations()) {
     const std::vector<const HloInstruction*>* sequence =
@@ -648,39 +643,38 @@ Status BufferAssignment::ComputeSummaryStats() {
 
 string BufferAssignment::Stats::ToString() const {
   string s;
-  Appendf(&s, "BufferAssignment stats:\n");
-  Appendf(&s, "             parameter allocation: %10s\n",
-          HumanReadableNumBytes(parameter_allocation_bytes).c_str());
-  Appendf(&s, "              constant allocation: %10s\n",
-          HumanReadableNumBytes(constant_allocation_bytes).c_str());
-  Appendf(&s, "        maybe_live_out allocation: %10s\n",
-          HumanReadableNumBytes(maybe_live_out_allocation_bytes).c_str());
-  Appendf(&s, "     preallocated temp allocation: %10s\n",
-          HumanReadableNumBytes(preallocated_temp_allocation_bytes).c_str());
+  StrAppendFormat(&s, "BufferAssignment stats:\n");
+  StrAppendFormat(&s, "             parameter allocation: %10s\n",
+                  HumanReadableNumBytes(parameter_allocation_bytes));
+  StrAppendFormat(&s, "              constant allocation: %10s\n",
+                  HumanReadableNumBytes(constant_allocation_bytes));
+  StrAppendFormat(&s, "        maybe_live_out allocation: %10s\n",
+                  HumanReadableNumBytes(maybe_live_out_allocation_bytes));
+  StrAppendFormat(&s, "     preallocated temp allocation: %10s\n",
+                  HumanReadableNumBytes(preallocated_temp_allocation_bytes));
   if (preallocated_temp_fragmentation_bytes >= 0) {
     const double percent = 100. * preallocated_temp_fragmentation_bytes /
                            preallocated_temp_allocation_bytes;
-    Appendf(
+    StrAppendFormat(
         &s, "  preallocated temp fragmentation: %10s (%.2f%%)\n",
-        HumanReadableNumBytes(preallocated_temp_fragmentation_bytes).c_str(),
-        percent);
+        HumanReadableNumBytes(preallocated_temp_fragmentation_bytes), percent);
   }
-  Appendf(&s, "                 total allocation: %10s\n",
-          HumanReadableNumBytes(total_allocation_bytes).c_str());
+  StrAppendFormat(&s, "                 total allocation: %10s\n",
+                  HumanReadableNumBytes(total_allocation_bytes));
   if (total_fragmentation_bytes >= 0) {
     const double percent =
         100. * total_fragmentation_bytes / total_allocation_bytes;
-    Appendf(&s, "              total fragmentation: %10s (%.2f%%)\n",
-            HumanReadableNumBytes(total_fragmentation_bytes).c_str(), percent);
+    StrAppendFormat(&s, "              total fragmentation: %10s (%.2f%%)\n",
+                    HumanReadableNumBytes(total_fragmentation_bytes), percent);
   }
   return s;
 }
 
 string BufferAssignment::ToString() const {
   string output;
-  tensorflow::strings::StrAppend(&output, "BufferAssignment:\n");
+  absl::StrAppend(&output, "BufferAssignment:\n");
   for (auto& allocation : allocations_) {
-    tensorflow::strings::StrAppend(&output, allocation.ToString());
+    absl::StrAppend(&output, allocation.ToString());
   }
   return output;
 }
@@ -1100,8 +1094,8 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       options.buffers_to_assign = &buffer_value_set;
       TF_ASSIGN_OR_RETURN(
           const HeapSimulator::Result result,
-          HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
-                                 MakeUnique<LazyBestFitHeap>(alignment)),
+          HeapSimulator::Run(absl::make_unique<DecreasingSizeRunsHeap>(
+                                 absl::make_unique<LazyBestFitHeap>(alignment)),
                              assignment->module(), module_sequence,
                              assignment->points_to_analysis(),
                              assignment->buffer_size_, options));
@@ -1130,11 +1124,12 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         options.buffers_to_assign = &buffer_value_set;
         TF_ASSIGN_OR_RETURN(
             const HeapSimulator::Result result,
-            HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
-                                   MakeUnique<LazyBestFitHeap>(alignment)),
-                               *computation, *instruction_sequence,
-                               assignment->points_to_analysis(),
-                               assignment->buffer_size_, options));
+            HeapSimulator::Run(
+                absl::make_unique<DecreasingSizeRunsHeap>(
+                    absl::make_unique<LazyBestFitHeap>(alignment)),
+                *computation, *instruction_sequence,
+                assignment->points_to_analysis(), assignment->buffer_size_,
+                options));
         AssignBuffersFromHeapSimulator(result, assignment,
                                        single_colored_set.first);
       }
@@ -1646,7 +1641,8 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   XLA_VLOG_LINES(3, liveness->ToString());
   XLA_VLOG_LINES(3, liveness->points_to_analysis().ToString());
 
-  // Can't use MakeUnique because BufferAssignment constructor is private.
+  // Can't use absl::make_unique because BufferAssignment constructor is
+  // private.
   std::unique_ptr<BufferAssignment> assignment(
       new BufferAssignment(module, std::move(liveness), std::move(buffer_size),
                            std::move(color_alignment)));
