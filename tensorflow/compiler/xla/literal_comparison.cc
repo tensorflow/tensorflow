@@ -164,6 +164,17 @@ bool NanMismatch<half>(half expected, half actual, bool relaxed_nans) {
                             static_cast<float>(actual), relaxed_nans);
 }
 
+// Returns whether the given value is infinity.
+template <typename NativeT>
+bool IsInf(NativeT val) {
+  return std::isinf(val);
+}
+
+template <>
+bool IsInf<half>(half val) {
+  return std::isinf(static_cast<float>(val));
+}
+
 // Converts the given floating-point value to a string.
 template <typename NativeT>
 string FpValueToString(NativeT value) {
@@ -306,12 +317,13 @@ class NearComparator {
 
   // Compares the two given elements from the expected and actual literals at
   // the given literal_index and keeps track of various mismatch statistics.
-  void CompareValues(NativeT expected, NativeT actual, int64 linear_index) {
+  template <typename T>
+  void CompareValues(T expected, T actual, int64 linear_index) {
     const bool is_nan_mismatch =
         NanMismatch(expected, actual, error_.relaxed_nans);
     float abs_error;
     float rel_error;
-    if (actual == expected) {
+    if (CompareEqual<T>(expected, actual, {linear_index}).ok()) {
       abs_error = 0;
       rel_error = 0;
     } else if (is_nan_mismatch) {
@@ -320,6 +332,12 @@ class NearComparator {
       // for sorting a std::set of the top mismatchs, and a nan value here will
       // result in undefined behavior because nan's do not satisfy the strict
       // weak ordering requirement of std containers.
+      abs_error = std::numeric_limits<float>::infinity();
+      rel_error = std::numeric_limits<float>::infinity();
+    } else if (IsInf(expected) || IsInf(actual)) {
+      // If either the expected or actual value is infinity but not both,
+      // then both absolute and relative error are regarded as inifity.
+      CHECK(!CompareEqual(expected, actual, {linear_index}).ok());
       abs_error = std::numeric_limits<float>::infinity();
       rel_error = std::numeric_limits<float>::infinity();
     } else {
@@ -362,6 +380,29 @@ class NearComparator {
     }
 
     mismatches_.data<bool>()[linear_index] = true;
+  }
+
+  // For complex64 types, we compare real and imaginary parts individually.
+  void CompareValues(complex64 expected, complex64 actual, int64 linear_index) {
+    bool mismatch = false;
+    CompareValues<float>(expected.real(), actual.real(), linear_index);
+    if (mismatches_.data<bool>()[linear_index] == true) {
+      mismatch = true;
+      // Delay the mismatch count increase for real part, instead increase
+      // mismatch by 1 for the entire complex number.
+      num_mismatches_--;
+    }
+    CompareValues<float>(expected.imag(), actual.imag(), linear_index);
+    if (mismatches_.data<bool>()[linear_index] == true) {
+      mismatch = true;
+      // Delay the mismatch count increase for imag part, instead increase
+      // mismatch by 1 for the entire complex number.
+      num_mismatches_--;
+    }
+    if (mismatch == true) {
+      num_mismatches_++;
+    }
+    mismatches_.data<bool>()[linear_index] = mismatch;
   }
 
   // Compares the two literals elementwise.
