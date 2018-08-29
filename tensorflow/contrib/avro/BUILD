@@ -6,16 +6,16 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 
 tf_custom_op_py_library(
     name = "avro",
-    srcs = glob(["python/*.py"]),
+    srcs = ["python/avro_record_dataset.py",
+            "python/parse_avro_record.py",],
     dso = [":python/_avro_record_dataset.so",
            ":python/_parse_avro_record.so",
-           ":python/libavro.so"
+           "//third_party/avro:libavro_so"
     ],
     kernels = [
         ":avro_record_dataset_op_lib",
@@ -25,26 +25,14 @@ tf_custom_op_py_library(
          ":avro_record_dataset",
          ":parse_avro_record",
     ],
-    srcs_version = "PY2",
+    srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-)
-
-# Tensorflow will link to libavro.so correctly, but it will leave it an external bazel
-# directory, which won't exist in the generated pip package. Therefore, we copy libavro.so
-# into the same directory -- of the pip package.
-# TODO(fraudies): Remove this copy rule;
-genrule(
-    name = "copy_libavro.so",
-    srcs = ["//third_party/avro:libavro_so"],
-    outs = ["python/libavro.so"],
-    cmd = "cp -f $< $@",
-    output_to_bindir = 1,
 )
 
 tf_custom_op_library(
     name = "python/_avro_record_dataset.so",
     srcs = ["ops/avro_record_dataset.cc"],
-    deps = ["//third_party/avro"]
+    deps = ["//third_party/avro"],
 )
 
 tf_custom_op_library(
@@ -52,7 +40,7 @@ tf_custom_op_library(
     srcs = ["ops/parse_avro_record.cc"],
     deps = [
         "//third_party/avro"
-    ]
+    ],
 )
 
 tf_gen_op_libs(

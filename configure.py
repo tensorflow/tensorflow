@@ -1417,7 +1417,6 @@ def set_avro_home(environ_cp):
     error_msg='',
     suppress_default_error=True)
 
-  print('%s/lib/' % environ_cp['AVRO_C_HOME'])
   symlink_force(os.path.join(environ_cp['AVRO_C_HOME'], 'lib'),
                 'third_party/avro/lib')
   symlink_force(os.path.join(environ_cp['AVRO_C_HOME'], 'include'),

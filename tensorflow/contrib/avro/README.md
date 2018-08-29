@@ -1,12 +1,27 @@
-# Avro Record Reader
-Why to use the Avro Reader?
-* You want to read your data from directly from hdfs into TensorFlow w/out writing a data conversion pipeline.
-* You want to read data into TensorFlow as a sparse tensor. 
-* You want to load (stream) avro data into TensorFlow using queues.
+# Avro Record Dataset and Parser
+Why use the Avro Record Dataset and Parser?
+* You want to read your data from directly from Avro records into TensorFlow without converting it to TensorProtos first.
+* You want to read data into TensorFlow as a sparse tensor.
 
-## Limitations
-We currently compile the third party dependency of avroc only for the linux OS. Note, that this build process uses 
-cmake and not bazel.
+## Installation
+
+We depend on the Avro C library, which has minimal dependencies:
+https://github.com/apache/avro/blob/master/lang/c/INSTALL
+
+A quick way to install it is as follows:
+
+```
+git clone https://github.com/apache/avro.git
+cd avro/lang/c
+mkdir -p build
+cd build
+cmake .. -DCMAKE_INSTALL_PREFIX=avrolib -DCMAKE_BUILD_TYPE=RelWithDebInfo -DTHREADSAFE=true
+make
+make test
+make install
+```
+
+Then set the environment variable AVRO_C_HOME to "<full-path-to-your-cloned-avro-repo>/lang/c/build/avrolib/"
 
 ### Solutions to the limitations
 1. Add a custom option to the configure.py that asks for the path of the avroc shared library on the system
@@ -19,11 +34,7 @@ At the moment we favor option 1.
 The code examples reside in the folder
 avro/python/examples
 To run these code examples the requirements are:
-* You need a python with TensorFlow installed. A clean way is to use a virtual environment 
-python. For more information on how to setup TensorFlow, see https://www.tensorflow.org/install/install_linux.
-* If your platform is different from linux you need to compile the shared libraries for avroc and place it under 
-avro/third_party/avro_c/lib. You may also have to modify how this shared library is passed around and linked to in 
-BUILD files.
+
 * You need to install the package 'avro >= 1.7.7' in your python virtual environment that also has tensorflow installed.
 
 ## Running the test cases
