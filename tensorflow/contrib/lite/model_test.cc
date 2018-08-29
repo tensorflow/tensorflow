@@ -275,6 +275,7 @@ TEST(BasicFlatBufferModel, TestBuildFromModel) {
   TestErrorReporter reporter;
   FileCopyAllocation model_allocation(
       "tensorflow/contrib/lite/testdata/test_model.bin", &reporter);
+  ASSERT_EQ(model_allocation.type(), Allocation::Type::kFileCopy);
   ASSERT_TRUE(model_allocation.valid());
   ::flatbuffers::Verifier verifier(
       reinterpret_cast<const uint8_t*>(model_allocation.base()),
