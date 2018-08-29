@@ -905,7 +905,7 @@ class MklConvOp : public OpKernel {
       // in the following cases
       //   1. Legacy CPU without AVX512/AVX2, or
       //   2. 1x1 convolution with stride != 1
-      do_not_cache_ = MklPrimitiveFactory<T>::IsPrimitiveMemOptEnabled() &&
+      bool do_not_cache = MklPrimitiveFactory<T>::IsPrimitiveMemOptEnabled() &&
                     (src_dims[MklDnnDims::Dim_N] > kSmallBatchSize) &&
                     (MklPrimitiveFactory<T>::IsLegacyPlatform() ||
                      IsConv1x1StrideNot1(filter_dims, strides));
@@ -919,13 +919,13 @@ class MklConvOp : public OpKernel {
                                      dst_dims_mkl_order, strides, dilations,
                                      padding_left, padding_right);
         conv_fwd = MklConvFwdPrimitiveFactory<T>::Get(
-            convFwdDims, do_not_cache_);
+            convFwdDims, do_not_cache);
       } else {
         MklConvFwdParams convFwdDims(src_dims, filter_dims, NONE_DIMS,
                                      dst_dims_mkl_order, strides, dilations,
                                      padding_left, padding_right);
         conv_fwd = MklConvFwdPrimitiveFactory<T>::Get(
-            convFwdDims, do_not_cache_);
+            convFwdDims, do_not_cache);
       }
 
       // allocate output tensors output_tensor and filter_out_tensor
@@ -972,7 +972,7 @@ class MklConvOp : public OpKernel {
       }
 
       // delete primitive since it is not cached.
-      if (do_not_cache_) delete conv_fwd;
+      if (do_not_cache) delete conv_fwd;
     } catch (mkldnn::error &e) {
       string error_msg = tensorflow::strings::StrCat(
           "Status: ", e.status, ", message: ", string(e.message), ", in file ",
@@ -991,7 +991,6 @@ class MklConvOp : public OpKernel {
   const int kOutputIndex_Dst = 0, kOutputIndex_Filter = 1;
   const int kDilationH = 0, kDilationW = 1;
   engine cpu_engine = engine(engine::cpu, 0);
-  bool do_not_cache_;
 
   // Allocate output tensor.
   void AllocateOutputTensor(

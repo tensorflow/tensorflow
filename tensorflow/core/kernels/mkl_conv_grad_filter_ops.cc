@@ -854,9 +854,9 @@ class MklConvCustomBackpropFilterOp
       // MKL DNN allocates large buffers when a conv gradient filter primtive is
       // created. So we don't cache conv backward primitives when the env
       // variable TF_MKL_OPTIMIZE_PRIMITVE_MEMUSE is set to true.
-      do_not_cache_ = MklPrimitiveFactory<T>::IsPrimitiveMemOptEnabled();
+      bool do_not_cache = MklPrimitiveFactory<T>::IsPrimitiveMemOptEnabled();
       conv_bwd_filter = MklConvBwdFilterPrimitiveFactory<T>::Get(
-          convBwdFilterDims, do_not_cache_);
+          convBwdFilterDims, do_not_cache);
       auto bwd_filter_pd = conv_bwd_filter->GetPrimitiveDesc();
 
       // allocate output tensors: diff_fitler and diff_bias (w bias)
@@ -950,7 +950,7 @@ class MklConvCustomBackpropFilterOp
       }
 
       // delete primitive since it is not cached.
-      if (do_not_cache_) delete conv_bwd_filter;
+      if (do_not_cache) delete conv_bwd_filter;
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
@@ -966,7 +966,6 @@ class MklConvCustomBackpropFilterOp
   const int kInputIndex_InputSizes = 0;
   const int kDilationH = 0, kDilationW = 1;
   engine cpu_engine_ = engine(engine::cpu, 0);
-  bool do_not_cache_;
 
   // Validate input shapes.
   // Function asserts that input shapes are valid.
