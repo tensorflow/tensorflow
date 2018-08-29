@@ -51,11 +51,14 @@ class RandomForestGraphs(object):
         self._params,
         tree_configs=tree_configs)
 
-  def inference_graph(self, input_data, **inference_args):
-    logits = [gen_tensor_forest_ops.tensor_forest_tree_predict(
-        tree_variable,
-        input_data,
-        self._params.logits_dimension)
+  def inference_graph(self, dense_features):
+    """ Builds inference graphs"""
+
+    logits = [
+        gen_tensor_forest_ops.tensor_forest_tree_predict(
+            tree_variable,
+            dense_features,
+            self._params.logits_dimension)
         for tree_variable in self._variables
     ]
 
@@ -88,22 +91,25 @@ def _tf_model_fn(features,
                  forest_hparams,
                  config,
                  name='tensor_forest'):
-  graph_builder = RandomForestGraphs(
-      forest_hparams, config)
+  """tensor forest model function"""
+  with ops.name_scope(name):
+    graph_builder = RandomForestGraphs(
+        forest_hparams, config)
+    # pylint: disable=protected-access
+    transformed_features = feature_column_lib._transform_features(
+        features, sorted_feature_columns)
 
-  transformed_features = feature_column_lib._transform_features(
-      features, sorted_feature_columns)
+    dense_features = array_ops.concat(transformed_features.values(), axis=1)
 
-  dense_feature = array_ops.concat(transformed_features.values(), axis=1)
+    logits, regression_variance = graph_builder.inference_graph(
+        dense_features)
 
-  logits, regression_variance = graph_builder.inference_graph(
-      dense_feature)
-
-  summary.scalar('average_tree_size', graph_builder.average_size())
+    summary.scalar('average_tree_size', graph_builder.average_size())
 
   training_graph = None
 
   def _train_op_fn(unused_loss):
+    del unused_loss
     return training_graph
 
   estimator_spec = head.create_estimator_spec(
@@ -125,6 +131,7 @@ def _tf_model_fn(features,
 
 # @estimator_export('estimator.TensorForestClassifier')
 class TensorForestClassifier(estimator.Estimator):
+  """ TensorForest Classifier """
 
   def __init__(self,
                feature_columns,
@@ -139,6 +146,7 @@ class TensorForestClassifier(estimator.Estimator):
                config=None):
 
     if head is None:
+      # pylint: disable=protected-access
       head = head_lib._binary_logistic_or_multi_class_head(
           n_classes=n_classes,
           weight_column=None,
@@ -153,12 +161,12 @@ class TensorForestClassifier(estimator.Estimator):
         split_node_after_samples,
         is_regression=False)
 
-    assert all(map(lambda fc: isinstance(fc, feature_column_lib.DenseColumn),
-                   feature_columns)), 'Only Dense Column supported'
+    assert all([isinstance(fc, feature_column_lib.DenseColumn)
+                for fc in feature_columns]), 'Only Dense Column supported'
     sorted_feature_columns = sorted(feature_columns, key=lambda fc: fc.name)
 
     def _model_fn(features, labels, mode, config):
-      return _tf_model_fn(
+      return _tf_model_fn(  # pylint: disable=protected-access
           features, labels, mode, head,
           sorted_feature_columns, forest_hparams, config)
 
