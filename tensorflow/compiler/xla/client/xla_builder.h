@@ -659,13 +659,6 @@ class XlaBuilder {
                const XlaComputation& computation,
                tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce);
 
-  // Reduces several arrays simultaneously among the provided dimensions, given
-  // "computation" as a reduction operator.
-  XlaOp Reduce(tensorflow::gtl::ArraySlice<XlaOp> operands,
-               tensorflow::gtl::ArraySlice<XlaOp> init_values,
-               const XlaComputation& computation,
-               tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce);
-
   // Convenience wrapper around the above that reduces all the dimensions in the
   // operand shape.
   XlaOp ReduceAll(const XlaOp& operand, const XlaOp& init_value,
@@ -1256,11 +1249,6 @@ class XlaBuilder {
   friend XlaOp Reduce(const XlaOp& operand, const XlaOp& init_value,
                       const XlaComputation& computation,
                       tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce);
-  friend XlaOp Reduce(XlaBuilder* builder,
-                      tensorflow::gtl::ArraySlice<XlaOp> operands,
-                      tensorflow::gtl::ArraySlice<XlaOp> init_values,
-                      const XlaComputation& computation,
-                      tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce);
   friend XlaOp ReduceAll(const XlaOp& operand, const XlaOp& init_value,
                          const XlaComputation& computation);
   friend XlaOp ReduceWindow(
@@ -1832,13 +1820,6 @@ XlaOp ShiftRightLogical(
 // Reduces an array among the provided dimensions, given "computation" as a
 // reduction operator.
 XlaOp Reduce(const XlaOp& operand, const XlaOp& init_value,
-             const XlaComputation& computation,
-             tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce);
-
-// Reduces several arrays simultaneously among the provided dimensions, given
-// "computation" as a reduction operator.
-XlaOp Reduce(XlaBuilder* builder, tensorflow::gtl::ArraySlice<XlaOp> operands,
-             tensorflow::gtl::ArraySlice<XlaOp> init_values,
              const XlaComputation& computation,
              tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce);
 

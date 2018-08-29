@@ -203,7 +203,6 @@ enum class ConstantType { kUnknown, kZero, kOne };
 
 // Return the constant type required by this computation, if known.
 ConstantType GetInitValue(const HloComputation& computation) {
-  // TODO(b/77635120): Add init values, for min, max, and their arg variants.
   const HloInstruction* const root = computation.root_instruction();
   if (computation.num_parameters() != 2 || root->operand_count() != 2 ||
       root->operand(0)->opcode() != HloOpcode::kParameter ||
@@ -228,10 +227,10 @@ bool NeedsInitValue(const HloUse& use) {
   const HloInstruction* const instruction = use.instruction;
   const HloOpcode opcode = instruction->opcode();
   const int64 op_num = use.operand_number;
-  return ((opcode == HloOpcode::kReduceWindow && op_num == 1) ||
-          (opcode == HloOpcode::kSelectAndScatter && op_num == 2) ||
-          (opcode == HloOpcode::kReduce &&
-           op_num >= instruction->operand_count() / 2));
+  return (
+      ((opcode == HloOpcode::kReduce || opcode == HloOpcode::kReduceWindow) &&
+       op_num == 1) ||
+      (opcode == HloOpcode::kSelectAndScatter && op_num == 2));
 }
 
 // Generate random values that are constrained to the input_shape minus the

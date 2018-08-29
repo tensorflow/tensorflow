@@ -398,20 +398,16 @@ class HloReduceInstruction : public HloInstruction {
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
-  // Returns the number of input arrays (and, consequentially, the number of
-  // init values) this reduce has.
-  int64 input_count() const { return operand_count() / 2; }
-
   // Returns the input tensors to be reduced.
   tensorflow::gtl::ArraySlice<HloInstruction*> inputs() const {
     return tensorflow::gtl::ArraySlice<HloInstruction*>(operands(), 0,
-                                                        input_count());
+                                                        operand_count() / 2);
   }
 
   // Returns the init values of the reduction.
   tensorflow::gtl::ArraySlice<HloInstruction*> init_values() const {
     return tensorflow::gtl::ArraySlice<HloInstruction*>(
-        operands(), input_count(), operand_count());
+        operands(), operand_count() / 2, operand_count());
   }
 
  private:

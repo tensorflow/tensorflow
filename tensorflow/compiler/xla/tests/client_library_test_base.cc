@@ -290,6 +290,10 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   if (ShapeUtil::ElementIsFloating(expected.shape()) ||
       ShapeUtil::ElementIsComplex(expected.shape())) {
     LOG(WARNING) << "performing exact comparison of floating point numbers";
+  } else {
+    TF_RET_CHECK(ShapeUtil::ElementIsIntegral(expected.shape()) ||
+                 expected.shape().element_type() == PRED)
+        << ShapeUtil::HumanString(expected.shape());
   }
   // We allow using a float expected literal for a bfloat16 output. In this
   // case, we need to convert the expected literal to bfloat16.
@@ -346,6 +350,8 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     }
   }
 
+  TF_RET_CHECK(ShapeUtil::ElementIsFloating(expected.shape()) ||
+               ShapeUtil::ElementIsComplex(expected.shape()));
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
   // We allow using a float expected literal for a bfloat16 output. In this
   // case, we need to convert the expected literal to bfloat16.
