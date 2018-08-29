@@ -1601,7 +1601,10 @@ def leaky_relu(features, alpha=0.2, name=None):
     features = ops.convert_to_tensor(features, name="features")
     if features.dtype.is_integer:
       features = math_ops.to_float(features)
-    return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
+    if compat.forward_compatible(2018, 10, 1):
+      return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
+    alpha = ops.convert_to_tensor(alpha, dtype=features.dtype, name="alpha")
+    return math_ops.maximum(alpha * features, features, name=name)
 
 
 def _flatten_outer_dims(logits):
