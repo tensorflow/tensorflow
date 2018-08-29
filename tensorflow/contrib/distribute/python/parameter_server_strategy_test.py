@@ -286,18 +286,22 @@ class ParameterServerStrategyTestBase(
         y = variable_scope.get_variable(
             'y', initializer=20.0,
             aggregation=variable_scope.VariableAggregation.SUM)
+        z = variable_scope.get_variable(
+            'z', initializer=30.0,
+            aggregation=variable_scope.VariableAggregation.ONLY_FIRST_TOWER)
 
         # We explicitly make a constant tensor here to avoid complaints about
         # summing non-distributed values.
         one = constant_op.constant(1.0)
         x_add = x.assign_add(one, use_locking=True)
         y_add = y.assign_add(one, use_locking=True)
+        z_add = z.assign_add(one, use_locking=True)
 
-        train_op = control_flow_ops.group([x_add, y_add])
-        return x, y, train_op
+        train_op = control_flow_ops.group(x_add, y_add, z_add)
+        return x, y, z, train_op
 
-      x, y, train_op = d.call_for_each_tower(model_fn)
-      train_op = d.group(d.unwrap(train_op))
+      x, y, z, train_op = d.call_for_each_tower(model_fn)
+      train_op = d.group(train_op)
 
       if context.num_gpus() < d._num_gpus_per_worker:
         return True
@@ -323,11 +327,13 @@ class ParameterServerStrategyTestBase(
       self._finish_condition.notify_all()
       self._finish_condition.release()
 
-      x_val, y_val = sess.run([x, y])
+      x_val, y_val, z_val = sess.run([x, y, z])
       self.assertEqual(x_val, 10.0 + 1.0 * num_workers * d.num_towers)
       self.assertEqual(y_val, 20.0 + 1.0 * num_workers * d.num_towers)
+      self.assertEqual(z_val, 30.0 + 1.0 * num_workers)
       return (x_val == 10.0 + 1.0 * num_workers * d.num_towers and
-              y_val == 20.0 + 1.0 * num_workers * d.num_towers)
+              y_val == 20.0 + 1.0 * num_workers * d.num_towers and
+              z_val == 30.0 + 1.0 * num_workers)
 
   def _test_minimize_loss_graph(self, task_type, task_id, num_gpus):
     d, master_target = self._get_test_objects(task_type, task_id, num_gpus)
