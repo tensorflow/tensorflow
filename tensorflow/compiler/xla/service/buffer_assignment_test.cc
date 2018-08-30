@@ -81,9 +81,6 @@ const std::vector<const HloInstruction*> GetInstructions(HloInstruction* root) {
 
 class BufferAssignmentTest : public HloVerifiedTestBase {
  protected:
-  BufferAssignmentTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false) {}
   ~BufferAssignmentTest() override {}
 
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
@@ -1753,10 +1750,6 @@ ENTRY main {
 
 class WhileBufferAssignmentTest : public HloVerifiedTestBase {
  protected:
-  WhileBufferAssignmentTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false) {}
-
   std::unique_ptr<HloComputation> BuildWhileConditionComputation(
       const string& name) {
     auto builder = HloComputation::Builder(name);

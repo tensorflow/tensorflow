@@ -41,10 +41,6 @@ using ::testing::UnorderedElementsAre;
 
 class HloInstructionTest : public HloVerifiedTestBase {
  protected:
-  HloInstructionTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false) {}
-
   Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
 };
 

@@ -54,12 +54,7 @@ AlgebraicSimplifier::ValidBitcastCallback non_bitcasting_callback() {
   return [](const Shape&, const Shape&) { return false; };
 }
 
-class AlgebraicSimplifierTest : public HloVerifiedTestBase {
- public:
-  AlgebraicSimplifierTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false) {}
-};
+class AlgebraicSimplifierTest : public HloVerifiedTestBase {};
 
 // Test that A + 0 is simplified to A
 TEST_F(AlgebraicSimplifierTest, AddZero) {
@@ -3013,12 +3008,7 @@ struct DotOfConcatTestSpec {
 
 class DotOfConcatSimplificationTest
     : public HloVerifiedTestBase,
-      public ::testing::WithParamInterface<DotOfConcatTestSpec> {
- public:
-  DotOfConcatSimplificationTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false) {}
-};
+      public ::testing::WithParamInterface<DotOfConcatTestSpec> {};
 
 // Test that we transform
 //  dot(const, concat(A, B, C))
@@ -3191,12 +3181,7 @@ struct DotOfGatherTestSpec {
 
 class DotOfGatherSimplificationTest
     : public HloVerifiedTestBase,
-      public ::testing::WithParamInterface<DotOfGatherTestSpec> {
- public:
-  DotOfGatherSimplificationTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false) {}
-};
+      public ::testing::WithParamInterface<DotOfGatherTestSpec> {};
 
 // input: dot(DS(ctA), ctB))
 // where DS(ctA) = DS({M x K}, {s, 0}, {1, K}) and ctB = {K x N}.

@@ -29,11 +29,6 @@ namespace xla {
 namespace {
 
 class HloDomainTest : public HloVerifiedTestBase {
- public:
-  HloDomainTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false) {}
-
  protected:
   bool FindUserViaDomainPath(HloInstruction* instruction,
                              HloInstruction* operand) const {
