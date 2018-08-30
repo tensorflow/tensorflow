@@ -365,8 +365,17 @@ Status PoplarExecutor::ConfigurePoplarDevice(
     option_flags_.set("target.workerStackSizeInBytes", "0x200");
 
     // Device specific options
-    if (type == tensorflow::IPUOptions::DeviceConfig::IPU) {
-      option_flags_.set("target.sendSyncId", "true");
+    switch (type) {
+      case tensorflow::IPUOptions::DeviceConfig::IPU: {
+        option_flags_.set("target.sendSyncId", "true");
+        if (current_config_.profiling().enable_execution_trace()) {
+          // Enable getting the cycle counts for each compute set on hardware
+          // when asking for an execution trace
+          option_flags_.set("debug.executionProfile", "compute_sets");
+        }
+        break;
+      }
+      default: { break; }
     }
 
     for (const auto& opt : cfg.compilation_options()) {
