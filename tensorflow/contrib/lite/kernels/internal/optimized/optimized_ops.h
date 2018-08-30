@@ -2338,18 +2338,6 @@ inline void DepthToSpace(const tflite::DepthToSpaceParams& op_params,
   }
 }
 
-// Legacy Dims<4>.
-template <typename T>
-inline void DepthToSpace(const T* input_data, const Dims<4>& input_dims,
-                         int block_size, T* output_data,
-                         const Dims<4>& output_dims) {
-  tflite::DepthToSpaceParams op_params;
-  op_params.block_size = block_size;
-
-  DepthToSpace(op_params, DimsToShape(input_dims), input_data,
-               DimsToShape(output_dims), output_data);
-}
-
 template <typename T>
 inline void SpaceToDepth(const tflite::SpaceToDepthParams& op_params,
                          const RuntimeShape& unextended_input_shape,
@@ -2391,18 +2379,6 @@ inline void SpaceToDepth(const tflite::SpaceToDepthParams& op_params,
   }
 }
 
-// Legacy Dims<4>.
-template <typename T>
-inline void SpaceToDepth(const T* input_data, const Dims<4>& input_dims,
-                         int block_size, T* output_data,
-                         const Dims<4>& output_dims) {
-  tflite::SpaceToDepthParams op_params;
-  op_params.block_size = block_size;
-
-  SpaceToDepth(op_params, DimsToShape(input_dims), input_data,
-               DimsToShape(output_dims), output_data);
-}
-
 inline void Relu(const RuntimeShape& input_shape, const float* input_data,
                  const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Relu (not fused)");
@@ -2436,18 +2412,6 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
       ++input_data;
     }
   }
-}
-
-// Legacy.
-template <FusedActivationFunctionType Ac>
-void L2Normalization(const float* input_data, const RuntimeShape& input_shape,
-                     float* output_data, const RuntimeShape& output_shape) {
-  static_assert(Ac == FusedActivationFunctionType::kNone, "");
-  tflite::L2NormalizationParams op_params;
-  // No params need to be set for float.
-
-  L2Normalization(op_params, input_shape, input_data, output_shape,
-                  output_data);
 }
 
 inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
@@ -2533,18 +2497,6 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
       ++output_data;
     }
   }
-}
-
-// Legacy.
-inline void L2Normalization(const uint8* input_data,
-                            const RuntimeShape& input_shape,
-                            int32 input_zero_point, uint8* output_data,
-                            const RuntimeShape& output_shape) {
-  tflite::L2NormalizationParams op_params;
-  op_params.input_zero_point = input_zero_point;
-
-  L2Normalization(op_params, input_shape, input_data, output_shape,
-                  output_data);
 }
 
 inline void Add(const ArithmeticParams& params,
@@ -2888,32 +2840,6 @@ inline void Mul(const ArithmeticParams& params,
   }
 }
 
-// Legacy Dims<4>.
-inline void Mul(const float* input1_data, const Dims<4>& input1_dims,
-                const float* input2_data, const Dims<4>& input2_dims,
-                float output_activation_min, float output_activation_max,
-                float* output_data, const Dims<4>& output_dims) {
-  tflite::ArithmeticParams op_params;
-  op_params.float_activation_min = output_activation_min;
-  op_params.float_activation_max = output_activation_max;
-
-  Mul(op_params, DimsToShape(input1_dims), input1_data,
-      DimsToShape(input2_dims), input2_data, DimsToShape(output_dims),
-      output_data);
-}
-
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void Mul(const float* input1_data, const Dims<4>& input1_dims,
-         const float* input2_data, const Dims<4>& input2_dims,
-         float* output_data, const Dims<4>& output_dims) {
-  float output_activation_min, output_activation_max;
-  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
-
-  Mul(input1_data, input1_dims, input2_data, input2_dims, output_activation_min,
-      output_activation_max, output_data, output_dims);
-}
-
 inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const int32* input1_data,
                 const RuntimeShape& input2_shape, const int32* input2_data,
@@ -2929,20 +2855,6 @@ inline void Mul(const ArithmeticParams& params,
         input1_data[i] * input2_data[i], output_activation_min,
         output_activation_max);
   }
-}
-
-// Legacy Dims<4>.
-inline void Mul(const int32* input1_data, const Dims<4>& input1_dims,
-                const int32* input2_data, const Dims<4>& input2_dims,
-                int32 output_activation_min, int32 output_activation_max,
-                int32* output_data, const Dims<4>& output_dims) {
-  tflite::ArithmeticParams op_params;
-  op_params.quantized_activation_min = output_activation_min;
-  op_params.quantized_activation_max = output_activation_max;
-
-  Mul(op_params, DimsToShape(input1_dims), input1_data,
-      DimsToShape(input2_dims), input2_data, DimsToShape(output_dims),
-      output_data);
 }
 
 inline void MulNoActivation(const ArithmeticParams& params,
@@ -2971,20 +2883,6 @@ inline void MulNoActivation(const ArithmeticParams& params,
   }
 }
 
-// Legacy Dims<4>.
-template <FusedActivationFunctionType Ac>
-void Mul(const int32* input1_data, const Dims<4>& input1_dims,
-         const int32* input2_data, const Dims<4>& input2_dims,
-         int32* output_data, const Dims<4>& output_dims) {
-  TFLITE_DCHECK(Ac == FusedActivationFunctionType::kNone);
-  tflite::ArithmeticParams op_params;
-  // No parameters needed.
-
-  MulNoActivation(op_params, DimsToShape(input1_dims), input1_data,
-                  DimsToShape(input2_dims), input2_data,
-                  DimsToShape(output_dims), output_data);
-}
-
 inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const int16* input1_data,
                 const RuntimeShape& input2_shape, const int16* input2_data,
@@ -3004,18 +2902,6 @@ inline void Mul(const ArithmeticParams& params,
         F0::FromRaw(input1_data[i]) * F0::FromRaw(input2_data[i]);
     output_data[i] = unclamped_result.raw();
   }
-}
-
-// Legacy Dims<4>.
-inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
-                const int16* input2_data, const Dims<4>& input2_dims,
-                int16* output_data, const Dims<4>& output_dims) {
-  tflite::ArithmeticParams op_params;
-  // No parameters needed.
-
-  Mul(op_params, DimsToShape(input1_dims), input1_data,
-      DimsToShape(input2_dims), input2_data, DimsToShape(output_dims),
-      output_data);
 }
 
 inline void Mul(const ArithmeticParams& params,
@@ -3047,53 +2933,6 @@ inline void Mul(const ArithmeticParams& params,
         std::max<int16>(output_activation_min - output_offset, clamped_result);
     output_data[i] = output_offset + clamped_result;
   }
-}
-
-// Legacy Dims<4>.
-inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
-                const int16* input2_data, const Dims<4>& input2_dims,
-                int32 output_offset, int32 output_activation_min,
-                int32 output_activation_max, uint8* output_data,
-                const Dims<4>& output_dims) {
-  tflite::ArithmeticParams op_params;
-  op_params.output_offset = output_offset;
-  op_params.quantized_activation_min = output_activation_min;
-  op_params.quantized_activation_max = output_activation_max;
-
-  Mul(op_params, DimsToShape(input1_dims), input1_data,
-      DimsToShape(input2_dims), input2_data, DimsToShape(output_dims),
-      output_data);
-}
-
-// Legacy Dims<4>.
-template <typename T>
-void BroadcastMul(const T* input1_data, const Dims<4>& input1_dims,
-                  const T* input2_data, const Dims<4>& input2_dims,
-                  T output_activation_min, T output_activation_max,
-                  T* output_data, const Dims<4>& output_dims) {
-  tflite::ArithmeticParams op_params;
-  SetActivationParams(output_activation_min, output_activation_max, &op_params);
-
-  BroadcastMul4DSlow(op_params, DimsToShape(input1_dims), input1_data,
-                     DimsToShape(input2_dims), input2_data,
-                     DimsToShape(output_dims), output_data);
-}
-
-// Legacy Dims<4>.
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-inline void BroadcastMul(const float* input1_data, const Dims<4>& input1_dims,
-                         const float* input2_data, const Dims<4>& input2_dims,
-                         float* output_data, const Dims<4>& output_dims) {
-  tflite::ArithmeticParams op_params;
-  float float_activation_min;
-  float float_activation_max;
-  GetActivationMinMax(Ac, &float_activation_min, &float_activation_max);
-  SetActivationParams(float_activation_min, float_activation_max, &op_params);
-
-  BroadcastMul4DSlow(op_params, DimsToShape(input1_dims), input1_data,
-                     DimsToShape(input2_dims), input2_data,
-                     DimsToShape(output_dims), output_data);
 }
 
 // Element-wise mul that can often be used for inner loop of broadcast Mul as
@@ -4233,22 +4072,6 @@ inline void LocalResponseNormalization(
   }
 }
 
-// Legacy Dims<4>.
-inline void LocalResponseNormalization(const float* input_data,
-                                       const Dims<4>& input_dims, int range,
-                                       float bias, float alpha, float beta,
-                                       float* output_data,
-                                       const Dims<4>& output_dims) {
-  tflite::LocalResponseNormalizationParams op_params;
-  op_params.range = range;
-  op_params.bias = bias;
-  op_params.alpha = alpha;
-  op_params.beta = beta;
-
-  LocalResponseNormalization(op_params, DimsToShape(input_dims), input_data,
-                             DimsToShape(output_dims), output_data);
-}
-
 inline void Softmax(const float* input_data, const RuntimeShape& input_shape,
                     float beta, float* output_data,
                     const RuntimeShape& output_shape) {
@@ -5190,27 +5013,12 @@ inline void Cast(const RuntimeShape& input_shape, const SrcT* input_data,
   output_map.array() = input_map.array().template cast<DstT>();
 }
 
-// Legacy Dims<4> version.
-template <typename SrcT, typename DstT>
-void Cast(const SrcT* input_data, const Dims<4>& input_dims, DstT* output_data,
-          const Dims<4>& output_dims) {
-  Cast(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
-       output_data);
-}
-
 inline void Floor(const RuntimeShape& input_shape, const float* input_data,
                   const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Floor");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
   output_map.array() = Eigen::floor(input_map.array());
-}
-
-// Legacy Dims<4> version.
-inline void Floor(const float* input_data, const Dims<4>& input_dims,
-                  float* output_data, const Dims<4>& output_dims) {
-  Floor(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
-        output_data);
 }
 
 #ifdef USE_NEON
@@ -5630,18 +5438,6 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
   }
 }
 
-// Legacy Dims<4>
-inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
-                           const int32* output_size_data,
-                           const Dims<4>& output_size_dims, float* output_data,
-                           const Dims<4>& output_dims, bool align_corners) {
-  tflite::ResizeBilinearParams op_params;
-  op_params.align_corners = align_corners;
-  ResizeBilinear(op_params, DimsToShape(input_dims), input_data,
-                 DimsToShape(output_size_dims), output_size_data,
-                 DimsToShape(output_dims), output_data);
-}
-
 // TODO(prabhumk): This is not a real quantized bilinear. It does not use int8
 // or int16 arithmetic.
 inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
@@ -5682,36 +5478,6 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
       batches, input_height, input_width, depth, output_height, output_width,
       height_scale, width_scale, input_shape, input_data, output_shape,
       output_data);
-}
-
-// Legacy Dims<4>
-inline void ResizeBilinear(const uint8* input_data, const Dims<4>& input_dims,
-                           const int32* output_size_data,
-                           const Dims<4>& output_size_dims, uint8* output_data,
-                           const Dims<4>& output_dims, bool align_corners) {
-  tflite::ResizeBilinearParams op_params;
-  op_params.align_corners = align_corners;
-  ResizeBilinear(op_params, DimsToShape(input_dims), input_data,
-                 DimsToShape(output_size_dims), output_size_data,
-                 DimsToShape(output_dims), output_data);
-}
-
-// legacy, for compatibility with old checked-in code
-inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
-                           const int32* output_size_data,
-                           const Dims<4>& output_size_dims, float* output_data,
-                           const Dims<4>& output_dims) {
-  ResizeBilinear(input_data, input_dims, output_size_data, output_size_dims,
-                 output_data, output_dims, /*align_corners=*/false);
-}
-
-// legacy, for compatibility with old checked-in code
-inline void ResizeBilinear(const uint8* input_data, const Dims<4>& input_dims,
-                           const int32* output_size_data,
-                           const Dims<4>& output_size_dims, uint8* output_data,
-                           const Dims<4>& output_dims) {
-  ResizeBilinear(input_data, input_dims, output_size_data, output_size_dims,
-                 output_data, output_dims, /*align_corners=*/false);
 }
 
 // Helper methods for BatchToSpaceND.
@@ -5800,19 +5566,6 @@ inline void BatchToSpaceND(
       }
     }
   }
-}
-
-// Legacy Dims<4>.
-template <typename T>
-inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
-                           const int32* block_shape_data,
-                           const Dims<4>& block_shape_dims,
-                           const int32* crops_data, const Dims<4>& crops_dims,
-                           T* output_data, const Dims<4>& output_dims) {
-  BatchToSpaceND(DimsToShape(input_dims), input_data,
-                 DimsToShape(block_shape_dims), block_shape_data,
-                 DimsToShape(crops_dims), crops_data, DimsToShape(output_dims),
-                 output_data);
 }
 
 template <typename T>
@@ -5972,49 +5725,6 @@ inline void Pad(const tflite::PadParams& op_params,
           output_data);
 }
 
-// Legacy signature, function covered both Pad and PadV2.
-template <typename T>
-inline void PadV2(const T* input_data, const Dims<4>& input_dims,
-                  const std::vector<int>& left_paddings,
-                  const std::vector<int>& right_paddings, T* output_data,
-                  const Dims<4>& output_dims, const T pad_value) {
-  TFLITE_DCHECK_EQ(left_paddings.size(), 4);
-  TFLITE_DCHECK_EQ(right_paddings.size(), 4);
-  tflite::PadParams op_params;
-  op_params.left_padding_count = 4;
-  op_params.right_padding_count = 4;
-  for (int i = 0; i < 4; ++i) {
-    op_params.left_padding[i] = left_paddings[3 - i];
-    op_params.right_padding[i] = right_paddings[3 - i];
-  }
-  const T pad_value_copy = pad_value;
-
-  Pad(op_params, DimsToShape(input_dims), input_data, &pad_value_copy,
-      DimsToShape(output_dims), output_data);
-}
-
-// Old Pad that calls legacy PadV2.
-template <typename T>
-inline void Pad(const T* input_data, const Dims<4>& input_dims,
-                const std::vector<int>& left_paddings,
-                const std::vector<int>& right_paddings, T* output_data,
-                const Dims<4>& output_dims, const int32_t pad_value) {
-  const T converted_pad_value = static_cast<T>(pad_value);
-  PadV2<T>(input_data, input_dims, left_paddings, right_paddings, output_data,
-           output_dims, converted_pad_value);
-}
-
-// Old Pad that only padded with 0.
-template <typename T>
-inline void Pad(const T* input_data, const Dims<4>& input_dims,
-                const std::vector<int>& left_paddings,
-                const std::vector<int>& right_paddings, T* output_data,
-                const Dims<4>& output_dims) {
-  const T pad_value = static_cast<T>(0);
-  PadV2<T>(input_data, input_dims, left_paddings, right_paddings, output_data,
-           output_dims, pad_value);
-}
-
 template <typename T>
 inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape, const T* input_data,
@@ -6059,22 +5769,6 @@ inline void Slice(const tflite::SliceParams& op_params,
 }
 
 template <typename T>
-inline void Slice(const T* input_data, const Dims<4>& input_dims,
-                  const std::vector<int>& begin, const std::vector<int>& size,
-                  T* output_data, const Dims<4>& output_dims) {
-  tflite::SliceParams op_params;
-  op_params.begin_count = 4;
-  op_params.size_count = 4;
-  for (int i = 0; i < 4; ++i) {
-    op_params.begin[i] = begin[3 - i];
-    op_params.size[i] = size[3 - i];
-  }
-
-  Slice(op_params, DimsToShape(input_dims), input_data,
-        DimsToShape(output_dims), output_data);
-}
-
-template <typename T>
 void Minimum(const RuntimeShape& input1_shape, const T* input1_data,
              const T* input2_data, const RuntimeShape& output_shape,
              T* output_data) {
@@ -6094,22 +5788,6 @@ void Maximum(const RuntimeShape& input1_shape, const T* input1_data,
   auto output_map = MapAsVector(output_data, output_shape);
   auto max_value = input2_data[0];
   output_map.array() = input1_map.array().max(max_value);
-}
-
-template <typename T>
-void TensorFlowMinimum(const T* input1_data, const Dims<4>& input1_dims,
-                       const T* input2_data, T* output_data,
-                       const Dims<4>& output_dims) {
-  Minimum(DimsToShape(input1_dims), input1_data, input2_data,
-          DimsToShape(output_dims), output_data);
-}
-
-template <typename T>
-void TensorFlowMaximum(const T* input1_data, const Dims<4>& input1_dims,
-                       const T* input2_data, T* output_data,
-                       const Dims<4>& output_dims) {
-  Maximum(DimsToShape(input1_dims), input1_data, input2_data,
-          DimsToShape(output_dims), output_data);
 }
 
 template <typename T>
