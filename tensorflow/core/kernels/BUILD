@@ -2836,6 +2836,7 @@ cc_library(
         ":betainc_op",
         ":bincount_op",
         ":bucketize_op",
+        ":bucketize_v2_op",
         ":cast_op",
         ":check_numerics_op",
         ":compare_and_bitpack_op",
@@ -2891,6 +2892,12 @@ tf_kernel_library(
     gpu_srcs = ["cuda_device_array.h"],
     prefix = "bucketize_op",
     deps = ARRAY_DEPS,
+)
+
+tf_kernel_library(
+    name = "bucketize_v2_op",
+    prefix = "bucketize_v2_op",
+    deps = MATH_DEPS,
 )
 
 tf_kernel_library(

@@ -1618,6 +1618,13 @@ REGISTER_OP("Bucketize")
     .Attr("boundaries: list(float)")
     .SetShapeFn(shape_inference::UnchangedShape);
 
+REGISTER_OP("BucketizeV2")
+    .Input("input: T")
+    .Input("boundaries: T")
+    .Output("output: int32")
+    .Attr("T: {int32, int64, float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("ClipByValue")
     .Input("t: T")
     .Input("clip_value_min: T")

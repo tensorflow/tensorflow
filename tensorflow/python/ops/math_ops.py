@@ -160,6 +160,11 @@ def _bucketize(input, boundaries, name=None):
   return gen_math_ops.bucketize(input=input, boundaries=boundaries, name=name)
 
 
+# pylint: disable=redefined-builtin
+def _bucketize_v2(input, boundaries, name=None):
+  return gen_math_ops.bucketize_v2(input=input, boundaries=boundaries, name=name)
+
+
 # pylint: enable=redefined-builtin
 
 
