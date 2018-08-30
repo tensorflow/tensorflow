@@ -460,6 +460,12 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
 }
 
 Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
+  // Outfeed produces no useful result, but it does return a token[] that can be
+  // threaded through to other side effecting operations to ensure ordering.  In
+  // the IR emitter we treat this token as a normal u8[] and thus need to insert
+  // an entry for it in emitted_value_.
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(outfeed));
+
   HloInstruction* operand = outfeed->operands()[0];
   const Shape& operand_shape = operand->shape();
 
