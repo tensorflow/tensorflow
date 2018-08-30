@@ -64,7 +64,7 @@ xla::XlaOp CholeskyUnblocked(xla::XlaOp a,
     xla::XlaOp l = xla::ZerosLike(a);
 
     // Construct the for loop body to iterate over rows.
-    auto body_fn = [&](xla::XlaOp i, gtl::ArraySlice<xla::XlaOp> loop_vars,
+    auto body_fn = [&](xla::XlaOp i, absl::Span<const xla::XlaOp> loop_vars,
                        xla::XlaBuilder* body_builder)
         -> xla::StatusOr<std::vector<xla::XlaOp>> {
       xla::Shape col_shape;

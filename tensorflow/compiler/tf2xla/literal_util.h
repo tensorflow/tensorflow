@@ -43,9 +43,8 @@ Status HostTensorToMutableBorrowingLiteral(
 
 // Returns a BorrowingLiteral tuple that utilizes the same underlying buffers
 // owned by 'host_tensors'.
-Status HostTensorsToBorrowingLiteralTuple(
-    tensorflow::gtl::ArraySlice<Tensor> host_tensors,
-    xla::BorrowingLiteral* literal);
+Status HostTensorsToBorrowingLiteralTuple(absl::Span<const Tensor> host_tensors,
+                                          xla::BorrowingLiteral* literal);
 
 // Copies 'literal' to freshly allocated 'host_tensor', which is allocated of
 // type <target_type>.

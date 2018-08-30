@@ -56,7 +56,7 @@ class CpuTransferManager : public GenericTransferManager {
   // Helper that transfers a tuple of element buffers from the device's outfeed.
   StatusOr<Shape> TransferTupleBuffersFromOutfeed(
       se::StreamExecutor* executor,
-      tensorflow::gtl::ArraySlice<std::pair<void*, int64>> buffer_data);
+      absl::Span<const std::pair<void*, int64>> buffer_data);
 
   // Helper that transfers an array buffer from the device's outfeed.
   StatusOr<Shape> TransferArrayBufferFromOutfeed(se::StreamExecutor* executor,
@@ -68,8 +68,7 @@ class CpuTransferManager : public GenericTransferManager {
   // for the given buffers.
   StatusOr<Shape> TransferBuffersFromOutfeedInternal(
       se::StreamExecutor* executor,
-      tensorflow::gtl::ArraySlice<std::pair<void*, int64>> buffer_data,
-      bool is_tuple);
+      absl::Span<const std::pair<void*, int64>> buffer_data, bool is_tuple);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CpuTransferManager);
 };

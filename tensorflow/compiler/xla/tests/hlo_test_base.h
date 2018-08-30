@@ -114,18 +114,15 @@ class HloTestBase : public ::testing::Test {
 
   // Executes the given module and return the result as a Literal.
   StatusOr<std::unique_ptr<Literal>> Execute(
-      std::unique_ptr<HloModule> module,
-      tensorflow::gtl::ArraySlice<Literal*> arguments);
+      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments);
 
   // Same as above, except the module will be executed without running any HLO
   // passes on it.
   std::unique_ptr<Literal> ExecuteNoHloPasses(
-      std::unique_ptr<HloModule> module,
-      tensorflow::gtl::ArraySlice<Literal*> arguments);
+      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments);
 
   std::unique_ptr<Literal> ExecuteAndTransfer(
-      std::unique_ptr<HloModule> module,
-      tensorflow::gtl::ArraySlice<Literal*> arguments);
+      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments);
 
   // Executes the given hlo module on two backends and compares results.
   //
@@ -140,7 +137,7 @@ class HloTestBase : public ::testing::Test {
   // modified.
   ::testing::AssertionResult RunAndCompare(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<Literal*> arguments,
+      const absl::Span<Literal* const> arguments,
       const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
@@ -149,7 +146,7 @@ class HloTestBase : public ::testing::Test {
   // optimization.
   ::testing::AssertionResult RunAndCompareNoHloPasses(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<Literal*> arguments,
+      const absl::Span<Literal* const> arguments,
       const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
@@ -261,7 +258,7 @@ class HloTestBase : public ::testing::Test {
   // error happens before the results are computed, returns the error status.
   StatusOr<::testing::AssertionResult> RunAndCompareInternal(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<Literal*> arguments,
+      const absl::Span<Literal* const> arguments,
       const absl::optional<ErrorSpec>& error, bool run_hlo_passes,
       const std::function<void(HloModule*)>& reference_preprocessor);
 };

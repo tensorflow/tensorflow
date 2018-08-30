@@ -179,7 +179,7 @@ Status CpuTransferManager::TransferLiteralFromOutfeed(
     int64 size = GetByteSizeRequirement(literal_shape);
     // Note: OSS build didn't like implicit conversion from
     // literal_shape.dimensions() to the array slice on 2017-07-10.
-    tensorflow::gtl::ArraySlice<int64> dimensions(
+    absl::Span<const int64> dimensions(
         tensorflow::bit_cast<const int64*>(literal_shape.dimensions().data()),
         literal_shape.dimensions().size());
     TF_ASSIGN_OR_RETURN(
@@ -225,7 +225,7 @@ Status CpuTransferManager::TransferLiteralFromOutfeed(
 
 StatusOr<Shape> CpuTransferManager::TransferTupleBuffersFromOutfeed(
     se::StreamExecutor* executor,
-    tensorflow::gtl::ArraySlice<std::pair<void*, int64>> buffer_data) {
+    absl::Span<const std::pair<void*, int64>> buffer_data) {
   return TransferBuffersFromOutfeedInternal(executor, buffer_data,
                                             /*is_tuple=*/true);
 }
@@ -238,8 +238,7 @@ StatusOr<Shape> CpuTransferManager::TransferArrayBufferFromOutfeed(
 
 StatusOr<Shape> CpuTransferManager::TransferBuffersFromOutfeedInternal(
     se::StreamExecutor* executor,
-    tensorflow::gtl::ArraySlice<std::pair<void*, int64>> buffer_data,
-    bool is_tuple) {
+    absl::Span<const std::pair<void*, int64>> buffer_data, bool is_tuple) {
   std::vector<std::unique_ptr<CpuOutfeedBuffer>> buffers;
   for (auto b : buffer_data) {
     int64 size = b.second;

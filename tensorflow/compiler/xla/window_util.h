@@ -25,13 +25,13 @@ namespace window_util {
 
 // Creates a window with the given sizes in the dimensions and all strides set
 // to 1.
-Window MakeWindow(tensorflow::gtl::ArraySlice<int64> sizes);
+Window MakeWindow(absl::Span<const int64> sizes);
 
 // Creates a padding config with symmetrical padding in each dimension, of value
 // given by sizes; e.g. {0, 1, 2} would create a R3 padding config that had zero
 // pixels of padding in dimension 0, one pixel of padding symmetrically, on each
 // side of dimension 1, and two pixels of padding symmetrically on dimension 2.
-PaddingConfig MakeSymmetricPadding(tensorflow::gtl::ArraySlice<int64> sizes);
+PaddingConfig MakeSymmetricPadding(absl::Span<const int64> sizes);
 
 string ToString(const WindowDimension& dim);
 string ToString(const Window& window);

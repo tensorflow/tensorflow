@@ -59,7 +59,7 @@ class OperationDumper : public DfsHloVisitorWithDefault {
   string path_;
 };
 
-void RealMain(tensorflow::gtl::ArraySlice<char*> args) {
+void RealMain(absl::Span<char* const> args) {
   LocalClient* client = ClientLibrary::LocalClientOrDie();
   LocalService* local_service =
       ClientLibrary::GetXlaService(client->platform());
@@ -104,7 +104,7 @@ void RealMain(tensorflow::gtl::ArraySlice<char*> args) {
 int main(int argc, char** argv) {
   tensorflow::port::InitMain(argv[0], &argc, &argv);
 
-  tensorflow::gtl::ArraySlice<char*> args(argv, argc);
+  absl::Span<char* const> args(argv, argc);
   args.remove_prefix(1);  // Pop off the binary name, argv[0]
   xla::tools::RealMain(args);
   return 0;

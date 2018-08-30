@@ -235,7 +235,7 @@ class KernelSupportLibrary {
                    }));
   }
 
-  using ArgumentVector = tensorflow::gtl::ArraySlice<llvm::Value*>;
+  using ArgumentVector = absl::Span<llvm::Value* const>;
 
   // Generates the following control flow structure:
   //

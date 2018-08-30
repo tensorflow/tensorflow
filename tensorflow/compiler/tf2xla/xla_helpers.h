@@ -50,7 +50,7 @@ class XlaHelpers {
   // Reshapes literal 'input' to have 'shape'. Both the original shape and
   // 'shape' must contain the same number of elements.
   static Status ReshapeLiteral(const xla::Literal& input,
-                               gtl::ArraySlice<int64> shape,
+                               absl::Span<const int64> shape,
                                xla::Literal* output);
 
   // Returns the argmax of `input` along `axis`. `output_type` is the type to

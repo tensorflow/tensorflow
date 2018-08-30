@@ -2226,7 +2226,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
     auto out_dims = in_dims;
     out_dims[in_channel_idx] = options.f_output_channels;
 
-    auto make_shape = [](tensorflow::gtl::ArraySlice<int64> dims,
+    auto make_shape = [](absl::Span<const int64> dims,
                          bool minor_to_major_layout) {
       if (minor_to_major_layout) {
         return ShapeUtil::MakeShapeWithLayout(F32, dims, {0, 1, 2, 3});
@@ -2838,8 +2838,8 @@ TEST_P(PadReduceWindowEffectiveBroadcastTest, DoIt) {
 
   // a and b are parallel bounds we can either turn into a B F S0 S1 or
   // `B S0 S1 F` kind of pattern.
-  auto decorate_spatials = [&param](tensorflow::gtl::ArraySlice<int64> spatials,
-                                    int64 a, int64 b) {
+  auto decorate_spatials = [&param](absl::Span<const int64> spatials, int64 a,
+                                    int64 b) {
     std::vector<int64> result;
     if (param.prepend_a) {
       result.push_back(a);

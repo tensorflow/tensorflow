@@ -81,14 +81,14 @@ class Executable {
   // Returns a shaped buffer containing the result of the computation.
   virtual StatusOr<ScopedShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile) = 0;
 
   // Same as ExecuteOnStream(), but this call is non-blocking and returns as
   // soon as all of the operations are enqueued for launch on the stream.
   virtual StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) = 0;
+      absl::Span<const ShapedBuffer* const> arguments) = 0;
 
   // Starts the given program executing on the given stream/executor.
   //
@@ -119,11 +119,8 @@ class Executable {
   // run_options[i]->stream() and the returned value is at index i of the
   // returned vector.
   virtual StatusOr<std::vector<ScopedShapedBuffer>> ExecuteOnStreams(
-      tensorflow::gtl::ArraySlice<const ServiceExecutableRunOptions>
-          run_options,
-      tensorflow::gtl::ArraySlice<
-          tensorflow::gtl::ArraySlice<const ShapedBuffer*>>
-          arguments);
+      absl::Span<const ServiceExecutableRunOptions> run_options,
+      absl::Span<const absl::Span<const ShapedBuffer* const>> arguments);
 
   // Populates `hlo_execution_profile` from `executor`. This is implicit in any
   // Execute* API call that takes a hlo_execution_profile argument, but must be
@@ -139,7 +136,7 @@ class Executable {
   // given ExecutionProfile if non-null.
   StatusOr<ScopedShapedBuffer> ExecuteOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
+      absl::Span<const ShapedBuffer* const> arguments);
 
   // Returns the ExecutionProfile from executing on the device. This includes
   // the number of cycles taken for the computation or the compilation time.

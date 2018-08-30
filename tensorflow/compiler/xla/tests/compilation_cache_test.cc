@@ -38,10 +38,9 @@ namespace {
 
 class CompilationCacheTest : public ClientLibraryTestBase {
  public:
-  void ExecuteComputationR0F32(
-      const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments, float expected_result,
-      bool expect_cache_hit) {
+  void ExecuteComputationR0F32(const XlaComputation& computation,
+                               absl::Span<GlobalData* const> arguments,
+                               float expected_result, bool expect_cache_hit) {
     ExecutionProfile execution_profile;
     std::unique_ptr<Literal> result =
         client_
@@ -56,7 +55,7 @@ class CompilationCacheTest : public ClientLibraryTestBase {
 
   void ExecuteComputationR2F32(
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      absl::Span<GlobalData* const> arguments,
       std::initializer_list<std::initializer_list<float>> expected_result,
       bool expect_cache_hit) {
     ExecutionProfile execution_profile;

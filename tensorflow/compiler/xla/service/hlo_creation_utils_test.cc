@@ -24,15 +24,13 @@ limitations under the License.
 
 namespace xla {
 namespace {
-using tensorflow::gtl::ArraySlice;
 
 class HloCreationUtilsTest : public HloVerifiedTestBase {
  protected:
-  HloModule* CreateModuleWithProgramShape(PrimitiveType primitive_type,
-                                          ArraySlice<int64> input_shape_dims,
-                                          ArraySlice<int64> output_shape_dims,
-                                          HloInstruction** param,
-                                          HloComputation** entry_computation) {
+  HloModule* CreateModuleWithProgramShape(
+      PrimitiveType primitive_type, absl::Span<const int64> input_shape_dims,
+      absl::Span<const int64> output_shape_dims, HloInstruction** param,
+      HloComputation** entry_computation) {
     Shape input_shape = ShapeUtil::MakeShape(primitive_type, input_shape_dims);
     Shape output_shape =
         ShapeUtil::MakeShape(primitive_type, output_shape_dims);

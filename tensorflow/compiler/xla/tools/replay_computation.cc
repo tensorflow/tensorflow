@@ -253,7 +253,7 @@ StatusOr<HloSnapshot> ParseInputFile(const string& filename,
   return InvalidArgument("Could not parse %s.", filename);
 }
 
-int RealMain(tensorflow::gtl::ArraySlice<char*> args, const Options& opts) {
+int RealMain(absl::Span<char* const> args, const Options& opts) {
   LocalClient* client = ClientLibrary::LocalClientOrDie();
   int exit_status = EXIT_SUCCESS;
 
@@ -344,7 +344,7 @@ int main(int argc, char** argv) {
     LOG(QFATAL) << usage;
   }
 
-  tensorflow::gtl::ArraySlice<char*> args(argv, argc);
+  absl::Span<char* const> args(argv, argc);
   args.remove_prefix(1);  // Pop off the binary name, argv[0]
   return xla::tools::RealMain(args, opts);
 }

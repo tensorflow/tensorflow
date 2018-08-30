@@ -115,10 +115,10 @@ class IrFunction {
 
 // Returns an array of compute function call argument ir values.
 std::vector<llvm::Value*> GetArrayFunctionCallArguments(
-    tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
-    llvm::IRBuilder<>* b, absl::string_view name,
-    llvm::Value* return_value_buffer, llvm::Value* exec_run_options_arg,
-    llvm::Value* temp_buffers_arg, llvm::Value* profile_counters_arg);
+    absl::Span<llvm::Value* const> parameter_addresses, llvm::IRBuilder<>* b,
+    absl::string_view name, llvm::Value* return_value_buffer,
+    llvm::Value* exec_run_options_arg, llvm::Value* temp_buffers_arg,
+    llvm::Value* profile_counters_arg);
 
 // Emits a call to a runtime fork/join function which dispatches parallel
 // calls to 'parallel_function' (and joins threads before returning).

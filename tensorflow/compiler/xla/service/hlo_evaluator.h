@@ -51,8 +51,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // type.
   template <typename LiteralPtr>
   StatusOr<std::unique_ptr<Literal>> Evaluate(
-      const HloModule& module,
-      tensorflow::gtl::ArraySlice<LiteralPtr> arg_literals);
+      const HloModule& module, absl::Span<const LiteralPtr> arg_literals);
 
   // Evaluates an HLO computation and an array of pointers to literals.
   // Returns the evaluated result as a literal if successful.
@@ -75,7 +74,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   template <typename LiteralPtr>
   StatusOr<std::unique_ptr<Literal>> Evaluate(
       const HloComputation& computation,
-      tensorflow::gtl::ArraySlice<LiteralPtr> arg_literals);
+      absl::Span<const LiteralPtr> arg_literals);
 
   // Evaluates a single HLO instruction and an array of pointers to literals.
   // Return the evaluated result as literal if successful.
@@ -87,8 +86,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // type.
   template <typename LiteralPtr>
   StatusOr<std::unique_ptr<Literal>> Evaluate(
-      HloInstruction* instruction,
-      tensorflow::gtl::ArraySlice<LiteralPtr> arg_literals);
+      HloInstruction* instruction, absl::Span<const LiteralPtr> arg_literals);
 
   // Evaluates a single HLO instruction with constant operands.
   // Returns the evaluated result as literal if successful.
@@ -229,8 +227,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
     }
 
     auto result = absl::make_unique<Literal>(shape);
-    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
-        [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+    TF_RETURN_IF_ERROR(
+        result->Populate<ReturnT>([&](absl::Span<const int64> multi_index) {
           return unary_op(operand_literal.Get<NativeT>(multi_index));
         }));
     return std::move(result);

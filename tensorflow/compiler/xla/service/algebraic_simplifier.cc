@@ -449,8 +449,7 @@ Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
 
 Status AlgebraicSimplifierVisitor::HandleConcatenate(
     HloInstruction* concatenate) {
-  tensorflow::gtl::ArraySlice<HloInstruction*> operands(
-      concatenate->operands());
+  absl::Span<HloInstruction* const> operands(concatenate->operands());
   if (operands.size() == 1) {
     // Unary concatenates are useless.
     ReplaceInstructionIfSameShape(concatenate, operands[0]);
@@ -588,7 +587,7 @@ Status AlgebraicSimplifierVisitor::HandleSubtract(HloInstruction* sub) {
 namespace {
 template <typename T>
 Status InvertConstant(const HloInstruction& constant, Literal* result) {
-  return result->Populate<T>([&](tensorflow::gtl::ArraySlice<int64> indices) {
+  return result->Populate<T>([&](absl::Span<const int64> indices) {
     return T{1.0} / constant.literal().Get<T>(indices);
   });
 }
@@ -1249,8 +1248,7 @@ namespace {
 //
 // Precondition: input_dim_indices is sorted.
 absl::optional<std::vector<int64>> ReshapeLeavesDimensionsUnmodified(
-    const HloInstruction* hlo,
-    tensorflow::gtl::ArraySlice<int64> input_dim_indices) {
+    const HloInstruction* hlo, absl::Span<const int64> input_dim_indices) {
   CHECK_EQ(HloOpcode::kReshape, hlo->opcode());
   CHECK(std::is_sorted(input_dim_indices.begin(), input_dim_indices.end()));
 
@@ -1853,7 +1851,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
 
   auto arg = reduce->mutable_operand(0);
   auto init_value = reduce->mutable_operand(1);
-  tensorflow::gtl::ArraySlice<int64> dimensions(reduce->dimensions());
+  absl::Span<const int64> dimensions(reduce->dimensions());
   HloComputation* function = reduce->to_apply();
   if (ShapeUtil::IsZeroElementArray(arg->shape()) ||
       ShapeUtil::IsZeroElementArray(reduce->shape())) {

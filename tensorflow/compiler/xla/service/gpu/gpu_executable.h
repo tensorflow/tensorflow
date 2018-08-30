@@ -78,12 +78,12 @@ class GpuExecutable : public Executable {
   // match the compute capability passed to this object's constructor.
   StatusOr<ScopedShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
   StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
+      absl::Span<const ShapedBuffer* const> arguments) override;
 
  private:
   // If `block_host_until_done` is false, execution will not block the host

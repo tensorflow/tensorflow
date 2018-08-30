@@ -84,7 +84,7 @@ struct ProtobufToEmbed {
 // EmbeddedProtocolBuffers instance.
 StatusOr<EmbeddedProtocolBuffers> CreateEmbeddedProtocolBuffers(
     StringPiece target_triple,
-    gtl::ArraySlice<ProtobufToEmbed> protobufs_to_embed);
+    absl::Span<const ProtobufToEmbed> protobufs_to_embed);
 
 }  // namespace tfcompile
 }  // namespace tensorflow

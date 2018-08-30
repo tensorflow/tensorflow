@@ -46,9 +46,8 @@ class ScalarComputationsTest : public ClientLibraryTestBase {
   // A template for building and running a binary comparison test.
   template <typename NativeT>
   void TestCompare(NativeT lhs, NativeT rhs, bool expected,
-                   std::function<XlaOp(const XlaOp&, const XlaOp&,
-                                       tensorflow::gtl::ArraySlice<int64>)>
-                       op) {
+                   const std::function<XlaOp(const XlaOp&, const XlaOp&,
+                                             absl::Span<const int64>)>& op) {
     XlaBuilder builder(TestName());
     XlaOp lhs_op = ConstantR0<NativeT>(&builder, lhs);
     XlaOp rhs_op = ConstantR0<NativeT>(&builder, rhs);
@@ -58,9 +57,8 @@ class ScalarComputationsTest : public ClientLibraryTestBase {
 
   template <typename NativeT>
   void TestMinMax(NativeT lhs, NativeT rhs, NativeT expected,
-                  std::function<XlaOp(const XlaOp&, const XlaOp&,
-                                      tensorflow::gtl::ArraySlice<int64>)>
-                      op) {
+                  const std::function<XlaOp(const XlaOp&, const XlaOp&,
+                                            absl::Span<const int64>)>& op) {
     XlaBuilder builder(TestName());
     XlaOp lhs_op = ConstantR0<NativeT>(&builder, lhs);
     XlaOp rhs_op = ConstantR0<NativeT>(&builder, rhs);

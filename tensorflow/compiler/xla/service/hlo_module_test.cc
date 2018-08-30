@@ -44,7 +44,7 @@ class HloModuleTest : public HloTestBase {
 
   // Creates a computation which calls the given zero-parameter computations.
   std::unique_ptr<HloComputation> CreateCallComputation(
-      tensorflow::gtl::ArraySlice<HloComputation*> computations) {
+      absl::Span<HloComputation* const> computations) {
     auto builder = HloComputation::Builder("Call");
     for (auto computation : computations) {
       builder.AddInstruction(

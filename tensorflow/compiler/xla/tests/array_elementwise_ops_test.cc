@@ -41,7 +41,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using tensorflow::gtl::ArraySlice;
 
 class ArrayElementwiseOpTest : public ClientLibraryTestBase {
  public:
@@ -433,8 +432,9 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantZeroElementF32s) {
 class IntegerDivideOpTest : public ArrayElementwiseOpTest {
  protected:
   template <typename T>
-  void TestDivRem(ArraySlice<T> dividends, ArraySlice<T> divisors,
-                  ArraySlice<T> quotients, ArraySlice<T> remainders) {
+  void TestDivRem(absl::Span<const T> dividends, absl::Span<const T> divisors,
+                  absl::Span<const T> quotients,
+                  absl::Span<const T> remainders) {
     {
       XlaBuilder builder(TestName());
       XlaOp dividend;

@@ -139,8 +139,8 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts,
 // Constructs and returns the new shape with the given minor_to_major order in
 // its Layout.
 StatusOr<Shape> MakeShapeWithLayoutInternal(
-    PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
-    tensorflow::gtl::ArraySlice<int64> minor_to_major) {
+    PrimitiveType element_type, absl::Span<const int64> dimensions,
+    absl::Span<const int64> minor_to_major) {
   if (dimensions.size() != minor_to_major.size()) {
     return InvalidArgument("Dimensions size is %ld, but layout size is %ld.",
                            dimensions.size(), minor_to_major.size());
@@ -214,8 +214,8 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   return program_shape;
 }
 
-/* static */ Shape ShapeUtil::MakeShape(
-    PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions) {
+/* static */ Shape ShapeUtil::MakeShape(PrimitiveType element_type,
+                                        absl::Span<const int64> dimensions) {
   CHECK(IsArrayPrimitiveType(element_type));
   Shape result;
   PopulateShape(element_type, dimensions, &result);
@@ -223,21 +223,21 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithLayout(
-    PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
-    tensorflow::gtl::ArraySlice<int64> minor_to_major) {
+    PrimitiveType element_type, absl::Span<const int64> dimensions,
+    absl::Span<const int64> minor_to_major) {
   return MakeShapeWithLayoutInternal(element_type, dimensions, minor_to_major)
       .ValueOrDie();
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithDescendingLayout(
-    PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions) {
+    PrimitiveType element_type, absl::Span<const int64> dimensions) {
   std::vector<int64> layout(dimensions.size());
   std::iota(layout.rbegin(), layout.rend(), static_cast<int64>(0));
   return MakeShapeWithLayout(element_type, dimensions, layout);
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithSparseLayout(
-    PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
+    PrimitiveType element_type, absl::Span<const int64> dimensions,
     int64 max_sparse_elements) {
   CHECK(IsArrayPrimitiveType(element_type));
   Shape shape = ShapeUtil::MakeShape(element_type, dimensions);
@@ -256,9 +256,9 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return MakeShapeWithDescendingLayout(shape.element_type(), dims);
 }
 
-/* static */ void ShapeUtil::PopulateShape(
-    PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
-    Shape* shape) {
+/* static */ void ShapeUtil::PopulateShape(PrimitiveType element_type,
+                                           absl::Span<const int64> dimensions,
+                                           Shape* shape) {
   shape->Clear();
   shape->set_element_type(element_type);
   for (int64 dimension : dimensions) {
@@ -268,8 +268,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   TF_DCHECK_OK(ValidateShape(*shape));
 }
 
-/* static */ Shape ShapeUtil::MakeTupleShape(
-    tensorflow::gtl::ArraySlice<Shape> shapes) {
+/* static */ Shape ShapeUtil::MakeTupleShape(absl::Span<const Shape> shapes) {
   Shape result;
   result.set_element_type(TUPLE);
   result.mutable_tuple_shapes()->Reserve(shapes.size());
@@ -791,7 +790,7 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
     allocated_element_count = LayoutUtil::MaxSparseElements(shape.layout());
   } else {
     CHECK(LayoutUtil::IsDenseArray(shape)) << shape.ShortDebugString();
-    tensorflow::gtl::ArraySlice<int64> padded_dimensions =
+    absl::Span<const int64> padded_dimensions =
         LayoutUtil::PaddedDimensions(shape);
     if (!padded_dimensions.empty()) {
       CHECK_EQ(Rank(shape), padded_dimensions.size());
@@ -1115,7 +1114,7 @@ Status ForEachMutableSubshapeHelper(
 }
 
 /* static */ Shape ShapeUtil::PermuteDimensions(
-    tensorflow::gtl::ArraySlice<int64> permutation, const Shape& shape) {
+    absl::Span<const int64> permutation, const Shape& shape) {
   Shape new_shape = shape;
   new_shape.clear_dimensions();
   for (auto dim : Permute(permutation, shape.dimensions())) {
@@ -1259,7 +1258,7 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 
 /* static */ bool ShapeUtil::TransposeIsBitcast(
     const Shape& input_shape, const Shape& output_shape,
-    tensorflow::gtl::ArraySlice<int64> dimension_mapping) {
+    absl::Span<const int64> dimension_mapping) {
   CHECK(LayoutUtil::HasLayout(input_shape) &&
         LayoutUtil::HasLayout(output_shape));
 

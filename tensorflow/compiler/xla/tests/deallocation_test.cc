@@ -36,7 +36,7 @@ class DeallocationTest : public ClientLibraryTestBase {
   // Build and execute the given computation then verify the results can be
   // transferred from the device successfully.
   std::unique_ptr<GlobalData> ExecuteAndCheckTransfer(
-      XlaBuilder* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+      XlaBuilder* builder, absl::Span<GlobalData* const> arguments) {
     XlaComputation computation = builder->Build().ConsumeValueOrDie();
     auto global_data =
         client_->Execute(computation, arguments, &execution_options_)

@@ -70,8 +70,8 @@ class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
   ReduceWindowTest() : builder_(TestName()) { set_use_bfloat16(GetParam()); }
 
   void ReduceWindowAdd(const XlaOp& input,
-                       tensorflow::gtl::ArraySlice<int64> window_dimensions,
-                       tensorflow::gtl::ArraySlice<int64> window_strides,
+                       absl::Span<const int64> window_dimensions,
+                       absl::Span<const int64> window_strides,
                        Padding padding) {
     auto init = CreateConstantFromLiteral(*LiteralUtil::CreateR0<float>(0.0f),
                                           &builder_);
@@ -81,8 +81,8 @@ class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
   }
 
   void ReduceWindowMax(const XlaOp& input,
-                       tensorflow::gtl::ArraySlice<int64> window_dimensions,
-                       tensorflow::gtl::ArraySlice<int64> window_strides,
+                       absl::Span<const int64> window_dimensions,
+                       absl::Span<const int64> window_strides,
                        Padding padding) {
     auto init =
         CreateConstantFromLiteral(LiteralUtil::MinValue(F32), &builder_);
@@ -92,8 +92,8 @@ class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
   }
 
   void ReduceWindowMin(const XlaOp& input,
-                       tensorflow::gtl::ArraySlice<int64> window_dimensions,
-                       tensorflow::gtl::ArraySlice<int64> window_strides,
+                       absl::Span<const int64> window_dimensions,
+                       absl::Span<const int64> window_strides,
                        Padding padding) {
     auto init =
         CreateConstantFromLiteral(LiteralUtil::MaxValue(F32), &builder_);
@@ -1303,7 +1303,7 @@ TEST_P(R1ReduceWindowTest, DoIt) {
   std::vector<float> input_vector(param.base_bounds[0]);
   std::iota(std::begin(input_vector), std::end(input_vector), 0);
   std::unique_ptr<Literal> input_literal =
-      LiteralUtil::CreateR1(tensorflow::gtl::ArraySlice<float>(input_vector));
+      LiteralUtil::CreateR1(absl::Span<const float>(input_vector));
   XlaOp parameter;
   auto input_arg = CreateParameterAndTransferLiteral(0, *input_literal, "p0",
                                                      &b, &parameter);
@@ -1327,7 +1327,7 @@ TEST_P(R1ReduceWindowTest, DoIt) {
                          ? +[](float a, float b) { return a + b; }
                          : +[](float a, float b) { return std::max(a, b); };
   auto expected = ReferenceUtil::ReduceWindow1DGeneric(
-      /*operand=*/tensorflow::gtl::ArraySlice<float>(input_vector),
+      /*operand=*/absl::Span<const float>(input_vector),
       /*init=*/kInitValue,
       /*reduce_func=*/reduce_func,
       /*window=*/param.window_bounds,

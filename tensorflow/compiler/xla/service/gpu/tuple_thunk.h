@@ -34,8 +34,7 @@ namespace gpu {
 // issue (b/31336476).
 class TupleThunk : public Thunk {
  public:
-  TupleThunk(tensorflow::gtl::ArraySlice<BufferAllocation::Slice>
-                 tuple_element_buffers,
+  TupleThunk(absl::Span<const BufferAllocation::Slice> tuple_element_buffers,
              const BufferAllocation::Slice& dest_buffer,
              const HloInstruction* hlo_instruction)
       : Thunk(Kind::kTuple, hlo_instruction),

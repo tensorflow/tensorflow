@@ -62,7 +62,7 @@ class LiteralTestUtil {
   static void ExpectR0Equal(NativeT expected, const LiteralSlice& actual);
 
   template <typename NativeT>
-  static void ExpectR1Equal(tensorflow::gtl::ArraySlice<NativeT> expected,
+  static void ExpectR1Equal(absl::Span<const NativeT> expected,
                             const LiteralSlice& actual);
   template <typename NativeT>
   static void ExpectR2Equal(
@@ -102,7 +102,7 @@ class LiteralTestUtil {
                            const ErrorSpec& error);
 
   template <typename NativeT>
-  static void ExpectR1Near(tensorflow::gtl::ArraySlice<NativeT> expected,
+  static void ExpectR1Near(absl::Span<const NativeT> expected,
                            const LiteralSlice& actual, const ErrorSpec& error);
 
   template <typename NativeT>
@@ -160,7 +160,7 @@ template <typename NativeT>
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR1Equal(
-    tensorflow::gtl::ArraySlice<NativeT> expected, const LiteralSlice& actual) {
+    absl::Span<const NativeT> expected, const LiteralSlice& actual) {
   EXPECT_TRUE(Equal(*LiteralUtil::CreateR1<NativeT>(expected), actual));
 }
 
@@ -206,7 +206,7 @@ template <typename NativeT>
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR1Near(
-    tensorflow::gtl::ArraySlice<NativeT> expected, const LiteralSlice& actual,
+    absl::Span<const NativeT> expected, const LiteralSlice& actual,
     const ErrorSpec& error) {
   EXPECT_TRUE(Near(*LiteralUtil::CreateR1<NativeT>(expected), actual, error));
 }

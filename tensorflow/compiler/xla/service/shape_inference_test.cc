@@ -28,7 +28,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::tensorflow::gtl::ArraySlice;
 using ::testing::ContainsRegex;
 using ::testing::HasSubstr;
 
@@ -58,9 +57,9 @@ class ReduceShapeInferenceTest : public ShapeInferenceTest {
   // Helper that runs reduce shape inference with the input 'arg' and given
   // dimensions to reduce, and checks the inferred shape is as expected. The
   // element type here is hard-coded to F32.
-  void ExpectInferredReduceShape(
-      const Shape& expected_inferred_shape, const Shape& arg,
-      tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce) {
+  void ExpectInferredReduceShape(const Shape& expected_inferred_shape,
+                                 const Shape& arg,
+                                 absl::Span<const int64> dimensions_to_reduce) {
     ProgramShape to_apply = ShapeUtil::MakeProgramShape({f32_, f32_}, f32_);
     auto inferred_status = ShapeInference::InferReduceShape(
         {&arg, &f32_}, dimensions_to_reduce, to_apply);
@@ -252,7 +251,7 @@ TEST_F(ShapeInferenceTest, ClampBadShapes) {
 
 TEST_F(ShapeInferenceTest, Complex) {
   auto complex_shape = [&](const Shape& lhs, const Shape& rhs,
-                           const tensorflow::gtl::ArraySlice<int64>& bcast) {
+                           const absl::Span<const int64>& bcast) {
     return ShapeInference::InferBinaryOpShape(HloOpcode::kComplex, lhs, rhs,
                                               bcast);
   };

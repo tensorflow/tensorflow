@@ -80,7 +80,7 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
  public:
   StreamExecutorMemoryAllocator(
       const se::Platform* platform,
-      tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors);
+      absl::Span<se::StreamExecutor* const> stream_executors);
 
   StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
                                         bool retry_on_failure) override;

@@ -105,7 +105,7 @@ XlaOpRegistry::~XlaOpRegistry() = default;
 
 /* static */ void XlaOpRegistry::RegisterBackend(
     const string& compilation_device_name,
-    gtl::ArraySlice<DataType> supported_types, BackendOpFilter op_filter) {
+    absl::Span<const DataType> supported_types, BackendOpFilter op_filter) {
   XlaOpRegistry& registry = Instance();
   mutex_lock lock(registry.mutex_);
   auto result = registry.backends_.emplace(compilation_device_name, Backend());
@@ -382,7 +382,7 @@ XlaOpRegistrationBuilder XlaOpRegistrationBuilder::Name(StringPiece name) {
 }
 
 XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::Device(
-    gtl::ArraySlice<StringPiece> devices) {
+    absl::Span<const StringPiece> devices) {
   registration_->has_device_whitelist = true;
   for (StringPiece device : devices) {
     registration_->device_whitelist.emplace(device);
@@ -415,7 +415,7 @@ XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::TypeConstraint(
 }
 
 XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::TypeConstraint(
-    StringPiece attr_name, gtl::ArraySlice<DataType> allowed) {
+    StringPiece attr_name, absl::Span<const DataType> allowed) {
   std::set<DataType>& types =
       registration_->type_constraints[string(attr_name)];
   for (DataType t : allowed) {
@@ -452,7 +452,7 @@ XlaOpRegistrar::XlaOpRegistrar(
 }
 
 XlaBackendRegistrar::XlaBackendRegistrar(
-    StringPiece name, gtl::ArraySlice<DataType> types,
+    StringPiece name, absl::Span<const DataType> types,
     XlaOpRegistry::BackendOpFilter op_filter) {
   XlaOpRegistry& registry = XlaOpRegistry::Instance();
   registry.RegisterBackend(string(name), types, op_filter);

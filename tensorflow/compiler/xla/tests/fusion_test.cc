@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 
-using tensorflow::gtl::ArraySlice;
 
 namespace xla {
 namespace {
@@ -113,7 +112,7 @@ class FusionTest : public HloTestBase {
     hlos[0] = builder.AddInstruction(std::move(root_hlo));
     hlo_module->AddEntryComputation(builder.Build())
         ->CreateFusionInstruction(
-            ArraySlice<HloInstruction*>(hlos).subspan(0, Arity + 1),
+            absl::Span<HloInstruction* const>(hlos).subspan(0, Arity + 1),
             HloInstruction::FusionKind::kLoop);
 
     auto expected = LiteralUtil::CreateR2FromArray2D(answer_data);
@@ -127,12 +126,12 @@ class FusionTest : public HloTestBase {
 
  private:
   template <typename T>
-  T ComputeElementwiseAnswer(HloOpcode opcode, ArraySlice<float> xs);
+  T ComputeElementwiseAnswer(HloOpcode opcode, absl::Span<const float> xs);
 };
 
 template <>
 float FusionTest::ComputeElementwiseAnswer<float>(HloOpcode opcode,
-                                                  ArraySlice<float> xs) {
+                                                  absl::Span<const float> xs) {
   switch (opcode) {
     case HloOpcode::kAdd:
       return xs[0] + xs[1];
@@ -157,7 +156,7 @@ float FusionTest::ComputeElementwiseAnswer<float>(HloOpcode opcode,
 
 template <>
 bool FusionTest::ComputeElementwiseAnswer<bool>(HloOpcode opcode,
-                                                ArraySlice<float> xs) {
+                                                absl::Span<const float> xs) {
   switch (opcode) {
     case HloOpcode::kEq:
       return xs[0] == xs[1];

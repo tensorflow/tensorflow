@@ -42,8 +42,7 @@ se::Platform::Id GenericTransferManager::PlatformId() const {
 }
 
 Status GenericTransferManager::WriteSingleTupleIndexTable(
-    se::Stream* stream,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> elements,
+    se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
     const Shape& shape, se::DeviceMemoryBase* region) {
   TF_RET_CHECK(elements.size() == ShapeUtil::TupleElementCount(shape));
 
@@ -163,7 +162,7 @@ Status GenericTransferManager::TransferLiteralFromOutfeed(
 }
 
 Status GenericTransferManager::ResetDevices(
-    tensorflow::gtl::ArraySlice<se::StreamExecutor*>
+    absl::Span<se::StreamExecutor* const>
     /*executors*/) {
   return Unimplemented(
       "Device reset is not yet supported on this platform (b/30481585)");

@@ -65,9 +65,9 @@ namespace {
 //   return (v, tau, beta)
 // TODO(phawkins): LAPACK's xLARFG implementation has code for handling
 // overflows in the norm/beta calculations. Perhaps do the same here.
-xla::Status House(xla::XlaOp x, xla::XlaOp k, gtl::ArraySlice<int64> batch_dims,
-                  const int64 m, xla::XlaOp* v, xla::XlaOp* tau,
-                  xla::XlaOp* beta) {
+xla::Status House(xla::XlaOp x, xla::XlaOp k,
+                  absl::Span<const int64> batch_dims, const int64 m,
+                  xla::XlaOp* v, xla::XlaOp* tau, xla::XlaOp* beta) {
   xla::XlaBuilder* const builder = x.builder();
   TF_ASSIGN_OR_RETURN(xla::Shape x_shape, builder->GetShape(x));
   const xla::PrimitiveType type = x_shape.element_type();
@@ -173,7 +173,7 @@ xla::StatusOr<QRBlockResult> QRBlock(
   std::iota(batch_dim_indices.begin(), batch_dim_indices.end(), 0);
 
   auto qr_body_fn =
-      [&](xla::XlaOp j, gtl::ArraySlice<xla::XlaOp> values,
+      [&](xla::XlaOp j, absl::Span<const xla::XlaOp> values,
           xla::XlaBuilder* builder) -> xla::StatusOr<std::vector<xla::XlaOp>> {
     auto a = values[0];
     auto vs = values[1];
@@ -255,7 +255,7 @@ xla::StatusOr<QRBlockResult> QRBlock(
 // There is no need to return Y since at termination of the loop it is equal to
 // vs.
 xla::StatusOr<xla::XlaOp> ComputeWYRepresentation(
-    xla::PrimitiveType type, gtl::ArraySlice<int64> batch_dims, xla::XlaOp vs,
+    xla::PrimitiveType type, absl::Span<const int64> batch_dims, xla::XlaOp vs,
     xla::XlaOp taus, int64 m, int64 n,
     xla::PrecisionConfigProto::Precision precision) {
   std::vector<int64> batch_dim_indices(batch_dims.size());
@@ -263,7 +263,7 @@ xla::StatusOr<xla::XlaOp> ComputeWYRepresentation(
   int64 n_index = batch_dims.size() + 1;
 
   auto body_fn =
-      [&](xla::XlaOp j, gtl::ArraySlice<xla::XlaOp> values,
+      [&](xla::XlaOp j, absl::Span<const xla::XlaOp> values,
           xla::XlaBuilder* builder) -> xla::StatusOr<std::vector<xla::XlaOp>> {
     auto w = values[0];
     auto y = values[1];
