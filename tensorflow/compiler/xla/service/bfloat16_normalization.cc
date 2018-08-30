@@ -69,8 +69,7 @@ class BFloat16NormalizationVisitor : public DfsHloVisitorWithDefault {
   // Inserts conversion HLOs to replace the called computations' BF16
   // operands/outputs to F32.
   Status ConvertCalledComputations(
-      HloInstruction* hlo,
-      tensorflow::gtl::ArraySlice<HloComputation*> bf16_called_comps);
+      HloInstruction* hlo, absl::Span<HloComputation* const> bf16_called_comps);
 
   HloComputation* computation_;
   const BFloat16Support* bfloat16_support_;
@@ -114,8 +113,7 @@ Status BFloat16NormalizationVisitor::InsertConvertBeforeOperand(
 }
 
 Status BFloat16NormalizationVisitor::ConvertCalledComputations(
-    HloInstruction* hlo,
-    tensorflow::gtl::ArraySlice<HloComputation*> bf16_called_comps) {
+    HloInstruction* hlo, absl::Span<HloComputation* const> bf16_called_comps) {
   std::map<HloComputation*, HloComputation*> cloned_computations;
   for (auto& comp : bf16_called_comps) {
     auto cloned = comp->parent()->AddEmbeddedComputation(comp->Clone());

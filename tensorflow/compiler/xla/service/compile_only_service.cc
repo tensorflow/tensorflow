@@ -62,7 +62,7 @@ CompileOnlyService::CompileOnlyService(const ServiceOptions& options,
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyService::CompileAheadOfTime(
-    const tensorflow::gtl::ArraySlice<AotXlaComputationInstance> computations,
+    const absl::Span<const AotXlaComputationInstance> computations,
     const AotCompilationOptions& options,
     std::unique_ptr<AotCompilationMetadata>* metadata) {
   std::vector<std::unique_ptr<HloModule>> hlo_modules;

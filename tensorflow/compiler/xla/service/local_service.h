@@ -48,7 +48,7 @@ class LocalService : public Service {
   // compiler is responsible for freeing any memory it allocates this way.
   StatusOr<std::unique_ptr<Executable>> CompileExecutable(
       const XlaComputation& computation,
-      const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
+      const absl::Span<const Shape* const> argument_layouts,
       const ExecutableBuildOptions& build_options);
 
   // Returns the device ordinal that corresponds to the given replica number.

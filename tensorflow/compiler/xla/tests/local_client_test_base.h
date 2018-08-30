@@ -93,19 +93,19 @@ class LocalClientTestBase : public ::testing::Test {
   // options.
   StatusOr<ScopedShapedBuffer> ExecuteLocally(
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
+      absl::Span<const ShapedBuffer* const> arguments);
   StatusOr<ScopedShapedBuffer> ExecuteLocally(
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      absl::Span<const ShapedBuffer* const> arguments,
       const ExecutableBuildOptions& build_options,
       const ExecutableRunOptions& run_options);
 
   ScopedShapedBuffer ExecuteLocallyOrDie(
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
+      absl::Span<const ShapedBuffer* const> arguments);
   ScopedShapedBuffer ExecuteLocallyOrDie(
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      absl::Span<const ShapedBuffer* const> arguments,
       const ExecutableBuildOptions& build_options,
       const ExecutableRunOptions& run_options);
 

@@ -50,7 +50,7 @@ IrArray::Index GetUnreducedOutputIndex(
 // for 021 transpose.
 class TiledParameterInfo {
  public:
-  TiledParameterInfo(tensorflow::gtl::ArraySlice<llvm::Value*> param_buffers,
+  TiledParameterInfo(absl::Span<llvm::Value* const> param_buffers,
                      llvm::Value* y, llvm::Value* x)
       : param_buffers_(param_buffers), y_(y), x_(x) {}
 
@@ -67,7 +67,7 @@ class TiledParameterInfo {
  private:
   // Param_buffers_[i] stores the tile buffer for the ith parameter or nullptr
   // if the parameter is not tiled.
-  tensorflow::gtl::ArraySlice<llvm::Value*> param_buffers_;
+  absl::Span<llvm::Value* const> param_buffers_;
   // The y coordinate within a tile.
   llvm::Value* y_;
   // The x coordinate within a tile.

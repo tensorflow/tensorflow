@@ -27,10 +27,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-KernelThunk::KernelThunk(
-    tensorflow::gtl::ArraySlice<const BufferAllocation*> args,
-    const string& kernel_name, const HloInstruction* hlo_instruction,
-    int unroll_factor)
+KernelThunk::KernelThunk(absl::Span<const BufferAllocation* const> args,
+                         const string& kernel_name,
+                         const HloInstruction* hlo_instruction,
+                         int unroll_factor)
     : Thunk(Kind::kKernel, hlo_instruction),
       args_(args.begin(), args.end()),
       kernel_name_(kernel_name),

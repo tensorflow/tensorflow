@@ -47,7 +47,7 @@ limitations under the License.
 namespace stream_executor {
 namespace interpreter {
 
-using Args = tensorflow::gtl::ArraySlice<DeviceMemoryBase>;
+using Args = absl::Span<const DeviceMemoryBase>;
 
 class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
  public:

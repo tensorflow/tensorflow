@@ -65,8 +65,7 @@ void EmitTupleSelect(const IrArray& select, const IrArray& pred,
 
 // A tuple is an array of pointers, one for each operand. Each pointer points to
 // the output buffer of its corresponding operand.
-void EmitTuple(const IrArray& tuple,
-               tensorflow::gtl::ArraySlice<llvm::Value*> operands,
+void EmitTuple(const IrArray& tuple, absl::Span<llvm::Value* const> operands,
                llvm::IRBuilder<>* b, llvm::Module* module);
 
 // A tuple is an array of pointers, one for each operand. Each pointer points to

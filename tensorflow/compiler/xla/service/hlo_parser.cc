@@ -306,7 +306,7 @@ bool SplitToInt64s(absl::string_view s, char delim, std::vector<int64>* out) {
 // Creates replica groups from the provided nested array. groups[i] represents
 // the replica ids for group 'i'.
 std::vector<ReplicaGroup> CreateReplicaGroups(
-    tensorflow::gtl::ArraySlice<std::vector<int64>> groups) {
+    absl::Span<const std::vector<int64>> groups) {
   std::vector<ReplicaGroup> replica_groups;
   absl::c_transform(groups, std::back_inserter(replica_groups),
                     [](const std::vector<int64>& ids) {
@@ -997,10 +997,10 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       }
       instruction = builder->AddInstruction(HloInstruction::CreateReduce(
           shape, /*operands=*/
-          tensorflow::gtl::ArraySlice<HloInstruction*>(operands).subspan(
+          absl::Span<HloInstruction* const>(operands).subspan(
               0, operands.size() / 2),
           /*init_values=*/
-          tensorflow::gtl::ArraySlice<HloInstruction*>(operands).subspan(
+          absl::Span<HloInstruction* const>(operands).subspan(
               operands.size() / 2, operands.size()),
           *dimensions_to_reduce, *reduce_computation));
       break;

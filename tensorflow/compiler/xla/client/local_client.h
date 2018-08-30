@@ -40,7 +40,7 @@ class LocalExecutable {
   // Run the compiled computation with the given arguments and options and
   // return the result.
   StatusOr<ScopedShapedBuffer> Run(
-      const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      const absl::Span<const ShapedBuffer* const> arguments,
       ExecutableRunOptions run_options);
 
   // Return the options used to build the executable.
@@ -63,7 +63,7 @@ class LocalExecutable {
   // The given ExecutableRunOptions override any values from legacy_flags
   // (TF_XLA_FLAGS environment variable).
   Status ValidateExecutionOptions(
-      const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      const absl::Span<const ShapedBuffer* const> arguments,
       const ExecutableRunOptions& run_options, const Backend& backend);
 
   // Records the computation in a SessionModule proto with the arguments used to
@@ -73,13 +73,12 @@ class LocalExecutable {
   // (TF_XLA_FLAGS environment variable).
   StatusOr<ScopedShapedBuffer> ExecuteAndDump(
       const ServiceExecutableRunOptions* run_options,
-      const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
+      const absl::Span<const ShapedBuffer* const> arguments);
 
   // Records the arguments used to invoke the computation in a SessionModule
   // proto.
-  Status RecordArguments(
-      const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      HloSnapshot* hlo_snapshot);
+  Status RecordArguments(const absl::Span<const ShapedBuffer* const> arguments,
+                         HloSnapshot* hlo_snapshot);
 
   // Records the result of the computation in a SessionModule proto.
   Status RecordResult(const ShapedBuffer* result, HloSnapshot* hlo_snapshot);
@@ -120,7 +119,7 @@ class LocalClient : public Client {
   // (TF_XLA_FLAGS environment variable).
   StatusOr<std::unique_ptr<LocalExecutable>> Compile(
       const XlaComputation& computation,
-      const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
+      const absl::Span<const Shape* const> argument_layouts,
       const ExecutableBuildOptions& options);
 
   // Copy the literal data to the device with the given ordinal and return as a

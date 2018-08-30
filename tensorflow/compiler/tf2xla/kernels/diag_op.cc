@@ -29,7 +29,7 @@ namespace {
 
 // Create a diagonal / batch diagonal matrix with 'input' on the diagonal.
 xla::XlaOp CreateDiagonal(xla::XlaOp input, int64 last_dim_size,
-                          gtl::ArraySlice<int64> other_dims,
+                          absl::Span<const int64> other_dims,
                           xla::PrimitiveType element_type) {
   xla::XlaBuilder* builder = input.builder();
   // Create two matrices that have the following forms, and compare them:
@@ -177,7 +177,7 @@ class MatrixDiagOp : public XlaOpKernel {
 
     int last_dim = dims.size() - 1;
     int64 last_dim_size = input_shape.dim_size(last_dim);
-    tensorflow::gtl::ArraySlice<int64> other_dims(dims);
+    absl::Span<const int64> other_dims(dims);
     other_dims.remove_suffix(1);
 
     xla::XlaOp input = ctx->Input(0);

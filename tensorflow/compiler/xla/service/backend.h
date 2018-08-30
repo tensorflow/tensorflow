@@ -149,7 +149,7 @@ class Backend {
  private:
   struct EigenThreadPoolWrapper;
   Backend(se::Platform* platform, Compiler* compiler,
-          tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors,
+          absl::Span<se::StreamExecutor* const> stream_executors,
           TransferManager* transfer_manager,
           ComputationPlacer* computation_placer,
           int intra_op_parallelism_threads);

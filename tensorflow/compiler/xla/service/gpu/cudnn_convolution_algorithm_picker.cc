@@ -204,9 +204,8 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
   if (allocator_ != nullptr) {
     allocator = allocator_;
   } else {
-    se_allocator.emplace(
-        stream_exec_->platform(),
-        tensorflow::gtl::ArraySlice<se::StreamExecutor*>({stream_exec_}));
+    se_allocator.emplace(stream_exec_->platform(),
+                         absl::Span<se::StreamExecutor* const>({stream_exec_}));
     allocator = &*se_allocator;
   }
 

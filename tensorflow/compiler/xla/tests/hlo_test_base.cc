@@ -44,7 +44,6 @@ namespace {
 
 using absl::optional;
 using absl::string_view;
-using tensorflow::gtl::ArraySlice;
 
 constexpr char kInterpreter[] = "interpreter";
 
@@ -130,14 +129,12 @@ DebugOptions HloTestBase::GetDebugOptionsForTest() {
 }
 
 StatusOr<std::unique_ptr<Literal>> HloTestBase::Execute(
-    std::unique_ptr<HloModule> module,
-    tensorflow::gtl::ArraySlice<Literal*> arguments) {
+    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments) {
   return test_runner_.Execute(std::move(module), arguments);
 }
 
 std::unique_ptr<Literal> HloTestBase::ExecuteNoHloPasses(
-    std::unique_ptr<HloModule> module,
-    tensorflow::gtl::ArraySlice<Literal*> arguments) {
+    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments) {
   return test_runner_
       .Execute(std::move(module), arguments,
                /*run_hlo_passes=*/false)
@@ -145,8 +142,7 @@ std::unique_ptr<Literal> HloTestBase::ExecuteNoHloPasses(
 }
 
 std::unique_ptr<Literal> HloTestBase::ExecuteAndTransfer(
-    std::unique_ptr<HloModule> module,
-    tensorflow::gtl::ArraySlice<Literal*> arguments) {
+    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments) {
   return test_runner_.Execute(std::move(module), arguments).ValueOrDie();
 }
 
@@ -169,7 +165,8 @@ StatusOr<std::unique_ptr<HloModule>> HloTestBase::MakeReferenceModule(
 }
 
 StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
-    std::unique_ptr<HloModule> module, const ArraySlice<Literal*> arguments,
+    std::unique_ptr<HloModule> module,
+    const absl::Span<Literal* const> arguments,
     const optional<ErrorSpec>& error, bool run_hlo_passes,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   TF_RETURN_IF_ERROR(hlo_verifier_->Run(module.get()).status());
@@ -188,7 +185,8 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompare(
-    std::unique_ptr<HloModule> module, const ArraySlice<Literal*> arguments,
+    std::unique_ptr<HloModule> module,
+    const absl::Span<Literal* const> arguments,
     const optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto result =
@@ -201,7 +199,8 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
-    std::unique_ptr<HloModule> module, const ArraySlice<Literal*> arguments,
+    std::unique_ptr<HloModule> module,
+    const absl::Span<Literal* const> arguments,
     const optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto result =

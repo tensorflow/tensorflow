@@ -143,9 +143,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Emits a call in IR to the given nested computation with the given operands
   // and output. If no IR function has been previously emitted for the
   // computation, also emits such a function.
-  Status EmitCallToNestedComputation(
-      const HloComputation& nested_computation,
-      tensorflow::gtl::ArraySlice<llvm::Value*> operands, llvm::Value* output);
+  Status EmitCallToNestedComputation(const HloComputation& nested_computation,
+                                     absl::Span<llvm::Value* const> operands,
+                                     llvm::Value* output);
 
   // Emits an atomic operation that implements `nested_computation` in the
   // sequentially consistent memory model. `output_address` and `source_address`
@@ -199,7 +199,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   StatusOr<llvm::Value*> ComputeNestedElement(
       const HloComputation& computation,
-      tensorflow::gtl::ArraySlice<llvm::Value*> parameter_elements);
+      absl::Span<llvm::Value* const> parameter_elements);
 
   // Emits an atomic operation that implements `nested_computation` in the
   // sequentially consistent memory model. `output_address` and `source_address`

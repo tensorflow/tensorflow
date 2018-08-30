@@ -115,8 +115,7 @@ class ReduceTest : public ClientLibraryTestBase {
                                ErrorSpec(0.001));
   }
 
-  void RunR1ToR0PredTest(bool and_reduce,
-                         tensorflow::gtl::ArraySlice<int> input_data) {
+  void RunR1ToR0PredTest(bool and_reduce, absl::Span<const int> input_data) {
     const int element_count = input_data.size();
     XlaBuilder builder(TestName());
     const Shape input_shape = ShapeUtil::MakeShape(S32, {element_count});
@@ -261,8 +260,8 @@ class ReduceTest : public ClientLibraryTestBase {
   void ComputeAndCompareGeneric(
       typename std::enable_if<std::is_floating_point<NativeT>::value,
                               XlaBuilder>::type* builder,
-      tensorflow::gtl::ArraySlice<NativeT> expected,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+      absl::Span<const NativeT> expected,
+      absl::Span<GlobalData* const> arguments) {
     ComputeAndCompareR1<NativeT>(builder, expected, arguments,
                                  ErrorSpec(0.01, 1e-4));
   }
@@ -271,8 +270,8 @@ class ReduceTest : public ClientLibraryTestBase {
   void ComputeAndCompareGeneric(
       typename std::enable_if<std::is_integral<NativeT>::value,
                               XlaBuilder>::type* builder,
-      tensorflow::gtl::ArraySlice<NativeT> expected,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+      absl::Span<const NativeT> expected,
+      absl::Span<GlobalData* const> arguments) {
     ComputeAndCompareR1<NativeT>(builder, expected, arguments);
   }
 
@@ -304,7 +303,7 @@ class ReduceTest : public ClientLibraryTestBase {
         client_->TransferToServer(*input_literal).ConsumeValueOrDie();
 
     // NativeT can be bool, and std::vector<bool> does not convert to
-    // ArraySlice.
+    // Span.
     std::unique_ptr<NativeT[]> expected(new NativeT[cols]);
     for (int64 colno = 0; colno < cols; ++colno) {
       NativeT column_result = initial_value;
@@ -316,7 +315,7 @@ class ReduceTest : public ClientLibraryTestBase {
     }
 
     ComputeAndCompareGeneric<NativeT>(
-        &builder, tensorflow::gtl::ArraySlice<NativeT>(expected.get(), cols),
+        &builder, absl::Span<const NativeT>(expected.get(), cols),
         {input_global_data.get()});
   }
 

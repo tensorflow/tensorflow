@@ -130,7 +130,7 @@ class TransferManager {
 
   // Resets the devices associated with this transfer manager.
   virtual Status ResetDevices(
-      tensorflow::gtl::ArraySlice<se::StreamExecutor*> executor) = 0;
+      absl::Span<se::StreamExecutor* const> executor) = 0;
 
   // Given an allocated ShapedBuffer, constructs the tuple index table(s) in
   // each buffer of the given ShapedBuffer corresponding to tuple shapes. If the
@@ -211,8 +211,7 @@ class TransferManager {
   // to construct a tuple index table in the platform-specific tuple
   // representation.
   virtual Status WriteSingleTupleIndexTable(
-      se::Stream* stream,
-      tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> elements,
+      se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
       const Shape& shape, se::DeviceMemoryBase* region) = 0;
 
  private:

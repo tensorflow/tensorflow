@@ -84,7 +84,7 @@ struct ParsedProfileOutputLine {
 Status ParseOneProfileOutputLine(
     const string& line, bool expect_hlo,
     gtl::FlatMap<string, ParsedProfileOutputLine>* parsed_results,
-    tensorflow::gtl::ArraySlice<absl::string_view> opcodes_to_ignore = {}) {
+    absl::Span<const absl::string_view> opcodes_to_ignore = {}) {
   string separator = "[^:]*:: +";
   string match_percentage = R"(\d+\.\d*% +\d+Σ)";
   string match_cycles = R"((\d+) cycles +\( *()" + match_percentage + R"()\))";

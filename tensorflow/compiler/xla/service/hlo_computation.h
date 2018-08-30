@@ -237,7 +237,7 @@ class HloComputation {
   // removed if they have no uses after fusion (this is necessarily true for at
   // least the root).
   HloInstruction* CreateFusionInstruction(
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
+      absl::Span<HloInstruction* const> instructions_to_fuse,
       HloInstruction::FusionKind fusion_kind);
 
   // Create a deep copy of the given instruction and return the instruction
@@ -385,7 +385,7 @@ class HloComputation {
   //
   // Pre-condition: fusion_instruction's opcode is kFusion.
   void FuseInstructionsInto(
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
+      absl::Span<HloInstruction* const> instructions_to_fuse,
       HloInstruction* fusion_instruction);
 
   // Internal helper for recursive copying of an instruction. Creates and

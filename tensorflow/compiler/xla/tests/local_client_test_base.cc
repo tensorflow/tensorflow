@@ -156,7 +156,7 @@ ExecutableRunOptions LocalClientTestBase::DefaultExecutableRunOptions() const {
 
 ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
     const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
+    absl::Span<const ShapedBuffer* const> arguments) {
   return ExecuteLocally(computation, arguments, DefaultExecutableBuildOptions(),
                         DefaultExecutableRunOptions())
       .ConsumeValueOrDie();
@@ -164,7 +164,7 @@ ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
 
 ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
     const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    absl::Span<const ShapedBuffer* const> arguments,
     const ExecutableBuildOptions& build_options,
     const ExecutableRunOptions& run_options) {
   return ExecuteLocally(computation, arguments, build_options, run_options)
@@ -173,14 +173,14 @@ ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
 
 StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
     const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
+    absl::Span<const ShapedBuffer* const> arguments) {
   return ExecuteLocally(computation, arguments, DefaultExecutableBuildOptions(),
                         DefaultExecutableRunOptions());
 }
 
 StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
     const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    absl::Span<const ShapedBuffer* const> arguments,
     const ExecutableBuildOptions& build_options,
     const ExecutableRunOptions& run_options) {
   std::vector<const Shape*> argument_layouts(arguments.size());

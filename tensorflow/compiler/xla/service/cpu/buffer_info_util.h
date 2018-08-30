@@ -34,7 +34,7 @@ CreateBufferInfosFromBufferAssignment(
 // If this function returns V then entry parameter i has buffer allocation index
 // V[i].
 std::vector<int32> CreateArgIndexTableFromBufferInfos(
-    tensorflow::gtl::ArraySlice<::tensorflow::cpu_function_runtime::BufferInfo>
+    absl::Span<const ::tensorflow::cpu_function_runtime::BufferInfo>
         buffer_infos);
 }  // namespace cpu
 }  // namespace xla

@@ -202,7 +202,7 @@ class HloDataflowAnalysis {
   // the given instruction. If skip_top_level is true, then the top level of the
   // value set of 'instruction' is not modified.
   bool Phi(HloInstruction* instruction,
-           tensorflow::gtl::ArraySlice<const InstructionValueSet*> inputs);
+           absl::Span<const InstructionValueSet* const> inputs);
 
   // Updates the positions of the HloValues in the output of the given
   // instruction. This should be called after the instruction value set of

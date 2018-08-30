@@ -104,9 +104,9 @@ class HloRunner {
   // Transfers data between the host and device.
   StatusOr<ScopedShapedBuffer> TransferLiteralToDevice(const Literal& literal);
   StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
-      const tensorflow::gtl::ArraySlice<const Literal*> literals);
+      const absl::Span<const Literal* const> literals);
   StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
-      const tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> literals);
+      const absl::Span<const std::unique_ptr<Literal>> literals);
   StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDevice(
       const ShapedBuffer& buffer);
 
@@ -117,24 +117,24 @@ class HloRunner {
   // optimization.
   StatusOr<std::unique_ptr<Literal>> Execute(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<const Literal*> arguments,
+      const absl::Span<const Literal* const> arguments,
       bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
 
   StatusOr<std::unique_ptr<Literal>> Execute(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> arguments,
+      const absl::Span<const std::unique_ptr<Literal>> arguments,
       bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
 
   // As Execute(), but accepts and returns device buffers instead of host
   // buffers.
   StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      const absl::Span<const ShapedBuffer* const> arguments,
       bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
 
   StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<ScopedShapedBuffer> arguments,
+      const absl::Span<const ScopedShapedBuffer> arguments,
       bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
 
   // Executes a given HLO module into a set of replicas, and returns a map

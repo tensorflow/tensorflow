@@ -194,7 +194,7 @@ class SliceR1Test : public ClientLibraryTestBase,
  protected:
   template <typename NativeT>
   void Run(const R1Spec& spec) {
-    // This can't be an std::vector, since you can't grab an ArraySlice of a
+    // This can't be an std::vector, since you can't grab a Span of a
     // vector<bool>.
     absl::InlinedVector<NativeT, 1> input(spec.input_dim0);
     std::iota(input.begin(), input.end(), NativeT());

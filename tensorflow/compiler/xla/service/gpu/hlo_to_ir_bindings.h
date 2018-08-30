@@ -45,8 +45,8 @@ class HloToIrBindings {
         alias_analysis_(module, *buffer_assignment_, &b_->getContext()) {}
 
   void EmitBasePointersForHlos(
-      tensorflow::gtl::ArraySlice<const HloInstruction*> io_hlos,
-      tensorflow::gtl::ArraySlice<const HloInstruction*> non_io_hlos);
+      absl::Span<const HloInstruction* const> io_hlos,
+      absl::Span<const HloInstruction* const> non_io_hlos);
 
   // Rebinds the given HLO to the LLVM IR value that represent its address.
   void BindHloToIrValue(const HloInstruction& hlo, llvm::Value* ir_value,

@@ -34,7 +34,7 @@ limitations under the License.
 namespace xla {
 namespace tools {
 
-void RealMain(tensorflow::gtl::ArraySlice<char*> args, bool compile) {
+void RealMain(absl::Span<char* const> args, bool compile) {
   LocalClient* client = ClientLibrary::LocalClientOrDie();
   LocalService* local_service =
       ClientLibrary::GetXlaService(client->platform());
@@ -102,7 +102,7 @@ int main(int argc, char** argv) {
   tensorflow::port::InitMain(usage.c_str(), &argc, &argv);
   QCHECK(argc > 1) << "\nERROR: must specify at least one module\n" << usage;
 
-  tensorflow::gtl::ArraySlice<char*> args(argv, argc);
+  absl::Span<char* const> args(argv, argc);
   args.remove_prefix(1);  // Pop off the binary name, argv[0]
   xla::tools::RealMain(args, compile);
   return 0;

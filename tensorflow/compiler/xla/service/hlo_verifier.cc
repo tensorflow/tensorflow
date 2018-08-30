@@ -699,8 +699,7 @@ Status ShapeVerifier::CheckVariadicShape(const HloInstruction* instruction) {
                         instruction->opcode(), instruction->operands()));
 }
 
-string ComputationsToString(
-    tensorflow::gtl::ArraySlice<HloComputation*> computations) {
+string ComputationsToString(absl::Span<HloComputation* const> computations) {
   return absl::StrJoin(computations, ",",
                        [](string* s, const HloComputation* computation) {
                          s->append(computation->name());

@@ -119,7 +119,7 @@ xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
 }
 
 /* static */ Status XlaHelpers::ReshapeLiteral(
-    const xla::Literal& input, gtl::ArraySlice<int64> dimensions,
+    const xla::Literal& input, absl::Span<const int64> dimensions,
     xla::Literal* output) {
   if (xla::ShapeUtil::IsTuple(input.shape())) {
     return errors::InvalidArgument("ReshapeLiteral does not support tuples.");

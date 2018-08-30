@@ -54,7 +54,7 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
  public:
   using Generator = llvm_ir::ElementGenerator;
 
-  FusedIrEmitter(tensorflow::gtl::ArraySlice<llvm_ir::IrArray> parameter_arrays,
+  FusedIrEmitter(absl::Span<const llvm_ir::IrArray> parameter_arrays,
                  ElementalIrEmitter* elemental_emitter)
       : parameter_arrays_(parameter_arrays),
         tiled_parameter_info_(nullptr),
@@ -94,7 +94,7 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
 
  private:
   // Arrays of parameters of fusion instruction
-  tensorflow::gtl::ArraySlice<llvm_ir::IrArray> parameter_arrays_;
+  absl::Span<const llvm_ir::IrArray> parameter_arrays_;
   const llvm_ir::TiledParameterInfo* tiled_parameter_info_;
 
   ElementalIrEmitter* elemental_emitter_;

@@ -118,7 +118,7 @@ class BufferAssignmentTest : public HloVerifiedTestBase {
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithInstructionSequence(
       HloModule* module,
-      tensorflow::gtl::ArraySlice<const HloInstruction*> instruction_sequence,
+      absl::Span<const HloInstruction* const> instruction_sequence,
       int64 alignment = 1) {
     SequentialHloOrdering::HloModuleSequence module_sequence;
     module_sequence[module->entry_computation()] =

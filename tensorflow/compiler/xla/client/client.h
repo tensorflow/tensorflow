@@ -53,7 +53,7 @@ class Client {
   //   will be filled with profile data from the execution.
   StatusOr<std::unique_ptr<GlobalData>> Execute(
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      absl::Span<GlobalData* const> arguments,
       const ExecutionOptions* execution_options = nullptr,
       ExecutionProfile* execution_profile = nullptr);
 
@@ -82,7 +82,7 @@ class Client {
   // from each computation.
   //
   StatusOr<std::vector<std::unique_ptr<GlobalData>>> ExecuteParallel(
-      tensorflow::gtl::ArraySlice<XlaComputationInstance> computations);
+      absl::Span<const XlaComputationInstance> computations);
 
   // Requests device_count device handles available on the target. The returned
   // device handles are used to specify the devices to execute the computations
@@ -134,7 +134,7 @@ class Client {
   // Execute() and Transfer().
   StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      absl::Span<GlobalData* const> arguments,
       const ExecutionOptions* execution_options = nullptr,
       ExecutionProfile* execution_profile = nullptr);
 

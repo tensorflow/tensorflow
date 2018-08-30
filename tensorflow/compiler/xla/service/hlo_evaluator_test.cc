@@ -60,7 +60,7 @@ class HloEvaluatorTest : public ::testing::WithParamInterface<bool>,
   }
 
   std::unique_ptr<Literal> Evaluate(
-      tensorflow::gtl::ArraySlice<const Literal*> arg_literals = {}) {
+      absl::Span<const Literal* const> arg_literals = {}) {
     if (use_bfloat16_) {
       // In BF16 mode, we convert all F32 type to BF16 and evaluate the module.
       auto type_converter = HloElementTypeConverter(F32, BF16);
@@ -344,7 +344,7 @@ TEST_P(HloEvaluatorTest, DoesReshape) {
 
   using NativeT = typename primitive_util::PrimitiveTypeToNative<F32>::type;
   result->EachCell<NativeT>(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, NativeT value) {
+      [&](absl::Span<const int64> indices, NativeT value) {
         std::vector<int64> rindexes = Permute(permutation, indices);
         EXPECT_NEAR(value, literal_clone->Get<NativeT>(rindexes), 0.031250);
       });

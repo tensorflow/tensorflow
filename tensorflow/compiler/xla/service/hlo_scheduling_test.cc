@@ -269,7 +269,7 @@ TEST_F(HloSchedulingTest, TuplesAreAccountedCorrectly) {
   auto abs_abs1 = builder.AddInstruction(
       HloInstruction::CreateUnary(r1f32, HloOpcode::kAbs, abs_const));
   auto tuple = builder.AddInstruction(HloInstruction::CreateTuple(
-      tensorflow::gtl::ArraySlice<HloInstruction*>({abs_abs1})));
+      absl::Span<HloInstruction* const>({abs_abs1})));
   auto tuple_elm = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(r1f32, tuple, 0));
 

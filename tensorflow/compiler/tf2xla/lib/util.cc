@@ -113,8 +113,8 @@ xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
   return xla::ConstantLiteral(builder, literal);
 }
 
-xla::XlaOp SliceInMinorDims(xla::XlaOp x, gtl::ArraySlice<int64> start,
-                            gtl::ArraySlice<int64> end) {
+xla::XlaOp SliceInMinorDims(xla::XlaOp x, absl::Span<const int64> start,
+                            absl::Span<const int64> end) {
   xla::XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
     TF_RET_CHECK(start.size() == end.size());
@@ -144,8 +144,8 @@ xla::XlaOp SliceInMinorDims(xla::XlaOp x, gtl::ArraySlice<int64> start,
   });
 }
 
-std::vector<int64> ConcatVectors(gtl::ArraySlice<int64> xs,
-                                 gtl::ArraySlice<int64> ys) {
+std::vector<int64> ConcatVectors(absl::Span<const int64> xs,
+                                 absl::Span<const int64> ys) {
   std::vector<int64> output(xs.size() + ys.size());
   std::copy(xs.begin(), xs.end(), output.begin());
   std::copy(ys.begin(), ys.end(), output.begin() + xs.size());
@@ -153,8 +153,8 @@ std::vector<int64> ConcatVectors(gtl::ArraySlice<int64> xs,
 }
 
 xla::XlaOp DynamicSliceInMinorDims(xla::XlaOp x,
-                                   gtl::ArraySlice<xla::XlaOp> starts,
-                                   gtl::ArraySlice<int64> sizes) {
+                                   absl::Span<const xla::XlaOp> starts,
+                                   absl::Span<const int64> sizes) {
   xla::XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
     TF_ASSIGN_OR_RETURN(xla::Shape shape, builder->GetShape(x));
@@ -173,7 +173,7 @@ xla::XlaOp DynamicSliceInMinorDims(xla::XlaOp x,
 }
 
 xla::XlaOp UpdateSlice(xla::XlaOp x, xla::XlaOp update,
-                       gtl::ArraySlice<int64> start) {
+                       absl::Span<const int64> start) {
   xla::XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
     // TODO(phawkins): make int64 work on all backends, remove the int32 cast.
@@ -191,7 +191,7 @@ xla::XlaOp UpdateSlice(xla::XlaOp x, xla::XlaOp update,
 }
 
 xla::XlaOp UpdateSliceInMinorDims(xla::XlaOp x, xla::XlaOp update,
-                                  gtl::ArraySlice<int64> start) {
+                                  absl::Span<const int64> start) {
   xla::XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
     TF_ASSIGN_OR_RETURN(xla::Shape shape, builder->GetShape(x));
@@ -206,13 +206,13 @@ xla::XlaOp UpdateSliceInMinorDims(xla::XlaOp x, xla::XlaOp update,
 }
 
 xla::XlaOp DynamicUpdateSliceInMinorDims(xla::XlaOp x, xla::XlaOp update,
-                                         gtl::ArraySlice<xla::XlaOp> starts) {
+                                         absl::Span<const xla::XlaOp> starts) {
   auto padded_starts = PrependZerosInMajorDims(x, starts);
   return xla::DynamicUpdateSlice(x, update, padded_starts);
 }
 
 xla::XlaOp PrependZerosInMajorDims(xla::XlaOp x,
-                                   gtl::ArraySlice<xla::XlaOp> starts) {
+                                   absl::Span<const xla::XlaOp> starts) {
   xla::XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
     TF_ASSIGN_OR_RETURN(xla::Shape shape, builder->GetShape(x));

@@ -192,7 +192,7 @@ class HloModule {
   // order (root of outlined instructions last). TODO(jingyue): takes a set of
   // instructions and topologically sorts them.
   HloInstruction* OutlineExpressionFromComputation(
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_outline,
+      absl::Span<HloInstruction* const> instructions_to_outline,
       const string& outlined_computation_name, HloComputation* computation);
 
   // Returns a randomly generated uint64.

@@ -52,7 +52,7 @@ class CompileOnlyClient : public Client {
   // code. |metadata|, if provided, is populated during compilation.
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(
-      const tensorflow::gtl::ArraySlice<AotXlaComputationInstance> computations,
+      const absl::Span<const AotXlaComputationInstance> computations,
       const AotCompilationOptions& options,
       std::unique_ptr<AotCompilationMetadata>* metadata = nullptr);
 

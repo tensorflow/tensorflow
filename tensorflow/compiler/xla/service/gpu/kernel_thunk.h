@@ -47,7 +47,7 @@ class KernelThunk : public Thunk {
   // Constructs a thunk for the given kernel.
   //
   // `hlo_instruction` is as in Thunk. Other arguments are as the class members.
-  KernelThunk(tensorflow::gtl::ArraySlice<const BufferAllocation*> args,
+  KernelThunk(absl::Span<const BufferAllocation* const> args,
               const string& kernel_name, const HloInstruction* hlo_instruction,
               int unroll_factor);
   KernelThunk(const KernelThunk&) = delete;

@@ -183,8 +183,8 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteralInternal(
       break;
     case PRED: {
       std::uniform_int_distribution<int> generator(0, 1);
-      TF_CHECK_OK(literal->Populate<bool>(
-          [&](tensorflow::gtl::ArraySlice<int64> /*indices*/) {
+      TF_CHECK_OK(
+          literal->Populate<bool>([&](absl::Span<const int64> /*indices*/) {
             return generator(*engine);
           }));
       break;
@@ -236,8 +236,8 @@ bool NeedsInitValue(const HloUse& use) {
 
 // Generate random values that are constrained to the input_shape minus the
 // output_shape so as not to produce wrapping slices, for instance.
-std::unique_ptr<Literal> MakeRandomIndex(
-    tensorflow::gtl::ArraySlice<int64> index_space, std::minstd_rand0* engine) {
+std::unique_ptr<Literal> MakeRandomIndex(absl::Span<const int64> index_space,
+                                         std::minstd_rand0* engine) {
   std::vector<int32> start_indices(index_space.size());
   if (engine != nullptr) {
     for (int i = 0; i < index_space.size(); ++i) {
@@ -294,7 +294,7 @@ std::vector<HloInstruction*> FindConstrainedUses(
 // generate a constrained literal (either bounded in the case of indices, or
 // zero in the case of init_values for reductions).
 StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
-    const tensorflow::gtl::ArraySlice<HloInstruction*> constrained_uses,
+    const absl::Span<HloInstruction* const> constrained_uses,
     const HloInstruction& param, std::minstd_rand0* engine) {
   std::vector<int64> index_space;
   bool no_duplicates = false;

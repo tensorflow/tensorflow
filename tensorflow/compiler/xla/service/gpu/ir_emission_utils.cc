@@ -216,7 +216,7 @@ bool IsReductionToVector(const HloInstruction& reduce) {
 // "i32 vprintf(i8* fmt, arguments_type* arguments)" in the driver; see
 // http://docs.nvidia.com/cuda/ptx-writers-guide-to-interoperability/index.html#system-calls
 llvm::Value* EmitPrintf(absl::string_view fmt,
-                        tensorflow::gtl::ArraySlice<llvm::Value*> arguments,
+                        absl::Span<llvm::Value* const> arguments,
                         llvm::IRBuilder<>* builder) {
   std::vector<llvm::Type*> argument_types;
   for (auto argument : arguments) {

@@ -324,7 +324,7 @@ class TileVariable {
                std::vector<llvm::Value*> initial_value);
 
   std::vector<llvm::Value*> Get() const;
-  void Set(tensorflow::gtl::ArraySlice<llvm::Value*> value);
+  void Set(absl::Span<llvm::Value* const> value);
 
  private:
   std::vector<VectorVariable> storage_;

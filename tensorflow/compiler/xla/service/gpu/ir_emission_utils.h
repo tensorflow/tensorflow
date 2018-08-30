@@ -127,7 +127,7 @@ bool IsReductionToVector(const HloInstruction& reduce);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,
-                        tensorflow::gtl::ArraySlice<llvm::Value*> arguments,
+                        absl::Span<llvm::Value* const> arguments,
                         llvm::IRBuilder<>* builder);
 
 // Emits code to shuffle data between threads of a warp. This has the same

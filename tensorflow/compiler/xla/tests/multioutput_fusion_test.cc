@@ -47,7 +47,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::tensorflow::gtl::ArraySlice;
 
 class MultiOutputFusionTest : public HloTestBase {
  protected:

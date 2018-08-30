@@ -34,8 +34,7 @@ XlaOp Reciprocal(XlaOp operand);
 
 // Evaluates a polynomial given coefficients and `x`.
 // N.B. Coefficients should be supplied in decreasing order.
-XlaOp EvaluatePolynomial(XlaOp x,
-                         tensorflow::gtl::ArraySlice<float> coefficients);
+XlaOp EvaluatePolynomial(XlaOp x, absl::Span<const float> coefficients);
 
 // Computes an approximation of the error function complement (1 - erf(x)).
 XlaOp Erfc(XlaOp x);

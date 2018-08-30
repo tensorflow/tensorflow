@@ -76,7 +76,7 @@ string Reindent(absl::string_view original,
   });
 }
 
-bool IsPermutation(tensorflow::gtl::ArraySlice<int64> permutation, int64 rank) {
+bool IsPermutation(absl::Span<const int64> permutation, int64 rank) {
   if (rank != permutation.size()) {
     return false;
   }
@@ -90,7 +90,7 @@ bool IsPermutation(tensorflow::gtl::ArraySlice<int64> permutation, int64 rank) {
 }
 
 std::vector<int64> InversePermutation(
-    tensorflow::gtl::ArraySlice<int64> input_permutation) {
+    absl::Span<const int64> input_permutation) {
   DCHECK(IsPermutation(input_permutation, input_permutation.size()));
   std::vector<int64> output_permutation(input_permutation.size(), -1);
   for (size_t i = 0; i < input_permutation.size(); ++i) {
@@ -99,8 +99,8 @@ std::vector<int64> InversePermutation(
   return output_permutation;
 }
 
-std::vector<int64> ComposePermutations(tensorflow::gtl::ArraySlice<int64> p1,
-                                       tensorflow::gtl::ArraySlice<int64> p2) {
+std::vector<int64> ComposePermutations(absl::Span<const int64> p1,
+                                       absl::Span<const int64> p2) {
   CHECK_EQ(p1.size(), p2.size());
   std::vector<int64> output;
   for (size_t i = 0; i < p1.size(); ++i) {
@@ -109,7 +109,7 @@ std::vector<int64> ComposePermutations(tensorflow::gtl::ArraySlice<int64> p1,
   return output;
 }
 
-bool IsIdentityPermutation(tensorflow::gtl::ArraySlice<int64> permutation) {
+bool IsIdentityPermutation(absl::Span<const int64> permutation) {
   for (int64 i = 0; i < permutation.size(); ++i) {
     if (permutation[i] != i) {
       return false;
@@ -130,7 +130,7 @@ PaddingConfig MakeNoPaddingConfig(int64 rank) {
 }
 
 PaddingConfig MakeEdgePaddingConfig(
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
+    absl::Span<const std::pair<int64, int64>> padding) {
   PaddingConfig padding_config;
   for (const std::pair<int64, int64>& dim : padding) {
     auto dimension = padding_config.add_dimensions();
@@ -207,14 +207,13 @@ void LogLines(int sev, absl::string_view text, const char* fname, int lineno) {
   }
 }
 
-int64 Product(tensorflow::gtl::ArraySlice<int64> xs) {
+int64 Product(absl::Span<const int64> xs) {
   return std::accumulate(xs.begin(), xs.end(), static_cast<int64>(1),
                          std::multiplies<int64>());
 }
 
-std::vector<std::pair<int64, int64>> CommonFactors(
-    tensorflow::gtl::ArraySlice<int64> a,
-    tensorflow::gtl::ArraySlice<int64> b) {
+std::vector<std::pair<int64, int64>> CommonFactors(absl::Span<const int64> a,
+                                                   absl::Span<const int64> b) {
   CHECK_EQ(Product(a), Product(b));
   if (0 == Product(a)) {
     return {std::make_pair(0, 0), std::make_pair(a.size(), b.size())};

@@ -37,8 +37,8 @@ class FloorCeilTest : public ClientLibraryTestBase {
   };
 
   // Runs a computation and comparison on expected vs f(input)
-  void TestR1F32(tensorflow::gtl::ArraySlice<float> input,
-                 tensorflow::gtl::ArraySlice<float> expected, Function f) {
+  void TestR1F32(absl::Span<const float> input,
+                 absl::Span<const float> expected, Function f) {
     LOG(INFO) << "input: {" << absl::StrJoin(expected, ", ") << "}";
     XlaBuilder builder(TestName());
     auto c = ConstantR1<float>(&builder, input);
