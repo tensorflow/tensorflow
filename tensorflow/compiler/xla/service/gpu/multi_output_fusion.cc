@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -109,35 +110,6 @@ bool IsInputFusibleReduction(HloInstruction* instr) {
     return IsReductionToVector(*instr);
   }
 }
-
-// The code emitted for reduction suffers from poor data locality if the layouts
-// of input parameters differ. In such situtations it is beneficial not to fuse.
-// We consider input params with maximum rank only. Params with smaller ranks
-// will be broadcasted and have not been observed to cause data locality issues.
-// TODO(b/111977086): Improve reduce emitters to remove this limitation.
-bool ReduceFriendlyInputLayouts(HloInstruction* instr) {
-  std::vector<HloInstruction*> params;
-  if (instr->opcode() == HloOpcode::kFusion) {
-    params = instr->fused_parameters();
-  } else {
-    for (HloInstruction* operand : instr->operands()) {
-      params.push_back(operand);
-    }
-  }
-  int64 max_rank = 0;
-  const Layout* max_rank_layout;
-  for (HloInstruction* param : params) {
-    if (ShapeUtil::Rank(param->shape()) > max_rank) {
-      max_rank = ShapeUtil::Rank(param->shape());
-      max_rank_layout = &param->shape().layout();
-    }
-  }
-  return absl::c_all_of(params, [&](HloInstruction* param) {
-    return (ShapeUtil::Rank(param->shape()) < max_rank) ||
-           (LayoutUtil::Equal(param->shape().layout(), *max_rank_layout));
-  });
-}
-
 }  // namespace
 
 bool GpuMultiOutputFusion::IsFusible(HloInstruction* instr) {
@@ -244,7 +216,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
         VLOG(3) << producer->name() << " has an incompatible shape.";
         continue;
       }
-      if (!ReduceFriendlyInputLayouts(producer)) {
+      if (!LayoutsAreReduceInputFusionFriendly(*producer, *consumer)) {
         VLOG(3) << producer->name() << " has inputs with mixed layouts.";
         continue;
       }
