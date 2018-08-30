@@ -1784,6 +1784,7 @@ bool OpDoesntRequireOutput(const string& op_name) {
           "ReadVariableOp",
           "VarHandleOp",
           "Shape",
+          "StridedSlice",
       });
 
   return ops_that_dont_require_outputs->find(op_name) !=
