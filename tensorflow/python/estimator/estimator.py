@@ -1332,10 +1332,12 @@ class Estimator(object):
         scaffold = _combine_distributed_scaffold(
             grouped_estimator_spec.scaffold, self._train_distribution)
 
+        # TODO(yuefengz): add a test for unwrapping per_device_hooks.
         def get_hooks_from_the_first_device(per_device_hooks):
-          hooks_list = self._train_distribution.unwrap(per_device_hooks)
-          assert hooks_list
-          return hooks_list[0]
+          return [
+              self._distribution.unwrap(per_device_hook)[0]
+              for per_device_hook in per_device_hooks
+          ]
 
         training_hooks = get_hooks_from_the_first_device(
             grouped_estimator_spec.training_hooks)
