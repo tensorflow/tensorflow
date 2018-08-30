@@ -37,13 +37,14 @@ from tensorflow.python.platform import test
 class LuOpTest(test.TestCase):
 
   def _verifyLU(self, x):
-    # TODO(hzhuang): 
-    # - add test cases for the singular matrix.
+     # TODO(hzhuang): add test np.complex64, np.complex128
     for np_type in [np.float32, np.float64]: #, np.complex64, np.complex128]:
-      if np_type == np.float32 or np_type == np.complex64:
-        tol = 1e-2
+      if np_type == np.float32 or np_type == np.float64:
+        rel_tol = 1e-3
+        abs_tol = 1e-7
         a = x.astype(np_type) 
       l, u, p, info = math_ops.lu(a)
+      # - add test cases for the singular matrix.
       # "info" is the index for the first zero index or illegal (small) 
       # value, which might causes potential singular matrix problem for the 
       # downstream matrix solve.
@@ -54,14 +55,17 @@ class LuOpTest(test.TestCase):
       plu = array_ops.gather(pl, p) 
       with self.test_session() as sess:
         out = plu.eval()
-      self.assertAllClose(a, out, atol=tol, rtol=tol)
+      self.assertAllClose(a, out, atol=abs_tol, rtol=rel_tol)
 
   def _generateMatrix(self, m, n):
-    matrix = (np.random.normal(10, 1000, m * n).reshape([m, n]))
+    # Generate random positive-definite matrix
+     # TODO(hzhuang): use other matrix beyond PD matrix as factorization target 
+    matrix = np.random.rand(m, n)
+    matrix = np.dot(matrix.T, matrix)
     return matrix
 
   def testLU(self):
-    for n in 1, 4, 9, 16, 64, 128, 256:
+    for n in 1, 4, 9, 16, 64, 128, 256, 512, 1024, 2048:
       matrix = self._generateMatrix(n, n)
       self._verifyLU(matrix)
 

@@ -43,14 +43,13 @@ class LuOp : public OpKernel {
   explicit LuOp(OpKernelConstruction* context) : OpKernel(context) {}
   
   void Compute(OpKernelContext* context) override {
-    // TODO(hzhuang): Check the instability inside LU_op. 
-    // return an integer containing the index of the first zero diagonal in U,
-    // like INFO argument in LAPACK function xGETRF.    
+    // TODO (hzhuang): support complex numbers
+    // TODO (hzhuang): support non-square matrix factorization
     const Tensor & in = context->input(0);  
-    TensorShape mtx_shape = in.shape();         
-    // hzhuang: assume square at this moment        
+    TensorShape mtx_shape = in.shape();   
     auto matrix = in.matrix<T>();
     
+    // hzhuang: assume square at this moment        
     auto & input = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, 
                           Eigen::RowMajor>::Map(
                             matrix.data(), matrix.dimension(0), matrix.dimension(1));
@@ -122,6 +121,10 @@ class LuOp : public OpKernel {
  
 REGISTER_KERNEL(float);
 REGISTER_KERNEL(double);
+
+//REGISTER_KERNEL(complex64);
+//REGISTER_KERNEL(complex128);
+
 
 #undef REGISTER_KERNEL
 }  // namespace tensorflow
