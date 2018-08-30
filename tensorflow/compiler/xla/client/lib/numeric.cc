@@ -23,53 +23,6 @@ limitations under the License.
 
 namespace xla {
 
-namespace {
-
-template <typename T>
-XlaOp MakeIota(XlaBuilder* builder, int64 size) {
-  std::vector<T> values(size);
-  for (int64 i = 0; i < size; ++i) {
-    values[i] = static_cast<T>(i);
-  }
-  return ConstantR1<T>(builder, values);
-}
-
-}  // namespace
-
-XlaOp Iota(XlaBuilder* builder, PrimitiveType type, int64 size) {
-  switch (type) {
-    case S8:
-      return MakeIota<int8>(builder, size);
-    case S16:
-      return MakeIota<int16>(builder, size);
-    case S32:
-      return MakeIota<int32>(builder, size);
-    case S64:
-      return MakeIota<int64>(builder, size);
-    case U8:
-      return MakeIota<uint8>(builder, size);
-    case U16:
-      return MakeIota<uint16>(builder, size);
-    case U32:
-      return MakeIota<uint32>(builder, size);
-    case U64:
-      return MakeIota<uint64>(builder, size);
-    case BF16:
-      return MakeIota<bfloat16>(builder, size);
-    case F16:
-      return MakeIota<half>(builder, size);
-    case F32:
-      return MakeIota<float>(builder, size);
-    case F64:
-      return MakeIota<double>(builder, size);
-    case C64:
-      return MakeIota<complex64>(builder, size);
-    default:
-      return builder->ReportError(InvalidArgument(
-          "Unimplemented type for Iota: %s.", PrimitiveType_Name(type)));
-  }
-}
-
 XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64 m,
                      int64 n) {
   auto a = Iota(builder, type, m);

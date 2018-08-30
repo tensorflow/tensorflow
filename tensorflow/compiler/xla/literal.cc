@@ -1687,6 +1687,61 @@ bool LiteralBase::IsAllFirst() const {
       });
 }
 
+bool LiteralBase::IsR1Iota() const {
+  if (!ShapeUtil::IsArray(shape())) {
+    return false;
+  }
+
+  if (ShapeUtil::Rank(shape()) != 1) {
+    return false;
+  }
+
+  auto is_iota_at_idx = [&](const int64 idx) {
+    switch (shape().element_type()) {
+      case U8:
+        return Get<uint8>({idx}) == idx;
+      case U16:
+        return Get<uint16>({idx}) == idx;
+      case U32:
+        return Get<uint32>({idx}) == idx;
+      case U64:
+        return Get<uint64>({idx}) == idx;
+      case S8:
+        return Get<int8>({idx}) == idx;
+      case S16:
+        return Get<int16>({idx}) == idx;
+      case S32:
+        return Get<int32>({idx}) == idx;
+      case S64:
+        return Get<int64>({idx}) == idx;
+      case F32:
+        return Get<float>({idx}) == idx;
+      case F64:
+        return Get<double>({idx}) == idx;
+      case F16:
+        return Get<half>({idx}) == static_cast<half>(idx);
+      case BF16:
+        return Get<bfloat16>({idx}) == static_cast<bfloat16>(idx);
+      case C64:
+        return Get<complex64>({idx}) == complex64(idx, 0.0f);
+      case PRED:
+        return Get<bool>({idx}) == idx;
+      // token, opaque, tuple, etc. are all not iota.
+      default:
+        return false;
+    }
+  };
+
+  const int64 elements = ShapeUtil::ElementsIn(shape());
+  for (int64 idx = 0; idx < elements; ++idx) {
+    if (!is_iota_at_idx(idx)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool LiteralBase::IsZero(tensorflow::gtl::ArraySlice<int64> indices) const {
   CHECK(ShapeUtil::IsArray(shape()));
   switch (shape().element_type()) {

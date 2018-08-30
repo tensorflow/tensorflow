@@ -195,6 +195,9 @@ class LiteralBase {
   // Literal consists entirely of the first element of the literal.
   bool IsAllFirst() const;
 
+  // Literal consists entirely of an iota.
+  bool IsR1Iota() const;
+
   // Returns whether this literal is zero at the specified index. This literal
   // must be an array with a dense layout.
   bool IsZero(tensorflow::gtl::ArraySlice<int64> indices) const;

@@ -808,10 +808,10 @@ class XlaBuilder {
   XlaOp IsFinite(const XlaOp& operand);
 
   // Enqueues an iota operation onto the computation.
-  XlaOp IotaGen(const Shape& shape, int64 iota_dimension);
+  XlaOp Iota(const Shape& shape, int64 iota_dimension);
 
   // Enqueues a rank-1 iota operation onto the computation.
-  XlaOp IotaGen(PrimitiveType type, int64 size);
+  XlaOp Iota(PrimitiveType type, int64 size);
 
   // Enqueues a convert instruction onto the computation that changes the
   // element type of the operand array to primitive_type.
@@ -1320,11 +1320,9 @@ class XlaBuilder {
   friend XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
                    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
   friend XlaOp IsFinite(const XlaOp& operand);
-  // TODO(b/64798317): Finish CPU & GPU implementation, then replace xla::Iota
-  // in xla/client/lib/numeric.h with this (renamed to xla::Iota).
-  friend XlaOp IotaGen(XlaBuilder* builder, const Shape& shape,
-                       int64 iota_dimension);
-  friend XlaOp IotaGen(XlaBuilder* builder, PrimitiveType type, int64 size);
+  friend XlaOp Iota(XlaBuilder* builder, const Shape& shape,
+                    int64 iota_dimension);
+  friend XlaOp Iota(XlaBuilder* builder, PrimitiveType type, int64 size);
   friend XlaOp ConvertElementType(const XlaOp& operand,
                                   PrimitiveType new_element_type);
   friend XlaOp BitcastConvertType(const XlaOp& operand,
@@ -1988,10 +1986,10 @@ XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
 XlaOp IsFinite(const XlaOp& operand);
 
 // Enqueues an iota operation onto the computation.
-XlaOp IotaGen(XlaBuilder* builder, const Shape& shape, int64 iota_dimension);
+XlaOp Iota(XlaBuilder* builder, const Shape& shape, int64 iota_dimension);
 
 // Enqueues a rank-1 iota operation onto the computation.
-XlaOp IotaGen(XlaBuilder* builder, PrimitiveType type, int64 size);
+XlaOp Iota(XlaBuilder* builder, PrimitiveType type, int64 size);
 
 // Enqueues a convert instruction onto the computation that changes the
 // element type of the operand array to primitive_type.
