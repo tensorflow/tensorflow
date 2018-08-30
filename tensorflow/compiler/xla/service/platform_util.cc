@@ -89,7 +89,11 @@ PlatformUtil::GetSupportedPlatforms() {
   if (platforms.empty()) {
     return NotFound("no platforms found");
   } else if (platforms.size() == 1) {
-    return platforms[0];
+    se::Platform* platform = platforms[0];
+    if (!platform->Initialized()) {
+      TF_RETURN_IF_ERROR(platform->Initialize({}));
+    }
+    return platform;
   }
 
   // Multiple platforms present and we can't pick a reasonable default.
@@ -103,17 +107,26 @@ PlatformUtil::GetSupportedPlatforms() {
 
 /* static */ StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
   TF_ASSIGN_OR_RETURN(auto platforms, GetSupportedPlatforms());
+
+  se::Platform* platform = nullptr;
   if (platforms.empty()) {
     return NotFound("no platforms found");
   } else if (platforms.size() == 1) {
-    return platforms[0];
+    platform = platforms[0];
   } else if (platforms.size() == 2) {
     for (int i = 0; i < 2; i++) {
       if (absl::AsciiStrToLower(platforms[i]->Name()) == kInterpreter &&
           absl::AsciiStrToLower(platforms[1 - i]->Name()) != kInterpreter) {
-        return platforms[1 - i];
+        platform = platforms[1 - i];
+        break;
       }
     }
+  }
+  if (platform != nullptr) {
+    if (!platform->Initialized()) {
+      TF_RETURN_IF_ERROR(platform->Initialize({}));
+    }
+    return platform;
   }
 
   // Multiple platforms present and we can't pick a reasonable default.
@@ -132,6 +145,9 @@ PlatformUtil::GetSupportedPlatforms() {
   TF_ASSIGN_OR_RETURN(auto platforms, PlatformUtil::GetSupportedPlatforms());
   for (se::Platform* platform : platforms) {
     if (absl::AsciiStrToLower(platform->Name()) == platform_str) {
+      if (!platform->Initialized()) {
+        TF_RETURN_IF_ERROR(platform->Initialize({}));
+      }
       return platform;
     }
   }
@@ -154,7 +170,11 @@ PlatformUtil::GetSupportedPlatforms() {
                            platform_name);
   }
   if (matched.size() == 1) {
-    return matched[0];
+    auto platform = matched[0];
+    if (!platform->Initialized()) {
+      TF_RETURN_IF_ERROR(platform->Initialize({}));
+    }
+    return platform;
   }
   string matched_string = absl::StrJoin(
       matched, ", ",
