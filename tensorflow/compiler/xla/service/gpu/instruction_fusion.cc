@@ -41,7 +41,7 @@ bool IsFusible(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kDynamicUpdateSlice ||
          hlo.opcode() == HloOpcode::kFusion ||
          hlo.opcode() == HloOpcode::kGather ||
-         hlo.opcode() == HloOpcode::kPad ||
+         hlo.opcode() == HloOpcode::kIota || hlo.opcode() == HloOpcode::kPad ||
          hlo.opcode() == HloOpcode::kReduce ||
          hlo.opcode() == HloOpcode::kReduceWindow ||
          hlo.opcode() == HloOpcode::kReshape ||
