@@ -85,6 +85,7 @@ cc_library(
             ],
             "//conditions:default": [
                 "//tensorflow/core:framework",
+                "//tensorflow/core:lib",
             ],
         },
     ),
@@ -137,6 +138,7 @@ cc_library(
             ],
             "//conditions:default": [
                 "//tensorflow/core:tensorflow",
+                "//tensorflow/core:lib_internal",
                 "//tensorflow/core:framework_internal",
                 "//tensorflow/core:framework",
                 "//tensorflow/core:lib",

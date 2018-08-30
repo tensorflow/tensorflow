@@ -52,18 +52,22 @@ class ResultsWriter : public ImagenetModelEvaluator::Observer {
   explicit ResultsWriter(std::unique_ptr<CSVWriter> writer)
       : writer_(std::move(writer)) {}
 
-  void OnEvaluationStart(int total_number_of_images) override {}
+  void OnEvaluationStart(const std::unordered_map<uint64_t, int>&
+                             shard_id_image_count_map) override {}
 
   void OnSingleImageEvaluationComplete(
-      const ImagenetTopKAccuracy::AccuracyStats& stats,
+      uint64_t shard_id, const ImagenetTopKAccuracy::AccuracyStats& stats,
       const string& image) override;
 
  private:
-  std::unique_ptr<CSVWriter> writer_;
+  std::unique_ptr<CSVWriter> writer_ GUARDED_BY(mu_);
+  mutex mu_;
 };
 
 void ResultsWriter::OnSingleImageEvaluationComplete(
-    const ImagenetTopKAccuracy::AccuracyStats& stats, const string& image) {
+    uint64_t shard_id, const ImagenetTopKAccuracy::AccuracyStats& stats,
+    const string& image) {
+  mutex_lock lock(mu_);
   TF_CHECK_OK(writer_->WriteRow(GetAccuracies(stats)));
   writer_->Flush();
 }
@@ -71,33 +75,40 @@ void ResultsWriter::OnSingleImageEvaluationComplete(
 // Logs results to standard output with `kLogDelayUs` microseconds.
 class ResultsLogger : public ImagenetModelEvaluator::Observer {
  public:
-  void OnEvaluationStart(int total_number_of_images) override;
+  void OnEvaluationStart(const std::unordered_map<uint64_t, int>&
+                             shard_id_image_count_map) override;
 
   void OnSingleImageEvaluationComplete(
-      const ImagenetTopKAccuracy::AccuracyStats& stats,
+      uint64_t shard_id, const ImagenetTopKAccuracy::AccuracyStats& stats,
       const string& image) override;
 
  private:
-  int total_num_images_ = 0;
-  uint64 last_logged_time_us_ = 0;
+  uint64_t last_logged_time_us_ GUARDED_BY(mu_) = 0;
+  int total_num_images_ GUARDED_BY(mu_);
   static constexpr int kLogDelayUs = 500 * 1000;
+  mutex mu_;
 };
 
-void ResultsLogger::OnEvaluationStart(int total_number_of_images) {
-  total_num_images_ = total_number_of_images;
-  LOG(ERROR) << "Starting model evaluation: " << total_num_images_;
+void ResultsLogger::OnEvaluationStart(
+    const std::unordered_map<uint64_t, int>& shard_id_image_count_map) {
+  int total_num_images = 0;
+  for (const auto& kv : shard_id_image_count_map) {
+    total_num_images += kv.second;
+  }
+  LOG(ERROR) << "Starting model evaluation: " << total_num_images;
+  mutex_lock lock(mu_);
+  total_num_images_ = total_num_images;
 }
 
 void ResultsLogger::OnSingleImageEvaluationComplete(
-    const ImagenetTopKAccuracy::AccuracyStats& stats, const string& image) {
-  int num_evaluated = stats.number_of_images;
-
-  double current_percent = num_evaluated * 100.0 / total_num_images_;
+    uint64_t shard_id, const ImagenetTopKAccuracy::AccuracyStats& stats,
+    const string& image) {
   auto now_us = Env::Default()->NowMicros();
-
+  int num_evaluated = stats.number_of_images;
+  mutex_lock lock(mu_);
   if ((now_us - last_logged_time_us_) >= kLogDelayUs) {
     last_logged_time_us_ = now_us;
-
+    double current_percent = num_evaluated * 100.0 / total_num_images_;
     LOG(ERROR) << "Evaluated " << num_evaluated << "/" << total_num_images_
                << " images, " << std::setprecision(2) << std::fixed
                << current_percent << "%";
@@ -108,15 +119,20 @@ int Main(int argc, char* argv[]) {
   // TODO(shashishekhar): Make this binary configurable and model
   // agnostic.
   string output_file_path;
+  int num_threads = 4;
   std::vector<Flag> flag_list = {
       Flag("output_file_path", &output_file_path, "Path to output file."),
+      Flag("num_threads", &num_threads, "Number of threads."),
   };
   Flags::Parse(&argc, argv, flag_list);
 
   std::unique_ptr<ImagenetModelEvaluator> evaluator;
   CHECK(!output_file_path.empty()) << "Invalid output file path.";
 
-  TF_CHECK_OK(ImagenetModelEvaluator::Create(argc, argv, &evaluator));
+  CHECK(num_threads > 0) << "Invalid number of threads.";
+
+  TF_CHECK_OK(
+      ImagenetModelEvaluator::Create(argc, argv, num_threads, &evaluator));
 
   std::ofstream output_stream(output_file_path, std::ios::out);
   CHECK(output_stream) << "Unable to open output file path: '"
@@ -136,6 +152,7 @@ int Main(int argc, char* argv[]) {
   ResultsLogger logger;
   evaluator->AddObserver(&results_writer);
   evaluator->AddObserver(&logger);
+  LOG(ERROR) << "Starting evaluation with: " << num_threads << " threads.";
   TF_CHECK_OK(evaluator->EvaluateModel());
   return 0;
 }

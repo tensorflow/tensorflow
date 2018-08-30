@@ -77,24 +77,31 @@ Status ImagenetTopKAccuracy::ComputeEval(
   CHECK_EQ(kNumCategories, probabilities.size());
   std::vector<int> topK = GetTopK(probabilities, k_);
   int ground_truth_index = GroundTruthIndex(ground_truth_label);
-  for (size_t i = 0; i < topK.size(); ++i) {
-    if (ground_truth_index == topK[i]) {
-      for (size_t j = i; j < topK.size(); j++) {
+  UpdateSamples(topK, ground_truth_index);
+  return Status::OK();
+}
+
+const ImagenetTopKAccuracy::AccuracyStats
+ImagenetTopKAccuracy::GetTopKAccuracySoFar() const {
+  mutex_lock lock(mu_);
+  AccuracyStats stats;
+  stats.number_of_images = num_samples_;
+  stats.topk_counts = accuracy_counts_;
+  return stats;
+}
+
+void ImagenetTopKAccuracy::UpdateSamples(const std::vector<int>& counts,
+                                         int ground_truth_index) {
+  mutex_lock lock(mu_);
+  for (size_t i = 0; i < counts.size(); ++i) {
+    if (ground_truth_index == counts[i]) {
+      for (size_t j = i; j < counts.size(); j++) {
         accuracy_counts_[j] += 1;
       }
       break;
     }
   }
   num_samples_++;
-  return Status::OK();
-}
-
-const ImagenetTopKAccuracy::AccuracyStats
-ImagenetTopKAccuracy::GetTopKAccuracySoFar() const {
-  AccuracyStats stats;
-  stats.number_of_images = num_samples_;
-  stats.topk_counts = accuracy_counts_;
-  return stats;
 }
 
 int ImagenetTopKAccuracy::GroundTruthIndex(const string& label) const {
