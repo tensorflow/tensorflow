@@ -91,8 +91,8 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
   Example:
     ```python
-    elems = [1, 2, 3, 4, 5, 6]
-    sum = foldl(lambda a, x: a + x, elems)
+    elems = tf.constant([1, 2, 3, 4, 5, 6])
+    sum = tf.foldl(lambda a, x: a + x, elems)
     # sum == 21
     ```
   """
@@ -198,8 +198,8 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
   Example:
     ```python
-    elems = [1, 2, 3, 4, 5, 6]
-    sum = foldr(lambda a, x: a + x, elems)
+    elems = tf.constant([1, 2, 3, 4, 5, 6])
+    sum = tf.foldr(lambda a, x: a + x, elems)
     # sum == 21
     ```
   """
