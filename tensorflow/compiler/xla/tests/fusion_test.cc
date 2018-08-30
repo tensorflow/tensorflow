@@ -601,7 +601,7 @@ XLA_TEST_F(FusionTest, DISABLED_ON_CPU(Reduce)) {
       hlo_module->AddEmbeddedComputation(MakeReduceTestComputation())));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reduce2},
-                                HloInstruction::FusionKind::kLoop);
+                                HloInstruction::FusionKind::kInput);
 
   EXPECT_TRUE(
       LiteralTestUtil::Equal(*LiteralUtil::CreateR0<int32>(15),

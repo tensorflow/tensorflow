@@ -178,5 +178,155 @@ TEST_F(GpuFusibleTest,
   EXPECT_TRUE(LayoutsAreReduceInputFusionFriendly(*loop_fusion, *reduce));
 }
 
+TEST_F(GpuFusibleTest, IsInputFusibleReduction_ReductionToVector) {
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+    ENTRY entry {
+      c0 = f32[] parameter(0)
+      p1 = f32[128,512,28,28]{3,2,1,0} parameter(1)
+      // Reduction-to-vector lowered by IrEmitterUnnested.
+      ROOT reduce = f32[512]{0} reduce(p1, c0), dimensions={0,2,3}, to_apply=scalar_add
+    })"))
+                    .ValueOrDie();
+  SCOPED_TRACE(module->ToString());
+  const HloInstruction* reduce =
+      module->entry_computation()->root_instruction();
+  ASSERT_EQ(reduce->opcode(), HloOpcode::kReduce);
+  EXPECT_TRUE(IsInputFusibleReduction(*reduce));
+}
+
+TEST_F(GpuFusibleTest, IsInputFusibleReduction_ElementalReduction) {
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+    ENTRY entry {
+      c0 = f32[] parameter(0)
+      p1 = f32[8,512,5,16,1,1]{5,4,3,2,1,0} parameter(1)
+      // Reduction lowered by GpuElementalIrEmitter.
+      ROOT reduce = f32[8,512,5,1,1]{4,3,2,1,0} reduce(p1, c0), dimensions={3}, to_apply=scalar_add
+    })"))
+                    .ValueOrDie();
+  SCOPED_TRACE(module->ToString());
+  const HloInstruction* reduce =
+      module->entry_computation()->root_instruction();
+  ASSERT_EQ(reduce->opcode(), HloOpcode::kReduce);
+  EXPECT_FALSE(IsInputFusibleReduction(*reduce));
+}
+
+TEST_F(GpuFusibleTest, IsInputFusibleReduction_SingleOutputInputReduceFusion) {
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+    fused_reduction {
+      c0 = f32[] parameter(0)
+      p1 = f32[128,512,28,28]{3,2,1,0} parameter(1)
+      ROOT reduce = f32[128,512]{1,0} reduce(p1, c0), dimensions={2,3}, to_apply=scalar_add
+    }
+    ENTRY entry {
+      p0 = f32[128,512,28,28]{3,2,1,0} parameter(0)
+      ROOT fusion = f32[128,512]{1,0} fusion(p0), kind=kInput, calls=fused_reduction
+    })"))
+                    .ValueOrDie();
+  const HloInstruction* reduce =
+      module->entry_computation()->root_instruction();
+  ASSERT_EQ(reduce->opcode(), HloOpcode::kFusion);
+  EXPECT_TRUE(IsInputFusibleReduction(*reduce));
+}
+
+TEST_F(GpuFusibleTest, IsInputFusibleReduction_SingleOutputLoopReduceFusion) {
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+    fused_reduction {
+      c0 = f32[] parameter(0)
+      p1 = f32[8,512,5,16,1,1]{5,4,3,2,1,0} parameter(1)
+      ROOT reduce = f32[8,5,1,1]{3,2,1,0} reduce(p1, c0), dimensions={1,3}, to_apply=scalar_add
+    }
+    ENTRY entry {
+      p0 = f32[8,512,5,16,1,1]{5,4,3,2,1,0} parameter(0)
+      ROOT fusion = f32[8,5,1,1]{3,2,1,0} fusion(p0), kind=kLoop, calls=fused_reduction
+    })"))
+                    .ValueOrDie();
+  const HloInstruction* reduce =
+      module->entry_computation()->root_instruction();
+  ASSERT_EQ(reduce->opcode(), HloOpcode::kFusion);
+  EXPECT_FALSE(IsInputFusibleReduction(*reduce));
+}
+
+TEST_F(GpuFusibleTest, IsInputFusibleReduction_MultiOutputInputReduceFusion) {
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+    fused_reduction {
+      c0 = f32[] parameter(0)
+      p1 = f32[128,512,28,28]{3,2,1,0} parameter(1)
+      reduce.0 = f32[128,512]{1,0} reduce(p1, c0), dimensions={2,3}, to_apply=scalar_add
+      reduce.1 = f32[128,512]{1,0} reduce(p1, c0), dimensions={2,3}, to_apply=scalar_add
+      ROOT root = (f32[128,512]{1,0}, f32[128,512]{1,0}) tuple(reduce.0, reduce.1)
+    }
+    ENTRY entry {
+      p0 = f32[128,512,28,28]{3,2,1,0} parameter(0)
+      ROOT fusion = (f32[128,512]{1,0}, f32[128,512]{1,0}) fusion(p0), kind=kInput, calls=fused_reduction
+    })"))
+                    .ValueOrDie();
+  const HloInstruction* reduce =
+      module->entry_computation()->root_instruction();
+  ASSERT_EQ(reduce->opcode(), HloOpcode::kFusion);
+  EXPECT_TRUE(IsInputFusibleReduction(*reduce));
+}
+
+TEST_F(GpuFusibleTest,
+       IsInputFusibleReduction_MultiOutputInputReduceFusionWithExtraOutputs) {
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+    fused_reduction {
+      c0 = f32[] parameter(0)
+      p1 = f32[128,512,28,28]{3,2,1,0} parameter(1)
+      reduce = f32[128,512]{1,0} reduce(p1, c0), dimensions={2,3}, to_apply=scalar_add
+      mul = f32[128,512,28,28]{3,2,1,0} multiply(p1, p1)
+      ROOT root = (f32[128,512]{1,0}, f32[128,512,28,28]{3,2,1,0}) tuple(reduce, mul)
+    }
+    ENTRY entry {
+      p0 = f32[128,512,28,28]{3,2,1,0} parameter(0)
+      ROOT fusion = (f32[128,512]{1,0}, f32[128,512,28,28]{3,2,1,0}) fusion(p0), kind=kInput, calls=fused_reduction
+    })"))
+                    .ValueOrDie();
+  const HloInstruction* reduce =
+      module->entry_computation()->root_instruction();
+  ASSERT_EQ(reduce->opcode(), HloOpcode::kFusion);
+  EXPECT_TRUE(IsInputFusibleReduction(*reduce));
+}
+
+TEST_F(GpuFusibleTest, IsInputFusibleReduction_MultiOutputLoopReduceFusion) {
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+    fused_reduction {
+      c0 = f32[] parameter(0)
+      p1 = f32[128,512,28,28]{3,2,1,0} parameter(1)
+      reduce.0 = f32[512,28]{1,0} reduce(p1, c0), dimensions={0,2}, to_apply=scalar_add
+      reduce.1 = f32[512,28]{1,0} reduce(p1, c0), dimensions={0,2}, to_apply=scalar_add
+      ROOT root = (f32[512,28]{1,0}, f32[512,28]{1,0}) tuple(reduce.0, reduce.1)
+    }
+    ENTRY entry {
+      p0 = f32[128,512,28,28]{3,2,1,0} parameter(0)
+      ROOT fusion = (f32[512,28]{1,0}, f32[512,28]{1,0}) fusion(p0), kind=kLoop, calls=fused_reduction
+    })"))
+                    .ValueOrDie();
+  const HloInstruction* reduce =
+      module->entry_computation()->root_instruction();
+  ASSERT_EQ(reduce->opcode(), HloOpcode::kFusion);
+  EXPECT_FALSE(IsInputFusibleReduction(*reduce));
+}
+
+TEST_F(GpuFusibleTest,
+       IsInputFusibleReduction_MultiOutputLoopFusionReduceAndElementwiseOp) {
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+    fused_reduction {
+      c0 = f32[] parameter(0)
+      p1 = f32[128,512,28,28]{3,2,1,0} parameter(1)
+      reduce = f32[512,28]{1,0} reduce(p1, c0), dimensions={0,2}, to_apply=scalar_add
+      mul = f32[128,512,28,28]{3,2,1,0} multiply(p1, p1)
+      ROOT root = (f32[512,28]{1,0}, f32[128,512,28,28]{3,2,1,0}) tuple(reduce, mul)
+    }
+    ENTRY entry {
+      p0 = f32[128,512,28,28]{3,2,1,0} parameter(0)
+      ROOT fusion = (f32[512,28]{1,0}, f32[128,512,28,28]{3,2,1,0}) fusion(p0), kind=kLoop, calls=fused_reduction
+    })"))
+                    .ValueOrDie();
+  const HloInstruction* reduce =
+      module->entry_computation()->root_instruction();
+  ASSERT_EQ(reduce->opcode(), HloOpcode::kFusion);
+  EXPECT_FALSE(IsInputFusibleReduction(*reduce));
+}
+
 }  // namespace gpu
 }  // namespace xla
