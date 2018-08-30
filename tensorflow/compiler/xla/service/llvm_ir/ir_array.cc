@@ -147,16 +147,15 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
   // indices in the same common factor.
   for (ssize_t k = common_factors.size() - 2; k >= 0; --k) {
     llvm::Value* logical_linear_index =
-        Index(tensorflow::gtl::ArraySlice<llvm::Value*>(
-                  multidim_, common_factors[k].second,
+        Index(tensorflow::gtl::ArraySlice<llvm::Value*>(multidim_).subspan(
+                  common_factors[k].second,
                   common_factors[k + 1].second - common_factors[k].second),
               index_type_)
-            .Linearize(
-                tensorflow::gtl::ArraySlice<int64>(
-                    AsInt64Slice(output_shape.dimensions()),
-                    common_factors[k].second,
-                    common_factors[k + 1].second - common_factors[k].second),
-                builder);
+            .Linearize(AsInt64Slice(output_shape.dimensions())
+                           .subspan(common_factors[k].second,
+                                    common_factors[k + 1].second -
+                                        common_factors[k].second),
+                       builder);
     // Delinearizes logical_linear_index for the source array in row-major
     // collapsed order. The first rank-1 indices are the remainder of the
     // linear index by each dimension size.

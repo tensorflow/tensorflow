@@ -284,8 +284,9 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStreamImpl(
       CreateTempArray(memory_allocator, stream->parent()->device_ordinal(),
                       arguments));
 
-  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
-                      CreateResultShapedBuffer(run_options, &owning_buffers));
+  TF_ASSIGN_OR_RETURN(
+      ScopedShapedBuffer result,
+      CreateResultShapedBuffer(run_options, absl::MakeSpan(owning_buffers)));
 
   // At this point, `unowning_buffers` contains unowning pointers to all of our
   // buffers, and `buffers` contains owning pointers to the non-live-out

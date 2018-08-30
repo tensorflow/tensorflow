@@ -1872,8 +1872,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
   int64 num_reduced_args = arg_shapes.size() / 2;
 
-  tensorflow::gtl::ArraySlice<const Shape*> reduced_args(arg_shapes, 0,
-                                                         num_reduced_args);
+  auto reduced_args = arg_shapes.subspan(0, num_reduced_args);
   // Check that all of the reduced tensors have the same dimensions. The element
   // types may be different.
   for (int64 i = 1; i < num_reduced_args; ++i) {
@@ -1897,8 +1896,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     }
   }
 
-  tensorflow::gtl::ArraySlice<const Shape*> init_values(
-      arg_shapes, num_reduced_args, arg_shapes.size());
+  auto init_values = arg_shapes.subspan(num_reduced_args, arg_shapes.size());
   std::vector<PrimitiveType> element_types;
   for (const Shape* arg : reduced_args) {
     element_types.push_back(arg->element_type());

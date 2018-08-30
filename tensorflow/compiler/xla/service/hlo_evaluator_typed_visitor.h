@@ -1130,7 +1130,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
               static_cast<ElementwiseT>(rhs_literal_data[rhs_linear_index]);
         }
       cnt : {}
-      } while (IndexUtil::BumpIndices(window_shape, &rhs_spatial_index));
+      } while (IndexUtil::BumpIndices(window_shape,
+                                      absl::MakeSpan(rhs_spatial_index)));
 
       return static_cast<ReturnT>(result_val);
     };
@@ -1854,7 +1855,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
               embedded_evaluator.ResetVisitStates();
             }
           });
-    } while (IndexUtil::BumpIndices(source->shape(), &source_index));
+    } while (
+        IndexUtil::BumpIndices(source->shape(), absl::MakeSpan(source_index)));
 
     parent_->evaluated_[select_and_scatter] = std::move(result);
     return Status::OK();
@@ -2624,7 +2626,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       if (!out_of_bound) {
         f(base_index);
       }
-    } while (IndexUtil::BumpIndices(window_shape, &window_index));
+    } while (
+        IndexUtil::BumpIndices(window_shape, absl::MakeSpan(window_index)));
   }
 
   template <typename IndexT>

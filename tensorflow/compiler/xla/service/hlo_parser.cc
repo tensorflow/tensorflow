@@ -997,11 +997,11 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       }
       instruction = builder->AddInstruction(HloInstruction::CreateReduce(
           shape, /*operands=*/
-          tensorflow::gtl::ArraySlice<HloInstruction*>(operands, 0,
-                                                       operands.size() / 2),
+          tensorflow::gtl::ArraySlice<HloInstruction*>(operands).subspan(
+              0, operands.size() / 2),
           /*init_values=*/
-          tensorflow::gtl::ArraySlice<HloInstruction*>(
-              operands, operands.size() / 2, operands.size()),
+          tensorflow::gtl::ArraySlice<HloInstruction*>(operands).subspan(
+              operands.size() / 2, operands.size()),
           *dimensions_to_reduce, *reduce_computation));
       break;
     }

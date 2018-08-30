@@ -353,11 +353,11 @@ class NearComparator {
     // bound is exceeded and vice versa.
     if (is_abs_mismatch) {
       num_abs_mismatches_++;
-      UpdateErrorBucket(rel_error, &rel_error_buckets_);
+      UpdateErrorBucket(rel_error, absl::MakeSpan(rel_error_buckets_));
     }
     if (is_rel_mismatch) {
       num_rel_mismatches_++;
-      UpdateErrorBucket(abs_error, &abs_error_buckets_);
+      UpdateErrorBucket(abs_error, absl::MakeSpan(abs_error_buckets_));
     }
 
     UpdateAbsValueBucket(actual, is_mismatch);
@@ -579,40 +579,41 @@ constexpr std::array<float, 5> NearComparator<NativeT>::kErrorBucketBounds;
 Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual) {
   TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
   std::vector<int64> multi_index(expected.shape().dimensions_size(), 0);
+  auto index = absl::MakeSpan(multi_index);
   Status result;
   switch (expected.shape().element_type()) {
     case PRED:
-      result = Equal<bool>(expected, actual, &multi_index, 0);
+      result = Equal<bool>(expected, actual, index, 0);
       break;
     case U8:
-      result = Equal<uint8>(expected, actual, &multi_index, 0);
+      result = Equal<uint8>(expected, actual, index, 0);
       break;
     case S32:
-      result = Equal<int32>(expected, actual, &multi_index, 0);
+      result = Equal<int32>(expected, actual, index, 0);
       break;
     case S64:
-      result = Equal<int64>(expected, actual, &multi_index, 0);
+      result = Equal<int64>(expected, actual, index, 0);
       break;
     case U32:
-      result = Equal<uint32>(expected, actual, &multi_index, 0);
+      result = Equal<uint32>(expected, actual, index, 0);
       break;
     case U64:
-      result = Equal<uint64>(expected, actual, &multi_index, 0);
+      result = Equal<uint64>(expected, actual, index, 0);
       break;
     case BF16:
-      result = Equal<bfloat16>(expected, actual, &multi_index, 0);
+      result = Equal<bfloat16>(expected, actual, index, 0);
       break;
     case F16:
-      result = Equal<half>(expected, actual, &multi_index, 0);
+      result = Equal<half>(expected, actual, index, 0);
       break;
     case F32:
-      result = Equal<float>(expected, actual, &multi_index, 0);
+      result = Equal<float>(expected, actual, index, 0);
       break;
     case F64:
-      result = Equal<double>(expected, actual, &multi_index, 0);
+      result = Equal<double>(expected, actual, index, 0);
       break;
     case C64:
-      result = Equal<complex64>(expected, actual, &multi_index, 0);
+      result = Equal<complex64>(expected, actual, index, 0);
       break;
     case TUPLE: {
       for (int i = 0; i < ShapeUtil::TupleElementCount(expected.shape()); ++i) {

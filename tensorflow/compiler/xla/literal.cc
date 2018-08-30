@@ -366,7 +366,7 @@ void CopyElementsBetween(tensorflow::gtl::MutableArraySlice<NativeT> dest,
   do {
     dest[IndexUtil::MultidimensionalIndexToLinearIndex(dest_shape, index)] =
         src[IndexUtil::MultidimensionalIndexToLinearIndex(src_shape, index)];
-  } while (IndexUtil::BumpIndices(dest_shape, &index));
+  } while (IndexUtil::BumpIndices(dest_shape, absl::MakeSpan(index)));
 }
 
 }  // namespace
@@ -1192,7 +1192,7 @@ void LiteralBase::EachCellAsString(
       shape(), /*linear_index=*/0);
   do {
     per_cell(indices, GetAsString(indices));
-  } while (IndexUtil::BumpIndices(shape(), &indices));
+  } while (IndexUtil::BumpIndices(shape(), absl::MakeSpan(indices)));
 }
 
 namespace {
@@ -1392,7 +1392,7 @@ StatusOr<std::unique_ptr<Literal>> LiteralBase::ConvertToShape(
     elements.push_back(std::move(*new_element));
   }
   auto converted = absl::make_unique<Literal>();
-  *converted = MutableLiteralBase::MoveIntoTuple(&elements);
+  *converted = MutableLiteralBase::MoveIntoTuple(absl::MakeSpan(elements));
   return std::move(converted);
 }
 

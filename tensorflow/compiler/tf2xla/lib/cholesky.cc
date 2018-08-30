@@ -56,9 +56,10 @@ xla::XlaOp CholeskyUnblocked(xla::XlaOp a,
     TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));
     const int n_dims = xla::ShapeUtil::Rank(a_shape);
     const int64 n = xla::ShapeUtil::GetDimension(a_shape, -1);
-    gtl::ArraySlice<int64> major_dims(xla::AsInt64Slice(a_shape.dimensions()),
-                                      /*pos=*/0,
-                                      /*len=*/n_dims - 2);
+    auto major_dims = xla::AsInt64Slice(a_shape.dimensions())
+                          .subspan(
+                              /*pos=*/0,
+                              /*len=*/n_dims - 2);
 
     xla::XlaOp l = xla::ZerosLike(a);
 

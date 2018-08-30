@@ -167,11 +167,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << proto.called_computation_ids_size();
       {
         const auto reduce_operands = all_operands();
-        tensorflow::gtl::ArraySlice<HloInstruction*> inputs(
-            reduce_operands, 0, reduce_operands.size() / 2);
-        tensorflow::gtl::ArraySlice<HloInstruction*> init_values(
-            reduce_operands, reduce_operands.size() / 2,
-            reduce_operands.size());
+        auto inputs = absl::MakeSpan(reduce_operands)
+                          .subspan(0, reduce_operands.size() / 2);
+        auto init_values =
+            absl::MakeSpan(reduce_operands)
+                .subspan(reduce_operands.size() / 2, reduce_operands.size());
         instruction =
             CreateReduce(proto.shape(), inputs, init_values,
                          std::vector<int64>(proto.dimensions().begin(),

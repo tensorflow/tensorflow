@@ -113,7 +113,7 @@ class FusionTest : public HloTestBase {
     hlos[0] = builder.AddInstruction(std::move(root_hlo));
     hlo_module->AddEntryComputation(builder.Build())
         ->CreateFusionInstruction(
-            ArraySlice<HloInstruction*>(hlos, 0, Arity + 1),
+            ArraySlice<HloInstruction*>(hlos).subspan(0, Arity + 1),
             HloInstruction::FusionKind::kLoop);
 
     auto expected = LiteralUtil::CreateR2FromArray2D(answer_data);

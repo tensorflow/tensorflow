@@ -404,14 +404,12 @@ class HloReduceInstruction : public HloInstruction {
 
   // Returns the input tensors to be reduced.
   tensorflow::gtl::ArraySlice<HloInstruction*> inputs() const {
-    return tensorflow::gtl::ArraySlice<HloInstruction*>(operands(), 0,
-                                                        input_count());
+    return absl::MakeSpan(operands()).subspan(0, input_count());
   }
 
   // Returns the init values of the reduction.
   tensorflow::gtl::ArraySlice<HloInstruction*> init_values() const {
-    return tensorflow::gtl::ArraySlice<HloInstruction*>(
-        operands(), input_count(), operand_count());
+    return absl::MakeSpan(operands()).subspan(input_count(), operand_count());
   }
 
  private:
