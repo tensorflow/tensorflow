@@ -1035,7 +1035,7 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
 
 /* static */ bool ShapeUtil::HasDegenerateDimensions(const Shape& shape) {
   CHECK(ShapeUtil::IsArray(shape));
-  return ArrayContains<int64>(AsInt64Slice(shape.dimensions()), 1);
+  return absl::c_linear_search(shape.dimensions(), 1);
 }
 
 namespace {

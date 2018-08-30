@@ -461,11 +461,6 @@ int64 FindIndex(const C& c, Value&& value) {
   return std::distance(c.begin(), it);
 }
 
-template <typename T>
-bool ArrayContains(tensorflow::gtl::ArraySlice<T> c, const T& value) {
-  return absl::c_find(c, value) != c.end();
-}
-
 template <typename C, typename Value>
 void InsertAt(C* c, int64 index, Value&& value) {
   c->insert(c->begin() + index, std::forward<Value>(value));

@@ -1199,13 +1199,13 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     // Then we have the LHS and RHS non-contracting dimensions, if any:
     for (int64 i = 0; i < lhs_rank; i++) {
       if (i != lhs_contracting_dimension &&
-          !ArrayContains(AsInt64Slice(dnums.lhs_batch_dimensions()), i)) {
+          !absl::c_linear_search(dnums.lhs_batch_dimensions(), i)) {
         result_index_locations.push_back({&lhs_index[i], nullptr});
       }
     }
     for (int64 i = 0; i < rhs_rank; i++) {
       if (i != rhs_contracting_dimension &&
-          !ArrayContains(AsInt64Slice(dnums.rhs_batch_dimensions()), i)) {
+          !absl::c_linear_search(dnums.rhs_batch_dimensions(), i)) {
         result_index_locations.push_back({&rhs_index[i], nullptr});
       }
     }
