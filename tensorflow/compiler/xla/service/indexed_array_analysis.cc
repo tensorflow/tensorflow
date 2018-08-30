@@ -499,7 +499,7 @@ IndexedArrayAnalysis::ReshapeToRemoveDegenerateDims(
   for (int64 i = 0, e = shape.dimensions_size(); i < e; i++) {
     if (shape.dimensions(i) == 1) {
       degenerate_dims_seen++;
-    } else if (ArrayContains(operand->output_dims(), i)) {
+    } else if (absl::c_linear_search(operand->output_dims(), i)) {
       new_output_dims.push_back(i - degenerate_dims_seen);
     }
   }
@@ -977,8 +977,8 @@ absl::optional<int64> GetOnlyNonContractingNonBatchDim(
     ArraySlice<int64> batch_dims) {
   absl::optional<int64> result;
   for (int64 dim = 0; dim < rank; dim++) {
-    if (!ArrayContains(contracting_dims, dim) &&
-        !ArrayContains(batch_dims, dim)) {
+    if (!absl::c_linear_search(contracting_dims, dim) &&
+        !absl::c_linear_search(batch_dims, dim)) {
       if (result.has_value()) {
         return absl::nullopt;
       }
