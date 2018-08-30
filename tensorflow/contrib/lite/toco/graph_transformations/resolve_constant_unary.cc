@@ -51,6 +51,7 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
   // Test for unary ops of types that we know how to resolve.
   switch (unary_op->type) {
     case OperatorType::kCast:
+    case OperatorType::kExp:
     case OperatorType::kLog:
     case OperatorType::kNeg:
     case OperatorType::kRsqrt:
@@ -218,7 +219,8 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
       max = std::max(max, (*input_float_data)[i]);
     }
     output_float_data[0] = max;
-  } else if (unary_op->type == OperatorType::kNeg ||
+  } else if (unary_op->type == OperatorType::kExp ||
+             unary_op->type == OperatorType::kNeg ||
              unary_op->type == OperatorType::kLog ||
              unary_op->type == OperatorType::kRsqrt ||
              unary_op->type == OperatorType::kSqrt ||
@@ -231,7 +233,9 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
     for (int i = 0; i < output_buffer_size; i++) {
       const float val = (*input_float_data)[i];
       float outval = 0.f;
-      if (unary_op->type == OperatorType::kNeg) {
+      if (unary_op->type == OperatorType::kExp) {
+        outval = std::exp(val);
+      } else if (unary_op->type == OperatorType::kNeg) {
         outval = -val;
       } else if (unary_op->type == OperatorType::kLog) {
         outval = std::log(val);
