@@ -395,6 +395,9 @@ class Image(ItemHandler):
     image_format = keys_to_tensors[self._format_key]
 
     if self._repeated:
+      if isinstance(image_buffer, sparse_tensor.SparseTensor):
+        image_buffer = sparse_ops.sparse_tensor_to_dense(image_buffer,
+                                                         default_value='')
       return functional_ops.map_fn(lambda x: self._decode(x, image_format),
                                    image_buffer, dtype=self._dtype)
     else:
