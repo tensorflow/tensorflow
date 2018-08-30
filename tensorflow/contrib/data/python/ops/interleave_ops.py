@@ -235,6 +235,12 @@ def sample_from_datasets(datasets, weights=None, seed=None):
       # to weights.
       logits = array_ops.expand_dims(math_ops.log(weights, name="logits"), 0)
 
+    # NOTE(mrry): We only specialize when `weights` is not a `Dataset`. When it
+    # is a `Dataset`, it is possible that evaluating it has a side effect the
+    # user depends on.
+    if len(datasets) == 1:
+      return datasets[0]
+
     def select_dataset_constant_logits(seed):
       return array_ops.squeeze(
           stateless.stateless_multinomial(logits, 1, seed=seed), axis=[0, 1])
