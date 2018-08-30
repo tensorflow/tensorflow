@@ -298,6 +298,21 @@ TEST_F(AlgebraicSimplifierTest, ConstantNotToBroadcast) {
   EXPECT_THAT(root, op::Constant());
 }
 
+TEST_F(AlgebraicSimplifierTest, IotaToBroadcast) {
+  HloComputation::Builder builder(TestName());
+  builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>({0.0f, 1.0f, 2.0f})));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Constant());
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_THAT(root, op::Iota());
+}
+
 // Test that A - 0 is simplified to A
 TEST_F(AlgebraicSimplifierTest, SubZero) {
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
@@ -521,7 +536,7 @@ TEST_F(AlgebraicSimplifierTest, DivideByConstant) {
       HloInstruction::CreateParameter(0, r1f32, "param0"));
   HloInstruction* constant =
       builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR1<float>({0.f, 1.f, 2.f})));
+          LiteralUtil::CreateR1<float>({1.f, 2.f, 3.f})));
   builder.AddInstruction(HloInstruction::CreateBinary(r1f32, HloOpcode::kDivide,
                                                       param0, constant));
 

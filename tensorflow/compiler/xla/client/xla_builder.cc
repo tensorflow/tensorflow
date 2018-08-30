@@ -466,7 +466,7 @@ XlaOp XlaBuilder::ConstantLiteral(const LiteralSlice& literal) {
   });
 }
 
-XlaOp XlaBuilder::IotaGen(const Shape& shape, int64 iota_dimension) {
+XlaOp XlaBuilder::Iota(const Shape& shape, int64 iota_dimension) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     *instr.mutable_shape() = shape;
@@ -475,8 +475,8 @@ XlaOp XlaBuilder::IotaGen(const Shape& shape, int64 iota_dimension) {
   });
 }
 
-XlaOp XlaBuilder::IotaGen(PrimitiveType type, int64 size) {
-  return IotaGen(ShapeUtil::MakeShape(type, {size}), /*iota_dimension=*/0);
+XlaOp XlaBuilder::Iota(PrimitiveType type, int64 size) {
+  return Iota(ShapeUtil::MakeShape(type, {size}), /*iota_dimension=*/0);
 }
 
 XlaOp XlaBuilder::Call(const XlaComputation& computation,
@@ -3063,12 +3063,12 @@ XlaOp BatchNormGrad(const XlaOp& operand, const XlaOp& scale,
                                           grad_output, epsilon, feature_index);
 }
 
-XlaOp IotaGen(XlaBuilder* builder, PrimitiveType type, int64 size) {
-  return builder->IotaGen(type, size);
+XlaOp Iota(XlaBuilder* builder, PrimitiveType type, int64 size) {
+  return builder->Iota(type, size);
 }
 
-XlaOp IotaGen(XlaBuilder* builder, const Shape& shape, int64 iota_dimension) {
-  return builder->IotaGen(shape, iota_dimension);
+XlaOp Iota(XlaBuilder* builder, const Shape& shape, int64 iota_dimension) {
+  return builder->Iota(shape, iota_dimension);
 }
 
 }  // namespace xla

@@ -2117,28 +2117,39 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
               iota->shape().dimensions(iota->iota_dimension())};
           elem_index_linear = elem_index.Linearize(iota_bound, b_);
         }
-        if (ShapeUtil::ElementIsIntegral(iota->shape())) {
-          return b_->CreateIntCast(
+        Shape component_shape =
+            ShapeUtil::ElementIsComplex(iota->shape())
+                ? ShapeUtil::ComplexComponentShape(iota->shape())
+                : iota->shape();
+        PrimitiveType component_element_type = component_shape.element_type();
+        llvm::Value* iota_result;
+        if (ShapeUtil::ElementIsIntegral(component_shape)) {
+          iota_result = b_->CreateIntCast(
               elem_index_linear,
-              llvm_ir::PrimitiveTypeToIrType(element_type, module_),
+              llvm_ir::PrimitiveTypeToIrType(component_element_type, module_),
               /*isSigned=*/false);
         } else {
-          TF_RET_CHECK(ShapeUtil::ElementIsFloating(iota->shape()))
-              << element_type;
+          TF_RET_CHECK(ShapeUtil::ElementIsFloating(component_shape))
+              << component_element_type;
           llvm::Type* float_ir_type;
-          if (element_type == BF16) {
+          if (component_element_type == BF16) {
             float_ir_type = llvm_ir::PrimitiveTypeToIrType(F32, module_);
           } else {
             float_ir_type =
-                llvm_ir::PrimitiveTypeToIrType(element_type, module_);
+                llvm_ir::PrimitiveTypeToIrType(component_element_type, module_);
           }
           llvm::Value* float_val =
               b_->CreateUIToFP(elem_index_linear, float_ir_type);
-          if (element_type == BF16) {
-            return EmitF32ToBF16(float_val, b_);
+          if (component_element_type == BF16) {
+            iota_result = EmitF32ToBF16(float_val, b_);
           } else {
-            return float_val;
+            iota_result = float_val;
           }
+        }
+        if (ShapeUtil::ElementIsComplex(iota->shape())) {
+          return EmitComposeComplex(iota, iota_result, nullptr);
+        } else {
+          return iota_result;
         }
       };
     case HloOpcode::kSlice:

@@ -110,6 +110,7 @@ bool WhileLoopInvariantCodeMotion::NotWorthHoistingIndividually(
 
     case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
+    case HloOpcode::kIota:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kSlice:

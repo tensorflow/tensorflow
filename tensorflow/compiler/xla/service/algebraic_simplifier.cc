@@ -553,6 +553,14 @@ Status AlgebraicSimplifierVisitor::HandleConstant(HloInstruction* constant) {
         constant,
         HloInstruction::CreateBroadcast(constant->shape(), scalar, {}));
   }
+
+  // If a literal is an increasing sequence from zero, replace it with an iota.
+  if (ShapeUtil::Rank(constant->shape()) == 1 &&
+      ShapeUtil::ElementsIn(constant->shape()) > 1 &&
+      constant->literal().IsR1Iota()) {
+    return ReplaceWithNewInstruction(
+        constant, HloInstruction::CreateIota(constant->shape(), 0));
+  }
   return Status::OK();
 }
 
