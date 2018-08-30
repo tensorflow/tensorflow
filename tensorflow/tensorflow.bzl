@@ -1365,12 +1365,13 @@ def transitive_hdrs(name, deps = [], **kwargs):
 
 # Create a header only library that includes all the headers exported by
 # the libraries in deps.
-def cc_header_only_library(name, deps = [], includes = [], **kwargs):
+def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], **kwargs):
     _transitive_hdrs(name = name + "_gather", deps = deps)
     native.cc_library(
         name = name,
         hdrs = [":" + name + "_gather"],
         includes = includes,
+        deps = extra_deps,
         **kwargs
     )
 
