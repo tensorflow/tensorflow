@@ -95,11 +95,11 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts,
   }
 
   if (ShapeUtil::IsTuple(lhs)) {
-    return ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
-                           [=](const Shape& l, const Shape& r) {
-                             return CompareShapes(l, r, compare_layouts,
-                                                  ignore_fp_precision);
-                           });
+    return absl::c_equal(lhs.tuple_shapes(), rhs.tuple_shapes(),
+                         [=](const Shape& l, const Shape& r) {
+                           return CompareShapes(l, r, compare_layouts,
+                                                ignore_fp_precision);
+                         });
   } else if (!ShapeUtil::IsArray(lhs)) {
     // Non-tuple, non-array tupes such as opaque and token types are trivially
     // the same.
@@ -111,13 +111,13 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts,
       return false;
     }
     if (LayoutUtil::IsDenseArray(lhs)) {
-      if (!ContainersEqual(LayoutUtil::MinorToMajor(lhs),
-                           LayoutUtil::MinorToMajor(rhs))) {
+      if (!absl::c_equal(LayoutUtil::MinorToMajor(lhs),
+                         LayoutUtil::MinorToMajor(rhs))) {
         VLOG(3) << "CompareShapes: lhs layout != rhs layout";
         return false;
       }
-      if (!ContainersEqual(lhs.layout().padded_dimensions(),
-                           rhs.layout().padded_dimensions())) {
+      if (!absl::c_equal(lhs.layout().padded_dimensions(),
+                         rhs.layout().padded_dimensions())) {
         VLOG(3)
             << "CompareShapes: lhs padded_dimensions != rhs padded_dimensions";
         return false;
@@ -662,7 +662,7 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
                                             const Shape& rhs) {
   CHECK(ShapeUtil::IsArray(lhs));
   CHECK(ShapeUtil::IsArray(rhs));
-  return ContainersEqual(lhs.dimensions(), rhs.dimensions());
+  return absl::c_equal(lhs.dimensions(), rhs.dimensions());
 }
 
 /* static */ bool ShapeUtil::Compatible(const Shape& lhs, const Shape& rhs) {
@@ -676,8 +676,8 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
     return IsArray(rhs) && SameDimensions(lhs, rhs);
   } else if (lhs.element_type() == TUPLE) {
     return rhs.element_type() == TUPLE &&
-           ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
-                           CompatibleIgnoringElementType);
+           absl::c_equal(lhs.tuple_shapes(), rhs.tuple_shapes(),
+                         CompatibleIgnoringElementType);
   } else {
     // Opaque, token, etc types are vacuously compatible.
     return lhs.element_type() == rhs.element_type();
@@ -691,8 +691,8 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
            CompatibleIgnoringElementType(lhs, rhs);
   } else if (lhs.element_type() == TUPLE) {
     return rhs.element_type() == TUPLE &&
-           ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
-                           CompatibleIgnoringFpPrecision);
+           absl::c_equal(lhs.tuple_shapes(), rhs.tuple_shapes(),
+                         CompatibleIgnoringFpPrecision);
   } else {
     // Opaque, token, etc types are vacuously compatible.
     return lhs.element_type() == rhs.element_type();
@@ -1286,7 +1286,7 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
   //   apply(input_dimensions, I) =
   //       apply((dimension_mapping * output_dimensions), I)
   //   input_dimensions = dimension_mapping * output_dimensions
-  return ContainersEqual(
+  return absl::c_equal(
       ComposePermutations(dimension_mapping,
                           AsInt64Slice(output_shape.layout().minor_to_major())),
       input_shape.layout().minor_to_major());

@@ -867,8 +867,8 @@ class HloInstruction {
       return false;
     }
 
-    if (!ContainersEqual(precision_config_.operand_precision(),
-                         other.precision_config_.operand_precision())) {
+    if (!absl::c_equal(precision_config_.operand_precision(),
+                       other.precision_config_.operand_precision())) {
       return false;
     }
 

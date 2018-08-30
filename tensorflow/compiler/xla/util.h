@@ -162,33 +162,6 @@ static inline tensorflow::gtl::ArraySlice<uint64> AsUInt64Slice(
       reinterpret_cast<const uint64*>(slice.data()), slice.size());
 }
 
-// Compares two containers for equality. Returns true iff the two containers
-// have the same size and all their elements compare equal using their
-// operator==. Like std::equal, but forces size equality.
-template <typename Container1T, typename Container2T>
-bool ContainersEqual(const Container1T& c1, const Container2T& c2) {
-  return ((c1.size() == c2.size()) &&
-          std::equal(std::begin(c1), std::end(c1), std::begin(c2)));
-}
-
-template <typename Container1T,
-          typename ElementType = typename Container1T::value_type>
-bool ContainersEqual(const Container1T& c1,
-                     std::initializer_list<ElementType> il) {
-  tensorflow::gtl::ArraySlice<ElementType> c2{il};
-  return ContainersEqual(c1, c2);
-}
-
-// Compares two containers for equality. Returns true iff the two containers
-// have the same size and all their elements compare equal using the predicate
-// p. Like std::equal, but forces size equality.
-template <typename Container1T, typename Container2T, class PredicateT>
-bool ContainersEqual(const Container1T& c1, const Container2T& c2,
-                     PredicateT p) {
-  return ((c1.size() == c2.size()) &&
-          std::equal(std::begin(c1), std::end(c1), std::begin(c2), p));
-}
-
 // Performs a copy of count values from src to dest, using different strides for
 // source and destination. The source starting index is src_base, while the
 // destination one is dest_base.

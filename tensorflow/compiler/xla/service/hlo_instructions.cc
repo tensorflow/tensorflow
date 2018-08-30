@@ -337,11 +337,10 @@ bool HloCollectiveInstruction::IdenticalSlowPath(
     /*eq_computations*/) const {
   const auto& casted_other =
       static_cast<const HloCollectiveInstruction&>(other);
-  return ContainersEqual(replica_groups(), casted_other.replica_groups(),
-                         [](const ReplicaGroup& a, const ReplicaGroup& b) {
-                           return ContainersEqual(a.replica_ids(),
-                                                  b.replica_ids());
-                         });
+  return absl::c_equal(replica_groups(), casted_other.replica_groups(),
+                       [](const ReplicaGroup& a, const ReplicaGroup& b) {
+                         return absl::c_equal(a.replica_ids(), b.replica_ids());
+                       });
 }
 
 HloAllReduceInstruction::HloAllReduceInstruction(
@@ -452,11 +451,10 @@ bool HloCollectivePermuteInstruction::IdenticalSlowPath(
     /*eq_computations*/) const {
   const auto& casted_other =
       static_cast<const HloCollectivePermuteInstruction&>(other);
-  return ContainersEqual(
-      source_target_pairs(), casted_other.source_target_pairs(),
-      [](const std::pair<int64, int64>& a, const std::pair<int64, int64>& b) {
-        return a == b;
-      });
+  return absl::c_equal(source_target_pairs(),
+                       casted_other.source_target_pairs(),
+                       [](const std::pair<int64, int64>& a,
+                          const std::pair<int64, int64>& b) { return a == b; });
 }
 
 std::unique_ptr<HloInstruction>

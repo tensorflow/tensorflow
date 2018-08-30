@@ -1068,9 +1068,9 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
       TF_RET_CHECK(instruction->parent() == computation);
       if (instruction->opcode() == HloOpcode::kFusion) {
         TF_RETURN_IF_ERROR(CheckFusionInstruction(instruction));
-        TF_RET_CHECK(
-            ContainersEqual(instruction->called_computations(),
-                            {instruction->fused_instructions_computation()}))
+        TF_RET_CHECK(instruction->called_computations() ==
+                     absl::Span<HloComputation* const>(
+                         {instruction->fused_instructions_computation()}))
             << "Fusion HLO calls computations other than the "
                "fused_instructions_computation: "
             << instruction->ToString()
