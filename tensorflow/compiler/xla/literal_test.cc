@@ -1561,7 +1561,7 @@ TEST_F(LiteralUtilTest, MoveIntoTuple) {
 
                                    ));
 
-  Literal literal = Literal::MoveIntoTuple(&elements);
+  Literal literal = Literal::MoveIntoTuple(absl::MakeSpan(elements));
   ASSERT_TRUE(ShapeUtil::IsTuple(literal.shape()));
   ASSERT_EQ(ShapeUtil::TupleElementCount(literal.shape()), 3);
 

@@ -293,9 +293,10 @@ bool IsPermutation(tensorflow::gtl::ArraySlice<int64> permutation, int64 rank);
 // Precondition:
 // 1. `permutation` is a permutation of 0..permutation.size()-1.
 // 2. permutation.size() == input.size().
-template <template <typename...> class C, typename T>
-std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
-                       C<T> input) {
+template <typename Container>
+std::vector<typename Container::value_type> Permute(
+    tensorflow::gtl::ArraySlice<int64> permutation, const Container& input) {
+  using T = typename Container::value_type;
   tensorflow::gtl::ArraySlice<T> data(input);
   CHECK(IsPermutation(permutation, data.size()));
   std::vector<T> output(data.size());
@@ -304,17 +305,6 @@ std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
   }
   return output;
 }
-
-// Override of the above that works around compile failures with gcc 7.1.1.
-// For details see https://github.com/tensorflow/tensorflow/issues/10843
-// Hide this workaround from MSVC as it causes ambiguous error.
-#ifndef _MSC_VER
-template <typename T>
-std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
-                       const std::vector<T>& input) {
-  return Permute<std::vector, T>(permutation, input);
-}
-#endif
 
 // Inverts a permutation, i.e., output_permutation[input_permutation[i]] = i.
 std::vector<int64> InversePermutation(

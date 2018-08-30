@@ -96,7 +96,9 @@ class SparseIndexArray {
   int64 max_indices() const { return max_indices_; }
 
   // Returns a pointer to the int64 array that holds the sparse indices.
-  tensorflow::gtl::MutableArraySlice<int64> mutable_data() { return &indices_; }
+  tensorflow::gtl::MutableArraySlice<int64> mutable_data() {
+    return absl::MakeSpan(indices_);
+  }
   tensorflow::gtl::ArraySlice<int64> data() const { return indices_; }
 
   // Sorts this sparse index array along with the set of corresponding values.

@@ -1884,7 +1884,8 @@ TEST_F(OpTest, DynamicStitch) {
     for (int i = 0; i < n; ++i) {
       TensorShape shape(index_dims[i]);
       Tensor t = test::AsTensor<int32>(
-          gtl::ArraySlice<int32>(indices, pos, shape.num_elements()), shape);
+          gtl::ArraySlice<int32>(indices).subspan(pos, shape.num_elements()),
+          shape);
       builder.Input(t);
       pos += t.NumElements();
     }

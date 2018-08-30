@@ -992,7 +992,7 @@ void LiteralBase::EachCell(
   std::vector<int64> indices(ShapeUtil::Rank(shape()), 0);
   do {
     per_cell(indices, Get<NativeT>(indices));
-  } while (IndexUtil::BumpIndices(shape(), &indices));
+  } while (IndexUtil::BumpIndices(shape(), absl::MakeSpan(indices)));
 }
 
 template <typename NativeT>

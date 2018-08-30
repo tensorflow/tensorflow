@@ -124,9 +124,10 @@ xla::XlaOp SliceInMinorDims(xla::XlaOp x, gtl::ArraySlice<int64> start,
 
     const int64 n_dims = xla::ShapeUtil::Rank(shape);
     TF_RET_CHECK(n_minor_dims <= n_dims);
-    gtl::ArraySlice<int64> major_dims(xla::AsInt64Slice(shape.dimensions()),
-                                      /*pos=*/0,
-                                      /*len=*/n_dims - n_minor_dims);
+    auto major_dims = xla::AsInt64Slice(shape.dimensions())
+                          .subspan(
+                              /*pos=*/0,
+                              /*len=*/n_dims - n_minor_dims);
 
     // Prepends 0s in the major dim
     std::vector<int64> padded_start(n_dims, 0);
@@ -161,9 +162,10 @@ xla::XlaOp DynamicSliceInMinorDims(xla::XlaOp x,
     int64 n_minor_dims = starts.size();
     TF_RET_CHECK(n_minor_dims == sizes.size());
     TF_RET_CHECK(n_minor_dims <= n_dims);
-    gtl::ArraySlice<int64> major_dims(xla::AsInt64Slice(shape.dimensions()),
-                                      /*pos=*/0,
-                                      /*len=*/n_dims - sizes.size());
+    auto major_dims = xla::AsInt64Slice(shape.dimensions())
+                          .subspan(
+                              /*pos=*/0,
+                              /*len=*/n_dims - sizes.size());
     auto padded_starts = PrependZerosInMajorDims(x, starts);
     auto padded_sizes = ConcatVectors(major_dims, sizes);
     return xla::DynamicSlice(x, padded_starts, padded_sizes);

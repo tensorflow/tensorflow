@@ -2471,6 +2471,7 @@ tf_cuda_library(
 
 cc_header_only_library(
     name = "framework_internal_headers_lib",
+    includes = ["../../external/com_google_absl"],
     deps = [
         ":lib",
         ":lib_internal",
@@ -2559,6 +2560,7 @@ cc_header_only_library(
         # ABSL headers get dropped, so we add them back here.
         "@com_google_absl//absl/strings",
     ],
+    includes = ["../../external/com_google_absl"],
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
@@ -2568,6 +2570,7 @@ cc_header_only_library(
 
 cc_header_only_library(
     name = "stream_executor_headers_lib",
+    includes = ["../../external/com_google_absl"],
     visibility = ["//visibility:public"],
     deps = [
         ":stream_executor",
@@ -3219,7 +3222,6 @@ tf_cc_tests(
         "lib/core/status_test.cc",
         "lib/core/stringpiece_test.cc",
         "lib/core/threadpool_test.cc",
-        "lib/gtl/array_slice_test.cc",
         "lib/gtl/cleanup_test.cc",
         "lib/gtl/compactptrset_test.cc",
         "lib/gtl/edit_distance_test.cc",
