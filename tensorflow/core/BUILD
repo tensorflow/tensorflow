@@ -612,6 +612,7 @@ cc_library(
     copts = tf_copts(),
     deps = tf_lib_proto_parsing_deps() + [
         ":platform_base",
+        "@com_google_absl//absl/strings",
         "@double_conversion//:double-conversion",
     ],
 )
@@ -694,6 +695,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":lib_internal",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -730,10 +732,12 @@ cc_library(
 # required to use tf_cc_test, and that rule will change / into _
 cc_library(
     name = "core_stringpiece",
-    srcs = ["lib/core/stringpiece.cc"],
     hdrs = ["lib/core/stringpiece.h"],
     copts = tf_copts(),
-    deps = [":platform_base"],
+    deps = [
+        ":platform_base",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 # Test support library needed for all tests
@@ -1589,7 +1593,9 @@ cc_library(
 
 cc_library(
     name = "mobile_additional_lib_deps",
-    deps = tf_additional_lib_deps(),
+    deps = tf_additional_lib_deps() + [
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 # Native library support for iOS applications.
@@ -2067,6 +2073,7 @@ cc_library(
         ],
     }),
     deps = tf_additional_lib_deps() + [
+        "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "//tensorflow/core/platform/default/build_config:platformlib",
     ] + if_static([":lib_internal_impl"]),
@@ -2084,7 +2091,6 @@ cc_library(
         exclude = [
             "**/*test*",
             "framework/variant.cc",
-            "lib/core/stringpiece.cc",
             "lib/hash/crc32c_accelerate.cc",
             "lib/gif/**/*",
             "lib/jpeg/**/*",
@@ -2099,7 +2105,6 @@ cc_library(
     ) + tf_additional_lib_srcs(
         exclude = [
             "**/*test*",
-            "lib/core/stringpiece.cc",
             "platform/**/cuda.h",
             "platform/**/cuda_libdevice_path.cc",
             "platform/**/stream_executor.h",
@@ -2210,6 +2215,7 @@ cc_library(
         ":lib",
         ":lib_internal",
         "//tensorflow/core/platform/default/build_config:png",
+        "@com_google_absl//absl/strings",
         "@zlib_archive//:zlib",
     ],
 )
@@ -2260,6 +2266,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform/default/build_config:jpeg",
         "//tensorflow/core/platform/default/build_config:logging",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2291,6 +2298,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform/default/build_config:gif",
         "//tensorflow/core/platform/default/build_config:logging",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2318,6 +2326,7 @@ cc_library(
     linkopts = ["-ldl"],
     deps = [
         "//tensorflow/core/platform/default/build_config:logging",
+        "@com_google_absl//absl/strings",
         "@png_archive//:png",
     ],
 )
@@ -2546,6 +2555,10 @@ tf_cuda_library(
 
 cc_header_only_library(
     name = "framework_headers_lib",
+    extra_deps = [
+        # ABSL headers get dropped, so we add them back here.
+        "@com_google_absl//absl/strings",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
