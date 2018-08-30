@@ -17,13 +17,13 @@ limitations under the License.
 #ifdef INTEL_MKL
 #ifndef INTEL_MKL_ML_ONLY
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #include "tensorflow/core/util/mkl_util.h"
 
@@ -51,9 +51,30 @@ class MklSoftmaxOp : public OpKernel {
       size_t src_idx = 0;
       const Tensor& src_tensor = MklGetInput(context, src_idx);
 
+      // Get number of dimensions of src
+      const int input_dims = src_tensor.dims();
+
       // Add: get MklShape
       MklDnnShape src_mkl_shape;
       GetMklShape(context, src_idx, &src_mkl_shape);
+
+      // Set layout type based on input_dims
+      memory::format layout_type;
+      switch (input_dims) {
+        case 1:
+          layout_type = memory::format::x;
+        case 2:
+          layout_type = memory::format::nc;
+        case 3:
+          layout_type = memory::format::tnc;
+        case 4:
+          layout_type = memory::format::nchw;
+        case 5:
+          layout_type = memory::format::ncdhw;
+        default:
+          ctx->SetStatus(
+            errors::Unimplemented(" MKL softmax does not support  1 > input_dims > 5  ");
+      }
 
       // src_dims is the dimenstion of src_tensor
       // dim of the dst will also be same as src_dims
@@ -75,7 +96,7 @@ class MklSoftmaxOp : public OpKernel {
       auto src_md =
           src_mkl_shape.IsMklTensor()
               ? src_mkl_shape.GetMklLayout()
-              : memory::desc(src_dims, MklDnnType<T>(), memory::format::nc);
+              : memory::desc(src_dims, MklDnnType<T>(), layout_type);
 
       // src: setting memory descriptor and op memory descriptor
       // Basically following two functions maps the TF "src_tensor" to mkl
@@ -84,10 +105,13 @@ class MklSoftmaxOp : public OpKernel {
       // data format is "nc" for src and dst; since the src and dst buffer is
       // always in 2D shape
       src.SetUsrMem(src_md, &src_tensor);
-      src.SetOpMemDesc(src_dims, memory::format::nc);
+      src.SetOpMemDesc(src_dims, layout_type);
 
       // creating a memory descriptor
-      int axis = 1;  // axis to which softmax will be applied
+
+      // axis to which softmax will be applied
+      // Always softmax is applied to the last axis
+      int axis = input_dims - 1;
       auto softmax_fwd_desc = softmax_forward::desc(prop_kind::forward_scoring,
                                                     src.GetOpMemDesc(), axis);
       auto softmax_fwd_pd =
@@ -107,7 +131,7 @@ class MklSoftmaxOp : public OpKernel {
         output_mkl_shape.SetMklLayout(&dst_pd);
         output_mkl_shape.SetElemType(MklDnnType<T>());
         output_mkl_shape.SetTfLayout(output_dims.size(), output_dims,
-                                     memory::format::nc);
+                                     layout_type);
         output_tf_shape.AddDim((dst_pd.get_size() / sizeof(T)));
       } else {  // then output is also TF shape
         output_mkl_shape.SetMklTensor(false);
