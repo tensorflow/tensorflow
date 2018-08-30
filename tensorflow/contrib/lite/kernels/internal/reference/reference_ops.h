@@ -4421,16 +4421,22 @@ void TensorFlowMaximum(const T* input1_data, const Dims<4>& input1_dims,
 }
 
 template <typename T, typename Op>
-void MaximumMinimumBroadcast4DSlow(const RuntimeShape& input1_shape,
+void MaximumMinimumBroadcast4DSlow(const RuntimeShape& unextended_input1_shape,
                                    const T* input1_data,
-                                   const RuntimeShape& input2_shape,
+                                   const RuntimeShape& unextended_input2_shape,
                                    const T* input2_data,
-                                   const RuntimeShape& output_shape,
+                                   const RuntimeShape& unextended_output_shape,
                                    T* output_data, Op op) {
+  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
-                                      &desc2);
+  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
+                                      unextended_input2_shape, &desc1, &desc2);
 
   for (int b = 0; b < output_shape.Dims(0); ++b) {
     for (int y = 0; y < output_shape.Dims(1); ++y) {
@@ -4459,8 +4465,8 @@ void TensorFlowMaximumMinimum(const T* input1_data, const Dims<4>& input1_dims,
 }
 
 template <typename T1, typename T2, typename T3, typename Cmp>
-void ArgMinMax(const T3* axis, const RuntimeShape& input_shape,
-               const T1* input_data, const RuntimeShape& output_shape,
+void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
+               const T3* input2_data, const RuntimeShape& output_shape,
                T2* output_data, const Cmp& cmp) {
   // The current ArgMax implemention can only determine the index of the maximum
   // value in the last dimension. So the axis argument is ignored.
@@ -4469,17 +4475,19 @@ void ArgMinMax(const T3* axis, const RuntimeShape& input_shape,
   // 1). For the sake of simplicity, the output dimensions are equal to the
   // input dimensions here. We enforce the constraint that the last dimension
   // must always be 1.
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.Dims(3), 1);
-  const int outer_size = MatchingFlatSizeSkipDim(input_shape, 3, output_shape);
-  const int depth = input_shape.Dims(3);
+  const int trailing_dim = output_shape.DimensionsCount() - 1;
+  TFLITE_DCHECK_EQ(input1_shape.DimensionsCount(),
+                   output_shape.DimensionsCount());
+  TFLITE_DCHECK_EQ(output_shape.Dims(trailing_dim), 1);
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input1_shape, trailing_dim, output_shape);
+  const int depth = input1_shape.Dims(trailing_dim);
 
   for (int i = 0; i < outer_size; ++i) {
-    auto min_max_value = input_data[i * depth];
+    auto min_max_value = input1_data[i * depth];
     int min_max_index = 0;
     for (int d = 1; d < depth; ++d) {
-      const auto& curr_value = input_data[i * depth + d];
+      const auto& curr_value = input1_data[i * depth + d];
       if (cmp(curr_value, min_max_value)) {
         min_max_value = curr_value;
         min_max_index = d;
@@ -4493,12 +4501,19 @@ void ArgMinMax(const T3* axis, const RuntimeShape& input_shape,
 template <typename T1, typename T2, typename T3, typename Cmp>
 void ArgMinMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
                T2* output_data, const Dims<4>& output_dims, const Cmp& cmp) {
-  ArgMinMax(axis, DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+  ArgMinMax(DimsToShape(input_dims), input_data, axis, DimsToShape(output_dims),
             output_data, cmp);
 }
 
+template <typename T1, typename T2, typename T3>
+void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
+            const T3* input2_data, const RuntimeShape& output_shape,
+            T2* output_data) {
+  ArgMinMax(input1_shape, input1_data, input2_data, output_shape, output_data,
+            std::greater<T1>());
+}
+
 // Legacy.
-// TODO(renjieliu): Remove this one.
 template <typename T1, typename T2, typename T3>
 void ArgMax(const T3* axis, const T1* input_data,
             const tflite::Dims<4>& input_dims, T2* output_data,
@@ -4938,14 +4953,20 @@ inline void Logical(const bool* input1_data, const Dims<4>& input1_dims,
 }
 
 inline void BroadcastLogical4DSlow(
-    const RuntimeShape& input1_shape, const bool* input1_data,
-    const RuntimeShape& input2_shape, const bool* input2_data,
-    const RuntimeShape& output_shape, bool* output_data,
+    const RuntimeShape& unextended_input1_shape, const bool* input1_data,
+    const RuntimeShape& unextended_input2_shape, const bool* input2_data,
+    const RuntimeShape& unextended_output_shape, bool* output_data,
     const std::function<bool(bool, bool)>& func) {
+  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
-                                      &desc2);
+  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
+                                      unextended_input2_shape, &desc1, &desc2);
 
   for (int b = 0; b < output_shape.Dims(0); ++b) {
     for (int y = 0; y < output_shape.Dims(1); ++y) {
@@ -4982,16 +5003,21 @@ inline void BroadcastLogical(const bool* input1_data,
 //
 // R: Result type. T1: Input 1 type. T2: Input 2 type.
 template <typename R, typename T1, typename T2>
-inline void BroadcastBinaryFunction4DSlow(const RuntimeShape& input1_shape,
-                                          const T1* input1_data,
-                                          const RuntimeShape& input2_shape,
-                                          const T2* input2_data,
-                                          const RuntimeShape& output_shape,
-                                          R* output_data, R (*func)(T1, T2)) {
+inline void BroadcastBinaryFunction4DSlow(
+    const RuntimeShape& unextended_input1_shape, const T1* input1_data,
+    const RuntimeShape& unextended_input2_shape, const T2* input2_data,
+    const RuntimeShape& unextended_output_shape, R* output_data,
+    R (*func)(T1, T2)) {
+  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
-                                      &desc2);
+  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
+                                      unextended_input2_shape, &desc1, &desc2);
 
   for (int b = 0; b < output_shape.Dims(0); ++b) {
     for (int y = 0; y < output_shape.Dims(1); ++y) {
@@ -5024,6 +5050,22 @@ inline void BroadcastBinaryFunction(const T1* input1_data,
                                 DimsToShape(output_dims), output_data, func);
 }
 
+// R: Result type. T1: Input 1 type. T2: Input 2 type.
+// TODO(renjieliu): Refactor other binary functions to use this one.
+template <typename R, typename T1, typename T2>
+inline void BinaryFunction(const RuntimeShape& input1_shape,
+                           const T1* input1_data,
+                           const RuntimeShape& input2_shape,
+                           const T2* input2_data,
+                           const RuntimeShape& output_shape, R* output_data,
+                           R (*func)(T1, T2)) {
+  const int flat_size =
+      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = func(input1_data[i], input2_data[i]);
+  }
+}
+
 // Legacy Dims<4> version.
 //
 // R: Result type. T1: Input 1 type. T2: Input 2 type.
@@ -5033,10 +5075,9 @@ inline void BinaryFunction(const T1* input1_data, const Dims<4>& input1_dims,
                            const T2* input2_data, const Dims<4>& input2_dims,
                            R* output_data, const Dims<4>& output_dims,
                            R (*func)(T1, T2)) {
-  const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
-  for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = func(input1_data[i], input2_data[i]);
-  }
+  BinaryFunction(DimsToShape(input1_dims), input1_data,
+                 DimsToShape(input2_dims), input2_data,
+                 DimsToShape(output_dims), output_data, func);
 }
 
 }  // namespace reference_ops
