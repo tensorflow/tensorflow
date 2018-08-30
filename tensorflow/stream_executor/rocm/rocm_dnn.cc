@@ -1885,9 +1885,9 @@ bool MIOpenSupport::DoBatchNormalizationForward(
     std::function<const DeviceMemory<float>&()> var_to_inv_var,
     std::function<void()> inv_var_to_var) {
   return DoBatchNormalizationForwardImpl<Eigen::half, float>(
-      stream, dnn::DataType::kHalf, x, scale, offset, estimated_mean,
-      estimated_variance, x_desc, scale_offset_desc, epsilon, y, batch_mean,
-      batch_var, saved_mean, saved_inv_var, is_training,
+      stream, dnn::DataType::kHalf, dnn::DataType::kFloat, x, scale, offset,
+      estimated_mean, estimated_variance, x_desc, scale_offset_desc, epsilon,
+      y, batch_mean, batch_var, saved_mean, saved_inv_var, is_training,
       std::move(var_to_inv_var), std::move(inv_var_to_var));
 }
 
@@ -1904,15 +1904,16 @@ bool MIOpenSupport::DoBatchNormalizationForward(
     std::function<const DeviceMemory<float>&()> var_to_inv_var,
     std::function<void()> inv_var_to_var) {
   return DoBatchNormalizationForwardImpl<float, float>(
-      stream, dnn::DataType::kFloat, x, scale, offset, estimated_mean,
-      estimated_variance, x_desc, scale_offset_desc, epsilon, y, batch_mean,
-      batch_var, saved_mean, saved_inv_var, is_training,
+      stream, dnn::DataType::kFloat, dnn::DataType::kFloat, x, scale, offset,
+      estimated_mean, estimated_variance, x_desc, scale_offset_desc, epsilon,
+      y, batch_mean, batch_var, saved_mean, saved_inv_var, is_training,
       std::move(var_to_inv_var), std::move(inv_var_to_var));
 }
 
-  template <class T, class U>
+template <class T, class U>
 bool MIOpenSupport::DoBatchNormalizationForwardImpl(
-    Stream* stream, dnn::DataType data_type, const DeviceMemory<T>& x,
+    Stream* stream, dnn::DataType input_data_type,
+    dnn::DataType scale_data_type, const DeviceMemory<T>& x,
     const DeviceMemory<U>& scale, const DeviceMemory<U>& offset,
     const DeviceMemory<U>& estimated_mean,
     const DeviceMemory<U>& estimated_variance,
@@ -1931,9 +1932,9 @@ bool MIOpenSupport::DoBatchNormalizationForwardImpl(
   }
 
   ScopedTensorDescriptor x_descriptor{parent_, x_desc,
-                                      ToMIOpenDataType(data_type)};
+                                      ToMIOpenDataType(input_data_type)};
   ScopedTensorDescriptor scale_offset_descriptor{parent_, scale_offset_desc,
-                                                 ToMIOpenDataType(data_type)};
+                                                 ToMIOpenDataType(scale_data_type)};
   miopenBatchNormMode_t mode = miopenBNSpatial;
   float one = 1.0;
   float zero = 0.0;
@@ -1976,8 +1977,9 @@ bool MIOpenSupport::DoBatchNormalizationBackward(
     DeviceMemory<float>* scale_backprop,
     DeviceMemory<float>* offset_backprop) {
   return DoBatchNormalizationBackwardImpl<Eigen::half, float>(
-      stream, miopenHalf, y_backprop, x, scale, mean, inv_var, x_desc,
-      scale_offset_desc, epsilon, x_backprop, scale_backprop, offset_backprop);
+      stream, miopenHalf, miopenFloat, y_backprop, x, scale, mean, inv_var,
+      x_desc, scale_offset_desc, epsilon, x_backprop, scale_backprop,
+      offset_backprop);
 }
 
 bool MIOpenSupport::DoBatchNormalizationBackward(
@@ -1989,16 +1991,17 @@ bool MIOpenSupport::DoBatchNormalizationBackward(
     DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
     DeviceMemory<float>* offset_backprop) {
   return DoBatchNormalizationBackwardImpl<float, float>(
-      stream, miopenFloat, y_backprop, x, scale, mean, variance, x_desc,
-      scale_offset_desc, epsilon, x_backprop, scale_backprop, offset_backprop);
+      stream, miopenFloat, miopenFloat, y_backprop, x, scale, mean, variance,
+      x_desc, scale_offset_desc, epsilon, x_backprop, scale_backprop,
+      offset_backprop);
 }
 
-  template <class T, class U>
+template <class T, class U>
 bool MIOpenSupport::DoBatchNormalizationBackwardImpl(
-    Stream* stream, int miopen_type, const DeviceMemory<T>& y_backprop,
-    const DeviceMemory<T>& x, const DeviceMemory<U>& scale,
-    const DeviceMemory<U>& mean, const DeviceMemory<U>& variance,
-    const dnn::BatchDescriptor& x_desc,
+    Stream* stream, int miopen_input_type, int miopen_scale_type,
+    const DeviceMemory<T>& y_backprop, const DeviceMemory<T>& x,
+    const DeviceMemory<U>& scale, const DeviceMemory<U>& mean,
+    const DeviceMemory<U>& variance, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     DeviceMemory<T>* x_backprop, DeviceMemory<U>* scale_backprop,
     DeviceMemory<U>* offset_backprop) {
@@ -2011,9 +2014,9 @@ bool MIOpenSupport::DoBatchNormalizationBackwardImpl(
   }
 
   ScopedTensorDescriptor x_descriptor{parent_, x_desc,
-                                      static_cast<miopenDataType_t>(miopen_type)};
+                                      static_cast<miopenDataType_t>(miopen_input_type)};
   ScopedTensorDescriptor scale_offset_descriptor{
-      parent_, scale_offset_desc, static_cast<miopenDataType_t>(miopen_type)};
+      parent_, scale_offset_desc, static_cast<miopenDataType_t>(miopen_scale_type)};
   miopenBatchNormMode_t mode = miopenBNSpatial;
   float one = 1.0;
   float zero = 0.0;
