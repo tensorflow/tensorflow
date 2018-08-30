@@ -5586,18 +5586,15 @@ inline void ResizeBilinearGenericSmallChannel(
 inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                            const RuntimeShape& unextended_input_shape,
                            const float* input_data,
-                           const RuntimeShape& unextended_output_size_shape,
+                           const RuntimeShape& output_size_shape,
                            const int32* output_size_data,
                            const RuntimeShape& unextended_output_shape,
                            float* output_data) {
   gemmlowp::ScopedProfilingLabel label("ResizeBilinear");
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_size_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
   RuntimeShape input_shape =
       RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  RuntimeShape output_size_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_size_shape);
   RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
@@ -5606,12 +5603,9 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
   int32 input_width = input_shape.Dims(2);
   int32 depth = MatchingDim(input_shape, 3, output_shape, 3);
 
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(0), 1);
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(1), 1);
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(2), 1);
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(3), 2);
-  int32 output_height = output_size_data[Offset(output_size_shape, 0, 0, 0, 0)];
-  int32 output_width = output_size_data[Offset(output_size_shape, 0, 0, 0, 1)];
+  TFLITE_DCHECK_EQ(output_size_shape.FlatSize(), 2);
+  int32 output_height = output_size_data[0];
+  int32 output_width = output_size_data[1];
 
   // Specialize for 2x2 upsample.
   if (!op_params.align_corners && output_height == 2 * input_height &&
@@ -5651,28 +5645,28 @@ inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
 // TODO(prabhumk): This is not a real quantized bilinear. It does not use int8
 // or int16 arithmetic.
 inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
-                           const RuntimeShape& input_shape,
+                           const RuntimeShape& unextended_input_shape,
                            const uint8* input_data,
                            const RuntimeShape& output_size_shape,
                            const int32* output_size_data,
-                           const RuntimeShape& output_shape,
+                           const RuntimeShape& unextended_output_shape,
                            uint8* output_data) {
   gemmlowp::ScopedProfilingLabel label("ResizeBilinear");
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_size_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
   int32 input_height = input_shape.Dims(1);
   int32 input_width = input_shape.Dims(2);
   int32 depth = MatchingDim(input_shape, 3, output_shape, 3);
 
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(0), 1);
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(1), 1);
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(2), 1);
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(3), 2);
-  int32 output_height = output_size_data[Offset(output_size_shape, 0, 0, 0, 0)];
-  int32 output_width = output_size_data[Offset(output_size_shape, 0, 0, 0, 1)];
+  TFLITE_DCHECK_EQ(output_size_shape.FlatSize(), 2);
+  int32 output_height = output_size_data[0];
+  int32 output_width = output_size_data[1];
 
   float height_scale =
       (op_params.align_corners && output_height > 1)

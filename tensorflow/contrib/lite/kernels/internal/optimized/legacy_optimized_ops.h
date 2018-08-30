@@ -296,13 +296,17 @@ inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
                          int output_shift, int32 output_activation_min,
                          int32 output_activation_max, uint8* output_data,
                          const Dims<4>& output_dims) {
-  BroadcastMul4DSlow(
-      input1_data, input1_dims, input1_offset, input2_data, input2_dims,
-      input2_offset, output_offset, output_multiplier,
-      // This legacy version switches the sign of the output shift.
-      kReverseShift * output_shift,
-      // (Break to highlight preceding line.)
-      output_activation_min, output_activation_max, output_data, output_dims);
+  tflite::ArithmeticParams op_params;
+  SetActivationParams(output_activation_min, output_activation_max, &op_params);
+  op_params.input1_offset = input1_offset;
+  op_params.input2_offset = input2_offset;
+  op_params.output_offset = output_offset;
+  op_params.output_multiplier = output_multiplier;
+  op_params.output_shift = kReverseShift * output_shift;
+
+  BroadcastMul4DSlow(op_params, DimsToShape(input1_dims), input1_data,
+                     DimsToShape(input2_dims), input2_data,
+                     DimsToShape(output_dims), output_data);
 }
 
 // legacy, for compatibility with old checked-in code
