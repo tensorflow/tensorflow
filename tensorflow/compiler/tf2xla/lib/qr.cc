@@ -331,7 +331,7 @@ xla::StatusOr<xla::XlaOp> ComputeWYRepresentation(
 // TODO(phawkins): consider using UT transformations (in the form I - V U V')
 // rather than WY transformations.
 xla::StatusOr<QRDecompositionResult> QRDecomposition(
-    xla::XlaOp a, int64 block_size,
+    xla::XlaOp a, bool full_matrices, int64 block_size,
     xla::PrecisionConfigProto::Precision precision) {
   xla::XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));
@@ -396,6 +396,13 @@ xla::StatusOr<QRDecompositionResult> QRDecomposition(
     q = UpdateSliceInMinorDims(q, q_panel, {0, i});
   }
   QRDecompositionResult result;
+
+  // full_matrices is false when only a partial result in needed. Slice to the
+  // needed dimensions here.
+  if (!full_matrices) {
+    q = SliceInMinorDims(q, {0, 0}, {m, p});
+    a = SliceInMinorDims(a, {0, 0}, {p, n});
+  }
   result.q = q;
   result.r = a;
   return result;
