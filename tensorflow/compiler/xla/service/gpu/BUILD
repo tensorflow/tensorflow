@@ -454,6 +454,7 @@ cc_library(
     srcs = ["instruction_fusion.cc"],
     hdrs = ["instruction_fusion.h"],
     deps = [
+        ":gpu_fusible",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -483,6 +484,7 @@ cc_library(
     srcs = ["multi_output_fusion.cc"],
     hdrs = ["multi_output_fusion.h"],
     deps = [
+        ":gpu_fusible",
         ":instruction_fusion",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_util",
@@ -531,6 +533,7 @@ cc_library(
     srcs = ["fusion_merger.cc"],
     hdrs = ["fusion_merger.h"],
     deps = [
+        ":gpu_fusible",
         ":instruction_fusion",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
@@ -924,5 +927,28 @@ xla_test(
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "gpu_fusible",
+    srcs = ["gpu_fusible.cc"],
+    hdrs = ["gpu_fusible.h"],
+    deps = [
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla/service:hlo",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_fusible_test",
+    srcs = ["gpu_fusible_test.cc"],
+    deps = [
+        ":gpu_fusible",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
