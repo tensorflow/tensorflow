@@ -2038,6 +2038,34 @@ class TestTrainingWithDataset(test.TestCase):
               validation_data=dataset, validation_steps=2)
 
   @tf_test_util.run_in_graph_and_eager_modes
+  def test_training_single_output_model_on_dataset(self):
+    """We expect the output node to have 3 dimension, including the batch axis.
+    Therefor input tensors for single output models need to be expanded
+    at the the second dimension (axis=1).
+    """
+    with self.test_session():
+      x = keras.layers.Input(shape=(3,), name='input')
+      y = keras.layers.Dense(1, name='dense')(x)
+      model = keras.Model(x, y)
+
+      optimizer = RMSPropOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      metrics = ['mae']
+      model.compile(optimizer, loss, metrics=metrics)
+
+      inputs = np.zeros((10, 3))
+      targets = np.zeros(10)
+      dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+      dataset = dataset.repeat(100)
+      dataset = dataset.batch(10)
+
+      model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
+      model.evaluate(dataset, steps=2, verbose=0)
+      model.predict(dataset, steps=2)
+      model.train_on_batch(dataset)
+      model.predict_on_batch(dataset)
+
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_training_and_eval_methods_on_dataset(self):
     model = testing_utils.get_small_functional_mlp(1, 4, input_dim=3)
     optimizer = RMSPropOptimizer(learning_rate=0.001)
@@ -2109,7 +2137,7 @@ class TestTrainingWithDataset(test.TestCase):
       dataset = dataset.repeat(100)
 
       with self.assertRaisesRegexp(ValueError,
-                                   r'expected (.*?) to have 2 dimensions'):
+                                   r'expected (.*?) to have shape'):
         model.train_on_batch(dataset)
 
       # Wrong input shape

@@ -447,7 +447,7 @@ class TestWithDistributionStrategy(test.TestCase):
       dataset = dataset.repeat(100)
 
       with self.assertRaisesRegexp(ValueError,
-                                   'expected input to have 2 dimensions'):
+                                   'expected input to have shape'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
 
       # Wrong input shape

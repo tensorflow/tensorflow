@@ -211,6 +211,8 @@ def standardize_single_array(x):
   if x is None:
     return None
   elif tensor_util.is_tensor(x):
+    if K.ndim(x) == 1:
+      return array_ops.expand_dims(x, 1)
     return x
   elif x.ndim == 1:
     x = np.expand_dims(x, 1)
