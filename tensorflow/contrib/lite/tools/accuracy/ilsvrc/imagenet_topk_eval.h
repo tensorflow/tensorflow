@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/tools/accuracy/accuracy_eval_stage.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
 namespace metrics {
@@ -69,12 +70,14 @@ class ImagenetTopKAccuracy : public AccuracyEval {
 
  private:
   int GroundTruthIndex(const string& label) const;
-  std::vector<string> ground_truth_labels_;
+  void UpdateSamples(const std::vector<int>& counts, int ground_truth_index);
+  const std::vector<string> ground_truth_labels_;
   const int k_;
-  std::vector<int> accuracy_counts_;
-  int num_samples_;
+  std::vector<int> accuracy_counts_ GUARDED_BY(mu_);
+  int num_samples_ GUARDED_BY(mu_);
+  mutable mutex mu_;
 };
 }  //  namespace metrics
 }  //  namespace tensorflow
 
-#endif  // TENSORFLOW_CONTRIB_LITE_TOOLS_ACCURACY_IMAGENET_TOPK_EVAL_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOOLS_ACCURACY_ILSVRC_IMAGENET_TOPK_EVAL_H_
