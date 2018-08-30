@@ -17,13 +17,13 @@ limitations under the License.
 #ifdef INTEL_MKL
 #ifndef INTEL_MKL_ML_ONLY
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #include "tensorflow/core/util/mkl_util.h"
 
@@ -50,31 +50,11 @@ class MklSoftmaxOp : public OpKernel {
       // src_tensor now points to the 0-th input of global data struct "context"
       size_t src_idx = 0;
       const Tensor& src_tensor = MklGetInput(context, src_idx);
-
-      // Get number of dimensions of src
       const int input_dims = src_tensor.dims();
 
       // Add: get MklShape
       MklDnnShape src_mkl_shape;
       GetMklShape(context, src_idx, &src_mkl_shape);
-
-      // Set layout type based on input_dims
-      memory::format layout_type;
-      switch (input_dims) {
-        case 1:
-          layout_type = memory::format::x;
-        case 2:
-          layout_type = memory::format::nc;
-        case 3:
-          layout_type = memory::format::tnc;
-        case 4:
-          layout_type = memory::format::nchw;
-        case 5:
-          layout_type = memory::format::ncdhw;
-        default:
-          ctx->SetStatus(
-            errors::Unimplemented(" MKL softmax does not support  1 > input_dims > 5  ");
-      }
 
       // src_dims is the dimenstion of src_tensor
       // dim of the dst will also be same as src_dims
@@ -83,7 +63,26 @@ class MklSoftmaxOp : public OpKernel {
                               : src_tensor.shape();
       auto src_dims = TFShapeToMklDnnDims(src_tf_shape);
       auto output_dims = src_dims;
-
+      memory::format layout_type;
+      switch (input_dims) {
+        case 1:
+          layout_type = memory::format::x;
+          break;
+        case 2:
+          layout_type = memory::format::nc;
+          break;
+        case 3:
+          layout_type = memory::format::tnc;
+          break;
+        case 4:
+          layout_type = memory::format::nchw;
+          break;
+        case 5:
+          layout_type = memory::format::ncdhw;
+          break;
+        default:
+          OP_REQUIRES_OK(context, errors::Aborted("Input dims must be <= 5:"));
+      }
       // Create softmax memory for src, dst: both are defined in mkl_util.h,
       // they are wrapper
       MklDnnData<T> src(&cpu_engine);
@@ -108,9 +107,7 @@ class MklSoftmaxOp : public OpKernel {
       src.SetOpMemDesc(src_dims, layout_type);
 
       // creating a memory descriptor
-
-      // axis to which softmax will be applied
-      // Always softmax is applied to the last axis
+      // passing outermost dim as default axis
       int axis = input_dims - 1;
       auto softmax_fwd_desc = softmax_forward::desc(prop_kind::forward_scoring,
                                                     src.GetOpMemDesc(), axis);
