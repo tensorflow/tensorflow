@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
 import traceback
 import warnings
 
@@ -47,10 +48,16 @@ class OpError(Exception):
       error_code: The `error_codes_pb2.Code` describing the error.
     """
     super(OpError, self).__init__()
-    self._message = message
     self._node_def = node_def
     self._op = op
+    self._message = message
     self._error_code = error_code
+
+  def __reduce__(self):
+    # Allow the subclasses to accept less arguments in their __init__.
+    init_argspec = inspect.getargspec(self.__class__.__init__)
+    args = tuple(getattr(self, arg) for arg in init_argspec.args[1:])
+    return self.__class__, args
 
   @property
   def message(self):
