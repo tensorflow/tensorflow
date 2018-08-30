@@ -81,7 +81,7 @@ class MklSoftmaxOp : public OpKernel {
           layout_type = memory::format::ncdhw;
           break;
         default:
-          OP_REQUIRES_OK(context, errors::Aborted("Input dims must be <= 5:"));
+          OP_REQUIRES_OK(context, errors::Aborted("Input dims must be <= 5 and >=1"));
       }
       // Create softmax memory for src, dst: both are defined in mkl_util.h,
       // they are wrapper
@@ -107,7 +107,7 @@ class MklSoftmaxOp : public OpKernel {
       src.SetOpMemDesc(src_dims, layout_type);
 
       // creating a memory descriptor
-      // passing outermost dim as default axis
+      // passing outermost dim as default axis, where the softmax is applied
       int axis = input_dims - 1;
       auto softmax_fwd_desc = softmax_forward::desc(prop_kind::forward_scoring,
                                                     src.GetOpMemDesc(), axis);
