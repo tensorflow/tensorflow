@@ -87,38 +87,13 @@ bool GpuMultiOutputFusion::ShapesCompatibleForFusion(HloInstruction* instr1,
       get_element_shape(element_instr_1), get_element_shape(element_instr_2));
 }
 
-namespace {
-bool IsInputFusibleReduction(HloInstruction* instr) {
-  if (instr->IsMultiOutputFusion()) {
-    for (const HloInstruction* operand :
-         instr->fused_expression_root()->operands()) {
-      if (operand->opcode() == HloOpcode::kReduce) {
-        CHECK(instr->fusion_kind() == HloInstruction::FusionKind::kInput)
-            << " Reduce multi-output fusion " << instr->ToString()
-            << " must be an input fusion.";
-        return true;
-      }
-    }
-    return false;
-  } else if (instr->opcode() == HloOpcode::kFusion) {
-    // The loop emitter can handle to-vector reduce fusions. Such reduce
-    // fusions have the fusion kind kLoop rather than kInput. We do not fuse
-    // to-vector reduce fusions, because the resulting fusions may no longer be
-    // supported by loop emitter.
-    return IsReductionToVector(*instr->fused_expression_root());
-  } else {
-    return IsReductionToVector(*instr);
-  }
-}
-}  // namespace
-
 bool GpuMultiOutputFusion::IsFusible(HloInstruction* instr) {
   // We can fuse reduces and loop fusions. Elementwise instructions can be fused
   // with any other instruction.
   // TODO(b/112957171): This should use the same isFusible logic as
   // instruction_fusion.
   return instr->IsFusible() &&
-         (IsInputFusibleReduction(instr) ||
+         (IsInputFusibleReduction(*instr) ||
           (instr->opcode() == HloOpcode::kFusion &&
            instr->fusion_kind() == HloInstruction::FusionKind::kLoop) ||
           instr->IsElementwise());
@@ -191,7 +166,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
       VLOG(3) << consumer->name() << " has no users.";
       continue;
     }
-    if (!IsInputFusibleReduction(consumer)) {
+    if (!IsInputFusibleReduction(*consumer)) {
       VLOG(3) << consumer->name() << " is not an input-fusible reduction.";
       continue;
     }
