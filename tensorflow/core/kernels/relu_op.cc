@@ -124,11 +124,14 @@ namespace functor {
       typename TTypes<T>::Tensor backprops);                                   \
   extern template struct SeluGrad<GPUDevice, T>;
 
+#if GOOGLE_CUDA
 template <>
 void Relu<GPUDevice, qint8>::operator()(
     const GPUDevice& d, typename TTypes<qint8>::ConstTensor features,
     typename TTypes<qint8>::Tensor activations);
 extern template struct Relu<GPUDevice, qint8>;
+#endif  // GOOGLE_CUDA
+
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 }  // namespace functor
@@ -163,6 +166,7 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 
+#if GOOGLE_CUDA
 template <typename Device>
 class ReluOp<Device, qint8>
     : public UnaryElementWiseOp<qint8, ReluOp<Device, qint8>> {
@@ -183,7 +187,7 @@ class ReluOp<Device, qint8>
 REGISTER_KERNEL_BUILDER(
     Name("Relu").Device(DEVICE_GPU).TypeConstraint<qint8>("T"),
     ReluOp<GPUDevice, qint8>);
-
+#endif  // GOOGLE_CUDA
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL

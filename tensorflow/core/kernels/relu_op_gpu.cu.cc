@@ -112,9 +112,10 @@ struct ReluGrad<Device, Eigen::half> {
   }
 };
 
+#if GOOGLE_CUDA
 __global__ void Relu_int8x4_kernel(int vect_count, const int32* input,
                                    int32* output) {
-  GPU_1D_KERNEL_LOOP(index, vect_count) {
+  CUDA_1D_KERNEL_LOOP(index, vect_count) {
     output[index] = __vmaxs4(input[index], 0);
   }
 }
@@ -133,13 +134,15 @@ struct Relu<Device, qint8> {
 
     int32 vect_count = Eigen::divup(count, 4);
     constexpr int32 kThreadInBlock = 512;
-    GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
+    CudaLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(
         vect_count, d, Relu_int8x4_kernel, 0, kThreadInBlock);
-   hipLaunchKernelGGL((Relu_int8x4_kernel), dim3(config.bloc    k_count), dim3(config.thread_per_block), 0, d.stream(), 
+    Relu_int8x4_kernel<<<config.block_count, config.thread_per_block, 0,
+                         d.stream()>>>(
         vect_count, reinterpret_cast<const int32*>(input.data()),
         reinterpret_cast<int32*>(output.data()));
   }
 };
+#endif // GOOGLE_CUDA
 
 }  // namespace functor
 
@@ -155,8 +158,9 @@ struct Relu<Device, qint8> {
   template struct functor::SeluGrad<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
-
+#if GOOGLE_CUDA
 template struct functor::Relu<GPUDevice, qint8>;
+#endif // GOOGLE_CUDA
 
 }  // end namespace tensorflow
 
