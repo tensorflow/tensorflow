@@ -3295,7 +3295,7 @@ bool IrEmitterUnnested::CheckAndEmitHloWithTile021(HloInstruction* hlo) {
     if (!reduced_dims_021.has_value()) {
       reduced_dims_021 = curr_reduced_dims_021;
     }
-    if (!ContainersEqual(*reduced_dims_021, curr_reduced_dims_021)) {
+    if (!absl::c_equal(*reduced_dims_021, curr_reduced_dims_021)) {
       // There is more than one possible transpose. Instead of picking one
       // transpose, we simply give up here.
       return false;
