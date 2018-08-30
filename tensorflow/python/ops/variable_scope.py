@@ -895,7 +895,7 @@ class _VariableStore(object):
         elif not tf_inspect.getargspec(initializer).args:
           init_val = initializer
         else:
-          raise ValueError("You can only pass an initializer function that"
+          raise ValueError("You can only pass an initializer function that "
                            "expects no arguments to its callable when the "
                            "shape is not fully defined. The given initializer "
                            "function expects the following args %s" %

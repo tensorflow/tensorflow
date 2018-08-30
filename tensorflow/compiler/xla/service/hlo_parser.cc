@@ -324,7 +324,7 @@ bool HloParser::Error(LocTy loc, absl::string_view msg) {
   std::vector<string> error_lines;
   error_lines.push_back(
       StrCat("was parsing ", line, ":", col, ": error: ", msg));
-  error_lines.push_back(std::string(lexer_.GetLine(loc)));
+  error_lines.emplace_back(lexer_.GetLine(loc));
   error_lines.push_back(col == 0 ? "" : StrCat(string(col - 1, ' '), "^"));
 
   error_.push_back(StrJoin(error_lines, "\n"));
@@ -562,11 +562,15 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kIota: {
+      optional<tensorflow::int64> iota_dimension;
+      attrs["iota_dimension"] = {/*required=*/true, AttrTy::kInt64,
+                                 &iota_dimension};
       if (!ParseOperands(&operands, /*expected_size=*/0) ||
           !ParseAttributes(attrs)) {
         return false;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateIota(shape));
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateIota(shape, *iota_dimension));
       break;
     }
     // Unary ops.
@@ -700,6 +704,27 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       }
       instruction = builder->AddInstruction(
           HloInstruction::CreateAllToAll(shape, operands, replica_groups));
+      break;
+    }
+    case HloOpcode::kCollectivePermute: {
+      optional<std::vector<std::vector<int64>>> source_targets;
+      attrs["source_target_pairs"] = {
+          /*required=*/true, AttrTy::kBracedInt64ListList, &source_targets};
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      std::vector<std::pair<int64, int64>> pairs(source_targets->size());
+      for (int i = 0; i < pairs.size(); i++) {
+        if ((*source_targets)[i].size() != 2) {
+          return TokenError(
+              "expects 'source_target_pairs=' to be a list of pairs");
+        }
+        pairs[i].first = (*source_targets)[i][0];
+        pairs[i].second = (*source_targets)[i][1];
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateCollectivePermute(shape, operands[0], pairs));
       break;
     }
     case HloOpcode::kReshape: {

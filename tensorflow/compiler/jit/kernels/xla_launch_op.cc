@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
 
 #include "tensorflow/compiler/jit/defs.h"
-#include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
@@ -57,18 +56,17 @@ XlaLocalLaunchBase::XlaLocalLaunchBase(OpKernelConstruction* ctx,
                        ->stream->parent()
                        ->platform()
                        ->id();
-  } else {
-    platform_id_ = nullptr;
+  } else if (XlaDevice::GetMetadata(ctx, &xla_device_metadata_).ok()) {
+    use_multiple_streams_ = xla_device_metadata_->UseMultipleStreams();
+    platform_id_ = xla_device_metadata_->platform()->id();
   }
 }
 
 Status XlaLocalLaunchBase::BuildCompilationCache(OpKernelContext* ctx,
                                                  XlaCompilationCache** cache) {
-  const XlaDevice::Metadata* metadata;
-  Status s = XlaDevice::GetMetadata(ctx, &metadata);
-  if (s.ok()) {
-    *cache = new XlaCompilationCache(metadata->client(),
-                                     metadata->jit_device_type());
+  if (xla_device_metadata_) {
+    *cache = new XlaCompilationCache(xla_device_metadata_->client(),
+                                     xla_device_metadata_->jit_device_type());
     return Status::OK();
   }
 
@@ -117,18 +115,6 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   // this is more obviously correct.)
   core::ScopedUnref cache_ref(cache);
 
-  const XlaDevice::Metadata* metadata = nullptr;
-  Status s = XlaDevice::GetMetadata(ctx, &metadata);
-  bool allocate_xla_tensors = s.ok();
-  bool use_multiple_streams = s.ok() && metadata->UseMultipleStreams();
-
-  // Get the platform_id_ for XLA_* devices.
-  if (platform_id_ == nullptr) {
-    if (s.ok()) {
-      platform_id_ = metadata->platform()->id();
-    }
-  }
-
   std::map<int, OptionalTensor> variables =
       SnapshotResourceVariables(ctx, resources_);
 
@@ -146,7 +132,7 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   // (which local_xla_allocator above uses) as on an XlaDevice, this is a
   // dummy allocator that returns XlaTensor objects. The XlaCompiler needs a
   // real allocator to allocate real buffers.
-  if (allocate_xla_tensors) {
+  if (xla_device_metadata_) {
     xla_allocator = client->backend().memory_allocator();
   } else {
     xla_allocator = &local_xla_allocator;
@@ -163,8 +149,9 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   options.graph_def_version = ctx->function_library()->graph_def_version();
   options.allow_cpu_custom_calls = (platform_id_ == se::host::kHostPlatformId);
   options.device_allocator = xla_allocator;
-  if (metadata) {
-    options.shape_representation_fn = metadata->shape_representation_fn();
+  if (xla_device_metadata_) {
+    options.shape_representation_fn =
+        xla_device_metadata_->shape_representation_fn();
   }
 
   const XlaCompiler::CompilationResult* kernel;
@@ -192,7 +179,9 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   VLOG(1) << "Executing XLA Computation...";
 
   XlaComputationLaunchContext launch_context(
-      client, xla_allocator, allocate_xla_tensors, use_multiple_streams);
+      client, xla_allocator,
+      /*allocate_xla_tensors=*/xla_device_metadata_ != nullptr,
+      use_multiple_streams_);
   launch_context.PopulateInputs(ctx, kernel, variables);
 
   // Execute the computation.

@@ -20890,6 +20890,25 @@ op {
   is_stateful: true
 }
 op {
+  name: "EnsureShape"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
   name: "Enter"
   input_arg {
     name: "data"
@@ -22484,33 +22503,6 @@ op {
     is_ref: true
   }
   is_stateful: true
-}
-op {
-  name: "FeatureStatsDataset"
-  input_arg {
-    name: "input_dataset"
-    type: DT_VARIANT
-  }
-  input_arg {
-    name: "tag"
-    type: DT_STRING
-  }
-  output_arg {
-    name: "handle"
-    type: DT_VARIANT
-  }
-  attr {
-    name: "output_types"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-  attr {
-    name: "output_shapes"
-    type: "list(shape)"
-    has_minimum: true
-    minimum: 1
-  }
 }
 op {
   name: "Fill"

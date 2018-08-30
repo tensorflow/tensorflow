@@ -1219,12 +1219,7 @@ TEST_P(HloEvaluatorTest,
   EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
 }
 
-class HloEvaluatorPreciseReduceTest : public HloVerifiedTestBase {
- public:
-  HloEvaluatorPreciseReduceTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false) {}
-};
+class HloEvaluatorPreciseReduceTest : public HloVerifiedTestBase {};
 
 // Tests that Reduce doesn't lose precision when adding many numbers (because
 // it accumulates its result in a double).

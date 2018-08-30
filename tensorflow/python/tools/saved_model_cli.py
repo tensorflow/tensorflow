@@ -308,7 +308,7 @@ def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
 
   # Check if input tensor keys are valid.
   for input_key_name in input_tensor_key_feed_dict.keys():
-    if input_key_name not in inputs_tensor_info.keys():
+    if input_key_name not in inputs_tensor_info:
       raise ValueError(
           '"%s" is not a valid input key. Please choose from %s, or use '
           '--show option.' %

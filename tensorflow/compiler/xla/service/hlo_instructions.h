@@ -290,7 +290,7 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
 class HloAllToAllInstruction : public HloCollectiveInstruction {
  public:
   explicit HloAllToAllInstruction(
-      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operand,
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
       const std::vector<ReplicaGroup>& replica_groups);
 
  private:
@@ -299,6 +299,36 @@ class HloAllToAllInstruction : public HloCollectiveInstruction {
       const Shape& shape,
       tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
       HloCloneContext* context) const override;
+};
+
+class HloCollectivePermuteInstruction : public HloInstruction {
+ public:
+  explicit HloCollectivePermuteInstruction(
+      const Shape& shape, HloInstruction* operand,
+      const std::vector<std::pair<int64, int64>>& source_target_pairs);
+
+  const std::vector<std::pair<int64, int64>>& source_target_pairs() const {
+    return source_target_pairs_;
+  }
+
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  const std::vector<std::pair<int64, int64>> source_target_pairs_;
 };
 
 class HloReverseInstruction : public HloInstruction {
@@ -368,16 +398,20 @@ class HloReduceInstruction : public HloInstruction {
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
+  // Returns the number of input arrays (and, consequentially, the number of
+  // init values) this reduce has.
+  int64 input_count() const { return operand_count() / 2; }
+
   // Returns the input tensors to be reduced.
   tensorflow::gtl::ArraySlice<HloInstruction*> inputs() const {
     return tensorflow::gtl::ArraySlice<HloInstruction*>(operands(), 0,
-                                                        operand_count() / 2);
+                                                        input_count());
   }
 
   // Returns the init values of the reduction.
   tensorflow::gtl::ArraySlice<HloInstruction*> init_values() const {
     return tensorflow::gtl::ArraySlice<HloInstruction*>(
-        operands(), operand_count() / 2, operand_count());
+        operands(), input_count(), operand_count());
   }
 
  private:
@@ -1247,6 +1281,30 @@ class HloScatterInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   std::unique_ptr<ScatterDimensionNumbers> scatter_dimension_numbers_;
+};
+
+class HloIotaInstruction : public HloInstruction {
+ public:
+  explicit HloIotaInstruction(const Shape& shape, int64 iota_dimension);
+  // Returns the dimension sizes or numbers associated with this instruction.
+  int64 iota_dimension() const { return iota_dimension_; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  const int64 iota_dimension_;
 };
 
 }  // namespace xla

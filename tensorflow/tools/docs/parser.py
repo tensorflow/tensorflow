@@ -1698,7 +1698,7 @@ class _Metadata(object):
     version: The source version.
   """
 
-  def __init__(self, name, version='stable'):
+  def __init__(self, name, version='Stable'):
     """Creates a Metadata builder.
 
     Args:

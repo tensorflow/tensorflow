@@ -83,7 +83,7 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
             0) {
           return InternalError(
               "Address returned by memory_allocator->Allocate must be a "
-              "multiple of %x, but was %p",
+              "multiple of 0x%x, but was %p",
               kXlaAllocatedBufferAlignBytes, buffer.opaque());
         }
         // We do manual memory management within BufferAllocations.  Be sure not

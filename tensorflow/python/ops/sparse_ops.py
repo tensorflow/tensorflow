@@ -889,6 +889,9 @@ def sparse_reduce_max(sp_input, axis=None, keepdims=None,
   `tf.reduce_max()`.  In particular, this Op also returns a dense `Tensor`
   instead of a sparse one.
 
+  Note: A gradient is not defined for this function, so it can't be used
+  in training models that need gradient descent.
+
   Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
   `keepdims` is true, the rank of the tensor is reduced by 1 for each entry in
   `reduction_axes`. If `keepdims` is true, the reduced dimensions are retained
@@ -955,6 +958,9 @@ def sparse_reduce_max_sparse(sp_input,
   This Op takes a SparseTensor and is the sparse counterpart to
   `tf.reduce_max()`.  In contrast to SparseReduceSum, this Op returns a
   SparseTensor.
+
+  Note: A gradient is not defined for this function, so it can't be used
+  in training models that need gradient descent.
 
   Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
   `keepdims` is true, the rank of the tensor is reduced by 1 for each entry in
@@ -1056,6 +1062,9 @@ def sparse_reduce_sum_sparse(sp_input,
   This Op takes a SparseTensor and is the sparse counterpart to
   `tf.reduce_sum()`.  In contrast to SparseReduceSum, this Op returns a
   SparseTensor.
+
+  Note: A gradient is not defined for this function, so it can't be used
+  in training models that need gradient descent.
 
   Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
   `keepdims` is true, the rank of the tensor is reduced by 1 for each entry in

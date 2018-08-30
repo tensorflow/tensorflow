@@ -2437,11 +2437,6 @@ Status IrEmitter::HandleAfterAll(HloInstruction* gen_token) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleIota(HloInstruction* iota) {
-  // TODO(b/64798317): implement iota on CPU.
-  return Unimplemented("Iota is not implemented on CPU.");
-}
-
 Status IrEmitter::HandleRng(HloInstruction* rng) {
   ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
   for (const HloInstruction* operand : rng->operands()) {

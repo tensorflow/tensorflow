@@ -1638,24 +1638,6 @@ tensorflow::Status ConvertShapeOperator(
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status ConvertAnyOperator(
-    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
-    Model* model) {
-  CHECK_EQ(node.op(), "Any");
-  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
-  const auto idx_type =
-      HasAttr(node, "Tidx") ? GetDataTypeAttr(node, "Tidx") : DT_INT32;
-  CHECK(idx_type == DT_INT32);
-  auto op = absl::make_unique<AnyOperator>();
-  op->inputs.push_back(node.input(0));
-  op->inputs.push_back(node.input(1));
-  op->outputs.push_back(node.name());
-  op->keep_dims =
-      HasAttr(node, "keep_dims") ? GetBoolAttr(node, "keep_dims") : false;
-  model->operators.push_back(std::move(op));
-  return tensorflow::Status::OK();
-}
-
 void StripCaretFromArrayNames(Model* model) {
   for (auto& op : model->operators) {
     for (auto& input : op->inputs) {
@@ -1937,7 +1919,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Add", ConvertSimpleOperator<AddOperator, 2>},
       {"AddN", ConvertSimpleOperator<AddNOperator>},
       {"All", ConvertSimpleOperator<TensorFlowAllOperator>},
-      {"Any", ConvertAnyOperator},
+      {"Any", ConvertReduceOperator<TensorFlowAnyOperator>},
       {"ArgMax", ConvertArgMaxOperator},
       {"ArgMin", ConvertArgMinOperator},
       {"Assert", ConvertSimpleOperator<TensorFlowAssertOperator>},

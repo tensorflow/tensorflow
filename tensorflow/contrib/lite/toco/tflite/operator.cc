@@ -769,7 +769,7 @@ class Sum
 };
 
 class ReduceMax
-    : public BuiltinOperator<TensorFlowSumOperator, ::tflite::ReducerOptions,
+    : public BuiltinOperator<TensorFlowMaxOperator, ::tflite::ReducerOptions,
                              ::tflite::BuiltinOptions_ReducerOptions> {
  public:
   using BuiltinOperator::BuiltinOperator;
@@ -788,7 +788,7 @@ class ReduceMax
 };
 
 class ReduceMin
-    : public BuiltinOperator<TensorFlowSumOperator, ::tflite::ReducerOptions,
+    : public BuiltinOperator<TensorFlowMinOperator, ::tflite::ReducerOptions,
                              ::tflite::BuiltinOptions_ReducerOptions> {
  public:
   using BuiltinOperator::BuiltinOperator;
@@ -807,7 +807,26 @@ class ReduceMin
 };
 
 class ReduceProd
-    : public BuiltinOperator<TensorFlowSumOperator, ::tflite::ReducerOptions,
+    : public BuiltinOperator<TensorFlowProdOperator, ::tflite::ReducerOptions,
+                             ::tflite::BuiltinOptions_ReducerOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateReducerOptions(*builder, op.keep_dims);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->keep_dims = options.keep_dims();
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
+class ReduceAny
+    : public BuiltinOperator<TensorFlowAnyOperator, ::tflite::ReducerOptions,
                              ::tflite::BuiltinOptions_ReducerOptions> {
  public:
   using BuiltinOperator::BuiltinOperator;
@@ -1336,6 +1355,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
                                       OperatorType::kReduceMax));
   ops.push_back(MakeUnique<ReduceMin>(::tflite::BuiltinOperator_REDUCE_MIN,
                                       OperatorType::kReduceMin));
+  ops.push_back(MakeUnique<ReduceAny>(::tflite::BuiltinOperator_REDUCE_ANY,
+                                      OperatorType::kAny));
   ops.push_back(
       MakeUnique<ResizeBilinear>(::tflite::BuiltinOperator_RESIZE_BILINEAR,
                                  OperatorType::kResizeBilinear));
@@ -1437,6 +1458,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       "LOGICAL_AND", OperatorType::kLogicalAnd));
   ops.emplace_back(new SimpleOperator<LogicalNotOperator>(
       "LOGICAL_NOT", OperatorType::kLogicalNot));
+  ops.emplace_back(new SimpleOperator<FloorDivOperator>(
+      "FLOOR_DIV", OperatorType::kFloorDiv));
   // Element-wise operator
   ops.push_back(
       MakeUnique<SimpleOperator<SinOperator>>("SIN", OperatorType::kSin));

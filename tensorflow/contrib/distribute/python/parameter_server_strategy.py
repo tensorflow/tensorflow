@@ -235,7 +235,8 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
       if aggregation not in (
           vs.VariableAggregation.NONE,
           vs.VariableAggregation.SUM,
-          vs.VariableAggregation.MEAN
+          vs.VariableAggregation.MEAN,
+          vs.VariableAggregation.ONLY_FIRST_TOWER
       ):
         raise ValueError("Invalid variable aggregation mode: " + aggregation +
                          " for variable: " + kwargs["name"])
@@ -302,10 +303,15 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
       # pylint: disable=protected-access
       return mirrored_strategy._reduce_non_distributed_value(
           self, aggregation, value, destinations)
+    if aggregation == vs.VariableAggregation.ONLY_FIRST_TOWER:
+      return self.broadcast(value.get(self._compute_devices[0]), destinations)
     return self._cross_tower_ops.reduce(
         aggregation, value, destinations=destinations)
 
   def _batch_reduce(self, aggregation, value_destination_pairs):
+    if aggregation == vs.VariableAggregation.ONLY_FIRST_TOWER:
+      return [self.broadcast(v.get(self._compute_devices[0]), d)
+              for v, d in value_destination_pairs]
     for _, destinations in value_destination_pairs:
       self._verify_destinations_not_different_worker(destinations)
     return self._cross_tower_ops.batch_reduce(aggregation,

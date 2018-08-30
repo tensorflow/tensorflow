@@ -913,21 +913,28 @@ struct TanhParams {
   int input_left_shift;
 };
 
-template <typename T>
-inline void SetActivationParams(T min, T max, ArithmeticParams* params);
-
-template <>
-inline void SetActivationParams(float min, float max,
-                                ArithmeticParams* params) {
+template <typename P>
+inline void SetActivationParams(float min, float max, P* params) {
   params->float_activation_min = min;
   params->float_activation_max = max;
 }
 
-template <>
-inline void SetActivationParams(int32 min, int32 max,
-                                ArithmeticParams* params) {
+template <typename P>
+inline void SetActivationParams(int32 min, int32 max, P* params) {
   params->quantized_activation_min = min;
   params->quantized_activation_max = max;
+}
+
+template <typename P>
+inline void GetActivationParams(const P& params, int32* min, int32* max) {
+  *min = params.quantized_activation_min;
+  *max = params.quantized_activation_max;
+}
+
+template <typename P>
+inline void GetActivationParams(const P& params, float* min, float* max) {
+  *min = params.float_activation_min;
+  *max = params.float_activation_max;
 }
 
 }  // namespace tflite

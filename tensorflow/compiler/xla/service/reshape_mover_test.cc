@@ -34,12 +34,7 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class ReshapeMoverTest : public HloVerifiedTestBase {
- public:
-  ReshapeMoverTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false) {}
-};
+class ReshapeMoverTest : public HloVerifiedTestBase {};
 
 TEST_F(ReshapeMoverTest, ReshapesWithDifferentInputShapesNotMoved) {
   HloComputation::Builder builder(TestName());

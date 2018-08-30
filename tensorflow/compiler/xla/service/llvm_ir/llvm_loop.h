@@ -183,7 +183,7 @@ class ForLoopNest {
 
   ForLoopNest(absl::string_view name, llvm::IRBuilder<>* b,
               llvm::Type* index_ty = nullptr)
-      : name_(std::string(name)),
+      : name_(name),
         outer_loop_preheader_bb_(nullptr),
         outer_loop_exit_bb_(nullptr),
         inner_loop_body_bb_(nullptr),

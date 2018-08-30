@@ -416,6 +416,58 @@ HloAllToAllInstruction::CloneWithNewOperandsImpl(
                                                    replica_groups());
 }
 
+HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
+    const Shape& shape, HloInstruction* operand,
+    const std::vector<std::pair<int64, int64>>& source_target_pairs)
+    : HloInstruction(HloOpcode::kCollectivePermute, shape),
+      source_target_pairs_(source_target_pairs) {
+  AppendOperand(operand);
+}
+
+HloInstructionProto HloCollectivePermuteInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  for (const auto& pair : source_target_pairs()) {
+    auto* proto_pair = proto.add_source_target_pairs();
+    proto_pair->set_source(pair.first);
+    proto_pair->set_target(pair.second);
+  }
+  return proto;
+}
+
+std::vector<string>
+HloCollectivePermuteInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& /*options*/) const {
+  std::vector<string> result;
+  std::vector<string> strs;
+  for (const auto& pair : source_target_pairs()) {
+    strs.push_back(StrCat("{", pair.first, ",", pair.second, "}"));
+  }
+  result.push_back(StrCat("source_target_pairs={", StrJoin(strs, ","), "}"));
+  return result;
+}
+
+bool HloCollectivePermuteInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    /*eq_computations*/) const {
+  const auto& casted_other =
+      static_cast<const HloCollectivePermuteInstruction&>(other);
+  return ContainersEqual(
+      source_target_pairs(), casted_other.source_target_pairs(),
+      [](const std::pair<int64, int64>& a, const std::pair<int64, int64>& b) {
+        return a == b;
+      });
+}
+
+std::unique_ptr<HloInstruction>
+HloCollectivePermuteInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* /*context*/) const {
+  return absl::make_unique<HloCollectivePermuteInstruction>(
+      shape, new_operands[0], source_target_pairs());
+}
+
 HloReverseInstruction::HloReverseInstruction(
     const Shape& shape, HloInstruction* operand,
     tensorflow::gtl::ArraySlice<int64> dimensions)
@@ -534,7 +586,7 @@ std::unique_ptr<HloInstruction> HloReduceInstruction::CloneWithNewOperandsImpl(
     const Shape& shape,
     tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
     HloCloneContext* context) const {
-  CHECK_EQ(new_operands.size(), 2);
+  CHECK_EQ(new_operands.size() % 2, 0);
   return absl::make_unique<HloReduceInstruction>(shape, new_operands,
                                                  dimensions(), to_apply());
 }
@@ -2101,6 +2153,36 @@ std::unique_ptr<HloInstruction> HloScatterInstruction::CloneWithNewOperandsImpl(
   return absl::make_unique<HloScatterInstruction>(
       shape, new_operands[0], new_operands[1], new_operands[2], to_apply(),
       scatter_dimension_numbers());
+}
+
+HloIotaInstruction::HloIotaInstruction(const Shape& shape, int64 iota_dimension)
+    : HloInstruction(HloOpcode::kIota, shape),
+      iota_dimension_(iota_dimension) {}
+
+HloInstructionProto HloIotaInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.add_dimensions(iota_dimension());
+  return proto;
+}
+
+std::vector<string> HloIotaInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  return {StrCat("iota_dimension=", iota_dimension())};
+}
+
+bool HloIotaInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloIotaInstruction&>(other);
+  return iota_dimension() == casted_other.iota_dimension();
+}
+
+std::unique_ptr<HloInstruction> HloIotaInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  return absl::make_unique<HloIotaInstruction>(shape, iota_dimension());
 }
 
 }  // namespace xla

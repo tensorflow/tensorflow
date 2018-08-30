@@ -219,7 +219,9 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":kernel_and_device",
-        "//tensorflow/c:c_api",
+        # Only the TF_AttrType enum is required, so pull in just the C headers.
+        # TODO(b/113535673): Break this dependency and avoid the C header completely.
+        "//tensorflow/c:c_api_headers",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
@@ -249,6 +251,7 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

@@ -1098,13 +1098,25 @@ ENTRY AllToAllWithSubgroups {
 
 )"
 },
+// collective-permute
+{
+"CollectivePermute",
+R"(HloModule CollectivePermute
+
+ENTRY CollectivePermute {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT root = f32[128,32]{0,1} collective-permute(input), source_target_pairs={{0,1},{1,2},{2,3}}
+}
+
+)"
+},
 // Iota
 {
 "Iota",
 R"(HloModule iota
 
 ENTRY Iota {
-  ROOT iota = f32[100]{0} iota()
+  ROOT iota = f32[100]{0} iota(), iota_dimension=0
 }
 
 )"

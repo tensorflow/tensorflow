@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -39,15 +39,17 @@ namespace {
 
 using ::testing::UnorderedElementsAre;
 
-class HloAliasAnalysisTest : public HloTestBase {
+class HloAliasAnalysisTest : public HloVerifiedTestBase {
  protected:
-  HloAliasAnalysisTest() : module_(CreateNewModule()) {}
+  HloAliasAnalysisTest() : HloVerifiedTestBase() {
+    module_ = CreateNewModule();
+  }
 
   // Run alias analysis on the member module. For convenience returns a
   // reference to the generated analysis stored in analysis_.
   HloAliasAnalysis& RunAnalysis() {
     hlo_graph_dumper::MaybeDumpHloModule(*module_, "Before alias analysis");
-    analysis_ = HloAliasAnalysis::Run(module_.get(),
+    analysis_ = HloAliasAnalysis::Run(module_,
                                       /*fusion_can_share_buffer=*/nullptr)
                     .ConsumeValueOrDie();
     return *analysis_;
@@ -91,7 +93,7 @@ class HloAliasAnalysisTest : public HloTestBase {
   // never occurs, but HLO graphs with interference can be explicitly
   // constructed.
   bool AnyValuesInSameBufferInterfere() {
-    DependencyHloOrdering ordering(module_.get());
+    DependencyHloOrdering ordering(module_);
     for (const HloBuffer& buffer : analysis_->buffers()) {
       for (const HloValue* value_a : buffer.values()) {
         for (const HloValue* value_b : buffer.values()) {
@@ -108,7 +110,7 @@ class HloAliasAnalysisTest : public HloTestBase {
     return false;
   }
 
-  std::unique_ptr<HloModule> module_;
+  HloModule* module_;
   std::unique_ptr<HloAliasAnalysis> analysis_;
 
   const Shape scalar_shape_ = ShapeUtil::MakeShape(F32, {});
@@ -461,7 +463,7 @@ TEST_F(HloAliasAnalysisTest, SequentialWhiles) {
   module_->AddEntryComputation(builder.Build());
 
   FlattenCallGraph flattener;
-  TF_ASSERT_OK(flattener.Run(module_.get()).status());
+  TF_ASSERT_OK(flattener.Run(module_).status());
 
   const HloAliasAnalysis& analysis = RunAnalysis();
 
@@ -835,7 +837,7 @@ TEST_F(HloAliasAnalysisTest, BitcastInterference) {
 
   const HloAliasAnalysis& analysis = RunAnalysis();
 
-  DependencyHloOrdering ordering(module_.get());
+  DependencyHloOrdering ordering(module_);
   EXPECT_FALSE(analysis.HasLiveRangeInterference(ordering));
 }
 
@@ -877,7 +879,7 @@ TEST_F(HloAliasAnalysisTest, WhileInterference) {
   {
     // Dependency ordering should interfere because the negate and while are
     // unordered.
-    DependencyHloOrdering ordering(module_.get());
+    DependencyHloOrdering ordering(module_);
     EXPECT_TRUE(analysis.HasLiveRangeInterference(ordering));
   }
 
@@ -888,13 +890,13 @@ TEST_F(HloAliasAnalysisTest, WhileInterference) {
   sequence[condition] = {cond_param, cond_root};
   {
     sequence[entry] = {init, xla_while, negate, entry_root};
-    SequentialHloOrdering ordering(module_.get(), sequence);
+    SequentialHloOrdering ordering(module_, sequence);
     EXPECT_TRUE(analysis.HasLiveRangeInterference(ordering));
   }
 
   {
     sequence[entry] = {init, negate, xla_while, entry_root};
-    SequentialHloOrdering ordering(module_.get(), sequence);
+    SequentialHloOrdering ordering(module_, sequence);
     EXPECT_FALSE(analysis.HasLiveRangeInterference(ordering));
   }
 }

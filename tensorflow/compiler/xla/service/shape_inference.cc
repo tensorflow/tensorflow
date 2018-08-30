@@ -52,7 +52,7 @@ bool AllUnique(tensorflow::gtl::ArraySlice<int64> slice) {
 Status ExpectArray(const Shape& shape, absl::string_view op_type) {
   if (!ShapeUtil::IsArray(shape)) {
     return InvalidArgument("Expected array argument for %s, but got %s.",
-                           std::string(op_type), ShapeUtil::HumanString(shape));
+                           string(op_type), ShapeUtil::HumanString(shape));
   }
   return Status::OK();
 }
@@ -505,13 +505,21 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     return InvalidArgument(
         "The element types of the operands to Pad do not match.");
   }
+  if (absl::c_any_of(padding_config.dimensions(),
+                     [](const PaddingConfig::PaddingConfigDimension& p) {
+                       return p.interior_padding() < 0;
+                     })) {
+    return InvalidArgument("Interior padding cannot be negative: %s",
+                           padding_config.ShortDebugString());
+  }
+
   std::vector<int64> dimensions(ShapeUtil::Rank(operand_shape));
   for (int64 i = 0; i < operand_shape.dimensions_size(); ++i) {
-    dimensions[i] = operand_shape.dimensions(i) +
-                    padding_config.dimensions(i).edge_padding_low() +
-                    padding_config.dimensions(i).edge_padding_high() +
+    const auto& p = padding_config.dimensions(i);
+    dimensions[i] = operand_shape.dimensions(i) + p.edge_padding_low() +
+                    p.edge_padding_high() +
                     std::max<int64>(operand_shape.dimensions(i) - 1, 0LL) *
-                        padding_config.dimensions(i).interior_padding();
+                        p.interior_padding();
   }
   return ShapeUtil::MakeShape(
       ShapeUtil::HigherPrecisionElementType(operand_shape, padding_value_shape),
@@ -1842,6 +1850,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   return InferVariadicOpShape(HloOpcode::kTuple, operand_shapes);
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferCollectivePermuteShape(
+    const Shape& shape) {
+  TF_RET_CHECK(ShapeUtil::IsArray(shape));
+  return shape;
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferReduceShape(
