@@ -363,6 +363,12 @@ Status PoplarExecutor::ConfigurePoplarDevice(
     option_flags_ = poplar::OptionFlags();
     option_flags_.set("target.textSectionSizeInBytes", "0xe000");
     option_flags_.set("target.workerStackSizeInBytes", "0x200");
+
+    // Device specific options
+    if (type == tensorflow::IPUOptions::DeviceConfig::IPU) {
+      option_flags_.set("target.sendSyncId", "true");
+    }
+
     for (const auto& opt : cfg.compilation_options()) {
       option_flags_.set(opt.option(), opt.value());
     }
