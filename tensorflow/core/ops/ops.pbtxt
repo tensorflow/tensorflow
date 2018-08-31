@@ -14387,8 +14387,12 @@ op {
   }
   output_arg {
     name: "p"
-    description: "The permutation matrix P."
+    description: "The permutation matrix P (index permutation)."
     type_attr: "T"
+  }
+  output_arg {
+    name: "info"
+    type: DT_INT32
   }
   attr {
     name: "T"

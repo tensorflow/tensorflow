@@ -47,28 +47,26 @@ class LuOpTest(test.TestCase):
       # downstream matrix solve.
 
       pl = math_ops.matmul(l, u) 
-      #pinv = array_ops.invert_permutation(p);
       plu = array_ops.gather(pl, p) 
       udiag_ = array_ops.diag_part(u)
       with self.test_session() as sess:
         out = plu.eval()
         idx = info.eval()
-        """
-        udiag = udiag_.eval()
-        udiag_0 = np.array(udiag)
-        udiag_info = np.array(udiag)
-        np.append(udiag_0, 0)
-        np.append(udiag_info, info)
-      self.assertAllClose(udiag_0, udiag_info, atol=abs_tol, rtol=rel_tol)
-        """
+
+      # test a = plu
       self.assertAllClose(a, out, atol=abs_tol, rtol=rel_tol)
-      self.assertEqual(0, idx) # check the exit is successfully
+      # check info return value.
+      # make sure the factorization exit is successful and 
+      # no illegal value for current test benchmarks.
+      self.assertEqual(0, idx) 
+
 
   def _generateMatrix(self, m, n):
-    # Generate random positive-definite matrix
-     # TODO(hzhuang): use other matrix beyond PD matrix as factorization target 
+    # Generate random positive-definite (PD) matrix
     matrix = np.random.randint(100, size=(m, n))
     matrix = np.dot(matrix.T, matrix)
+    # TODO (hzhuang): use other matrix beyond PD matrix 
+    # as factorization target 
     return matrix
 
   def testLU(self):
@@ -79,4 +77,3 @@ class LuOpTest(test.TestCase):
 
 if __name__ == "__main__":
   test.main()
-

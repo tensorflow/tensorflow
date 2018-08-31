@@ -332,18 +332,6 @@ REGISTER_OP("Qr")
     .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(QrShapeFn);
 
-/*
-REGISTER_OP("Lu")
-    .Input("input: T")
-    .Output("l: T")
-    .Output("u: T")
-    //.Output("p: T")
-    .Output("p: Tperm")
-    .Attr("T: {double, float, complex64, complex128}")
-    .Attr("Tperm: {int32, int64} = DT_INT32")
-    .SetShapeFn(LuShapeFn);
-*/
-
 REGISTER_OP("Svd")
     .Input("input: T")
     .Output("s: T")

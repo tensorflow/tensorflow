@@ -43,13 +43,12 @@ class LuOp : public OpKernel {
   explicit LuOp(OpKernelConstruction* context) : OpKernel(context) {}
   
   void Compute(OpKernelContext* context) override {
-    // TODO (hzhuang): support complex numbers
-    // TODO (hzhuang): support non-square matrix factorization
     const Tensor & in = context->input(0);  
     TensorShape mtx_shape = in.shape();   
     auto matrix = in.matrix<T>();
     if (matrix.dimension(0) == 0 || matrix.dimension(0) != matrix.dimension(1)) {
-      // hzhuang: only support non-empty and square matrix factorization for now. 
+      // hzhuang: only support non-empty matrix 
+      // and the square matrix factorization for now. 
       return;
     }  
 
@@ -99,9 +98,8 @@ class LuOp : public OpKernel {
     */
     double eps = 1e-15; // TODO (hzhuang): what is a good value
     int info = 0;
-    auto & mlu = lu_decomposition.matrixLU();
-    for(int i = 0; i < mlu.rows(); i++){
-      double a = fabs(mlu(i,i));
+    for(int i = 0; i < u.rows(); i++){
+      double a = fabs(u(i,i));
       if (a == 0.0) {
         info = i+1;
         break;
