@@ -179,6 +179,12 @@ bool AffineApplyOp::isValidSymbol() const {
 // AllocOp
 //===----------------------------------------------------------------------===//
 
+void AllocOp::build(Builder *builder, OperationState *result,
+                    MemRefType *memrefType, ArrayRef<SSAValue *> operands) {
+  result->addOperands(operands);
+  result->types.push_back(memrefType);
+}
+
 void AllocOp::print(OpAsmPrinter *p) const {
   MemRefType *type = cast<MemRefType>(getMemRef()->getType());
   *p << "alloc";
@@ -476,6 +482,11 @@ void AffineApplyOp::build(Builder *builder, OperationState *result,
 // DeallocOp
 //===----------------------------------------------------------------------===//
 
+void DeallocOp::build(Builder *builder, OperationState *result,
+                      SSAValue *memref) {
+  result->addOperands(memref);
+}
+
 void DeallocOp::print(OpAsmPrinter *p) const {
   *p << "dealloc " << *getMemRef() << " : " << *getMemRef()->getType();
 }
@@ -705,6 +716,14 @@ const char *ReturnOp::verify() const {
 //===----------------------------------------------------------------------===//
 // StoreOp
 //===----------------------------------------------------------------------===//
+
+void StoreOp::build(Builder *builder, OperationState *result,
+                    SSAValue *valueToStore, SSAValue *memref,
+                    ArrayRef<SSAValue *> indices) {
+  result->addOperands(valueToStore);
+  result->addOperands(memref);
+  result->addOperands(indices);
+}
 
 void StoreOp::print(OpAsmPrinter *p) const {
   *p << "store " << *getValueToStore();

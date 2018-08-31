@@ -126,6 +126,8 @@ public:
   static StringRef getOperationName() { return "alloc"; }
 
   // Hooks to customize behavior of this op.
+  static void build(Builder *builder, OperationState *result,
+                    MemRefType *memrefType, ArrayRef<SSAValue *> operands = {});
   const char *verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
@@ -299,6 +301,7 @@ public:
   static StringRef getOperationName() { return "dealloc"; }
 
   // Hooks to customize behavior of this op.
+  static void build(Builder *builder, OperationState *result, SSAValue *memref);
   const char *verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
@@ -440,6 +443,9 @@ public:
   static StringRef getOperationName() { return "store"; }
 
   // Hooks to customize behavior of this op.
+  static void build(Builder *builder, OperationState *result,
+                    SSAValue *valueToStore, SSAValue *memref,
+                    ArrayRef<SSAValue *> indices = {});
   const char *verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
