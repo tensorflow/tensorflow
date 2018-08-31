@@ -340,6 +340,9 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     num_gpus: number of GPUs. For local training, either specify `devices` or
       `num_gpus`. In distributed training, this must be specified as number of
       GPUs on each worker.
+    num_gpus_per_worker: number of GPUs per worker. This is the same as
+      `num_gpus` and only one of `num_gpus` and `num_gpus_per_worker` can be
+      specified.
     cross_tower_ops: optional, a descedant of `CrossTowerOps`. If this is not
       set, the `configure` method will try to find the best one.
     prefetch_on_device: optional boolean to specify whether to prefetch input
@@ -349,6 +352,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   def __init__(self,
                devices=None,
                num_gpus=None,
+               num_gpus_per_worker=None,
                cross_tower_ops=None,
                prefetch_on_device=None):
     super(MirroredStrategy, self).__init__()
@@ -356,9 +360,15 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     self._cross_tower_ops = cross_tower_ops
     self._prefetch_on_device = prefetch_on_device
     # Rememeber num GPUs which might be needed by `configure` method.
-    self._num_gpus = num_gpus
+    if num_gpus is not None and num_gpus_per_worker is not None:
+      raise ValueError(
+          "You cannot specify both `num_gpus` and `num_gpus_per_worker`.")
+    if num_gpus is not None:
+      self._num_gpus = num_gpus
+    else:
+      self._num_gpus = num_gpus_per_worker
 
-    self._initialize_local(num_gpus, devices)
+    self._initialize_local(self._num_gpus, devices)
 
   def _initialize_local(self, num_gpus, devices):
     """Initializes the object for local training."""
