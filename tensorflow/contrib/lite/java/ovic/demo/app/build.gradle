@@ -9,7 +9,6 @@ android {
         targetSdkVersion 26
         versionCode 1
         versionName "1.0"
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         // Remove this block.
         jackOptions {
@@ -43,9 +42,6 @@ repositories {
 
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
-    androidTestCompile('androidx.test.espresso:espresso-core:3.1.0-alpha3', {
-        exclude group: 'com.android.support', module: 'support-annotations'
-    })
     compile 'com.android.support:appcompat-v7:25.2.0'
     compile 'com.android.support.constraint:constraint-layout:1.0.2'
     compile 'com.android.support:design:25.2.0'
@@ -53,6 +49,4 @@ dependencies {
     compile 'com.android.support:support-v13:25.2.0'
 
     compile 'org.tensorflow:tensorflow-lite:+'
-
-    testCompile 'junit:junit:4.12'
 }
