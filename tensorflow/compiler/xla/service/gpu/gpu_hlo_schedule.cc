@@ -17,7 +17,7 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
-#include "tensorflow/compiler/xla/service/gpu/hlo_schedule.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
@@ -184,13 +184,13 @@ void BFSLaunchOrder(const HloComputation* computation,
 
 }  // end namespace
 
-HloSchedule::HloSchedule() {}
+GpuHloSchedule::GpuHloSchedule() {}
 
 /* static */
-StatusOr<std::unique_ptr<HloSchedule>> HloSchedule::Build(
+StatusOr<std::unique_ptr<GpuHloSchedule>> GpuHloSchedule::Build(
     const HloModule& module, const StreamAssignment& stream_assignment,
     int64 pointer_size) {
-  std::unique_ptr<HloSchedule> schedule(new HloSchedule);
+  std::unique_ptr<GpuHloSchedule> schedule(new GpuHloSchedule);
 
   // Initialize thunk_launch_order_, the total order of thunk launches.
   const HloComputation* entry_computation = module.entry_computation();

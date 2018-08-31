@@ -29,6 +29,7 @@ limitations under the License.
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/BasicBlock.h"
@@ -66,7 +67,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 
@@ -460,6 +460,12 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
 }
 
 Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
+  // Outfeed produces no useful result, but it does return a token[] that can be
+  // threaded through to other side effecting operations to ensure ordering.  In
+  // the IR emitter we treat this token as a normal u8[] and thus need to insert
+  // an entry for it in emitted_value_.
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(outfeed));
+
   HloInstruction* operand = outfeed->operands()[0];
   const Shape& operand_shape = operand->shape();
 
@@ -500,8 +506,7 @@ Status IrEmitter::HandleTuple(HloInstruction* tuple) {
 
 llvm::Value* IrEmitter::EmitElementalMap(
     const HloMapInstruction& map_instr,
-    tensorflow::gtl::ArraySlice<llvm::Value*> elemental_operands,
-    absl::string_view name) {
+    absl::Span<llvm::Value* const> elemental_operands, absl::string_view name) {
   return EmitThreadLocalCall(*map_instr.to_apply(), elemental_operands, name);
 }
 
@@ -1449,7 +1454,7 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
     const ReductionGenerator& reduction_generator,
     const llvm_ir::IrArray::Index& output_index,
     const ShardedVectorType& accumulator_type, HloInstruction* init_value,
-    HloInstruction* arg, gtl::ArraySlice<int64> dimensions,
+    HloInstruction* arg, absl::Span<const int64> dimensions,
     unsigned element_alignment) {
   ShardedVector accumulator;
   accumulator.reserve(accumulator_type.size());
@@ -1545,7 +1550,7 @@ void IrEmitter::EmitShardedVectorStore(
 
 StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
-    gtl::ArraySlice<int64> dimensions, HloComputation* function,
+    absl::Span<const int64> dimensions, HloComputation* function,
     string* failure_reason) {
   if (!ReductionPreservesLayout(*reduce)) {
     return false;
@@ -1695,7 +1700,7 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduce(
     HloReduceInstruction* reduce, const llvm_ir::IrArray::Index& index) {
   const HloInstruction* arg = reduce->mutable_operand(0);
   const HloInstruction* init_value = reduce->mutable_operand(1);
-  gtl::ArraySlice<int64> dimensions(reduce->dimensions());
+  absl::Span<const int64> dimensions(reduce->dimensions());
 
   // Initialize an accumulator with init_value.
   PrimitiveType accumulator_type = reduce->shape().element_type();
@@ -1752,7 +1757,7 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce) {
   }
   auto arg = reduce->mutable_operand(0);
   auto init_value = reduce->mutable_operand(1);
-  gtl::ArraySlice<int64> dimensions(reduce->dimensions());
+  absl::Span<const int64> dimensions(reduce->dimensions());
   HloComputation* function = reduce->to_apply();
   if (!options::VectorizedReduceDisabled(hlo_module_config_)) {
     string vectorization_failure_reason;
@@ -2107,7 +2112,7 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
 }
 
 Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
-  gtl::ArraySlice<HloInstruction*> operands(custom_call->operands());
+  absl::Span<HloInstruction* const> operands(custom_call->operands());
   absl::string_view custom_call_target(custom_call->custom_call_target());
   llvm::Type* i8_ptr_type = b_.getInt8PtrTy();
   llvm::AllocaInst* operands_alloca =
@@ -2227,7 +2232,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
 }
 
 StatusOr<bool> IrEmitter::EmitFastConcatenate(
-    HloInstruction* concatenate, gtl::ArraySlice<HloInstruction*> operands,
+    HloInstruction* concatenate, absl::Span<HloInstruction* const> operands,
     string* failure_reason) {
   if (ShouldEmitParallelLoopFor(*concatenate)) {
     *failure_reason =
@@ -2363,7 +2368,7 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
 }
 
 Status IrEmitter::HandleConcatenate(HloInstruction* concatenate) {
-  gtl::ArraySlice<HloInstruction*> operands(concatenate->operands());
+  absl::Span<HloInstruction* const> operands(concatenate->operands());
   string failure_reason;
   TF_ASSIGN_OR_RETURN(
       bool successful,
@@ -2794,8 +2799,8 @@ Status IrEmitter::EmitMemcpy(const HloInstruction& source,
 
 Status IrEmitter::ElementTypesSameAndSupported(
     const HloInstruction& instruction,
-    gtl::ArraySlice<const HloInstruction*> operands,
-    gtl::ArraySlice<PrimitiveType> supported_types) {
+    absl::Span<const HloInstruction* const> operands,
+    absl::Span<const PrimitiveType> supported_types) {
   for (auto operand : operands) {
     TF_RET_CHECK(
         ShapeUtil::SameElementType(operands[0]->shape(), operand->shape()));
@@ -2825,8 +2830,7 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
 }
 
 llvm::Value* IrEmitter::EmitThreadLocalCall(
-    const HloComputation& callee,
-    tensorflow::gtl::ArraySlice<llvm::Value*> parameters,
+    const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
     absl::string_view name) {
   const Shape& return_shape = callee.root_instruction()->shape();
 

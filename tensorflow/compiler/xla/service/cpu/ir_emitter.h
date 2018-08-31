@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -111,7 +111,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Emit code to map one element according to `map_instr`.
   llvm::Value* EmitElementalMap(
       const HloMapInstruction& map_instr,
-      tensorflow::gtl::ArraySlice<llvm::Value*> elemental_operands,
+      absl::Span<llvm::Value* const> elemental_operands,
       absl::string_view name);
 
  protected:
@@ -252,10 +252,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   //
   // `parameters` holds the *scalar values* that need to be passed to the
   // callee.  The return value is the scalar returned by the callee.
-  llvm::Value* EmitThreadLocalCall(
-      const HloComputation& callee,
-      tensorflow::gtl::ArraySlice<llvm::Value*> parameters,
-      absl::string_view name);
+  llvm::Value* EmitThreadLocalCall(const HloComputation& callee,
+                                   absl::Span<llvm::Value* const> parameters,
+                                   absl::string_view name);
 
   // Emits a call to a "global" function (e.g. to the computation nested within
   // a kWhile or a kCall).  Buffer assignment unabiguously assignes buffers to
@@ -271,8 +270,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // match and are of one of the given supported types.
   Status ElementTypesSameAndSupported(
       const HloInstruction& instruction,
-      tensorflow::gtl::ArraySlice<const HloInstruction*> operands,
-      tensorflow::gtl::ArraySlice<PrimitiveType> supported_types);
+      absl::Span<const HloInstruction* const> operands,
+      absl::Span<const PrimitiveType> supported_types);
 
   // Emit IR to perform a computation for every element in the given target op.
   // This produces a series of nested loops (one for each dimension of the op's
@@ -319,10 +318,12 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // concepts that generalize over other vectorizable operations.  We should
   // consider pulling out these abstractions into a VectorizingIrEmitter or
   // something similar.
-  StatusOr<bool> EmitVectorizedReduce(
-      HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
-      tensorflow::gtl::ArraySlice<int64> dimensions, HloComputation* function,
-      string* failure_reason);
+  StatusOr<bool> EmitVectorizedReduce(HloInstruction* reduce,
+                                      HloInstruction* arg,
+                                      HloInstruction* init_value,
+                                      absl::Span<const int64> dimensions,
+                                      HloComputation* function,
+                                      string* failure_reason);
 
   // We'd like to keep one or two one cache-line's worth of data in registers
   // without generating IR with illegal (e.g. excessively large or
@@ -372,16 +373,15 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       const ReductionGenerator& reduction_generator,
       const llvm_ir::IrArray::Index& output_index,
       const ShardedVectorType& accumulator_type, HloInstruction* init_value,
-      HloInstruction* arg, tensorflow::gtl::ArraySlice<int64> dimensions,
+      HloInstruction* arg, absl::Span<const int64> dimensions,
       unsigned element_alignment);
 
   // Tries to emit a fast concatenate operation using memcpy.  Returns true if
   // successful, and false on failure.  On failure, sets "failure_reason" to a
   // string describing why it could not emit a fast concatenate.
-  StatusOr<bool> EmitFastConcatenate(
-      HloInstruction* concatenate,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      string* failure_reason);
+  StatusOr<bool> EmitFastConcatenate(HloInstruction* concatenate,
+                                     absl::Span<HloInstruction* const> operands,
+                                     string* failure_reason);
 
   // Emits LLVM IR to transfer "element_count" elements of type "primitive_type"
   // from the address "source" to the address "target".

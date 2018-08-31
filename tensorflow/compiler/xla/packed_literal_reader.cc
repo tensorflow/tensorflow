@@ -61,7 +61,7 @@ StatusOr<std::unique_ptr<Literal>> PackedLiteralReader::Read(
   result->PopulateWithValue(std::numeric_limits<float>::quiet_NaN());
 
   int64 elements = ShapeUtil::ElementsIn(shape);
-  tensorflow::gtl::ArraySlice<float> field = result->data<float>();
+  absl::Span<const float> field = result->data<float>();
   char* data = tensorflow::bit_cast<char*>(field.data());
   uint64 bytes = elements * sizeof(float);
   tensorflow::StringPiece sp;  // non-absl OK

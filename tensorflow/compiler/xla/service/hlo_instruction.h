@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
@@ -365,7 +365,7 @@ class HloInstruction {
   // random numbers from a given distribution.
   static std::unique_ptr<HloInstruction> CreateRng(
       const Shape& shape, RandomDistribution distribution,
-      tensorflow::gtl::ArraySlice<HloInstruction*> parameters);
+      absl::Span<HloInstruction* const> parameters);
 
   // Creates a unary instruction (one operand).
   // Precondition: opcode must be a legitimate unary operation.
@@ -392,13 +392,13 @@ class HloInstruction {
   // Precondition: opcode must be a legitimate variadic operation.
   static std::unique_ptr<HloInstruction> CreateVariadic(
       const Shape& shape, HloOpcode opcode,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands);
+      absl::Span<HloInstruction* const> operands);
 
   // Creates a map instruction, where the computation (given by the handle) is
   // applied element-wise to every element in operands (across the operands,
   // at a given index)
   static std::unique_ptr<HloInstruction> CreateMap(
-      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* map_computation);
 
   // Creates a convolution op, where rhs is the convolutional filter
@@ -412,7 +412,7 @@ class HloInstruction {
   // Creates an FFT op, of the type indicated by fft_type.
   static std::unique_ptr<HloInstruction> CreateFft(
       const Shape& shape, HloInstruction* operand, FftType fft_type,
-      tensorflow::gtl::ArraySlice<int64> fft_length);
+      absl::Span<const int64> fft_length);
 
   // Creates a dot op with operands 'lhs' and 'rhs' with contracting and batch
   // dimensions specified in 'dimension_numbers'.
@@ -449,7 +449,7 @@ class HloInstruction {
   //
   // TODO(b/79737069): Rename this to AllReduce.
   static std::unique_ptr<HloInstruction> CreateCrossReplicaSum(
-      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       const std::vector<ReplicaGroup>& replica_groups,
       absl::string_view barrier, const absl::optional<int64>& all_reduce_id);
@@ -468,7 +468,7 @@ class HloInstruction {
   // be concatenated in the order of 1, 2, 3; another Alltoall will be applied
   // within replica 4, 5, 0, and the concatenation order is 4, 5, 0.
   static std::unique_ptr<HloInstruction> CreateAllToAll(
-      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
       const std::vector<ReplicaGroup>& replica_groups);
 
   // Creates a communitation instructions that permutes data cross replicas.
@@ -536,17 +536,15 @@ class HloInstruction {
   // start/limit indices.
   static std::unique_ptr<HloInstruction> CreateSlice(
       const Shape& shape, HloInstruction* operand,
-      tensorflow::gtl::ArraySlice<int64> start_indices,
-      tensorflow::gtl::ArraySlice<int64> limit_indices,
-      tensorflow::gtl::ArraySlice<int64> strides);
+      absl::Span<const int64> start_indices,
+      absl::Span<const int64> limit_indices, absl::Span<const int64> strides);
 
   // Creates a slice instruction, where the first operand is sliced by
   // start indices specified in the second operand, and by size specified in
   // 'slice_sizes'.
   static std::unique_ptr<HloInstruction> CreateDynamicSlice(
       const Shape& shape, HloInstruction* operand,
-      HloInstruction* start_indices,
-      tensorflow::gtl::ArraySlice<int64> slice_sizes);
+      HloInstruction* start_indices, absl::Span<const int64> slice_sizes);
 
   // Creates a dynamic update slice instruction, which updates a slice
   // of 'operand' with 'update' and 'start_indices'.
@@ -557,7 +555,7 @@ class HloInstruction {
   // Creates a concatenate instruction, where the operands are concatenated on
   // the provided dimension.
   static std::unique_ptr<HloInstruction> CreateConcatenate(
-      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
       int64 dimension);
 
   // Creates a reduce instruction, where the computation (given by the handle)
@@ -569,7 +567,7 @@ class HloInstruction {
   // f(f(init, value0), value1), ...)
   static std::unique_ptr<HloInstruction> CreateReduce(
       const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
-      tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
+      absl::Span<const int64> dimensions_to_reduce,
       HloComputation* reduce_computation);
 
   // A more general, multiple-argument version of the above.
@@ -584,9 +582,9 @@ class HloInstruction {
   // ...
   // TODO(b/112040122): Add support to this in HLO passes and in backends.
   static std::unique_ptr<HloInstruction> CreateReduce(
-      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      tensorflow::gtl::ArraySlice<HloInstruction*> init_values,
-      tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      absl::Span<HloInstruction* const> init_values,
+      absl::Span<const int64> dimensions_to_reduce,
       HloComputation* reduce_computation);
 
   // Creates a reduce-window instruction, where the computation (given
@@ -623,7 +621,7 @@ class HloInstruction {
   // Creates a broadcast instruction.
   static std::unique_ptr<HloInstruction> CreateBroadcast(
       const Shape& shape, HloInstruction* operand,
-      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+      absl::Span<const int64> broadcast_dimensions);
 
   // Creates a sequence of instructions that performs an explicit broadcast of
   // the operand to the target shape.
@@ -653,7 +651,7 @@ class HloInstruction {
   // Creates a transpose instruction which permutes the operand dimensions.
   static std::unique_ptr<HloInstruction> CreateTranspose(
       const Shape& shape, HloInstruction* operand,
-      tensorflow::gtl::ArraySlice<int64> dimensions);
+      absl::Span<const int64> dimensions);
 
   // Creates a sort op, with a keys operand, and an optional values operand.
   static std::unique_ptr<HloInstruction> CreateSort(
@@ -679,7 +677,7 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       HloInstruction* start_indices,
       const GatherDimensionNumbers& gather_dim_numbers,
-      tensorflow::gtl::ArraySlice<int64> slice_sizes);
+      absl::Span<const int64> slice_sizes);
 
   static std::unique_ptr<HloInstruction> CreateScatter(
       const Shape& shape, HloInstruction* operand,
@@ -703,37 +701,37 @@ class HloInstruction {
 
   static std::unique_ptr<HloInstruction> CreateFusion(
       const Shape& shape, FusionKind fusion_kind,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      absl::Span<HloInstruction* const> operands,
       HloComputation* fusion_computation);
 
   // Creates a call instruction that applies the given computation on the given
   // operands. "shape" is the resultant shape.
   static std::unique_ptr<HloInstruction> CreateCall(
-      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* computation);
 
   // Creates a custom call instruction that applies the given custom call target
   // to the given operands. "shape" is the resultant shape.
   static std::unique_ptr<HloInstruction> CreateCustomCall(
-      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::string_view custom_call_target);
 
   // Creates a tuple instruction with the given elements. This is a convenience
   // wrapper around CreateVariadic.
   static std::unique_ptr<HloInstruction> CreateTuple(
-      tensorflow::gtl::ArraySlice<HloInstruction*> elements);
+      absl::Span<HloInstruction* const> elements);
 
   // Creates a reverse instruction, which reverses the order of the elements
   // in the specified dimensions.
   static std::unique_ptr<HloInstruction> CreateReverse(
       const Shape& shape, HloInstruction* operand,
-      tensorflow::gtl::ArraySlice<int64> dimensions);
+      absl::Span<const int64> dimensions);
 
   // Creates a Afterall instruction used for joining or creating new values of
   // token type which thread through side-effecting operations. Operands must
   // all be tokens, and there must be at least one operand.
   static std::unique_ptr<HloInstruction> CreateAfterAll(
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands);
+      absl::Span<HloInstruction* const> operands);
 
   // Creates an AfterAll instruction which creates a token type out of thin air
   // (no operands). This is a separate method from CreateAfterAll to facility
@@ -867,8 +865,8 @@ class HloInstruction {
       return false;
     }
 
-    if (!ContainersEqual(precision_config_.operand_precision(),
-                         other.precision_config_.operand_precision())) {
+    if (!absl::c_equal(precision_config_.operand_precision(),
+                       other.precision_config_.operand_precision())) {
       return false;
     }
 
@@ -1124,8 +1122,7 @@ class HloInstruction {
 
   // Clones the HLO instruction as above but with new shape and operands.
   std::unique_ptr<HloInstruction> CloneWithNewOperands(
-      const Shape& shape,
-      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context = nullptr) const;
 
   // Returns the computations this instruction directly calls (if any).
@@ -1505,7 +1502,7 @@ class HloInstruction {
   // Delegates to HloGatherInstruction::gather_dimension_numbers.
   const GatherDimensionNumbers& gather_dimension_numbers() const;
   // Delegates to HloGatherInstruction::gather_slice_sizes.
-  tensorflow::gtl::ArraySlice<int64> gather_slice_sizes() const;
+  absl::Span<const int64> gather_slice_sizes() const;
 
   // Delegates to HloScatterInstruction::scatter_dimension_numbers().
   const ScatterDimensionNumbers& scatter_dimension_numbers() const;
@@ -1531,7 +1528,7 @@ class HloInstruction {
 
   // Removes a list of operands with the given indices in ascending order.
   void RemoveOperandsAtAscendingIndices(
-      tensorflow::gtl::ArraySlice<int> ascending_indices);
+      absl::Span<const int> ascending_indices);
 
   void AppendComputation(HloComputation* computation) {
     called_computations_.push_back(computation);
@@ -1561,8 +1558,7 @@ class HloInstruction {
  private:
   // Implementation for non-common logic of CloneWithNewOperands.
   virtual std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
-      const Shape& shape,
-      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const {
     // TODO(b/80131774): This should be pure virtual.
     LOG(FATAL) << "Unimplemented method.";
@@ -1608,7 +1604,7 @@ class HloInstruction {
   // Creates an n-ary elementwise operation.
   static std::unique_ptr<HloInstruction> CreateNary(
       const Shape& shape, HloOpcode opcode,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands);
+      absl::Span<HloInstruction* const> operands);
 
   // Adds a user for this instruction.
   void AddUser(HloInstruction* user);

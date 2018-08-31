@@ -54,9 +54,8 @@ HloSharding HloSharding::Tuple(const ShapeTree<HloSharding>& sub_shardings) {
   return HloSharding(flattened_list);
 }
 
-HloSharding HloSharding::Tuple(
-    const Shape& tuple_shape,
-    tensorflow::gtl::ArraySlice<HloSharding> shardings) {
+HloSharding HloSharding::Tuple(const Shape& tuple_shape,
+                               absl::Span<const HloSharding> shardings) {
   CHECK(ShapeUtil::IsTuple(tuple_shape)) << ShapeUtil::HumanString(tuple_shape);
   for (auto& sharding : shardings) {
     CHECK(!sharding.IsTuple()) << sharding.ToString();
@@ -142,7 +141,7 @@ std::vector<int64> HloSharding::TileIndexForDevice(int64 device) const {
   CHECK(!maximal_);
   CHECK(!IsTuple());
   std::vector<int64> ret_index;
-  tile_assignment_.Each([&](tensorflow::gtl::ArraySlice<int64> index, int64 d) {
+  tile_assignment_.Each([&](absl::Span<const int64> index, int64 d) {
     if (d == device) {
       ret_index = {index.begin(), index.end()};
     }
@@ -151,8 +150,7 @@ std::vector<int64> HloSharding::TileIndexForDevice(int64 device) const {
   return ret_index;
 }
 
-int64 HloSharding::DeviceForTileIndex(
-    tensorflow::gtl::ArraySlice<int64> index) const {
+int64 HloSharding::DeviceForTileIndex(absl::Span<const int64> index) const {
   CHECK(!replicated_);
   CHECK(!IsTuple());
   if (maximal_) {
@@ -319,7 +317,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
   Status status = Status::OK();
   std::set<int64> seen_cores;
   tile_assignment_.Each(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, int32 core) {
+      [&](absl::Span<const int64> indices, int32 core) {
         // Don't overwrite a bad status, so we report the first error.
         if (status.ok()) {
           if (core >= num_devices) {

@@ -163,8 +163,7 @@ Status Client::ResetDevice() {
 }
 
 StatusOr<std::unique_ptr<Literal>> Client::ExecuteAndTransfer(
-    const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    const XlaComputation& computation, absl::Span<GlobalData* const> arguments,
     const ExecutionOptions* execution_options,
     ExecutionProfile* execution_profile) {
   TF_ASSIGN_OR_RETURN(
@@ -212,8 +211,7 @@ StatusOr<XlaComputation> Client::LoadSnapshot(const HloSnapshot& module) {
 }
 
 StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
-    const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    const XlaComputation& computation, absl::Span<GlobalData* const> arguments,
     const ExecutionOptions* execution_options,
     ExecutionProfile* execution_profile) {
   ExecuteGraphRequest request;
@@ -252,7 +250,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
 }
 
 StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
-    tensorflow::gtl::ArraySlice<XlaComputationInstance> computations) {
+    absl::Span<const XlaComputationInstance> computations) {
   ExecuteGraphParallelRequest request;
 
   for (const XlaComputationInstance& computation : computations) {

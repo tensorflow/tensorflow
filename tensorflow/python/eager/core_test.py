@@ -689,5 +689,16 @@ class SendRecvTest(test_util.TensorFlowTestCase):
           2.0)
 
 
+class EagerTensorCacheTest(test_util.TensorFlowTestCase):
+
+  def testCacheSkipsTensorsTooLarge(self):
+    cache = context._EagerTensorCache(max_items=100, max_tensor_size=3)
+    cache.put('1', array_ops.zeros((2, 2)))
+    self.assertEqual(cache.get('1'), None)
+
+    cache.put('2', array_ops.zeros((2)))
+    self.assertNotEqual(cache.get('2'), None)
+
+
 if __name__ == '__main__':
   test.main()

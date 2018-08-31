@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
-using tensorflow::gtl::ArraySlice;
 
 static StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
     HloInstruction* start_indices, int64 index_vector_dim) {
@@ -225,7 +224,7 @@ static StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
 
 static StatusOr<HloInstruction*> CreateGatherLoopAccumulatorInitValue(
     HloComputation* computation, PrimitiveType element_type,
-    ArraySlice<int64> slice_sizes, int64 gather_loop_trip_count,
+    absl::Span<const int64> slice_sizes, int64 gather_loop_trip_count,
     const GatherDimensionNumbers& dim_numbers) {
   std::vector<int64> accumulator_state_shape_dims;
   accumulator_state_shape_dims.reserve(1 + slice_sizes.size());
@@ -244,7 +243,7 @@ static StatusOr<HloInstruction*> CreateGatherLoopAccumulatorInitValue(
 // are the major dimensions and the offset dimensions are the minor dimensions.
 // Fix this up with a transpose.
 static StatusOr<HloInstruction*> PermuteBatchAndOffsetDims(
-    HloInstruction* accumulator, ArraySlice<int64> offset_dims,
+    HloInstruction* accumulator, absl::Span<const int64> offset_dims,
     int64 output_rank) {
   std::vector<int64> permutation;
   permutation.reserve(output_rank);

@@ -69,8 +69,8 @@ void GetAsymmetricQuantizationParams(
   } else {
     zero_point = static_cast<int64_t>(std::round(zero_point_from_min));
   }
-  quantization_params->scale = {scale};
-  quantization_params->zero_point = {zero_point};
+  quantization_params->scale = std::vector<float>(1, scale);
+  quantization_params->zero_point = std::vector<int64_t>(1, zero_point);
 }
 
 // Returns the number of elements in tensor.

@@ -241,7 +241,7 @@ IrArray::Index ForLoopNest::AddLoopsForShape(const Shape& shape,
 }
 
 IrArray::Index ForLoopNest::AddLoopsForShapeOnDimensions(
-    const Shape& shape, tensorflow::gtl::ArraySlice<int64> dimensions,
+    const Shape& shape, absl::Span<const int64> dimensions,
     absl::string_view suffix) {
   llvm_ir::IrArray::Index index(index_type_, shape.dimensions_size());
   for (int64 dimension : dimensions) {

@@ -78,9 +78,11 @@ class TocoConverter(object):
     output_format: Output file format. Currently must be `{TFLITE,
       GRAPHVIZ_DOT}`. (default TFLITE)
     quantized_input_stats: Dict of strings representing input tensor names
-      mapped to tuple of integers representing the mean and standard deviation
+      mapped to tuple of floats representing the mean and standard deviation
       of the training data (e.g., {"foo" : (0., 1.)}). Only need if
-      `inference_type` is `QUANTIZED_UINT8`. (default {})
+      `inference_input_type` is `QUANTIZED_UINT8`.
+      real_input_value = (quantized_input_value - mean_value) / std_dev_value.
+      (default {})
     default_ranges_stats: Tuple of integers representing (min, max) range values
       for all arrays without a specified range. Intended for experimenting with
       quantization via "dummy quantization". (default None)

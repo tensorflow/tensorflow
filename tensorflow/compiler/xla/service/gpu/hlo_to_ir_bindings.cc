@@ -35,8 +35,8 @@ using absl::StrAppend;
 using absl::StrCat;
 
 void HloToIrBindings::EmitBasePointersForHlos(
-    tensorflow::gtl::ArraySlice<const HloInstruction*> io_hlos,
-    tensorflow::gtl::ArraySlice<const HloInstruction*> non_io_hlos) {
+    absl::Span<const HloInstruction* const> io_hlos,
+    absl::Span<const HloInstruction* const> non_io_hlos) {
   // I/O HLOs are bound to the arguments of the current IR function. I.e.,
   //
   // void IrFunction(io_0, io_1, ..., io_{m-1}, temp_buffer_base) {

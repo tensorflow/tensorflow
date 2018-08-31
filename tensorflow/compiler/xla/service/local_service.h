@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/backend.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
@@ -48,7 +48,7 @@ class LocalService : public Service {
   // compiler is responsible for freeing any memory it allocates this way.
   StatusOr<std::unique_ptr<Executable>> CompileExecutable(
       const XlaComputation& computation,
-      const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
+      const absl::Span<const Shape* const> argument_layouts,
       const ExecutableBuildOptions& build_options);
 
   // Returns the device ordinal that corresponds to the given replica number.

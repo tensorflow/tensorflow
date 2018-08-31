@@ -2123,6 +2123,264 @@ TEST_F(AlgebraicSimplifierTest, ReplaceEffectiveScalarKeyValueSortWithTuple) {
   EXPECT_THAT(computation->root_instruction(), op::Tuple(keys, values));
 }
 
+// Used for TEST_Ps that test merging (or not) of a kPad instruction into a
+// convolution's Window.
+struct ConvPaddingTestcase {
+  ConvPaddingTestcase(absl::string_view padding,
+                      absl::string_view orig_conv_window,
+                      absl::string_view expected_conv_window)
+      : ConvPaddingTestcase(padding, orig_conv_window, expected_conv_window,
+                            /*pad_value=*/0) {}
+
+  ConvPaddingTestcase(absl::string_view padding,
+                      absl::string_view orig_conv_window,
+                      absl::string_view expected_conv_window, float pad_value)
+      : padding(padding),
+        orig_conv_window(orig_conv_window),
+        expected_conv_window(expected_conv_window),
+        pad_value(pad_value) {}
+
+  string ToString() const {
+    return absl::StrFormat(
+        "padding=%s, orig_conv_window=%s, expected_conv_window=%s, "
+        "pad_value=%f",
+        padding, orig_conv_window, expected_conv_window, pad_value);
+  }
+
+  string padding;
+  string orig_conv_window;
+  string expected_conv_window;
+  float pad_value;
+};
+
+// ConvInputPaddingTest (and its one associated TEST_P testcase) checks that a
+// computation that does
+//
+//   conv(pad(param0, padding=padding), param1), window=orig_conv_window
+//
+// gets transformed by AlgebraicSimplifier to
+//
+//   conv(param0, param1), window=expected_conv_window
+//
+// or, if expected_conv_window is the empty string, checks that
+// AlgebraicSimplifier does *not* transform the original convolution.
+class ConvInputPaddingTest
+    : public AlgebraicSimplifierTest,
+      public ::testing::WithParamInterface<ConvPaddingTestcase> {};
+
+INSTANTIATE_TEST_CASE_P(
+    ConvInputPaddingTestCases, ConvInputPaddingTest,
+    ::testing::ValuesIn(std::vector<ConvPaddingTestcase>{
+        // Merge this edge padding into the conv.
+        {"0_0x0_0x1_1x2_2", "", "pad=1_1x2_2"},
+        // Merge this edge padding with the conv's edge padding.
+        {"0_0x0_0x1_2x3_4", "pad=10_10x20_20", "pad=11_12x23_24"},
+        // Merge this interior-padded kPad with the unpadded conv.  The 3x6
+        // interior padding gets transformed to 4x7 conv lhs dilation.
+        {"0_0x0_0x1_2_3x4_5_6", "", "pad=1_2x4_5 lhs_dilate=4x7"},
+        // kPad has dilation on one dim, conv has it on the other; merge them.
+        {"0_0x0_0x0_0_1x0_0_0", "lhs_dilate=1x10", "lhs_dilate=2x10"},
+        // kPad has dilation and edge padding on one dim, conv has them on the
+        // other; merge them.
+        {"0_0x0_0x0_1_1x0_0_0", "pad=0_0x3_0 lhs_dilate=1x10",
+         "pad=0_1x3_0 lhs_dilate=2x10"},
+
+        // Don't transform if the pad value is nonzero.
+        {"0_0x0_0x1_1x2_2", "", "", /*pad_value=*/1},
+
+        // We refuse to transform the following because on some dimension, one
+        // of the kPad and conv has dilation and the other has some sort of
+        // padding.
+        {"0_0x0_0x0_0_1x0_0", "pad=1_0x0_0", ""},
+        {"0_0x0_0x0_0_1x0_0", "pad=0_1x0_0", ""},
+        {"0_0x0_0x0_0_1x0_0", "lhs_dilate=2x1", ""},
+        {"0_0x0_0x1_0_0x0_0", "lhs_dilate=2x1", ""},
+        {"0_0x0_0x0_1_0x0_0", "lhs_dilate=2x1", ""},
+        {"0_0x0_0x0_0_1x0_0", "lhs_dilate=2x1", ""},
+
+        // We can't merge feature or batch padding into the conv.
+        {"1_0x0_0x0_0x0_0", "", ""},
+        {"0_0x1_0x0_0x0_0", "", ""},
+    }));
+
+TEST_P(ConvInputPaddingTest, DoTest) {
+  ConvPaddingTestcase testcase = GetParam();
+
+  // It would be better to put the testcase's ToString into the test name, but
+  // gUnit has constraints on what can go into test names, and any reasonable
+  // implementation of ToString() seems to violate them.
+  SCOPED_TRACE(testcase.ToString());
+
+  auto builder = HloComputation::Builder(TestName());
+  auto* input = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {1024, 128, 100, 100}),  // bf01
+      "input"));
+  auto* pad_value = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR0(testcase.pad_value)));
+
+  PaddingConfig padding_config =
+      ParsePaddingConfig(testcase.padding).ValueOrDie();
+  auto* lhs_pad = builder.AddInstruction(HloInstruction::CreatePad(
+      ShapeInference::InferPadShape(input->shape(), pad_value->shape(),
+                                    padding_config)
+          .ValueOrDie(),
+      input, pad_value, padding_config));
+
+  auto* filter = builder.AddInstruction(HloInstruction::CreateParameter(
+      1,
+      ShapeUtil::MakeShape(
+          F32, {lhs_pad->shape().dimensions(1), 256, 3, 3}),  // io01
+      "input"));
+
+  ConvolutionDimensionNumbers dnums =
+      ParseConvolutionDimensionNumbers("bf01_io01->bf01").ValueOrDie();
+  Window window =
+      ParseWindow(absl::StrCat("size=3x3 ", testcase.orig_conv_window))
+          .ValueOrDie();
+  builder.AddInstruction(HloInstruction::CreateConvolve(
+      ShapeInference::InferConvolveShape(lhs_pad->shape(), filter->shape(),
+                                         window, dnums)
+          .ValueOrDie(),
+      lhs_pad, filter, window, dnums));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  if (testcase.expected_conv_window.empty()) {
+    ASSERT_FALSE(simplifier.Run(module).ValueOrDie());
+  } else {
+    ASSERT_TRUE(simplifier.Run(module).ValueOrDie());
+    auto* conv = module->entry_computation()->root_instruction();
+    SCOPED_TRACE(module->ToString());
+    ASSERT_THAT(conv, op::Convolution(op::Parameter(), op::Parameter()));
+    EXPECT_EQ(window_util::ToString(conv->window()),
+              absl::StrCat("size=3x3 ", testcase.expected_conv_window));
+  }
+}
+
+// ConvFilterPaddingTest (and its one associated TEST_P) checks that a
+// computation that does
+//
+//   conv(param0, pad(param1, padding=padding)), window=orig_conv_window
+//
+// gets transformed by AlgebraicSimplifier to
+//
+//   conv(param0, param1), window=expected_conv_window
+//
+// or, if expected_conv_window is the empty string, checks that
+// AlgebraicSimplifier does *not* transform the original convolution.
+class ConvFilterPaddingTest
+    : public AlgebraicSimplifierTest,
+      public ::testing::WithParamInterface<ConvPaddingTestcase> {};
+
+INSTANTIATE_TEST_CASE_P(
+    ConvFilterPaddingTestCases, ConvFilterPaddingTest,
+    ::testing::ValuesIn(std::vector<ConvPaddingTestcase>{
+        // Can only merge interior padding on the filter's spatial dimensions;
+        // all
+        // other paddings (edge padding and interior padding on the channel
+        // dims)
+        // should be rejected out of hand.
+        {"1_0_0x0_0_0x0_0x0_0", "", ""},
+        {"0_1_0x0_0_0x0_0x0_0", "", ""},
+        {"0_0_1x0_0_0x0_0x0_0", "", ""},
+        {"0_0_0x1_0_0x0_0x0_0", "", ""},
+        {"0_0_0x0_1_0x0_0x0_0", "", ""},
+        {"0_0_0x0_0_1x0_0x0_0", "", ""},
+        {"0_0_0x0_0_0x1_0x0_0", "", ""},
+        {"0_0_0x0_0_0x0_1x0_0", "", ""},
+        {"0_0_0x0_0_0x0_0x1_0", "", ""},
+        {"0_0_0x0_0_0x0_0x0_1", "", ""},
+
+        // Interior padding on channel dims can be merged into the conv, so long
+        // as the conv and pad don't have interior padding on the same dim.
+        {"0_0x0_0x0_0_5x0_0", "", "rhs_dilate=6x1"},
+        {"0_0x0_0x0_0x0_0_10", "", "rhs_dilate=1x11"},
+        {"0_0x0_0x0_0_10x0_0_100", "", "rhs_dilate=11x101"},
+        {"0_0x0_0x0_0_1x0_0", "rhs_dilate=1x10", "rhs_dilate=2x10"},
+        {"0_0x0_0x0_0x0_0_5", "rhs_dilate=10x1", "rhs_dilate=10x6"},
+
+        // Can't merge if for a given dim there's interior padding on both the
+        // pad and conv.
+        {"0_0x0_0x0_0_1x0_0", "rhs_dilate=2x10", ""},
+        {"0_0x0_0x0_0x0_0_5", "rhs_dilate=10x2", ""},
+
+        // Don't transform if the pad value is nonzero.
+        {"0_0x0_0x0_0_5x0_0", "", "", /*pad_value=*/1},
+    }));
+
+TEST_P(ConvFilterPaddingTest, DoIt) {
+  ConvPaddingTestcase testcase = GetParam();
+
+  // It would be better to put the testcase's ToString into the test name, but
+  // gUnit has constraints on what can go into test names, and any reasonable
+  // implementation of ToString() seems to violate them.
+  SCOPED_TRACE(testcase.ToString());
+
+  auto builder = HloComputation::Builder(TestName());
+  auto* pad_value = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR0(testcase.pad_value)));
+  auto* filter = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {128, 256, 3, 3}),  // io01
+      "input"));
+  PaddingConfig padding_config =
+      ParsePaddingConfig(testcase.padding).ValueOrDie();
+  auto* rhs_pad = builder.AddInstruction(HloInstruction::CreatePad(
+      ShapeInference::InferPadShape(filter->shape(), pad_value->shape(),
+                                    padding_config)
+          .ValueOrDie(),
+      filter, pad_value, padding_config));
+
+  auto* input = builder.AddInstruction(HloInstruction::CreateParameter(
+      0,
+      ShapeUtil::MakeShape(
+          F32, {1024, rhs_pad->shape().dimensions(0), 100, 100}),  // bf01
+      "input"));
+
+  ConvolutionDimensionNumbers dnums =
+      ParseConvolutionDimensionNumbers("bf01_io01->bf01").ValueOrDie();
+  Window window = ParseWindow(absl::StrFormat("size=%dx%d %s",
+                                              rhs_pad->shape().dimensions(2),
+                                              rhs_pad->shape().dimensions(3),
+                                              testcase.orig_conv_window))
+                      .ValueOrDie();
+  auto* orig_conv = builder.AddInstruction(HloInstruction::CreateConvolve(
+      ShapeInference::InferConvolveShape(input->shape(), rhs_pad->shape(),
+                                         window, dnums)
+          .ValueOrDie(),
+      input, rhs_pad, window, dnums));
+
+  // Add a PrecisionConfig and check that AlgebraicSimplifier keeps it in place
+  // after the transformation.
+  PrecisionConfigProto precision_config;
+  precision_config.add_operand_precision(PrecisionConfigProto::HIGH);
+  precision_config.add_operand_precision(PrecisionConfigProto::HIGHEST);
+  orig_conv->set_precision_config(precision_config);
+
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  if (testcase.expected_conv_window.empty()) {
+    ASSERT_FALSE(simplifier.Run(module).ValueOrDie());
+  } else {
+    ASSERT_TRUE(simplifier.Run(module).ValueOrDie());
+    auto* conv = module->entry_computation()->root_instruction();
+    SCOPED_TRACE(module->ToString());
+    ASSERT_THAT(conv, op::Convolution(op::Parameter(), op::Parameter()));
+    EXPECT_EQ(window_util::ToString(conv->window()),
+              absl::StrFormat("size=%dx%d %s",
+                              conv->operand(1)->shape().dimensions(2),
+                              conv->operand(1)->shape().dimensions(3),
+                              testcase.expected_conv_window));
+    EXPECT_THAT(
+        conv->precision_config().operand_precision(),
+        ElementsAre(PrecisionConfigProto::HIGH, PrecisionConfigProto::HIGHEST));
+  }
+}
+
 TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
   struct ConvTestOptions {
     int in_batch = 10;
@@ -2226,7 +2484,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
     auto out_dims = in_dims;
     out_dims[in_channel_idx] = options.f_output_channels;
 
-    auto make_shape = [](tensorflow::gtl::ArraySlice<int64> dims,
+    auto make_shape = [](absl::Span<const int64> dims,
                          bool minor_to_major_layout) {
       if (minor_to_major_layout) {
         return ShapeUtil::MakeShapeWithLayout(F32, dims, {0, 1, 2, 3});
@@ -2838,8 +3096,8 @@ TEST_P(PadReduceWindowEffectiveBroadcastTest, DoIt) {
 
   // a and b are parallel bounds we can either turn into a B F S0 S1 or
   // `B S0 S1 F` kind of pattern.
-  auto decorate_spatials = [&param](tensorflow::gtl::ArraySlice<int64> spatials,
-                                    int64 a, int64 b) {
+  auto decorate_spatials = [&param](absl::Span<const int64> spatials, int64 a,
+                                    int64 b) {
     std::vector<int64> result;
     if (param.prepend_a) {
       result.push_back(a);

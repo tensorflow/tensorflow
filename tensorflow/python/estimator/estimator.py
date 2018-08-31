@@ -42,6 +42,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.keras import metrics
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import metrics as metrics_lib
@@ -1332,10 +1333,12 @@ class Estimator(object):
         scaffold = _combine_distributed_scaffold(
             grouped_estimator_spec.scaffold, self._train_distribution)
 
+        # TODO(yuefengz): add a test for unwrapping per_device_hooks.
         def get_hooks_from_the_first_device(per_device_hooks):
-          hooks_list = self._train_distribution.unwrap(per_device_hooks)
-          assert hooks_list
-          return hooks_list[0]
+          return [
+              self._distribution.unwrap(per_device_hook)[0]
+              for per_device_hook in per_device_hooks
+          ]
 
         training_hooks = get_hooks_from_the_first_device(
             grouped_estimator_spec.training_hooks)
@@ -1837,19 +1840,21 @@ def _extract_metric_update_ops(eval_dict, distribution=None):
   update_ops = []
   value_ops = {}
   # Sort metrics lexicographically so graph is identical every time.
-  for name, metric_ops in sorted(six.iteritems(eval_dict)):
-    value_ops[name] = metric_ops[0]
-    if distribution:
-      update_op = distribution.group(metric_ops[1])
+  for name, value in sorted(six.iteritems(eval_dict)):
+    if isinstance(value, metrics.Metric):
+      metric_result = value.result()
+      # We expect only one update op for every metric when there is no
+      # distribution strategy.
+      metric_update = value.updates if distribution else value.updates[0]
     else:
-      update_op = metric_ops[1]
-    update_ops.append(update_op)
+      metric_result = value[0]
+      metric_update = value[1]
 
-  if update_ops:
-    update_op = control_flow_ops.group(*update_ops)
-  else:
-    update_op = None
+    value_ops[name] = metric_result
+    update_ops.append(
+        distribution.group(metric_update) if distribution else metric_update)
 
+  update_op = control_flow_ops.group(*update_ops) if update_ops else None
   return update_op, value_ops
 
 

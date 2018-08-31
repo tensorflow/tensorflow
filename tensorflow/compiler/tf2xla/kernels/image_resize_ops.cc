@@ -78,7 +78,7 @@ struct ResizeConvolutionDims {
   std::vector<int64> stride;
 };
 ResizeConvolutionDims ComputeResizeConvolutionParameters(
-    gtl::ArraySlice<int64> in_size, gtl::ArraySlice<int64> out_size,
+    absl::Span<const int64> in_size, absl::Span<const int64> out_size,
     bool align_corners) {
   CHECK_EQ(in_size.size(), out_size.size());
   int num_spatial_dims = in_size.size();
@@ -147,7 +147,7 @@ std::vector<float> Make1DKernel(int64 n) {
 const int64 kMax2DKernelSize = 16;
 
 xla::XlaOp MakeBilinearResizeKernel(xla::XlaBuilder* builder,
-                                    gtl::ArraySlice<int64> kernel_size,
+                                    absl::Span<const int64> kernel_size,
                                     int64 channels) {
   xla::XlaOp channels_iota = xla::Iota(builder, xla::S32, channels);
 
@@ -165,7 +165,7 @@ xla::XlaOp MakeBilinearResizeKernel(xla::XlaBuilder* builder,
 }
 
 xla::XlaOp MakeBilinearResizeKernelInDim(xla::XlaBuilder* builder,
-                                         gtl::ArraySlice<int64> kernel_size,
+                                         absl::Span<const int64> kernel_size,
                                          int64 channels, int64 dim) {
   xla::XlaOp channels_iota = xla::Iota(builder, xla::S32, channels);
 

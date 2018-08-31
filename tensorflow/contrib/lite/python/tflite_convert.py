@@ -109,8 +109,14 @@ def _convert_model(flags):
 
   if flags.mean_values and flags.std_dev_values:
     input_arrays = converter.get_input_arrays()
-    std_dev_values = _parse_array(flags.std_dev_values, type_fn=int)
-    mean_values = _parse_array(flags.mean_values, type_fn=int)
+    std_dev_values = _parse_array(flags.std_dev_values, type_fn=float)
+
+    # In quantized inference, mean_value has to be integer so that the real
+    # value 0.0 is exactly representable.
+    if flags.inference_type == lite_constants.QUANTIZED_UINT8:
+      mean_values = _parse_array(flags.mean_values, type_fn=int)
+    else:
+      mean_values = _parse_array(flags.mean_values, type_fn=float)
     quant_stats = list(zip(mean_values, std_dev_values))
     if ((not flags.input_arrays and len(input_arrays) > 1) or
         (len(input_arrays) != len(quant_stats))):
@@ -293,12 +299,13 @@ def run_main(_):
       "--std_dev_values",
       type=str,
       help=("Standard deviation of training data for each input tensor, "
-            "comma-separated integers. Used for quantization. (default None)"))
+            "comma-separated floats. Used for quantized input tensors. "
+            "(default None)"))
   parser.add_argument(
       "--mean_values",
       type=str,
       help=("Mean of training data for each input tensor, comma-separated "
-            "integers. Used for quantization. (default None)"))
+            "floats. Used for quantized input tensors. (default None)"))
   parser.add_argument(
       "--default_ranges_min",
       type=int,

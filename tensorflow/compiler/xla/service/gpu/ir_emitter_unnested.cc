@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
@@ -80,7 +81,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -94,7 +94,6 @@ using absl::optional;
 using absl::StrCat;
 using llvm_ir::IrArray;
 using llvm_ir::IrName;
-using tensorflow::gtl::ArraySlice;
 
 // If a dimensions is smaller than this, untiled transposition may be more
 // efficient.
@@ -176,7 +175,7 @@ Status IrEmitterUnnested::Postprocess(HloInstruction* hlo) {
 
 llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
     const HloInstruction& inst,
-    tensorflow::gtl::ArraySlice<const BufferAllocation*> args) {
+    absl::Span<const BufferAllocation* const> args) {
   // Compute the kernel name. The opcode string may contain "-" which cannot be
   // in a PTX function name, so sanitize the name before uniquifying it.
   string kernel_name = ir_emitter_context_->name_uniquer()->GetUniqueName(
@@ -556,10 +555,10 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
         }
         VLOG(3) << "Emitting fused reduction to vector: " << fusion->ToString();
         std::vector<std::unique_ptr<Thunk>> thunks;
-        ArraySlice<HloInstruction*> output_instructions =
+        absl::Span<HloInstruction* const> output_instructions =
             root->opcode() == HloOpcode::kTuple
                 ? root->operands()
-                : ArraySlice<HloInstruction*>(&root, 1);
+                : absl::Span<HloInstruction* const>(&root, 1);
 
         // For multi-output fusion emit an initializer for each tuple element.
         // Otherwise it's sufficient to just initialize the single output.
@@ -718,8 +717,7 @@ Status IrEmitterUnnested::HandleCopy(HloInstruction* copy) {
 
 Status IrEmitterUnnested::EmitExtraOutputsForReduce(
     const HloInstruction* reduce, const IrArray::Index& index,
-    tensorflow::gtl::ArraySlice<
-        std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
+    absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
         extra_output_gens) {
   for (int i = 0; i != extra_output_gens.size(); ++i) {
     const HloInstruction* output = reduce->parent()->FusionInstruction();
@@ -736,12 +734,11 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
 
 Status IrEmitterUnnested::EmitReductionToScalar(
     HloInstruction* reduce, const Shape& input_shape,
-    tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> input_gens,
-    tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> init_value_gens,
-    tensorflow::gtl::ArraySlice<HloComputation*> reducers,
-    tensorflow::gtl::ArraySlice<ShapeIndex> reduce_output_shapes,
-    tensorflow::gtl::ArraySlice<
-        std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
+    absl::Span<const llvm_ir::ElementGenerator> input_gens,
+    absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
+    absl::Span<HloComputation* const> reducers,
+    absl::Span<const ShapeIndex> reduce_output_shapes,
+    absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
         extra_output_gens) {
   // Number of elements processed by a single thread.
   constexpr int64 kTileSize = 16;
@@ -951,12 +948,11 @@ Status IrEmitterUnnested::EmitReductionToScalar(
 
 Status IrEmitterUnnested::EmitColumnReduction(
     int64 height, int64 width, HloInstruction* reduce, const Shape& input_shape,
-    tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> input_gens,
-    tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> init_value_gens,
-    tensorflow::gtl::ArraySlice<HloComputation*> reducers,
-    tensorflow::gtl::ArraySlice<ShapeIndex> reduce_output_shapes,
-    tensorflow::gtl::ArraySlice<
-        std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
+    absl::Span<const llvm_ir::ElementGenerator> input_gens,
+    absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
+    absl::Span<HloComputation* const> reducers,
+    absl::Span<const ShapeIndex> reduce_output_shapes,
+    absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
         extra_output_gens) {
   // Divide the input matrix into tiles of size KxL. For example, when the
   // input matrix is 4x4, K=2, and L=1 the tiled matrix looks like
@@ -1240,12 +1236,11 @@ static std::pair<int64, int64> ComputeTilingSchemeForReduction(
 Status IrEmitterUnnested::EmitRowReduction(
     int64 depth, int64 height, int64 width, HloInstruction* reduce,
     const Shape& input_shape,
-    tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> input_gens,
-    tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> init_value_gens,
-    tensorflow::gtl::ArraySlice<HloComputation*> reducers,
-    tensorflow::gtl::ArraySlice<ShapeIndex> reduce_output_shapes,
-    tensorflow::gtl::ArraySlice<
-        std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
+    absl::Span<const llvm_ir::ElementGenerator> input_gens,
+    absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
+    absl::Span<HloComputation* const> reducers,
+    absl::Span<const ShapeIndex> reduce_output_shapes,
+    absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
         extra_output_gens) {
   // A naive algorithm is:
   // 1. Divide the x dimension of the input tensor into tiles of size 1x1xX.
@@ -1593,13 +1588,12 @@ Status IrEmitterUnnested::EmitRowReduction(
 //               elementwise.
 Status IrEmitterUnnested::EmitReductionToVector(
     HloInstruction* reduce, const Shape& input_shape,
-    tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> input_gens,
-    tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> init_value_gens,
-    tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
-    tensorflow::gtl::ArraySlice<HloComputation*> reducers,
-    tensorflow::gtl::ArraySlice<ShapeIndex> reduce_output_shapes,
-    tensorflow::gtl::ArraySlice<
-        std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
+    absl::Span<const llvm_ir::ElementGenerator> input_gens,
+    absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
+    absl::Span<const int64> dimensions_to_reduce,
+    absl::Span<HloComputation* const> reducers,
+    absl::Span<const ShapeIndex> reduce_output_shapes,
+    absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
         extra_output_gens) {
   // This emission requires "reduce" to have an input layout. It is either set
   // by LayoutAssignment (for a top-level kReduce) or by InstructionFusion (for
@@ -1694,7 +1688,7 @@ Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
   }
   auto input = reduce->operand(0);
   auto init_value = reduce->operand(1);
-  tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce(reduce->dimensions());
+  absl::Span<const int64> dimensions_to_reduce(reduce->dimensions());
   HloComputation* reducer = reduce->to_apply();
   // HandleReduce specializes reduction from a multi-dimensional array to a 1D
   // array. The specialized version requires an initializer thunk that
@@ -2570,7 +2564,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
 
     // Are all the bytes of this scalar equal to 0?  If so, we can create a
     // MemzeroThunk.
-    ArraySlice<uint8> literal_bytes(
+    absl::Span<const uint8> literal_bytes(
         reinterpret_cast<const uint8*>(literal.untyped_data()), num_bytes);
     if (absl::c_all_of(literal_bytes, [](uint8 byte) { return byte == 0; })) {
       return {absl::make_unique<MemzeroThunk>(GetAllocationSlice(*hlo, index),
@@ -2880,7 +2874,7 @@ int IrEmitterUnnested::ConstructIrArrayForInputs(
 
 int IrEmitterUnnested::ConstructOutputReducedShapeAndCastOutputIrArrayToShape(
     const HloInstruction& hlo, const std::vector<IrArray>& output_arrays,
-    tensorflow::gtl::ArraySlice<int64> reduced_output_dims,
+    absl::Span<const int64> reduced_output_dims,
     std::vector<Shape>* output_reduced_shapes,
     std::vector<IrArray>* output_in_reduced_shape_arrays) {
   int64 num_outputs = 1;
@@ -2907,7 +2901,7 @@ int IrEmitterUnnested::ConstructOutputReducedShapeAndCastOutputIrArrayToShape(
 int IrEmitterUnnested::ConstructInputReducedShapeAndCastInputIrArrayToShape(
     const HloInstruction& hlo, const std::vector<IrArray>& param_arrays,
     const std::vector<llvm::Value*>& param_buffers,
-    tensorflow::gtl::ArraySlice<int64> reduced_output_dims,
+    absl::Span<const int64> reduced_output_dims,
     std::vector<Shape>* param_reduced_shapes,
     std::vector<IrArray>* param_in_reduced_shape_arrays) {
   int64 num_params = hlo.operands().size();
@@ -3048,8 +3042,8 @@ void EmitTiledElementalCodeWithBoundsCheck(
 // TODO(b/33320379): Here each block transposes 1 tile. It may be more efficient
 // to launch fewer blocks so each transposes many tiles.
 LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
-    HloInstruction* hlo, tensorflow::gtl::ArraySlice<int64> reduced_output_dims,
-    tensorflow::gtl::ArraySlice<int64> tiled_param_ids) {
+    HloInstruction* hlo, absl::Span<const int64> reduced_output_dims,
+    absl::Span<const int64> tiled_param_ids) {
   // Parameters for the tiling algorithm.
   constexpr int64 kTileSize = 32;
   constexpr int64 kNumRows = 4;
@@ -3295,7 +3289,7 @@ bool IrEmitterUnnested::CheckAndEmitHloWithTile021(HloInstruction* hlo) {
     if (!reduced_dims_021.has_value()) {
       reduced_dims_021 = curr_reduced_dims_021;
     }
-    if (!ContainersEqual(*reduced_dims_021, curr_reduced_dims_021)) {
+    if (!absl::c_equal(*reduced_dims_021, curr_reduced_dims_021)) {
       // There is more than one possible transpose. Instead of picking one
       // transpose, we simply give up here.
       return false;

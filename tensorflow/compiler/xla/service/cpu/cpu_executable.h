@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
@@ -57,12 +57,12 @@ class CpuExecutable : public Executable {
 
   StatusOr<ScopedShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
   StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
+      absl::Span<const ShapedBuffer* const> arguments) override;
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -92,7 +92,7 @@ class CpuExecutable : public Executable {
   // exists) must out-live the task.
   StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStreamImpl(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile);
 
   // Creates an array suitable for passing as the "temps" argument to the JIT
@@ -112,21 +112,20 @@ class CpuExecutable : public Executable {
   StatusOr<std::pair<std::vector<se::DeviceMemoryBase>,
                      std::vector<OwningDeviceMemory>>>
   CreateTempArray(DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-                  tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
+                  absl::Span<const ShapedBuffer* const> arguments);
 
   // Calls the generated function performing the computation with the given
   // arguments using the supplied buffers.
-  Status ExecuteComputeFunction(
-      const ExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> buffers,
-      HloExecutionProfile* hlo_execution_profile);
+  Status ExecuteComputeFunction(const ExecutableRunOptions* run_options,
+                                absl::Span<const se::DeviceMemoryBase> buffers,
+                                HloExecutionProfile* hlo_execution_profile);
 
   // Creates a ScopedShapedBuffer for holding the result of the computation,
   // moving buffers out of allocated_buffers and into the result as appropriate.
   // The addresses are set according to buffer assignment.
   StatusOr<ScopedShapedBuffer> CreateResultShapedBuffer(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::MutableArraySlice<OwningDeviceMemory> buffers);
+      absl::Span<OwningDeviceMemory> buffers);
 
   // Returns the points-to set of the root instruction of the entry
   // computation. Uses points-to analysis from buffer assignment.

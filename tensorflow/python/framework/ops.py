@@ -802,6 +802,19 @@ class _EagerTensorBase(Tensor):
     """
     raise NotImplementedError()
 
+  def _num_elements(self):
+    """Number of elements of this Tensor.
+
+    Unlike regular Tensors, the number of elements is always known for
+    EagerTensors.
+
+    This is more performant than tensor.shape.num_elements
+
+    Returns:
+      Long - num elements in the tensor
+    """
+    raise NotImplementedError()
+
   def _copy_to_device(self, context, device):  # pylint: disable=redefined-outer-name
     raise NotImplementedError()
 

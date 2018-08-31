@@ -55,5 +55,30 @@ bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
   });
 }
 
+bool IsInputFusibleReduction(const HloInstruction& instr) {
+  if (instr.IsMultiOutputFusion()) {
+    for (const HloInstruction* operand :
+         instr.fused_expression_root()->operands()) {
+      if (IsReductionToVector(*operand)) {
+        CHECK(instr.fusion_kind() == HloInstruction::FusionKind::kInput)
+            << " Multi-output fusion rooted at reduction-to-vector ops must be "
+               "of kind kInput: "
+            << instr.ToString();
+        return true;
+      }
+    }
+    return false;
+  } else if (instr.opcode() == HloOpcode::kFusion) {
+    if (IsReductionToVector(*instr.fused_expression_root())) {
+      CHECK(instr.fusion_kind() == HloInstruction::FusionKind::kInput)
+          << " Fusion rooted at reduction-to-vector op must be of kind kInput: "
+          << instr.ToString();
+      return true;
+    }
+    return false;
+  }
+  return IsReductionToVector(instr);
+}
+
 }  // namespace gpu
 }  // namespace xla

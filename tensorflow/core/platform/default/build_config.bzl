@@ -623,7 +623,10 @@ def tf_additional_lib_defines():
 
 def tf_additional_lib_deps():
     """Additional dependencies needed to build TF libraries."""
-    return ["@com_google_absl//absl/base:base"] + if_static(
+    return [
+        "@com_google_absl//absl/base:base",
+        "@com_google_absl//absl/types:span",
+    ] + if_static(
         ["@nsync//:nsync_cpp"],
         ["@nsync//:nsync_headers"],
     ) + select({

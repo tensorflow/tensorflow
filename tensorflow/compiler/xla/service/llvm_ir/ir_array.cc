@@ -73,7 +73,7 @@ IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
   Delinearize(&multidim_, linear, shape, b);
 }
 
-IrArray::Index::Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
+IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
                       llvm::Value* linear, const Shape& shape)
     : multidim_(multidim.begin(), multidim.end()),
       linear_(linear),
@@ -92,7 +92,7 @@ IrArray::Index::Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
       << " should have a layout.";
 }
 
-IrArray::Index::Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
+IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
                       const Shape& shape, llvm::IRBuilder<>* b)
     : multidim_(multidim.begin(), multidim.end()),
       layout_(shape.layout()),
@@ -147,16 +147,15 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
   // indices in the same common factor.
   for (ssize_t k = common_factors.size() - 2; k >= 0; --k) {
     llvm::Value* logical_linear_index =
-        Index(tensorflow::gtl::ArraySlice<llvm::Value*>(
-                  multidim_, common_factors[k].second,
+        Index(absl::Span<llvm::Value* const>(multidim_).subspan(
+                  common_factors[k].second,
                   common_factors[k + 1].second - common_factors[k].second),
               index_type_)
-            .Linearize(
-                tensorflow::gtl::ArraySlice<int64>(
-                    AsInt64Slice(output_shape.dimensions()),
-                    common_factors[k].second,
-                    common_factors[k + 1].second - common_factors[k].second),
-                builder);
+            .Linearize(AsInt64Slice(output_shape.dimensions())
+                           .subspan(common_factors[k].second,
+                                    common_factors[k + 1].second -
+                                        common_factors[k].second),
+                       builder);
     // Delinearizes logical_linear_index for the source array in row-major
     // collapsed order. The first rank-1 indices are the remainder of the
     // linear index by each dimension size.
@@ -185,9 +184,8 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
 }
 
 IrArray::Index IrArray::Index::SourceIndexOfSlice(
-    const Shape& shape, tensorflow::gtl::ArraySlice<int64> starts,
-    tensorflow::gtl::ArraySlice<int64> strides,
-    llvm::IRBuilder<>* builder) const {
+    const Shape& shape, absl::Span<const int64> starts,
+    absl::Span<const int64> strides, llvm::IRBuilder<>* builder) const {
   Index source_index(index_type_, multidim_.size());
   for (int i = 0; i < multidim_.size(); ++i) {
     int64 stride = strides[i];
@@ -208,7 +206,7 @@ IrArray::Index IrArray::Index::SourceIndexOfSlice(
 
 IrArray::Index IrArray::Index::SourceIndexOfTranspose(
     const Shape& shape, const Shape& operand_shape,
-    tensorflow::gtl::ArraySlice<int64> dimension_mapping,
+    absl::Span<const int64> dimension_mapping,
     llvm::IRBuilder<>* builder) const {
   std::vector<llvm::Value*> operand_multidim_index =
       Permute(dimension_mapping, multidim());
@@ -257,7 +255,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBitcast(
 
 IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
     const Shape& shape, const Shape& operand_shape,
-    tensorflow::gtl::ArraySlice<int64> dimension_mapping,
+    absl::Span<const int64> dimension_mapping,
     llvm::IRBuilder<>* builder) const {
   int64 rank = ShapeUtil::Rank(operand_shape);
   std::vector<llvm::Value*> source_index(rank);
@@ -322,9 +320,8 @@ IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
   return Index(source_index, linear, operand_shape);
 }
 
-llvm::Value* IrArray::Index::Linearize(
-    tensorflow::gtl::ArraySlice<int64> dimensions,
-    llvm::IRBuilder<>* builder) const {
+llvm::Value* IrArray::Index::Linearize(absl::Span<const int64> dimensions,
+                                       llvm::IRBuilder<>* builder) const {
   // Each dimension is multiplied by the product of the sizes of all
   // earlier dimensions and added to the accumulator logical_linear_index.
   CHECK_EQ(size(), dimensions.size());

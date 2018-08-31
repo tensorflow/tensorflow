@@ -12,8 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cuda-cusparse-dev-9-0 \
         curl \
         git \
-        libcudnn7=7.1.4.18-1+cuda9.0 \
-        libcudnn7-dev=7.1.4.18-1+cuda9.0 \
+        libcudnn7=7.2.1.38-1+cuda9.0 \
+        libcudnn7-dev=7.2.1.38-1+cuda9.0 \
         libnccl2=2.2.13-1+cuda9.0 \
         libnccl-dev=2.2.13-1+cuda9.0 \
         libcurl3-dev \
@@ -32,6 +32,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/* && \
     find /usr/local/cuda-9.0/lib64/ -type f -name 'lib*_static.a' -not -name 'libcudart_static.a' -delete && \
     rm /usr/lib/x86_64-linux-gnu/libcudnn_static_v7.a
+
+RUN apt-get update && \
+        apt-get install nvinfer-runtime-trt-repo-ubuntu1604-4.0.1-ga-cuda9.0 && \
+        apt-get update && \
+        apt-get install libnvinfer4=4.1.2-1+cuda9.0 && \
+        apt-get install libnvinfer-dev=4.1.2-1+cuda9.0
 
 # Link NCCL libray and header where the build script expects them.
 RUN mkdir /usr/local/cuda-9.0/lib &&  \

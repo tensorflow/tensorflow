@@ -26,6 +26,7 @@ import six
 from tensorflow.python.estimator.export import export_output as export_output_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.keras.metrics import Metric
 from tensorflow.python.ops import array_ops
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
@@ -142,12 +143,14 @@ class EstimatorSpec(
       predictions: Predictions `Tensor` or dict of `Tensor`.
       loss: Training loss `Tensor`. Must be either scalar, or with shape `[1]`.
       train_op: Op to run one training step.
-      eval_metric_ops: Dict of metric results keyed by name. The values of the
-        dict are the results of calling a metric function, namely a
-        `(metric_tensor, update_op)` tuple. `metric_tensor` should be evaluated
-        without any impact on state (typically is a pure computation results
-        based on variables.). For example, it should not trigger the `update_op`
-        or requires any input fetching.
+      eval_metric_ops: Dict of metric results keyed by name.
+        The values of the dict can be one of the following:
+        (1) instance of `Metric` class.
+        (2) Results of calling a metric function, namely a
+        `(metric_tensor, update_op)` tuple. `metric_tensor` should be
+        evaluated without any impact on state (typically is a pure computation
+        results based on variables.). For example, it should not trigger the
+        `update_op` or requires any input fetching.
       export_outputs: Describes the output signatures to be exported to
         `SavedModel` and used during serving.
         A dict `{name: output}` where:
@@ -218,21 +221,27 @@ class EstimatorSpec(
       if not isinstance(eval_metric_ops, dict):
         raise TypeError(
             'eval_metric_ops must be a dict, given: {}'.format(eval_metric_ops))
-      for key, metric_value_and_update in six.iteritems(eval_metric_ops):
-        if (not isinstance(metric_value_and_update, tuple) or
-            len(metric_value_and_update) != 2):
-          raise TypeError(
-              'Values of eval_metric_ops must be (metric_value, update_op) '
-              'tuples, given: {} for key: {}'.format(
-                  metric_value_and_update, key))
-        metric_value, metric_update = metric_value_and_update
-        for metric_value_member in nest.flatten(metric_value):
-          # Allow (possibly nested) tuples for metric values, but require that
-          # each of them be Tensors or Operations.
-          _check_is_tensor_or_operation(metric_value_member,
+      for key, value in six.iteritems(eval_metric_ops):
+        # TODO(psv): When we deprecate the old metrics, throw an error here if
+        # the value is not an instance of `Metric` class.
+        if isinstance(value, Metric):
+          if not value.updates:  # Check if metrics updates are available.
+            raise ValueError(
+                'Please call update_state(...) on the "{metric_name}" metric'
+                .format(metric_name=value.name))
+        else:
+          if not isinstance(value, tuple) or len(value) != 2:
+            raise TypeError(
+                'Values of eval_metric_ops must be (metric_value, update_op) '
+                'tuples, given: {} for key: {}'.format(value, key))
+          metric_value, metric_update = value
+          for metric_value_member in nest.flatten(metric_value):
+            # Allow (possibly nested) tuples for metric values, but require that
+            # each of them be Tensors or Operations.
+            _check_is_tensor_or_operation(metric_value_member,
+                                          'eval_metric_ops[{}]'.format(key))
+          _check_is_tensor_or_operation(metric_update,
                                         'eval_metric_ops[{}]'.format(key))
-        _check_is_tensor_or_operation(metric_update,
-                                      'eval_metric_ops[{}]'.format(key))
 
     # Validate the passed export outputs, or generate defaults.
     if mode == ModeKeys.PREDICT:
@@ -267,8 +276,12 @@ class EstimatorSpec(
     if train_op is not None and train_op.graph is not default_graph:
       raise ValueError(error_message_template.format('train_op', train_op.name))
     for key, value in list(six.iteritems(eval_metric_ops)):
-      values = nest.flatten(value)
-      for val in values:
+      if isinstance(value, Metric):
+        values_to_check = value.updates[:]
+        values_to_check.append(value.result())
+      else:
+        values_to_check = nest.flatten(value)
+      for val in values_to_check:
         if val.graph is not default_graph:
           raise ValueError(error_message_template.format(
               'eval_metric_ops',
@@ -286,6 +299,19 @@ class EstimatorSpec(
         raise TypeError(
             'All hooks must be SessionRunHook instances, given: {}'.format(
                 hook))
+
+    # Add metric variables to the `LOCAL_VARIABLES` collection. Metric variables
+    # are by default not added to any collections. We are doing this here, so
+    # that metric variables get initialized.
+    local_vars = set(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES))
+    vars_to_add = set()
+    for key, value in six.iteritems(eval_metric_ops):
+      if isinstance(value, Metric):
+        vars_to_add.update(value.variables)
+    # Remove variables that are in the local variables collection already.
+    vars_to_add = vars_to_add.difference(local_vars)
+    for v in vars_to_add:
+      ops.add_to_collection(ops.GraphKeys.LOCAL_VARIABLES, v)
 
     scaffold = scaffold or monitored_session.Scaffold()
     # Validate scaffold.

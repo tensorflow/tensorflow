@@ -710,6 +710,11 @@ struct ArithmeticParams {
 
 struct ConcatenationParams {
   int8 axis;
+  const int32* input_zeropoint;
+  const float* input_scale;
+  uint16 inputs_count;
+  int32 output_zeropoint;
+  float output_scale;
 };
 
 struct ComparisonParams {

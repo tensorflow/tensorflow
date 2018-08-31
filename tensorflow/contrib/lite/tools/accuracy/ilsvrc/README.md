@@ -30,8 +30,16 @@ The binary takes the following parameters:
     This is the path to the output file. The output is a CSV file that has top-10 accuracies in each row. Each line of output file is the cumulative accuracy after processing images in a sorted order. So first line is accuracy after processing the first image, second line is accuracy after procesing first two images. The last line of the file is accuracy after processing the entire validation set.
 
 and the following optional parameters:
+
+*   `blacklist_file_path`: `string` \
+    Path to blacklist file. This file contains the indices of images that are blacklisted for evaluation. 1762 images are blacklisted in ILSVRC dataset. For details please refer to readme.txt of ILSVRC2014 devkit.
+
 *   `num_images`: `int` (default=0) \
     The number of images to process, if 0, all images in the directory are processed otherwise only num_images will be processed.
+
+*   `num_threads`: `int` (default=4) \
+    The number of threads to use for evaluation.
+
 
 ## Downloading ILSVRC
 In order to use this tool to run evaluation on the full 50K ImageNet dataset,

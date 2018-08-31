@@ -202,8 +202,8 @@ class InstructionList {
   // On object construction this ordinal is precisely the instruction's index
   // in the list. Later, instructions inserted via InsertBefore receive
   // duplicate values. However, monotonicity is preserved.
-  void InsertBeforeInstructions(
-      Item* to_insert, tensorflow::gtl::ArraySlice<Item*> before_instructions) {
+  void InsertBeforeInstructions(Item* to_insert,
+                                absl::Span<Item* const> before_instructions) {
     VLOG(3) << "InsertBeforeInstructions: " << to_insert->instruction->name()
             << " before {"
             << absl::StrJoin(before_instructions, ", ",

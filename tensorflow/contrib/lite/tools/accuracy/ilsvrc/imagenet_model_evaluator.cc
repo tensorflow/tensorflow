@@ -29,7 +29,10 @@ limitations under the License.
 #include "tensorflow/contrib/lite/tools/accuracy/ilsvrc/inception_preprocessing.h"
 #include "tensorflow/contrib/lite/tools/accuracy/run_tflite_model_stage.h"
 #include "tensorflow/contrib/lite/tools/accuracy/utils.h"
+#include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
@@ -57,6 +60,21 @@ std::vector<T> GetFirstN(const std::vector<T>& v, int n) {
   return result;
 }
 
+template <typename T>
+std::vector<std::vector<T>> Split(const std::vector<T>& v, int n) {
+  CHECK_GT(n, 0);
+  std::vector<std::vector<T>> vecs(n);
+  int input_index = 0;
+  int vec_index = 0;
+  while (input_index < v.size()) {
+    vecs[vec_index].push_back(v[input_index]);
+    vec_index = (vec_index + 1) % n;
+    input_index++;
+  }
+  CHECK_EQ(vecs.size(), n);
+  return vecs;
+}
+
 // File pattern for imagenet files.
 const char* const kImagenetFilePattern = "*.[jJ][pP][eE][gG]";
 
@@ -65,8 +83,36 @@ const char* const kImagenetFilePattern = "*.[jJ][pP][eE][gG]";
 namespace tensorflow {
 namespace metrics {
 
+class CompositeObserver : public ImagenetModelEvaluator::Observer {
+ public:
+  explicit CompositeObserver(const std::vector<Observer*>& observers)
+      : observers_(observers) {}
+
+  void OnEvaluationStart(const std::unordered_map<uint64_t, int>&
+                             shard_id_image_count_map) override {
+    mutex_lock lock(mu_);
+    for (auto observer : observers_) {
+      observer->OnEvaluationStart(shard_id_image_count_map);
+    }
+  }
+
+  void OnSingleImageEvaluationComplete(
+      uint64_t shard_id, const ImagenetTopKAccuracy::AccuracyStats& stats,
+      const string& image) override {
+    mutex_lock lock(mu_);
+    for (auto observer : observers_) {
+      observer->OnSingleImageEvaluationComplete(shard_id, stats, image);
+    }
+  }
+
+ private:
+  const std::vector<ImagenetModelEvaluator::Observer*>& observers_
+      GUARDED_BY(mu_);
+  mutex mu_;
+};
+
 /*static*/ Status ImagenetModelEvaluator::Create(
-    int argc, char* argv[],
+    int argc, char* argv[], int num_threads,
     std::unique_ptr<ImagenetModelEvaluator>* model_evaluator) {
   Params params;
   const std::vector<Flag> flag_list = {
@@ -82,8 +128,12 @@ namespace metrics {
       Flag("num_images", &params.number_of_images,
            "Number of examples to evaluate, pass 0 for all "
            "examples. Default: 100"),
-      tensorflow::Flag("model_file", &params.model_file_path,
-                       "Path to test tflite model file."),
+      Flag("blacklist_file_path", &params.blacklist_file_path,
+           "Path to blacklist file (optional)."
+           "Path to blacklist file where each line is a single integer that is "
+           "equal to number of blacklisted image."),
+      Flag("model_file", &params.model_file_path,
+           "Path to test tflite model file."),
   };
   const bool parse_result = Flags::Parse(&argc, argv, flag_list);
   if (!parse_result)
@@ -100,6 +150,12 @@ namespace metrics {
       Env::Default()->FileExists(params.model_output_labels_path),
       "Invalid model output labels path.");
 
+  if (!params.blacklist_file_path.empty()) {
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        Env::Default()->FileExists(params.blacklist_file_path),
+        "Invalid blacklist path.");
+  }
+
   if (params.number_of_images < 0) {
     return errors::InvalidArgument("Invalid: num_examples");
   }
@@ -109,28 +165,30 @@ namespace metrics {
       utils::GetTFliteModelInfo(params.model_file_path, &model_info),
       "Invalid TFLite model.");
 
-  *model_evaluator =
-      absl::make_unique<ImagenetModelEvaluator>(model_info, params);
+  *model_evaluator = absl::make_unique<ImagenetModelEvaluator>(
+      model_info, params, num_threads);
   return Status::OK();
 }
 
-Status ImagenetModelEvaluator::EvaluateModel() {
-  if (model_info_.input_shapes.size() != 1) {
-    return errors::InvalidArgument("Invalid input shape");
-  }
+struct ImageLabel {
+  string image;
+  string label;
+};
 
-  const TensorShape& input_shape = model_info_.input_shapes[0];
-  // Input should be of the shape {1, height, width, 3}
-  if (input_shape.dims() != 4 || input_shape.dim_size(3) != 3) {
-    return errors::InvalidArgument("Invalid input shape for the model.");
-  }
-
+Status EvaluateModelForShard(const uint64_t shard_id,
+                             const std::vector<ImageLabel>& image_labels,
+                             const std::vector<string>& model_labels,
+                             const utils::ModelInfo& model_info,
+                             const ImagenetModelEvaluator::Params& params,
+                             ImagenetModelEvaluator::Observer* observer,
+                             ImagenetTopKAccuracy* eval) {
+  const TensorShape& input_shape = model_info.input_shapes[0];
   const int image_height = input_shape.dim_size(1);
   const int image_width = input_shape.dim_size(2);
-  const bool is_quantized = (model_info_.input_types[0] == DT_UINT8);
+  const bool is_quantized = (model_info.input_types[0] == DT_UINT8);
 
   RunTFLiteModelStage::Params tfl_model_params;
-  tfl_model_params.model_file_path = params_.model_file_path;
+  tfl_model_params.model_file_path = params.model_file_path;
   if (is_quantized) {
     tfl_model_params.input_type = {DT_UINT8};
     tfl_model_params.output_type = {DT_UINT8};
@@ -144,6 +202,106 @@ Status ImagenetModelEvaluator::EvaluateModel() {
   InceptionPreprocessingStage inc(image_height, image_width, is_quantized);
   RunTFLiteModelStage tfl_model_stage(tfl_model_params);
   EvalPipelineBuilder builder;
+
+  std::unique_ptr<EvalPipeline> eval_pipeline;
+
+  auto build_status = builder.WithInputStage(&reader)
+                          .WithPreprocessingStage(&inc)
+                          .WithRunModelStage(&tfl_model_stage)
+                          .WithAccuracyEval(eval)
+                          .WithInput("input_file", DT_STRING)
+                          .Build(root, &eval_pipeline);
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(build_status,
+                                  "Failure while building eval pipeline.");
+  std::unique_ptr<Session> session(NewSession(SessionOptions()));
+
+  TF_RETURN_IF_ERROR(eval_pipeline->AttachSession(std::move(session)));
+
+  for (const auto& image_label : image_labels) {
+    TF_CHECK_OK(eval_pipeline->Run(CreateStringTensor(image_label.image),
+                                   CreateStringTensor(image_label.label)));
+    observer->OnSingleImageEvaluationComplete(
+        shard_id, eval->GetTopKAccuracySoFar(), image_label.image);
+  }
+  return Status::OK();
+}
+
+Status FilterBlackListedImages(const string& blacklist_file_path,
+                               std::vector<ImageLabel>* image_labels) {
+  if (!blacklist_file_path.empty()) {
+    std::vector<string> lines;
+    TF_RETURN_IF_ERROR(utils::ReadFileLines(blacklist_file_path, &lines));
+    std::vector<int> blacklist_ids;
+    blacklist_ids.reserve(lines.size());
+    // Populate blacklist_ids with indices of images.
+    std::transform(lines.begin(), lines.end(),
+                   std::back_inserter(blacklist_ids),
+                   [](const string& val) { return std::stoi(val) - 1; });
+
+    std::vector<ImageLabel> filtered_images;
+    std::sort(blacklist_ids.begin(), blacklist_ids.end());
+    const size_t size_post_filtering =
+        image_labels->size() - blacklist_ids.size();
+    filtered_images.reserve(size_post_filtering);
+    int blacklist_index = 0;
+    for (int image_index = 0; image_index < image_labels->size();
+         image_index++) {
+      if (blacklist_index < blacklist_ids.size() &&
+          blacklist_ids[blacklist_index] == image_index) {
+        blacklist_index++;
+        continue;
+      }
+      filtered_images.push_back((*image_labels)[image_index]);
+    }
+
+    if (filtered_images.size() != size_post_filtering) {
+      return errors::Internal("Invalid number of filtered images");
+    }
+    *image_labels = filtered_images;
+  }
+  return Status::OK();
+}
+
+Status ImagenetModelEvaluator::EvaluateModel() const {
+  if (model_info_.input_shapes.size() != 1) {
+    return errors::InvalidArgument("Invalid input shape");
+  }
+
+  const TensorShape& input_shape = model_info_.input_shapes[0];
+  // Input should be of the shape {1, height, width, 3}
+  if (input_shape.dims() != 4 || input_shape.dim_size(3) != 3) {
+    return errors::InvalidArgument("Invalid input shape for the model.");
+  }
+
+  string data_path =
+      StripTrailingSlashes(params_.ground_truth_images_path) + "/";
+
+  const string imagenet_file_pattern = data_path + kImagenetFilePattern;
+  std::vector<string> image_files;
+  TF_CHECK_OK(
+      Env::Default()->GetMatchingPaths(imagenet_file_pattern, &image_files));
+  std::vector<string> ground_truth_image_labels;
+  TF_CHECK_OK(utils::ReadFileLines(params_.ground_truth_labels_path,
+                                   &ground_truth_image_labels));
+  CHECK_EQ(image_files.size(), ground_truth_image_labels.size());
+
+  // Process files in filename sorted order.
+  std::sort(image_files.begin(), image_files.end());
+
+  std::vector<ImageLabel> image_labels;
+  image_labels.reserve(image_files.size());
+  for (int i = 0; i < image_files.size(); i++) {
+    image_labels.push_back({image_files[i], ground_truth_image_labels[i]});
+  }
+
+  // Filter any blacklisted images.
+  TF_CHECK_OK(
+      FilterBlackListedImages(params_.blacklist_file_path, &image_labels));
+
+  if (params_.number_of_images > 0) {
+    image_labels = GetFirstN(image_labels, params_.number_of_images);
+  }
+
   std::vector<string> model_labels;
   TF_RETURN_IF_ERROR(
       utils::ReadFileLines(params_.model_output_labels_path, &model_labels));
@@ -153,52 +311,38 @@ Status ImagenetModelEvaluator::EvaluateModel() {
   }
 
   ImagenetTopKAccuracy eval(model_labels, params_.num_ranks);
-  std::unique_ptr<EvalPipeline> eval_pipeline;
 
-  auto build_status = builder.WithInputStage(&reader)
-                          .WithPreprocessingStage(&inc)
-                          .WithRunModelStage(&tfl_model_stage)
-                          .WithAccuracyEval(&eval)
-                          .WithInput("input_file", DT_STRING)
-                          .Build(root, &eval_pipeline);
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(build_status,
-                                  "Failure while building eval pipeline.");
+  auto img_labels = Split(image_labels, num_threads_);
 
-  std::unique_ptr<Session> session(NewSession(SessionOptions()));
+  BlockingCounter counter(num_threads_);
 
-  TF_RETURN_IF_ERROR(eval_pipeline->AttachSession(std::move(session)));
-  string data_path =
-      StripTrailingSlashes(params_.ground_truth_images_path) + "/";
+  CompositeObserver observer(observers_);
 
-  const string imagenet_file_pattern = data_path + kImagenetFilePattern;
-  std::vector<string> image_files;
-  TF_CHECK_OK(
-      Env::Default()->GetMatchingPaths(imagenet_file_pattern, &image_files));
-  std::vector<string> image_labels;
-  TF_CHECK_OK(
-      utils::ReadFileLines(params_.ground_truth_labels_path, &image_labels));
-  CHECK_EQ(image_files.size(), image_labels.size());
-
-  // Process files in filename sorted order.
-  std::sort(image_files.begin(), image_files.end());
-  if (params_.number_of_images > 0) {
-    image_files = GetFirstN(image_files, params_.number_of_images);
-    image_labels = GetFirstN(image_labels, params_.number_of_images);
+  ::tensorflow::thread::ThreadPool pool(Env::Default(), "evaluation_pool",
+                                        num_threads_);
+  std::unordered_map<uint64_t, int> shard_id_image_count_map;
+  std::vector<std::function<void()>> thread_funcs;
+  thread_funcs.reserve(num_threads_);
+  for (int i = 0; i < num_threads_; i++) {
+    const auto& image_label = img_labels[i];
+    const uint64_t shard_id = i + 1;
+    shard_id_image_count_map[shard_id] = image_label.size();
+    auto func = [&]() {
+      TF_CHECK_OK(EvaluateModelForShard(shard_id, image_label, model_labels,
+                                        model_info_, params_, &observer,
+                                        &eval));
+      counter.DecrementCount();
+    };
+    thread_funcs.push_back(func);
   }
 
-  for (Observer* observer : observers_) {
-    observer->OnEvaluationStart(image_files.size());
+  observer.OnEvaluationStart(shard_id_image_count_map);
+  for (const auto& func : thread_funcs) {
+    pool.Schedule(func);
   }
 
-  for (int i = 0; i < image_files.size(); i++) {
-    TF_CHECK_OK(eval_pipeline->Run(CreateStringTensor(image_files[i]),
-                                   CreateStringTensor(image_labels[i])));
-    auto stats = eval.GetTopKAccuracySoFar();
+  counter.Wait();
 
-    for (Observer* observer : observers_) {
-      observer->OnSingleImageEvaluationComplete(stats, image_files[i]);
-    }
-  }
   return Status::OK();
 }
 

@@ -108,17 +108,15 @@ ReferenceUtil::ConvArray3DGeneralDimensionsDilated(
   // array by adding a fourth dummy dimension of size 1 without stride, padding
   // and dilation.
   Array4D<float> a4dlhs(lhs.n1(), lhs.n2(), lhs.n3(), 1);
-  a4dlhs.Each(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, float* value_ptr) {
-        CHECK_EQ(indices[3], 0);
-        *value_ptr = lhs.operator()(indices[0], indices[1], indices[2]);
-      });
+  a4dlhs.Each([&](absl::Span<const int64> indices, float* value_ptr) {
+    CHECK_EQ(indices[3], 0);
+    *value_ptr = lhs.operator()(indices[0], indices[1], indices[2]);
+  });
   Array4D<float> a4drhs(rhs.n1(), rhs.n2(), rhs.n3(), 1);
-  a4drhs.Each(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, float* value_ptr) {
-        CHECK_EQ(indices[3], 0);
-        *value_ptr = rhs.operator()(indices[0], indices[1], indices[2]);
-      });
+  a4drhs.Each([&](absl::Span<const int64> indices, float* value_ptr) {
+    CHECK_EQ(indices[3], 0);
+    *value_ptr = rhs.operator()(indices[0], indices[1], indices[2]);
+  });
   // Add a second dummy spatial dimensions.
   ConvolutionDimensionNumbers dnums2d = dnums;
   dnums2d.add_input_spatial_dimensions(3);
@@ -130,11 +128,10 @@ ReferenceUtil::ConvArray3DGeneralDimensionsDilated(
 
   auto convr3 = absl::make_unique<Array3D<float>>(
       convr4->planes(), convr4->depth(), convr4->height());
-  convr4->Each(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, float* value_ptr) {
-        CHECK_EQ(indices[3], 0);
-        convr3->operator()(indices[0], indices[1], indices[2]) = *value_ptr;
-      });
+  convr4->Each([&](absl::Span<const int64> indices, float* value_ptr) {
+    CHECK_EQ(indices[3], 0);
+    convr3->operator()(indices[0], indices[1], indices[2]) = *value_ptr;
+  });
   return convr3;
 }
 
@@ -189,11 +186,11 @@ ReferenceUtil::SeparableConvArray4D(const Array4D<float>& input,
 
 /* static  */ std::unique_ptr<std::vector<float>>
 ReferenceUtil::ReduceWindow1DGeneric(
-    const tensorflow::gtl::ArraySlice<float>& operand, float init,
+    const absl::Span<const float>& operand, float init,
     const std::function<float(float, float)>& reduce_func,
-    const tensorflow::gtl::ArraySlice<int64>& window,
-    const tensorflow::gtl::ArraySlice<int64>& stride,
-    const tensorflow::gtl::ArraySlice<std::pair<int64, int64>>& padding) {
+    const absl::Span<const int64>& window,
+    const absl::Span<const int64>& stride,
+    const absl::Span<const std::pair<int64, int64>>& padding) {
   std::vector<int64> dim_lengths{static_cast<int64>(operand.size())};
   std::vector<int64> window_counts(window.size(), 0);
   std::vector<int64> pad_low(window.size(), 0);
@@ -221,10 +218,11 @@ ReferenceUtil::ReduceWindow1DGeneric(
 }
 
 /* static  */ std::unique_ptr<std::vector<float>>
-ReferenceUtil::ReduceWindow1DAdd(
-    const tensorflow::gtl::ArraySlice<float>& operand, float init,
-    const tensorflow::gtl::ArraySlice<int64>& window,
-    const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding) {
+ReferenceUtil::ReduceWindow1DAdd(const absl::Span<const float>& operand,
+                                 float init,
+                                 const absl::Span<const int64>& window,
+                                 const absl::Span<const int64>& stride,
+                                 Padding padding) {
   const auto add_reduce = [](float arg1, float arg2) { return arg1 + arg2; };
   std::vector<int64> dim_lengths{static_cast<int64>(operand.size())};
   return ReduceWindow1DGeneric(
@@ -236,9 +234,9 @@ ReferenceUtil::ReduceWindow1DAdd(
 ReferenceUtil::ReduceWindow2DGeneric(
     const Array2D<float>& operand, float init,
     const std::function<float(float, float)>& reduce_func,
-    const tensorflow::gtl::ArraySlice<int64>& window,
-    const tensorflow::gtl::ArraySlice<int64>& stride,
-    const tensorflow::gtl::ArraySlice<std::pair<int64, int64>>& padding) {
+    const absl::Span<const int64>& window,
+    const absl::Span<const int64>& stride,
+    const absl::Span<const std::pair<int64, int64>>& padding) {
   std::vector<int64> dim_lengths{operand.height(), operand.width()};
 
   std::vector<int64> window_counts(window.size(), 0);
@@ -276,8 +274,8 @@ ReferenceUtil::ReduceWindow2DGeneric(
 
 /* static  */ std::unique_ptr<Array2D<float>> ReferenceUtil::ReduceWindow2DAdd(
     const Array2D<float>& operand, float init,
-    const tensorflow::gtl::ArraySlice<int64>& window,
-    const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding) {
+    const absl::Span<const int64>& window,
+    const absl::Span<const int64>& stride, Padding padding) {
   const auto add_reduce = [](float arg1, float arg2) { return arg1 + arg2; };
   std::vector<int64> dim_lengths{operand.height(), operand.width()};
   return ReduceWindow2DGeneric(
@@ -287,8 +285,8 @@ ReferenceUtil::ReduceWindow2DGeneric(
 
 /* static  */ std::unique_ptr<Array3D<float>> ReferenceUtil::ReduceWindow3DAdd(
     const Array3D<float>& operand, float init,
-    const tensorflow::gtl::ArraySlice<int64>& window,
-    const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding) {
+    const absl::Span<const int64>& window,
+    const absl::Span<const int64>& stride, Padding padding) {
   std::vector<int64> dim_lengths{operand.n1(), operand.n2(), operand.n3()};
   auto padding_both = xla::MakePadding(dim_lengths, window, stride, padding);
 
@@ -334,8 +332,8 @@ ReferenceUtil::ReduceWindow2DGeneric(
 ReferenceUtil::ReduceWindow4DGeneric(
     const Array4D<float>& operand, float init,
     const std::function<float(float, float)>& reduce_func,
-    const tensorflow::gtl::ArraySlice<int64>& window,
-    const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding) {
+    const absl::Span<const int64>& window,
+    const absl::Span<const int64>& stride, Padding padding) {
   std::vector<int64> dim_lengths{operand.n1(), operand.n2(), operand.n3(),
                                  operand.n4()};
   return ReduceWindow4DGeneric(
@@ -347,9 +345,9 @@ ReferenceUtil::ReduceWindow4DGeneric(
 ReferenceUtil::ReduceWindow4DGeneric(
     const Array4D<float>& operand, float init,
     const std::function<float(float, float)>& reduce_func,
-    const tensorflow::gtl::ArraySlice<int64>& window,
-    const tensorflow::gtl::ArraySlice<int64>& stride,
-    const tensorflow::gtl::ArraySlice<std::pair<int64, int64>>& padding) {
+    const absl::Span<const int64>& window,
+    const absl::Span<const int64>& stride,
+    const absl::Span<const std::pair<int64, int64>>& padding) {
   std::vector<int64> dim_lengths{operand.n1(), operand.n2(), operand.n3(),
                                  operand.n4()};
 
@@ -402,8 +400,8 @@ ReferenceUtil::ReduceWindow4DGeneric(
 
 /* static  */ std::unique_ptr<Array4D<float>> ReferenceUtil::ReduceWindow4DAdd(
     const Array4D<float>& operand, float init,
-    const tensorflow::gtl::ArraySlice<int64>& window,
-    const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding) {
+    const absl::Span<const int64>& window,
+    const absl::Span<const int64>& stride, Padding padding) {
   const auto add_reduce = [](float arg1, float arg2) { return arg1 + arg2; };
   return ReduceWindow4DGeneric(operand, init, add_reduce, window, stride,
                                padding);
@@ -424,10 +422,12 @@ ReferenceUtil::ReduceWindow4DGeneric(
 }
 
 /* static  */ std::unique_ptr<Array4D<float>>
-ReferenceUtil::SelectAndScatter4DGePlus(
-    const Array4D<float>& operand, const Array4D<float>& source, float init,
-    const tensorflow::gtl::ArraySlice<int64>& window,
-    const tensorflow::gtl::ArraySlice<int64>& stride, bool same_padding) {
+ReferenceUtil::SelectAndScatter4DGePlus(const Array4D<float>& operand,
+                                        const Array4D<float>& source,
+                                        float init,
+                                        const absl::Span<const int64>& window,
+                                        const absl::Span<const int64>& stride,
+                                        bool same_padding) {
   Padding padding = same_padding ? Padding::kSame : Padding::kValid;
   auto result = absl::make_unique<Array4D<float>>(operand.n1(), operand.n2(),
                                                   operand.n3(), operand.n4());
@@ -591,7 +591,7 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
                                         result_literal->shape().dimensions(2),
                                         result_literal->shape().dimensions(3));
 
-  result->Each([&](tensorflow::gtl::ArraySlice<int64> indices, float* value) {
+  result->Each([&](absl::Span<const int64> indices, float* value) {
     *value = result_literal->Get<float>(indices);
   });
 
@@ -633,8 +633,7 @@ ReferenceUtil::ReduceToRowArray2D(
 }
 
 /*static*/ std::vector<float> ReferenceUtil::Reduce4DTo1D(
-    const Array4D<float>& array, float init,
-    tensorflow::gtl::ArraySlice<int64> dims,
+    const Array4D<float>& array, float init, absl::Span<const int64> dims,
     const std::function<float(float, float)>& reduce_function) {
   std::vector<float> result;
   CHECK_EQ(dims.size(), 3);
@@ -707,8 +706,7 @@ ReferenceUtil::ReduceToRowArray2D(
 }
 
 /* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::Reduce3DTo2D(
-    const Array3D<float>& array, float init,
-    tensorflow::gtl::ArraySlice<int64> dims,
+    const Array3D<float>& array, float init, absl::Span<const int64> dims,
     const std::function<float(float, float)>& reduce_function) {
   CHECK_EQ(dims.size(), 1);
   int64 rows = dims[0] == 0 ? array.n2() : array.n1();

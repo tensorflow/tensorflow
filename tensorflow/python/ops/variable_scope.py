@@ -1558,6 +1558,22 @@ Args:
     def custom_getter(getter, name, *args, **kwargs):
       return getter(name + '_suffix', *args, **kwargs)
     ```
+  constraint: An optional projection function to be applied to the variable
+    after being updated by an `Optimizer` (e.g. used to implement norm
+    constraints or value constraints for layer weights). The function must
+    take as input the unprojected Tensor representing the value of the
+    variable and return the Tensor for the projected value
+    (which must have the same shape). Constraints are not safe to
+    use when doing asynchronous distributed training.
+  synchronization: Indicates when a distributed a variable will be
+    aggregated. Accepted values are constants defined in the class
+    `tf.VariableSynchronization`. By default the synchronization is set to
+    `AUTO` and the current `DistributionStrategy` chooses
+    when to synchronize. If `synchronization` is set to `ON_READ`,
+    `trainable` must not be set to `True`.
+  aggregation: Indicates how a distributed variable will be aggregated.
+    Accepted values are constants defined in the class
+    `tf.VariableAggregation`.
 
 Returns:
   The created or existing `Variable` (or `PartitionedVariable`, if a
@@ -1591,10 +1607,10 @@ def get_local_variable(  # pylint: disable=missing-docstring
     partitioner=None,
     validate_shape=True,
     use_resource=None,
-    synchronization=VariableSynchronization.AUTO,
-    aggregation=VariableAggregation.NONE,
     custom_getter=None,
-    constraint=None):
+    constraint=None,
+    synchronization=VariableSynchronization.AUTO,
+    aggregation=VariableAggregation.NONE):
   if collections:
     collections += [ops.GraphKeys.LOCAL_VARIABLES]
   else:

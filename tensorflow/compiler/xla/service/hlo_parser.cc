@@ -65,6 +65,7 @@ class HloParser {
   StatusOr<HloSharding> ParseShardingOnly();
   StatusOr<Window> ParseWindowOnly();
   StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbersOnly();
+  StatusOr<PaddingConfig> ParsePaddingConfigOnly();
 
   // Stand-alone parsing utility for a single instruction worth of text.
   Status ParseSingleInstruction(HloComputation::Builder* builder,
@@ -306,7 +307,7 @@ bool SplitToInt64s(absl::string_view s, char delim, std::vector<int64>* out) {
 // Creates replica groups from the provided nested array. groups[i] represents
 // the replica ids for group 'i'.
 std::vector<ReplicaGroup> CreateReplicaGroups(
-    tensorflow::gtl::ArraySlice<std::vector<int64>> groups) {
+    absl::Span<const std::vector<int64>> groups) {
   std::vector<ReplicaGroup> replica_groups;
   absl::c_transform(groups, std::back_inserter(replica_groups),
                     [](const std::vector<int64>& ids) {
@@ -997,11 +998,11 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       }
       instruction = builder->AddInstruction(HloInstruction::CreateReduce(
           shape, /*operands=*/
-          tensorflow::gtl::ArraySlice<HloInstruction*>(operands, 0,
-                                                       operands.size() / 2),
+          absl::Span<HloInstruction* const>(operands).subspan(
+              0, operands.size() / 2),
           /*init_values=*/
-          tensorflow::gtl::ArraySlice<HloInstruction*>(
-              operands, operands.size() / 2, operands.size()),
+          absl::Span<HloInstruction* const>(operands).subspan(
+              operands.size() / 2, operands.size()),
           *dimensions_to_reduce, *reduce_computation));
       break;
     }
@@ -3156,6 +3157,18 @@ HloParser::ParseConvolutionDimensionNumbersOnly() {
   return dnums;
 }
 
+StatusOr<PaddingConfig> HloParser::ParsePaddingConfigOnly() {
+  lexer_.Lex();
+  PaddingConfig padding_config;
+  if (!ParsePaddingConfig(&padding_config)) {
+    return InvalidArgument("Syntax error:\n%s", GetError());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument("Syntax error:\nExtra content after PaddingConfig");
+  }
+  return padding_config;
+}
+
 Status HloParser::ParseSingleInstruction(HloComputation::Builder* builder,
                                          string* root_name) {
   TF_RET_CHECK(missing_instruction_hook_ == nullptr);
@@ -3236,6 +3249,12 @@ StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbers(
   HloModuleConfig config;
   HloParser parser(str, config);
   return parser.ParseConvolutionDimensionNumbersOnly();
+}
+
+StatusOr<PaddingConfig> ParsePaddingConfig(absl::string_view str) {
+  HloModuleConfig config;
+  HloParser parser(str, config);
+  return parser.ParsePaddingConfigOnly();
 }
 
 }  // namespace xla

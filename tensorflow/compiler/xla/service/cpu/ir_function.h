@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_IR_FUNCTION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_IR_FUNCTION_H_
 
+#include "absl/types/span.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 namespace cpu {
@@ -115,10 +115,10 @@ class IrFunction {
 
 // Returns an array of compute function call argument ir values.
 std::vector<llvm::Value*> GetArrayFunctionCallArguments(
-    tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
-    llvm::IRBuilder<>* b, absl::string_view name,
-    llvm::Value* return_value_buffer, llvm::Value* exec_run_options_arg,
-    llvm::Value* temp_buffers_arg, llvm::Value* profile_counters_arg);
+    absl::Span<llvm::Value* const> parameter_addresses, llvm::IRBuilder<>* b,
+    absl::string_view name, llvm::Value* return_value_buffer,
+    llvm::Value* exec_run_options_arg, llvm::Value* temp_buffers_arg,
+    llvm::Value* profile_counters_arg);
 
 // Emits a call to a runtime fork/join function which dispatches parallel
 // calls to 'parallel_function' (and joins threads before returning).

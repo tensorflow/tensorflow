@@ -97,15 +97,15 @@ TfLiteStatus EvalImpl(TfLiteContext* context, bool requires_broadcast,
     }
   }
   if (requires_broadcast) {
-    reference_ops::BroadcastBinaryFunction<T, T, T>(
-        GetTensorData<T>(input1), GetTensorDims(input1), denominator_data,
-        GetTensorDims(input2), GetTensorData<T>(output), GetTensorDims(output),
-        FloorDiv<T>);
+    reference_ops::BroadcastBinaryFunction4DSlow<T, T, T>(
+        GetTensorShape(input1), GetTensorData<T>(input1),
+        GetTensorShape(input2), denominator_data, GetTensorShape(output),
+        GetTensorData<T>(output), FloorDiv<T>);
   } else {
     reference_ops::BinaryFunction<T, T, T>(
-        GetTensorData<T>(input1), GetTensorDims(input1),
-        GetTensorData<T>(input2), GetTensorDims(input2),
-        GetTensorData<T>(output), GetTensorDims(output), FloorDiv<T>);
+        GetTensorShape(input1), GetTensorData<T>(input1),
+        GetTensorShape(input2), GetTensorData<T>(input2),
+        GetTensorShape(output), GetTensorData<T>(output), FloorDiv<T>);
   }
 
   return kTfLiteOk;

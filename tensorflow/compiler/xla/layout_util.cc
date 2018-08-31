@@ -56,7 +56,7 @@ void SetDefaultLayoutToContainer(
 }  // namespace
 
 /* static */ Layout LayoutUtil::MakeLayout(
-    tensorflow::gtl::ArraySlice<int64> minor_to_major) {
+    absl::Span<const int64> minor_to_major) {
   Layout layout;
   layout.set_format(DENSE);
   for (int64 dimension_number : minor_to_major) {
@@ -66,7 +66,7 @@ void SetDefaultLayoutToContainer(
 }
 
 /* static */ Layout LayoutUtil::MakeLayoutFromMajorToMinor(
-    tensorflow::gtl::ArraySlice<int64> major_to_minor) {
+    absl::Span<const int64> major_to_minor) {
   Layout layout;
   layout.set_format(DENSE);
   for (int i = major_to_minor.size() - 1; i >= 0; i--) {
@@ -307,7 +307,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   return false;
 }
 
-/* static */ tensorflow::gtl::ArraySlice<int64> LayoutUtil::PaddedDimensions(
+/* static */ absl::Span<const int64> LayoutUtil::PaddedDimensions(
     const Shape& shape) {
   CHECK(IsDenseArray(shape));
   return AsInt64Slice(shape.layout().padded_dimensions());
@@ -363,13 +363,13 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   return protobuf_util::ProtobufEquals(lhs, rhs);
 }
 
-/* static */ tensorflow::gtl::ArraySlice<int64> LayoutUtil::MinorToMajor(
+/* static */ absl::Span<const int64> LayoutUtil::MinorToMajor(
     const Shape& shape) {
   CHECK(IsDenseArray(shape));
   return AsInt64Slice(shape.layout().minor_to_major());
 }
 
-/* static */ tensorflow::gtl::ArraySlice<int64> LayoutUtil::MinorToMajor(
+/* static */ absl::Span<const int64> LayoutUtil::MinorToMajor(
     const Layout& layout) {
   CHECK(layout.format() == DENSE);
   return AsInt64Slice(layout.minor_to_major());
@@ -472,7 +472,7 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
 }
 
 /* static */ bool LayoutUtil::AreDimensionsConsecutive(
-    const Layout& layout, tensorflow::gtl::ArraySlice<int64> dims) {
+    const Layout& layout, absl::Span<const int64> dims) {
   CHECK(IsDense(layout));
   std::vector<int64> positions_in_layout;
   for (int64 dim : dims) {

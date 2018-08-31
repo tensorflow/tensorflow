@@ -77,7 +77,7 @@ StatusOr<std::pair<std::vector<se::DeviceMemoryBase>,
                    std::vector<OwningDeviceMemory>>>
 CpuExecutable::CreateTempArray(
     DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
+    absl::Span<const ShapedBuffer* const> arguments) {
   std::vector<se::DeviceMemoryBase> unowning_buffers(
       assignment_->Allocations().size());
   std::vector<OwningDeviceMemory> owning_buffers(
@@ -136,7 +136,7 @@ CpuExecutable::CreateTempArray(
 
 Status CpuExecutable::ExecuteComputeFunction(
     const ExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> buffers,
+    absl::Span<const se::DeviceMemoryBase> buffers,
     HloExecutionProfile* hlo_execution_profile) {
   // The calling convention for JITed functions is:
   //
@@ -207,7 +207,7 @@ Status CpuExecutable::ExecuteComputeFunction(
 
 StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
     const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::MutableArraySlice<OwningDeviceMemory> buffers) {
+    absl::Span<OwningDeviceMemory> buffers) {
   se::Stream* stream = run_options->stream();
   ScopedShapedBuffer result_buffer(
       /*on_host_shape=*/result_shape(),
@@ -245,7 +245,7 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
 
 StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   TF_ASSIGN_OR_RETURN(
       auto result,
@@ -256,7 +256,7 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteOnStream(
 
 StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
+    absl::Span<const ShapedBuffer* const> arguments) {
   if (hlo_profiling_enabled()) {
     return Unimplemented(
         "Asynchronous execution on stream with hlo profiling is not yet "
@@ -267,7 +267,7 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStream(
 
 StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStreamImpl(
     const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   if (GetRootPointsToSet().IsAmbiguous()) {
     return Unimplemented("Points-to set of root instruction is ambiguous");
@@ -284,8 +284,9 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStreamImpl(
       CreateTempArray(memory_allocator, stream->parent()->device_ordinal(),
                       arguments));
 
-  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
-                      CreateResultShapedBuffer(run_options, &owning_buffers));
+  TF_ASSIGN_OR_RETURN(
+      ScopedShapedBuffer result,
+      CreateResultShapedBuffer(run_options, absl::MakeSpan(owning_buffers)));
 
   // At this point, `unowning_buffers` contains unowning pointers to all of our
   // buffers, and `buffers` contains owning pointers to the non-live-out
@@ -298,7 +299,7 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStreamImpl(
   //
   // We also need to change the types of some of the variables we capture:
   // run_options needs to change from a pointer to a value type, and arguments
-  // needs to change from an ArraySlice into a vector.  We use a struct instead
+  // needs to change from a Span into a vector.  We use a struct instead
   // of a lambda to make this explicit.
   struct AsyncRunTask {
     CpuExecutable* executable;

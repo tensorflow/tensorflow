@@ -16,10 +16,10 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/numeric.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 
@@ -39,8 +39,8 @@ XlaOp GetMatrixDiagonal(XlaOp x) {
     TF_RET_CHECK(n_dims >= 2);
     const int64 m = shape.dimensions(n_dims - 2);
     const int64 n = shape.dimensions(n_dims - 1);
-    tensorflow::gtl::ArraySlice<int64> major_dims(
-        AsInt64Slice(shape.dimensions()), /*pos=*/0, /*len=*/n_dims - 2);
+    absl::Span<const int64> major_dims =
+        AsInt64Slice(shape.dimensions()).subspan(/*pos=*/0, /*len=*/n_dims - 2);
     auto a = Iota(builder, U32, n);
     auto b = Iota(builder, U32, m);
     auto indicator = Eq(b, Broadcast(a, {m}), /*broadcast_dimensions=*/{0});
@@ -66,8 +66,8 @@ XlaOp Triangle(XlaOp x, bool lower) {
     TF_RET_CHECK(n_dims >= 2);
     const int64 m = shape.dimensions(n_dims - 2);
     const int64 n = shape.dimensions(n_dims - 1);
-    tensorflow::gtl::ArraySlice<int64> major_dims(
-        AsInt64Slice(shape.dimensions()), /*pos=*/0, /*len=*/n_dims - 2);
+    absl::Span<const int64> major_dims =
+        AsInt64Slice(shape.dimensions()).subspan(/*pos=*/0, /*len=*/n_dims - 2);
     auto a = Iota(builder, U32, n);
     auto b = Iota(builder, U32, m);
     xla::XlaOp indicator;

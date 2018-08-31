@@ -225,7 +225,11 @@ class DebugFileIO {
   // fixed.
   static Status RecursiveCreateDir(Env* env, const string& dir);
 
+  // Tracks how much disk has been used so far.
   static uint64 diskBytesUsed;
+  // Mutex for thread-safe access to diskBytesUsed.
+  static mutex bytes_mu;
+  // Default limit for the disk space.
   static const uint64 defaultGlobalDiskBytesLimit;
 
   friend class DiskUsageLimitTest;
