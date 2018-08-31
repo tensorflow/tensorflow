@@ -60,3 +60,5 @@
 /tensorflow/contrib/tpu/ @frankchn @saeta @jhseu @sourabhbajaj
 /tensorflow/contrib/training/ @joel-shor @ebrevdo
 /tensorflow/contrib/util/ @sherrym
+
+/third_party/systemlibs/ @perfinion
