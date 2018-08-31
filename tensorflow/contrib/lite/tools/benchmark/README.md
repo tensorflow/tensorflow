@@ -9,7 +9,7 @@ of runs. Aggregrate latency statistics are reported after running the benchmark.
 
 The instructions below are for running the binary on Desktop and Android,
 for iOS please use the
-[iOS benchmark app] (https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/tools/benchmark/ios).
+[iOS benchmark app](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/tools/benchmark/ios).
 
 ## Parameters
 
@@ -30,7 +30,7 @@ and the following optional parameters:
     The delay in seconds between subsequent benchmark runs. Non-positive values
     mean use no delay.
 *   `use_nnapi`: `bool` (default=false) \
-    Whether to use [Android NNAPI] (https://developer.android.com/ndk/guides/neuralnetworks/).
+    Whether to use [Android NNAPI](https://developer.android.com/ndk/guides/neuralnetworks/).
     This API is available on recent Android devices.
 
 ## To build/install/run
@@ -91,8 +91,7 @@ bazel-bin/tensorflow/contrib/lite/tools/benchmark/benchmark_model \
   --num_threads=4
 ```
 
-The MobileNet graph used as an example here may be downloaded from
-https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip
+The MobileNet graph used as an example here may be downloaded from [here](https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip).
 
 
 ## Reducing variance between runs on Android.
@@ -196,5 +195,3 @@ Memory (bytes): count=0
 
 Average inference timings in us: Warmup: 83235, Init: 38467, no stats: 79760.9
 ```
-
-
