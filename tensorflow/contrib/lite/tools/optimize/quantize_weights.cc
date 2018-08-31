@@ -168,6 +168,7 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(const ModelT* model,
 
   bool eval_hybrid = IsHybridEvaluationOp(op, op_code);
 
+  bool skipped_tensor = false;
   std::vector<int32_t> op_input_indices = GetWeightInputIndices(op_code);
   for (const int32_t op_input_idx : op_input_indices) {
     int32_t tensor_idx = op->inputs[op_input_idx];
@@ -177,6 +178,7 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(const ModelT* model,
     if (CountTensorConsumers(model, subgraph, tensor_idx) != 1) {
       LOG(INFO) << "Skipping quantization of tensor that is shared between "
                    "multiple multiple operations.";
+      skipped_tensor = true;
       continue;
     }
 
@@ -184,6 +186,7 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(const ModelT* model,
 
     if (tensor->type != TensorType_FLOAT32) {
       LOG(INFO) << "Skipping quantization of tensor that is not type float.";
+      skipped_tensor = true;
       continue;
     }
 
@@ -191,6 +194,7 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(const ModelT* model,
     if (num_elements < kWeightsMinSize) {
       LOG(INFO) << "Skipping quantization of tensor because it has fewer than "
                 << kWeightsMinSize << " elements (" << num_elements << ").";
+      skipped_tensor = true;
       continue;
     }
 
@@ -201,6 +205,12 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(const ModelT* model,
     tensor_info.tensor = tensor;
 
     tensor_infos.push_back(tensor_info);
+  }
+
+  // For hybrid operations we either need to quantize all tensors or none. So
+  // if we skipped any tensors we need to return no quantized tensors.
+  if (eval_hybrid && skipped_tensor) {
+    return {};
   }
 
   return tensor_infos;
