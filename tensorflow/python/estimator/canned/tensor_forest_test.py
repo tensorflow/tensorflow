@@ -70,7 +70,7 @@ class TensorForestModelFnTest(test_util.TensorFlowTestCase):
           resources.shared_resources()).run()
       self.assertEquals(logits.eval().shape, (4, 2))
       self.assertEquals(logits.eval().tolist(),
-                        expected_prediction)
+                        expected_logits)
 
 
 if __name__ == '__main__':
