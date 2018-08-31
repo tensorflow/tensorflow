@@ -96,11 +96,10 @@ class MockStrategy(object):
     return self._between_graph
 
   def configure(self,
-                session_options=None,
+                session_config=None,
                 cluster_spec=None,
                 task_type=None,
                 task_id=None):
-    del session_options, cluster_spec, task_type
     if self._should_init is None:
       if task_id == 0:
         self._should_init = True
@@ -116,6 +115,17 @@ class MockStrategy(object):
         self._should_save_summary = True
       else:
         self._should_save_summary = False
+
+    if session_config:
+      if (cluster_spec and task_type and task_id is not None and
+          self._between_graph):
+        session_config.intra_op_parallelism_threads += 1
+        if task_type in ["chief", "worker"]:
+          session_config.device_filters.extend(
+              ["/job:%s/task:%d" % (task_type, task_id), "/job:ps"])
+      else:
+        session_config.inter_op_parallelism_threads += 1
+        session_config.device_filters.append("/job:somejob")
 
   @property
   def should_init(self):
@@ -748,7 +758,7 @@ class DistributeCoordinatorTestInpendentWorkerMode(
     def _thread_fn(cluster_spec):
       distribute_coordinator.run_distribute_coordinator(
           None,
-          None,
+          MockStrategy(between_graph=True),
           mode=INDEPENDENT_WORKER,
           cluster_spec=cluster_spec,
           task_type="ps",
@@ -785,12 +795,95 @@ class DistributeCoordinatorTestInpendentWorkerMode(
             distribute_coordinator, "_run_std_server", _run_mock_server):
       distribute_coordinator.run_distribute_coordinator(
           None,
-          None,
+          MockStrategy(between_graph=True),
           mode=INDEPENDENT_WORKER,
           cluster_spec=cluster_spec,
           task_type="ps",
           task_id=0)
     self.assertEqual(rpc_layer_from_coordinator[0], "cake")
+
+
+class StrategyConfigureTest(test.TestCase):
+
+  def setUp(self):
+    self._device_filters = []
+    self._intra_op_parallelism_threads = None
+    self._inter_op_parallelism_threads = None
+    super(StrategyConfigureTest, self).setUp()
+
+  def _dump_device_filters(self, *args, **kwargs):
+    session_config = kwargs.get("session_config", None)
+    self._device_filters.extend(session_config.device_filters)
+    self._intra_op_parallelism_threads = (
+        session_config.intra_op_parallelism_threads)
+    self._inter_op_parallelism_threads = (
+        session_config.inter_op_parallelism_threads)
+    return MockServer()
+
+  def _worker_fn(self, strategy):
+    worker_context = distribute_coordinator_context.get_current_worker_context()
+    session_config = worker_context._session_config
+    self._device_filters.extend(session_config.device_filters)
+    self._intra_op_parallelism_threads = (
+        session_config.intra_op_parallelism_threads)
+    self._inter_op_parallelism_threads = (
+        session_config.inter_op_parallelism_threads)
+    return MockServer()
+
+  def test_session_config_in_std_server(self):
+    cluster_spec = {"worker": ["fake_worker"], "ps": ["fake_ps"]}
+    tf_config = {"cluster": cluster_spec}
+
+    with test.mock.patch.dict(
+        "os.environ",
+        {"TF_CONFIG": json.dumps(tf_config)}), test.mock.patch.object(
+            distribute_coordinator, "_run_std_server",
+            self._dump_device_filters):
+      distribute_coordinator.run_distribute_coordinator(
+          lambda _: None,
+          MockStrategy(between_graph=True),
+          mode=INDEPENDENT_WORKER,
+          cluster_spec=cluster_spec,
+          task_type="worker",
+          task_id=0)
+    self.assertEqual(self._intra_op_parallelism_threads, 1)
+    self.assertEqual(self._inter_op_parallelism_threads, 0)
+
+  def test_session_config_in_session_creator(self):
+    cluster_spec = {"worker": ["localhost:0"]}
+    tf_config = {"cluster": cluster_spec}
+
+    with test.mock.patch.dict("os.environ",
+                              {"TF_CONFIG": json.dumps(tf_config)}):
+      distribute_coordinator.run_distribute_coordinator(
+          self._worker_fn,
+          MockStrategy(between_graph=True),
+          mode=INDEPENDENT_WORKER,
+          cluster_spec=cluster_spec,
+          task_type="worker",
+          task_id=0)
+    self.assertEqual(self._device_filters, ["/job:worker/task:0", "/job:ps"])
+    self.assertEqual(self._intra_op_parallelism_threads, 2)
+    self.assertEqual(self._inter_op_parallelism_threads, 0)
+
+  def test_eval_strategy_configure(self):
+    cluster_spec = {"evaluator": ["localhost:0"]}
+    tf_config = {"cluster": cluster_spec}
+
+    with test.mock.patch.dict("os.environ",
+                              {"TF_CONFIG": json.dumps(tf_config)}):
+      distribute_coordinator.run_distribute_coordinator(
+          lambda _: None,
+          MockStrategy(between_graph=False),
+          eval_fn=self._worker_fn,
+          eval_strategy=MockStrategy(between_graph=True),
+          mode=INDEPENDENT_WORKER,
+          cluster_spec=cluster_spec,
+          task_type="evaluator",
+          task_id=0)
+    self.assertEqual(self._device_filters, ["/job:somejob"])
+    self.assertEqual(self._intra_op_parallelism_threads, 0)
+    self.assertEqual(self._inter_op_parallelism_threads, 2)
 
 
 if __name__ == "__main__":
