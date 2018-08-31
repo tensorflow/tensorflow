@@ -17,11 +17,6 @@ The binary takes the following required parameters:
 
 *   `graph`: `string` \
     The path to the TFLite model file.
-*   `input_layer`: `string` \
-    The name of the input layer, this is typically the first layer of the model.
-*   `input_layer_shape`: `string` \
-    The shape of the input layer. This is a comma separated string of the shape
-    of tensor of input layer.
 
 and the following optional parameters:
 
@@ -29,6 +24,8 @@ and the following optional parameters:
     The number of threads to use for running TFLite interpreter.
 *   `warmup_runs`: `int` (default=1) \
     The number of warmup runs to do before starting the benchmark.
+*   `num_runs`: `int` (default=50) \
+    The number of runs. Increase this to reduce variance.
 *   `run_delay`: `float` (default=-1.0) \
     The delay in seconds between subsequent benchmark runs. Non-positive values
     mean use no delay.
@@ -75,8 +72,6 @@ adb push mobilenet_quant_v1_224.tflite /data/local/tmp
 ```
 adb shell /data/local/tmp/benchmark_model \
   --graph=/data/local/tmp/mobilenet_quant_v1_224.tflite \
-  --input_layer="input" \
-  --input_layer_shape="1,224,224,3" \
   --num_threads=4
 ```
 
@@ -93,8 +88,6 @@ For example:
 ```
 bazel-bin/tensorflow/contrib/lite/tools/benchmark/benchmark_model \
   --graph=mobilenet_quant_v1_224.tflite \
-  --input_layer="Placeholder" \
-  --input_layer_shape="1,224,224,3" \
   --num_threads=4
 ```
 
@@ -117,8 +110,6 @@ can use the following command:
 ```
 adb shell taskset f0 /data/local/tmp/benchmark_model \
   --graph=/data/local/tmp/mobilenet_quant_v1_224.tflite \
-  --input_layer="input" \
-  --input_layer_shape="1,224,224,3" \
   --num_threads=1
 ```
 
