@@ -4196,6 +4196,7 @@ cc_library(
         "hinge-loss.h",
         "logistic-loss.h",
         "loss.h",
+        "poisson-loss.h",
         "smooth-hinge-loss.h",
         "squared-loss.h",
     ],

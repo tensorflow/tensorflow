@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/hinge-loss.h"
 #include "tensorflow/core/kernels/logistic-loss.h"
+#include "tensorflow/core/kernels/poisson-loss.h"
 #include "tensorflow/core/kernels/smooth-hinge-loss.h"
 #include "tensorflow/core/kernels/squared-loss.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -286,6 +287,69 @@ TEST(SmoothHingeLoss, ComputeUpdatedDual) {
   TestComputeUpdatedDual(loss_updater, 5 /* num partitions */, -1.0 /* label */,
                          1.0 /* example weight */, -0.4 /* current_dual */,
                          0.8 /* wx */, 10.0 /* weighted_example_norm */);
+}
+
+TEST(PoissonLoss, ComputePrimalLoss) {
+  PoissonLossUpdater loss_updater;
+  EXPECT_NEAR(1.0,
+              loss_updater.ComputePrimalLoss(0.0 /* wx */, 3.0 /* label */,
+                                             1.0 /* example weight */),
+              1e-3);
+  EXPECT_NEAR(21996.0,
+              loss_updater.ComputePrimalLoss(10.0 /* wx */, 3.0 /* label */,
+                                             1.0 /* example weight */),
+              1.0);
+  EXPECT_NEAR(0.606,
+              loss_updater.ComputePrimalLoss(-0.5 /* wx */, 0.0 /* label */,
+                                             1.0 /* example weight */),
+              1e-3);
+  EXPECT_NEAR(6.64,
+              loss_updater.ComputePrimalLoss(1.2 /* wx */, 0.0 /* label */,
+                                             2.0 /* example weight */),
+              1e-2);
+}
+
+TEST(PoissonLoss, ComputeDualLoss) {
+  PoissonLossUpdater loss_updater;
+  // Dual is undefined.
+  EXPECT_NEAR(
+      std::numeric_limits<double>::max(),
+      loss_updater.ComputeDualLoss(1.0 /* current dual */, 0.0 /* label */,
+                                   1.0 /* example weight */),
+      1e-3);
+  EXPECT_NEAR(
+      0.0,
+      loss_updater.ComputeDualLoss(0.0 /* current dual */, 0.0 /* label */,
+                                   3.0 /* example weight */),
+      1e-3);
+  EXPECT_NEAR(
+      -0.847,
+      loss_updater.ComputeDualLoss(1.5 /* current dual */, 2.0 /* label */,
+                                   1.0 /* example weight */),
+      1e-3);
+  EXPECT_NEAR(
+      -2.675,
+      loss_updater.ComputeDualLoss(0.5 /* current dual */, 2.0 /* label */,
+                                   3.0 /* example weight */),
+      1e-3);
+}
+
+TEST(PoissonLoss, ConvertLabel) {
+  PoissonLossUpdater loss_updater;
+  float example_label = -1.0;
+  // Negative label should throw an error.
+  Status status = loss_updater.ConvertLabel(&example_label);
+  EXPECT_FALSE(status.ok());
+}
+
+TEST(PoissonLoss, ComputeUpdatedDual) {
+  PoissonLossUpdater loss_updater;
+  TestComputeUpdatedDual(loss_updater, 1 /* num partitions */, 2.0 /* label */,
+                         1.0 /* example weight */, 0.5 /* current_dual */,
+                         0.3 /* wx */, 10.0 /* weighted_example_norm */);
+  TestComputeUpdatedDual(loss_updater, 2 /* num partitions */, 0.0 /* label */,
+                         1.0 /* example weight */, 0.0 /* current_dual */,
+                         -0.8 /* wx */, 10.0 /* weighted_example_norm */);
 }
 
 }  // namespace
