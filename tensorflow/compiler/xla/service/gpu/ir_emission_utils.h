@@ -143,16 +143,6 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
 llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
                                      llvm::IRBuilder<>* builder, llvm::Module* module);
 
-// Emits IR to call a device function named "callee_name" on the given
-// operand. Returns the IR value that represents the return value.
-llvm::Value* EmitDeviceFunctionCall(
-    const string& callee_name,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-    PrimitiveType output_type,
-    tensorflow::gtl::ArraySlice<llvm::Attribute::AttrKind> attributes,
-    llvm::IRBuilder<>* builder, llvm::Module* module);
-
 }  // namespace gpu
 }  // namespace xla
 
