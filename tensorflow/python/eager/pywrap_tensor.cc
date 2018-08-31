@@ -474,6 +474,30 @@ static PyObject* EagerTensor_rank(EagerTensor* self) {
 #endif
 }
 
+// Getter for `_num_elements`.
+static PyObject* EagerTensor_num_elements(EagerTensor* self) {
+  auto handle = self->handle;
+  int n = TFE_TensorHandleNumDims(handle, self->status);
+  if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError)) {
+    // Cleanup self->status before returning.
+    TF_SetStatus(self->status, TF_OK, "");
+    return nullptr;
+  }
+  tensorflow::int64 value = 1;
+  if (PyErr_Occurred()) return nullptr;
+  for (int i = 0; i < n; ++i) {
+    int64_t dim = TFE_TensorHandleDim(handle, i, self->status);
+    if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError)) {
+      // Cleanup self->status before returning.
+      TF_SetStatus(self->status, TF_OK, "");
+      PyErr_SetString(PyExc_RuntimeError, "Error while iterating dimensions");
+      return nullptr;
+    }
+    value *= dim;
+  }
+  return PyLong_FromLongLong(value);
+}
+
 static PyObject* EagerTensor_tensor_handle(EagerTensor* self, void* unused) {
   Py_INCREF(self->handle_data);
   return self->handle_data;
@@ -592,6 +616,8 @@ static PyMethodDef EagerTensor_methods[] = {
     {"_rank", (PyCFunction)EagerTensor_rank, METH_NOARGS, PyDoc_STR("_rank")},
     {"_copy_to_device", (PyCFunction)EagerTensor_copy_to_device,
      METH_VARARGS | METH_KEYWORDS, PyDoc_STR("_copy_to_device")},
+    {"_num_elements", (PyCFunction)EagerTensor_num_elements, METH_NOARGS,
+     PyDoc_STR("_num_elements")},
     {nullptr, nullptr},
 };
 
