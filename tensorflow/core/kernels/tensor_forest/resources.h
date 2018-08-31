@@ -42,7 +42,7 @@ class TensorForestTreeResource : public ResourceBase {
 
   // Resets the resource and frees the proto.
   // Caller needs to hold the mutex lock while calling this.
-  void Reset() { decision_tree_.reset(new boosted_trees::Tree()); }
+  void Reset();
 
   const boosted_trees::Tree& decision_tree() const { return *decision_tree_; }
 
@@ -56,7 +56,7 @@ class TensorForestTreeResource : public ResourceBase {
  protected:
   mutex mu_;
   protobuf::Arena arena_;
-  std::unique_ptr<boosted_trees::Tree> decision_tree_;
+  boosted_trees::Tree* decision_tree_;
 };
 
 }  // namespace tensorflow

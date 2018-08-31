@@ -47,6 +47,13 @@ const int32 TensorForestTreeResource::TraverseTree(
 };
 
 bool TensorForestTreeResource::InitFromSerialized(const string& serialized) {
-  return ParseProtoUnlimited(decision_tree_.get(), serialized);
+  return ParseProtoUnlimited(decision_tree_, serialized);
 }
+
+void TensorForestTreeResource::Reset() {
+  arena_.Reset();
+  CHECK_EQ(0, arena_.SpaceAllocated());
+  decision_tree_ = protobuf::Arena::CreateMessage<boosted_trees::Tree>(&arena_);
+}
+
 }  // namespace tensorflow
