@@ -465,6 +465,13 @@ def start_queue_runners(sess=None, coord=None, daemon=True, start=True,
     raise TypeError("sess must be a `tf.Session` object. "
                     "Given class: {}".format(sess.__class__))
 
+  queue_runners = ops.get_collection(collection)
+  if not queue_runners:
+    logging.warning(
+        "`tf.train.start_queue_runners()` was called when no queue runners "
+        "were defined. You can safely remove the call to this deprecated "
+        "function.")
+
   with sess.graph.as_default():
     threads = []
     for qr in ops.get_collection(collection):
