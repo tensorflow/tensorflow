@@ -159,7 +159,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
     }
   }
 
-  return EmitDeviceFunctionCall(
+  return GpuElementalIrEmitter::EmitDeviceFunctionCall(
       callee_name, operands, input_types, output_type,
       {llvm::Attribute::ReadNone, llvm::Attribute::NoUnwind},
       b_, module_);
@@ -289,13 +289,14 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   llvm::Value* fast_tanh = llvm_ir::EmitFastTanh(b_, input);
   return FPCast(fast_tanh, value->getType());
 }
-/*
+
 llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
     const string& callee_name,
     tensorflow::gtl::ArraySlice<llvm::Value*> operands,
     tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
     PrimitiveType output_type,
-    tensorflow::gtl::ArraySlice<llvm::Attribute::AttrKind> attributes) {
+    tensorflow::gtl::ArraySlice<llvm::Attribute::AttrKind> attributes,
+    llvm::IRBuilder<>* ir_builder, llvm::Module* module) {
   std::vector<llvm::Type*> ir_input_types;
   for (PrimitiveType input_type : input_types) {
     ir_input_types.push_back(
@@ -317,7 +318,7 @@ llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
 
   return Call(callee, llvm_ir::AsArrayRef(operands));
 }
-*/
+
 llvm::Value* GpuElementalIrEmitter::EmitThreadId() {
   llvm::Value* block_id = IntCast(
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::amdgcn_workgroup_id_x,
@@ -328,7 +329,7 @@ llvm::Value* GpuElementalIrEmitter::EmitThreadId() {
                                    {}, {}, b_),
       b_->getInt32Ty(), /*isSigned=*/true, "thread.id");
   llvm::Value* threads_per_block = IntCast(
-      EmitDeviceFunctionCall("__ockl_get_local_size",
+      GpuElementalIrEmitter::EmitDeviceFunctionCall("__ockl_get_local_size",
                              {b_->getInt32(0)},
                              {U32}, U64, {}, b_, module_),
       b_->getInt32Ty(), /*isSigned=*/true, "threads_per_block");
