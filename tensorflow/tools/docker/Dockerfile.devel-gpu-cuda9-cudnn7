@@ -31,6 +31,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+RUN apt-get update && \
+        apt-get install nvinfer-runtime-trt-repo-ubuntu1604-4.0.1-ga-cuda9.0 && \
+        apt-get update && \
+        apt-get install libnvinfer4=4.1.2-1+cuda9.0 && \
+        apt-get install libnvinfer-dev=4.1.2-1+cuda9.0
+
 RUN pip --no-cache-dir install --upgrade \
         pip setuptools
 
@@ -89,6 +95,7 @@ ENV CI_BUILD_PYTHON=python \
     PYTHON_BIN_PATH=/usr/bin/python \
     PYTHON_LIB_PATH=/usr/local/lib/python2.7/dist-packages \
     TF_NEED_CUDA=1 \
+    TF_NEED_TENSORRT 1 \
     TF_CUDA_VERSION=9.0 \
     TF_CUDA_COMPUTE_CAPABILITIES=3.0,3.5,5.2,6.0,6.1,7.0 \
     TF_CUDNN_VERSION=7
