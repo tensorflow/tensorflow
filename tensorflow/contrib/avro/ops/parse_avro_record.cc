@@ -242,7 +242,7 @@ REGISTER_OP("ParseAvroRecord")
          return errors::InvalidArgument("The provided json schema is invalid. ",
                                         avro_strerror());
        }
-       LOG(INFO) << "Avro parser with schema\n" << schema;
+       VLOG(4) << "Avro parser with schema\n" << schema;
 
        int output_idx = 0;
 
@@ -679,13 +679,11 @@ void CopyVarLen(const size_t n_elements, const size_t n_elements_per_batch,
   const auto& list = GetListFromBuffer<T>(buffer);
   auto list_ptr = list.begin();
 
-#ifdef DEBUG_LOG_ENABLED
   auto list_ptr_ = list.begin();
   for (size_t i_elem = 0; i_elem < buffer.n_elements; ++i_elem) {
-    LOG(INFO) << *list_ptr_ << ", ";
+    VLOG(4) << *list_ptr_ << ", ";
     list_ptr_++;
   }
-#endif
 
   size_t n_total_elements = 0;
   // Iterate through all the examples stored in this buffer.
@@ -700,14 +698,12 @@ void CopyVarLen(const size_t n_elements, const size_t n_elements_per_batch,
     n_total_elements = end_indices[i_batches];
   }
 
-#ifdef DEBUG_LOG_ENABLED
   for (size_t i_batches = 0; i_batches < n_batches; ++i_batches) {
-    LOG(INFO) << "End [" << i_batches << "] = " << end_indices[i_batches];
+    VLOG(4) << "End [" << i_batches << "] = " << end_indices[i_batches];
   }
-  LOG(INFO) << "Total " << n_total_elements << " elements; counted "
-            << list.size() << " elements.";
-  LOG(INFO) << "Number of " << n_elements_per_batch << " per batch.";
-#endif
+  VLOG(4) << "Total " << n_total_elements << " elements; counted "
+          << list.size() << " elements.\nNumber of " << n_elements_per_batch
+          << " per batch.";
 
   DCHECK(n_total_elements == list.size());
 }
@@ -906,15 +902,13 @@ class ParseAvroRecordOp : public OpKernel {
                             &sparse_values, &sparse_indices, &sparse_shapes,
                             sparse_keys, sparse_buffers, n_serialized));
 
-#ifdef DEBUG_LOG_ENABLED
     for (int i_dense = 0; i_dense < static_cast<int>(attrs_.num_dense);
          ++i_dense) {
-      LOG(INFO) << "Dense shape for key '"
-                << dense_keys[i_dense].scalar<string>()()
-                << "' is variable length? "
-                << (attrs_.dense_infos[i_dense].variable_length ? "yes" : "no");
+      VLOG(4) << "Dense shape for key '"
+              << dense_keys[i_dense].scalar<string>()()
+              << "' is variable length? "
+              << (attrs_.dense_infos[i_dense].variable_length ? "yes" : "no");
     }
-#endif
 
     // Convert var len dense into tensors
     OP_REQUIRES_OK(
@@ -1061,26 +1055,22 @@ class ParseAvroRecordOp : public OpKernel {
       const std::vector<SparseBuffer>& sparse_buffers,
       const int64 n_serialized) {
 
-#ifdef DEBUG_LOG_ENABLED
-    LOG(INFO) << "Converting " << attrs_.num_sparse << " sparse tensors.";
-#endif
+    VLOG(4) << "Converting " << attrs_.num_sparse << " sparse tensors.";
 
     for (int i_sparse = 0; i_sparse < static_cast<int>(attrs_.num_sparse);
          ++i_sparse) {
       const int64 n_elements =
           static_cast<int64>(sparse_buffers[i_sparse].n_elements);
 
-#ifdef DEBUG_LOG_ENABLED
-      LOG(INFO) << "For key '" << sparse_keys[i_sparse].scalar<string>()()
-                << "' found the following end indices.";
+      VLOG(4) << "For key '" << sparse_keys[i_sparse].scalar<string>()()
+              << "' found the following end indices.";
       const std::vector<size_t> end_indices =
           sparse_buffers[i_sparse].end_indices;
       const size_t n_batches = end_indices.size();
       for (size_t i_batches = 0; i_batches < n_batches; ++i_batches) {
-        LOG(INFO) << "End [" << i_batches << "] = " << end_indices[i_batches];
+        VLOG(4) << "End [" << i_batches << "] = " << end_indices[i_batches];
       }
-      LOG(INFO) << "With " << n_elements << " elements.";
-#endif
+      VLOG(4) << "With " << n_elements << " elements.";
 
       // Sparse shapes
       Tensor* sparse_shapes_ptr;
@@ -1124,9 +1114,7 @@ class ParseAvroRecordOp : public OpKernel {
         n_total_elements = end_index;
       }
 
-#ifdef DEBUG_LOG_ENABLED
-      LOG(INFO) << "Created index " << indices.DebugString();
-#endif
+      VLOG(4) << "Created index " << indices.DebugString();
 
       // Sparse values
       TensorShape values_shape({static_cast<int64>(n_elements)});
@@ -1134,9 +1122,7 @@ class ParseAvroRecordOp : public OpKernel {
       sparse_values->allocate(i_sparse, values_shape, &values_ptr);
       Tensor& values = *values_ptr;
 
-#ifdef DEBUG_LOG_ENABLED
-      LOG(INFO) << "Created values " << values.DebugString();
-#endif
+      VLOG(4) << "Created values " << values.DebugString();
 
       // Based on the type we copy the values
       switch (attrs_.sparse_types[i_sparse]) {
@@ -1204,10 +1190,8 @@ class ParseAvroRecordOp : public OpKernel {
         continue;
       }
 
-#ifdef DEBUG_LOG_ENABLED
-      LOG(INFO) << "Working on key '" << dense_keys[i_dense].scalar<string>()()
-                << "'.";
-#endif
+      VLOG(4) << "Working on key '" << dense_keys[i_dense].scalar<string>()()
+              << "'.";
 
       // Find the maximum number of features and elements in the batch
       size_t n_max_features = 0;
@@ -1222,9 +1206,7 @@ class ParseAvroRecordOp : public OpKernel {
       }
       size_t n_max_elements = n_max_features / dense_info.elements_per_stride;
 
-#ifdef DEBUG_LOG_ENABLED
-      LOG(INFO) << "Found maximum number of " << n_max_elements << " elements.";
-#endif
+      VLOG(INFO) << "Found maximum number of " << n_max_elements << " elements.";
 
       // Define the dense tensor shape
       TensorShape out_shape;
@@ -1236,11 +1218,9 @@ class ParseAvroRecordOp : public OpKernel {
         out_shape.AddDim(dense_info.shape.dim_size(i_dim));
       }
 
-#ifdef DEBUG_LOG_ENABLED
-      LOG(INFO) << "Dense shape for key '"
-                << dense_keys[i_dense].scalar<string>()() << "' is "
-                << out_shape.DebugString();
-#endif
+      VLOG(4) << "Dense shape for key '"
+              << dense_keys[i_dense].scalar<string>()() << "' is "
+              << out_shape.DebugString();
 
       // Create the dense values for the shape and compute the number of
       // elements per batch
@@ -1251,11 +1231,9 @@ class ParseAvroRecordOp : public OpKernel {
       const size_t n_elements_per_batch =
           n_max_elements * dense_info.elements_per_stride;
 
-#ifdef DEBUG_LOG_ENABLED
-      LOG(INFO) << "Maximally we have " << n_max_elements << " elements.";
-      LOG(INFO) << "The dense tensor with batches has " << n_elements
-                << " elements.";
-#endif
+      VLOG(4) << "Maximally we have " << n_max_elements
+              << " elements.\nThe dense tensor with batches has " << n_elements
+              << " elements.";
 
       // Get the default value tensor
       const Tensor& default_value = dense_defaults[i_dense];
@@ -1345,12 +1323,9 @@ class ParseAvroRecordOp : public OpKernel {
       size_t n_elements = values.NumElements();
       size_t n_elements_per_batch = dense_info.elements_per_stride;
 
-#ifdef DEBUG_LOG_ENABLED
-      LOG(INFO) << "Fixed length dense tensor has " << n_elements
-                << " elements.";
-      LOG(INFO) << "The stride size is " << n_elements_per_batch
-                << " elements.";
-#endif
+      VLOG(4) << "Fixed length dense tensor has " << n_elements
+              << " elements.\nThe stride size is " << n_elements_per_batch
+              << " elements.";
 
       const Tensor& default_value = dense_defaults[i_dense];
 
@@ -1833,10 +1808,8 @@ class ParseAvroRecordOp : public OpKernel {
 
       // User wants attribute in Avro record
       if (avro_field->GetType() == AvroField::Type::name) {
-#ifdef DEBUG_LOG_ENABLED
-        LOG(INFO) << "Parsing attribute "
-                  << static_cast<AvroFieldName*>(avro_field)->ToString();
-#endif
+        VLOG(4) << "Parsing attribute "
+          << static_cast<AvroFieldName*>(avro_field)->ToString();
         TF_RETURN_IF_ERROR(
             avro_value_get_by_name(
                 &this_avro_value,
@@ -1848,9 +1821,7 @@ class ParseAvroRecordOp : public OpKernel {
 
         // User wants all items in an array
       } else if (avro_field->GetType() == AvroField::Type::arrayAsterisk) {
-#ifdef DEBUG_LOG_ENABLED
-        LOG(INFO) << "Parsing asterisk *";
-#endif
+        VLOG(4) << "Parsing asterisk *";
 
         // When the asterisk is defined we expect an array
         TF_RETURN_IF_ERROR(field_type == AVRO_ARRAY
@@ -1877,10 +1848,8 @@ class ParseAvroRecordOp : public OpKernel {
 
         // User defined an Avro array and want's to filter values
       } else if (avro_field->GetType() == AvroField::Type::arrayFilter) {
-#ifdef DEBUG_LOG_ENABLED
-        LOG(INFO) << "Parsing filter "
-                  << static_cast<AvroFieldArrayFilter*>(avro_field)->ToString();
-#endif
+        VLOG(4) << "Parsing filter "
+          << static_cast<AvroFieldArrayFilter*>(avro_field)->ToString();
         TF_RETURN_IF_ERROR(field_type == AVRO_ARRAY
                                ? Status::OK()
                                : errors::InvalidArgument(
@@ -1903,10 +1872,9 @@ class ParseAvroRecordOp : public OpKernel {
               &value_filtered, child_avro_value,
               static_cast<AvroFieldArrayFilter*>(avro_field)->GetKey()));
 
-#ifdef DEBUG_LOG_ENABLED
-          LOG(INFO) << "For " << static_cast<AvroFieldArrayFilter*>(avro_field)
-                                     ->GetKey() << " found " << value_filtered;
-#endif
+          VLOG(4) << "For " <<
+            static_cast<AvroFieldArrayFilter*>(avro_field)->GetKey() <<
+            " found " << value_filtered;
 
           // If the value matches the filter add it; otherwise not
           if (value_filtered ==
@@ -1922,10 +1890,8 @@ class ParseAvroRecordOp : public OpKernel {
 
         // User defined an Avro array and want's to get an item for an index
       } else if (avro_field->GetType() == AvroField::Type::index) {
-#ifdef DEBUG_LOG_ENABLED
-        LOG(INFO) << "Parsing array index "
-                  << static_cast<AvroFieldIndex*>(avro_field)->ToString();
-#endif
+        VLOG(4) << "Parsing array index "
+          << static_cast<AvroFieldIndex*>(avro_field)->ToString();
         TF_RETURN_IF_ERROR(field_type == AVRO_ARRAY
                                ? Status::OK()
                                : errors::InvalidArgument(
@@ -1943,10 +1909,8 @@ class ParseAvroRecordOp : public OpKernel {
 
         // User wants key in a map
       } else if (avro_field->GetType() == AvroField::Type::key) {
-#ifdef DEBUG_LOG_ENABLED
-        LOG(INFO) << "Parsing key "
-                  << static_cast<AvroFieldKey*>(avro_field)->ToString();
-#endif
+        VLOG(4) << "Parsing key "
+          << static_cast<AvroFieldKey*>(avro_field)->ToString();
 
         // Make sure we have either a map or array
         TF_RETURN_IF_ERROR(field_type == AVRO_MAP
@@ -1968,10 +1932,8 @@ class ParseAvroRecordOp : public OpKernel {
 
         // User wants all keys in map
       } else if (avro_field->GetType() == AvroField::Type::mapAsterisk) {
-#ifdef DEBUG_LOG_ENABLED
-        LOG(INFO) << "Parsing key "
-                  << static_cast<AvroFieldMapAsterisk*>(avro_field)->ToString();
-#endif
+        VLOG(4) << "Parsing key "
+          << static_cast<AvroFieldMapAsterisk*>(avro_field)->ToString();
 
         // Make sure we have either a map or array
         TF_RETURN_IF_ERROR(field_type == AVRO_MAP
@@ -2021,11 +1983,9 @@ class ParseAvroRecordOp : public OpKernel {
       }
       data_buffer->end_indices.push_back(data_buffer->n_elements);
 
-#ifdef DEBUG_LOG_ENABLED
-      LOG(INFO) << "Parsed array or map with " << n_elements
-                << " elements to a total of " << data_buffer->n_elements
-                << " elements.";
-#endif
+      VLOG(4) << "Parsed array or map with " << n_elements
+              << " elements to a total of " << data_buffer->n_elements
+              << " elements.";
 
     } else {
       TF_RETURN_IF_ERROR(
