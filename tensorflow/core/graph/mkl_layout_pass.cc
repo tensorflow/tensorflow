@@ -2444,6 +2444,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         "_MklConv2DBackpropFilterWithBias";
     csinfo_.relu = "Relu";
     csinfo_.relu_grad = "ReluGrad";
+    csinfo_.relu6 = "Relu6";
+    csinfo_.relu6_grad = "Relu6Grad";
     csinfo_.tanh = "Tanh";
     csinfo_.tanh_grad = "TanhGrad";
     csinfo_.reshape = "Reshape";
@@ -2542,6 +2544,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.relu_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.relu_grad),
+                      CopyAttrsDataType, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.relu6,
+                      mkl_op_registry::GetMklOpName(csinfo_.relu6),
+                      CopyAttrsDataType, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.relu6_grad,
+                      mkl_op_registry::GetMklOpName(csinfo_.relu6_grad),
                       CopyAttrsDataType, AlwaysRewrite});
     /*
     rinfo_.push_back({csinfo_.tanh,
@@ -2670,6 +2678,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string mul;
     string relu;
     string relu_grad;
+    string relu6;
+    string relu6_grad;
     string tanh;
     string tanh_grad;
     string reshape;
