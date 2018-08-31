@@ -271,18 +271,23 @@ class MklConvFwdPrimitive : public MklPrimitive {
 template <typename T>
 class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
  public:
-  static MklConvFwdPrimitive<T>* Get(const MklConvFwdParams& convFwdDims) {
+  static MklConvFwdPrimitive<T>* Get(const MklConvFwdParams& convFwdDims,
+                                     bool do_not_cache) {
     MklConvFwdPrimitive<T>* conv_fwd = nullptr;
 
-    // try to find a suitable one in pool
-    conv_fwd = dynamic_cast<MklConvFwdPrimitive<T>*>(
-        MklConvFwdPrimitiveFactory<T>::GetInstance().GetConvFwd(convFwdDims));
-
-    if (conv_fwd == nullptr) {
+    if (do_not_cache) { /* Always create new primitive */
       conv_fwd = new MklConvFwdPrimitive<T>(convFwdDims);
-      MklConvFwdPrimitiveFactory<T>::GetInstance().SetConvFwd(convFwdDims,
-                                                              conv_fwd);
+    } else {
+      // try to find a suitable one in pool
+      conv_fwd = dynamic_cast<MklConvFwdPrimitive<T>*>(
+          MklConvFwdPrimitiveFactory<T>::GetInstance().GetConvFwd(convFwdDims));
+      if (conv_fwd == nullptr) {
+        conv_fwd = new MklConvFwdPrimitive<T>(convFwdDims);
+        MklConvFwdPrimitiveFactory<T>::GetInstance().SetConvFwd(convFwdDims,
+                                                                conv_fwd);
+      }
     }
+
     return conv_fwd;
   }
 
@@ -894,6 +899,17 @@ class MklConvOp : public OpKernel {
       // MKLDNN dilation starts from 0.
       for (int i = 0; i < dilations.size(); i++) dilations[i] -= 1;
 
+      // In some cases, primitve descriptor includes potentialy large buffers,
+      // we don't cache those primitves if the env variable
+      // TF_MKL_OPTIMIZE_PRIMITVE_MEMUSE is true. MKL DNN allocates buffers
+      // in the following cases
+      //   1. Legacy CPU without AVX512/AVX2, or
+      //   2. 1x1 convolution with stride != 1
+      bool do_not_cache = MklPrimitiveFactory<T>::IsPrimitiveMemOptEnabled() &&
+                    (src_dims[MklDnnDims::Dim_N] > kSmallBatchSize) &&
+                    (MklPrimitiveFactory<T>::IsLegacyPlatform() ||
+                     IsConv1x1StrideNot1(filter_dims, strides));
+
       // get a conv2d fwd from primitive pool
       MklConvFwdPrimitive<T>* conv_fwd = nullptr;
       if (biasEnabled) {
@@ -902,12 +918,14 @@ class MklConvOp : public OpKernel {
         MklConvFwdParams convFwdDims(src_dims, filter_dims, bias_dims,
                                      dst_dims_mkl_order, strides, dilations,
                                      padding_left, padding_right);
-        conv_fwd = MklConvFwdPrimitiveFactory<T>::Get(convFwdDims);
+        conv_fwd = MklConvFwdPrimitiveFactory<T>::Get(
+            convFwdDims, do_not_cache);
       } else {
         MklConvFwdParams convFwdDims(src_dims, filter_dims, NONE_DIMS,
                                      dst_dims_mkl_order, strides, dilations,
                                      padding_left, padding_right);
-        conv_fwd = MklConvFwdPrimitiveFactory<T>::Get(convFwdDims);
+        conv_fwd = MklConvFwdPrimitiveFactory<T>::Get(
+            convFwdDims, do_not_cache);
       }
 
       // allocate output tensors output_tensor and filter_out_tensor
@@ -952,6 +970,9 @@ class MklConvOp : public OpKernel {
       } else {
         conv_fwd->Execute(src_data, filter_data, dst_data);
       }
+
+      // delete primitive since it is not cached.
+      if (do_not_cache) delete conv_fwd;
     } catch (mkldnn::error &e) {
       string error_msg = tensorflow::strings::StrCat(
           "Status: ", e.status, ", message: ", string(e.message), ", in file ",
