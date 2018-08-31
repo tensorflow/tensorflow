@@ -1,6 +1,9 @@
 # python_sanity_test.py will complain about invalid or missing entries
 # problematic entries can be commented for temporary whitelisting
 tensorflow
+tensorflow/compiler
+tensorflow/compiler/xla
+tensorflow/compiler/xla/service
 tensorflow/core
 tensorflow/core/example
 tensorflow/core/framework
