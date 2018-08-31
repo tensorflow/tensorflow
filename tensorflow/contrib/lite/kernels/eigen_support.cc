@@ -68,7 +68,7 @@ RefCountedEigenContext* GetEigenContext(TfLiteContext* context) {
 void InitDevice(TfLiteContext* context, RefCountedEigenContext* ptr) {
   int num_threads = 4;
   if (context->recommended_num_threads != -1) {
-    num_threads = context->recommended_num_threads;
+    num_threads = (context->recommended_num_threads == 1) ? 0 : context->recommended_num_threads;
   }
   ptr->device.reset();  // destroy before we invalidate the thread pool
   ptr->thread_pool_wrapper.reset(
@@ -78,7 +78,7 @@ void InitDevice(TfLiteContext* context, RefCountedEigenContext* ptr) {
 }
 
 TfLiteStatus Refresh(TfLiteContext* context) {
-  Eigen::setNbThreads(context->recommended_num_threads);
+  Eigen::setNbThreads((context->recommended_num_threads == 1) ? 0 : context->recommended_num_threads);
 
   auto* ptr = GetEigenContext(context);
   if (ptr != nullptr) {
@@ -94,7 +94,7 @@ void IncrementUsageCounter(TfLiteContext* context) {
   auto* ptr = GetEigenContext(context);
   if (ptr == nullptr) {
     if (context->recommended_num_threads != -1) {
-      Eigen::setNbThreads(context->recommended_num_threads);
+      Eigen::setNbThreads((context->recommended_num_threads == 1) ? 0 : context->recommended_num_threads);
     }
     ptr = new RefCountedEigenContext;
     ptr->type = kTfLiteEigenContext;
