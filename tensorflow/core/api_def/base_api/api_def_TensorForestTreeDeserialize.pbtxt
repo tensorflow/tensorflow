@@ -10,7 +10,7 @@ END
   in_arg {
     name: "tree_config"
     description: <<END
-Serialied proto string of the tree resource.
+Serialied proto string of the tree proto.
 END
   }
   summary: "DeSerializes a proto into the tree handle"

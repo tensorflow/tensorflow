@@ -4,14 +4,14 @@ op {
   in_arg {
     name: "tree_handle"
     description: <<END
-Handle to the tree resource to be restored.
+Handle to the tree resource.
 END
   }
   out_arg {
     name: "tree_size"
     description: <<END
-Size of the tree.
+The size of the tree.
 END
   }
-  summary: "Get the size of a tree"
+  summary: "Get the number of nodes of a tree"
 }

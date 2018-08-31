@@ -29,8 +29,6 @@ class TensorForestCreateTreeVariableOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor* tree_config_t;
     OP_REQUIRES_OK(context, context->input("tree_config", &tree_config_t));
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(tree_config_t->shape()),
-                errors::InvalidArgument("Tree config must be a scalar."));
 
     auto* result = new TensorForestTreeResource();
 
@@ -76,16 +74,15 @@ class TensorForestTreeDeserializeOp : public OpKernel {
       : OpKernel(context) {}
   void Compute(OpKernelContext* context) override {
     TensorForestTreeResource* decision_tree_resource;
-    auto handle = HandleFromInput(context, 0);
-    OP_REQUIRES_OK(context,
-                   LookupResource(context, handle, &decision_tree_resource));
+    OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
+                                           &decision_tree_resource));
+
     mutex_lock l(*decision_tree_resource->get_mutex());
     core::ScopedUnref unref_me(decision_tree_resource);
 
     const Tensor* tree_config_t;
     OP_REQUIRES_OK(context, context->input("tree_config", &tree_config_t));
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(tree_config_t->shape()),
-                errors::InvalidArgument("Tree config must be a scalar."));
+
     // Deallocate all the previous objects on the resource.
     decision_tree_resource->Reset();
 

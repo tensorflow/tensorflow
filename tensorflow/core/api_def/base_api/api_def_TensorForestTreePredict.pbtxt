@@ -4,7 +4,7 @@ op {
   attr {
     name: "logits_dimension"
     description: <<END
-Scalar, dimension of the logits
+Scalar, dimension of the logits.
 END
   }
   in_arg {
@@ -22,8 +22,8 @@ END
   out_arg {
     name: "logits"
     description: <<END
-The logtis.
+ The logits predictions from the tree for each instance in the batch.
 END
   }
-  summary: "Output the logits and tree_paths for the given input data"
+  summary: "Output the logits for the given input data"
 }

@@ -35,27 +35,25 @@ class TensorForestTreePredictOp : public OpKernel {
     mutex_lock l(*decision_tree_resource->get_mutex());
     core::ScopedUnref unref_me(decision_tree_resource);
 
-    const Tensor& dense_features = context->input(1);
+    const Tensor* dense_features = nullptr;
+    OP_REQUIRES_OK(context, context->input("dense_features", &dense_features));
 
-    std::unique_ptr<DenseTensorType> data_set = nullptr;
-    data_set.reset(new DenseTensorType(dense_features.tensor<float, 2>()));
-    const int batch_size = dense_features.dim_size(0);
+    auto data_set = dense_features->matrix<float>();
+    const int32 batch_size = dense_features->dim_size(0);
 
     Tensor* output_predictions = nullptr;
-    TensorShape output_shape;
-    output_shape.AddDim(batch_size);
-    output_shape.AddDim(logits_dimension_);
-    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape,
-                                                     &output_predictions));
-    TTypes<float, 2>::Tensor out = output_predictions->tensor<float, 2>();
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, {batch_size, logits_dimension_},
+                                            &output_predictions));
+    auto out = output_predictions->matrix<float>();
 
     if (decision_tree_resource->get_size() <= 0) {
       out.setZero();
       return;
     }
-    auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
-    int num_threads = worker_threads->num_threads;
-    const int64 costPerTraverse = 500;
+    auto* worker_threads = context->device()->tensorflow_cpu_worker_threads();
+    const int32 num_threads = worker_threads->num_threads;
+    const int64 cost_per_traverse = 500;
     auto traverse = [this, &out, &data_set, decision_tree_resource, batch_size](
         int64 start, int64 end) {
       CHECK(start <= end);
@@ -66,16 +64,16 @@ class TensorForestTreePredictOp : public OpKernel {
         set_output_value(example_id, leaf_id, decision_tree_resource, &out);
       };
     };
-    Shard(num_threads, worker_threads->workers, batch_size, costPerTraverse,
+    Shard(num_threads, worker_threads->workers, batch_size, cost_per_traverse,
           traverse);
   };
 
   void set_output_value(const int32 example_id, const int32 leaf_id,
                         const TensorForestTreeResource* decision_tree_resource,
-                        TTypes<float, 2>::Tensor* out) const {
+                        TTypes<float>::Matrix* out) const {
     for (int j = 0; j < logits_dimension_; ++j) {
-      const float count = decision_tree_resource->get_prediction(leaf_id, j);
-      (*out)(example_id, j) = count;
+      const float logit = decision_tree_resource->get_prediction(leaf_id, j);
+      (*out)(example_id, j) = logit;
     }
   };
 

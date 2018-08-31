@@ -27,7 +27,12 @@ REGISTER_RESOURCE_HANDLE_OP(TensorForestTreeResource);
 REGISTER_OP("TensorForestTreeIsInitializedOp")
     .Input("tree_handle: resource")
     .Output("is_initialized: bool")
-    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused_input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
 
 REGISTER_OP("TensorForestCreateTreeVariable")
     .Input("tree_handle: resource")
@@ -42,7 +47,11 @@ REGISTER_OP("TensorForestTreeSerialize")
 REGISTER_OP("TensorForestTreeDeserialize")
     .Input("tree_handle: resource")
     .Input("tree_config: string")
-    .SetShapeFn(tensorflow::shape_inference::NoOutputs);
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused_input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
+      return Status::OK();
+    });
 
 REGISTER_OP("TensorForestTreeSize")
     .Input("tree_handle: resource")
@@ -55,12 +64,12 @@ REGISTER_OP("TensorForestTreePredict")
     .Input("dense_features: float")
     .Output("logits: float")
     .SetShapeFn([](tensorflow::shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle shape_handle;
       shape_inference::DimensionHandle batch_size = c->UnknownDim();
 
-      if (c->RankKnown(c->input(1)) && c->Rank(c->input(1)) > 0 &&
-          c->Value(c->Dim(c->input(1), 0)) > 0) {
-        batch_size = c->Dim(c->input(1), 0);
-      }
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &shape_handle));
+
+      batch_size = c->Dim(shape_handle, 0);
 
       int logits_dimension;
       TF_RETURN_IF_ERROR(c->GetAttr("logits_dimension", &logits_dimension));

@@ -13,5 +13,5 @@ END
 Serialized proto of the tree proto.
 END
   }
-  summary: "Creates a tree model and returns a handle to it."
+  summary: "Creates a tree model resource and returns a handle to it."
 }

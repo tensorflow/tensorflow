@@ -83,14 +83,14 @@ class RandomForestGraphs(object):
     return math_ops.reduce_mean(math_ops.to_float(array_ops.stack(sizes)))
 
 
-def _tf_model_fn(features,
-                 labels,
-                 mode,
-                 head,
-                 sorted_feature_columns,
-                 forest_hparams,
-                 config,
-                 name='tensor_forest'):
+def _tensor_forest_model_fn(features,
+                            labels,
+                            mode,
+                            head,
+                            sorted_feature_columns,
+                            forest_hparams,
+                            config,
+                            name='tensor_forest'):
   """tensor forest model function"""
   with ops.name_scope(name):
     graph_builder = RandomForestGraphs(
@@ -166,7 +166,7 @@ class TensorForestClassifier(estimator.Estimator):
     sorted_feature_columns = sorted(feature_columns, key=lambda fc: fc.name)
 
     def _model_fn(features, labels, mode, config):
-      return _tf_model_fn(  # pylint: disable=protected-access
+      return _tensor_forest_model_fn(  # pylint: disable=protected-access
           features, labels, mode, head,
           sorted_feature_columns, forest_hparams, config)
 

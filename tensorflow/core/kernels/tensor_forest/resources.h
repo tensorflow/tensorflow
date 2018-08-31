@@ -30,7 +30,9 @@ typedef TTypes<const float, 2>::ConstTensor DenseTensorType;
 // Keep a tree ensemble in memory for efficient evaluation and mutation.
 class TensorForestTreeResource : public ResourceBase {
  public:
-  TensorForestTreeResource() : decision_tree_(new boosted_trees::Tree()){};
+  TensorForestTreeResource()
+      : decision_tree_(
+            protobuf::Arena::CreateMessage<boosted_trees::Tree>(&arena_)){};
 
   string DebugString() override {
     return strings::StrCat("TensorForestTree[size=", get_size(), "]");
@@ -50,11 +52,12 @@ class TensorForestTreeResource : public ResourceBase {
 
   const float get_prediction(const int32 id, const int32 dimension) const;
 
-  const int32 TraverseTree(const std::unique_ptr<DenseTensorType>& input_data,
-                           const int example) const;
+  const int32 TraverseTree(const TTypes<float>::ConstMatrix& ConstMatrix,
+                           const int32 example_id) const;
 
  private:
   mutex mu_;
+  protobuf::Arena arena_;
   std::unique_ptr<boosted_trees::Tree> decision_tree_;
 };
 

@@ -25,7 +25,8 @@ const float TensorForestTreeResource::get_prediction(
 };
 
 const int32 TensorForestTreeResource::TraverseTree(
-    const std::unique_ptr<DenseTensorType>& input_data, int example_id) const {
+    const TTypes<float>::ConstMatrix& dense_data,
+    const int32 example_id) const {
   using boosted_trees::Node;
   using boosted_trees::Tree;
   int32 current_id = 0;
@@ -37,7 +38,7 @@ const int32 TensorForestTreeResource::TraverseTree(
     DCHECK_EQ(current.node_case(), Node::kDenseSplit);
     const auto& split = current.dense_split();
 
-    if ((*input_data)(example_id, split.feature_id()) <= split.threshold()) {
+    if (dense_data(example_id, split.feature_id()) <= split.threshold()) {
       current_id = split.left_id();
     } else {
       current_id = split.right_id();
@@ -46,9 +47,6 @@ const int32 TensorForestTreeResource::TraverseTree(
 };
 
 bool TensorForestTreeResource::InitFromSerialized(const string& serialized) {
-  if (ParseProtoUnlimited(decision_tree_.get(), serialized)) {
-    return true;
-  }
-  return false;
+  return ParseProtoUnlimited(decision_tree_.get(), serialized);
 }
 }  // namespace tensorflow
