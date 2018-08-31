@@ -1739,5 +1739,23 @@ TEST_F(HloInstructionTest, CloneDnumsOnCustomCall) {
       << clone->convolution_dimension_numbers().DebugString();
 }
 
+TEST_F(HloInstructionTest, PreserveOperandPrecisionOnCloneConv) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  ENTRY test {
+    arg0 = f32[1,2,1] parameter(0)
+    arg1 = f32[1,1,1] parameter(1)
+    ROOT conv = f32[1,2,1] convolution(arg0, arg1), window={size=1},
+      dim_labels=b0f_0io->b0f, operand_precision={high,default}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kHloString));
+  auto* conv = module->entry_computation()->root_instruction();
+
+  auto clone = conv->Clone();
+  EXPECT_THAT(clone->precision_config().operand_precision(),
+              ::testing::ElementsAre(PrecisionConfigProto::HIGH,
+                                     PrecisionConfigProto::DEFAULT));
+}
+
 }  // namespace
 }  // namespace xla
