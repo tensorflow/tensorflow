@@ -648,9 +648,9 @@ cc_library(
         ":gpu_constants",
         ":gpu_copy_insertion",
         ":gpu_executable",
+        ":gpu_hlo_schedule",
         ":gpu_hlo_support_checker",
         ":gpu_layout_assignment",
-        ":hlo_schedule",
         ":instruction_fusion",
         ":ir_emission_utils",
         ":ir_emitter",
@@ -797,9 +797,9 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "hlo_schedule",
-    srcs = ["hlo_schedule.cc"],
-    hdrs = ["hlo_schedule.h"],
+    name = "gpu_hlo_schedule",
+    srcs = ["gpu_hlo_schedule.cc"],
+    hdrs = ["gpu_hlo_schedule.h"],
     deps = [
         ":stream_assignment",
         "//tensorflow/compiler/xla:statusor",
@@ -814,12 +814,12 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "hlo_schedule_test",
+    name = "gpu_hlo_schedule_test",
     srcs = [
-        "hlo_schedule_test.cc",
+        "gpu_hlo_schedule_test.cc",
     ],
     deps = [
-        ":hlo_schedule",
+        ":gpu_hlo_schedule",
         ":stream_assignment",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:types",
