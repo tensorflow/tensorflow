@@ -110,6 +110,11 @@ inline RuntimeShape DimsToShape(const tflite::Dims<4>& dims) {
       {dims.sizes[3], dims.sizes[2], dims.sizes[1], dims.sizes[0]});
 }
 
+inline void ShapeFromDims(const tflite::Dims<4>& dims, RuntimeShape* shape) {
+  shape->BuildFrom(
+      {dims.sizes[3], dims.sizes[2], dims.sizes[1], dims.sizes[0]});
+}
+
 template <typename T>
 int CountLeadingZeros(T integer_input) {
   static_assert(std::is_unsigned<T>::value,
@@ -1560,15 +1565,27 @@ inline void Mul(const ArithmeticParams& params,
 // that handles broadcasting as the base case. The code generator would then
 // generate max(D1, D2) nested for loops.
 template <typename T>
-void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
-                  const T* input2_data, const Dims<4>& input2_dims,
-                  T output_activation_min, T output_activation_max,
-                  T* output_data, const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastDiv");
+void BroadcastDiv4DSlow(const ArithmeticParams& params,
+                        const RuntimeShape& unextended_input1_shape,
+                        const T* input1_data,
+                        const RuntimeShape& unextended_input2_shape,
+                        const T* input2_data,
+                        const RuntimeShape& unextended_output_shape,
+                        T* output_data) {
+  T output_activation_min;
+  T output_activation_max;
+  GetActivationParams(params, &output_activation_min, &output_activation_max);
+
+  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
+  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
+                                      unextended_input2_shape, &desc1, &desc2);
 
   // In Tensorflow, the dimensions are canonically named (batch_number, row,
   // col, channel), with extents (batches, height, width, depth), with the
@@ -1581,14 +1598,14 @@ void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
   // We name our variables by their Tensorflow convention, but generate C code
   // nesting loops such that the innermost loop has the smallest stride for
   // the best cache behavior.
-  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
-    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
-      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
-        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] =
+  for (int b = 0; b < output_shape.Dims(0); ++b) {
+    for (int y = 0; y < output_shape.Dims(1); ++y) {
+      for (int x = 0; x < output_shape.Dims(2); ++x) {
+        for (int c = 0; c < output_shape.Dims(3); ++c) {
+          output_data[Offset(output_shape, b, y, x, c)] =
               ActivationFunctionWithMinMax(
-                  input1_data[SubscriptToIndex(desc1, c, x, y, b)] /
-                      input2_data[SubscriptToIndex(desc2, c, x, y, b)],
+                  input1_data[SubscriptToIndex(desc1, b, y, x, c)] /
+                      input2_data[SubscriptToIndex(desc2, b, y, x, c)],
                   output_activation_min, output_activation_max);
         }
       }
@@ -1596,17 +1613,52 @@ void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
   }
 }
 
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy Dims<4>.
 template <typename T>
-inline void Div(const T* input1_data, const Dims<4>& input1_dims,
-                const T* input2_data, const Dims<4>& input2_dims,
-                T output_activation_min, T output_activation_max,
-                T* output_data, const Dims<4>& output_dims) {
-  const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
+void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
+                  const T* input2_data, const Dims<4>& input2_dims,
+                  T output_activation_min, T output_activation_max,
+                  T* output_data, const Dims<4>& output_dims) {
+  tflite::ArithmeticParams op_params;
+  SetActivationParams(output_activation_min, output_activation_max, &op_params);
+
+  BroadcastDiv4DSlow(op_params, DimsToShape(input1_dims), input1_data,
+                     DimsToShape(input2_dims), input2_data,
+                     DimsToShape(output_dims), output_data);
+}
+
+template <typename T>
+inline void Div(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape, const T* input1_data,
+                const RuntimeShape& input2_shape, const T* input2_data,
+                const RuntimeShape& output_shape, T* output_data) {
+  T output_activation_min;
+  T output_activation_max;
+  GetActivationParams(params, &output_activation_min, &output_activation_max);
+
+  const int flat_size =
+      MatchingFlatSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] / input2_data[i], output_activation_min,
         output_activation_max);
   }
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy Dims<4>.
+template <typename T>
+inline void Div(const T* input1_data, const Dims<4>& input1_dims,
+                const T* input2_data, const Dims<4>& input2_dims,
+                T output_activation_min, T output_activation_max,
+                T* output_data, const Dims<4>& output_dims) {
+  tflite::ArithmeticParams op_params;
+  SetActivationParams(output_activation_min, output_activation_max, &op_params);
+
+  Div(op_params, DimsToShape(input1_dims), input1_data,
+      DimsToShape(input2_dims), input2_data, DimsToShape(output_dims),
+      output_data);
 }
 
 inline void SubNonBroadcast(const ArithmeticParams& params,
@@ -1904,37 +1956,71 @@ inline void SubWithActivation(const ArithmeticParams& params,
   }
 }
 
-template <FusedActivationFunctionType Ac, typename Scalar>
-void Concatenation(int concat_dim, const Scalar* const* input_data,
-                   const Dims<4>* const* input_dims, int inputs_count,
-                   Scalar* output_data, const Dims<4>& output_dims) {
-  int concat_size = 0;
+template <typename Scalar>
+inline void Concatenation(const ConcatenationParams& params,
+                          const RuntimeShape* const* input_shapes,
+                          const Scalar* const* input_data,
+                          const RuntimeShape& output_shape,
+                          Scalar* output_data) {
+  int axis = params.axis;
+  int inputs_count = params.inputs_count;
+  const int concat_dimensions = output_shape.DimensionsCount();
+  TFLITE_DCHECK_LT(axis, concat_dimensions);
+
+  int64_t concat_size = 0;
   for (int i = 0; i < inputs_count; i++) {
-    for (int j = 0; j < 4; j++) {
-      if (j != concat_dim) {
-        MatchingArraySize(*input_dims[i], j, output_dims, j);
+    TFLITE_DCHECK_EQ(input_shapes[i]->DimensionsCount(), concat_dimensions);
+    for (int j = 0; j < concat_dimensions; j++) {
+      if (j != axis) {
+        MatchingDim(*input_shapes[i], j, output_shape, j);
       }
     }
-    concat_size += ArraySize(*input_dims[i], concat_dim);
+    concat_size += input_shapes[i]->Dims(axis);
   }
-  TFLITE_DCHECK_EQ(concat_size, ArraySize(output_dims, concat_dim));
-  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
-  // For now we don't have a model with a Concatenation with fused activation.
-  TFLITE_DCHECK_EQ(Ac, FusedActivationFunctionType::kNone);
-  int outer_size = 1;
-  for (int i = concat_dim + 1; i < 4; i++) {
-    outer_size *= output_dims.sizes[i];
+  TFLITE_DCHECK_EQ(concat_size, output_shape.Dims(axis));
+  int64_t outer_size = 1;
+  for (int i = 0; i < axis; ++i) {
+    outer_size *= output_shape.Dims(i);
   }
+  // For all input arrays,
+  // FlatSize() = outer_size * Dims(axis) * base_inner_size;
+  int64_t base_inner_size = 1;
+  for (int i = axis + 1; i < concat_dimensions; ++i) {
+    base_inner_size *= output_shape.Dims(i);
+  }
+
   Scalar* output_ptr = output_data;
   for (int k = 0; k < outer_size; k++) {
     for (int i = 0; i < inputs_count; ++i) {
-      const int copy_size =
-          input_dims[i]->sizes[concat_dim] * input_dims[i]->strides[concat_dim];
+      const int copy_size = input_shapes[i]->Dims(axis) * base_inner_size;
       memcpy(output_ptr, input_data[i] + k * copy_size,
              copy_size * sizeof(Scalar));
       output_ptr += copy_size;
     }
   }
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy Dims<4>.
+template <FusedActivationFunctionType Ac, typename Scalar>
+inline void Concatenation(int concat_dim, const Scalar* const* input_data,
+                          const Dims<4>* const* input_dims, int inputs_count,
+                          Scalar* output_data, const Dims<4>& output_dims) {
+  // For now we don't have a model with a Concatenation with fused activation.
+  TFLITE_DCHECK_EQ(Ac, FusedActivationFunctionType::kNone);
+
+  std::vector<RuntimeShape> input_shapes(inputs_count);
+  std::vector<const RuntimeShape*> input_shapes_indirect(inputs_count);
+  for (int i = 0; i < inputs_count; ++i) {
+    ShapeFromDims(*input_dims[i], &input_shapes[i]);
+    input_shapes_indirect[i] = &input_shapes[i];
+  }
+  tflite::ConcatenationParams op_params;
+  op_params.axis = 3 - concat_dim;
+  op_params.inputs_count = inputs_count;
+
+  Concatenation(op_params, input_shapes_indirect.data(), input_data,
+                DimsToShape(output_dims), output_data);
 }
 
 template <typename Scalar>
@@ -1980,37 +2066,51 @@ void Unpack(int axis, const Scalar* input_data, const Dims<4>& input_dims,
 // TODO(prabhumk): The quantized implementation of concatentation isn't fully
 // quantized as it takes scale as a floating point value. This should be fixed
 // when optimizng this routine further.
-inline void Concatenation(int concat_dim, const uint8* const* input_data,
-                          const Dims<4>* const* input_dims,
-                          const int32* input_zeropoint,
-                          const float* input_scale, int inputs_count,
-                          uint8* output_data, const Dims<4>& output_dims,
-                          const int32 output_zeropoint,
-                          const float output_scale) {
+
+// template <>
+inline void ConcatenationWithScaling(const ConcatenationParams& params,
+                                     const RuntimeShape* const* input_shapes,
+                                     const uint8* const* input_data,
+                                     const RuntimeShape& output_shape,
+                                     uint8* output_data) {
+  int axis = params.axis;
+  const int32* input_zeropoint = params.input_zeropoint;
+  const float* input_scale = params.input_scale;
+  int inputs_count = params.inputs_count;
+  const int32 output_zeropoint = params.output_zeropoint;
+  const float output_scale = params.output_scale;
+
   // The arguments input_zeropoint and input_scale are expected to be an array
   // that have the quantization parameters for all the inputs to the concat
   // operator.
   TFLITE_DCHECK_GT(inputs_count, 1);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   int64_t concat_size = 0;
   for (int i = 0; i < inputs_count; i++) {
+    TFLITE_DCHECK_EQ(input_shapes[i]->DimensionsCount(), 4);
     for (int j = 0; j < 4; j++) {
-      if (j != concat_dim) {
-        MatchingArraySize(*input_dims[i], j, output_dims, j);
+      if (j != axis) {
+        MatchingDim(*input_shapes[i], j, output_shape, j);
       }
     }
-    concat_size += ArraySize(*input_dims[i], concat_dim);
+    concat_size += input_shapes[i]->Dims(axis);
   }
-  TFLITE_DCHECK_EQ(concat_size, ArraySize(output_dims, concat_dim));
+  TFLITE_DCHECK_EQ(concat_size, output_shape.Dims(axis));
   int64_t outer_size = 1;
-  for (int i = concat_dim + 1; i < 4; i++) {
-    outer_size *= output_dims.sizes[i];
+  for (int i = 0; i < axis; ++i) {
+    outer_size *= output_shape.Dims(i);
+  }
+  // For all input arrays,
+  // FlatSize() = outer_size * Dims(axis) * base_inner_size;
+  int64_t base_inner_size = 1;
+  for (int i = axis + 1; i < 4; ++i) {
+    base_inner_size *= output_shape.Dims(i);
   }
   const float inverse_output_scale = 1.f / output_scale;
   uint8* output_ptr = output_data;
   for (int k = 0; k < outer_size; k++) {
     for (int i = 0; i < inputs_count; ++i) {
-      const int copy_size =
-          input_dims[i]->sizes[concat_dim] * input_dims[i]->strides[concat_dim];
+      const int copy_size = input_shapes[i]->Dims(axis) * base_inner_size;
       const uint8* input_ptr = input_data[i] + k * copy_size;
       if (input_zeropoint[i] == output_zeropoint &&
           input_scale[i] == output_scale) {
@@ -2029,6 +2129,33 @@ inline void Concatenation(int concat_dim, const uint8* const* input_data,
       output_ptr += copy_size;
     }
   }
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy Dims<4>.
+inline void Concatenation(int concat_dim, const uint8* const* input_data,
+                          const Dims<4>* const* input_dims,
+                          const int32* input_zeropoint,
+                          const float* input_scale, int inputs_count,
+                          uint8* output_data, const Dims<4>& output_dims,
+                          const int32 output_zeropoint,
+                          const float output_scale) {
+  std::vector<RuntimeShape> input_shapes(inputs_count);
+  std::vector<const RuntimeShape*> input_shapes_indirect(inputs_count);
+  for (int i = 0; i < inputs_count; ++i) {
+    ShapeFromDims(*input_dims[i], &input_shapes[i]);
+    input_shapes_indirect[i] = &input_shapes[i];
+  }
+  tflite::ConcatenationParams op_params;
+  op_params.axis = 3 - concat_dim;
+  op_params.input_zeropoint = input_zeropoint;
+  op_params.input_scale = input_scale;
+  op_params.inputs_count = inputs_count;
+  op_params.output_zeropoint = output_zeropoint;
+  op_params.output_scale = output_scale;
+
+  ConcatenationWithScaling(op_params, input_shapes_indirect.data(), input_data,
+                           DimsToShape(output_dims), output_data);
 }
 
 template <typename Scalar>
