@@ -43,7 +43,7 @@ enum class MLValueKind {
 using StmtOperand = IROperandImpl<MLValue, Statement>;
 
 /// MLValue is the base class for SSA values in ML functions.
-class MLValue : public SSAValueImpl<StmtOperand, MLValueKind> {
+class MLValue : public SSAValueImpl<StmtOperand, Statement, MLValueKind> {
 public:
   /// Returns true if this MLValue can be used as a dimension id.
   bool isValidDim() const;

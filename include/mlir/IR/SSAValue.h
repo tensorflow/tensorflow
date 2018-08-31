@@ -98,27 +98,47 @@ inline raw_ostream &operator<<(raw_ostream &os, const SSAValue &value) {
 /// while providing more type-specific APIs when walking use lists etc.
 ///
 /// IROperandTy is the concrete instance of IROperand to use (including
-/// substituted template arguments) and KindTy is the enum 'kind' discriminator
-/// that subclasses want to use.
+/// substituted template arguments).
+/// IROwnerTy is the type of the owner of an IROperandTy type.
+/// KindTy is the enum 'kind' discriminator that subclasses want to use.
 ///
-template <typename IROperandTy, typename KindTy>
+template <typename IROperandTy, typename IROwnerTy, typename KindTy>
 class SSAValueImpl : public SSAValue {
 public:
   // Provide more specific implementations of the base class functionality.
   KindTy getKind() const { return (KindTy)SSAValue::getKind(); }
 
-  // TODO: using use_iterator = SSAValueUseIterator<IROperandTy>;
-  // TODO: using use_range = llvm::iterator_range<use_iterator>;
+  using use_iterator = SSAValueUseIterator<IROperandTy, IROwnerTy>;
+  using use_range = llvm::iterator_range<use_iterator>;
 
-  // TODO: inline use_iterator use_begin() const;
-  // TODO: inline use_iterator use_end() const;
+  inline use_iterator use_begin() const;
+  inline use_iterator use_end() const;
 
   /// Returns a range of all uses, which is useful for iterating over all uses.
-  // TODO: inline use_range getUses() const;
+  inline use_range getUses() const;
 
 protected:
   SSAValueImpl(KindTy kind, Type *type) : SSAValue((SSAValueKind)kind, type) {}
 };
+
+// Utility functions for iterating through SSAValue uses.
+template <typename IROperandTy, typename IROwnerTy, typename KindTy>
+inline auto SSAValueImpl<IROperandTy, IROwnerTy, KindTy>::use_begin() const
+    -> use_iterator {
+  return use_iterator((IROperandTy *)getFirstUse());
+}
+
+template <typename IROperandTy, typename IROwnerTy, typename KindTy>
+inline auto SSAValueImpl<IROperandTy, IROwnerTy, KindTy>::use_end() const
+    -> use_iterator {
+  return use_iterator(nullptr);
+}
+
+template <typename IROperandTy, typename IROwnerTy, typename KindTy>
+inline auto SSAValueImpl<IROperandTy, IROwnerTy, KindTy>::getUses() const
+    -> llvm::iterator_range<use_iterator> {
+  return {use_begin(), use_end()};
+}
 
 } // namespace mlir
 

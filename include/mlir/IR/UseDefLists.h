@@ -186,7 +186,7 @@ public:
   SSAValueUseIterator() = default;
   explicit SSAValueUseIterator(OperandType *current) : current(current) {}
   OperandType *operator->() const { return current; }
-  OperandType &operator*() const { return current; }
+  OperandType &operator*() const { return *current; }
 
   template <typename SFINAE_Owner = OwnerType>
   typename std::enable_if<!std::is_void<OwnerType>::value, SFINAE_Owner *>::type
