@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -218,6 +219,13 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   // Do not fuse to-vector reduction into other consumers. They should be
   // unfused or the root of a kInput fusion.
   if (IsReductionToVector(*producer)) {
+    return false;
+  }
+
+  // Do not fuse into reduce input fusions if the resulting kernel would suffer
+  // from poor data locality (due to unfriendly input layouts).
+  if (IsInputFusibleReduction(*consumer) &&
+      !LayoutsAreReduceInputFusionFriendly(*producer, *consumer)) {
     return false;
   }
 
