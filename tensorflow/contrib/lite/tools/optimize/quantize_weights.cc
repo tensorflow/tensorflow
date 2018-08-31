@@ -222,7 +222,8 @@ TfLiteStatus AsymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
   BufferT* buffer = model->buffers[tensor->buffer].get();
   float* float_data = reinterpret_cast<float*>(buffer->data.data());
   const uint64_t num_elements = NumElements(tensor);
-  LOG(INFO) << "Quantizing tensor with " << num_elements << " elements.";
+  LOG(INFO) << "Quantizing tensor " << tensor->name << " with " << num_elements
+            << " elements for float evaluation.";
 
   // Compute the quantization params.
   float min_value = *std::min_element(float_data, float_data + num_elements);
@@ -265,7 +266,8 @@ TfLiteStatus SymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
   BufferT* buffer = model->buffers[tensor->buffer].get();
   float* float_data = reinterpret_cast<float*>(buffer->data.data());
   const uint64_t num_elements = NumElements(tensor);
-  LOG(INFO) << "Quantizing tensor with " << num_elements << " elements.";
+  LOG(INFO) << "Quantizing tensor " << tensor->name << " with " << num_elements
+            << " elements for hybrid evaluation.";
 
   std::vector<int8_t> quantized_buffer;
   quantized_buffer.resize(num_elements);
