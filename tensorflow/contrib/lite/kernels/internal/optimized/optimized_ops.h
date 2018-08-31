@@ -3163,15 +3163,28 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
 // is no longer referenced in this file, move NdArrayDesc<T> from types.h to
 // reference_ops.h.
 template <typename T>
-void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
-                  const T* input2_data, const Dims<4>& input2_dims,
-                  T output_activation_min, T output_activation_max,
-                  T* output_data, const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastDiv");
+void BroadcastDiv4DSlow(const ArithmeticParams& params,
+                        const RuntimeShape& unextended_input1_shape,
+                        const T* input1_data,
+                        const RuntimeShape& unextended_input2_shape,
+                        const T* input2_data,
+                        const RuntimeShape& unextended_output_shape,
+                        T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("BroadcastDiv4DSlow");
+  T output_activation_min;
+  T output_activation_max;
+  GetActivationParams(params, &output_activation_min, &output_activation_max);
+
+  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
+  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
+                                      unextended_input2_shape, &desc1, &desc2);
 
   // In Tensorflow, the dimensions are canonically named (batch_number, row,
   // col, channel), with extents (batches, height, width, depth), with the
@@ -3184,19 +3197,34 @@ void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
   // We name our variables by their Tensorflow convention, but generate C code
   // nesting loops such that the innermost loop has the smallest stride for the
   // best cache behavior.
-  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
-    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
-      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
-        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] =
+  for (int b = 0; b < output_shape.Dims(0); ++b) {
+    for (int y = 0; y < output_shape.Dims(1); ++y) {
+      for (int x = 0; x < output_shape.Dims(2); ++x) {
+        for (int c = 0; c < output_shape.Dims(3); ++c) {
+          output_data[Offset(output_shape, b, y, x, c)] =
               ActivationFunctionWithMinMax(
-                  input1_data[SubscriptToIndex(desc1, c, x, y, b)] /
-                      input2_data[SubscriptToIndex(desc2, c, x, y, b)],
+                  input1_data[SubscriptToIndex(desc1, b, y, x, c)] /
+                      input2_data[SubscriptToIndex(desc2, b, y, x, c)],
                   output_activation_min, output_activation_max);
         }
       }
     }
   }
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy Dims<4>.
+template <typename T>
+void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
+                  const T* input2_data, const Dims<4>& input2_dims,
+                  T output_activation_min, T output_activation_max,
+                  T* output_data, const Dims<4>& output_dims) {
+  tflite::ArithmeticParams op_params;
+  SetActivationParams(output_activation_min, output_activation_max, &op_params);
+
+  BroadcastDiv4DSlow(op_params, DimsToShape(input1_dims), input1_data,
+                     DimsToShape(input2_dims), input2_data,
+                     DimsToShape(output_dims), output_data);
 }
 
 // TODO(aselle): This is not actually optimized yet.
