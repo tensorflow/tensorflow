@@ -142,7 +142,7 @@ class EstimatorSpec(
         prediction.
       predictions: Predictions `Tensor` or dict of `Tensor`.
       loss: Training loss `Tensor`. Must be either scalar, or with shape `[1]`.
-      train_op: Op to run one training step.
+      train_op: Op for the training step.
       eval_metric_ops: Dict of metric results keyed by name.
         The values of the dict can be one of the following:
         (1) instance of `Metric` class.
@@ -475,3 +475,44 @@ def _check_is_tensor(x, tensor_name):
   if not isinstance(x, ops.Tensor):
     raise TypeError('{} must be Tensor, given: {}'.format(tensor_name, x))
   return x
+
+
+def export_outputs_for_mode(
+    mode, serving_export_outputs=None, predictions=None, loss=None,
+    metrics=None):
+  """Util function for constructing a `ExportOutput` dict given a mode.
+
+  The returned dict can be directly passed to `build_all_signature_defs` helper
+  function as the `export_outputs` argument, used for generating a SignatureDef
+  map.
+
+  Args:
+    mode: A `ModeKeys` specifying the mode.
+    serving_export_outputs: Describes the output signatures to be exported to
+      `SavedModel` and used during serving. Should be a dict or None.
+    predictions: A dict of Tensors or single Tensor representing model
+        predictions. This argument is only used if serving_export_outputs is not
+        set.
+    loss: A dict of Tensors or single Tensor representing calculated loss.
+    metrics: A dict of (metric_value, update_op) tuples, or a single tuple.
+      metric_value must be a Tensor, and update_op must be a Tensor or Op
+
+  Returns:
+    Dictionary mapping the a key to an `tf.estimator.export.ExportOutput` object
+    The key is the expected SignatureDef key for the mode.
+
+  Raises:
+    ValueError: if an appropriate ExportOutput cannot be found for the mode.
+  """
+  # TODO(b/113185250): move all model export helper functions into an util file.
+  if mode == ModeKeys.PREDICT:
+    return _get_export_outputs(serving_export_outputs, predictions)
+  elif mode == ModeKeys.TRAIN:
+    return {mode: export_output_lib.TrainOutput(
+        loss=loss, predictions=predictions, metrics=metrics)}
+  elif mode == ModeKeys.EVAL:
+    return {mode: export_output_lib.EvalOutput(
+        loss=loss, predictions=predictions, metrics=metrics)}
+  else:
+    raise ValueError(
+        'Export output type not found for mode: {}'.format(mode))
