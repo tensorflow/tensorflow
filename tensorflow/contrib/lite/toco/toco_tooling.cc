@@ -281,12 +281,6 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   RunGraphTransformations(model, "general graph transformations",
                           transformations);
 
-  if (toco_flags.quantize_weights()) {
-    // Run the quantize weights transformation after batchnorms have been
-    // folded into the weights.
-    RunGraphTransformations(model, "quantize weights transformation",
-                            {new QuantizeWeights});
-  }
   if (quantize_output) {
     if (toco_flags.propagate_fake_quant_num_bits()) {
       RunGraphTransformations(model,
@@ -404,7 +398,8 @@ void Export(const TocoFlags& toco_flags, const Model& model,
       ExportTensorFlowGraphDef(model, output_file_contents);
       break;
     case TFLITE:
-      toco::tflite::Export(model, allow_custom_ops, output_file_contents);
+      toco::tflite::Export(model, allow_custom_ops,
+                           toco_flags.quantize_weights(), output_file_contents);
       break;
     case GRAPHVIZ_DOT:
       DumpGraphviz(model, output_file_contents);

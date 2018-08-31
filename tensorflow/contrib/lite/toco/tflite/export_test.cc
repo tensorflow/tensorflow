@@ -52,6 +52,42 @@ class ExportTest : public ::testing::Test {
     input_model_.operators.emplace_back(new SubOperator);
   }
 
+  void BuildQuantizableTestModel() {
+    input_model_.GetOrCreateArray("inputs");
+    Array& weight_array = input_model_.GetOrCreateArray("weights");
+
+    // Make the buffer large enough for QuantizeWeights transformation to take
+    // effect.
+    int buf_size = 1296;
+    auto weight_buf = absl::make_unique<float[]>(buf_size);
+    for (int i = 0; i < buf_size; i++) {
+      // Fill the array with some garbage values.
+      weight_buf[i] = static_cast<float>(i % 128);
+    }
+
+    weight_array.data_type = ArrayDataType::kFloat;
+
+    // Initialize shape for the input array.
+    Shape* weight_array_shape = weight_array.mutable_shape();
+    std::vector<int>* weight_array_shape_dim =
+        weight_array_shape->mutable_dims();
+    weight_array_shape_dim->resize(4, 6);
+    auto& weight_array_buffer =
+        weight_array.GetMutableBuffer<ArrayDataType::kFloat>();
+    weight_array_buffer.data.resize(buf_size);
+    float* buf_ptr =
+        weight_array.GetMutableBuffer<ArrayDataType::kFloat>().data.data();
+    std::copy(weight_buf.get(), weight_buf.get() + buf_size, buf_ptr);
+
+    {
+      auto* op = new ConvOperator;
+      op->padding.type = PaddingType::kSame;
+      op->inputs = {"inputs", "weights"};
+      input_model_.operators.emplace_back(op);
+    }
+    input_model_.operators.emplace_back(new AddOperator);
+  }
+
   Model input_model_;
 };
 
@@ -81,7 +117,7 @@ TEST_F(ExportTest, Export) {
   BuildTestModel();
 
   string result;
-  Export(input_model_, true, &result);
+  Export(input_model_, true, false, &result);
 
   auto* model = ::tflite::GetModel(result.data());
 
@@ -106,6 +142,20 @@ TEST_F(ExportTest, Export) {
   }
 
   EXPECT_THAT(indices, ElementsAre(1, 0, 3, 2));
+}
+
+TEST_F(ExportTest, QuantizeWeights) {
+  // Sanity check for quantize_weights parameter.
+  BuildQuantizableTestModel();
+  string unquantized_result;
+  Export(input_model_, true, /*quantize_weights*/ false, &unquantized_result);
+
+  BuildQuantizableTestModel();
+  string quantized_result;
+  Export(input_model_, true, /*quantize_weights*/ true, &quantized_result);
+
+  // The quantized models should be smaller.
+  EXPECT_LT(quantized_result.size(), unquantized_result.size());
 }
 
 // This test is based on a hypothetical scenario that dilation is supported
@@ -239,7 +289,7 @@ TEST_F(VersionedOpExportTest, Export) {
 
   string result;
   const auto ops_by_type = BuildFakeOperatorByTypeMap();
-  Export(input_model_, true, &result, ops_by_type);
+  Export(input_model_, true, false, &result, ops_by_type);
 
   auto* model = ::tflite::GetModel(result.data());
   auto operator_codes = model->operator_codes();

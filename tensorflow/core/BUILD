@@ -2231,7 +2231,7 @@ cc_library(
         "platform/macros.h",
         "platform/platform.h",
         "platform/types.h",
-    ],
+    ] + if_windows(["platform/windows/integral_types.h"]),
     copts = tf_copts(),
     linkopts = ["-ldl"],
     deps = [

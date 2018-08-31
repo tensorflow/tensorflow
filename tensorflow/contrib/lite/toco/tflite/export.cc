@@ -16,10 +16,12 @@ limitations under the License.
 
 #include "flatbuffers/flexbuffers.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/toco/tflite/operator.h"
 #include "tensorflow/contrib/lite/toco/tflite/types.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
+#include "tensorflow/contrib/lite/tools/optimize/quantize_weights.h"
 #include "tensorflow/contrib/lite/version.h"
 
 namespace toco {
@@ -59,6 +61,13 @@ details::OperatorKey GetOperatorKey(
     version = ops_by_type.at(op.type)->GetVersion(op);
   }
   return details::OperatorKey(op.type, custom_code, version);
+}
+
+void WriteModelToString(const flatbuffers::FlatBufferBuilder& builder,
+                        string* file_contents) {
+  const uint8_t* buffer = builder.GetBufferPointer();
+  int size = builder.GetSize();
+  *file_contents = string(reinterpret_cast<const char*>(buffer), size);
 }
 
 }  // Anonymous namespace.
@@ -311,14 +320,16 @@ Offset<Vector<Offset<Buffer>>> ExportBuffers(
   return builder->CreateVector(buffer_vector);
 }
 
-void Export(const Model& model, bool allow_custom_ops,
+void Export(const Model& model, bool allow_custom_ops, bool quantize_weights,
             string* output_file_contents) {
   const auto ops_by_type = BuildOperatorByTypeMap();
-  Export(model, allow_custom_ops, output_file_contents, ops_by_type);
+  Export(model, allow_custom_ops, quantize_weights, output_file_contents,
+         ops_by_type);
 }
 
 void Export(
-    const Model& model, bool allow_custom_ops, string* output_file_contents,
+    const Model& model, bool allow_custom_ops, bool quantize_weights,
+    string* output_file_contents,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
   flatbuffers::FlatBufferBuilder builder(/*initial_size=*/10240);
 
@@ -390,9 +401,24 @@ void Export(
       CreateModel(builder, TFLITE_SCHEMA_VERSION, op_codes,
                   builder.CreateVector(subgraphs), description, buffers);
   ::tflite::FinishModelBuffer(builder, new_model_location);
-  const uint8_t* buffer = builder.GetBufferPointer();
-  int size = builder.GetSize();
-  *output_file_contents = string(reinterpret_cast<const char*>(buffer), size);
+
+  if (quantize_weights) {
+    // Call the quantize_weights tool.
+    LOG(INFO) << "Quantizing TFLite model after conversion to flatbuffer. "
+                 "dump_graphviz will only output the model before this "
+                 "transformation. To visualize the output graph use "
+                 "lite/tools/optimize.py.";
+    flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);
+    const uint8_t* buffer = builder.GetBufferPointer();
+    const ::tflite::Model* input_model = ::tflite::GetModel(buffer);
+    if (::tflite::optimize::QuantizeWeights(&q_builder, input_model) !=
+        kTfLiteOk) {
+      LOG(QFATAL) << "Quantize weights transformation failed.";
+    }
+    WriteModelToString(q_builder, output_file_contents);
+  } else {
+    WriteModelToString(builder, output_file_contents);
+  }
 }
 
 }  // namespace tflite
