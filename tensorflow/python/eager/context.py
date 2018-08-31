@@ -56,14 +56,18 @@ SYNC = 0
 ASYNC = 1
 
 
-class _TensorCache(object):
+class _EagerTensorCache(object):
   """Simple cache which evicts items based on length in a FIFO manner."""
 
-  def __init__(self, max_items=256):
+  def __init__(self, max_items=256, max_tensor_size=10000):
     self._data = collections.OrderedDict()
-    self._max_items = max_items if max_items else 256
+    self._max_items = max_items
+    self._max_tensor_size = max_tensor_size
 
   def put(self, key, value):
+    if value._num_elements() > self._max_tensor_size:  # pylint: disable=protected-access
+      return
+
     self._data[key] = value
 
     if len(self._data) > self._max_items:
@@ -90,8 +94,8 @@ class _EagerContext(threading.local):
     self.recording_summaries = False
     self.summary_writer_resource = None
     self.scalar_cache = {}
-    self.ones_rank_cache = _TensorCache()
-    self.zeros_cache = _TensorCache()
+    self.ones_rank_cache = _EagerTensorCache()
+    self.zeros_cache = _EagerTensorCache()
     self.execution_mode = None
 
 
