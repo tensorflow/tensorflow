@@ -23,6 +23,10 @@ limitations under the License.
   Eigen::ThreadPool tp(threads);    \
   Eigen::ThreadPoolDevice device(&tp, threads)
 
+// -------------------------------------------------------------------------- //
+// Spatial Convolutions                                                       //
+// -------------------------------------------------------------------------- //
+
 void SpatialConvolution(int iters, int num_threads,
                         /* Input dimensions: */
                         int input_batches, int input_height, int input_width,
@@ -86,22 +90,23 @@ void SpatialConvolutionBackwardInput(int iters, int num_threads,
 //   FH: filter height
 //   FW: filter width
 
-#define BM_NAME(prefix, NT, N, H, W, C, FC, FH, FW) \
+#define BM_SPATIAL_NAME(prefix, NT, N, H, W, C, FC, FH, FW) \
   BM_##prefix##_CPU_##NT##T_in_##N##_##H##_##W##_##C##_f_##FC##_##FH##_##FW
 
-#define BM_SpatialConvolution(NT, N, H, W, C, FC, FH, FW, LABEL)  \
-  static void BM_NAME(SpatialConvolution, NT, N, H, W, C, FC, FH, \
-                      FW)(int iters) {                            \
-    SpatialConvolution(iters, NT, N, H, W, C, FC, FH, FW);        \
-  }                                                               \
-  BENCHMARK(BM_NAME(SpatialConvolution, NT, N, H, W, C, FC, FH, FW))
-
-#define BM_SpatialConvolutionBwdInput(NT, N, H, W, C, FC, FH, FW, LABEL)  \
-  static void BM_NAME(SpatialConvolutionBwdInput, NT, N, H, W, C, FC, FH, \
-                      FW)(int iters) {                                    \
-    SpatialConvolutionBackwardInput(iters, NT, N, H, W, C, FC, FH, FW);   \
+#define BM_SpatialConvolution(NT, N, H, W, C, FC, FH, FW, LABEL)          \
+  static void BM_SPATIAL_NAME(SpatialConvolution, NT, N, H, W, C, FC, FH, \
+                              FW)(int iters) {                            \
+    SpatialConvolution(iters, NT, N, H, W, C, FC, FH, FW);                \
   }                                                                       \
-  BENCHMARK(BM_NAME(SpatialConvolutionBwdInput, NT, N, H, W, C, FC, FH, FW))
+  BENCHMARK(BM_SPATIAL_NAME(SpatialConvolution, NT, N, H, W, C, FC, FH, FW))
+
+#define BM_SpatialConvolutionBwdInput(NT, N, H, W, C, FC, FH, FW, LABEL)      \
+  static void BM_SPATIAL_NAME(SpatialConvolutionBwdInput, NT, N, H, W, C, FC, \
+                              FH, FW)(int iters) {                            \
+    SpatialConvolutionBackwardInput(iters, NT, N, H, W, C, FC, FH, FW);       \
+  }                                                                           \
+  BENCHMARK(                                                                  \
+      BM_SPATIAL_NAME(SpatialConvolutionBwdInput, NT, N, H, W, C, FC, FH, FW))
 
 #define BM_SpatialConvolutions(N, H, W, C, FC, FH, FW, LABEL) \
   BM_SpatialConvolution(2, N, H, W, C, FC, FH, FW, LABEL);    \
@@ -119,7 +124,7 @@ void SpatialConvolutionBackwardInput(int iters, int num_threads,
 
 BM_SpatialConvolutions(32,          // batch size
                        56, 56, 64,  // input: height, width, depth
-                       192, 3, 3,   // filter: height, width, count
+                       192, 3, 3,   // filter: count, height, width
                        "conv2_00");
 
 BM_SpatialConvolutions(32, 28, 28, 96, 128, 3, 3, "conv3a_00_3x3");
@@ -168,3 +173,118 @@ BM_SpatialConvolutionsBwdInput(32, 7, 7, 160, 320, 3, 3, "conv5a_00_3x3");
 BM_SpatialConvolutionsBwdInput(32, 7, 7, 48, 128, 5, 5,
                                "conv5a_00_5x5 / conv5_00_5x5");
 BM_SpatialConvolutionsBwdInput(32, 7, 7, 192, 384, 3, 3, "conv5_00_3x3");
+
+// -------------------------------------------------------------------------- //
+// Cuboid Convolutions                                                        //
+// -------------------------------------------------------------------------- //
+
+void CuboidConvolution(int iters, int num_threads,
+                       /* Input dimensions: */
+                       int input_batches, int input_height, int input_width,
+                       int input_planes, int input_depth,
+                       /* Filter (kernel) dimensions: */
+                       int filter_count, int filter_height, int filter_width,
+                       int filter_planes) {
+  ::tensorflow::testing::StopTiming();
+
+  CREATE_THREAD_POOL(num_threads);
+
+  using Benchmark =
+      CuboidConvolutionBenchmarksSuite<float, Eigen::ThreadPoolDevice>;
+  auto benchmark = Benchmark(iters, device);
+
+  typename Benchmark::Dimensions input_dims(
+      input_batches, input_height, input_width, input_planes, input_depth);
+  typename Benchmark::Dimensions filter_dims(
+      filter_height, filter_width, filter_planes, input_depth, filter_count);
+
+  benchmark.CuboidConvolution(input_dims, filter_dims);
+
+  auto output_size = input_dims.TotalSize();
+  auto flops = output_size *
+               (input_depth * filter_height * filter_width * filter_planes);
+  ::tensorflow::testing::ItemsProcessed(flops * iters);
+}
+
+void CuboidConvolutionBackwardInput(int iters, int num_threads,
+                                    /* Input dimensions: */
+                                    int input_batches, int input_height,
+                                    int input_width, int input_planes,
+                                    int input_depth,
+                                    /* Filter (kernel) dimensions: */
+                                    int filter_count, int filter_height,
+                                    int filter_width, int filter_planes) {
+  ::tensorflow::testing::StopTiming();
+
+  CREATE_THREAD_POOL(num_threads);
+
+  using Benchmark =
+      CuboidConvolutionBenchmarksSuite<float, Eigen::ThreadPoolDevice>;
+  auto benchmark = Benchmark(iters, device);
+
+  typename Benchmark::Dimensions input_dims(
+      input_batches, input_height, input_width, input_planes, input_depth);
+  typename Benchmark::Dimensions filter_dims(
+      filter_height, filter_width, filter_planes, input_depth, filter_count);
+
+  benchmark.CuboidConvolutionBackwardInput(input_dims, filter_dims);
+
+  auto output_size = input_dims.TotalSize();
+  auto flops = output_size *
+               (input_depth * filter_height * filter_width * filter_planes);
+  ::tensorflow::testing::ItemsProcessed(flops * iters);
+}
+
+// Macro arguments names: --------------------------------------------------- //
+//   NT: num threads
+//    N: batch size
+//    H: height
+//    W: width
+//    P: panes
+//    C: channels
+//   FC: filter count
+//   FH: filter height
+//   FW: filter width
+//   FP: filter panes
+
+#define BM_CUBOID_NAME(p, NT, N, H, W, P, C, FC, FH, FW, FP) \
+  BM_##p##_CPU_##NT##T_in_##N##_##H##_##W##_##P##_##_##C##_f_##FC##_##FH##_##FW
+
+#define BM_CuboidConvolution(NT, N, H, W, P, C, FC, FH, FW, FP, LABEL)         \
+  static void BM_CUBOID_NAME(CuboidConvolution, NT, N, H, W, P, C, FC, FH, FW, \
+                             FP)(int iters) {                                  \
+    CuboidConvolution(iters, NT, N, H, W, P, C, FC, FH, FW, FP);               \
+  }                                                                            \
+  BENCHMARK(                                                                   \
+      BM_CUBOID_NAME(CuboidConvolution, NT, N, H, W, P, C, FC, FH, FW, FP))
+
+#define BM_CuboidConvolutionBwdInput(NT, N, H, W, P, C, FC, FH, FW, FP, LABEL) \
+  static void BM_CUBOID_NAME(CuboidConvolutionBwdInput, NT, N, H, W, P, C, FC, \
+                             FH, FW, FP)(int iters) {                          \
+    CuboidConvolutionBackwardInput(iters, NT, N, H, W, P, C, FC, FH, FW, FP);  \
+  }                                                                            \
+  BENCHMARK(BM_CUBOID_NAME(CuboidConvolutionBwdInput, NT, N, H, W, P, C, FC,   \
+                           FH, FW, FP))
+
+#define BM_CuboidConvolutions(N, H, W, P, C, FC, FH, FW, FP, LABEL) \
+  BM_CuboidConvolution(2, N, H, W, P, C, FC, FH, FW, FP, LABEL);    \
+  BM_CuboidConvolution(4, N, H, W, P, C, FC, FH, FW, FP, LABEL);    \
+  BM_CuboidConvolution(8, N, H, W, P, C, FC, FH, FW, FP, LABEL);    \
+  BM_CuboidConvolution(16, N, H, W, P, C, FC, FH, FW, FP, LABEL);
+
+#define BM_CuboidConvolutionsBwdInput(N, H, W, P, C, FC, FH, FW, FP, LABEL) \
+  BM_CuboidConvolutionBwdInput(2, N, H, W, P, C, FC, FH, FW, FP, LABEL);    \
+  BM_CuboidConvolutionBwdInput(4, N, H, W, P, C, FC, FH, FW, FP, LABEL);    \
+  BM_CuboidConvolutionBwdInput(8, N, H, W, P, C, FC, FH, FW, FP, LABEL);    \
+  BM_CuboidConvolutionBwdInput(16, N, H, W, P, C, FC, FH, FW, FP, LABEL);
+
+// Random Cuboid Convolutions ----------------------------------------------- //
+// TODO(ezhulenev): find representative dims for cuboid convolutions (find
+// models using Conv3D ops).
+
+BM_CuboidConvolutions(16,             // batch size
+                      25, 25, 25, 8,  // input: height, width, panes, depth
+                      32, 5, 5, 5,    // filter: count, height, width, panes
+                      "conv3d");
+
+BM_CuboidConvolutionsBwdInput(16, 25, 25, 25, 8, 32, 5, 5, 5, "conv3d");
