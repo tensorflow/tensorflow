@@ -26977,6 +26977,7 @@ op {
         s: "squared_loss"
         s: "hinge_loss"
         s: "smooth_hinge_loss"
+        s: "poisson_loss"
       }
     }
   }
