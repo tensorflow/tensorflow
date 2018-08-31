@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HLO_SCHEDULE_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HLO_SCHEDULE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_HLO_SCHEDULE_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_HLO_SCHEDULE_H_
 
 #include <memory>
 #include <vector>
@@ -34,11 +34,11 @@ namespace gpu {
 // schedule is used by BufferAssigner to determine buffer liveness (i.e. to
 // minimize allocations), and also by ThunkSchedule to determine the thunk
 // launch order.
-class HloSchedule {
+class GpuHloSchedule {
  public:
-  // Constructs an HloSchedule for the given module, based on the given stream
-  // assignment.
-  static StatusOr<std::unique_ptr<HloSchedule>> Build(
+  // Constructs an GpuHloSchedule for the given module, based on the given
+  // stream assignment.
+  static StatusOr<std::unique_ptr<GpuHloSchedule>> Build(
       const HloModule& module, const StreamAssignment& stream_assignment,
       int64 pointer_size);
 
@@ -56,7 +56,7 @@ class HloSchedule {
   }
 
  private:
-  HloSchedule();
+  GpuHloSchedule();
 
   std::vector<const HloInstruction*> thunk_launch_order_;
   std::unique_ptr<HloOrdering> hlo_ordering_;
@@ -65,4 +65,4 @@ class HloSchedule {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HLO_SCHEDULE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_HLO_SCHEDULE_H_

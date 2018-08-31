@@ -13,13 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/hlo_schedule.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 
 #include <algorithm>
 #include <unordered_set>
 
 #include "absl/memory/memory.h"
-#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -31,16 +30,16 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-class HloScheduleTest : public HloTestBase {
+class GpuHloScheduleTest : public HloTestBase {
  protected:
   using HloVec = std::vector<const HloInstruction*>;
 
   // Pre-canned shapes.
   Shape f32_2x2_ = ShapeUtil::MakeShape(F32, {2, 2});
 
-  static std::unique_ptr<HloSchedule> BuildHloSchedule(
+  static std::unique_ptr<GpuHloSchedule> BuildGpuHloSchedule(
       const HloModule& module, const StreamAssignment& streams) {
-    return HloSchedule::Build(module, streams, /*pointer_size=*/8)
+    return GpuHloSchedule::Build(module, streams, /*pointer_size=*/8)
         .ConsumeValueOrDie();
   }
 
@@ -66,7 +65,7 @@ class HloScheduleTest : public HloTestBase {
 
 // Test of a single stream, where data dependencies fully determine the
 // execution order.
-TEST_F(HloScheduleTest, SequentialMatMul) {
+TEST_F(GpuHloScheduleTest, SequentialMatMul) {
   HloComputation::Builder builder("entry_computation");
   HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, f32_2x2_, /*name=*/"x"));
@@ -86,7 +85,7 @@ TEST_F(HloScheduleTest, SequentialMatMul) {
   EXPECT_EQ(streams->StreamNumberForHlo(*dot1),
             streams->StreamNumberForHlo(*dot2));
 
-  auto schedule = BuildHloSchedule(*module, *streams);
+  auto schedule = BuildGpuHloSchedule(*module, *streams);
   // Remove parameters, which are unordered.
   EXPECT_EQ(RemoveHlo(schedule->ThunkLaunchOrder(), {x, y, z}),
             HloVec({dot1, dot2}));
@@ -124,7 +123,7 @@ TEST_F(HloScheduleTest, SequentialMatMul) {
 
 // Test of a single stream, where data dependencies do not fully determine the
 // execution order, but the stream assignment does.
-TEST_F(HloScheduleTest, SequentialAdd) {
+TEST_F(GpuHloScheduleTest, SequentialAdd) {
   HloComputation::Builder builder("entry_computation");
   HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, f32_2x2_, /*name=*/"x"));
@@ -148,7 +147,7 @@ TEST_F(HloScheduleTest, SequentialAdd) {
   EXPECT_EQ(streams->StreamNumberForHlo(*add1),
             streams->StreamNumberForHlo(*add3));
 
-  auto schedule = BuildHloSchedule(*module, *streams);
+  auto schedule = BuildGpuHloSchedule(*module, *streams);
   // Remove parameters, which are unordered.
   EXPECT_EQ(RemoveHlo(schedule->ThunkLaunchOrder(), {x, y, z}),
             HloVec({add1, add2, add3}));
@@ -196,7 +195,7 @@ TEST_F(HloScheduleTest, SequentialAdd) {
 }
 
 // Test of two streams.
-TEST_F(HloScheduleTest, ConcurrentMatMul) {
+TEST_F(GpuHloScheduleTest, ConcurrentMatMul) {
   HloComputation::Builder builder("entry_computation");
   HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, f32_2x2_, /*name=*/"x"));
@@ -216,7 +215,7 @@ TEST_F(HloScheduleTest, ConcurrentMatMul) {
   EXPECT_NE(streams->StreamNumberForHlo(*dot1),
             streams->StreamNumberForHlo(*dot2));
 
-  auto schedule = BuildHloSchedule(*module, *streams);
+  auto schedule = BuildGpuHloSchedule(*module, *streams);
   // Remove parameters, which are unordered.
   HloVec thunk_launch_order = RemoveHlo(schedule->ThunkLaunchOrder(), {x, y});
   EXPECT_TRUE(thunk_launch_order == HloVec({dot1, dot2, add}) ||
@@ -252,7 +251,7 @@ TEST_F(HloScheduleTest, ConcurrentMatMul) {
 }
 
 // Test of multiple streams.
-TEST_F(HloScheduleTest, LatticeMatMul) {
+TEST_F(GpuHloScheduleTest, LatticeMatMul) {
   //      d00      -- layer 0
   //     /   \
   //   d10   d11   -- layer 1
@@ -308,7 +307,7 @@ TEST_F(HloScheduleTest, LatticeMatMul) {
 
   // We don't check the thunk launch order, since there are many valid total
   // orders, and it's annoying to express.
-  auto schedule = BuildHloSchedule(*module, *streams);
+  auto schedule = BuildGpuHloSchedule(*module, *streams);
 
   auto order = schedule->ConsumeHloOrdering();
   const HloVec all_params(
