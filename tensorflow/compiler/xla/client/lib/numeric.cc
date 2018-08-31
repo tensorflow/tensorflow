@@ -16,10 +16,10 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/numeric.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 
