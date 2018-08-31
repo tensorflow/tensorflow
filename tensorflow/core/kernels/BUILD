@@ -2296,6 +2296,31 @@ tf_cc_tests(
     ],
 )
 
+cc_library(
+    name = "eigen_benchmark",
+    testonly = 1,
+    hdrs = [
+        "eigen_benchmark.h",
+        ":eigen_helpers",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "eigen_benchmark_cpu_test",
+    srcs = ["eigen_benchmark_cpu_test.cc"],
+    deps = [
+        ":eigen_benchmark",
+        ":eigen_helpers",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//third_party/eigen3",
+    ],
+)
+
 tf_cc_tests(
     name = "basic_ops_benchmark_test",
     size = "small",
