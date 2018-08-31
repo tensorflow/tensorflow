@@ -100,6 +100,11 @@ IrEmitter::IrEmitter(
   b_.setFastMathFlags(llvm_ir::GetFastMathFlags(
       /*fast_math_enabled=*/hlo_module_config_.debug_options()
           .xla_cpu_enable_fast_math()));
+  Status s = GatherComputationsByAllocationType(
+      &hlo_module, &thread_local_computations_, &global_computations_);
+  absl::c_sort(thread_local_computations_);
+  absl::c_sort(global_computations_);
+  TF_CHECK_OK(s) << "Should have failed buffer assignment.";
 }
 
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
@@ -2832,6 +2837,8 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
 llvm::Value* IrEmitter::EmitThreadLocalCall(
     const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
     absl::string_view name) {
+  CHECK(absl::c_binary_search(thread_local_computations_, &callee));
+
   const Shape& return_shape = callee.root_instruction()->shape();
 
   // Lifting this restriction to allow "small" arrays should be easy.  Allowing
@@ -2869,6 +2876,8 @@ llvm::Value* IrEmitter::EmitThreadLocalCall(
 
 void IrEmitter::EmitGlobalCall(const HloComputation& callee,
                                absl::string_view name) {
+  CHECK(absl::c_binary_search(global_computations_, &callee));
+
   Call(FindOrDie(emitted_functions_, &callee),
        GetArrayFunctionCallArguments(
            /*parameter_addresses=*/{}, &b_, name,

@@ -571,6 +571,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   tensorflow::gtl::FlatMap<BufferAllocation::Index, llvm::Constant*>
       constant_buffer_to_global_;
 
+  std::vector<const HloComputation*> thread_local_computations_;
+  std::vector<const HloComputation*> global_computations_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(IrEmitter);
 };
 
