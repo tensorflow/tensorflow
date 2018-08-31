@@ -23,14 +23,14 @@ Clone this Tensorflow repository, Run this script at the root of the repository 
 > The Tensorflow repository is in `/tensorflow` if you are using `tensorflow/tensorflow:nightly-devel` docker image, just try it.
 
 ```bash
-./tensorflow/contrib/lite/download_dependencies.sh
+./tensorflow/contrib/lite/tools/make/download_dependencies.sh
 ```
 Note that you only need to do this once.
 
 You should then be able to compile:
 
 ```bash
-./tensorflow/contrib/lite/build_rpi_lib.sh
+./tensorflow/contrib/lite/tools/make/build_rpi_lib.sh
 ```
 
 This should compile a static library in:
@@ -48,14 +48,14 @@ sudo apt-get install build-essential
 First, clone the TensorFlow repository. Run this at the root of the repository:
 
 ```bash
-./tensorflow/contrib/lite/download_dependencies.sh
+./tensorflow/contrib/lite/tools/make/download_dependencies.sh
 ```
 Note that you only need to do this once.
 
 You should then be able to compile:
 ```bash
-./tensorflow/contrib/lite/build_rpi_lib.sh
+./tensorflow/contrib/lite/tools/make/build_rpi_lib.sh
 ```
 
 This should compile a static library in:
-`tensorflow/contrib/lite/gen/lib/rpi_armv7/libtensorflow-lite.a`.
+`tensorflow/contrib/lite/tools/make/gen/lib/rpi_armv7/libtensorflow-lite.a`.
