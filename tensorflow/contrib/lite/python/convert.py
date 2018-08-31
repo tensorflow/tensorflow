@@ -149,9 +149,11 @@ def build_toco_convert_protos(input_tensors,
       as `input_tensors`, or None. (default None)
     output_format: Output file format. Currently must be `{TFLITE,
       GRAPHVIZ_DOT}`. (default TFLITE)
-    quantized_input_stats: List of tuples of integers representing the mean and
+    quantized_input_stats: List of tuples of floats representing the mean and
       standard deviation. Each tuple maps to the corresponding input tensor.
-      Only need if `inference_type` is `QUANTIZED_UINT8`. (default None)
+      Only need if `inference_input_type` is `QUANTIZED_UINT8`.
+      real_input_value = (quantized_input_value - mean_value) / std_dev_value.
+      (default None)
     default_ranges_stats: Tuple of integers representing (min, max) range values
       for all arrays without a specified range. Intended for experimenting with
       quantization via "dummy quantization". (default None)
@@ -197,6 +199,8 @@ def build_toco_convert_protos(input_tensors,
   toco.inference_type = inference_type
   if inference_input_type:
     toco.inference_input_type = inference_input_type
+  else:
+    toco.inference_input_type = toco.inference_type
   toco.drop_control_dependency = drop_control_dependency
   toco.reorder_across_fake_quant = reorder_across_fake_quant
   toco.allow_custom_ops = allow_custom_ops
@@ -212,7 +216,7 @@ def build_toco_convert_protos(input_tensors,
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):
     input_array = model.input_arrays.add()
-    if inference_type == lite_constants.QUANTIZED_UINT8:
+    if toco.inference_input_type == lite_constants.QUANTIZED_UINT8:
       input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
     input_array.name = tensor_name(input_tensor)
     if input_shapes is None:
