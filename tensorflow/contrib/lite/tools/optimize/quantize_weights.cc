@@ -217,6 +217,10 @@ TfLiteStatus AsymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
   // Compute the quantization params.
   float min_value = *std::min_element(float_data, float_data + num_elements);
   float max_value = *std::max_element(float_data, float_data + num_elements);
+
+  if (tensor->quantization == nullptr) {
+    tensor->quantization = absl::make_unique<QuantizationParametersT>();
+  }
   GetAsymmetricQuantizationParams(min_value, max_value, 0, 255,
                                   tensor->quantization.get());
 
@@ -260,6 +264,10 @@ TfLiteStatus SymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
   tensor_utils::SymmetricQuantizeFloats(float_data, num_elements,
                                         quantized_buffer.data(), &min_value,
                                         &max_value, &scaling_factor);
+
+  if (tensor->quantization == nullptr) {
+    tensor->quantization = absl::make_unique<QuantizationParametersT>();
+  }
   tensor->quantization->scale = std::vector<float>(1, scaling_factor);
   tensor->quantization->zero_point = std::vector<int64_t>(1, 0);
 
