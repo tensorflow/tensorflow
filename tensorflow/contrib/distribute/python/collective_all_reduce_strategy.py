@@ -22,17 +22,16 @@ from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_
 from tensorflow.contrib.distribute.python import cross_tower_utils
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import values
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
+from tensorflow.python.platform import tf_logging as logging
 
 
-# TODO(yuefengz): shard the dataset.
 # TODO(yuefengz): support in-graph replication.
-# TODO(yuefengz): it only works with a cluster without a chief node, maybe
-# support chief node?
 class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
   """Distribution strategy that uses collective ops for all-reduce.
 
@@ -54,39 +53,60 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
       num_gpus_per_worker: number of local GPUs or GPUs per worker.
     """
     self._num_gpus_per_worker = num_gpus_per_worker
-    self._initialize(None, None, None)
+    self._initialize_local_worker(num_gpus_per_worker)
 
-  def _initialize(self, cluster_spec, task_type, task_id):
-    if cluster_spec:
-      if task_type is None or task_id is None:
-        raise ValueError("When `cluster_spec` is given, you must also specify "
-                         "`task_type` and `task_id`")
-      if task_type not in ["chief", "worker"]:
-        raise ValueError(
-            "Unrecognized task_type: %r, valid task types are: \"chief\", "
-            "\"worker\"." % task_type)
-      self._cluster_spec = multi_worker_util.normalize_cluster_spec(
-          cluster_spec)
-      worker_device = "/job:%s/task:%d" % (task_type, task_id)
-      num_workers = len(self._cluster_spec.as_dict().get("worker", [])) + len(
-          self._cluster_spec.as_dict().get("chief", []))
-      if not num_workers:
-        raise ValueError("No `worker` or `chief` tasks can be found in "
-                         "`cluster_spec`.")
+  def _initialize_local_worker(self, num_gpus_per_worker):
+    """Initializes the object for local training."""
+    self._is_chief = True
+    self._num_workers = 1
 
-      self._is_chief = multi_worker_util.is_chief(cluster_spec, task_type,
-                                                  task_id)
+    if num_gpus_per_worker:
+      local_devices = [
+          "/device:GPU:%d" % i for i in range(num_gpus_per_worker)
+      ]
     else:
-      self._cluster_spec = None
-      self._is_chief = True
-      worker_device = ""
-      num_workers = 1
-    self._num_workers = num_workers
+      local_devices = ["/device:CPU:0"]
 
-    if self._num_gpus_per_worker:
+    self._collective_keys = cross_tower_utils.CollectiveKeys()
+    super(CollectiveAllReduceStrategy, self).__init__(
+        devices=local_devices,
+        cross_tower_ops=cross_tower_ops_lib.CollectiveAllReduce(
+            num_workers=1,
+            num_gpus_per_worker=num_gpus_per_worker,
+            collective_keys=self._collective_keys))
+
+    self._cluster_spec = None
+    self._task_type = None
+    self._task_id = None
+
+    logging.info("CollectiveAllReduceStrategy with local_devices = %r",
+                 local_devices)
+
+  def _initialize_multi_worker(self, num_gpus_per_worker, cluster_spec,
+                               task_type, task_id):
+    """Initializes the object for multi-worker training."""
+    if task_type is None or task_id is None:
+      raise ValueError("When `cluster_spec` is given, you must also specify "
+                       "`task_type` and `task_id`")
+    if task_type not in ["chief", "worker"]:
+      raise ValueError(
+          "Unrecognized task_type: %r, valid task types are: \"chief\", "
+          "\"worker\"." % task_type)
+    cluster_spec = multi_worker_util.normalize_cluster_spec(cluster_spec)
+    self._num_workers = len(cluster_spec.as_dict().get("worker", [])) + len(
+        cluster_spec.as_dict().get("chief", []))
+    if not self._num_workers:
+      raise ValueError("No `worker` or `chief` tasks can be found in "
+                       "`cluster_spec`.")
+
+    self._is_chief = multi_worker_util.is_chief(cluster_spec, task_type,
+                                                task_id)
+
+    worker_device = "/job:%s/task:%d" % (task_type, task_id)
+    if num_gpus_per_worker:
       local_devices = [
           "%s/device:GPU:%d" % (worker_device, i)
-          for i in range(self._num_gpus_per_worker)
+          for i in range(num_gpus_per_worker)
       ]
     else:
       local_devices = [worker_device]
@@ -95,14 +115,23 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
     super(CollectiveAllReduceStrategy, self).__init__(
         devices=local_devices,
         cross_tower_ops=cross_tower_ops_lib.CollectiveAllReduce(
-            num_workers=num_workers,
-            num_gpus_per_worker=self._num_gpus_per_worker,
+            num_workers=self._num_workers,
+            num_gpus_per_worker=num_gpus_per_worker,
             collective_keys=self._collective_keys))
 
     # Add a default device so that ops without specified devices will not end up
     # on other workers.
-    if cluster_spec:
-      self._default_device = "/job:%s/replica:0/task:%d" % (task_type, task_id)
+    self._default_device = "/job:%s/task:%d" % (task_type, task_id)
+
+    self._cluster_spec = multi_worker_util.normalize_cluster_spec(cluster_spec)
+    self._task_type = task_type
+    self._task_id = task_id
+
+    logging.info(
+        "Multi-worker CollectiveAllReduceStrategy with "
+        "cluster_spec = %r, task_type = %r, task_id = %r, "
+        "num_workers = %r, local_devices = %r", cluster_spec.as_dict(),
+        task_type, task_id, self._num_workers, local_devices)
 
   def _create_variable(self, next_creator, *args, **kwargs):
     colocate_with = kwargs.pop("colocate_with", None)
@@ -166,6 +195,12 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
     return mirrored_strategy._create_mirrored_variable(
         devices, _real_mirrored_creator, *args, **kwargs)
 
+  def distribute_dataset(self, dataset_fn):
+    """Distributes the dataset to each local GPU."""
+    # TODO(yuefengz): shard the dataset.
+    return values.PerDeviceDataset(
+        self._call_dataset_fn(dataset_fn), self._devices, True)
+
   def configure(self,
                 session_config=None,
                 cluster_spec=None,
@@ -183,11 +218,43 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
     Raises:
       ValueError: if `task_type` is not in the `cluster_spec`.
     """
-    # TODO(yuefengz): we'll need to mutate the session_config to add
-    # configurations for collective ops.
-    del session_config
     if not self._cluster_spec and cluster_spec:
-      self._initialize(cluster_spec, task_type, task_id)
+      # If a `cluster_spec` is already passed in, do nothing here.
+      # TODO(yuefengz): check `cluster_spec` is the same if this object has
+      # already been initialized with a `cluster_spec`.
+      self._initialize_multi_worker(self._num_gpus_per_worker, cluster_spec,
+                                    task_type, task_id)
+
+    if not session_config or not self._cluster_spec:
+      return
+
+    assert self._task_type
+    assert self._task_id is not None
+
+    # Collective group leader is needed for collective ops to coordinate
+    # workers.
+    if "chief" in self._cluster_spec.jobs:
+      session_config.experimental.collective_group_leader = (
+          "/job:chief/replica:0/task:0")
+    else:
+      if "worker" not in self._cluster_spec.jobs:
+        raise ValueError(
+            "You must have `chief` or `worker` jobs in the `cluster_spec`.")
+      session_config.experimental.collective_group_leader = (
+          "/job:worker/replica:0/task:0")
+
+    # The device filters prevent communication between workers.
+    del session_config.device_filters[:]
+    session_config.device_filters.append(
+        "/job:%s/task:%d" % (self._task_type, self._task_id))
+
+    # The scoped_allocator_optimization is to optimize graphs for collective
+    # ops.
+    rewrite_options = session_config.graph_options.rewrite_options
+    rewrite_options.scoped_allocator_optimization = (
+        rewriter_config_pb2.RewriterConfig.ON)
+    del rewrite_options.scoped_allocator_opts.enable_op[:]
+    rewrite_options.scoped_allocator_opts.enable_op.append("CollectiveReduce")
 
   @property
   def between_graph(self):
