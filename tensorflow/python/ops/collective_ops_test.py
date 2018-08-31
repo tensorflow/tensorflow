@@ -29,7 +29,7 @@ from tensorflow.python.platform import test
 
 class CollectiveOpTest(test.TestCase):
 
-  def _testCollectiveReduce(self, t0, t1, expected, set_graph_key):
+  def _testCollectiveReduce(self, t0, t1, expected):
     group_key = 1
     instance_key = 1
     with self.test_session(
@@ -43,8 +43,7 @@ class CollectiveOpTest(test.TestCase):
         colred1 = collective_ops.all_reduce(in1, 2, group_key, instance_key,
                                             'Add', 'Div')
       run_options = config_pb2.RunOptions()
-      if set_graph_key:
-        run_options.experimental.collective_graph_key = 1
+      run_options.experimental.collective_graph_key = 1
       results = sess.run([colred0, colred1], options=run_options)
     self.assertAllClose(results[0], expected, rtol=1e-5, atol=1e-5)
     self.assertAllClose(results[1], expected, rtol=1e-5, atol=1e-5)
@@ -52,15 +51,10 @@ class CollectiveOpTest(test.TestCase):
   def testCollectiveReduce(self):
     self._testCollectiveReduce([0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
                                [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3],
-                               [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2], True)
-
-  def testCollectiveAutoGraphKey(self):
-    self._testCollectiveReduce([0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
-                               [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3],
-                               [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2], False)
+                               [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2])
 
   def testCollectiveReduceScalar(self):
-    self._testCollectiveReduce(0.1, 0.3, 0.2, True)
+    self._testCollectiveReduce(0.1, 0.3, 0.2)
 
   def _testCollectiveBroadcast(self, t0):
     group_key = 1
