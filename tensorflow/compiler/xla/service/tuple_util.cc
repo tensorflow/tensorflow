@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/tuple_util.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 

@@ -2042,7 +2042,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     //    index_vector_index_ and index_vector on every invocation, we reuse the
     //    same storage for all invocations.
     //
-    // This returns an arrayslice into memory owned by the class.
+    // This returns a Span into memory owned by the class.
     StatusOr<absl::Span<const int64>> operator()(
         absl::Span<const int64> update_index) {
       PropagateUpdateIndexScatterDimsToIndexVectorIndex(update_index);
@@ -2165,7 +2165,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     // scatter input index on every invocation we reuse the same storage for the
     // result (input_index_), mutating it in place.
     //
-    // This returns an arrayslice into memory owned by the class.
+    // This returns a Span into memory owned by the class.
     StatusOr<absl::Span<const int64>> operator()(
         absl::Span<const int64> update_index) {
       PropagateUpdateIndexWindowDimsToInputIndex(update_index);

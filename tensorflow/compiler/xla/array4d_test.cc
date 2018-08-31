@@ -18,8 +18,8 @@ limitations under the License.
 #include <initializer_list>
 #include <numeric>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 namespace {
