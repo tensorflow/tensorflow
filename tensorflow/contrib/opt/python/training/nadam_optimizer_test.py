@@ -98,8 +98,10 @@ class NadamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(0.999**t, beta2_power.eval())
           update.run()
 
-          var0_np, m0, v0 = nadam_update_numpy(var0_np, grads0_np, t, m0, v0, epsilon=sparse_epsilon)
-          var1_np, m1, v1 = nadam_update_numpy(var1_np, grads1_np, t, m1, v1, epsilon=sparse_epsilon)
+          var0_np, m0, v0 = nadam_update_numpy(var0_np, grads0_np, t, m0, v0
+                                               epsilon=sparse_epsilon)
+          var1_np, m1, v1 = nadam_update_numpy(var1_np, grads1_np, t, m1, v1, 
+                                               epsilon=sparse_epsilon)
 
           # Validate updated params
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
