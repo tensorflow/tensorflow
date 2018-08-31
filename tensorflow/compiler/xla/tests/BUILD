@@ -2135,6 +2135,8 @@ xla_test(
     shard_count = 30,
     tags = [
         "enable_for_xla_interpreter",
+        # Require optimized builds, iota_test_cpu is very slow in fastbuild.
+        "optonly",
     ],
     deps = [
         ":client_library_test_base",
