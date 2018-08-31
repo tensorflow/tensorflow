@@ -167,6 +167,7 @@ py_library(
     name = "keras_support",
     srcs = [
         "python/tpu/keras_support.py",
+        "python/tpu/keras_tpu_variables.py",
     ],
     srcs_version = "PY2AND3",
     visibility = [

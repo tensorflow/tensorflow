@@ -58,6 +58,7 @@ from tensorflow.contrib.cluster_resolver.python.training import tpu_cluster_reso
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.tpu.proto import compilation_result_pb2 as tpu_compilation_result
 from tensorflow.contrib.tpu.python.ops import tpu_ops
+from tensorflow.contrib.tpu.python.tpu import keras_tpu_variables
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.contrib.tpu.python.tpu import tpu_optimizer
@@ -96,9 +97,9 @@ def tpu_session(cluster_resolver):
     if cluster_spec:
       config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
 
+    logging.info('Connecting to: %s', master)
     graph = ops.Graph()
     session = tf_session.Session(graph=graph, target=master, config=config)
-
     with graph.as_default():
       session.run(tpu.initialize_system())
 
@@ -147,11 +148,17 @@ class TPUDistributionStrategy(object):
     if tpu_cluster_resolver is None:
       tpu_cluster_resolver = tpu_cluster_resolver_lib.TPUClusterResolver('')
 
-    num_cores = (1 if using_single_core else
-                 get_tpu_system_metadata(tpu_cluster_resolver).num_cores)
-
+    metadata = get_tpu_system_metadata(tpu_cluster_resolver)
+    self._tpu_metadata = metadata
     self._tpu_cluster_resolver = tpu_cluster_resolver
-    self._num_cores = num_cores
+    self._num_cores = 1 if using_single_core else metadata.num_cores
+
+    # Walk device list to identify TPU worker for enqueue/dequeue operations.
+    worker_re = re.compile('/job:([^/]+)')
+    for device in metadata.devices:
+      if 'TPU:0' in device.name:
+        self.worker_name = worker_re.search(device.name).group(1)
+        break
 
   @property
   def num_towers(self):
@@ -514,7 +521,7 @@ class TPUNumpyInfeedManager(TPUInfeedManager):
     shard_infeed_tensors = []
 
     for shard_id in range(self._strategy.num_towers):
-      with ops.device('/device:CPU:0'):
+      with ops.device('/job:%s/device:CPU:0' % self._strategy.worker_name):
         infeed_tensors = []
         with ops.device('/device:TPU:%d' % shard_id):
           for spec in input_specs:
@@ -659,7 +666,7 @@ class TPUDatasetInfeedManager(TPUInfeedManager):
     assert len(shard_infeed_tensors) == self._strategy.num_towers
     infeed_ops = []
     for shard_id in range(self._strategy.num_towers):
-      with ops.device('/device:CPU:0'):
+      with ops.device('/job:%s/device:CPU:0' % self._strategy.worker_name):
         infeed_ops.append(
             tpu_ops.infeed_enqueue_tuple(
                 shard_infeed_tensors[shard_id],
@@ -737,8 +744,7 @@ class TPUFunction(object):
       # Clone our CPU model, running within the TPU device context.
       with TPURewriteContext(tpu_input_map):
         with variable_scope.variable_scope('tpu_model_%s' % id(self.model)):
-          # TODO(power): Replicate variables.
-          with ops.device('/device:TPU:0'):
+          with keras_tpu_variables.replicated_scope(self._strategy.num_towers):
             self._cloned_model = models.clone_model(self.model)
 
       # Create a copy of the optimizer for this graph.
@@ -817,7 +823,7 @@ class TPUFunction(object):
     # Build output ops.
     outfeed_op = []
     for shard_id in range(self._strategy.num_towers):
-      with ops.device('/device:CPU:0'):
+      with ops.device('/job:%s/device:CPU:0' % self._strategy.worker_name):
         outfeed_op.extend(
             tpu_ops.outfeed_dequeue_tuple(
                 dtypes=[spec.dtype for spec in self._outfeed_spec],
@@ -835,7 +841,7 @@ class TPUFunction(object):
   def _test_model_compiles(self, tpu_model_ops):
     """Verifies that the given TPUModelOp can be compiled via XLA."""
     logging.info('Started compiling')
-    start_time = time.clock()
+    start_time = time.time()
 
     result = K.get_session().run(tpu_model_ops.compile_op)
     proto = tpu_compilation_result.CompilationResultProto()
@@ -844,7 +850,7 @@ class TPUFunction(object):
       raise RuntimeError('Compilation failed: {}'.format(
           proto.status_error_message))
 
-    end_time = time.clock()
+    end_time = time.time()
     logging.info('Finished compiling. Time elapsed: %s secs',
                  end_time - start_time)
 
@@ -940,7 +946,6 @@ class KerasTPUModel(models.Model):
     self._tpu_weights_initialized = False
 
     self._session = tpu_session(cluster_resolver)
-    self._graph = self._session.graph
 
     # If the input CPU model has already been compiled, compile our TPU model
     # immediately.
@@ -1015,7 +1020,8 @@ class KerasTPUModel(models.Model):
           'https://github.com/tensorflow/tpu/tree/master/models/experimental'
           '/keras')
     if callable(x):
-      with self.tpu_session() as sess:
+      with self.tpu_session() as sess,\
+          ops.device('/job:%s/device:CPU:0' % self._strategy.worker_name):
         dataset = x()
         if steps_per_epoch is None:
           raise ValueError('When using tf.data as input to a model, you '
@@ -1189,7 +1195,7 @@ class KerasTPUModel(models.Model):
   @contextlib.contextmanager
   def tpu_session(self):
     """Yields a TPU session and sets it as the default Keras session."""
-    with self._graph.as_default():
+    with self._session.graph.as_default():
       default_session = K.get_session()
       # N.B. We have to call `K.set_session()` AND set our session as the
       # TF default. `K.get_session()` surprisingly does not return the value
