@@ -25,8 +25,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-typedef TTypes<const float, 2>::ConstTensor DenseTensorType;
-
 // Keep a tree ensemble in memory for efficient evaluation and mutation.
 class TensorForestTreeResource : public ResourceBase {
  public:
@@ -52,10 +50,10 @@ class TensorForestTreeResource : public ResourceBase {
 
   const float get_prediction(const int32 id, const int32 dimension) const;
 
-  const int32 TraverseTree(const TTypes<float>::ConstMatrix& ConstMatrix,
+  const int32 TraverseTree(const TTypes<float>::ConstMatrix* dense_data,
                            const int32 example_id) const;
 
- private:
+ protected:
   mutex mu_;
   protobuf::Arena arena_;
   std::unique_ptr<boosted_trees::Tree> decision_tree_;

@@ -25,7 +25,7 @@ const float TensorForestTreeResource::get_prediction(
 };
 
 const int32 TensorForestTreeResource::TraverseTree(
-    const TTypes<float>::ConstMatrix& dense_data,
+    const TTypes<float>::ConstMatrix* dense_data,
     const int32 example_id) const {
   using boosted_trees::Node;
   using boosted_trees::Tree;
@@ -38,7 +38,7 @@ const int32 TensorForestTreeResource::TraverseTree(
     DCHECK_EQ(current.node_case(), Node::kDenseSplit);
     const auto& split = current.dense_split();
 
-    if (dense_data(example_id, split.feature_id()) <= split.threshold()) {
+    if ((*dense_data)(example_id, split.feature_id()) <= split.threshold()) {
       current_id = split.left_id();
     } else {
       current_id = split.right_id();

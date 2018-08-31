@@ -55,12 +55,12 @@ class TensorForestTreePredictOp : public OpKernel {
     const int32 num_threads = worker_threads->num_threads;
     const int64 cost_per_traverse = 500;
     auto traverse = [this, &out, &data_set, decision_tree_resource, batch_size](
-        int64 start, int64 end) {
+                        int64 start, int64 end) {
       CHECK(start <= end);
       CHECK(end <= batch_size);
       for (int example_id = start; example_id < end; ++example_id) {
         const int32 leaf_id =
-            decision_tree_resource->TraverseTree(data_set, example_id);
+            decision_tree_resource->TraverseTree(&data_set, example_id);
         set_output_value(example_id, leaf_id, decision_tree_resource, &out);
       };
     };
