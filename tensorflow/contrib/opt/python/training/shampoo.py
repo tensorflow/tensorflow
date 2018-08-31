@@ -77,7 +77,7 @@ class ShampooOptimizer(optimizer.Optimizer):
                learning_rate=1.0,
                svd_interval=1,
                precond_update_interval=1,
-               epsilon=0.1,
+               epsilon=1e-4,
                alpha=0.5,
                use_iterative_root=False,
                use_locking=False,
@@ -257,13 +257,17 @@ class ShampooOptimizer(optimizer.Optimizer):
   def _compute_power_iter(self, var, mat_g, mat_g_size, alpha, mat_h_slot_name,
                           iter_count=100, epsilon=1e-6):
     """Computes mat_g^alpha, where alpha = -1/p, p a positive integer."""
+
+    mat_g_sqrt = matrix_functions.matrix_square_root(mat_g, mat_g_size,
+                                                     iter_count, self._epsilon)
     mat_h = matrix_functions.matrix_inverse_pth_root(
-        mat_g,
+        mat_g_sqrt,
         mat_g_size,
-        alpha,
+        2 * alpha,
         iter_count,
         epsilon,
-        ridge_epsilon=self._epsilon)
+        ridge_epsilon=0.0)
+
     if mat_h_slot_name is not None:
       return state_ops.assign(self.get_slot(var, mat_h_slot_name), mat_h)
     return mat_h
@@ -356,6 +360,8 @@ class ShampooOptimizer(optimizer.Optimizer):
                 mat_gbar_weight_t * precond_update_interval, i),
             lambda: mat_g)
 
+        mat_g_updated = mat_g_updated / float(shape[i].value)
+
         if self._svd_interval == 1:
           mat_h = self._compute_power(var, mat_g_updated, shape[i], neg_alpha)
         else:
@@ -377,7 +383,13 @@ class ShampooOptimizer(optimizer.Optimizer):
                                                  name="precond_" + str(i))
       else:
         # Tensor size is too large -- perform diagonal Shampoo update
-        grad_outer = math_ops.reduce_sum(grad * grad, axis=axes)
+        # Only normalize non-vector cases.
+        if axes:
+          normalizer = 1.0 if indices is not None else float(shape[i].value)
+          grad_outer = math_ops.reduce_sum(grad * grad, axis=axes) / normalizer
+        else:
+          grad_outer = grad * grad
+
         if i == 0 and indices is not None:
           assert self._mat_gbar_decay == 1.0
           mat_g_updated = state_ops.scatter_add(mat_g, indices,
