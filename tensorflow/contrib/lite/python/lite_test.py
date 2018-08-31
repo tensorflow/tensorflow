@@ -414,6 +414,7 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
     # Write graph to file.
     graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
     write_graph(sess.graph_def, '', graph_def_file, False)
+    sess.close()
 
     # Convert model and ensure model is not None.
     converter = lite.TocoConverter.from_frozen_graph(graph_def_file,
@@ -448,6 +449,7 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
     # Write graph to file.
     graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
     write_graph(sess.graph_def, '', graph_def_file, False)
+    sess.close()
 
     # Convert model and ensure model is not None.
     converter = lite.TocoConverter.from_frozen_graph(
@@ -475,6 +477,7 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
     # Write graph to file.
     graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
     write_graph(sess.graph_def, '', graph_def_file, False)
+    sess.close()
 
     # Ensure the graph with variables cannot be converted.
     with self.assertRaises(ValueError) as error:
@@ -492,6 +495,7 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
     # Write graph to file.
     graph_def_file = os.path.join(self.get_temp_dir(), 'model.pbtxt')
     write_graph(sess.graph_def, '', graph_def_file, True)
+    sess.close()
 
     # Convert model and ensure model is not None.
     converter = lite.TocoConverter.from_frozen_graph(graph_def_file,
@@ -742,26 +746,27 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     keras.backend.clear_session()
 
   def _getSequentialModel(self):
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(2, input_shape=(3,)))
-    model.add(keras.layers.RepeatVector(3))
-    model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
-    model.compile(
-        loss=keras.losses.MSE,
-        optimizer=keras.optimizers.RMSprop(),
-        metrics=[keras.metrics.categorical_accuracy],
-        sample_weight_mode='temporal')
-    x = np.random.random((1, 3))
-    y = np.random.random((1, 3, 3))
-    model.train_on_batch(x, y)
-    model.predict(x)
+    with session.Session().as_default():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_shape=(3,)))
+      model.add(keras.layers.RepeatVector(3))
+      model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
+      model.compile(
+          loss=keras.losses.MSE,
+          optimizer=keras.optimizers.RMSprop(),
+          metrics=[keras.metrics.categorical_accuracy],
+          sample_weight_mode='temporal')
+      x = np.random.random((1, 3))
+      y = np.random.random((1, 3, 3))
+      model.train_on_batch(x, y)
+      model.predict(x)
 
-    try:
-      fd, keras_file = tempfile.mkstemp('.h5')
-      keras.models.save_model(model, keras_file)
-    finally:
-      os.close(fd)
-    return keras_file
+      try:
+        fd, keras_file = tempfile.mkstemp('.h5')
+        keras.models.save_model(model, keras_file)
+      finally:
+        os.close(fd)
+      return keras_file
 
   def testSequentialModel(self):
     """Test a Sequential tf.keras model with default inputs."""
@@ -866,25 +871,26 @@ class FromKerasFile(test_util.TensorFlowTestCase):
 
   def testFunctionalModel(self):
     """Test a Functional tf.keras model with default inputs."""
-    inputs = keras.layers.Input(shape=(3,), name='input')
-    x = keras.layers.Dense(2)(inputs)
-    output = keras.layers.Dense(3)(x)
+    with session.Session().as_default():
+      inputs = keras.layers.Input(shape=(3,), name='input')
+      x = keras.layers.Dense(2)(inputs)
+      output = keras.layers.Dense(3)(x)
 
-    model = keras.models.Model(inputs, output)
-    model.compile(
-        loss=keras.losses.MSE,
-        optimizer=keras.optimizers.RMSprop(),
-        metrics=[keras.metrics.categorical_accuracy])
-    x = np.random.random((1, 3))
-    y = np.random.random((1, 3))
-    model.train_on_batch(x, y)
+      model = keras.models.Model(inputs, output)
+      model.compile(
+          loss=keras.losses.MSE,
+          optimizer=keras.optimizers.RMSprop(),
+          metrics=[keras.metrics.categorical_accuracy])
+      x = np.random.random((1, 3))
+      y = np.random.random((1, 3))
+      model.train_on_batch(x, y)
 
-    model.predict(x)
-    fd, keras_file = tempfile.mkstemp('.h5')
-    try:
-      keras.models.save_model(model, keras_file)
-    finally:
-      os.close(fd)
+      model.predict(x)
+      fd, keras_file = tempfile.mkstemp('.h5')
+      try:
+        keras.models.save_model(model, keras_file)
+      finally:
+        os.close(fd)
 
     # Convert to TFLite model.
     converter = lite.TocoConverter.from_keras_model_file(keras_file)
@@ -923,36 +929,39 @@ class FromKerasFile(test_util.TensorFlowTestCase):
 
   def testFunctionalModelMultipleInputs(self):
     """Test a Functional tf.keras model with multiple inputs and outputs."""
-    a = keras.layers.Input(shape=(3,), name='input_a')
-    b = keras.layers.Input(shape=(3,), name='input_b')
-    dense = keras.layers.Dense(4, name='dense')
-    c = dense(a)
-    d = dense(b)
-    e = keras.layers.Dropout(0.5, name='dropout')(c)
+    with session.Session().as_default():
+      a = keras.layers.Input(shape=(3,), name='input_a')
+      b = keras.layers.Input(shape=(3,), name='input_b')
+      dense = keras.layers.Dense(4, name='dense')
+      c = dense(a)
+      d = dense(b)
+      e = keras.layers.Dropout(0.5, name='dropout')(c)
 
-    model = keras.models.Model([a, b], [d, e])
-    model.compile(
-        loss=keras.losses.MSE,
-        optimizer=keras.optimizers.RMSprop(),
-        metrics=[keras.metrics.mae],
-        loss_weights=[1., 0.5])
+      model = keras.models.Model([a, b], [d, e])
+      model.compile(
+          loss=keras.losses.MSE,
+          optimizer=keras.optimizers.RMSprop(),
+          metrics=[keras.metrics.mae],
+          loss_weights=[1., 0.5])
 
-    input_a_np = np.random.random((10, 3))
-    input_b_np = np.random.random((10, 3))
-    output_d_np = np.random.random((10, 4))
-    output_e_np = np.random.random((10, 4))
-    model.train_on_batch([input_a_np, input_b_np], [output_d_np, output_e_np])
+      input_a_np = np.random.random((10, 3))
+      input_b_np = np.random.random((10, 3))
+      output_d_np = np.random.random((10, 4))
+      output_e_np = np.random.random((10, 4))
+      model.train_on_batch([input_a_np, input_b_np], [output_d_np, output_e_np])
 
-    model.predict([input_a_np, input_b_np], batch_size=5)
-    fd, keras_file = tempfile.mkstemp('.h5')
-    keras.models.save_model(model, keras_file)
+      model.predict([input_a_np, input_b_np], batch_size=5)
+      fd, keras_file = tempfile.mkstemp('.h5')
+      try:
+        keras.models.save_model(model, keras_file)
+      finally:
+        os.close(fd)
 
     # Convert to TFLite model.
     converter = lite.TocoConverter.from_keras_model_file(keras_file)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
-    os.close(fd)
     os.remove(keras_file)
 
     # Check values from converted model.
@@ -985,28 +994,29 @@ class FromKerasFile(test_util.TensorFlowTestCase):
 
   def testFunctionalSequentialModel(self):
     """Test a Functional tf.keras model containing a Sequential model."""
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(2, input_shape=(3,)))
-    model.add(keras.layers.RepeatVector(3))
-    model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
-    model = keras.models.Model(model.input, model.output)
+    with session.Session().as_default():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_shape=(3,)))
+      model.add(keras.layers.RepeatVector(3))
+      model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
+      model = keras.models.Model(model.input, model.output)
 
-    model.compile(
-        loss=keras.losses.MSE,
-        optimizer=keras.optimizers.RMSprop(),
-        metrics=[keras.metrics.categorical_accuracy],
-        sample_weight_mode='temporal')
-    x = np.random.random((1, 3))
-    y = np.random.random((1, 3, 3))
-    model.train_on_batch(x, y)
-    model.predict(x)
+      model.compile(
+          loss=keras.losses.MSE,
+          optimizer=keras.optimizers.RMSprop(),
+          metrics=[keras.metrics.categorical_accuracy],
+          sample_weight_mode='temporal')
+      x = np.random.random((1, 3))
+      y = np.random.random((1, 3, 3))
+      model.train_on_batch(x, y)
+      model.predict(x)
 
-    model.predict(x)
-    fd, keras_file = tempfile.mkstemp('.h5')
-    try:
-      keras.models.save_model(model, keras_file)
-    finally:
-      os.close(fd)
+      model.predict(x)
+      fd, keras_file = tempfile.mkstemp('.h5')
+      try:
+        keras.models.save_model(model, keras_file)
+      finally:
+        os.close(fd)
 
     # Convert to TFLite model.
     converter = lite.TocoConverter.from_keras_model_file(keras_file)
