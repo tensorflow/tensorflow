@@ -32,42 +32,50 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-
-
 class LuOpTest(test.TestCase):
 
   def _verifyLU(self, x):
-     # TODO(hzhuang): add test np.complex64, np.complex128
-    for np_type in [np.float32, np.float64]: #, np.complex64, np.complex128]:
-      if np_type == np.float32 or np_type == np.float64:
-        rel_tol = 1e-3
-        abs_tol = 1e-7
-        a = x.astype(np_type) 
+    for np_type in [np.float32, np.float64, np.complex64, np.complex128]:
+      rel_tol = 1e-3
+      abs_tol = 1e-7
+      a = x.astype(np_type) 
       l, u, p, info = math_ops.lu(a)
-      # - add test cases for the singular matrix.
+
+      # TODO(hzhuang): add test cases for the singular matrix.
       # "info" is the index for the first zero index or illegal (small) 
-      # value, which might causes potential singular matrix problem for the 
+      # value, which might cause potential singular matrix problem for the 
       # downstream matrix solve.
-      # TODO(hzhuang): how to test here?
-      pp = np.zeros(p.shape)
+
       pl = math_ops.matmul(l, u) 
       #pinv = array_ops.invert_permutation(p);
       plu = array_ops.gather(pl, p) 
+      udiag_ = array_ops.diag_part(u)
       with self.test_session() as sess:
         out = plu.eval()
+        idx = info.eval()
+        """
+        udiag = udiag_.eval()
+        udiag_0 = np.array(udiag)
+        udiag_info = np.array(udiag)
+        np.append(udiag_0, 0)
+        np.append(udiag_info, info)
+      self.assertAllClose(udiag_0, udiag_info, atol=abs_tol, rtol=rel_tol)
+        """
       self.assertAllClose(a, out, atol=abs_tol, rtol=rel_tol)
+      self.assertEqual(0, idx) # check the exit is successfully
 
   def _generateMatrix(self, m, n):
     # Generate random positive-definite matrix
      # TODO(hzhuang): use other matrix beyond PD matrix as factorization target 
-    matrix = np.random.rand(m, n)
+    matrix = np.random.randint(100, size=(m, n))
     matrix = np.dot(matrix.T, matrix)
     return matrix
 
   def testLU(self):
-    for n in 1, 4, 9, 16, 64, 128, 256, 512, 1024, 2048:
+    for n in 1, 4, 9, 16, 64, 128, 256, 512:
       matrix = self._generateMatrix(n, n)
       self._verifyLU(matrix)
+
 
 if __name__ == "__main__":
   test.main()

@@ -752,7 +752,7 @@ REGISTER_OP("Lu")
     .Output("u: T")
     .Output("p: Tperm")
     .Output("info: Tperm")
-    .Attr("T: {double, float}")
+    .Attr("T: {double, float, complex64, complex128}")
     .Attr("Tperm: {int32, int64} = DT_INT32")
      .SetShapeFn([](InferenceContext* c) {            
       DimensionHandle perm_shape = c->Dim(c->input(0), 1);

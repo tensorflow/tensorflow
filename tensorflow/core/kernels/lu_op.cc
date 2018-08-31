@@ -48,8 +48,11 @@ class LuOp : public OpKernel {
     const Tensor & in = context->input(0);  
     TensorShape mtx_shape = in.shape();   
     auto matrix = in.matrix<T>();
-    
-    // hzhuang: assume square at this moment        
+    if (matrix.dimension(0) == 0 || matrix.dimension(0) != matrix.dimension(1)) {
+      // hzhuang: only support non-empty and square matrix factorization for now. 
+      return;
+    }  
+
     auto & input = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, 
                           Eigen::RowMajor>::Map(
                             matrix.data(), matrix.dimension(0), matrix.dimension(1));
@@ -81,6 +84,12 @@ class LuOp : public OpKernel {
     auto &u = lu_decomposition.matrixLU().template triangularView<Eigen::Upper>();
     auto um = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 
                 Eigen::Dynamic, Eigen::RowMajor> >(utensor, u.rows(), u.cols());
+    um = u;
+    int32 * ptensor = perm_idx->flat<int32>().data();
+    auto & p = lu_decomposition.permutationP().indices().array(); 
+    for(int i = 0; i < p.size(); i++){
+      ptensor[i] = p[i];
+    }
     // check the index of the first zero 
     /*
     info is a scalar integer 
@@ -88,29 +97,21 @@ class LuOp : public OpKernel {
           < 0:  if info = -i, the i-th argument had an small value
           > 0:  if info = i, u(i,i) is exactly zero. 
     */
-    double eps = 1e-9; // TODO (hzhuang): what is a good value
+    double eps = 1e-15; // TODO (hzhuang): what is a good value
     int info = 0;
-    for(int i = 0; i < u.rows(); i++){
-      if(u(i,i) < eps && u(i,i) > -eps){
-        info = -(i+1);
-        break;
-      }
-      else if(u(i,i) == 0.){
+    auto & mlu = lu_decomposition.matrixLU();
+    for(int i = 0; i < mlu.rows(); i++){
+      double a = fabs(mlu(i,i));
+      if (a == 0.0) {
         info = i+1;
         break;
       }
+      else if(a < eps){
+        info = -(i+1);
+        break;
+      }
     }
-
     info_tensor->flat<int32>().setConstant(info);
-
-    um = u;
-    int32 * ptensor = perm_idx->flat<int32>().data();
-    auto & p = lu_decomposition.permutationP().indices().array(); 
-    
-    for(int i = 0; i < p.size(); i++){
-      ptensor[i] = p[i];
-    }        
-
   }
 };
 
@@ -121,9 +122,8 @@ class LuOp : public OpKernel {
  
 REGISTER_KERNEL(float);
 REGISTER_KERNEL(double);
-
-//REGISTER_KERNEL(complex64);
-//REGISTER_KERNEL(complex128);
+REGISTER_KERNEL(complex64);
+REGISTER_KERNEL(complex128);
 
 
 #undef REGISTER_KERNEL
