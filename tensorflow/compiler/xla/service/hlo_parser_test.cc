@@ -1725,6 +1725,25 @@ TEST_F(HloParserTest, ParseConvolutionDimensionNumbers) {
   EXPECT_EQ(original, ConvolutionDimensionNumbersToString(dnums));
 }
 
+TEST_F(HloParserTest, ParsePaddingConfigNoInteriorPadding) {
+  const string original = "0_1x2_3";
+  TF_ASSERT_OK_AND_ASSIGN(PaddingConfig dnums, ParsePaddingConfig(original));
+  EXPECT_EQ(original, PaddingConfigToString(dnums));
+}
+
+TEST_F(HloParserTest, ParsePaddingConfigInteriorPadding) {
+  const string original = "0_1_0x2_3_4";
+  TF_ASSERT_OK_AND_ASSIGN(PaddingConfig dnums, ParsePaddingConfig(original));
+  EXPECT_EQ(original, PaddingConfigToString(dnums));
+}
+
+TEST_F(HloParserTest, ParsePaddingConfigInteriorPaddingImplicitZeroDim) {
+  TF_ASSERT_OK_AND_ASSIGN(PaddingConfig dnums, ParsePaddingConfig("0_1x2_3_4"));
+  // The extra "_0" gets added to the canonical string because the other dim has
+  // interior padding.
+  EXPECT_EQ("0_1_0x2_3_4", PaddingConfigToString(dnums));
+}
+
 TEST_F(HloParserTest, NontupleInfeed) {
   const string original = R"(HloModule nontuple_infeed:
 ENTRY nontuple_infeed {

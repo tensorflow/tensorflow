@@ -65,6 +65,7 @@ class HloParser {
   StatusOr<HloSharding> ParseShardingOnly();
   StatusOr<Window> ParseWindowOnly();
   StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbersOnly();
+  StatusOr<PaddingConfig> ParsePaddingConfigOnly();
 
   // Stand-alone parsing utility for a single instruction worth of text.
   Status ParseSingleInstruction(HloComputation::Builder* builder,
@@ -3156,6 +3157,18 @@ HloParser::ParseConvolutionDimensionNumbersOnly() {
   return dnums;
 }
 
+StatusOr<PaddingConfig> HloParser::ParsePaddingConfigOnly() {
+  lexer_.Lex();
+  PaddingConfig padding_config;
+  if (!ParsePaddingConfig(&padding_config)) {
+    return InvalidArgument("Syntax error:\n%s", GetError());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument("Syntax error:\nExtra content after PaddingConfig");
+  }
+  return padding_config;
+}
+
 Status HloParser::ParseSingleInstruction(HloComputation::Builder* builder,
                                          string* root_name) {
   TF_RET_CHECK(missing_instruction_hook_ == nullptr);
@@ -3236,6 +3249,12 @@ StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbers(
   HloModuleConfig config;
   HloParser parser(str, config);
   return parser.ParseConvolutionDimensionNumbersOnly();
+}
+
+StatusOr<PaddingConfig> ParsePaddingConfig(absl::string_view str) {
+  HloModuleConfig config;
+  HloParser parser(str, config);
+  return parser.ParsePaddingConfigOnly();
 }
 
 }  // namespace xla
