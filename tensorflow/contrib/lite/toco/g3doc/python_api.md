@@ -70,6 +70,7 @@ val = img + var
 out = tf.identity(val, name="out")
 
 with tf.Session() as sess:
+  sess.run(tf.global_variables_initializer())
   converter = tf.contrib.lite.TocoConverter.from_session(sess, [img], [out])
   tflite_model = converter.convert()
   open("converted_model.tflite", "wb").write(tflite_model)

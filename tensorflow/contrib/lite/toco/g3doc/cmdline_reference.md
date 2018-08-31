@@ -38,7 +38,7 @@ files. The flag `--output_file` is always required. Additionally, either
             of TFLite specific transformations. Therefore, the resulting
             visualization may not reflect the final set of graph
             transformations. To get a final visualization with all graph
-            transformations use `--dump_graphviz` instead.
+            transformations use `--dump_graphviz_dir` instead.
 
 The following flags specify optional parameters when using SavedModels.
 
