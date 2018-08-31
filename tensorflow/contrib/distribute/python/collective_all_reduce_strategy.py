@@ -50,7 +50,8 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
     """Initializes the object.
 
     Args:
-      num_gpus_per_worker: number of local GPUs or GPUs per worker.
+      num_gpus_per_worker: number of local GPUs or GPUs per worker, the default
+        is 0 meaning CPU only.
     """
     self._num_gpus_per_worker = num_gpus_per_worker
     self._initialize_local_worker(num_gpus_per_worker)
