@@ -50,6 +50,7 @@ class MklSoftmaxOp : public OpKernel {
       // src_tensor now points to the 0-th input of global data struct "context"
       size_t src_idx = 0;
       const Tensor& src_tensor = MklGetInput(context, src_idx);
+      const int input_dims = src_tensor.dims();
 
       // Add: get MklShape
       MklDnnShape src_mkl_shape;
@@ -62,7 +63,32 @@ class MklSoftmaxOp : public OpKernel {
                               : src_tensor.shape();
       auto src_dims = TFShapeToMklDnnDims(src_tf_shape);
       auto output_dims = src_dims;
-
+      memory::format layout_type;
+      // In MKL, data format passed to mkl softmax op depends on dimension of the input tensor.
+      // Here "x" data format in MKL is used for 1 dim tensor, "nc" for 2 dim tensor, 
+      // "tnc" for 3 dim tensor, "nchw" for 4 dim tensor, and "ncdhw" for 5 dim tensor.
+      // Each of the simbols has the following meaning:
+      // n = batch, c = channels, t = sequence lenght, h = height,
+      // w = width, d = depth 
+      switch (input_dims) {
+        case 1:
+          layout_type = memory::format::x;
+          break;
+        case 2:
+          layout_type = memory::format::nc;
+          break;
+        case 3:
+          layout_type = memory::format::tnc;
+          break;
+        case 4:
+          layout_type = memory::format::nchw;
+          break;
+        case 5:
+          layout_type = memory::format::ncdhw;
+          break;
+        default:
+          OP_REQUIRES_OK(context, errors::Aborted("Input dims must be <= 5 and >=1"));
+      }
       // Create softmax memory for src, dst: both are defined in mkl_util.h,
       // they are wrapper
       MklDnnData<T> src(&cpu_engine);
@@ -75,7 +101,7 @@ class MklSoftmaxOp : public OpKernel {
       auto src_md =
           src_mkl_shape.IsMklTensor()
               ? src_mkl_shape.GetMklLayout()
-              : memory::desc(src_dims, MklDnnType<T>(), memory::format::nc);
+              : memory::desc(src_dims, MklDnnType<T>(), layout_type);
 
       // src: setting memory descriptor and op memory descriptor
       // Basically following two functions maps the TF "src_tensor" to mkl
@@ -84,10 +110,11 @@ class MklSoftmaxOp : public OpKernel {
       // data format is "nc" for src and dst; since the src and dst buffer is
       // always in 2D shape
       src.SetUsrMem(src_md, &src_tensor);
-      src.SetOpMemDesc(src_dims, memory::format::nc);
+      src.SetOpMemDesc(src_dims, layout_type);
 
       // creating a memory descriptor
-      int axis = 1;  // axis to which softmax will be applied
+      // passing outermost dim as default axis, where the softmax is applied
+      int axis = input_dims - 1;
       auto softmax_fwd_desc = softmax_forward::desc(prop_kind::forward_scoring,
                                                     src.GetOpMemDesc(), axis);
       auto softmax_fwd_pd =
@@ -107,7 +134,7 @@ class MklSoftmaxOp : public OpKernel {
         output_mkl_shape.SetMklLayout(&dst_pd);
         output_mkl_shape.SetElemType(MklDnnType<T>());
         output_mkl_shape.SetTfLayout(output_dims.size(), output_dims,
-                                     memory::format::nc);
+                                     layout_type);
         output_tf_shape.AddDim((dst_pd.get_size() / sizeof(T)));
       } else {  // then output is also TF shape
         output_mkl_shape.SetMklTensor(false);
