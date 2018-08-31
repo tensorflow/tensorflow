@@ -149,10 +149,10 @@ have.
     true, custom ops are created for any op that is unknown. The developer will
     need to provide these to the TensorFlow Lite runtime with a custom resolver.
 
-*   `--quantize_weights`. Type: boolean. Default: False. Indicates whether to
-    store weights as quantized weights followed by dequantize operations.
-    Computation is still done in float, but reduces model size (at the cost of
-    accuracy and latency).
+*   `--post_training_quantize`. Type: boolean. Default: False. Boolean
+    indicating whether to quantize the weights of the converted float model.
+    Model size will be reduced and there will be latency improvements (at the
+    cost of accuracy).
 
 ## Logging flags
 

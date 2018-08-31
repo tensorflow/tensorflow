@@ -399,7 +399,8 @@ void Export(const TocoFlags& toco_flags, const Model& model,
       break;
     case TFLITE:
       toco::tflite::Export(model, allow_custom_ops,
-                           toco_flags.quantize_weights(), output_file_contents);
+                           toco_flags.post_training_quantize(),
+                           output_file_contents);
       break;
     case GRAPHVIZ_DOT:
       DumpGraphviz(model, output_file_contents);

@@ -126,7 +126,7 @@ def build_toco_convert_protos(input_tensors,
                               reorder_across_fake_quant=False,
                               allow_custom_ops=False,
                               change_concat_input_ranges=False,
-                              quantize_weights=False,
+                              post_training_quantize=False,
                               dump_graphviz_dir=None,
                               dump_graphviz_video=False):
   """Builds protocol buffers describing a conversion of a model using TOCO.
@@ -173,9 +173,9 @@ def build_toco_convert_protos(input_tensors,
     change_concat_input_ranges: Boolean to change behavior of min/max ranges for
       inputs and outputs of the concat operator for quantized models. Changes
       the ranges of concat operator overlap when true. (default False)
-    quantize_weights: Boolean indicating whether to store weights as quantized
-      weights followed by dequantize operations. Computation is still done in
-      float, but reduces model size (at the cost of accuracy and latency).
+    post_training_quantize: Boolean indicating whether to quantize the weights
+      of the converted float model. Model size will be reduced and there will be
+      latency improvements (at the cost of accuracy).
       (default False)
     dump_graphviz_dir: Full filepath of folder to dump the graphs at various
       stages of processing GraphViz .dot files. Preferred over
@@ -204,7 +204,7 @@ def build_toco_convert_protos(input_tensors,
   toco.drop_control_dependency = drop_control_dependency
   toco.reorder_across_fake_quant = reorder_across_fake_quant
   toco.allow_custom_ops = allow_custom_ops
-  toco.quantize_weights = quantize_weights
+  toco.post_training_quantize = post_training_quantize
   if default_ranges_stats:
     toco.default_ranges_min = default_ranges_stats[0]
     toco.default_ranges_max = default_ranges_stats[1]
