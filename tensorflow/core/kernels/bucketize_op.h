@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_BUCKETIZE_OP_H_
-#define TENSORFLOW_BUCKETIZE_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_BUCKETIZE_OP_H_
+#define TENSORFLOW_CORE_KERNELS_BUCKETIZE_OP_H_
 
 #include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -38,4 +38,4 @@ struct BucketizeFunctor {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_BUCKETIZE_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_BUCKETIZE_OP_H_

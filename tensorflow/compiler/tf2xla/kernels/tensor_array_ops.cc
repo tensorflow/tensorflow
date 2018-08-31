@@ -122,7 +122,7 @@ Status GetTensorArrayShape(const XlaResource* resource,
 // relevant slice of 'operand'.
 xla::XlaOp DynamicAddSlice(xla::XlaBuilder* builder, const xla::XlaOp& operand,
                            const xla::XlaOp& update,
-                           const gtl::ArraySlice<int64>& update_dims,
+                           absl::Span<const int64> update_dims,
                            const xla::XlaOp& start_indices) {
   xla::XlaOp current = xla::DynamicSlice(operand, start_indices, update_dims);
   xla::XlaOp sum = xla::Add(current, update);

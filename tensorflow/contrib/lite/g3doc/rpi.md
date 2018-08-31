@@ -1,5 +1,3 @@
-book_path: /mobile/_book.yaml
-project_path: /mobile/_project.yaml
 
 # TensorFlow Lite for Raspberry Pi
 
@@ -20,7 +18,7 @@ Clone this Tensorflow repository, Run this script at the root of the repository 
 ```bash
 ./tensorflow/contrib/lite/download_dependencies.sh
 ```
-Note than you only need to to this once.
+Note that you only need to do this once.
 
 You should then be able to compile:
 ```bash
@@ -42,7 +40,7 @@ First, clone this TensorFlow repository. Run this at the root of the repository:
 ```bash
 ./tensorflow/contrib/lite/download_dependencies.sh
 ```
-Note than you only need to to this once.
+Note that you only need to do this once.
 
 You should then be able to compile:
 ```bash

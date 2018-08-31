@@ -15,7 +15,7 @@
 
 """Support for training models.
 
-See the @{$python/train} guide.
+See the [Training](https://tensorflow.org/api_guides/python/train) guide.
 """
 
 # Optimizers.
@@ -53,6 +53,7 @@ from tensorflow.python.training import input as _input
 from tensorflow.python.training.input import *  # pylint: disable=redefined-builtin
 # pylint: enable=wildcard-import
 
+from tensorflow.python.training.basic_session_run_hooks import get_or_create_steps_per_run_variable
 from tensorflow.python.training.basic_session_run_hooks import SecondOrStepTimer
 from tensorflow.python.training.basic_session_run_hooks import LoggingTensorHook
 from tensorflow.python.training.basic_session_run_hooks import StopAtStepHook

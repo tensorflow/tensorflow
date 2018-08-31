@@ -97,8 +97,8 @@ limitations under the License.
 //   GetFeatureValues<FeatureType>(feature) -> RepeatedField<FeatureType>
 //     Returns values of the feature for the FeatureType.
 
-#ifndef TENSORFLOW_EXAMPLE_FEATURE_H_
-#define TENSORFLOW_EXAMPLE_FEATURE_H_
+#ifndef TENSORFLOW_CORE_EXAMPLE_FEATURE_UTIL_H_
+#define TENSORFLOW_CORE_EXAMPLE_FEATURE_UTIL_H_
 
 #include <iterator>
 #include <type_traits>
@@ -322,4 +322,4 @@ bool ExampleHasFeature(const string& key, const Example& example) {
 }
 
 }  // namespace tensorflow
-#endif  // TENSORFLOW_EXAMPLE_FEATURE_H_
+#endif  // TENSORFLOW_CORE_EXAMPLE_FEATURE_UTIL_H_

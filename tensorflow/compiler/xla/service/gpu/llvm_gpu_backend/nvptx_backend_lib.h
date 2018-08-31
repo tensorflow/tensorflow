@@ -20,11 +20,11 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace xla {
 namespace gpu {

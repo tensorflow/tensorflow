@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_GTL_OPTIONAL_H_
-#define TENSORFLOW_LIB_GTL_OPTIONAL_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_OPTIONAL_H_
+#define TENSORFLOW_CORE_LIB_GTL_OPTIONAL_H_
 
 #include <assert.h>
 #include <functional>
@@ -873,4 +873,4 @@ struct hash<::tensorflow::gtl::optional<T>> {
 
 }  // namespace std
 
-#endif  // TENSORFLOW_LIB_GTL_OPTIONAL_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_OPTIONAL_H_

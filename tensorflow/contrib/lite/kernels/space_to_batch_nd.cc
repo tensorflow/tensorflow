@@ -114,14 +114,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
 #define TF_LITE_SPACE_TO_BATCH_ND(type, scalar, pad_value)             \
-  type::SpaceToBatchND(GetTensorData<scalar>(op_context.input),        \
-                       GetTensorDims(op_context.input),                \
+  tflite::SpaceToBatchParams op_params;                                \
+  op_params.output_offset = pad_value;                                 \
+  type::SpaceToBatchND(op_params, GetTensorShape(op_context.input),    \
+                       GetTensorData<scalar>(op_context.input),        \
+                       GetTensorShape(op_context.block_shape),         \
                        GetTensorData<int32_t>(op_context.block_shape), \
-                       GetTensorDims(op_context.block_shape),          \
+                       GetTensorShape(op_context.paddings),            \
                        GetTensorData<int32_t>(op_context.paddings),    \
-                       GetTensorDims(op_context.paddings),             \
-                       GetTensorData<scalar>(op_context.output),       \
-                       GetTensorDims(op_context.output), pad_value)
+                       GetTensorShape(op_context.output),              \
+                       GetTensorData<scalar>(op_context.output))
   switch (op_context.input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
       if (kernel_type == kReference) {

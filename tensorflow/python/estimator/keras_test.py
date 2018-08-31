@@ -184,12 +184,14 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     gfile.MakeDirs(self._base_dir)
     self._config = run_config_lib.RunConfig(
         tf_random_seed=_RANDOM_SEED, model_dir=self._base_dir)
+    super(TestKerasEstimator, self).setUp()
 
   def tearDown(self):
     # Make sure nothing is stuck in limbo.
     writer_cache.FileWriterCache.clear()
     if os.path.isdir(self._base_dir):
       gfile.DeleteRecursively(self._base_dir)
+    super(TestKerasEstimator, self).tearDown()
 
   def test_train(self):
     for model_type in ['sequential', 'functional']:
@@ -511,19 +513,19 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       input_dict = {'input_1': x_train}
       output_dict = {'invalid_output_name': y_train}
       return input_dict, output_dict
-
     model = simple_functional_model()
     model.compile(
         loss='categorical_crossentropy', optimizer='adam', metrics=['acc'])
     with self.test_session():
       est_keras = keras_lib.model_to_estimator(
           keras_model=model, config=self._config)
-
     with self.test_session():
-      with self.assertRaises(ValueError):
+      with self.assertRaisesRegexp(KeyError,
+                                   'Difference: .*invalid_input_name'):
         est_keras.train(input_fn=invald_input_name_input_fn, steps=100)
 
-      with self.assertRaises(ValueError):
+      with self.assertRaisesRegexp(KeyError,
+                                   'Difference: .*invalid_output_name'):
         est_keras.train(input_fn=invald_output_name_input_fn, steps=100)
 
   def test_custom_objects(self):

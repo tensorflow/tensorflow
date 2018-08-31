@@ -21,6 +21,8 @@ limitations under the License.
 #include <random>
 #include <string>
 
+#include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -32,8 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -62,7 +62,7 @@ class LiteralTestUtil {
   static void ExpectR0Equal(NativeT expected, const LiteralSlice& actual);
 
   template <typename NativeT>
-  static void ExpectR1Equal(tensorflow::gtl::ArraySlice<NativeT> expected,
+  static void ExpectR1Equal(absl::Span<const NativeT> expected,
                             const LiteralSlice& actual);
   template <typename NativeT>
   static void ExpectR2Equal(
@@ -102,7 +102,7 @@ class LiteralTestUtil {
                            const ErrorSpec& error);
 
   template <typename NativeT>
-  static void ExpectR1Near(tensorflow::gtl::ArraySlice<NativeT> expected,
+  static void ExpectR1Near(absl::Span<const NativeT> expected,
                            const LiteralSlice& actual, const ErrorSpec& error);
 
   template <typename NativeT>
@@ -146,7 +146,7 @@ class LiteralTestUtil {
   // will be compared recursively.
   static ::testing::AssertionResult NearOrEqual(
       const LiteralSlice& expected, const LiteralSlice& actual,
-      const tensorflow::gtl::optional<ErrorSpec>& error) TF_MUST_USE_RESULT;
+      const absl::optional<ErrorSpec>& error) TF_MUST_USE_RESULT;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(LiteralTestUtil);
@@ -160,7 +160,7 @@ template <typename NativeT>
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR1Equal(
-    tensorflow::gtl::ArraySlice<NativeT> expected, const LiteralSlice& actual) {
+    absl::Span<const NativeT> expected, const LiteralSlice& actual) {
   EXPECT_TRUE(Equal(*LiteralUtil::CreateR1<NativeT>(expected), actual));
 }
 
@@ -206,7 +206,7 @@ template <typename NativeT>
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR1Near(
-    tensorflow::gtl::ArraySlice<NativeT> expected, const LiteralSlice& actual,
+    absl::Span<const NativeT> expected, const LiteralSlice& actual,
     const ErrorSpec& error) {
   EXPECT_TRUE(Near(*LiteralUtil::CreateR1<NativeT>(expected), actual, error));
 }

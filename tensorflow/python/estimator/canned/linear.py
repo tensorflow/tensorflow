@@ -306,7 +306,7 @@ class LinearClassifier(estimator.Estimator):
         is multivalent.  One of "mean", "sqrtn", and "sum" -- these are
         effectively different ways to do example-level normalization, which can
         be useful for bag-of-words features. for more details, see
-        @{tf.feature_column.linear_model$linear_model}.
+        `tf.feature_column.linear_model`.
 
     Returns:
       A `LinearClassifier` estimator.
@@ -472,7 +472,7 @@ class LinearRegressor(estimator.Estimator):
         is multivalent.  One of "mean", "sqrtn", and "sum" -- these are
         effectively different ways to do example-level normalization, which can
         be useful for bag-of-words features. for more details, see
-        @{tf.feature_column.linear_model$linear_model}.
+        `tf.feature_column.linear_model`.
     """
     head = head_lib._regression_head(  # pylint: disable=protected-access
         label_dimension=label_dimension, weight_column=weight_column,

@@ -691,6 +691,27 @@ TEST_F(HloComputationTest, StringificationCanonical) {
   EXPECT_EQ(computation->ToString(options), expected_computation2);
 }
 
-}  // namespace
+TEST_F(HloComputationTest, ChannelReachability) {
+  const Shape shape = ShapeUtil::MakeShape(F32, {5, 7});
+  HloComputation::Builder builder("ChannelReachability");
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  auto token0 = builder.AddInstruction(HloInstruction::CreateToken());
+  auto send =
+      builder.AddInstruction(HloInstruction::CreateSend(param, token0, 1));
+  auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  auto token1 = builder.AddInstruction(HloInstruction::CreateToken());
+  auto recv =
+      builder.AddInstruction(HloInstruction::CreateRecv(shape, token1, 1));
+  auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));
 
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build(recv_done));
+  auto reachability = computation->ComputeReachability();
+  EXPECT_TRUE(reachability->IsReachable(param, recv_done));
+  EXPECT_FALSE(reachability->IsReachable(send, recv));
+  EXPECT_FALSE(reachability->IsReachable(send_done, recv));
+}
+
+}  // namespace
 }  // namespace xla

@@ -39,7 +39,7 @@ class RandomOpsTest(xla_test.XLATestCase):
 
   def _testRngIsNotConstant(self, rng, dtype):
     # Tests that 'rng' does not always return the same value.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.test_scope():
         x = rng(dtype)
 
@@ -79,7 +79,7 @@ class RandomOpsTest(xla_test.XLATestCase):
       if (self.device in ["XLA_GPU", "XLA_CPU"
                          ]) and (dtype in [dtypes.bfloat16, dtypes.half]):
         continue
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         with self.test_scope():
           x = random_ops.random_uniform(
               shape=[1000], dtype=dtype, minval=-2, maxval=33)
@@ -99,9 +99,9 @@ class RandomOpsTest(xla_test.XLATestCase):
     count = 10000000
     # TODO(b/34339814): implement inverse erf support for non-F32 types.
     for dtype in [dtypes.float32]:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         with self.test_scope():
-          x = random_ops.truncated_normal(shape=[count], dtype=dtype, seed=42)
+          x = random_ops.truncated_normal(shape=[count], dtype=dtype)
         y = sess.run(x)
 
         def normal_cdf(x):
@@ -130,30 +130,24 @@ class RandomOpsTest(xla_test.XLATestCase):
         # Department of Scientific Computing website. Florida State University.
         expected_mean = mu + (normal_pdf(alpha) - normal_pdf(beta)) / z * sigma
         actual_mean = np.mean(y)
-        atol = 2e-4
-        if self.device in ["XLA_GPU", "XLA_CPU"]:
-          atol = 2.2e-4
-        self.assertAllClose(actual_mean, expected_mean, atol=atol)
+        self.assertAllClose(actual_mean, expected_mean, atol=2e-3)
 
         expected_median = mu + probit(
             (normal_cdf(alpha) + normal_cdf(beta)) / 2.) * sigma
         actual_median = np.median(y)
-        self.assertAllClose(actual_median, expected_median, atol=1e-3)
+        self.assertAllClose(actual_median, expected_median, atol=1e-2)
 
         expected_variance = sigma**2 * (1 + (
             (alpha * normal_pdf(alpha) - beta * normal_pdf(beta)) / z) - (
                 (normal_pdf(alpha) - normal_pdf(beta)) / z)**2)
         actual_variance = np.var(y)
-        rtol = 1e-3
-        if self.device in ["XLA_GPU", "XLA_CPU"]:
-          rtol = 4e-4
-        self.assertAllClose(actual_variance, expected_variance, rtol=rtol)
+        self.assertAllClose(actual_variance, expected_variance, rtol=2*1e-3)
 
   def testShuffle1d(self):
     # TODO(b/26783907): this test requires the CPU backend to implement sort.
     if self.device in ["XLA_CPU"]:
       return
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.test_scope():
         x = math_ops.range(1 << 16)
         shuffle = random_ops.random_shuffle(x)
@@ -164,7 +158,7 @@ class RandomOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(set(result), set(expected))
 
   def testShuffle2d(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.test_scope():
         x = array_ops.diag(math_ops.range(20))
         shuffle = random_ops.random_shuffle(x)

@@ -19,6 +19,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -57,8 +58,8 @@ static const int mantissa_sizes[] = {23, 10, 23, 10};
 
 string TestDataToString(const ::testing::TestParamInfo<int> data) {
   int i = data.param;
-  return tensorflow::strings::StrCat(exponent_sizes[i], "_exponent_bits_",
-                                     mantissa_sizes[i], "_mantissa_bits");
+  return absl::StrCat(exponent_sizes[i], "_exponent_bits_", mantissa_sizes[i],
+                      "_mantissa_bits");
 }
 
 // The FPVAL macro allows us to write out the binary representation of the

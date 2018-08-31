@@ -617,13 +617,13 @@ bool Tensor::IsInitialized() const {
 }
 
 void Tensor::CheckType(DataType expected_dtype) const {
-  CHECK_EQ(dtype(), expected_dtype)
+  CHECK_EQ(dtype(), expected_dtype) << " "
       << DataTypeString(expected_dtype) << " expected, got "
       << DataTypeString(dtype());
 }
 
 void Tensor::CheckTypeAndIsAligned(DataType expected_dtype) const {
-  CHECK_EQ(dtype(), expected_dtype)
+  CHECK_EQ(dtype(), expected_dtype) << " "
       << DataTypeString(expected_dtype) << " expected, got "
       << DataTypeString(dtype());
   CHECK(IsAligned()) << "ptr = " << base<void>();
@@ -919,7 +919,13 @@ void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
   // We have reached the right-most dimension of the tensor.
   if (dim_index == shape_size - 1) {
     for (int64 i = 0; i < element_count; i++) {
-      if (*data_index >= limit) return;
+      if (*data_index >= limit) {
+        // If not enough elements has been printed, append "...".
+        if (dim_index != 0 && i < element_count) {
+          strings::StrAppend(result, "...");
+        }
+        return;
+      }
       if (i > 0) strings::StrAppend(result, " ");
       strings::StrAppend(result, PrintOneElement(data[(*data_index)++]));
     }

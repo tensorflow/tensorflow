@@ -20,6 +20,7 @@ py_library(
         ":dnn_linear_combined",
         ":early_stopping",
         ":export",
+        ":exporter",
         ":extenders",
         ":head",
         ":hooks",
@@ -216,6 +217,33 @@ py_test(
         "//tensorflow/python/estimator:export_export",
         "//tensorflow/python/estimator:export_output",
         "//tensorflow/python/estimator:model_fn",
+    ],
+)
+
+py_library(
+    name = "exporter",
+    srcs = [
+        "python/estimator/exporter.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
+        "//tensorflow/python/estimator:exporter",
+    ],
+)
+
+py_test(
+    name = "exporter_test",
+    size = "medium",
+    srcs = ["python/estimator/exporter_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":exporter",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:exporter",
     ],
 )
 
@@ -487,6 +515,9 @@ py_test(
     size = "medium",
     srcs = ["python/estimator/saved_model_estimator_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "notsan",
+    ],
     deps = [
         ":export",
         ":saved_model_estimator",

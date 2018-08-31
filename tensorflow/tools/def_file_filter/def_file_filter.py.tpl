@@ -48,6 +48,7 @@ EXCLUDE_RE = re.compile(r"RTTI|deleting destructor|::internal::")
 INCLUDEPRE_RE = re.compile(r"google::protobuf::internal::ExplicitlyConstructed|"
                            r"google::protobuf::internal::ArenaImpl::AllocateAligned|" # for contrib/data/_prefetching_ops
                            r"google::protobuf::internal::ArenaImpl::AddCleanup|" # for contrib/data/_prefetching_ops
+                           r"google::protobuf::internal::LogMessage|" # for contrib/data/_prefetching_ops
                            r"google::protobuf::Arena::OnArenaAllocation|" # for contrib/data/_prefetching_ops
                            r"tensorflow::internal::LogMessage|"
                            r"tensorflow::internal::LogString|"

@@ -70,7 +70,7 @@ class XlaCompilationCache : public ResourceBase {
                  OpKernelContext* ctx,
                  const XlaCompiler::CompilationResult** compilation_result,
                  xla::LocalExecutable** executable,
-                 const XlaCompiler::CompileOptions* compile_options);
+                 const XlaCompiler::CompileOptions& compile_options);
 
   // As above, but calls XlaCompiler::CompileSingleOp instead of
   // XlaCompiler::CompileFunction.
@@ -80,7 +80,7 @@ class XlaCompilationCache : public ResourceBase {
       const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
       const XlaCompiler::CompilationResult** compilation_result,
       xla::LocalExecutable** executable,
-      const XlaCompiler::CompileOptions* compile_options);
+      const XlaCompiler::CompileOptions& compile_options);
 
   xla::LocalClient* client() const { return client_; }
   const DeviceType& device_type() const { return device_type_; }
@@ -96,7 +96,7 @@ class XlaCompilationCache : public ResourceBase {
                      OpKernelContext* ctx,
                      const XlaCompiler::CompilationResult** compilation_result,
                      xla::LocalExecutable** executable,
-                     const XlaCompiler::CompileOptions* compile_options,
+                     const XlaCompiler::CompileOptions& compile_options,
                      bool compile_single_op);
 
   // Takes `result` which has been compiled from a Tensorflow subgraph to a

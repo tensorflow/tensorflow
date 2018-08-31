@@ -15,11 +15,10 @@ limitations under the License.
 
 #include <array>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -67,7 +66,10 @@ XLA_TEST_F(TokenHloTest, InvalidTokenShapedEntryParameter) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(42)));
   module->AddEntryComputation(builder.Build());
 
-  Status status = HloVerifier().Run(module.get()).status();
+  Status status =
+      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false)
+          .Run(module.get())
+          .status();
   ASSERT_IS_NOT_OK(status);
   EXPECT_THAT(
       status.error_message(),
@@ -84,7 +86,10 @@ XLA_TEST_F(TokenHloTest, InvalidTupleTokenShapedEntryParameter) {
       "param"));
   module->AddEntryComputation(builder.Build());
 
-  Status status = HloVerifier().Run(module.get()).status();
+  Status status =
+      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false)
+          .Run(module.get())
+          .status();
   ASSERT_IS_NOT_OK(status);
   EXPECT_THAT(
       status.error_message(),
@@ -101,7 +106,10 @@ XLA_TEST_F(TokenHloTest, InvalidOperandToTokenInstruction) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(123)));
   module->AddEntryComputation(builder.Build());
 
-  Status status = HloVerifier().Run(module.get()).status();
+  Status status =
+      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false)
+          .Run(module.get())
+          .status();
   ASSERT_IS_NOT_OK(status);
   EXPECT_THAT(status.error_message(),
               ::testing::HasSubstr(

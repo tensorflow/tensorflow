@@ -27,6 +27,7 @@ py_library(
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:random_seed",
         "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/data/util:structure",
         "//third_party/py/numpy",
     ],
 )

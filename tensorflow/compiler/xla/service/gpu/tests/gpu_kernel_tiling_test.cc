@@ -27,13 +27,22 @@ namespace {
 
 class GpuKernelTilingTest : public GpuCodegenTest {
  protected:
-  GpuKernelTilingTest() {
-    auto debug_options = HloTestBase::GetDebugOptionsForTest();
-    config_.set_debug_options(debug_options);
-    // Disable layout_assignment to use the preassigned layouts.
-    debug_options.add_xla_disable_hlo_passes("layout_assignment");
+  GpuKernelTilingTest() {}
+
+  // Most tests in this file want to skip layout assignment, but a few need it
+  // enabled.
+  HloModuleConfig ConfigWithLayoutAssignment() {
+    return GetModuleConfigForTest();
   }
-  HloModuleConfig config_;
+
+  HloModuleConfig ConfigWithoutLayoutAssignment() {
+    HloModuleConfig config;
+    auto debug_options = HloTestBase::GetDebugOptionsForTest();
+    // Disable layout_assignment to use the preassigned layouts.
+    debug_options.add_xla_disable_hlo_passes("layout-assignment");
+    config.set_debug_options(debug_options);
+    return config;
+  }
 };
 
 TEST_F(GpuKernelTilingTest, UnnestedTransposeWithProperDimensionsTiled) {
@@ -46,7 +55,13 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithProperDimensionsTiled) {
     })";
 
   // Check that a call to llvm.nvvm.barrier0 is generated.
-  auto hlo_module = ParseHloString(kHloString, config_).ValueOrDie();
+  //
+  // We must enable layout assignment in order for this test to work correctly.
+  // AlgebraicSimplifier removes copy1; it's added back by layout assignment,
+  // which respects the module's entry computation layout.  But if we don't run
+  // layout assignment...well, nobody else adds the copy back.
+  auto hlo_module =
+      ParseHloString(kHloString, ConfigWithLayoutAssignment()).ValueOrDie();
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @copy
@@ -68,8 +83,11 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithSmallDimensionsNotTiled) {
       ROOT copy1 = f16[2,3,64]{1,0,2} copy(para0)
     })";
 
-  // Check that a call to llvm.nvvm.barrier0 is not generated.
-  auto hlo_module = ParseHloString(kHloString, config_).ValueOrDie();
+  // Check that a call to llvm.nvvm.barrier0 is not generated.  As in
+  // UnnestedTransposeWithProperDimensionsTiled, we must run layout assignment
+  // here.
+  auto hlo_module =
+      ParseHloString(kHloString, ConfigWithLayoutAssignment()).ValueOrDie();
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @copy
@@ -95,7 +113,8 @@ TEST_F(GpuKernelTilingTest, SimpleFusionWithTransposeTiled) {
     })";
 
   // Check that a call to llvm.nvvm.barrier0 is generated.
-  auto hlo_module = ParseHloString(kHloString, config_).ValueOrDie();
+  auto hlo_module =
+      ParseHloString(kHloString, ConfigWithoutLayoutAssignment()).ValueOrDie();
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @fusion
@@ -128,7 +147,8 @@ TEST_F(GpuKernelTilingTest, MultipleOutputFusionWithOnePossibleTransposeTiled) {
     })";
 
   // Check that a call to llvm.nvvm.barrier0 is generated.
-  auto hlo_module = ParseHloString(kHloString, config_).ValueOrDie();
+  auto hlo_module =
+      ParseHloString(kHloString, ConfigWithoutLayoutAssignment()).ValueOrDie();
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @fusion
@@ -162,7 +182,8 @@ TEST_F(GpuKernelTilingTest,
     })";
 
   // Check that a call to llvm.nvvm.barrier0 is not generated.
-  auto hlo_module = ParseHloString(kHloString, config_).ValueOrDie();
+  auto hlo_module =
+      ParseHloString(kHloString, ConfigWithoutLayoutAssignment()).ValueOrDie();
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @fusion

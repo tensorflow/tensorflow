@@ -110,7 +110,7 @@ tensorflow::Status GetAllRemoteDevices(
 
 tensorflow::Status CreateRemoteContexts(
     const std::vector<string>& remote_workers, int64 rendezvous_id,
-    const tensorflow::ServerDef& server_def,
+    int keep_alive_secs, const tensorflow::ServerDef& server_def,
     tensorflow::eager::EagerClientCache* remote_eager_workers, bool async,
     tensorflow::gtl::FlatMap<string, tensorflow::uint64>* remote_contexts) {
   for (int i = 0; i < remote_workers.size(); i++) {
@@ -129,6 +129,7 @@ tensorflow::Status CreateRemoteContexts(
     request.mutable_server_def()->set_job_name(parsed_name.job);
     request.mutable_server_def()->set_task_index(parsed_name.task);
     request.set_async(async);
+    request.set_keep_alive_secs(keep_alive_secs);
     auto* eager_client = remote_eager_workers->GetClient(remote_worker);
     if (eager_client == nullptr) {
       return tensorflow::errors::Internal(
@@ -151,7 +152,8 @@ tensorflow::Status CreateRemoteContexts(
 }
 
 tensorflow::Status UpdateTFE_ContextWithServerDef(
-    const tensorflow::ServerDef& server_def, TFE_Context* ctx) {
+    int keep_alive_secs, const tensorflow::ServerDef& server_def,
+    TFE_Context* ctx) {
   // We don't use the TF_RETURN_IF_ERROR macro directly since that destroys the
   // server object (which currently CHECK-fails) and we miss the error, instead,
   // we log the error, and then return to allow the user to see the error
@@ -202,8 +204,8 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   // Initialize remote eager workers.
   tensorflow::gtl::FlatMap<string, tensorflow::uint64> remote_contexts;
   LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
-      remote_workers, rendezvous_id, server_def, remote_eager_workers.get(),
-      ctx->context.Async(), &remote_contexts));
+      remote_workers, rendezvous_id, keep_alive_secs, server_def,
+      remote_eager_workers.get(), ctx->context.Async(), &remote_contexts));
 
   tensorflow::RemoteRendezvous* r =
       grpc_server->worker_env()->rendezvous_mgr->Find(rendezvous_id);
@@ -222,9 +224,10 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
 
   auto* device_mgr = grpc_server->worker_env()->device_mgr;
 
-  ctx->context.InitializeRemote(
-      std::move(server), std::move(remote_eager_workers),
-      std::move(remote_device_mgr), remote_contexts, r, device_mgr);
+  ctx->context.InitializeRemote(std::move(server),
+                                std::move(remote_eager_workers),
+                                std::move(remote_device_mgr), remote_contexts,
+                                r, device_mgr, keep_alive_secs);
 
   return tensorflow::Status::OK();
 #undef LOG_AND_RETURN_IF_ERROR
@@ -241,8 +244,8 @@ void TFE_ContextOptionsSetConfig(TFE_ContextOptions* options, const void* proto,
 }
 
 void TFE_ContextOptionsSetAsync(TFE_ContextOptions* options,
-                                unsigned char async) {
-  options->async = async;
+                                unsigned char enable) {
+  options->async = enable;
 }
 void TFE_ContextOptionsSetDevicePlacementPolicy(
     TFE_ContextOptions* options, TFE_ContextDevicePlacementPolicy policy) {
@@ -250,9 +253,9 @@ void TFE_ContextOptionsSetDevicePlacementPolicy(
 }
 
 TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context* ctx,
-                                                        unsigned char async,
+                                                        unsigned char enable,
                                                         TF_Status* status) {
-  status->status = ctx->context.SetAsyncForThread(async);
+  status->status = ctx->context.SetAsyncForThread(enable);
 }
 
 void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
@@ -288,6 +291,7 @@ void TFE_ContextClearCaches(TFE_Context* ctx) { ctx->context.ClearCaches(); }
 
 // Set server_def on the context, possibly updating it.
 TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
+                                                   int keep_alive_secs,
                                                    const void* proto,
                                                    size_t proto_len,
                                                    TF_Status* status) {
@@ -297,7 +301,8 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
         "Invalid tensorflow.ServerDef protocol buffer");
     return;
   }
-  status->status = UpdateTFE_ContextWithServerDef(server_def, ctx);
+  status->status =
+      UpdateTFE_ContextWithServerDef(keep_alive_secs, server_def, ctx);
 }
 
 void TFE_ContextSetThreadLocalDevicePlacementPolicy(
@@ -718,6 +723,10 @@ TFE_Op* GetFunc(TFE_Context* ctx, const tensorflow::NameAttrList& func,
   return func_op;
 }
 }  // namespace
+
+void TFE_ContextStartStep(TFE_Context* ctx) { ctx->context.StartStep(); }
+
+void TFE_ContextEndStep(TFE_Context* ctx) { ctx->context.EndStep(); }
 
 namespace tensorflow {
 void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,

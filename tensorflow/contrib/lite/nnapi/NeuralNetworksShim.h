@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef NN_API_SHIM_H0
-#define NN_API_SHIM_H0
+#ifndef TENSORFLOW_CONTRIB_LITE_NNAPI_NEURALNETWORKSSHIM_H_
+#define TENSORFLOW_CONTRIB_LITE_NNAPI_NEURALNETWORKSSHIM_H_
 
 #include <dlfcn.h>
 #include <stdint.h>
@@ -42,6 +42,19 @@ inline void* loadLibrary(const char* name) {
   }
 #endif
   return handle;
+}
+
+typedef int (*ASharedMemory_create_fn)(const char* name, size_t size);
+
+// ASharedMemory_create was added in Android 8.0, so safe to use with NNAPI
+// which was added in 8.1.
+inline int ASharedMemory_create(const char* name, size_t size) {
+  static void* handle = loadLibrary("libandroid.so");
+  static ASharedMemory_create_fn fn =
+      handle != nullptr ? reinterpret_cast<ASharedMemory_create_fn>(
+                              dlsym(handle, "ASharedMemory_create"))
+                        : nullptr;
+  return fn(name, size);
 }
 
 inline void* getLibraryHandle() {
@@ -957,4 +970,4 @@ inline void ANeuralNetworksEvent_free(ANeuralNetworksEvent* event) {
 
 /**/
 
-#endif  // NN_API_SHIM_H0
+#endif  // TENSORFLOW_CONTRIB_LITE_NNAPI_NEURALNETWORKSSHIM_H_

@@ -93,9 +93,9 @@ class XlaComputationLaunchContext {
                       const std::map<int, OptionalTensor>& variables);
 
   // Given the XLA output in `output`, populate all outputs of `ctx`.
-  void PopulateOutputs(OpKernelContext* ctx,
-                       const XlaCompiler::CompilationResult* kernel,
-                       xla::ScopedShapedBuffer output);
+  Status PopulateOutputs(OpKernelContext* ctx,
+                         const XlaCompiler::CompilationResult* kernel,
+                         xla::ScopedShapedBuffer output);
 
   // Return the argument list. Only valid after PopulateInputs() has been
   // called.
@@ -167,4 +167,4 @@ xla::ScopedShapedBuffer ExtractSubShapedBuffer(
 
 }  // namespace tensorflow
 
-#endif
+#endif  // TENSORFLOW_COMPILER_JIT_XLA_LAUNCH_UTIL_H_

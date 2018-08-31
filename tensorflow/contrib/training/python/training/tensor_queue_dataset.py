@@ -156,7 +156,7 @@ def prepend_from_queue_and_padded_batch_dataset(batch_size,
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
 
   def _apply_fn(dataset):

@@ -70,7 +70,7 @@ class OpRegistryInterface;
 class ResourceMgr;
 class ScopedStepContainer;
 class CollectiveExecutor;
-class StepStatsCollector;
+class StepStatsCollectorInterface;
 
 class OpKernel {
  public:
@@ -569,7 +569,7 @@ class OpKernelContext {
     CallFrameInterface* call_frame = nullptr;
     FunctionLibraryRuntime* function_library = nullptr;
     std::function<void(std::function<void()>)>* runner = nullptr;
-    StepStatsCollector* stats_collector = nullptr;
+    StepStatsCollectorInterface* stats_collector = nullptr;
 
     // TensorSliceReaderCache support.
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
@@ -984,7 +984,7 @@ class OpKernelContext {
   std::function<void(std::function<void()>)>* runner() const {
     return params_->runner;
   }
-  StepStatsCollector* stats_collector() const {
+  StepStatsCollectorInterface* stats_collector() const {
     return params_->stats_collector;
   }
 

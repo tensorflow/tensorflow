@@ -17,8 +17,8 @@ limitations under the License.
 // #category: operations on strings
 // #summary: Merges strings or numbers with no delimiter.
 //
-#ifndef TENSORFLOW_LIB_STRINGS_STRCAT_H_
-#define TENSORFLOW_LIB_STRINGS_STRCAT_H_
+#ifndef TENSORFLOW_CORE_LIB_STRINGS_STRCAT_H_
+#define TENSORFLOW_CORE_LIB_STRINGS_STRCAT_H_
 
 #include <string>
 
@@ -124,6 +124,9 @@ class AlphaNum {
   AlphaNum(const StringPiece &pc) : piece_(pc) {}  // NOLINT(runtime/explicit)
   AlphaNum(const tensorflow::string &str)          // NOLINT(runtime/explicit)
       : piece_(str) {}
+  template <typename A>
+  AlphaNum(const std::basic_string<char, std::char_traits<char>, A> &str)
+      : piece_(str) {}  // NOLINT(runtime/explicit)
 
   StringPiece::size_type size() const { return piece_.size(); }
   const char *data() const { return piece_.data(); }
@@ -233,4 +236,4 @@ inline void StrAppend(string *dest, const AlphaNum &a, const AlphaNum &b,
 }  // namespace strings
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_STRINGS_STRCAT_H_
+#endif  // TENSORFLOW_CORE_LIB_STRINGS_STRCAT_H_

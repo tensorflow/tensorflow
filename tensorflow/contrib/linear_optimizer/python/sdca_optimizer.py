@@ -158,7 +158,7 @@ class SDCAOptimizer(object):
           # exactly 2 (i.e., its shape should be [batch_size, column.dim]).
           check_rank_op = control_flow_ops.Assert(
               math_ops.less_equal(array_ops.rank(transformed_tensor), 2),
-              ['transformed_tensor shouls have rank at most 2.'])
+              ['transformed_tensor should have rank at most 2.'])
           # Reshape to [batch_size, dense_column_dimension].
           with ops.control_dependencies([check_rank_op]):
             transformed_tensor = array_ops.reshape(transformed_tensor, [
@@ -172,7 +172,7 @@ class SDCAOptimizer(object):
         elif isinstance(column, layers.feature_column._BucketizedColumn):  # pylint: disable=protected-access
           # A bucketized column corresponds to a sparse feature in SDCA. The
           # bucketized feature is "sparsified" for SDCA by converting it to a
-          # SparseFeatureColumn respresenting the one-hot encoding of the
+          # SparseFeatureColumn representing the one-hot encoding of the
           # bucketized feature.
           #
           # TODO(sibyl-vie3Poto): Explore whether it is more efficient to translate a
@@ -220,7 +220,7 @@ class SDCAOptimizer(object):
           # occur multiple times for a single example.
           projected_ids = projection_length * example_ids + flat_ids
 
-          # Remove any redudant ids.
+          # Remove any redundant ids.
           ids, idx = array_ops.unique(projected_ids)
           # Keep only one example id per duplicated ids.
           example_ids_filtered = math_ops.unsorted_segment_min(

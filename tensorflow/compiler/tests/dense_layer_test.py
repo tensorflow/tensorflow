@@ -86,7 +86,7 @@ class DenseLayerTest(test.TestCase):
     XlaLaunch op by XLA.
     """
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = array_ops.placeholder(shape=[2, 2, 3], dtype=np.float32)
       with jit_scope():
         y = layers.dense(x, 3)
@@ -113,7 +113,7 @@ class DenseLayerTest(test.TestCase):
     cluster, causing dense layer to be split into TWO XlaLaunch ops.
     """
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = array_ops.placeholder(shape=[None, None, 3], dtype=np.float32)
       with jit_scope():
         y = layers.dense(x, 3)

@@ -47,6 +47,9 @@ def _get_toco_converter(flags):
 
   Returns:
     TocoConverter object.
+
+  Raises:
+    ValueError: Invalid flags.
   """
   # Parse input and output arrays.
   input_arrays = _parse_array(flags.input_arrays)
@@ -77,6 +80,9 @@ def _get_toco_converter(flags):
   elif flags.keras_model_file:
     converter_fn = lite.TocoConverter.from_keras_model_file
     converter_kwargs["model_file"] = flags.keras_model_file
+  else:
+    raise ValueError("--graph_def_file, --saved_model_dir, or "
+                     "--keras_model_file must be specified.")
 
   return converter_fn(**converter_kwargs)
 
@@ -103,8 +109,14 @@ def _convert_model(flags):
 
   if flags.mean_values and flags.std_dev_values:
     input_arrays = converter.get_input_arrays()
-    std_dev_values = _parse_array(flags.std_dev_values, type_fn=int)
-    mean_values = _parse_array(flags.mean_values, type_fn=int)
+    std_dev_values = _parse_array(flags.std_dev_values, type_fn=float)
+
+    # In quantized inference, mean_value has to be integer so that the real
+    # value 0.0 is exactly representable.
+    if flags.inference_type == lite_constants.QUANTIZED_UINT8:
+      mean_values = _parse_array(flags.mean_values, type_fn=int)
+    else:
+      mean_values = _parse_array(flags.mean_values, type_fn=float)
     quant_stats = list(zip(mean_values, std_dev_values))
     if ((not flags.input_arrays and len(input_arrays) > 1) or
         (len(input_arrays) != len(quant_stats))):
@@ -126,7 +138,8 @@ def _convert_model(flags):
   if flags.reorder_across_fake_quant:
     converter.reorder_across_fake_quant = flags.reorder_across_fake_quant
   if flags.change_concat_input_ranges:
-    converter.change_concat_input_ranges = flags.change_concat_input_ranges
+    converter.change_concat_input_ranges = (
+        flags.change_concat_input_ranges == "TRUE")
   if flags.allow_custom_ops:
     converter.allow_custom_ops = flags.allow_custom_ops
   if flags.quantize_weights:
@@ -203,8 +216,9 @@ def _check_flags(flags, unparsed):
     raise ValueError("--default_ranges_min and --default_ranges_max must be "
                      "used together")
 
-  if flags.dump_graphviz_video and not flags.dump_graphviz:
-    raise ValueError("--dump_graphviz_video must be used with --dump_graphviz")
+  if flags.dump_graphviz_video and not flags.dump_graphviz_dir:
+    raise ValueError("--dump_graphviz_video must be used with "
+                     "--dump_graphviz_dir")
 
 
 def run_main(_):
@@ -285,12 +299,13 @@ def run_main(_):
       "--std_dev_values",
       type=str,
       help=("Standard deviation of training data for each input tensor, "
-            "comma-separated integers. Used for quantization. (default None)"))
+            "comma-separated floats. Used for quantized input tensors. "
+            "(default None)"))
   parser.add_argument(
       "--mean_values",
       type=str,
       help=("Mean of training data for each input tensor, comma-separated "
-            "integers. Used for quantization. (default None)"))
+            "floats. Used for quantized input tensors. (default None)"))
   parser.add_argument(
       "--default_ranges_min",
       type=int,
@@ -305,7 +320,7 @@ def run_main(_):
             "quantization via \"dummy quantization\". (default None)"))
   parser.add_argument(
       "--quantize_weights",
-      type=bool,
+      action="store_true",
       help=("Store float weights as quantized weights followed by dequantize "
             "operations. Inference is still done in FLOAT, but reduces model "
             "size (at the cost of accuracy and latency)."))
@@ -326,9 +341,14 @@ def run_main(_):
             "the graph. Results in a graph that differs from the quantized "
             "training graph, potentially causing differing arithmetic "
             "behavior. (default False)"))
+  # Usage for this flag is --change_concat_input_ranges=true or
+  # --change_concat_input_ranges=false in order to make it clear what the flag
+  # is set to. This keeps the usage consistent with other usages of the flag
+  # where the default is different. The default value here is False.
   parser.add_argument(
       "--change_concat_input_ranges",
-      action="store_true",
+      type=str.upper,
+      choices=["TRUE", "FALSE"],
       help=("Boolean to change behavior of min/max ranges for inputs and "
             "outputs of the concat operator for quantized models. Changes the "
             "ranges of concat operator overlap when true. (default False)"))

@@ -9,6 +9,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member_method {
+    name: "clone_model"
+    argspec: "args=[\'model\', \'input_tensors\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "load_model"
     argspec: "args=[\'filepath\', \'custom_objects\', \'compile\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
   }

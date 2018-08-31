@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -382,7 +382,7 @@ struct BatchNormTestParam {
 
   friend ::std::ostream& operator<<(::std::ostream& os,
                                     const BatchNormTestParam& p) {
-    os << "bounds={" << tensorflow::str_util::Join(p.bounds, ", ") << "}, ";
+    os << "bounds={" << absl::StrJoin(p.bounds, ", ") << "}, ";
     os << "feature_index=" << p.feature_index << ", ";
     os << "random_value_mean=" << p.random_value_mean << ", ";
     os << "random_value_var=" << p.random_value_var;

@@ -46,11 +46,11 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class FileDataset : public GraphDatasetBase {
+  class FileDataset : public DatasetBase {
    public:
     explicit FileDataset(OpKernelContext* ctx, const DatasetBase* input,
                          string filename, Env* env)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           filename_(std::move(filename)),
           env_(env),
@@ -85,10 +85,11 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_graph = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph));
       Node* filename = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(filename_, &filename));
       TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph, filename}, output));
@@ -135,7 +136,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("mode"), mode_));
-        return SaveParent(writer, iterator_);
+        return SaveInput(writer, iterator_);
       }
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
@@ -162,7 +163,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
         }
         InitializeIterator();
         TF_RETURN_IF_ERROR(iterator_->Initialize(ctx));
-        return RestoreParent(ctx, reader, iterator_);
+        return RestoreInput(ctx, reader, iterator_);
       }
 
      private:
@@ -269,7 +270,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
             lockfile_ = strings::StrCat(filename_, ".lockfile");
             lockfile_created_ = false;
           }
-          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("cur_index"), cur_index_));
           TF_RETURN_IF_ERROR(
@@ -285,7 +286,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
             return Status::OK();
           }
 
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
           int64 temp;
           // TODO(b/78048575): Update this when saving size_t tensors directly
           // is supported.
@@ -538,10 +539,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
     const string tensor_format_string_;
   };  // FileDataset
 
-  class MemoryDataset : public GraphDatasetBase {
+  class MemoryDataset : public DatasetBase {
    public:
     explicit MemoryDataset(OpKernelContext* ctx, const DatasetBase* input)
-        : GraphDatasetBase(ctx), input_(input), cache_(new MemoryCache()) {
+        : DatasetBase(DatasetContext(ctx)),
+          input_(input),
+          cache_(new MemoryCache()) {
       input->Ref();
     }
 
@@ -566,10 +569,11 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
       Node* filename_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(string(""), &filename_node));
       TF_RETURN_IF_ERROR(
@@ -702,7 +706,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
                 writer->WriteScalar(full_name("cache_completed"), ""));
           }
         }
-        return SaveParent(writer, iterator_);
+        return SaveInput(writer, iterator_);
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -748,7 +752,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
         }
         InitializeIterator();
         TF_RETURN_IF_ERROR(iterator_->Initialize(ctx));
-        return RestoreParent(ctx, reader, iterator_);
+        return RestoreInput(ctx, reader, iterator_);
       }
 
      private:
@@ -795,13 +799,13 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
        protected:
         Status SaveInternal(IteratorStateWriter* writer) override {
           mutex_lock l(mu_);
-          return SaveParent(writer, input_impl_);
+          return SaveInput(writer, input_impl_);
         }
 
         Status RestoreInternal(IteratorContext* ctx,
                                IteratorStateReader* reader) override {
           mutex_lock l(mu_);
-          return RestoreParent(ctx, reader, input_impl_);
+          return RestoreInput(ctx, reader, input_impl_);
         }
 
        private:

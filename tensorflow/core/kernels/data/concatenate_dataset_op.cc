@@ -39,11 +39,11 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, const DatasetBase* input,
                      const DatasetBase* to_concatenate)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           to_concatenate_(to_concatenate) {
       input_->Ref();
@@ -80,13 +80,14 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_graph = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph));
       Node* to_concatenate_graph = nullptr;
       TF_RETURN_IF_ERROR(
-          b->AddParentDataset(ctx, to_concatenate_, &to_concatenate_graph));
+          b->AddInputDataset(ctx, to_concatenate_, &to_concatenate_graph));
       TF_RETURN_IF_ERROR(
           b->AddDataset(this, {input_graph, to_concatenate_graph}, output));
       return Status::OK();
@@ -132,7 +133,7 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));
         if (input_impl_) {
-          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         } else {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impl_uninitialized"), ""));
@@ -157,7 +158,7 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
           input_impl_.reset();
         }
         if (input_impl_) {
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         }
         return Status::OK();
       }

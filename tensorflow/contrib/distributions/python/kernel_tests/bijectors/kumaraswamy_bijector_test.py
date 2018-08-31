@@ -30,7 +30,7 @@ class KumaraswamyBijectorTest(test.TestCase):
   """Tests correctness of the Kumaraswamy bijector."""
 
   def testBijector(self):
-    with self.test_session():
+    with self.cached_session():
       a = 2.
       b = 0.3
       bijector = Kumaraswamy(
@@ -54,13 +54,13 @@ class KumaraswamyBijectorTest(test.TestCase):
           atol=0.)
 
   def testScalarCongruency(self):
-    with self.test_session():
+    with self.cached_session():
       assert_scalar_congruency(
           Kumaraswamy(concentration1=0.5, concentration0=1.1),
           lower_x=0., upper_x=1., n=int(10e3), rtol=0.02)
 
   def testBijectiveAndFinite(self):
-    with self.test_session():
+    with self.cached_session():
       concentration1 = 1.2
       concentration0 = 2.
       bijector = Kumaraswamy(

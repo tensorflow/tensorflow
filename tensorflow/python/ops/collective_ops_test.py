@@ -53,6 +53,9 @@ class CollectiveOpTest(test.TestCase):
                                [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3],
                                [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2])
 
+  def testCollectiveReduceScalar(self):
+    self._testCollectiveReduce(0.1, 0.3, 0.2)
+
   def _testCollectiveBroadcast(self, t0):
     group_key = 1
     instance_key = 1

@@ -22,14 +22,15 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -125,6 +126,9 @@ class HloModuleGroupMetadata {
   // Returns the Channel instance for the given channel id.
   const Channel& GetChannel(int64 channel_id) const;
 
+  // Returns if the given channel id exists in metadata.
+  bool HasChannel(int64 channel_id) const;
+
   // Returns the all-reduce instructions with the same all_reduce_id.
   const std::vector<HloInstruction*>& GetAllReduceGroup(
       int64 all_reduce_id) const;
@@ -156,7 +160,7 @@ class HloModuleGroupMetadata {
   // Retrieves the device an instruction is assigned to. Either from the
   // sharding information, or from the ordinal of the module the instruction
   // is in.
-  tensorflow::gtl::optional<int64> GetInstructionDevice(
+  absl::optional<int64> GetInstructionDevice(
       const HloInstruction& instruction) const;
 
   // Returns the number of modules for devices (excluding the host module).
@@ -166,7 +170,7 @@ class HloModuleGroupMetadata {
   //
   // Precondition: IsCompanionWhile(instruction) is true.
   const std::unordered_set<HloInstruction*>& Companions(
-      HloInstruction* instruction) const {
+      const HloInstruction* instruction) const {
     CHECK_EQ(companion_set_index_.count(instruction), 1);
     return companion_set(companion_set_index_.at(instruction));
   }
@@ -193,6 +197,10 @@ class HloModuleGroupMetadata {
 
   // Returns the maximum channel id or all_reduce_id used in the module group.
   int64 max_channel_id() const { return max_channel_id_; }
+
+  TuplePointsToAnalysis* points_to_analysis(HloModule* module) const {
+    return points_to_analyses_.at(module).get();
+  }
 
  private:
   Status Build();
@@ -243,7 +251,7 @@ class HloModuleGroupMetadata {
       companion_sets_;
 
   // Map from each companion while instruction to the index into companion_set_.
-  tensorflow::gtl::FlatMap<HloInstruction*, int64> companion_set_index_;
+  tensorflow::gtl::FlatMap<const HloInstruction*, int64> companion_set_index_;
 
   // Map from computation to the instruction using it (a kWhile, kConditional).
   tensorflow::gtl::FlatMap<const HloComputation*, TrackedInstruction>
@@ -268,6 +276,9 @@ class HloModuleGroupMetadata {
 
   // The modules that this metadata was built from.
   const std::vector<HloModule*>& modules_;
+
+  tensorflow::gtl::FlatMap<HloModule*, std::unique_ptr<TuplePointsToAnalysis>>
+      points_to_analyses_;
 };
 
 }  // namespace xla
