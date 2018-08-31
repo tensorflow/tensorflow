@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
@@ -53,7 +54,7 @@ class AdamOptimizerTest(xla_test.XLATestCase):
   def testBasic(self):
     for dtype in self.float_types:
       # TODO: test fails for float16 due to excessive precision requirements.
-      if dtype == np.float16:
+      if dtype in [np.float16, dtypes.bfloat16.as_numpy_dtype]:
         continue
       with self.test_session(), self.test_scope():
         variable_scope.get_variable_scope().set_use_resource(True)
@@ -95,7 +96,7 @@ class AdamOptimizerTest(xla_test.XLATestCase):
   def testTensorLearningRate(self):
     for dtype in self.float_types:
       # TODO: test fails for float16 due to excessive precision requirements.
-      if dtype == np.float16:
+      if dtype in [np.float16, dtypes.bfloat16.as_numpy_dtype]:
         continue
       with self.test_session(), self.test_scope():
         variable_scope.get_variable_scope().set_use_resource(True)
@@ -137,7 +138,7 @@ class AdamOptimizerTest(xla_test.XLATestCase):
   def testSharing(self):
     for dtype in self.float_types:
       # TODO: test fails for float16 due to excessive precision requirements.
-      if dtype == np.float16:
+      if dtype in [np.float16, dtypes.bfloat16.as_numpy_dtype]:
         continue
       with self.test_session(), self.test_scope():
         variable_scope.get_variable_scope().set_use_resource(True)
