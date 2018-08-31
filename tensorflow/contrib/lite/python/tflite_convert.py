@@ -142,11 +142,14 @@ def _convert_model(flags):
         flags.change_concat_input_ranges == "TRUE")
   if flags.allow_custom_ops:
     converter.allow_custom_ops = flags.allow_custom_ops
-  if flags.quantize_weights:
+
+  if flags.post_training_quantize:
+    converter.post_training_quantize = flags.post_training_quantize
     if flags.inference_type == lite_constants.QUANTIZED_UINT8:
-      raise ValueError("--quantized_weights is not supported with "
-                       "--inference_type=QUANTIZED_UINT8")
-    converter.quantize_weights = flags.quantize_weights
+      print("--post_training_quantize quantizes a graph of inference_type "
+            "FLOAT. Overriding inference type QUANTIZED_UINT8 to FLOAT.")
+      converter.inference_type = lite_constants.FLOAT
+
   if flags.dump_graphviz_dir:
     converter.dump_graphviz_dir = flags.dump_graphviz_dir
   if flags.dump_graphviz_video:
@@ -318,12 +321,20 @@ def run_main(_):
       help=("Default value for max bound of min/max range values used for all "
             "arrays without a specified range, Intended for experimenting with "
             "quantization via \"dummy quantization\". (default None)"))
+  # quantize_weights is DEPRECATED.
   parser.add_argument(
       "--quantize_weights",
+      dest="post_training_quantize",
       action="store_true",
-      help=("Store float weights as quantized weights followed by dequantize "
-            "operations. Inference is still done in FLOAT, but reduces model "
-            "size (at the cost of accuracy and latency)."))
+      help=argparse.SUPPRESS)
+  parser.add_argument(
+      "--post_training_quantize",
+      dest="post_training_quantize",
+      action="store_true",
+      help=(
+          "Boolean indicating whether to quantize the weights of the "
+          "converted float model. Model size will be reduced and there will "
+          "be latency improvements (at the cost of accuracy). (default False)"))
 
   # Graph manipulation flags.
   parser.add_argument(

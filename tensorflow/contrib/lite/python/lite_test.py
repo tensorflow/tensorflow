@@ -372,7 +372,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertTrue(output_details[0]['quantization'][0] > 0)  # scale
 
-  def testQuantizeWeights(self):
+  def testPostTrainingQuantize(self):
     np.random.seed(0)
     # We need the tensor to have more than 1024 elements for quantize_weights
     # to kick in. Thus, the [33, 33] shape.
@@ -393,14 +393,14 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue(float_tflite)
 
     # Convert quantized weights model.
-    quantized_weights_converter = lite.TocoConverter.from_session(
+    quantized_converter = lite.TocoConverter.from_session(
         sess, [in_tensor_1], [out_tensor])
-    quantized_weights_converter.quantize_weights = True
-    quantized_weights_tflite = quantized_weights_converter.convert()
-    self.assertTrue(quantized_weights_tflite)
+    quantized_converter.post_training_quantize = True
+    quantized_tflite = quantized_converter.convert()
+    self.assertTrue(quantized_tflite)
 
     # Ensure that the quantized weights tflite model is smaller.
-    self.assertTrue(len(quantized_weights_tflite) < len(float_tflite))
+    self.assertTrue(len(quantized_tflite) < len(float_tflite))
 
 
 class FromFrozenGraphFile(test_util.TensorFlowTestCase):
