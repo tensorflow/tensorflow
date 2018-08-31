@@ -20,47 +20,66 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/AffineStructures.h"
+
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/StandardOps.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace mlir {
 
-MutableAffineMap::MutableAffineMap(AffineMap *map) {
+MutableAffineMap::MutableAffineMap(AffineMap *map, MLIRContext *context)
+    : numDims(map->getNumDims()), numSymbols(map->getNumSymbols()),
+      context(context) {
   for (auto *result : map->getResults())
     results.push_back(result);
   for (auto *rangeSize : map->getRangeSizes())
     results.push_back(rangeSize);
 }
 
-MutableIntegerSet::MutableIntegerSet(IntegerSet *set)
-    : numDims(set->getNumDims()), numSymbols(set->getNumSymbols()) {
-  // TODO(bondhugula)
-}
+bool MutableAffineMap::isMultipleOf(unsigned idx, int64_t factor) const {
+  if (results[idx]->isMultipleOf(factor))
+    return true;
 
-// Universal set.
-MutableIntegerSet::MutableIntegerSet(unsigned numDims, unsigned numSymbols)
-    : numDims(numDims), numSymbols(numSymbols) {}
-
-AffineValueMap::AffineValueMap(const AffineApplyOp &op)
-    : map(op.getAffineMap()) {
-  // TODO: pull operands and results in.
-}
-
-bool AffineValueMap::isMultipleOf(unsigned idx, int64_t factor) const {
-  // Check if the (first result expr) % factor becomes 0.
-  if (auto *expr = dyn_cast<AffineConstantExpr>(AffineBinaryOpExpr::get(
-          AffineExpr::Kind::Mod, map.getResult(idx),
-          AffineConstantExpr::get(factor, context), context)))
-    return expr->getValue() == 0;
-
-  // TODO(bondhugula): use FlatAffineConstraints to complete this.
+  // TODO(bondhugula): use FlatAffineConstraints to complete this (for a more
+  // powerful analysis).
   assert(0 && "isMultipleOf implementation incomplete");
   return false;
 }
 
+MutableIntegerSet::MutableIntegerSet(IntegerSet *set, MLIRContext *context)
+    : numDims(set->getNumDims()), numSymbols(set->getNumSymbols()),
+      context(context) {
+  // TODO(bondhugula)
+}
+
+// Universal set.
+MutableIntegerSet::MutableIntegerSet(unsigned numDims, unsigned numSymbols,
+                                     MLIRContext *context)
+    : numDims(numDims), numSymbols(numSymbols), context(context) {}
+
+AffineValueMap::AffineValueMap(const AffineApplyOp &op, MLIRContext *context)
+    : map(op.getAffineMap(), context) {
+  // TODO: pull operands and results in.
+}
+
+inline bool AffineValueMap::isMultipleOf(unsigned idx, int64_t factor) const {
+  return map.isMultipleOf(idx, factor);
+}
+
 AffineValueMap::~AffineValueMap() {}
+
+void FlatAffineConstraints::addEquality(ArrayRef<int64_t> eq) {
+  assert(eq.size() == getNumCols());
+  unsigned offset = equalities.size();
+  equalities.resize(equalities.size() + eq.size());
+  for (unsigned i = 0, e = eq.size(); i < e; i++) {
+    equalities[offset + i] = eq[i];
+  }
+}
 
 } // end namespace mlir

@@ -110,9 +110,10 @@ static void mergeBounds(const HyperRectangularSet &set,
 HyperRectangularSet::HyperRectangularSet(unsigned numDims, unsigned numSymbols,
                                          ArrayRef<ArrayRef<AffineExpr *>> lbs,
                                          ArrayRef<ArrayRef<AffineExpr *>> ubs,
+                                         MLIRContext *context,
                                          IntegerSet *symbolContext)
-    : context(symbolContext ? MutableIntegerSet(symbolContext)
-                            : MutableIntegerSet(numDims, numSymbols)) {
+    : context(symbolContext ? MutableIntegerSet(symbolContext, context)
+                            : MutableIntegerSet(numDims, numSymbols, context)) {
   unsigned d = 0;
   for (auto boundList : lbs) {
     AffineBoundExprList lb;

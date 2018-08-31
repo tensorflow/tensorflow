@@ -29,8 +29,9 @@
 #map3j = (i, j) -> (i + 1, j*1*4 + 2)
 #map3k = (i, j) -> (i + 1, j*4*1 + 2)
 
-// The following reduction should be unique'd out too but the expression
-// simplifier is not powerful enough.
+// The following reduction should be unique'd out too but such expression
+// simplification is not performed for IR parsing, but only through analyses
+// and transforms.
 // CHECK: #map{{[0-9]+}} = (d0, d1) -> (d1 - d0 + (d0 - d1 + 1) * 2 + d1 - 1, d1 + d1 + d1 + d1 + 2)
 #map3l = (i, j) -> ((j - i) + 2*(i - j + 1) + j - 1 + 0, j + j + 1 + j + j + 1)
 
@@ -155,12 +156,16 @@
 // CHECK: #map{{[0-9]+}} = (d0, d1, d2) -> (0, d1, d0 * 2, 0)
 #map46 = (i, j, k) -> (i*0, 1*j, i * 128 floordiv 64, j * 0 floordiv 64)
 
-// CHECK: #map{{[0-9]+}} = (d0, d1, d2) -> (d0, d0 * 4, 0, 0)
-#map47 = (i, j, k) -> (i * 64 ceildiv 64, i * 512 ceildiv 128, 4 * j mod 4, 4*j*4 mod 8)
+// CHECK: #map{{[0-9]+}} = (d0, d1, d2) -> (d0, d0 * 4, 0, 0, 0)
+#map47 = (i, j, k) -> (i * 64 ceildiv 64, i * 512 ceildiv 128, 4 * j mod 4, 4*j*4 mod 8, k mod 1)
 
-// floordiv should resolve similarly to ceildiv and be unique'd out
+// floordiv should resolve similarly to ceildiv and be unique'd out.
 // CHECK-NOT: #map48{{[a-z]}}
 #map48 = (i, j, k) -> (i * 64 floordiv 64, i * 512 floordiv 128, 4 * j mod 4, 4*j*4 mod 8)
+
+// Simplifications for mod using known GCD's of the LHS expr.
+// CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (0, 0, 0, (d0 * 4 + 3) mod 2)
+#map49 = (i, j)[s0] -> ( (i * 4 + 8) mod 4, 32 * j * s0 * 8 mod 256, (4*i + (j * (s0 * 2))) mod 2, (4*i + 3) mod 2)
 
 // CHECK: extfunc @f0(memref<2x4xi8, #map{{[0-9]+}}, 1>)
 extfunc @f0(memref<2x4xi8, #map0, 1>)
@@ -323,3 +328,6 @@ extfunc @f47(memref<100x100x100xi8, #map47>)
 
 // CHECK: extfunc @f48(memref<100x100x100xi8, #map{{[0-9]+}}>)
 extfunc @f48(memref<100x100x100xi8, #map48>)
+
+// CHECK: extfunc @f49(memref<100x100xi8, #map{{[0-9]+}}>)
+extfunc @f49(memref<100x100xi8, #map49>)

@@ -70,6 +70,12 @@ public:
   /// floordiv, ceildiv, and mod is only allowed w.r.t constants.
   bool isPureAffine() const;
 
+  /// Returns the greatest known common divisor of this affine expression.
+  uint64_t getKnownGcd() const;
+
+  /// Return true if the affine expression is a multiple of 'factor'.
+  bool isMultipleOf(int64_t factor) const;
+
 protected:
   explicit AffineExpr(Kind kind) : kind(kind) {}
   ~AffineExpr() {}

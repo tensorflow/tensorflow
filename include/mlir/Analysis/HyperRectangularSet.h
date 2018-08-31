@@ -95,6 +95,7 @@ public:
   HyperRectangularSet(unsigned numDims, unsigned numSymbols,
                       ArrayRef<ArrayRef<AffineExpr *>> lbs,
                       ArrayRef<ArrayRef<AffineExpr *>> ubs,
+                      MLIRContext *context,
                       IntegerSet *symbolContext = nullptr);
 
   unsigned getNumDims() const { return numDims; }

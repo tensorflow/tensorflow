@@ -225,17 +225,13 @@ AffineExpr *AffineBinaryOpExpr::simplifyMod(AffineExpr *lhs, AffineExpr *rhs,
     return AffineConstantExpr::get(lhsConst->getValue() % rhsConst->getValue(),
                                    context);
 
-  // Fold modulo of a multiply with a constant that is a multiple of the
-  // modulo factor to zero. Eg: (i * 128) mod 64 = 0.
+  // Fold modulo of an expression that is known to be a multiple of a constant
+  // to zero if that constant is a multiple of the modulo factor. Eg: (i * 128)
+  // mod 64 is folded to 0, and less trivially, (i*(j*4*(k*32))) mod 128 = 0.
   if (rhsConst) {
-    auto *lBin = dyn_cast<AffineBinaryOpExpr>(lhs);
-    if (lBin && lBin->getKind() == Kind::Mul) {
-      if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS())) {
-        // rhsConst is known to be positive if a constant.
-        if (lrhs->getValue() % rhsConst->getValue() == 0)
-          return AffineConstantExpr::get(0, context);
-      }
-    }
+    // rhsConst is known to be positive if a constant.
+    if (lhs->getKnownGcd() % rhsConst->getValue() == 0)
+      return AffineConstantExpr::get(0, context);
   }
 
   return nullptr;

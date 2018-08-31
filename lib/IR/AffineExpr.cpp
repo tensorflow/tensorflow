@@ -100,3 +100,56 @@ bool AffineExpr::isPureAffine() const {
   }
   }
 }
+
+uint64_t AffineExpr::getKnownGcd() const {
+  AffineBinaryOpExpr *binExpr = nullptr;
+  switch (kind) {
+  case Kind::SymbolId:
+    LLVM_FALLTHROUGH;
+  case Kind::DimId:
+    return 1;
+  case Kind::Constant:
+    return std::abs(cast<AffineConstantExpr>(this)->getValue());
+  case Kind::Mul:
+    binExpr = cast<AffineBinaryOpExpr>(const_cast<AffineExpr *>(this));
+    return binExpr->getLHS()->getKnownGcd() * binExpr->getRHS()->getKnownGcd();
+  case Kind::Add:
+    LLVM_FALLTHROUGH;
+  case Kind::FloorDiv:
+  case Kind::CeilDiv:
+  case Kind::Mod:
+    binExpr = cast<AffineBinaryOpExpr>(const_cast<AffineExpr *>(this));
+    return llvm::GreatestCommonDivisor64(binExpr->getLHS()->getKnownGcd(),
+                                         binExpr->getRHS()->getKnownGcd());
+  }
+}
+
+bool AffineExpr::isMultipleOf(int64_t factor) const {
+  AffineBinaryOpExpr *binExpr = nullptr;
+  uint64_t l, u;
+  switch (kind) {
+  case Kind::SymbolId:
+    LLVM_FALLTHROUGH;
+  case Kind::DimId:
+    return factor * factor == 1;
+  case Kind::Constant:
+    return cast<AffineConstantExpr>(this)->getValue() % factor == 0;
+  case Kind::Mul:
+    binExpr = cast<AffineBinaryOpExpr>(const_cast<AffineExpr *>(this));
+    // It's probably not worth optimizing this further (to not traverse the
+    // whole sub-tree under - it that would require a version of isMultipleOf
+    // that on a 'false' return also returns the known GCD).
+    return (l = binExpr->getLHS()->getKnownGcd()) % factor == 0 ||
+           (u = binExpr->getRHS()->getKnownGcd()) % factor == 0 ||
+           (l * u) % factor == 0;
+  case Kind::Add:
+  case Kind::FloorDiv:
+  case Kind::CeilDiv:
+  case Kind::Mod:
+    binExpr = cast<AffineBinaryOpExpr>(const_cast<AffineExpr *>(this));
+    return llvm::GreatestCommonDivisor64(binExpr->getLHS()->getKnownGcd(),
+                                         binExpr->getRHS()->getKnownGcd()) %
+               factor ==
+           0;
+  }
+}

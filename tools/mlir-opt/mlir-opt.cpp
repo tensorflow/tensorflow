@@ -37,6 +37,7 @@
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
+
 using namespace mlir;
 using namespace llvm;
 
@@ -55,6 +56,7 @@ enum Passes {
   ConvertToCFG,
   LoopUnroll,
   LoopUnrollAndJam,
+  SimplifyAffineExpr,
   TFRaiseControlFlow,
 };
 
@@ -65,6 +67,8 @@ static cl::list<Passes> passList(
                clEnumValN(LoopUnroll, "loop-unroll", "Unroll loops"),
                clEnumValN(LoopUnrollAndJam, "loop-unroll-jam",
                           "Unroll and jam loops"),
+               clEnumValN(SimplifyAffineExpr, "simplify-affine-expr",
+                          "Simplify affine expressions"),
                clEnumValN(TFRaiseControlFlow, "tf-raise-control-flow",
                           "Dynamic TensorFlow Switch/Match nodes to a CFG")));
 
@@ -116,6 +120,9 @@ OptResult parseAndPrintMemoryBuffer(std::unique_ptr<MemoryBuffer> buffer) {
       break;
     case LoopUnrollAndJam:
       pass = createLoopUnrollAndJamPass();
+      break;
+    case SimplifyAffineExpr:
+      pass = createSimplifyAffineExprPass();
       break;
     case TFRaiseControlFlow:
       pass = createRaiseTFControlFlowPass();

@@ -25,6 +25,7 @@
 
 namespace mlir {
 
+class FunctionPass;
 class MLFunctionPass;
 class ModulePass;
 
@@ -37,6 +38,9 @@ MLFunctionPass *createLoopUnrollPass(int unrollFactor = -1,
 /// factor of -1 lets the pass use the default factor or the one on the command
 /// line if provided.
 MLFunctionPass *createLoopUnrollAndJamPass(int unrollJamFactor = -1);
+
+/// Creates an affine expression simplification pass.
+FunctionPass *createSimplifyAffineExprPass();
 
 /// Replaces all ML functions in the module with equivalent CFG functions.
 /// Function references are appropriately patched to refer to the newly

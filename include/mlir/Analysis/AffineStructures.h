@@ -41,23 +41,41 @@ class HyperRectangularSet;
 /// A mutable affine map. Its affine expressions are however unique.
 struct MutableAffineMap {
 public:
-  explicit MutableAffineMap(AffineMap *map);
+  MutableAffineMap(AffineMap *map, MLIRContext *context);
 
   AffineExpr *getResult(unsigned idx) const { return results[idx]; }
   unsigned getNumResults() const { return results.size(); }
+  unsigned getNumDims() const { return numDims; }
+  unsigned getNumSymbols() const { return numSymbols; }
+  /// Returns true if the idx'th result expression is a multiple of factor.
+  bool isMultipleOf(unsigned idx, int64_t factor) const;
+
+  /// Simplify the (result) expressions in this map using analysis (used by
+  //-simplify-affine-expr pass).
+  void simplify();
+  /// Get the AffineMap corresponding to this MutableAffineMap. Note that an
+  /// AffineMap * will be uniqued and stored in context, while a mutable one
+  /// isn't.
+  AffineMap *getAffineMap();
 
 private:
+  // Same meaning as AffineMap's fields.
   SmallVector<AffineExpr *, 8> results;
   SmallVector<AffineExpr *, 8> rangeSizes;
+  unsigned numDims;
+  unsigned numSymbols;
+  /// A pointer to the IR's context to store all newly created AffineExpr's.
+  MLIRContext *context;
 };
 
 /// A mutable integer set. Its affine expressions are however unique.
 struct MutableIntegerSet {
 public:
-  explicit MutableIntegerSet(IntegerSet *set);
+  MutableIntegerSet(IntegerSet *set, MLIRContext *context);
 
   /// Create a universal set (no constraints).
-  explicit MutableIntegerSet(unsigned numDims, unsigned numSymbols);
+  MutableIntegerSet(unsigned numDims, unsigned numSymbols,
+                    MLIRContext *context);
 
   unsigned getNumDims() const { return numDims; }
   unsigned getNumSymbols() const { return numSymbols; }
@@ -74,6 +92,8 @@ private:
 
   SmallVector<AffineExpr *, 8> constraints;
   SmallVector<bool, 8> eqFlags;
+  /// A pointer to the IR's context to store all newly created AffineExpr's.
+  MLIRContext *context;
 };
 
 /// An AffineValueMap is an affine map plus its ML value operands and
@@ -89,9 +109,9 @@ private:
 // TODO(bondhugula): Some of these classes could go into separate files.
 class AffineValueMap {
 public:
-  explicit AffineValueMap(const AffineApplyOp &op);
-  explicit AffineValueMap(const AffineBound &bound);
-  explicit AffineValueMap(AffineMap *map);
+  AffineValueMap(const AffineApplyOp &op, MLIRContext *context);
+  AffineValueMap(const AffineBound &bound, MLIRContext *context);
+  AffineValueMap(AffineMap *map, MLIRContext *context);
 
   ~AffineValueMap();
 
@@ -110,7 +130,7 @@ public:
 
   /// Return true if the idx^th result can be proved to be a multiple of
   /// 'factor', false otherwise.
-  bool isMultipleOf(unsigned idx, int64_t factor) const;
+  inline bool isMultipleOf(unsigned idx, int64_t factor) const;
 
   /// Return true if the result at 'idx' is a constant, false
   /// otherwise.
@@ -128,8 +148,6 @@ private:
   SmallVector<MLValue *, 4> operands;
   /// The SSA results binding to the results of 'map'.
   SmallVector<MLValue *, 4> results;
-  /// A pointer to the IR's context to store all newly created AffineExpr's.
-  MLIRContext *context;
 };
 
 /// An IntegerValueSet is an integer set plus its operands.
@@ -155,8 +173,6 @@ private:
   MutableIntegerSet set;
   /// The SSA operands binding to the dim's and symbols of 'set'.
   SmallVector<MLValue *, 4> operands;
-  /// A pointer to the IR's context to store all newly created AffineExpr's.
-  MLIRContext *context;
 };
 
 /// A flat list of affine equalities and inequalities in the form.
@@ -190,8 +206,7 @@ public:
   /// constraints and identifiers..
   FlatAffineConstraints(unsigned numReservedInequalities,
                         unsigned numReservedEqualities, unsigned numReservedIds)
-      : numEqualities(0), numInequalities(0),
-        numReservedEqualities(numReservedEqualities),
+      : numReservedEqualities(numReservedEqualities),
         numReservedInequalities(numReservedInequalities),
         numReservedIds(numReservedIds) {
     equalities.reserve(numReservedIds * numReservedEqualities);
@@ -208,23 +223,50 @@ public:
 
   /// Create an affine constraint system from an IntegerValueSet.
   // TODO(bondhugula)
-  FlatAffineConstraints(const IntegerValueSet &set);
+  explicit FlatAffineConstraints(const IntegerValueSet &set);
 
   FlatAffineConstraints(ArrayRef<const AffineValueMap *> avmRef,
                         const IntegerSet &set);
 
+  FlatAffineConstraints(const MutableAffineMap &map);
+
   ~FlatAffineConstraints() {}
 
-  inline int64_t atEq(unsigned i, unsigned j) {
-    return equalities[i * numIds + j];
+  inline int64_t atEq(unsigned i, unsigned j) const {
+    return equalities[i * (numIds + 1) + j];
   }
 
-  inline int64_t atIneq(unsigned i, unsigned j) {
-    return inequalities[i * numIds + j];
+  inline int64_t &atEq(unsigned i, unsigned j) {
+    return equalities[i * (numIds + 1) + j];
   }
 
-  unsigned getNumEqualities() const { return equalities.size(); }
-  unsigned getNumInequalities() const { return inequalities.size(); }
+  inline int64_t atIneq(unsigned i, unsigned j) const {
+    return inequalities[i * (numIds + 1) + j];
+  }
+
+  inline int64_t &atIneq(unsigned i, unsigned j) {
+    return inequalities[i * (numIds + 1) + j];
+  }
+
+  inline unsigned getNumCols() const { return numIds + 1; }
+
+  inline unsigned getNumEqualities() const {
+    return equalities.size() / getNumCols();
+  }
+
+  inline unsigned getNumInequalities() const {
+    return inequalities.size() / getNumCols();
+  }
+
+  ArrayRef<int64_t> getEquality(unsigned idx) {
+    return ArrayRef<int64_t>(&equalities[idx * getNumCols()], getNumCols());
+  }
+
+  ArrayRef<int64_t> getInequality(unsigned idx) {
+    return ArrayRef<int64_t>(&inequalities[idx * getNumCols()], getNumCols());
+  }
+
+  AffineExpr *toAffineExpr(unsigned idx, MLIRContext *context);
 
   void addInequality(ArrayRef<int64_t> inEq);
   void addEquality(ArrayRef<int64_t> eq);
@@ -239,11 +281,19 @@ public:
   void removeEquality(unsigned pos);
   void removeInequality(unsigned pos);
 
-  unsigned getNumConstraints() const { return numEqualities + numInequalities; }
-  unsigned getNumIds() const { return numIds; }
-  unsigned getNumDimIds() const { return numDims; }
-  unsigned getNumSymbolIds() const { return numSymbols; }
-  unsigned getNumLocalIds() const { return numDims - numSymbols - numDims; }
+  unsigned getNumConstraints() const {
+    return equalities.size() + inequalities.size();
+  }
+  inline unsigned getNumIds() const { return numIds; }
+  inline unsigned getNumResultDimIds() const { return numResultDims; }
+  inline unsigned getNumDimIds() const { return numDims; }
+  inline unsigned getNumSymbolIds() const { return numSymbols; }
+  inline unsigned getNumLocalIds() const {
+    return numIds - numResultDims - numDims - numSymbols;
+  }
+
+  void print(raw_ostream &os) const;
+  void dump() const;
 
 private:
   /// Coefficients of affine equalities (in == 0 form).
@@ -252,12 +302,6 @@ private:
   /// Coefficients of affine inequalities (in >= 0 form).
   SmallVector<int64_t, 64> inequalities;
 
-  /// Number of equalities in this system.
-  unsigned numEqualities;
-
-  /// Number of inequalities in this system.
-  unsigned numInequalities;
-
   // Pre-allocated space.
   unsigned numReservedEqualities;
   unsigned numReservedInequalities;
@@ -265,6 +309,9 @@ private:
 
   /// Total number of identifiers.
   unsigned numIds;
+
+  /// Number of identifiers corresponding to real dimensions.
+  unsigned numResultDims;
 
   /// Number of identifiers corresponding to real dimensions.
   unsigned numDims;
