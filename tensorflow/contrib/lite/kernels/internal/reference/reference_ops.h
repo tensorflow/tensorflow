@@ -2023,45 +2023,6 @@ inline void Concatenation(int concat_dim, const Scalar* const* input_data,
                 DimsToShape(output_dims), output_data);
 }
 
-template <typename Scalar>
-void Pack(int dim, const Scalar* const* input_data,
-          const Dims<4>* const* input_dims, int inputs_count,
-          Scalar* output_data, const Dims<4>& output_dims) {
-  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
-  int outer_size = 1;
-  for (int i = dim + 1; i < 4; i++) {
-    outer_size *= output_dims.sizes[i];
-  }
-  Scalar* output_ptr = output_data;
-  const int copy_size = FlatSize(**input_dims) / outer_size;
-  for (int k = 0; k < outer_size; k++) {
-    for (int i = 0; i < inputs_count; ++i) {
-      memcpy(output_ptr, input_data[i] + k * copy_size,
-             copy_size * sizeof(Scalar));
-      output_ptr += copy_size;
-    }
-  }
-}
-
-template <typename Scalar>
-void Unpack(int axis, const Scalar* input_data, const Dims<4>& input_dims,
-            int dimensions, int outputs_count, Scalar* const* output_datas,
-            const Dims<4>& output_dims) {
-  int outer_size = 1;
-  for (int i = dimensions - axis; i < 4; i++) {
-    outer_size *= input_dims.sizes[i];
-  }
-
-  const int copy_size = FlatSize(input_dims) / outer_size / outputs_count;
-  for (int k = 0; k < outer_size; k++) {
-    for (int i = 0; i < outputs_count; ++i) {
-      Scalar* output_ptr = output_datas[i] + copy_size * k;
-      int loc = k * outputs_count * copy_size + i * copy_size;
-      memcpy(output_ptr, input_data + loc, copy_size * sizeof(Scalar));
-    }
-  }
-}
-
 // TODO(prabhumk): This is the same as the optimized implementation.
 // TODO(prabhumk): The quantized implementation of concatentation isn't fully
 // quantized as it takes scale as a floating point value. This should be fixed
@@ -2156,6 +2117,45 @@ inline void Concatenation(int concat_dim, const uint8* const* input_data,
 
   ConcatenationWithScaling(op_params, input_shapes_indirect.data(), input_data,
                            DimsToShape(output_dims), output_data);
+}
+
+template <typename Scalar>
+void Pack(int dim, const Scalar* const* input_data,
+          const Dims<4>* const* input_dims, int inputs_count,
+          Scalar* output_data, const Dims<4>& output_dims) {
+  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
+  int outer_size = 1;
+  for (int i = dim + 1; i < 4; i++) {
+    outer_size *= output_dims.sizes[i];
+  }
+  Scalar* output_ptr = output_data;
+  const int copy_size = FlatSize(**input_dims) / outer_size;
+  for (int k = 0; k < outer_size; k++) {
+    for (int i = 0; i < inputs_count; ++i) {
+      memcpy(output_ptr, input_data[i] + k * copy_size,
+             copy_size * sizeof(Scalar));
+      output_ptr += copy_size;
+    }
+  }
+}
+
+template <typename Scalar>
+void Unpack(int axis, const Scalar* input_data, const Dims<4>& input_dims,
+            int dimensions, int outputs_count, Scalar* const* output_datas,
+            const Dims<4>& output_dims) {
+  int outer_size = 1;
+  for (int i = dimensions - axis; i < 4; i++) {
+    outer_size *= input_dims.sizes[i];
+  }
+
+  const int copy_size = FlatSize(input_dims) / outer_size / outputs_count;
+  for (int k = 0; k < outer_size; k++) {
+    for (int i = 0; i < outputs_count; ++i) {
+      Scalar* output_ptr = output_datas[i] + copy_size * k;
+      int loc = k * outputs_count * copy_size + i * copy_size;
+      memcpy(output_ptr, input_data + loc, copy_size * sizeof(Scalar));
+    }
+  }
 }
 
 template <typename Scalar>
