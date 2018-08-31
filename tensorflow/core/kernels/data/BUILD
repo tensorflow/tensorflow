@@ -233,6 +233,16 @@ cc_library(
 )
 
 tf_kernel_library(
+    name = "parse_example_dataset_op",
+    srcs = ["parse_example_dataset_op.cc"],
+    deps = [
+        ":parallel_map_iterator",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+    ],
+)
+
+tf_kernel_library(
     name = "parallel_map_dataset_op",
     srcs = ["parallel_map_dataset_op.cc"],
     deps = [
@@ -662,11 +672,13 @@ tf_kernel_library(
         ":iterator_ops",
         ":map_and_batch_dataset_op",
         ":map_dataset_op",
+        ":map_defun_op",
         ":optimize_dataset_op",
         ":optional_ops",
         ":padded_batch_dataset_op",
         ":parallel_interleave_dataset_op",
         ":parallel_map_dataset_op",
+        ":parse_example_dataset_op",
         ":prefetch_dataset_op",
         ":random_dataset_op",
         ":range_dataset_op",
@@ -702,5 +714,17 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
+tf_kernel_library(
+    name = "map_defun_op",
+    srcs = ["map_defun_op.cc"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:functional_ops_op_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
     ],
 )

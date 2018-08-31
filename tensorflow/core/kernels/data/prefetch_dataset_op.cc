@@ -25,10 +25,12 @@ namespace tensorflow {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class PrefetchDatasetOp::Dataset : public GraphDatasetBase {
+class PrefetchDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size)
-      : GraphDatasetBase(ctx), input_(input), buffer_size_(buffer_size) {
+      : DatasetBase(DatasetContext(ctx)),
+        input_(input),
+        buffer_size_(buffer_size) {
     input_->Ref();
   }
 
@@ -51,10 +53,11 @@ class PrefetchDatasetOp::Dataset : public GraphDatasetBase {
   string DebugString() const override { return "PrefetchDatasetOp::Dataset"; }
 
  protected:
-  Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+  Status AsGraphDefInternal(SerializationContext* ctx,
+                            DatasetGraphDefBuilder* b,
                             Node** output) const override {
     Node* input_graph_node = nullptr;
-    TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+    TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     Node* buffer_size = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(buffer_size_, &buffer_size));
     TF_RETURN_IF_ERROR(
@@ -131,7 +134,7 @@ class PrefetchDatasetOp::Dataset : public GraphDatasetBase {
       // all GetNext threads are blocked.
       mutex_lock parent_l(parent_mu_);
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name("buffer_size"), buffer_.size()));
       for (size_t i = 0; i < buffer_.size(); i++) {
@@ -156,7 +159,7 @@ class PrefetchDatasetOp::Dataset : public GraphDatasetBase {
       mutex_lock parent_l(parent_mu_);
       mutex_lock l(mu_);
       buffer_.clear();
-      TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       size_t buffer_size;
       {
         int64 temp;

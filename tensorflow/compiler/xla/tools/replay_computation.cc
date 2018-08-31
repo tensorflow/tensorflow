@@ -40,6 +40,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
@@ -59,7 +60,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
@@ -160,7 +160,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   // concurrent infeed occur via the fake_infeed_shape, or when
   // --generate_fake_infeed is passed and there exists an infeed operation in
   // the HloSnapshot.
-  tensorflow::gtl::optional<tensorflow::thread::ThreadPool> pool;
+  absl::optional<tensorflow::thread::ThreadPool> pool;
   std::unique_ptr<Literal> data;
   if (provide_infeed) {
     data = std::move(MakeFakeLiteral(infeed_shape)).ValueOrDie();
@@ -196,7 +196,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   StreamExecutorMemoryAllocator allocator(
       client->platform(),
       {client->platform()->ExecutorForDevice(0).ValueOrDie()});
-  tensorflow::gtl::optional<ScopedShapedBuffer> result;
+  absl::optional<ScopedShapedBuffer> result;
   for (int i = 0; i < opts.num_runs; ++i) {
     // If xla_hlo_profile is enabled, print a noisy message before the last run,
     // making it easier to separate this profile from the others in the logspam.
@@ -223,8 +223,12 @@ StatusOr<HloSnapshot> ParseInputFile(const string& filename,
                                      const Options& opts) {
   tensorflow::Env* env = tensorflow::Env::Default();
   HloSnapshot snapshot;
-  if (tensorflow::ReadBinaryProto(env, filename, &snapshot).ok()) {
+  auto s = tensorflow::ReadBinaryProto(env, filename, &snapshot);
+  if (s.ok()) {
     return snapshot;
+  }
+  if (s.code() == tensorflow::error::NOT_FOUND) {
+    return s;
   }
   CHECK(opts.use_fake_data)
       << "Without --use_fake_data, you must pass an HloSnapshot -- HloProto "
@@ -246,10 +250,10 @@ StatusOr<HloSnapshot> ParseInputFile(const string& filename,
   }
   fprintf(stderr, "%s: is not HLO text.  Nothing left to try.\n",
           filename.c_str());
-  return InvalidArgument("Could not parse %s.", filename.c_str());
+  return InvalidArgument("Could not parse %s.", filename);
 }
 
-int RealMain(tensorflow::gtl::ArraySlice<char*> args, const Options& opts) {
+int RealMain(absl::Span<char* const> args, const Options& opts) {
   LocalClient* client = ClientLibrary::LocalClientOrDie();
   int exit_status = EXIT_SUCCESS;
 
@@ -258,6 +262,9 @@ int RealMain(tensorflow::gtl::ArraySlice<char*> args, const Options& opts) {
     StatusOr<HloSnapshot> maybe_snapshot = ParseInputFile(arg, opts);
     if (maybe_snapshot.ok()) {
       snapshots.push_back(std::move(maybe_snapshot).ValueOrDie());
+    } else {
+      LOG(ERROR) << "Can't handle file " << arg << ": "
+                 << maybe_snapshot.status();
     }
   }
 
@@ -337,7 +344,7 @@ int main(int argc, char** argv) {
     LOG(QFATAL) << usage;
   }
 
-  tensorflow::gtl::ArraySlice<char*> args(argv, argc);
-  args.pop_front();  // Pop off the binary name, argv[0]
+  absl::Span<char* const> args(argv, argc);
+  args.remove_prefix(1);  // Pop off the binary name, argv[0]
   return xla::tools::RealMain(args, opts);
 }

@@ -38,7 +38,7 @@ class ConvCanonicalization : public HloPassInterface {
       : target_machine_features_(*target_machine_features) {}
 
   ~ConvCanonicalization() override {}
-  tensorflow::StringPiece name() const override {
+  absl::string_view name() const override {
     return "convolution-canonicalization";
   }
 

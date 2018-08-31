@@ -26,12 +26,12 @@ import numpy as np
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_ops_lib
 from tensorflow.contrib.distribute.python import cross_tower_utils
+from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import values as value_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
-from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -40,9 +40,17 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import device_util
 
 
-def _make_per_device(values, devices):
+def _make_per_device(values, devices, regroup=False):
   devices = cross_tower_ops_lib.get_devices_from(devices)
   assert len(values) == len(devices)
+
+  # We simulate the result of regroup called on PerDevice which strips the
+  # PerDevice wrapper if it has only one value.
+  if len(values) == 1 and regroup:
+    with ops.device(devices[0]):
+      placed_v = array_ops.identity(values[0])
+    return placed_v
+
   index = {}
   for d, v in zip(devices, values):
     with ops.device(d):
@@ -368,14 +376,27 @@ class MultiWorkerCrossTowerOpsTest(multi_worker_test_base.MultiWorkerTestBase,
                                       ("xring", 2, -1)], 0, 0, 0)),
       ],
       distribution=[
-          combinations.multi_worker_strategy_with_cpu,
-          combinations.multi_worker_strategy_with_one_gpu,
-          combinations.multi_worker_strategy_with_two_gpus
+          combinations.NamedDistribution(
+              "MirroredCPU",
+              lambda: mirrored_strategy.MirroredStrategy(num_gpus=0),
+              required_gpus=0),
+          combinations.NamedDistribution(
+              "Mirrored1GPU",
+              lambda: mirrored_strategy.MirroredStrategy(num_gpus=1),
+              required_gpus=1),
+          combinations.NamedDistribution(
+              "Mirrored2GPUs",
+              lambda: mirrored_strategy.MirroredStrategy(num_gpus=2),
+              required_gpus=2),
       ],
       mode=["graph"])
 
   @combinations.generate(multi_worker_allreduce_combinations)
   def testReductionAndBroadcast(self, cross_tower_ops, distribution):
+    distribution.configure(cluster_spec={
+        "worker":
+            ["/job:worker/replica:0/task:0", "/job:worker/replica:0/task:1"]
+    })
     with distribution.scope():
       self._testReductionAndBroadcast(cross_tower_ops, distribution)
 
@@ -388,13 +409,8 @@ class MultiWorkerCollectiveAllReduceTest(
   @classmethod
   def setUpClass(cls):
     """Create a local cluster with 2 workers."""
-    cls._workers, cls._ps = multi_worker_test_base.create_in_process_cluster(
+    cls._cluster_spec = multi_worker_test_base.create_in_process_cluster(
         num_workers=3, num_ps=0)
-    cls._cluster_spec = {
-        run_config.TaskType.WORKER: [
-            "fake_worker_0", "fake_worker_1", "fake_worker_2"
-        ]
-    }
 
   def setUp(self):
     super(MultiWorkerCollectiveAllReduceTest, self).setUp()
@@ -417,7 +433,7 @@ class MultiWorkerCollectiveAllReduceTest(
         devices = ["/device:GPU:%d" % i for i in range(num_gpus)]
       else:
         devices = ["/device:CPU:0"]
-      return collective_all_reduce_ops, devices, "local"
+      return collective_all_reduce_ops, devices, ""
     else:
       collective_all_reduce_ops = cross_tower_ops_lib.CollectiveAllReduce(
           3, num_gpus, collective_keys=collective_keys)
@@ -428,7 +444,8 @@ class MultiWorkerCollectiveAllReduceTest(
         ]
       else:
         devices = ["/job:%s/task:%d" % (task_type, task_id)]
-      return collective_all_reduce_ops, devices, self._workers[task_id].target
+      return (collective_all_reduce_ops, devices,
+              "grpc://" + self._cluster_spec[task_type][task_id])
 
   def _assert_values_equal(self, left, right, sess):
     if isinstance(left, list):
@@ -455,7 +472,8 @@ class MultiWorkerCollectiveAllReduceTest(
       num_workers = 1
       worker_device = None
     else:
-      num_workers = len(self._workers)
+      num_workers = len(self._cluster_spec.get("chief", [])) + len(
+          self._cluster_spec.get("worker", []))
       worker_device = "/job:%s/task:%d" % (task_type, task_id)
     with ops.Graph().as_default(), \
          ops.device(worker_device), \
@@ -463,7 +481,7 @@ class MultiWorkerCollectiveAllReduceTest(
       # Collective ops doesn't support scalar tensors, so we have to construct
       # 1-d tensors.
       values = [constant_op.constant([float(d)]) for d in range(len(devices))]
-      per_device = _make_per_device(values, devices)
+      per_device = _make_per_device(values, devices, regroup=True)
       mean = np.array([(len(devices) - 1.) / 2.])
 
       values_2 = [constant_op.constant([d + 1.0]) for d in range(len(devices))]
@@ -476,7 +494,7 @@ class MultiWorkerCollectiveAllReduceTest(
       destination_list = devices
 
       all_destinations = [
-          None, destination_mirrored, destination_different, destination_str,
+          destination_different, None, destination_mirrored, destination_str,
           destination_list
       ]
 
@@ -533,12 +551,18 @@ class MultiWorkerCollectiveAllReduceTest(
     return True
 
   @combinations.generate(
-      combinations.combine(mode=["graph"], num_gpus=[0, 1, 2]))
+      combinations.combine(mode=["graph"], num_gpus=[0, 1, 2], required_gpus=1))
   def testReductionDistributed(self, num_gpus):
     if context.num_gpus() < num_gpus:
       return
     self._run_between_graph_clients(self._test_reduction, self._cluster_spec,
                                     num_gpus)
+
+  # Collective ops doesn't support strategy with one device.
+  def testReductionLocal(self, num_gpus=2):
+    if context.num_gpus() < num_gpus:
+      return
+    self._test_reduction(None, None, num_gpus, local_mode=True)
 
 
 if __name__ == "__main__":

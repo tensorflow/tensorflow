@@ -30,7 +30,7 @@ namespace {
 
 NodeDef MakeMapNode(StringPiece name, StringPiece input_node_name) {
   return test::function::NDef(
-      name, "MapDataset", {input_node_name.ToString()},
+      name, "MapDataset", {string(input_node_name)},
       {{"f", FunctionDefHelper::FunctionRef("XTimesTwo")},
        {"Targuments", {}},
        {"output_shapes", {}},
@@ -39,7 +39,7 @@ NodeDef MakeMapNode(StringPiece name, StringPiece input_node_name) {
 
 NodeDef MakeFilterNode(StringPiece name, StringPiece input_node_name) {
   return test::function::NDef(
-      name, "FilterDataset", {input_node_name.ToString()},
+      name, "FilterDataset", {string(input_node_name)},
       {{"predicate", FunctionDefHelper::FunctionRef("IsZero")},
        {"Targuments", {}},
        {"output_shapes", {}},
@@ -101,18 +101,18 @@ TEST(MapAndFilterFusionTest, FuseMapAndFilterWithExtraChild) {
       graph_utils::ContainsNodeWithOp("FilterByLastComponentDataset", output));
   ASSERT_TRUE(graph_utils::ContainsNodeWithOp("CacheDataset", output));
 
-  int map_id = graph_utils::FindNodeWithOp("MapDataset", output);
+  int map_id = graph_utils::FindGraphNodeWithOp("MapDataset", output);
   auto& map_node = output.node(map_id);
   ASSERT_EQ(map_node.input_size(), 1);
   EXPECT_EQ(map_node.input(0), "range");
 
   int filter_by_component_id =
-      graph_utils::FindNodeWithOp("FilterByLastComponentDataset", output);
+      graph_utils::FindGraphNodeWithOp("FilterByLastComponentDataset", output);
   auto& filter_by_component = output.node(filter_by_component_id);
   ASSERT_EQ(filter_by_component.input_size(), 1);
   EXPECT_EQ(filter_by_component.input(0), map_node.name());
 
-  int cache_id = graph_utils::FindNodeWithOp("CacheDataset", output);
+  int cache_id = graph_utils::FindGraphNodeWithOp("CacheDataset", output);
   auto& cache_node = output.node(cache_id);
   ASSERT_EQ(cache_node.input_size(), 2);
   EXPECT_EQ(cache_node.input(0), filter_by_component.name());

@@ -681,9 +681,8 @@ class Lambda(Layer):
                         'must be a list, a tuple, or a function.')
       self._output_shape = output_shape
 
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
-    input_shape = tuple(tensor_shape.TensorShape(input_shape).as_list())
-
     if self._output_shape is None:
       if context.executing_eagerly():
         raise NotImplementedError

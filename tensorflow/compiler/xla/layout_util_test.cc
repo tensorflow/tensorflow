@@ -27,15 +27,15 @@ namespace {
 class LayoutUtilTest : public ::testing::Test {
  protected:
   Shape MakeShapeWithLayout(PrimitiveType element_type,
-                            tensorflow::gtl::ArraySlice<int64> dimensions,
-                            tensorflow::gtl::ArraySlice<int64> minor_to_major) {
+                            absl::Span<const int64> dimensions,
+                            absl::Span<const int64> minor_to_major) {
     Shape shape = ShapeUtil::MakeShape(element_type, dimensions);
     *shape.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
     return shape;
   }
 
   Shape MakeShapeWithSparseLayout(PrimitiveType element_type,
-                                  tensorflow::gtl::ArraySlice<int64> dimensions,
+                                  absl::Span<const int64> dimensions,
                                   int64 max_sparse_elements) {
     Shape shape = ShapeUtil::MakeShape(element_type, dimensions);
     *shape.mutable_layout() = LayoutUtil::MakeSparseLayout(max_sparse_elements);

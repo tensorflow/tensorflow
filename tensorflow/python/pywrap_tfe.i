@@ -63,6 +63,8 @@ limitations under the License.
 %rename("%s") TFE_DeleteContextOptions;
 %rename("%s") TFE_Py_TensorShapeSlice;
 %rename("%s") TFE_Py_TensorShapeOnDevice;
+%rename("%s") TFE_ContextStartStep;
+%rename("%s") TFE_ContextEndStep;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
@@ -103,20 +105,29 @@ limitations under the License.
   }
 }
 
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
 %typemap(in) const char* serialized_function_def {
-  $1 = TFE_GetPythonString($input);
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
 }
 
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
 %typemap(in) const char* device_name {
   if ($input == Py_None) {
     $1 = nullptr;
   } else {
-    $1 = TFE_GetPythonString($input);
+    $1 = const_cast<char*>(TFE_GetPythonString($input));
   }
 }
 
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
 %typemap(in) const char* op_name {
-  $1 = TFE_GetPythonString($input);
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
 }
 
 %typemap(in) (TFE_Context*) {

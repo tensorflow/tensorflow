@@ -93,6 +93,9 @@ class EagerContext {
 
   // TODO(apassos) make this return a constant reference
   std::vector<Device*>* devices() { return &devices_; }
+  const std::vector<DeviceType>& prioritized_device_type_list() {
+    return prioritized_device_type_list_;
+  }
 
   // Clears the kernel caches.
   void ClearCaches();
@@ -134,8 +137,6 @@ class EagerContext {
 
   Rendezvous* GetRendezvous() { return rendezvous_; }
 
-  mutex* FunctionsMu() { return &functions_mu_; }
-
   const tensorflow::DeviceMgr* local_device_mgr() const {
     return (local_device_manager_ != nullptr) ? local_device_manager_.get()
                                               : local_unowned_device_manager_;
@@ -152,6 +153,10 @@ class EagerContext {
   bool ShouldStoreMetadata() { return should_store_metadata_.load(); }
   void SetShouldStoreMetadata(bool value);
   RunMetadata* RunMetadataProto() { return &run_metadata_; }
+
+  void StartStep();
+  void EndStep();
+  ScopedStepContainer* StepContainer();
 
   FunctionLibraryDefinition* FuncLibDef() { return &func_lib_def_; }
 
@@ -176,7 +181,7 @@ class EagerContext {
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       std::unique_ptr<DeviceMgr> remote_device_manager,
       const gtl::FlatMap<string, uint64>& remote_contexts, Rendezvous* r,
-      DeviceMgr* local_device_mgr);
+      DeviceMgr* local_device_mgr, int keep_alive_secs);
 
   bool HasActiveRemoteContext(uint64 context_id) {
     return active_remote_contexts_.find(context_id) !=
@@ -186,7 +191,7 @@ class EagerContext {
 
   // If true, then tensors should be shipped across processes via the
   // EagerService.SendTensor RPC. If false, _Send/_Recv ops should be used
-  // instead (which in-turn use WorkerService.RecvTensor RPCs.
+  // instead (which in-turn use WorkerService.RecvTensor RPCs).
   bool UseSendTensorRPC() { return use_send_tensor_rpc_; }
 
  private:
@@ -204,9 +209,11 @@ class EagerContext {
   // Only one of the below is set.
   std::unique_ptr<DeviceMgr> local_device_manager_;
   DeviceMgr* local_unowned_device_manager_;
+  std::unique_ptr<DeviceMgr> remote_device_manager_;
 
   // Devices owned by device_manager
   std::vector<Device*> devices_;
+  std::vector<DeviceType> prioritized_device_type_list_;
   // All devices are not owned.
   gtl::FlatMap<string, Device*, StringPieceHasher> devices_map_;
   Rendezvous* rendezvous_;
@@ -236,6 +243,10 @@ class EagerContext {
   // EagerExecutor for async execution.
   EagerExecutor executor_;
 
+  // Information related to step containers.
+  std::atomic<int> num_active_steps_;
+  std::unique_ptr<ScopedStepContainer> step_container_ GUARDED_BY(metadata_mu_);
+
   // True if the default value for execution mode is async. Note that this value
   // can be overridden per thread based on `thread_local_async` overrides.
   const bool async_default_;
@@ -247,7 +258,6 @@ class EagerContext {
 
 #ifndef __ANDROID__
   void CloseRemoteContexts();
-  std::unique_ptr<DeviceMgr> remote_device_manager_;
 
   // The server_ is not const since we release it when the context is destroyed.
   // Therefore the server_ object is not marked as const (even though it should
@@ -255,10 +265,20 @@ class EagerContext {
   std::unique_ptr<ServerInterface> server_;
   std::unique_ptr<eager::EagerClientCache> remote_eager_workers_;
 
+  mutex remote_state_mu_;
+
   gtl::FlatMap<string, uint64> remote_contexts_;
   gtl::FlatSet<uint64> active_remote_contexts_;
   gtl::FlatMap<Device*, std::pair<eager::EagerClient*, uint64>>
       device_to_client_cache_;
+
+  int keep_alive_secs_ GUARDED_BY(remote_state_mu_);
+  std::atomic<int> sleep_for_secs_;
+
+  std::unique_ptr<Thread> keep_alive_thread_;
+  mutex keep_alive_thread_shutdown_mu_;
+  condition_variable keep_alive_thread_cv_;
+  bool shutting_down_ GUARDED_BY(keep_alive_thread_shutdown_mu_) = false;
 #endif
 
   bool use_send_tensor_rpc_;

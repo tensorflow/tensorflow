@@ -126,7 +126,7 @@ void DoNonMaxSuppressionOp(
     const Tensor& max_output_size, const float score_threshold,
     const std::function<bool(int, int)>& suppress_check_fn,
     bool pad_to_max_output_size = false, int* ptr_num_valid_outputs = nullptr) {
-  const int output_size = std::min(max_output_size.scalar<int>()(), num_boxes);
+  const int output_size = max_output_size.scalar<int>()();
 
   std::vector<float> scores_data(num_boxes);
   std::copy_n(scores.flat<float>().data(), num_boxes, scores_data.begin());

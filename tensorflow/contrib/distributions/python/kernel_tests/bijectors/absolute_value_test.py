@@ -31,7 +31,7 @@ class AbsoluteValueTest(test.TestCase):
   """Tests correctness of the absolute value bijector."""
 
   def testBijectorVersusNumpyRewriteOfBasicFunctionsEventNdims0(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       bijector = AbsoluteValue(validate_args=True)
       self.assertEqual("absolute_value", bijector.name)
       x = array_ops.constant([[0., 1., -1], [0., -5., 3.]])  # Shape [2, 3]
@@ -54,13 +54,13 @@ class AbsoluteValueTest(test.TestCase):
                               y, event_ndims=0)))
 
   def testNegativeYRaisesForInverseIfValidateArgs(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       bijector = AbsoluteValue(validate_args=True)
       with self.assertRaisesOpError("y was negative"):
         sess.run(bijector.inverse(-1.))
 
   def testNegativeYRaisesForILDJIfValidateArgs(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       bijector = AbsoluteValue(validate_args=True)
       with self.assertRaisesOpError("y was negative"):
         sess.run(bijector.inverse_log_det_jacobian(-1., event_ndims=0))

@@ -653,7 +653,7 @@ class MirroredVariableTest(test.TestCase):
 
   def _save_mirrored(self):
     """Save variables with mirroring, returns save_path."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       v, devices, mirrored = _make_mirrored()
 
       # Overwrite the initial values.
@@ -668,7 +668,7 @@ class MirroredVariableTest(test.TestCase):
 
   def _save_normal(self):
     """Save variables without mirroring, returns save_path."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       var = variable_scope.get_variable(
           name="v", initializer=1., use_resource=True)
 
@@ -684,7 +684,7 @@ class MirroredVariableTest(test.TestCase):
 
   def _restore_normal(self, save_path):
     """Restore to variables without mirroring in a fresh graph."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       var = variable_scope.get_variable(
           name="v", initializer=7., use_resource=True)
 
@@ -698,7 +698,7 @@ class MirroredVariableTest(test.TestCase):
 
   def _restore_mirrored(self, save_path):
     """Restore to variables with mirroring in a fresh graph."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       v, devices, mirrored = _make_mirrored()
 
       # Overwrite the initial values.
@@ -864,7 +864,7 @@ class TowerLocalVariableTest(test.TestCase):
 
   def _save_tower_local_mean(self):
     """Save variables with mirroring, returns save_path."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       v, tower_local = _make_tower_local(
           variable_scope.VariableAggregation.MEAN)
 
@@ -881,7 +881,7 @@ class TowerLocalVariableTest(test.TestCase):
 
   def _save_tower_local_sum(self):
     """Save variables with mirroring, returns save_path."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       v, tower_local = _make_tower_local("sum")
 
       # Overwrite the initial values.
@@ -897,7 +897,7 @@ class TowerLocalVariableTest(test.TestCase):
 
   def _save_normal(self):
     """Save variables without mirroring, returns save_path."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       var = variable_scope.get_variable(
           name="v", initializer=1., use_resource=True)
 
@@ -913,7 +913,7 @@ class TowerLocalVariableTest(test.TestCase):
 
   def _restore_normal(self, save_path):
     """Restore to variables without mirroring in a fresh graph."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       var = variable_scope.get_variable(
           name="v", initializer=7., use_resource=True)
 
@@ -927,7 +927,7 @@ class TowerLocalVariableTest(test.TestCase):
 
   def _restore_tower_local_mean(self, save_path):
     """Restore to variables with mirroring in a fresh graph."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       v, tower_local = _make_tower_local(
           variable_scope.VariableAggregation.MEAN)
 
@@ -942,7 +942,7 @@ class TowerLocalVariableTest(test.TestCase):
 
   def _restore_tower_local_sum(self, save_path):
     """Restore to variables with mirroring in a fresh graph."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       v, tower_local = _make_tower_local(variable_scope.VariableAggregation.SUM)
 
       # Overwrite the initial values.

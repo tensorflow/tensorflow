@@ -15,8 +15,8 @@ limitations under the License.
 
 // TODO(vrv): Switch this to an open-sourced version of Arena.
 
-#ifndef TENSORFLOW_LIB_CORE_ARENA_H_
-#define TENSORFLOW_LIB_CORE_ARENA_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_ARENA_H_
+#define TENSORFLOW_CORE_LIB_CORE_ARENA_H_
 
 #include <assert.h>
 
@@ -107,4 +107,4 @@ class Arena {
 }  // namespace core
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_CORE_ARENA_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_ARENA_H_

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/stream_pool.h"
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -35,7 +35,7 @@ StreamPool::Ptr StreamPool::BorrowStream(se::StreamExecutor* executor) {
 
   if (!stream) {
     // Create a new stream.
-    stream = MakeUnique<se::Stream>(executor);
+    stream = absl::make_unique<se::Stream>(executor);
     stream->Init();
     VLOG(1) << stream->DebugStreamPointers()
             << " StreamPool created new stream";

@@ -581,7 +581,7 @@ Status GraphExecutionState::OptimizeGraph(
         if (id.second != 0) {
           return errors::InvalidArgument("Unsupported feed: ", feed);
         }
-        feeds.insert(id.first.ToString());
+        feeds.emplace(id.first);
       }
       for (const TensorConnection& tensor_connection :
            options.callable_options.tensor_connection()) {
@@ -590,7 +590,7 @@ Status GraphExecutionState::OptimizeGraph(
           return errors::InvalidArgument("Unsupported feed: ",
                                          tensor_connection.to_tensor());
         }
-        feeds.insert(id.first.ToString());
+        feeds.emplace(id.first);
       }
       for (const NodeDef& node : original_graph_def_.node()) {
         if (feeds.find(node.name()) == feeds.end()) {
@@ -643,10 +643,9 @@ Status GraphExecutionState::OptimizeGraph(
     for (const FunctionDef& fdef : new_graph.library().function()) {
       const string& func_name = fdef.signature().name();
 
-      if ((*optimized_flib)->Find(func_name)) {
+      if ((*optimized_flib)->Contains(func_name)) {
         VLOG(3) << "Replace function: name=" << func_name;
-        TF_RETURN_IF_ERROR((*optimized_flib)->RemoveFunction(func_name));
-        TF_RETURN_IF_ERROR((*optimized_flib)->AddFunctionDef(fdef));
+        TF_RETURN_IF_ERROR((*optimized_flib)->ReplaceFunction(func_name, fdef));
       } else {
         VLOG(3) << "Add new function: name=" << func_name;
         TF_RETURN_IF_ERROR((*optimized_flib)->AddFunctionDef(fdef));

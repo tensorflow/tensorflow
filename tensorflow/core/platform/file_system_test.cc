@@ -125,7 +125,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
     ASSERT_EQ(scheme, "ipfs");
     ASSERT_EQ(host, "solarsystem");
     str_util::ConsumePrefix(&path, "/");
-    *parsed_path = std::string(path);
+    *parsed_path = string(path);
   }
 
   std::map<string, std::set<string>> celestial_bodies_ = {

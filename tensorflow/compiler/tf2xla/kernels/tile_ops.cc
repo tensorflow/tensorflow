@@ -16,6 +16,7 @@ limitations under the License.
 // XLA-specific Tile Op.
 
 #include <vector>
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
@@ -70,7 +70,7 @@ class TileOp : public XlaOpKernel {
     bool one_dimension_is_broadcasted_without_multiple = true;
     for (int i = 0; i < input_dims; ++i) {
       int multiple = literal.Get<int>({i});
-      OP_REQUIRES(ctx, multiple,
+      OP_REQUIRES(ctx, multiple >= 0,
                   errors::InvalidArgument("Expected multiples[", i,
                                           "] >= 0, but got ", multiple));
       int64 new_dim = input_shape.dim_size(i) * multiple;

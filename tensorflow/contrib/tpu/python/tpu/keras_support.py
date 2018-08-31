@@ -54,13 +54,14 @@ import time
 
 import numpy as np
 
-from tensorflow.contrib.cluster_resolver.python.training import tpu_cluster_resolver
+from tensorflow.contrib.cluster_resolver.python.training import tpu_cluster_resolver as tpu_cluster_resolver_lib
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.tpu.proto import compilation_result_pb2 as tpu_compilation_result
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.contrib.tpu.python.tpu import tpu_optimizer
+from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.data.ops import dataset_ops
@@ -82,10 +83,79 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 
 
-# Work-around dependency cycle between DistributionStrategy and TPU lib.
-def TPUDistributionStrategy(*args, **kw):  # pylint: disable=invalid-name
-  from tensorflow.contrib.distribute.python import tpu_strategy  # pylint: disable=g-import-not-at-top
-  return tpu_strategy.TPUStrategy(*args, **kw)
+_SESSIONS = {}
+
+
+def tpu_session(cluster_resolver):
+  """Construct or return a `tf.Session` connected to the given cluster."""
+  global _SESSIONS
+  master = cluster_resolver.master()
+  if master not in _SESSIONS:
+    cluster_spec = cluster_resolver.cluster_spec()
+    config = config_pb2.ConfigProto(isolate_session_state=True)
+    if cluster_spec:
+      config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
+
+    graph = ops.Graph()
+    session = tf_session.Session(graph=graph, target=master, config=config)
+
+    with graph.as_default():
+      session.run(tpu.initialize_system())
+
+    _SESSIONS[master] = session
+  return _SESSIONS[master]
+
+
+def reset_tpu_sessions():
+  _SESSIONS.clear()
+
+
+def get_tpu_system_metadata(tpu_cluster_resolver):
+  """Retrieves TPU system metadata given a TPUClusterResolver."""
+  master = tpu_cluster_resolver.master()
+
+  # pylint: disable=protected-access
+  cluster_spec = tpu_cluster_resolver.cluster_spec()
+  cluster_def = cluster_spec.as_cluster_def() if cluster_spec else None
+  tpu_system_metadata = (
+      tpu_system_metadata_lib._query_tpu_system_metadata(
+          master,
+          cluster_def=cluster_def,
+          query_topology=False))
+
+  return tpu_system_metadata
+
+
+class TPUDistributionStrategy(object):
+  """The strategy to run Keras model on TPU."""
+
+  def __init__(self, tpu_cluster_resolver=None, using_single_core=False):
+    """Construct a TPUDistributionStrategy.
+
+    Args:
+      tpu_cluster_resolver: Any instance of `TPUClusterResolver`. If None, will
+        create one with '' as master address.
+      using_single_core: Bool. This is the debugging option, which might be
+        removed in future once the model replication functionality is mature
+        enough. If `False` (default behavior), the system automatically finds
+        the best configuration, in terms of number of TPU cores, for the model
+        replication, typically using all avaiable TPU cores. If overwrites as
+        `True`, force the model replication using single core, i.e., no
+        replication.
+    """
+
+    if tpu_cluster_resolver is None:
+      tpu_cluster_resolver = tpu_cluster_resolver_lib.TPUClusterResolver('')
+
+    num_cores = (1 if using_single_core else
+                 get_tpu_system_metadata(tpu_cluster_resolver).num_cores)
+
+    self._tpu_cluster_resolver = tpu_cluster_resolver
+    self._num_cores = num_cores
+
+  @property
+  def num_towers(self):
+    return self._num_cores
 
 
 class TPUEmbedding(embeddings.Embedding):
@@ -570,7 +640,7 @@ class TPUDatasetInfeedManager(TPUInfeedManager):
               'currently requires static shapes. The provided '
               'dataset only has a partially defined shape. '
               '(Dimension %d of output tensor %d is not statically known '
-              'for output shapes: %s.%s)' % (i, j, dataset.output_shapes, hint))
+              'for output shapes: %s.%s)' % (j, i, dataset.output_shapes, hint))
 
   @property
   def dummy_x(self):
@@ -666,9 +736,10 @@ class TPUFunction(object):
 
       # Clone our CPU model, running within the TPU device context.
       with TPURewriteContext(tpu_input_map):
-        # TODO(power): Replicate variables.
-        with ops.device('/device:TPU:0'):
-          self._cloned_model = models.clone_model(self.model)
+        with variable_scope.variable_scope('tpu_model_%s' % id(self.model)):
+          # TODO(power): Replicate variables.
+          with ops.device('/device:TPU:0'):
+            self._cloned_model = models.clone_model(self.model)
 
       # Create a copy of the optimizer for this graph.
       if isinstance(self.model.optimizer, keras_optimizers.TFOptimizer):
@@ -845,7 +916,7 @@ class TPUFunction(object):
 class KerasTPUModel(models.Model):
   """TPU compatible Keras model wrapper."""
 
-  def __init__(self, cpu_model, tpu_name_or_address, strategy):
+  def __init__(self, cpu_model, strategy):
     super(models.Model, self).__init__(  # pylint: disable=bad-super-call
         inputs=cpu_model.inputs,
         outputs=cpu_model.outputs,
@@ -862,27 +933,14 @@ class KerasTPUModel(models.Model):
     self.train_function = None
     self._strategy = strategy
 
-    self._tpu_name_or_address = tpu_name_or_address
+    cluster_resolver = self._strategy._tpu_cluster_resolver
+    self._tpu_name_or_address = cluster_resolver.get_master()
     self._cpu_model = cpu_model
     self._tpu_model = None
     self._tpu_weights_initialized = False
-    self._graph = ops.Graph()
 
-    self._cluster_resolver = tpu_cluster_resolver.TPUClusterResolver(
-        tpu_name_or_address)
-    master = self._cluster_resolver.master()
-    cluster_spec = self._cluster_resolver.cluster_spec()
-    self._session = tf_session.Session(
-        graph=self._graph,
-        target=master,
-        config=config_pb2.ConfigProto(isolate_session_state=True))
-
-    # TODO(saeta): Confirm the lines below work in ClusterSpec propagation env.
-    if cluster_spec:
-      self._session.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
-
-    with self._graph.as_default():
-      self._session.run(tpu.initialize_system())
+    self._session = tpu_session(cluster_resolver)
+    self._graph = self._session.graph
 
     # If the input CPU model has already been compiled, compile our TPU model
     # immediately.
@@ -1137,7 +1195,7 @@ Output shape: %(output_shape)s
 
 
 @experimental
-def tpu_model(model, tpu_name_or_address=None, strategy=None):
+def tpu_model(model, strategy=None):
   """Copy `model` along with weights to the TPU.  Returns a TPU model.
 
   Usage:
@@ -1148,7 +1206,7 @@ def tpu_model(model, tpu_name_or_address=None, strategy=None):
 
   # If `num_cores_per_host` is greater than one, batch parallelism will be used
   # to run on multiple TPU cores.
-  strategy = keras_support.TPUDistributionStrategy(num_cores_per_host=8)
+  strategy = keras_support.TPUDistributionStrategy(tpu_cluster_resolver)
   model = keras_support.tpu_model(model, strategy)
   model.compile(
       optimizer=tf.train.GradientDescentOptimizer(learning_rate=1.0),
@@ -1158,10 +1216,6 @@ def tpu_model(model, tpu_name_or_address=None, strategy=None):
 
   Args:
     model: A `KerasTPUModel`.
-    tpu_name_or_address: A string that is either the name of the Cloud TPU,
-      the grpc address of the Cloud TPU, or (Googlers only) the BNS name of the
-      Cloud TPU. If tpu_name_or_address is None, the TPUClusterResolver will
-      examine the environment to determine a potential Cloud TPU to use.
     strategy: `TPUDistributionStrategy`.  The strategy to use for replicating
               model across multiple TPU cores.
 
@@ -1176,9 +1230,13 @@ def tpu_model(model, tpu_name_or_address=None, strategy=None):
   # TODO(xiejw): Validate TPU model. TPUModel only?
   # TODO(xiejw): Validate replicas. Full or 1. Shall we allow subset?
   # TODO(xiejw): Adds reduction option.
+
   if strategy is None:
-    strategy = TPUDistributionStrategy(num_cores_per_host=1)
-  return KerasTPUModel(
-      cpu_model=model,
-      tpu_name_or_address=tpu_name_or_address,
-      strategy=strategy)
+    strategy = TPUDistributionStrategy()
+  else:
+    if not isinstance(strategy, TPUDistributionStrategy):
+      raise TypeError(
+          '`strategy` must have type `tf.contrib.tpu.TPUDistributionStrategy`. '
+          'Got: {}'.format(type(strategy)))
+
+  return KerasTPUModel(cpu_model=model, strategy=strategy)

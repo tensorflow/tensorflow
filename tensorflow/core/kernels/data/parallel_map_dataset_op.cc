@@ -67,14 +67,14 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
             const NameAttrList& func, int32 num_parallel_calls,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
             std::unique_ptr<CapturedFunction> captured_func)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           func_(func),
           num_parallel_calls_(num_parallel_calls),
@@ -88,6 +88,10 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
+      auto init_func = [this](IteratorContext* ctx) {
+        return captured_func_->Instantiate(ctx);
+      };
+
       auto map_func = [this](IteratorContext* ctx,
                              std::vector<Tensor> input_element,
                              std::vector<Tensor>* result, StatusCallback done) {
@@ -97,7 +101,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
       return NewParallelMapIterator(
           {this, strings::StrCat(prefix, "::ParallelMap")}, input_,
-          std::move(map_func), num_parallel_calls_);
+          std::move(init_func), std::move(map_func), num_parallel_calls_);
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -113,11 +117,12 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       // Input: input_dataset
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
       // Input: other_arguments
       DataTypeVector other_arguments_types;

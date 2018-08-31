@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_LIB_TRIANGULAR_SOLVE_H_
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace tensorflow {
 
@@ -59,7 +59,9 @@ namespace tensorflow {
 // blocking is used.
 xla::XlaOp TriangularSolve(xla::XlaOp a, xla::XlaOp b, bool left_side,
                            bool lower, bool transpose_a, bool conjugate_a,
-                           int64 block_size = 128);
+                           int64 block_size = 128,
+                           xla::PrecisionConfigProto::Precision precision =
+                               xla::PrecisionConfigProto::HIGHEST);
 
 }  // namespace tensorflow
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include <initializer_list>
 #include <memory>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -504,9 +505,9 @@ XLA_TEST_F(TupleTest, ComplexTuples) {
       LiteralUtil::CreateR2<complex64>({{{111, 222}, {331, 442}},
                                         {{1011, 2022}, {3031, 4042}},
                                         {{10011, 20022}, {30031, 40042}}});
-  auto prod = MakeUnique<Literal>(sum->shape());
+  auto prod = absl::make_unique<Literal>(sum->shape());
   ASSERT_TRUE(prod->Populate<complex64>(
-                      [&sum](tensorflow::gtl::ArraySlice<int64> indexes) {
+                      [&sum](absl::Span<const int64> indexes) {
                         return sum->Get<complex64>(indexes) *
                                (indexes[indexes.size() - 1] == 0
                                     ? complex64(1, 2)
@@ -586,9 +587,9 @@ XLA_TEST_F(TupleHloTest,
           }));
   auto expected =
       LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR1<float>({2, 3}));
-  auto literal = MakeUnique<Literal>();
+  auto literal = Literal::CreateFromShape(expected->shape());
   TF_EXPECT_OK(backend().transfer_manager()->TransferLiteralFromOutfeed(
-      backend().default_stream_executor(), expected->shape(), literal.get()));
+      backend().default_stream_executor(), expected->shape(), *literal));
   EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *literal));
 }
 

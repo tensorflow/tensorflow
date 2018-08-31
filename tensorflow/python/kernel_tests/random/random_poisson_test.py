@@ -137,7 +137,7 @@ class RandomPoissonTest(test.TestCase):
         self.assertGreaterEqual(np.linalg.norm(diff.eval()), 1)
 
   def testZeroShape(self):
-    with self.test_session():
+    with self.cached_session():
       rnd = random_ops.random_poisson([], [], seed=12345)
       self.assertEqual([0], rnd.get_shape().as_list())
       self.assertAllClose(np.array([], dtype=np.float32), rnd.eval())
@@ -186,7 +186,7 @@ class RandomPoissonTest(test.TestCase):
 
   def testDTypeCombinationsV2(self):
     """Tests random_poisson_v2() for all supported dtype combinations."""
-    with self.test_session():
+    with self.cached_session():
       for lam_dt in _SUPPORTED_DTYPES:
         for out_dt in _SUPPORTED_DTYPES:
           random_ops.random_poisson(

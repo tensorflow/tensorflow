@@ -144,13 +144,18 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
           opcode == HloOpcode::kCrossReplicaSum ||
           opcode == HloOpcode::kFusion || opcode == HloOpcode::kMap ||
           opcode == HloOpcode::kReduce || opcode == HloOpcode::kReduceWindow ||
+          opcode == HloOpcode::kScatter ||
           opcode == HloOpcode::kSelectAndScatter ||
           opcode == HloOpcode::kConditional) {
         continue;
       }
       TF_RET_CHECK(hlo->called_computations().empty()) << hlo->ToString();
 
-      if (!HasOperandType(hlo, eliminate_type_)) {
+      bool nullary = hlo->operands().empty();
+      bool wrong_element_type = hlo->shape().element_type() == eliminate_type_;
+      bool should_eliminate_type = (nullary && wrong_element_type) ||
+                                   HasOperandType(hlo, eliminate_type_);
+      if (!should_eliminate_type) {
         // If this CHECK fires, then this was an instruction that does not take
         // the elimination type as an operand but it does return it. This pass
         // does not have a feature to change the output type in that case, so

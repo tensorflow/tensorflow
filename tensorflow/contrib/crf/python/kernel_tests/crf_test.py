@@ -158,7 +158,7 @@ class CrfTest(test.TestCase):
     # Test both the length-1 and regular cases.
     sequence_lengths_list = [
         np.array(3, dtype=np.int32),
-        np.array(1, dtype=np.int32)
+        np.array(1, dtype=np.int64)
     ]
     inputs_list = [
         np.array([[4, 5, -3], [3, -1, 3], [-1, 2, 1], [0, 0, 0]],
@@ -291,7 +291,7 @@ class CrfTest(test.TestCase):
     # Test both the length-1 and regular cases.
     sequence_lengths_list = [
         np.array(3, dtype=np.int32),
-        np.array(1, dtype=np.int32)
+        np.array(1, dtype=np.int64)
     ]
     inputs_list = [
         np.array([[4, 5, -3], [3, -1, 3], [-1, 2, 1], [0, 0, 0]],

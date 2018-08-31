@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Public API."""
+"""This module contains the user-facing API for AutoGraph."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -42,34 +42,30 @@ from tensorflow.python.util import tf_inspect
 # (currently we require (module + class name, type))
 
 
-def convert(recursive=False, verbose=False, arg_types=None):
-  """Decorator that compiles a function to graph mode.
+# TODO(mdan): This should behave like to_graph (e.g. convert statically).
+def convert(recursive=False, verbose=False):
+  """Decorator that compiles a function to use TensorFlow ops.
 
-  The decorator is dynamic - invoking compilation whenever the decorated
-  function is called. This means the parameter values are known at compilation.
+  The decorator is dynamic - it recompiles the target whenever the decorated
+  function is called. This means the parameter values are known at conversion.
+  It also means that repeated calls with different types of parameters will be
+  correctly processed.
 
   Args:
-    recursive: Whether to recursively convert any functions that the decorator
-        function may call.
-    verbose: Whether to output the compiled code in the logs.
-    arg_types: See to_graph.
+    recursive: bool, whether to recursively convert any functions or classes
+        that the converted function may use.
+    verbose: bool, whether to output the compiled code in the logs.
 
   Returns:
-    A decorator that compiles the given function to graph mode.
-
-  Raises:
-    ValueError: If any of the arguments are illegal.
+    Callable, a decorator that converts the given function into an equivalent
+    function that uses TensorFlow ops.
   """
-  if arg_types is None:
-    arg_types = {}
-
   def decorator(f):
     """Decorator implementation."""
 
     @wraps(f)
     def wrapper(*args, **kwargs):
-      return converted_call(f, recursive, verbose, True, arg_types, *args,
-                            **kwargs)
+      return converted_call(f, recursive, verbose, True, {}, *args, **kwargs)
 
     wrapper = tf_decorator.make_decorator(f, wrapper)
 
@@ -82,22 +78,34 @@ def convert(recursive=False, verbose=False, arg_types=None):
 
 
 class RunMode(Enum):
+  """Specifies the way a converted function or method should be executed in TF.
+
+  The enum values have the following semantics:
+
+   * GRAPH: Call this function directly, as-is. This is suitable for functions
+       that were already designed for TF graphs and contain ops.
+   * PY_FUNC: Wrap this function into a py_func op. This is suitable for code
+       that will only run correctly in Python, for example code that renders
+       to the display, reads keyboard input, etc.
+  """
   GRAPH = 1
   PY_FUNC = 2
 
 
 def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
-  """Decorator that suppresses compilation of a function.
+  """Decorator that suppresses the conversion of a function.
+
+  See also: docs/pyfunc_dtypes.md
 
   Args:
-    run_as: RunMode value. Whether to run the function as-is, or wrap it into
-        a py_func.
-    return_dtypes: See autograph.utils.py_func.wrap_py_func. Setting to None or
-        empty list or tuple will create a dummy return value that can be used
-        to set control dependencies.
+    run_as: RunMode, specifies how to use the function in TensorFlow.
+    return_dtypes: Optional[Iterable[
+        Union[tf.DType, utils.py_func.MatchDType]]], the return data types of
+        the converted function, if run_as is RunMode.PY_FUNC. Ignored otherwise.
+        May be set to None if the function has no return values.
 
   Returns:
-    A decorator that wraps the original function.
+    Callable, a decorator that wraps the original function.
   """
 
   def decorator(f):
@@ -130,9 +138,10 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
   return decorator
 
 
+# TODO(mdan): Move to a private, undocumented module.
 def converted_call(f, recursive, verbose, force_conversion, arg_types, *args,
                    **kwargs):
-  """Compiles a function call inline."""
+  """Compiles a function call inline. For internal use only."""
   # TODO(mdan): This needs cleanup.
   # In particular, we may want to avoid renaming functions altogether.
   if not force_conversion and conversion.is_whitelisted_for_graph(f):
@@ -202,39 +211,41 @@ def converted_call(f, recursive, verbose, force_conversion, arg_types, *args,
   return converted_f(*effective_args, **kwargs)
 
 
+# TODO(mdan): Rename: to_ops?
+# TODO(mdan): Looki into overloading as function and decorator, like tfe.defun.
+# TODO(mdan): Remove partial_types.
 def to_graph(e,
              recursive=True,
              verbose=False,
              arg_values=None,
              arg_types=None,
              partial_types=None):
-  """Compile a Python entity into equivalent TensorFlow code.
+  """Converts a Python entity into equivalent code that uses TensorFlow ops.
 
-  Currently supported entities:
+  Supported Python entities include:
     * functions
     * classes
 
-  Classes are handled by converting all their methods into a new class.
+  Classes are converted by converting all their methods into a new class.
 
   Args:
-    e: A Python entity.
-    recursive: Whether to recursively convert any functions that the decorator
-        function may call.
-    verbose: Whether to output the compiled code in the logs.
-    arg_values: A dict containing value hints for symbols like function
-        parameters.
-    arg_types: A dict containing type hints for symbols like function
-        parameters.
-    partial_types: A set of types (e.g. classes) that will not be converted
-        entirely. Calls to member functions for these types will be renamed
-        independently.
+    e: Union[Callable, Type], the Python entity to convert.
+    recursive: bool, whether to recursively convert any functions that the
+        converted function may call.
+    verbose: bool, whether to output the compiled code in the logs.
+    arg_values: Optional[Dict[Text, Any]], value hints for symbols including
+        function arguments.
+    arg_types: Optional[Dict[Text, Type]], type hints for symbols including
+        function arguments.
+    partial_types: Set[Type], reserved for internal use.
 
   Returns:
-    A function with a signature identical to `o`, but which when executed it
-    creates TF a graph that has the same functionality as the original entity.
+    Union[Callable, Type], the converted entity, which is the same kind as e
+    (that is, a function is e is a function, a class if e is a class, etc.) but
+    its code has been converted to use TF ops.
+
   Raises:
-    ValueError: If the converted function defines or refers to symbol names that
-    are reserved for AutoGraph.
+    ValueError: If the entity could not be converted.
   """
   program_ctx = converter.ProgramContext(
       recursive=recursive,
@@ -288,20 +299,23 @@ def to_code(e,
             arg_types=None,
             partial_types=None,
             indentation='  '):
-  """Return the equivalent of an entity in TensorFlow code.
+  """Returns the equivalent code that uses TensorFlow ops.
 
-  See `to_graph` for more details.
+  Also see: `to_graph`, `convert`
 
   Args:
-    e: A Python entity.
-    recursive: See to_graph.
-    arg_values: See to_graph.
-    arg_types: See to_graph.
-    partial_types: See to_graph.
-    indentation: String, when to use for each level of indentation.
+    e: Union[Callable, Type], the Python entity to convert.
+    recursive: bool, whether to recursively convert any functions that the
+        converted function may call.
+    arg_values: Optional[Dict[Text, Any]], value hints for symbols including
+        function arguments.
+    arg_types: Optional[Dict[Text, Type]], type hints for symbols including
+        function arguments.
+    partial_types: Set[Type], reserved for internal use.
+    indentation: Text, when to use for each level of indentation.
 
   Returns:
-    String.
+    Text, the converted code.
   """
   program_ctx = converter.ProgramContext(
       recursive=recursive,

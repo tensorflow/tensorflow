@@ -14,13 +14,28 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 
-#include "tensorflow/core/common_runtime/broadcaster.h"
+#include <algorithm>
+#include <functional>
+#include <utility>
+
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/common_runtime/hierarchical_tree_broadcaster.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/ring_reducer.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 #define VALUE_IN_DEBUG_STRING false
 
@@ -83,7 +98,7 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
 
   // If necessary, flatten output.
   void Flatten() {
-    if (old_shape_.dims() > 1) {
+    if (old_shape_.dims() != 1) {
       TensorShape new_shape = TensorShape({old_shape_.num_elements()});
       DMAHelper::UnsafeSetShape(&output_, new_shape);
     }
@@ -211,104 +226,67 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   };
 
   Tensor* output = ctx->mutable_output(0);
-  string error;
-  switch (col_params.instance.type) {
-    case REDUCTION_COLLECTIVE: {
-      // TODO(tucker): support other reduction algorithms,
-      // e.g. tree-reduce, hybrid tree/ring, delegate-to-NCCL, etc.
-      const Tensor* input = &ctx->input(0);
-      RingReducer* reducer =
-          CreateReducer(ctx, CtxParams(ctx), col_params, exec_key, step_id_,
-                        input, output, &error);
-      if (!reducer) {
-        done_safe(errors::Internal(error));
-        return;
-      }
-      // Run in an I/O thread, so as not to starve the executor threads.
-      // TODO(tucker): Instead of forking every per-device Collective
-      // Op off into its own thread, consider queuing them on a
-      // fixed-size thread-pool dedicated to running CollectiveOps.
-      SchedClosure([reducer, done_safe]() {
-        reducer->Run([reducer, done_safe](const Status& s) {
-          done_safe(s);
-          delete reducer;
-        });
-      });
-    } break;
-
-    case BROADCAST_COLLECTIVE: {
-      Broadcaster* broadcaster = CreateBroadcaster(
-          ctx, CtxParams(ctx), col_params, exec_key, step_id_, output, &error);
-      if (!broadcaster) {
-        done_safe(errors::Internal(error));
-        return;
-      }
-      // Run in an I/O thread, so as not to starve the executor threads.
-      SchedClosure([broadcaster, done_safe]() {
-        broadcaster->Run([broadcaster, done_safe](const Status& s) {
-          done_safe(s);
-          delete broadcaster;
-        });
-      });
-    } break;
-
-    default:
-      done_safe(errors::Internal("Unimplemented CollectiveType ",
-                                 col_params.instance.type));
+  const Tensor* input = (col_params.instance.type == REDUCTION_COLLECTIVE ||
+                         (col_params.instance.type == BROADCAST_COLLECTIVE &&
+                          col_params.is_source))
+                            ? &ctx->input(0)
+                            : nullptr;
+  CollectiveImplementationInterface* col_impl = nullptr;
+  Status status = CreateCollective(col_params, &col_impl);
+  if (!status.ok()) {
+    done_safe(status);
+    DCHECK_EQ(nullptr, col_impl);
+    return;
   }
+  CollectiveContext* col_ctx =
+      new CollectiveContext(this, dev_mgr_, ctx, CtxParams(ctx), col_params,
+                            exec_key, step_id_, input, output);
+  status = col_impl->InitializeCollectiveContext(col_ctx);
+  if (!status.ok()) {
+    done_safe(status);
+    delete col_ctx;
+    delete col_impl;
+    return;
+  }
+  // Run in an I/O thread, so as not to starve the executor threads.
+  // TODO(b/80529858): Instead of forking every per-device Collective
+  // Op off into its own thread, consider queuing them on a
+  // fixed-size thread-pool dedicated to running CollectiveOps.
+  SchedClosure([col_impl, col_ctx, done_safe]() {
+    col_impl->Run([col_impl, col_ctx, done_safe](const Status& s) {
+      done_safe(s);
+      delete col_ctx;
+      delete col_impl;
+    });
+  });
 }
 
-RingReducer* BaseCollectiveExecutor::CreateReducer(
-    OpKernelContext* ctx, OpKernelContext::Params* params,
-    const CollectiveParams& col_params, const string& exec_key, int64 step_id,
-    const Tensor* input, Tensor* output, string* error) {
+Status BaseCollectiveExecutor::CreateCollective(
+    const CollectiveParams& col_params,
+    CollectiveImplementationInterface** col_impl) {
+  *col_impl = nullptr;
+  Status status;
   switch (col_params.instance.data_type) {
     case DT_INT32:
       if (col_params.group.device_type == DEVICE_GPU) {
-        *error =
-            "Collective Reduce does not support datatype DT_INT32 on "
-            "DEVICE_GPU";
-        return nullptr;
-      }
-      TF_FALLTHROUGH_INTENDED;
-    case DT_FLOAT:
-    case DT_DOUBLE:
-    case DT_INT64:
-      return new RingReducer(this, dev_mgr_, ctx, params, col_params, exec_key,
-                             step_id, input, output);
-      break;
-    default:
-      *error = strings::StrCat("Collective Reduce does not support datatype ",
-                               col_params.instance.data_type);
-      return nullptr;
-  }
-}
-
-Broadcaster* BaseCollectiveExecutor::CreateBroadcaster(
-    OpKernelContext* ctx, OpKernelContext::Params* params,
-    const CollectiveParams& col_params, const string& exec_key, int64 step_id,
-    Tensor* output, string* error) {
-  switch (col_params.instance.data_type) {
-    case DT_INT32:
-      if (col_params.group.device_type == DEVICE_GPU) {
-        *error =
-            "Collective Broadcast does not support datatype DT_INT32 on "
-            "DEVICE_GPU";
-        return nullptr;
+        status = errors::Internal(
+            "CollectiveImplementation does not support datatype DT_INT32 on "
+            "DEVICE_GPU");
       }
       TF_FALLTHROUGH_INTENDED;
     case DT_FLOAT:
     case DT_DOUBLE:
     case DT_INT64: {
-      return new Broadcaster(this, dev_mgr_, ctx, params, col_params, exec_key,
-                             step_id, output);
-    } break;
+      status = CollectiveRegistry::Lookup(
+          col_params.instance.impl_details.collective_name, col_impl);
+      break;
+    }
     default:
-      *error =
-          strings::StrCat("Collective Broadcast does not support datatype ",
-                          DataTypeString(col_params.instance.data_type));
-      return nullptr;
+      status = errors::Internal(
+          "CollectiveImplementation does not support datatype ",
+          col_params.instance.data_type);
   }
+  return status;
 }
 
 }  // namespace tensorflow

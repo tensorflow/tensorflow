@@ -33,7 +33,7 @@ class HloDomainVerifier : public HloPassInterface {
  public:
   HloDomainVerifier(std::vector<string> kinds) : kinds_(std::move(kinds)) {}
 
-  tensorflow::StringPiece name() const override { return "domain_verifier"; }
+  absl::string_view name() const override { return "domain_verifier"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 

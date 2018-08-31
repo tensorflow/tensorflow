@@ -1070,6 +1070,8 @@ class PFor(object):
       If y does not need to be converted, it returns y as is. Else it returns
       the "converted value" corresponding to y.
     """
+    if y is None:
+      return None
     if isinstance(y, sparse_tensor.SparseTensor):
       return self._convert_sparse(y)
     output = self._convert_helper(y)
@@ -2117,7 +2119,7 @@ def _convert_print(pfor_input):
 # 2a Elements written to the array are "stacked"
 # To simulate multiple TensorArrays, we may increase the dimension of each
 # element of the array. i.e. the i_th row of the j_th entry of the converted
-# TensorArray corresponds to to the j_th entry of the TensorArray in the i_th
+# TensorArray corresponds to the j_th entry of the TensorArray in the i_th
 # pfor iteration.
 #
 # 2b Elements written to the array are "unstacked"

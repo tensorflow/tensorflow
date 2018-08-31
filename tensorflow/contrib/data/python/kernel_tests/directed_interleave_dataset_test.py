@@ -84,7 +84,7 @@ class DirectedInterleaveDatasetTest(test.TestCase):
     # Use chi-squared test to assert that the observed distribution matches the
     # expected distribution. Based on the implementation in
     # "tensorflow/python/kernel_tests/multinomial_op_test.py".
-    for probs in [[.85, .05, .1], rand_probs]:
+    for probs in [[.85, .05, .1], rand_probs, [1.]]:
       probs = np.asarray(probs)
       classes = len(probs)
       freqs = self._testSampleFromDatasetsHelper(probs, classes, num_samples)

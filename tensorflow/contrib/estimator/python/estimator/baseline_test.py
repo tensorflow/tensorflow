@@ -37,13 +37,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import checkpoint_utils
-from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import saver
 
@@ -339,7 +339,7 @@ class BaselineEstimatorTrainingTest(test.TestCase):
       self.assertEquals(0, loss.shape.ndims)
       if expected_loss is None:
         if global_step is not None:
-          return distribute_lib.increment_var(global_step)
+          return state_ops.assign_add(global_step, 1).op
         return control_flow_ops.no_op()
       assert_loss = assert_close(
           math_ops.to_float(expected_loss, name='expected'),
@@ -347,7 +347,7 @@ class BaselineEstimatorTrainingTest(test.TestCase):
           name='assert_loss')
       with ops.control_dependencies((assert_loss,)):
         if global_step is not None:
-          return distribute_lib.increment_var(global_step)
+          return state_ops.assign_add(global_step, 1).op
         return control_flow_ops.no_op()
 
     mock_optimizer = test.mock.NonCallableMock(

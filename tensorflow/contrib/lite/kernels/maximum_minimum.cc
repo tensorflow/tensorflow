@@ -86,13 +86,14 @@ struct MinimumOp {
 template <typename data_type, typename op_type>
 void TFLiteOperation(TfLiteContext* context, TfLiteNode* node,
                       const OpContext& op_context) {
-  reference_ops::TensorFlowMaximumMinimum<data_type>(
+  reference_ops::MaximumMinimumBroadcast4DSlow(
+      GetTensorShape(op_context.input1),
       GetTensorData<data_type>(op_context.input1),
-      GetTensorDims(op_context.input1),
+      GetTensorShape(op_context.input2),
       GetTensorData<data_type>(op_context.input2),
-      GetTensorDims(op_context.input2),
+      GetTensorShape(op_context.output),
       GetTensorData<data_type>(op_context.output),
-      GetTensorDims(op_context.output), op_type::template op<data_type>);
+      op_type::template op<data_type>);
 }
 
 template <KernelType kernel_type, typename OpType>

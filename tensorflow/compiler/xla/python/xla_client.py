@@ -105,7 +105,6 @@ _UNARY_OPS = [
     'Square',
     'Reciprocal',
     'Neg',
-    'Sort',
     'Erf',
     'Erfc',
     'ErfInv',
@@ -1217,6 +1216,14 @@ class ComputationBuilder(object):
     return self._client.ConvGeneralDilated(lhs, rhs, window_strides, padding,
                                            lhs_dilation, rhs_dilation,
                                            dimension_numbers)
+
+  def Sort(self, operand, dimension=-1):
+    """Enqueues a sort operation onto the computation."""
+    return self._client.Sort(operand, dimension)
+
+  def SortKeyVal(self, keys, values, dimension=-1):
+    """Enqueues a key-value sort operation onto the computation."""
+    return self._client.SortKeyVal(keys, values, dimension)
 
 
 def _forward_methods_to_local_builder():

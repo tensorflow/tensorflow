@@ -36,8 +36,8 @@ namespace llvm_ir {
 
 // If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
 // reduced shape of `b` or the 0-2-1 shape.
-tensorflow::gtl::optional<std::vector<int64> > FindTranspose021(const Shape& a,
-                                                                const Shape& b);
+absl::optional<std::vector<int64> > FindTranspose021(const Shape& a,
+                                                     const Shape& b);
 
 // Return the unreduced output index corresponding to the given reduced output
 // index.
@@ -50,7 +50,7 @@ IrArray::Index GetUnreducedOutputIndex(
 // for 021 transpose.
 class TiledParameterInfo {
  public:
-  TiledParameterInfo(tensorflow::gtl::ArraySlice<llvm::Value*> param_buffers,
+  TiledParameterInfo(absl::Span<llvm::Value* const> param_buffers,
                      llvm::Value* y, llvm::Value* x)
       : param_buffers_(param_buffers), y_(y), x_(x) {}
 
@@ -67,7 +67,7 @@ class TiledParameterInfo {
  private:
   // Param_buffers_[i] stores the tile buffer for the ith parameter or nullptr
   // if the parameter is not tiled.
-  tensorflow::gtl::ArraySlice<llvm::Value*> param_buffers_;
+  absl::Span<llvm::Value* const> param_buffers_;
   // The y coordinate within a tile.
   llvm::Value* y_;
   // The x coordinate within a tile.

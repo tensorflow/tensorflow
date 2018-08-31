@@ -37,7 +37,7 @@ class BFloat16ConversionFolding : public HloPassInterface {
       : bfloat16_support_(bfloat16_support) {}
 
   ~BFloat16ConversionFolding() override = default;
-  tensorflow::StringPiece name() const override { return "bfloat16-fold"; }
+  absl::string_view name() const override { return "bfloat16-fold"; }
 
   // Run BF16 conversion folding on the given computation. Returns whether the
   // computation was changed.

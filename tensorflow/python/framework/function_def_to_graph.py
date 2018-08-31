@@ -23,7 +23,7 @@ import sys
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.framework import versions_pb2
-from tensorflow.python.framework import function
+from tensorflow.python.eager import function
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import versions
@@ -34,13 +34,13 @@ cond_v2_impl._function_def_to_graph = sys.modules[__name__]  # pylint: disable=p
 
 
 def function_def_to_graph(fdef, input_shapes=None):
-  """Converts a FunctionDef to a function._FuncGraph (sub-class Graph).
+  """Converts a FunctionDef to a function.FuncGraph (sub-class Graph).
 
-  The returned _FuncGraph's `name`, `inputs` and `outputs` fields will be set.
+  The returned FuncGraph's `name`, `inputs` and `outputs` fields will be set.
   The input tensors are represented as placeholders.
 
-  Note: `_FuncGraph.inputs` and `_FuncGraph._captured` are not set and may be
-  set by the caller.
+  Note: `FuncGraph.inputs` and `FuncGraph.captures` are not set and may be set
+  by the caller.
 
   Args:
     fdef: FunctionDef.
@@ -50,9 +50,9 @@ def function_def_to_graph(fdef, input_shapes=None):
       placeholder will have unknown shape.
 
   Returns:
-    A _FuncGraph.
+    A FuncGraph.
   """
-  func_graph = function._FuncGraph(fdef.signature.name, capture_by_value=False)  # pylint: disable=protected-access
+  func_graph = function.FuncGraph(fdef.signature.name)
   graph_def, nested_to_flat_tensor_name = function_def_to_graph_def(
       fdef, input_shapes)
 
@@ -60,7 +60,7 @@ def function_def_to_graph(fdef, input_shapes=None):
     # Add all function nodes to the graph.
     importer.import_graph_def(graph_def, name="")
 
-    # Initialize fields specific to _FuncGraph.
+    # Initialize fields specific to FuncGraph.
 
     # inputs
     input_tensor_names = [
@@ -144,6 +144,8 @@ def function_def_to_graph_def(fdef, input_shapes=None):
 
   for arg_def in fdef.signature.input_arg:
     nested_to_flat_tensor_name[arg_def.name] = "{}:0".format(arg_def.name)
+    control_name = "^" + arg_def.name
+    nested_to_flat_tensor_name[control_name] = control_name
 
   for node_def in fdef.node_def:
     op_def = ops.get_default_graph()._get_op_def(node_def.op)  # pylint: disable=protected-access
@@ -172,6 +174,8 @@ def function_def_to_graph_def(fdef, input_shapes=None):
         flat_name = "{}:{}".format(node_def.name, flattened_index)
         nested_to_flat_tensor_name[nested_name] = flat_name
         flattened_index += 1
+      control_name = "^" + node_def.name
+      nested_to_flat_tensor_name[control_name] = control_name
 
   # Update inputs of all nodes in graph.
   for node_def in graph_def.node:

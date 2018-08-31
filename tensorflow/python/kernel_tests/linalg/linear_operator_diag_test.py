@@ -52,7 +52,7 @@ class LinearOperatorDiagTest(
 
   def test_assert_positive_definite_raises_for_zero_eigenvalue(self):
     # Matrix with one positive eigenvalue and one zero eigenvalue.
-    with self.test_session():
+    with self.cached_session():
       diag = [1.0, 0.0]
       operator = linalg.LinearOperatorDiag(diag)
 
@@ -62,7 +62,7 @@ class LinearOperatorDiagTest(
         operator.assert_positive_definite().run()
 
   def test_assert_positive_definite_raises_for_negative_real_eigvalues(self):
-    with self.test_session():
+    with self.cached_session():
       diag_x = [1.0, -2.0]
       diag_y = [0., 0.]  # Imaginary eigenvalues should not matter.
       diag = math_ops.complex(diag_x, diag_y)
@@ -74,7 +74,7 @@ class LinearOperatorDiagTest(
         operator.assert_positive_definite().run()
 
   def test_assert_positive_definite_does_not_raise_if_pd_and_complex(self):
-    with self.test_session():
+    with self.cached_session():
       x = [1., 2.]
       y = [1., 0.]
       diag = math_ops.complex(x, y)  # Re[diag] > 0.
@@ -83,14 +83,14 @@ class LinearOperatorDiagTest(
 
   def test_assert_non_singular_raises_if_zero_eigenvalue(self):
     # Singlular matrix with one positive eigenvalue and one zero eigenvalue.
-    with self.test_session():
+    with self.cached_session():
       diag = [1.0, 0.0]
       operator = linalg.LinearOperatorDiag(diag, is_self_adjoint=True)
       with self.assertRaisesOpError("Singular operator"):
         operator.assert_non_singular().run()
 
   def test_assert_non_singular_does_not_raise_for_complex_nonsingular(self):
-    with self.test_session():
+    with self.cached_session():
       x = [1., 0.]
       y = [0., 1.]
       diag = math_ops.complex(x, y)
@@ -98,7 +98,7 @@ class LinearOperatorDiagTest(
       linalg.LinearOperatorDiag(diag).assert_non_singular().run()
 
   def test_assert_self_adjoint_raises_if_diag_has_complex_part(self):
-    with self.test_session():
+    with self.cached_session():
       x = [1., 0.]
       y = [0., 1.]
       diag = math_ops.complex(x, y)
@@ -107,7 +107,7 @@ class LinearOperatorDiagTest(
         operator.assert_self_adjoint().run()
 
   def test_assert_self_adjoint_does_not_raise_for_diag_with_zero_imag(self):
-    with self.test_session():
+    with self.cached_session():
       x = [1., 0.]
       y = [0., 0.]
       diag = math_ops.complex(x, y)
@@ -123,7 +123,7 @@ class LinearOperatorDiagTest(
     # These cannot be done in the automated (base test class) tests since they
     # test shapes that tf.matmul cannot handle.
     # In particular, tf.matmul does not broadcast.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = random_ops.random_normal(shape=(2, 2, 3, 4))
 
       # This LinearOperatorDiag will be broadcast to (2, 2, 3, 3) during solve

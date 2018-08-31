@@ -64,8 +64,7 @@ void EmitTupleSelect(const IrArray& select, const IrArray& pred,
   }
 }
 
-void EmitTuple(const IrArray& tuple,
-               tensorflow::gtl::ArraySlice<llvm::Value*> operands,
+void EmitTuple(const IrArray& tuple, absl::Span<llvm::Value* const> operands,
                llvm::IRBuilder<>* b, llvm::Module* module) {
   for (size_t i = 0; i < operands.size(); ++i) {
     auto* store = b->CreateStore(

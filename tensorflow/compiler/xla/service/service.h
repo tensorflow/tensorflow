@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/allocation_tracker.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -176,7 +176,7 @@ class Service : public ServiceInterface {
   // class.
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      absl::Span<const ShapedBuffer* const> arguments,
       const ExecutionOptions& execution_options);
 
   // Picks a parallel response and fills the result.
@@ -191,7 +191,7 @@ class Service : public ServiceInterface {
   // Prepare the arguments for executing parallel.
   StatusOr<std::vector<std::vector<const ShapedBuffer*>>> GetArguments(
       const ExecutionOptions& execution_options,
-      tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments);
+      absl::Span<const GlobalDataHandle* const> arguments);
 
  protected:
   friend class LocalExecutable;
@@ -207,14 +207,14 @@ class Service : public ServiceInterface {
   // the corresponding replica.
   StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
   ResolveAndValidateArguments(
-      tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
-      tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors);
+      absl::Span<const GlobalDataHandle* const> arguments,
+      absl::Span<se::StreamExecutor* const> stream_executors);
 
   // Create a Hlo module config for the given program shape and arguments.
   // execution_options is optional; if not given a default is used.
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
-      tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
+      absl::Span<const Shape* const> argument_shapes,
       const ExecutionOptions* execution_options);
 
   // Builds an Executable for the given parameters.
@@ -242,21 +242,17 @@ class Service : public ServiceInterface {
   // ExecutionProfile object which will be filled in with profile data.
   StatusOr<GlobalDataHandle> ExecuteAndRegisterResult(
       Executable* executable,
-      const tensorflow::gtl::ArraySlice<std::vector<const ShapedBuffer*>>
-          arguments,
+      const absl::Span<const std::vector<const ShapedBuffer*>> arguments,
       Backend* backend, const string& result_tag, ExecutionProfile* profile);
 
   // Runs the given executables with the given arguments and register the result
   // from each executable in the allocation tracker. The handles of the result
   // from the tracker are returned.
   StatusOr<std::vector<GlobalDataHandle>> ExecuteParallelAndRegisterResult(
-      tensorflow::gtl::ArraySlice<Executable*> executables,
-      tensorflow::gtl::ArraySlice<std::vector<std::vector<const ShapedBuffer*>>>
-          arguments,
-      Backend* backend,
-      tensorflow::gtl::ArraySlice<DeviceHandle> device_handles,
-      tensorflow::gtl::ArraySlice<string> result_tags,
-      ExecutionProfile* profile);
+      absl::Span<Executable* const> executables,
+      absl::Span<const std::vector<std::vector<const ShapedBuffer*>>> arguments,
+      Backend* backend, absl::Span<const DeviceHandle> device_handles,
+      absl::Span<const string> result_tags, ExecutionProfile* profile);
 
   // Executes a single computation which has more than one target device.
   // The N devices are expected to all return an empty tuple, but one, which

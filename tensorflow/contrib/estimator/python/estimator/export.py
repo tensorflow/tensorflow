@@ -31,8 +31,8 @@ def export_saved_model_for_mode(
   # pylint: disable=line-too-long
   """Exports a single train/eval/predict graph as a SavedModel.
 
-  For a detailed guide, see
-  @{$saved_model#using_savedmodel_with_estimators$Using SavedModel with Estimators}.
+  For a detailed guide, see [Using SavedModel with Estimators](
+  https://tensorflow.org/guide/saved_model#using_savedmodel_with_estimators).
 
   Sample usage:
   ```python

@@ -50,7 +50,7 @@ def create_model(kernel_regularizer=None, activity_regularizer=None):
 class KerasRegularizersTest(test.TestCase):
 
   def test_kernel_regularization(self):
-    with self.test_session():
+    with self.cached_session():
       (x_train, y_train), _ = get_data()
       for reg in [keras.regularizers.l1(),
                   keras.regularizers.l2(),
@@ -62,7 +62,7 @@ class KerasRegularizersTest(test.TestCase):
                   epochs=1, verbose=0)
 
   def test_activity_regularization(self):
-    with self.test_session():
+    with self.cached_session():
       (x_train, y_train), _ = get_data()
       for reg in [keras.regularizers.l1(), keras.regularizers.l2()]:
         model = create_model(activity_regularizer=reg)

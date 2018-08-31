@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/owning_device_memory.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -80,7 +80,7 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
  public:
   StreamExecutorMemoryAllocator(
       const se::Platform* platform,
-      tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors);
+      absl::Span<se::StreamExecutor* const> stream_executors);
 
   StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
                                         bool retry_on_failure) override;

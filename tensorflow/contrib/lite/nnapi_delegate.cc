@@ -24,20 +24,27 @@ limitations under the License.
 #include "tensorflow/contrib/lite/nnapi/NeuralNetworksShim.h"
 
 #ifdef __ANDROID__
+#include <android/log.h>
 #include <sys/system_properties.h>
 #endif
 
 namespace tflite {
 
 void logError(const char* format, ...) {
-  // TODO(mikie): use android logging, stderr is not captured for Java
-  // applications
-  va_list args;
-  va_start(args, format);
-  vfprintf(stderr, format, args);
-  va_end(args);
+  // stderr is convenient for native tests, but is not captured for apps
+  va_list args_for_stderr;
+  va_start(args_for_stderr, format);
+  vfprintf(stderr, format, args_for_stderr);
+  va_end(args_for_stderr);
   fprintf(stderr, "\n");
   fflush(stderr);
+#ifdef __ANDROID__
+  // produce logcat output for general consumption
+  va_list args_for_log;
+  va_start(args_for_log, format);
+  __android_log_vprint(ANDROID_LOG_ERROR, "tflite", format, args_for_log);
+  va_end(args_for_log);
+#endif
 }
 
 #define FATAL(...)       \
@@ -91,7 +98,10 @@ int32_t GetAndroidSdkVersion() {
   return 0;
 }
 
-static const int32_t kAndroidSdkVersion = GetAndroidSdkVersion();
+int32_t GetAndroidSdkVersionCached() {
+  static int32_t androidSdkVersion = GetAndroidSdkVersion();
+  return androidSdkVersion;
+}
 
 }  // namespace
 
@@ -564,8 +574,14 @@ TfLiteStatus AddOpsAndParams(
         nn_op_type = ANEURALNETWORKS_L2_NORMALIZATION;
         if (reinterpret_cast<TfLiteL2NormParams*>(node.builtin_data)
                 ->activation != kTfLiteActNone) {
-          FATAL(
+          logError(
               "NNAPI does not support L2Normalization with fused activations");
+          return kTfLiteError;
+        }
+        if ((node.inputs->size > 0) &&
+            (interpreter->tensor(node.inputs->data[0])->dims->size != 4)) {
+          logError("NNAPI only supports input rank 4 for L2Normalization");
+          return kTfLiteError;
         }
         break;
       case tflite::BuiltinOperator_HASHTABLE_LOOKUP:
@@ -623,6 +639,7 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_NOT_EQUAL:
       case tflite::BuiltinOperator_SUM:
       case tflite::BuiltinOperator_REDUCE_MAX:
+      case tflite::BuiltinOperator_REDUCE_MIN:
       case tflite::BuiltinOperator_REDUCE_PROD:
       case tflite::BuiltinOperator_SQRT:
       case tflite::BuiltinOperator_RSQRT:
@@ -634,6 +651,9 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_ONE_HOT:
       case tflite::BuiltinOperator_LOGICAL_AND:
       case tflite::BuiltinOperator_LOGICAL_NOT:
+      case tflite::BuiltinOperator_UNPACK:
+      case tflite::BuiltinOperator_FLOOR_DIV:
+      case tflite::BuiltinOperator_REDUCE_ANY:
         logError("Op code %d is currently not delegated to NNAPI", builtin);
         return kTfLiteError;
         break;
@@ -643,7 +663,7 @@ TfLiteStatus AddOpsAndParams(
         break;
     }
 
-    if (nnapi_version == 11 && kAndroidSdkVersion < 28) {
+    if (nnapi_version == 11 && GetAndroidSdkVersionCached() < 28) {
       FATAL("Op %d needs NNAPI1.1", builtin);
     }
 

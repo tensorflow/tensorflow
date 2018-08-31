@@ -37,45 +37,6 @@ TEST(UtilTest, ReindentsDifferentNumberOfLeadingSpacesUniformly) {
   EXPECT_EQ(want, got);
 }
 
-// Some smoke tests for ContainersEqual. Keeping it simple since these are just
-// basic wrappers around std::equal.
-TEST(UtilTest, ContainersEqualDefault) {
-  std::vector<int> c1 = {1, 2, 3, 4};
-  std::vector<int> c2 = {1, 2, 3};
-  std::vector<int> c3 = {};
-  std::vector<int> c4 = {1, 2, 3, 4};
-  std::vector<int> c5 = {1, 2, 3, 4, 5};
-  std::vector<int> c6 = {1, 3, 4, 5};
-
-  EXPECT_TRUE(ContainersEqual(c1, c4));
-  EXPECT_TRUE(ContainersEqual(c4, c1));
-  EXPECT_FALSE(ContainersEqual(c1, c2));
-  EXPECT_FALSE(ContainersEqual(c2, c1));
-  EXPECT_FALSE(ContainersEqual(c1, c3));
-  EXPECT_FALSE(ContainersEqual(c3, c1));
-  EXPECT_FALSE(ContainersEqual(c1, c5));
-  EXPECT_FALSE(ContainersEqual(c5, c1));
-  EXPECT_FALSE(ContainersEqual(c1, c6));
-  EXPECT_FALSE(ContainersEqual(c6, c1));
-}
-
-TEST(UtilTest, ContainersEqualPredicate) {
-  std::vector<int> c1 = {1, 2, 3, 4};
-  std::vector<int> c2 = {10, 20, 30, 40};
-
-  EXPECT_TRUE(ContainersEqual(
-      c1, c2, [](const int& i1, const int& i2) { return i1 < i2; }));
-  EXPECT_FALSE(ContainersEqual(
-      c1, c2, [](const int& i1, const int& i2) { return i1 > i2; }));
-}
-
-TEST(UtilTest, ContainersEqualDifferentContainerTypes) {
-  std::vector<int> c1 = {1, 2, 3, 4};
-  std::list<int> c2 = {1, 2, 3, 4};
-
-  EXPECT_TRUE(ContainersEqual(c1, c2));
-}
-
 TEST(UtilTest, HumanReadableNumFlopsExample) {
   ASSERT_EQ("1.00GFLOP/s", HumanReadableNumFlops(1e9, 1e9));
 }
@@ -117,8 +78,8 @@ TEST(UtilTest, CommonFactors) {
        /*.expected =*/{{0, 0}, {0, 1}, {2, 2}, {3, 2}, {4, 3}, {4, 4}}},
   };
   for (const auto& test_case : test_cases) {
-    EXPECT_TRUE(ContainersEqual(test_case.expected,
-                                CommonFactors(test_case.a, test_case.b)));
+    EXPECT_TRUE(absl::c_equal(test_case.expected,
+                              CommonFactors(test_case.a, test_case.b)));
   }
 }
 

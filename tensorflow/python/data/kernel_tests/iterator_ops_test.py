@@ -756,7 +756,7 @@ class IteratorTest(test.TestCase):
     # Saving iterator for RangeDataset graph.
     with ops.Graph().as_default() as g:
       init_op, _, save_op, _ = _build_range_dataset_graph()
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         sess.run(save_op)
 
@@ -767,7 +767,7 @@ class IteratorTest(test.TestCase):
     # IteratorResource::set_iterator.
     with ops.Graph().as_default() as g:
       _, _, _, restore_op = _build_reader_dataset_graph()
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         with self.assertRaises(errors.InvalidArgumentError):
           sess.run(restore_op)
 

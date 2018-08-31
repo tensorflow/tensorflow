@@ -76,7 +76,8 @@ class BFloat16NormalizationTest : public HloTestBase {
     StatusOr<bool> result = normalization.Run(module);
     EXPECT_IS_OK(result.status());
 
-    HloVerifier verifier(/*allow_mixed_precision=*/true);
+    HloVerifier verifier(/*layout_sensitive=*/false,
+                         /*allow_mixed_precision=*/true);
     EXPECT_IS_OK(verifier.Run(module).status());
 
     return result.ValueOrDie();
@@ -251,8 +252,8 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleCrossReplicaSum) {
   HloInstruction* crs =
       builder.AddInstruction(HloInstruction::CreateCrossReplicaSum(
           ShapeUtil::MakeTupleShape({f32_shape, bf16_shape}), {a, b}, reduction,
-          /*replica_group_ids=*/{}, /*barrier=*/"",
-          /*all_reduce_id=*/tensorflow::gtl::nullopt));
+          /*replica_groups=*/{}, /*barrier=*/"",
+          /*all_reduce_id=*/absl::nullopt));
   HloInstruction* gte = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(bf16_shape, crs, 1));
 

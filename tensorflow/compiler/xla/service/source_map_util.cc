@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/source_map_util.h"
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -26,11 +27,10 @@ Status InvalidParameterArgumentV(const OpMetadata& op_metadata,
   string message;
   tensorflow::strings::Appendv(&message, format, args);
   if (!op_metadata.source_file().empty()) {
-    tensorflow::strings::Appendf(&message, " (%s:%d)",
-                                 op_metadata.source_file().c_str(),
-                                 op_metadata.source_line());
+    absl::StrAppendFormat(&message, " (%s:%d)", op_metadata.source_file(),
+                          op_metadata.source_line());
   }
-  return InvalidArgument("%s", message.c_str());
+  return InvalidArgument("%s", message);
 }
 
 }  // namespace

@@ -162,9 +162,7 @@ public final class Interpreter implements AutoCloseable {
    */
   public void runForMultipleInputsOutputs(
       @NonNull Object[] inputs, @NonNull Map<Integer, Object> outputs) {
-    if (wrapper == null) {
-      throw new IllegalStateException("Internal error: The Interpreter has already been closed.");
-    }
+    checkNotClosed();
     wrapper.run(inputs, outputs);
   }
 
@@ -174,10 +172,14 @@ public final class Interpreter implements AutoCloseable {
    * <p>IllegalArgumentException will be thrown if it fails to resize.
    */
   public void resizeInput(int idx, @NonNull int[] dims) {
-    if (wrapper == null) {
-      throw new IllegalStateException("Internal error: The Interpreter has already been closed.");
-    }
+    checkNotClosed();
     wrapper.resizeInput(idx, dims);
+  }
+
+  /** Gets the number of input tensors. */
+  public int getInputTensorCount() {
+    checkNotClosed();
+    return wrapper.getInputTensorCount();
   }
 
   /**
@@ -187,10 +189,24 @@ public final class Interpreter implements AutoCloseable {
    * to initialize the {@link Interpreter}.
    */
   public int getInputIndex(String opName) {
-    if (wrapper == null) {
-      throw new IllegalStateException("Internal error: The Interpreter has already been closed.");
-    }
+    checkNotClosed();
     return wrapper.getInputIndex(opName);
+  }
+
+  /**
+   * Gets the Tensor associated with the provdied input index.
+   *
+   * <p>IllegalArgumentException will be thrown if the provided index is invalid.
+   */
+  public Tensor getInputTensor(int inputIndex) {
+    checkNotClosed();
+    return wrapper.getInputTensor(inputIndex);
+  }
+
+  /** Gets the number of output Tensors. */
+  public int getOutputTensorCount() {
+    checkNotClosed();
+    return wrapper.getOutputTensorCount();
   }
 
   /**
@@ -200,10 +216,18 @@ public final class Interpreter implements AutoCloseable {
    * to initialize the {@link Interpreter}.
    */
   public int getOutputIndex(String opName) {
-    if (wrapper == null) {
-      throw new IllegalStateException("Internal error: The Interpreter has already been closed.");
-    }
+    checkNotClosed();
     return wrapper.getOutputIndex(opName);
+  }
+
+  /**
+   * Gets the Tensor associated with the provdied output index.
+   *
+   * <p>IllegalArgumentException will be thrown if the provided index is invalid.
+   */
+  public Tensor getOutputTensor(int outputIndex) {
+    checkNotClosed();
+    return wrapper.getOutputTensor(outputIndex);
   }
 
   /**
@@ -212,26 +236,18 @@ public final class Interpreter implements AutoCloseable {
    * {@link Interpreter}.
    */
   public Long getLastNativeInferenceDurationNanoseconds() {
-    if (wrapper == null) {
-      throw new IllegalStateException("Internal error: The interpreter has already been closed.");
-    }
+    checkNotClosed();
     return wrapper.getLastNativeInferenceDurationNanoseconds();
   }
 
   /** Turns on/off Android NNAPI for hardware acceleration when it is available. */
   public void setUseNNAPI(boolean useNNAPI) {
-    if (wrapper != null) {
-      wrapper.setUseNNAPI(useNNAPI);
-    } else {
-      throw new IllegalStateException(
-          "Internal error: NativeInterpreterWrapper has already been closed.");
-    }
+    checkNotClosed();
+    wrapper.setUseNNAPI(useNNAPI);
   }
 
   public void setNumThreads(int numThreads) {
-    if (wrapper == null) {
-      throw new IllegalStateException("The interpreter has already been closed.");
-    }
+    checkNotClosed();
     wrapper.setNumThreads(numThreads);
   }
 
@@ -250,6 +266,12 @@ public final class Interpreter implements AutoCloseable {
       close();
     } finally {
       super.finalize();
+    }
+  }
+
+  private void checkNotClosed() {
+    if (wrapper == null) {
+      throw new IllegalStateException("Internal error: The Interpreter has already been closed.");
     }
   }
 
