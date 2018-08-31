@@ -1701,9 +1701,11 @@ void ConvertReduceOperator(const Model& model, const T& src_op,
   *new_op->add_input() = src_op.inputs[0];
   *new_op->add_input() = src_op.inputs[1];
 
-  const tensorflow::DataType params_type =
-      GetTensorFlowDataType(model, src_op.inputs[0]);
-  (*new_op->mutable_attr())["T"].set_type(params_type);
+  if (src_op.type != OperatorType::kAny) {
+    const tensorflow::DataType params_type =
+        GetTensorFlowDataType(model, src_op.inputs[0]);
+    (*new_op->mutable_attr())["T"].set_type(params_type);
+  }
   const tensorflow::DataType indices_type =
       GetTensorFlowDataType(model, src_op.inputs[1]);
   (*new_op->mutable_attr())["Tidx"].set_type(indices_type);
