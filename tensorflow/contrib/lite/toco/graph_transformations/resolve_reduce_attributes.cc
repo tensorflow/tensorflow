@@ -52,6 +52,8 @@ bool ResolveReduceAttributes::Run(Model* model, std::size_t op_index) {
       return ResolveAttributes(model, static_cast<TensorFlowMinOperator*>(op));
     case OperatorType::kReduceMax:
       return ResolveAttributes(model, static_cast<TensorFlowMaxOperator*>(op));
+    case OperatorType::kAny:
+      return ResolveAttributes(model, static_cast<TensorFlowMaxOperator*>(op));
     default:
       return false;
   }

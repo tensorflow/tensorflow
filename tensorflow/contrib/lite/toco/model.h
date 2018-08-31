@@ -1768,6 +1768,7 @@ struct PowOperator : Operator {
 //
 // Inputs:
 // Inputs[0]: required: A boolean input tensor.
+// Inputs[1]: required: reduction_indices.
 //
 // TensorFlow equivalent: tf.reduce_any.
 struct TensorFlowAnyOperator : Operator {
