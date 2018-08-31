@@ -68,7 +68,7 @@ class MklSoftmaxOp : public OpKernel {
       // Here "x" data format in MKL is used for 1 dim tensor, "nc" for 2 dim tensor, 
       // "tnc" for 3 dim tensor, "nchw" for 4 dim tensor, and "ncdhw" for 5 dim tensor.
       // Each of the simbols has the following meaning:
-      // n = batch, c = channels, t = sequence lenght, h = hight,
+      // n = batch, c = channels, t = sequence lenght, h = height,
       // w = width, d = depth 
       switch (input_dims) {
         case 1:
