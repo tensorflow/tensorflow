@@ -6,6 +6,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
+load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 common_linkopts = tflite_linkopts() + select({
     "//conditions:default": [],
@@ -44,6 +45,7 @@ tf_cc_test(
     data = ["//tensorflow/contrib/lite:testdata/multi_add.bin"],
     linkopts = common_linkopts,
     linkstatic = 1,
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":utils",
         "@com_google_googletest//:gtest",
@@ -102,6 +104,10 @@ tf_cc_test(
     data = ["//tensorflow/contrib/lite:testdata/multi_add.bin"],
     linkopts = common_linkopts,
     linkstatic = 1,
+    tags = [
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
     deps = [
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:scope",
@@ -152,6 +158,7 @@ tf_cc_test(
     srcs = ["file_reader_stage_test.cc"],
     linkopts = common_linkopts,
     linkstatic = 1,
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":file_reader_stage",
         "@com_google_googletest//:gtest",
@@ -226,6 +233,7 @@ tf_cc_test(
     srcs = ["eval_pipeline_test.cc"],
     linkopts = common_linkopts,
     linkstatic = 1,
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":eval_pipeline",
         "//tensorflow/cc:cc_ops",
@@ -277,6 +285,7 @@ tf_cc_test(
     srcs = ["eval_pipeline_builder_test.cc"],
     linkopts = common_linkopts,
     linkstatic = 1,
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":eval_pipeline_builder",
         "//tensorflow/cc:cc_ops",
@@ -312,3 +321,5 @@ cc_library(
         },
     ),
 )
+
+tflite_portable_test_suite()

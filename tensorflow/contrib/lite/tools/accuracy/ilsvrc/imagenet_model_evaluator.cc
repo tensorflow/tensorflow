@@ -235,7 +235,7 @@ Status FilterBlackListedImages(const string& blacklist_file_path,
     blacklist_ids.reserve(lines.size());
     // Populate blacklist_ids with indices of images.
     std::transform(lines.begin(), lines.end(),
-                   std::back_insert_iterator(blacklist_ids),
+                   std::back_inserter(blacklist_ids),
                    [](const string& val) { return std::stoi(val) - 1; });
 
     std::vector<ImageLabel> filtered_images;
