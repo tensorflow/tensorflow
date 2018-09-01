@@ -341,7 +341,7 @@ code and run a new model against the same cluster.
 
 We've been optimizing the performance of standalone client mode. If you notice
 high latency between your laptop and your cluster, you can reduce that latency
-by running your run your model binary in the cluster.
+by running your model binary in the cluster.
 
 ## Caveats
 
