@@ -19,7 +19,6 @@ This does in-graph replication with synchronous training
 on many GPUs on one machine. Essentially, we create copies of all variables in
 the model's layers on each device. We then use all-reduce to combine gradients
 across the devices before applying them to the variables to keep them in sync.
-
 * [`CollectiveAllReduceStrategy`](https://www.tensorflow.org/versions/master/api_docs/python/tf/contrib/distribute/CollectiveAllReduceStrategy):
 This is a version of `MirroredStrategy` for multi-working training. It uses
 a collective op to do all-reduce. This supports between-graph communication and
@@ -39,15 +38,82 @@ one parameter server. Computation operations are replicated across all GPUs of
 the workers.
 
 ## Multi-GPU Training
-### Usage with Estimator
 
-Let's demonstrate how to train on multiple GPUs using this API with a simple
-example. We will use the [`Estimator`](https://www.tensorflow.org/api_docs/python/tf/estimator/Estimator)
-approach and show you how to scale your model to run on multiple GPUs on one
-machine using `MirroredStrategy`.
+## Example with Keras API
 
-Let's consider a very simple model function which tries to learn a simple
-function.
+Let's see how to scale to multiple GPUs on one machine using `MirroredStrategy` with [tf.keras] (https://www.tensorflow.org/guide/keras).
+
+Take a very simple model consisting of a single layer:
+
+```python
+inputs = tf.keras.layers.Input(shape=(1,))
+predictions = tf.keras.layers.Dense(1)(inputs)
+model = tf.keras.models.Model(inputs=inputs, outputs=predictions)
+```
+
+Let's also define a simple input dataset for training this model. Note that currently we require using
+[`tf.data.Dataset`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset)
+with `DistributionStrategy`.
+
+```python
+features = tf.data.Dataset.from_tensors([1.]).repeat(10000).batch(10)
+labels = tf.data.Dataset.from_tensors([1.]).repeat(10000).batch(10)
+train_dataset = tf.data.Dataset.zip((features, labels))
+```
+
+
+To distribute this Keras model on multiple GPUs using `MirroredStrategy` we
+first instantiate a `MirroredStrategy` object.
+
+```python
+distribution = tf.contrib.distribute.MirroredStrategy()
+```
+
+We then compile the Keras model and pass the `MirroredStrategy` object in the
+`distribute` argument (apart from other usual arguments like `loss` and
+`optimizer`).
+
+```python
+model.compile(loss='mean_squared_error',
+              optimizer=tf.train.GradientDescentOptimizer(learning_rate=0.2),
+              distribute=strategy)
+```
+
+To train the model we call Keras `fit` API using the input dataset that we
+created earlier, same as how we would in a non-distributed case.
+
+```python
+model.fit(train_dataset, epochs=5, steps_per_epoch=10)
+```
+
+Similarly, we can also call `evaluate` and `predict` as before using appropriate
+datasets.
+
+```python
+model.evaluate(eval_dataset)
+model.predict(predict_dataset)
+```
+
+That's all you need to train your model with Keras on multiple GPUs with
+`MirroredStrategy`. It will take care of splitting up
+the input dataset, replicating layers and variables on each device, and
+combining and applying gradients.
+
+The model and input code does not have to change because we have changed the
+underlying components of TensorFlow (such as
+optimizer, batch norm and summaries) to become distribution-aware.
+That means those components know how to
+combine their state across devices. Further, saving and checkpointing works
+seamlessly, so you can save with one or no distribution strategy and resume with
+another.
+
+
+## Example with Estimator API
+
+You can also use Distribution Strategy API with [`Estimator`](https://www.tensorflow.org/api_docs/python/tf/estimator/Estimator). Let's see a simple example of it's usage with `MirroredStrategy`.
+
+
+Consider a very simple model function which tries to learn a simple function.
 
 ```python
 def model_fn(features, labels, mode):
@@ -69,17 +135,14 @@ def model_fn(features, labels, mode):
     return tf.estimator.EstimatorSpec(mode, loss=loss, train_op=train_op)
 ```
 
-Let's also define a simple input function to feed data for training this model.
-Note that we require using
-[`tf.data.Dataset`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset)
-with `DistributionStrategy`.
+Again, let's define a simple input function to feed data for training this model.
 
 
 ```python
 def input_fn():
   features = tf.data.Dataset.from_tensors([[1.]]).repeat(100)
   labels = tf.data.Dataset.from_tensors(1.).repeat(100)
-  return dataset_ops.Dataset.zip((features, labels))
+  return tf.data.Dataset.zip((features, labels))
 ```
 
 Now that we have a model function and input function defined, we can define the
@@ -96,20 +159,14 @@ distribution = tf.contrib.distribute.MirroredStrategy()
 config = tf.estimator.RunConfig(train_distribute=distribution)
 classifier = tf.estimator.Estimator(model_fn=model_fn, config=config)
 classifier.train(input_fn=input_fn)
+classifier.evaluate(input_fn=input_fn)
 ```
 
 That's it! This change will now configure estimator to run on all GPUs on your
-machine, with the `MirroredStrategy` approach. It will take care of distributing
-the input dataset, replicating layers and variables on each device, and
-combining and applying gradients.
+machine.
 
-The model and input functions do not have to change because we have changed the
-underlying components of TensorFlow (such as
-optimizer, batch norm and summaries) to become distribution-aware.
-That means those components know how to
-combine their state across devices. Further, saving and checkpointing works
-seamlessly, so you can save with one or no distribution strategy and resume with
-another.
+
+## Customization and Performance Tips
 
 Above, we showed the easiest way to use [`MirroredStrategy`](https://www.tensorflow.org/versions/master/api_docs/python/tf/contrib/distribute/MirroredStrategy#__init__).
 There are few things you can customize in practice:
@@ -118,8 +175,6 @@ There are few things you can customize in practice:
 of GPUs (using param `num_gpus`), in case you don't want auto detection.
 * You can specify various parameters for all reduce with the `cross_tower_ops`
 param, such as the all reduce algorithm to use, and gradient repacking.
-
-### Performance Tips
 
 We've tried to make it such that you get the best performance for your existing
 model. We also recommend you follow the tips from
@@ -293,11 +348,13 @@ by running your run your model binary in the cluster.
 This feature is in early stages and there are a lot of improvements forthcoming:
 
 * Summaries are only computed in the first tower in `MirroredStrategy`.
-* Evaluation is not yet distributed.
 * Eager support is in the works; performance can be more challenging with eager
 execution.
-* As mentioned earlier, multi-node and other distributed strategies will be
-introduced in the future.
+* We currently support the following predefined Keras callbacks:
+`ModelCheckpointCallback`, `TensorBoardCallback`. We will soon be adding support for
+some of the other callbacks such as `EarlyStopping`, `ReduceLROnPlateau`, etc. If you
+create your own callback, you will not have access to all model properties and
+validation data.
 * If you are [`batching`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset#batch)
 your input data, we will place one batch on each GPU in each step. So your
 effective batch size will be `num_gpus * batch_size`. Therefore, consider
