@@ -435,7 +435,10 @@ string AttrValueToPython(const string& type, const AttrValue& value,
     if (std::isnan(value.f()) || std::isinf(value.f())) {
       return strings::StrCat("float('", value.f(), "')");
     } else {
-      return strings::StrCat(value.f());
+      std::ostringstream s;
+      s.imbue(std::locale::classic());
+      s << value.f();
+      return s.str();
     }
   } else if (type == "bool") {
     return value.b() ? "True" : "False";
