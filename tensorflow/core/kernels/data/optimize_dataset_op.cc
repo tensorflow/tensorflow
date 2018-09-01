@@ -92,8 +92,10 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       DatasetGraphDefBuilder db(&b);
       Node* input_node = nullptr;
       SerializationContext::Params params;
+      std::vector<std::pair<string, Tensor>> input_list;
       params.allow_stateful_functions = true;
       params.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
+      params.input_list = &input_list;
       SerializationContext serialization_ctx(params);
       TF_RETURN_IF_ERROR(
           db.AddInputDataset(&serialization_ctx, input_, &input_node));
@@ -118,7 +120,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       GraphRunner graph_runner(ctx->function_library()->device());
 
       TF_RETURN_IF_ERROR(
-          graph_runner.Run(&graph, lib_, {}, {output_node}, &outputs));
+          graph_runner.Run(&graph, lib_, input_list, {output_node}, &outputs));
       TF_RETURN_IF_ERROR(
           GetDatasetFromVariantTensor(outputs[0], &optimized_input_));
       optimized_input_->Ref();
