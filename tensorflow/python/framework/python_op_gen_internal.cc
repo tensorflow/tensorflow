@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/python/framework/python_op_gen_internal.h"
 
 #include <stdio.h>
+#include <float.h>
+#include <iomanip>
 #include <sstream>
 #include <unordered_map>
 #include "tensorflow/core/framework/api_def.pb.h"
@@ -435,9 +437,11 @@ string AttrValueToPython(const string& type, const AttrValue& value,
     if (std::isnan(value.f()) || std::isinf(value.f())) {
       return strings::StrCat("float('", value.f(), "')");
     } else {
+      // Use locale-independent conversion.
+      static_assert(FLT_DIG < 10, "FLT_DIG is too big");
       std::ostringstream s;
       s.imbue(std::locale::classic());
-      s << value.f();
+      s << std::setprecision(FLT_DIG) << value.f();
       return s.str();
     }
   } else if (type == "bool") {
