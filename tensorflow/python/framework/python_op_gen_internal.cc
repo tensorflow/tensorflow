@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/python/framework/python_op_gen_internal.h"
 
-#include <stdio.h>
 #include <float.h>
+#include <stdio.h>
 #include <iomanip>
 #include <sstream>
 #include <unordered_map>
