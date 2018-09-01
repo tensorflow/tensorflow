@@ -210,6 +210,37 @@ def _amdgpu_targets(repository_ctx):
       auto_configure_fail("Invalid AMDGPU target: %s" % amdgpu_target)
   return amdgpu_targets
 
+def _hipcc_env(repository_ctx):
+  """Returns the environment variable string for hipcc.
+
+  Args:
+    repository_ctx: The repository context.
+
+  Returns:
+    A string containing environment variables for hipcc.
+  """
+  hipcc_env = ""
+  for name in ["HIP_CLANG_PATH", "DEVICE_LIB_PATH", "HIP_VDI_HOME",\
+               "HIPCC_VERBOSE", "HIP_AUTO_INCLUDE_HEADER"]:
+    if name in repository_ctx.os.environ:
+      hipcc_env = hipcc_env + " " + name + "=" + \
+                repository_ctx.os.environ[name].strip()
+  return hipcc_env.strip()
+
+def _crosstool_verbose(repository_ctx):
+  """Returns the environment variable value CROSSTOOL_VERBOSE.
+
+  Args:
+    repository_ctx: The repository context.
+
+  Returns:
+    A string containing value of environment variable CROSSTOOL_VERBOSE.
+  """
+  name = "CROSSTOOL_VERBOSE"
+  if name in repository_ctx.os.environ:
+    return repository_ctx.os.environ[name].strip()
+  return "0"
+
 def _cpu_value(repository_ctx):
   """Returns the name of the host operating system.
 
@@ -580,6 +611,8 @@ def _create_local_rocm_repository(repository_ctx):
        {
            "%{cpu_compiler}": str(cc),
            "%{hipcc_path}": "/opt/rocm/bin/hipcc",
+           "%{hipcc_env}": _hipcc_env(repository_ctx),
+           "%{crosstool_verbose}": _crosstool_verbose(repository_ctx),
            "%{gcc_host_compiler_path}": str(cc),
            "%{rocm_amdgpu_targets}": ",".join(
                ["\"%s\"" % c for c in rocm_config.amdgpu_targets]),
