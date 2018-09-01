@@ -258,6 +258,19 @@ mlfunc @ifstmt(%N: affineint) {
   return    // CHECK   return
 }           // CHECK }
 
+// CHECK-LABEL: mlfunc @simple_ifstmt(%arg0 : affineint) {
+mlfunc @simple_ifstmt(%N: affineint) {
+  %c = constant 200 : affineint // CHECK   %c200 = constant 200
+  for %i = 1 to 10 {   	        // CHECK   for %i0 = 1 to 10 {
+    if @@set0(%i)[%N, %c] {     // CHECK     if @@set0(%i0)[%arg0, %c200] {
+      %x = constant 1 : i32
+       // CHECK: %c1_i32 = constant 1 : i32
+      %y = "add"(%x, %i) : (i32, affineint) -> i32 // CHECK: %0 = "add"(%c1_i32, %i0) : (i32, affineint) -> i32
+      %z = "mul"(%y, %y) : (i32, i32) -> i32 // CHECK: %1 = "mul"(%0, %0) : (i32, i32) -> i32
+    }       // CHECK     }
+  }         // CHECK   }
+  return    // CHECK   return
+}           // CHECK }
 
 // CHECK-LABEL: cfgfunc @attributes() {
 cfgfunc @attributes() {

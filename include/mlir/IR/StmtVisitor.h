@@ -159,8 +159,9 @@ public:
     static_cast<SubClass *>(this)->visitIfStmt(ifStmt);
     static_cast<SubClass *>(this)->walk(ifStmt->getThen()->begin(),
                                         ifStmt->getThen()->end());
-    static_cast<SubClass *>(this)->walk(ifStmt->getElse()->begin(),
-                                        ifStmt->getElse()->end());
+    if (ifStmt->hasElse())
+      static_cast<SubClass *>(this)->walk(ifStmt->getElse()->begin(),
+                                          ifStmt->getElse()->end());
   }
 
   void walkIfStmtPostOrder(IfStmt *ifStmt) {
