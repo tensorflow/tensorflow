@@ -36,7 +36,7 @@ class InstructionFusion : public HloPassInterface {
       bool may_duplicate = true)
       : is_expensive_(is_expensive), may_duplicate_(may_duplicate) {}
   ~InstructionFusion() override = default;
-  tensorflow::StringPiece name() const override { return "fusion"; }
+  absl::string_view name() const override { return "fusion"; }
 
   // Run instruction fusion on the given computation. Returns whether the
   // computation was changed (instructions were fused).
@@ -122,8 +122,8 @@ class InstructionFusion : public HloPassInterface {
 
   // Computes the set of nodes that we do not want to fuse into any of their
   // consumers based on a global analysis of the HLO graph.
-  HloInstructionSet ComputeGloballyUnfusable(
-      tensorflow::gtl::ArraySlice<HloInstruction*> post_order);
+  HloInstructionSet ComputeGloballyUnfusible(
+      absl::Span<HloInstruction* const> post_order);
 
   // Used to determine if an HLO is expensive. Expensive operations will not be
   // duplicated.

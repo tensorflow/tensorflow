@@ -310,7 +310,7 @@ class CheckpointingTests(test.TestCase):
               global_step=root.global_step)
           checkpoint_path = checkpoint_management.latest_checkpoint(
               checkpoint_directory)
-          with self.test_session(graph=ops.get_default_graph()) as session:
+          with self.session(graph=ops.get_default_graph()) as session:
             status = root.restore(save_path=checkpoint_path)
             status.initialize_or_restore(session=session)
             if checkpoint_path is None:
@@ -504,7 +504,7 @@ class CheckpointingTests(test.TestCase):
     """Saves after the first should not modify the graph."""
     with context.graph_mode():
       graph = ops.Graph()
-      with graph.as_default(), self.test_session(graph):
+      with graph.as_default(), self.session(graph):
         checkpoint_directory = self.get_temp_dir()
         checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
         obj = tracking.Checkpointable()
@@ -522,7 +522,7 @@ class CheckpointingTests(test.TestCase):
     """Restores after the first should not modify the graph."""
     with context.graph_mode():
       graph = ops.Graph()
-      with graph.as_default(), self.test_session(graph):
+      with graph.as_default(), self.session(graph):
         checkpoint_directory = self.get_temp_dir()
         checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
         obj = tracking.Checkpointable()

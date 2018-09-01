@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_token.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/types.h"
@@ -34,7 +34,7 @@ namespace xla {
 // it directly.
 class HloLexer {
  public:
-  explicit HloLexer(tensorflow::StringPiece buf) : buf_(buf) {
+  explicit HloLexer(absl::string_view buf) : buf_(buf) {
     current_ptr_ = buf_.begin();
   }
 
@@ -77,7 +77,7 @@ class HloLexer {
   std::pair<unsigned, unsigned> GetLineAndColumn(LocTy location) const;
 
   // Returns the whole line given the location.
-  tensorflow::StringPiece GetLine(LocTy loc) const;
+  absl::string_view GetLine(LocTy loc) const;
 
  private:
   // Returns the current character. If it's neither the end of input buffer nor
@@ -89,8 +89,8 @@ class HloLexer {
 
   // Creates StringPiece with the given begin and end. Exits if the begin > end,
   // or it's out of the range of the current buffer.
-  tensorflow::StringPiece StringPieceFromPointers(const char* begin,
-                                                  const char* end) const;
+  absl::string_view StringPieceFromPointers(const char* begin,
+                                            const char* end) const;
   tensorflow::RegexpStringPiece RegexpStringPieceFromPointers(
       const char* begin, const char* end) const;
 
@@ -107,11 +107,11 @@ class HloLexer {
   TokKind LexNumberOrPattern();
   TokKind LexString();
 
-  const tensorflow::StringPiece buf_;
+  const absl::string_view buf_;
   const char* current_ptr_;
 
   // Information about the current token.
-  const char* token_start_;
+  const char* token_start_ = nullptr;
   TokKind current_kind_;
   string str_val_;
   Shape shape_val_;

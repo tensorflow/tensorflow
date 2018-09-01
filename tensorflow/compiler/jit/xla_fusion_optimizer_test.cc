@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/xla_fusion_optimizer.h"
+#include "tensorflow/cc/ops/resource_variable_ops.h"
+#include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
@@ -71,7 +73,7 @@ TEST_F(XlaFusionOptimizerTest, Chains) {
   EXPECT_TRUE(clusters.find("D") == clusters.cend());
 }
 
-TEST_F(XlaFusionOptimizerTest, FusableOps) {
+TEST_F(XlaFusionOptimizerTest, FusibleOps) {
   GraphDef graph;
   {
     GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
@@ -179,5 +181,28 @@ TEST_F(XlaFusionOptimizerTest, CompilableCycles) {
   EXPECT_EQ(clusters["A"], clusters["C"]);
 }
 
+TEST_F(XlaFusionOptimizerTest, ResourcesClusteringDisallowed) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Output var_handle =
+      ops::VarHandleOp(root.WithOpName("Var"), DT_FLOAT, TensorShape({}));
+  Output to_assign = ops::Const(root.WithOpName("Const"), 10.0f);
+  Output begin = ops::Const(root.WithOpName("begin"), 0);
+  Output end = ops::Const(root.WithOpName("end"), 1);
+  Output strides = ops::Const(root.WithOpName("strides"), 1);
+  ops::ResourceStridedSliceAssign assign_1(
+      root.WithOpName("assign_1"), var_handle, begin, end, strides, to_assign);
+  ops::ResourceStridedSliceAssign assign_2(
+      root.WithOpName("assign_2"), var_handle, begin, end, strides, to_assign);
+  root.graph()->AddControlEdge(assign_1.operation.node(),
+                               assign_2.operation.node());
+  grappler::GrapplerItem item;
+  root.graph()->ToGraphDef(&item.graph);
+
+  XlaFusionOptimizer optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+  auto clusters = GetClusters(output);
+  EXPECT_NE(clusters["assign_1"], clusters["assign_2"]);
+}
 }  // namespace
 }  // namespace tensorflow

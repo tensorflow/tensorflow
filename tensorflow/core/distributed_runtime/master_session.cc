@@ -449,7 +449,7 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     *c->req.mutable_graph_options() = session_opts_.config.graph_options();
     *c->req.mutable_debug_options() =
         callable_opts_.run_options().debug_options();
-    c->req.set_collective_graph_key(bg_opts_.collective_graph_key);
+    c->req.set_collective_graph_key(client_graph()->collective_graph_key);
     VLOG(2) << "Register " << c->req.graph_def().DebugString();
     auto cb = [c, &done](const Status& s) {
       c->status = s;
@@ -615,7 +615,7 @@ Status MasterSession::ReffedClientGraph::RunPartitionsHelper(
     // inadvertently slowing down the normal run path.
     if (is_partial_) {
       for (const auto& name_index : feeds) {
-        const auto iter = part.feed_key.find(std::string(name_index.first));
+        const auto iter = part.feed_key.find(string(name_index.first));
         if (iter == part.feed_key.end()) {
           // The provided feed must be for a different partition.
           continue;
@@ -959,7 +959,7 @@ Status MasterSession::ReffedClientGraph::CheckFetches(
     // Skip if already fed.
     if (input.second) continue;
     TensorId id(ParseTensorName(input.first));
-    const Node* n = execution_state->get_node_by_name(std::string(id.first));
+    const Node* n = execution_state->get_node_by_name(string(id.first));
     if (n == nullptr) {
       return errors::NotFound("Feed ", input.first, ": not found");
     }
@@ -975,7 +975,7 @@ Status MasterSession::ReffedClientGraph::CheckFetches(
   for (size_t i = 0; i < req.num_fetches(); ++i) {
     const string& fetch = req.fetch_name(i);
     const TensorId id(ParseTensorName(fetch));
-    const Node* n = execution_state->get_node_by_name(std::string(id.first));
+    const Node* n = execution_state->get_node_by_name(string(id.first));
     if (n == nullptr) {
       return errors::NotFound("Fetch ", fetch, ": not found");
     }
@@ -1109,10 +1109,6 @@ uint64 HashBuildGraphOptions(const BuildGraphOptions& opts) {
     const string watch_summary =
         SummarizeDebugTensorWatches(debug_options.debug_tensor_watch_opts());
     h = Hash64(watch_summary.c_str(), watch_summary.size(), h);
-  }
-
-  if (opts.collective_graph_key != BuildGraphOptions::kNoCollectiveGraphKey) {
-    h = Hash64Combine(opts.collective_graph_key, h);
   }
 
   return h;
@@ -1788,10 +1784,10 @@ Status MasterSession::PostRunCleanup(MasterSession::ReffedClientGraph* rcg,
   Status s = run_status;
   if (s.ok()) {
     pss->end_micros = Env::Default()->NowMicros();
-    if (rcg->build_graph_options().collective_graph_key !=
+    if (rcg->client_graph()->collective_graph_key !=
         BuildGraphOptions::kNoCollectiveGraphKey) {
       env_->collective_executor_mgr->RetireStepId(
-          rcg->build_graph_options().collective_graph_key, step_id);
+          rcg->client_graph()->collective_graph_key, step_id);
     }
     // Schedule post-processing and cleanup to be done asynchronously.
     rcg->ProcessStats(step_id, pss, ph.get(), run_options, out_run_metadata);
@@ -1850,7 +1846,7 @@ Status MasterSession::DoRunWithLocalExecution(
 
   // Keeps the highest 8 bits 0x01: we reserve some bits of the
   // step_id for future use.
-  uint64 step_id = NewStepId(bgopts.collective_graph_key);
+  uint64 step_id = NewStepId(rcg->client_graph()->collective_graph_key);
   TRACEPRINTF("stepid %llu", step_id);
 
   std::unique_ptr<ProfileHandler> ph;
@@ -1914,8 +1910,7 @@ Status MasterSession::DoRunCallable(CallOptions* opts, ReffedClientGraph* rcg,
   // Prepare.
   int64 count = rcg->get_and_increment_execution_count();
 
-  const uint64 step_id =
-      NewStepId(rcg->build_graph_options().collective_graph_key);
+  const uint64 step_id = NewStepId(rcg->client_graph()->collective_graph_key);
   TRACEPRINTF("stepid %llu", step_id);
 
   const RunOptions& run_options = rcg->callable_options().run_options();

@@ -57,7 +57,8 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
   std::vector<bool> compile_time_constant_flags(expressions.size());
 
   TF_RETURN_IF_ERROR(
-      BackwardsConstAnalysis(*graph, &compile_time_constant_flags));
+      BackwardsConstAnalysis(*graph, &compile_time_constant_flags,
+                             /*compile_time_const_nodes=*/nullptr));
 
   args->resize(expressions.size());
   for (int i = 0; i < args->size(); ++i) {
@@ -145,6 +146,7 @@ Status GraphCompiler::Compile() {
     }
 
     OpKernelContext op_context(&params, n->num_outputs());
+    VLOG(3) << "Translating " << params.op_kernel->name();
     if (IsFunctional(n)) {
       TF_RETURN_IF_ERROR(CompileFunctionalNode(n, &op_context));
     } else {

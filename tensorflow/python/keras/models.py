@@ -20,13 +20,19 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import saving
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer
+from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.utils import generic_utils
-
+from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
+from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import data_structures
+from tensorflow.python.util.tf_export import tf_export
 
 # API entries importable from `keras.models`:
 Model = training.Model  # pylint: disable=invalid-name
@@ -220,6 +226,7 @@ def _clone_sequential_model(model, input_tensors=None):
     return Sequential(layers=[input_layer] + layers, name=model.name)
 
 
+@tf_export('keras.models.clone_model')
 def clone_model(model, input_tensors=None):
   """Clone any `Model` instance.
 
@@ -246,3 +253,219 @@ def clone_model(model, input_tensors=None):
     return _clone_sequential_model(model, input_tensors=input_tensors)
   else:
     return _clone_functional_model(model, input_tensors=input_tensors)
+
+
+# "Clone" a subclassed model by reseting all of the attributes.
+
+
+def _in_place_subclassed_model_reset(model):
+  """Substitute for model cloning that works for subclassed models.
+
+  Subclassed models cannot be cloned because their topology is not serializable.
+  To "instantiate" an identical model in a new TF graph, we reuse the original
+  model object, but we clear its state.
+
+  After calling this function on a model instance, you can use the model
+  instance as if it were a model clone (in particular you can use it in a new
+  graph).
+
+  This method clears the state of the input model. It is thus destructive.
+  However the original state can be restored fully by calling
+  `_in_place_subclassed_model_state_restoration`.
+
+  Args:
+    model: Instance of a Keras model created via subclassing.
+
+  Raises:
+    ValueError: In case the model uses a subclassed model as inner layer.
+  """
+  assert not model._is_graph_network  # Only makes sense for subclassed networks
+  # Retrieve all layers tracked by the model as well as their attribute names
+  attributes_cache = {}
+  for name in dir(model):
+    try:
+      value = getattr(model, name)
+    except (AttributeError, ValueError, TypeError):
+      continue
+    if isinstance(value, Layer):
+      attributes_cache[name] = value
+      assert value in model._layers
+    elif isinstance(value, (list, tuple)) and name not in ('layers', '_layers'):
+      # Handle case: list/tuple of layers (also tracked by the Network API).
+      if value and all(isinstance(val, Layer) for val in value):
+        raise ValueError('We do not support the use of list-of-layers '
+                         'attributes in subclassed models used with '
+                         '`model_to_estimator` at this time. Found list '
+                         'model: %s' % name)
+
+  # Replace layers on the model with fresh layers
+  layers_to_names = {value: key for key, value in attributes_cache.items()}
+  original_layers = model._layers[:]
+  model._layers = data_structures.NoDependency([])
+  for layer in original_layers:  # We preserve layer order.
+    config = layer.get_config()
+    # This will not work for nested subclassed models used as layers.
+    # This would be theoretically possible to support, but would add complexity.
+    # Only do it if users complain.
+    if isinstance(layer, Network) and not layer._is_graph_network:
+      raise ValueError('We do not support the use of nested subclassed models '
+                       'in `model_to_estimator` at this time. Found nested '
+                       'model: %s' % layer)
+    fresh_layer = layer.__class__.from_config(config)
+    name = layers_to_names[layer]
+    setattr(model, name, fresh_layer)
+
+  # Cache original model build attributes (in addition to layers)
+  if (not hasattr(model, '_original_attributes_cache') or
+      model._original_attributes_cache is None):
+    if model.built:
+      attributes_to_cache = [
+          'inputs',
+          'outputs',
+          '_feed_outputs',
+          '_feed_output_names',
+          '_feed_output_shapes',
+          '_feed_loss_fns',
+          'loss_weights_list',
+          'targets',
+          '_feed_targets',
+          'sample_weight_modes',
+          'weighted_metrics',
+          'metrics_names',
+          'metrics_tensors',
+          'metrics_updates',
+          'stateful_metric_names',
+          'total_loss',
+          'sample_weights',
+          '_feed_sample_weights',
+          'train_function',
+          'test_function',
+          'predict_function',
+          '_collected_trainable_weights',
+          '_feed_inputs',
+          '_feed_input_names',
+          '_feed_input_shapes',
+          'optimizer',
+      ]
+      for name in attributes_to_cache:
+        attributes_cache[name] = getattr(model, name)
+  model._original_attributes_cache = data_structures.NoDependency(
+      attributes_cache)
+  # Reset built state
+  model.built = False
+  model.inputs = None
+  model.outputs = None
+
+
+def in_place_subclassed_model_state_restoration(model):
+  """Restores the original state of a model after it was "reset".
+
+  This undoes this action of `_in_place_subclassed_model_reset`, which is called
+  in `clone_and_build_model` if `in_place_reset` is set to True.
+
+  Args:
+    model: Instance of a Keras model created via subclassing, on which
+      `_in_place_subclassed_model_reset` was previously called.
+  """
+  assert not model._is_graph_network
+  # Restore layers and build attributes
+  if (hasattr(model, '_original_attributes_cache') and
+      model._original_attributes_cache is not None):
+    # Models have sticky attribute assignment, so we want to be careful to add
+    # back the previous attributes and track Layers by their original names
+    # without adding dependencies on "utility" attributes which Models exempt
+    # when they're constructed.
+    model._layers = data_structures.NoDependency([])
+    for name, value in model._original_attributes_cache.items():
+      if not isinstance(value, checkpointable.CheckpointableBase):
+        # If this value is not already checkpointable, it's probably that way
+        # for a reason; we don't want to start tracking data structures that the
+        # original Model didn't.
+        value = data_structures.NoDependency(value)
+      setattr(model, name, value)
+    model._original_attributes_cache = None
+  else:
+    # Restore to the state of a never-called model.
+    model.built = False
+    model.inputs = None
+    model.outputs = None
+
+
+def clone_and_build_model(
+    model, input_tensors=None, target_tensors=None, custom_objects=None,
+    compile_clone=True, in_place_reset=False, optimizer_iterations=None):
+  """Clone a `Model` and build/compile it with the same settings used before.
+
+  This function can be be run in the same graph or in a separate graph from the
+  model. When using a separate graph, `in_place_reset` must be `False`.
+
+  Args:
+    model: `tf.keras.Model` object. Can be Functional, Sequential, or
+      sub-classed.
+    input_tensors: Optional list of input tensors to build the model upon. If
+      not provided, placeholders will be created.
+    target_tensors: Optional list of target tensors for compiling the model. If
+      not provided, placeholders will be created.
+    custom_objects: Optional dictionary mapping string names to custom classes
+      or functions.
+    compile_clone: Boolean, whether to compile model clone (default `True`).
+    in_place_reset: Boolean, whether to reset the model in place. Only used if
+      the model is not a graph network. If the model is a subclassed model, then
+      this argument must be set to `True` (default `False`). To restore the
+      original model, use the function
+      `in_place_subclassed_model_state_restoration(model)`.
+    optimizer_iterations: An iterations variable to pass to the optimizer if
+      the model uses a TFOptimizer, and if the clone is compiled. This is used
+      when a Keras model is cloned into an Estimator model function, because
+      Estimators create their own global step variable.
+
+  Returns:
+    Clone of the model.
+
+  Raises:
+    ValueError: if trying to clone a subclassed model, and `in_place_reset` is
+      set to False.
+  """
+  if model._is_graph_network:
+    if custom_objects:
+      with CustomObjectScope(custom_objects):
+        clone = clone_model(model, input_tensors=input_tensors)
+    else:
+      clone = clone_model(model, input_tensors=input_tensors)
+  else:
+    if not in_place_reset:
+      raise ValueError(
+          'Model is not a graph network (usually means that it is a subclassed '
+          'model). The model cannot be cloned, but there is a workaround where '
+          'the model is reset in-place. To use this, please set the argument '
+          '`in_place_reset` to `True`. This will reset the attributes in the '
+          'original model. To restore the attributes, call '
+          '`in_place_subclassed_model_state_restoration(model)`.')
+    clone = model
+    _in_place_subclassed_model_reset(clone)
+    if input_tensors is not None:
+      clone._set_inputs(input_tensors)
+
+  # Compile/Build model
+  if not compile_clone:
+    if isinstance(clone, Sequential):
+      clone.build()
+  elif model.optimizer:
+    if isinstance(model.optimizer, optimizers.TFOptimizer):
+      optimizer = optimizers.TFOptimizer(
+          model.optimizer.optimizer, optimizer_iterations)
+      K.track_tf_optimizer(optimizer)
+    else:
+      optimizer_config = model.optimizer.get_config()
+      optimizer = model.optimizer.__class__.from_config(optimizer_config)
+
+    clone.compile(
+        optimizer,
+        model.loss,
+        metrics=model.metrics,
+        loss_weights=model.loss_weights,
+        sample_weight_mode=model.sample_weight_mode,
+        weighted_metrics=model.weighted_metrics,
+        target_tensors=target_tensors)
+
+  return clone

@@ -44,6 +44,10 @@ load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_mpi_deps")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_gdr_deps")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
+load(
+    "//third_party/ngraph:build_defs.bzl",
+    "if_ngraph",
+)
 
 py_library(
     name = "python",
@@ -130,6 +134,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/compat",
         "//tensorflow/python/data",
+        "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras",
         "//tensorflow/python/ops/distributions",
@@ -138,6 +143,8 @@ py_library(
         "//tensorflow/python/ops/parallel_for",
         "//tensorflow/python/profiler",
         "//tensorflow/python/saved_model",
+        "//tensorflow/python/tools:component_api_helper",
+        "//tensorflow/python/tools/api/generator:create_python_api",
         "//third_party/py/numpy",
     ],
 )
@@ -717,7 +724,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
-        ":cond_v2_impl",
         ":dtypes",
         ":framework_ops",
         ":graph_to_function_def",
@@ -1338,6 +1344,19 @@ py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+    ],
+)
+
+py_test(
+    name = "framework_ops_enable_eager_test",
+    size = "small",
+    srcs = ["framework/ops_enable_eager_test.py"],
+    main = "framework/ops_enable_eager_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+        ":platform_test",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -2608,6 +2627,19 @@ py_library(
     ],
 )
 
+py_test(
+    name = "sparse_ops_test",
+    srcs = ["ops/sparse_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":constant_op",
+        ":dtypes",
+        ":framework_test_lib",
+        ":sparse_ops",
+        ":sparse_tensor",
+    ],
+)
+
 py_library(
     name = "spectral_grad",
     srcs = ["ops/spectral_grad.py"],
@@ -2779,11 +2811,13 @@ py_library(
     srcs = ["ops/state_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
         ":framework_ops",
+        ":math_ops_gen",
         ":resource_variable_ops_gen",
         ":state_ops_gen",
         ":tensor_shape",
-        "//tensorflow/python/eager:context",
+        ":util",
     ],
 )
 
@@ -3226,7 +3260,6 @@ py_library(
     ),
     srcs_version = "PY2AND3",
     deps = [
-        "saver",
         ":array_ops",
         ":array_ops_gen",
         ":checkpoint_management",
@@ -3250,6 +3283,7 @@ py_library(
         ":random_ops",
         ":resource_variable_ops",
         ":resources",
+        ":saver",
         ":sdca_ops",
         ":session",
         ":sparse_ops",
@@ -3743,6 +3777,7 @@ tf_py_wrap_cc(
         "framework/python_op_gen.i",
         "grappler/cluster.i",
         "grappler/cost_analyzer.i",
+        "grappler/graph_analyzer.i",
         "grappler/item.i",
         "grappler/model_analyzer.i",
         "grappler/tf_optimizer.i",
@@ -3801,6 +3836,7 @@ tf_py_wrap_cc(
         "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/costs:graph_memory",
+        "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core:lib",
         "//tensorflow/core:reader_base",
@@ -3813,7 +3849,9 @@ tf_py_wrap_cc(
          tf_additional_plugin_deps() +
          tf_additional_verbs_deps() +
          tf_additional_mpi_deps() +
-         tf_additional_gdr_deps()),
+         tf_additional_gdr_deps()) + if_ngraph([
+        "@ngraph_tf//:ngraph_tf",
+    ]),
 )
 
 # ** Targets for Windows build (start) **
@@ -5497,6 +5535,18 @@ py_test(
         ":state_ops",
         "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
+    ],
+)
+
+py_binary(
+    name = "graph_analyzer",
+    srcs = [
+        "grappler/graph_analyzer.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_for_generated_wrappers",
+        ":pywrap_tensorflow_internal",
     ],
 )
 

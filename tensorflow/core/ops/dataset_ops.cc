@@ -166,17 +166,21 @@ REGISTER_OP("LatencyStatsDataset")
       return shape_inference::ScalarShape(c);
     });
 
-REGISTER_OP("FeatureStatsDataset")
+REGISTER_OP("ParseExampleDataset")
     .Input("input_dataset: variant")
-    .Input("tag: string")
+    .Input("num_parallel_calls: int64")
+    .Input("dense_defaults: Tdense")
     .Output("handle: variant")
+    .Attr("sparse_keys: list(string) >= 0")
+    .Attr("dense_keys: list(string) >= 0")
+    .Attr("sparse_types: list({float,int64,string}) >= 0")
+    .Attr("Tdense: list({float,int64,string}) >= 0")
+    .Attr("dense_shapes: list(shape) >= 0")
     .Attr("output_types: list(type) >= 1")
-    .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
-      shape_inference::ShapeHandle tag_shape;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &tag_shape));
-      return shape_inference::ScalarShape(c);
-    });
+    .Attr("output_shapes: list(shape) >= 1")  // Output components will be
+                                              // sorted by key (dense_keys and
+                                              // sparse_keys combined) here.
+    .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("SetStatsAggregatorDataset")
     .Input("input_dataset: variant")

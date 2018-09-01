@@ -18,11 +18,12 @@ limitations under the License.
 #include <algorithm>
 #include <set>
 
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -566,7 +567,7 @@ TEST_F(OpcodeFusionTest, DynamicSliceWithDynamicUpdateSlice) {
                      HloOpcode::kParameter, HloOpcode::kParameter});
 }
 
-TEST_F(OpcodeFusionTest, MessOfFusileNodes) {
+TEST_F(OpcodeFusionTest, MessOfFusibleNodes) {
   auto module = CreateNewModule();
   HloComputation::Builder builder(TestName());
 
@@ -773,8 +774,8 @@ class GatherLoopFusionTest
 
 TEST_P(GatherLoopFusionTest, GatherLoopFusion) {
   const GatherLoopFusionTestSpec& spec = GetParam();
-  string hlo_string = tensorflow::strings::StrCat(
-      "HloModule ", spec.test_name, "\n\n", spec.hlo_computation_text);
+  string hlo_string = absl::StrCat("HloModule ", spec.test_name, "\n\n",
+                                   spec.hlo_computation_text);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
 

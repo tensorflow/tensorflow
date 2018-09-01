@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
@@ -25,7 +26,6 @@ limitations under the License.
 
 namespace xla {
 
-using tensorflow::gtl::ArraySlice;
 
 // Transposes the given scatter_indices such that the index_vector_dim becomes
 // the most-minor dimension.
@@ -86,13 +86,13 @@ static StatusOr<HloInstruction*> CanonicalizeScatterIndices(
 // major dimensions and all the window dimensions appear in the minor
 // dimensions.
 static StatusOr<HloInstruction*> PermuteScatterAndWindowDims(
-    HloInstruction* updates, ArraySlice<int64> update_window_dims) {
+    HloInstruction* updates, absl::Span<const int64> update_window_dims) {
   std::vector<int64> permutation;
   const int64 updates_rank = ShapeUtil::Rank(updates->shape());
   permutation.reserve(updates_rank);
 
   for (int64 i = 0; i < updates_rank; ++i) {
-    bool is_scatter_dim = !c_binary_search(update_window_dims, i);
+    bool is_scatter_dim = !absl::c_binary_search(update_window_dims, i);
     if (is_scatter_dim) {
       permutation.push_back(i);
     }
@@ -290,7 +290,7 @@ StatusOr<HloInstruction*> ScatterExpander::ExpandScatter(
     return Unimplemented(
         "Scatter operations with more than 2147483647 scatter indices are not "
         "supported. This error occurred for %s.",
-        scatter->ToString().c_str());
+        scatter->ToString());
   }
 
   // Canonicalize the scatter_indices, after which the size of its most-major

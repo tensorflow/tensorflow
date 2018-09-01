@@ -102,7 +102,6 @@ py_library(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
-        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
 )
@@ -140,6 +139,7 @@ py_library(
         ":backend",
         "//tensorflow/python/data",
         "//tensorflow/python/training/checkpointable:data_structures",
+        "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
     ],
 )
@@ -388,7 +388,7 @@ py_test(
 
 py_test(
     name = "embeddings_test",
-    size = "small",
+    size = "medium",
     srcs = ["layers/embeddings_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -688,7 +688,7 @@ py_test(
 
 py_test(
     name = "training_test",
-    size = "large",
+    size = "enormous",
     srcs = ["engine/training_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],

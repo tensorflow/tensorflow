@@ -29,7 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables as variables_lib
@@ -184,6 +184,16 @@ class WithShapeTest(test.TestCase):
           value,
           shape,
           unexpected_shapes)
+
+  def test_with_shape_2x2_with_partial_expected_shape(self):
+    with self.test_session():
+      value = [[42, 43], [44, 45]]
+      actual_shape = [2, 2]
+      tensor = constant_op.constant(value, shape=actual_shape)
+      partial_expected_shape = tensor_shape.TensorShape([None, 2])
+      # Won't raise any exception here:
+      tensor_with_shape = tensor_util.with_shape(partial_expected_shape, tensor)
+      np.testing.assert_array_equal(value, tensor_with_shape.eval())
 
   def test_with_shape_none(self):
     with self.test_session():
@@ -366,7 +376,7 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
 
       squeezed_predictions, squeezed_labels = (
           tensor_util.remove_squeezable_dimensions(predictions, labels))
-      with self.test_session(g):
+      with self.session(g):
         variables_lib.local_variables_initializer().run()
         self.assertAllClose(
             predictions_value, squeezed_predictions.eval(feed_dict=feed_dict))

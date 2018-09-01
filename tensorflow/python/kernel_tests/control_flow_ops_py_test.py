@@ -23,6 +23,7 @@ from __future__ import print_function
 import collections
 import math
 import time
+import unittest
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -38,7 +39,9 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond_v2  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -122,6 +125,7 @@ def isum(s, maximum_iterations=None):
   return r_s
 
 
+@test_util.with_cond_v2
 class ControlFlowTest(test.TestCase):
 
   def testRefIdentity(self):
@@ -329,6 +333,9 @@ class ControlFlowTest(test.TestCase):
         res.eval(feed_dict={data: 1.0})
 
   def testCondBool(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/113296297")
+
     values = constant_op.constant(10)
     fn1 = lambda: math_ops.add(values, 1)
     fn2 = lambda: math_ops.subtract(values, 1)
@@ -377,6 +384,9 @@ class ControlFlowTest(test.TestCase):
               sess.run(r, feed_dict={t: 3})
 
   def testCondIndexedSlices(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/113296180")
+
     with self.test_session():
       values = constant_op.constant(10)
       indices = constant_op.constant(0)
@@ -392,6 +402,9 @@ class ControlFlowTest(test.TestCase):
     self.assertAllEqual(0, ind)
 
   def testCondSparseTensor(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/113296161 (SparseTensors)")
+
     with self.test_session():
       values = constant_op.constant([2.0, 4.0], name="values")
       indices = constant_op.constant(
@@ -409,6 +422,9 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(r.values.get_shape(), (2,))
 
   def testCondResource(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/111124878 (don't return tuple)")
+
     with self.test_session():
       rv = resource_variable_ops.ResourceVariable(True)
       variables.global_variables_initializer().run()
@@ -422,6 +438,9 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(1.0, control_flow_ops.cond(rv, case, lambda: t).eval())
 
   def testCondIndexedSlicesDifferentTypes(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/113293074")
+
     with self.test_session():
       values = constant_op.constant(10)
       i_32 = ops.convert_to_tensor(0, name="one", dtype=dtypes.int32)
@@ -465,10 +484,16 @@ class ControlFlowTest(test.TestCase):
     self.assertAllEqual(11, result)
 
   def testCond_1(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/111124878 (don't return tuple)")
+
     self._testCond_1(use_gpu=False)
     self._testCond_1(use_gpu=True)
 
   def testCond_2(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/111124878 (don't return tuple)")
+
     with self.test_session():
       x = constant_op.constant(10)
       r = control_flow_ops.cond(
@@ -478,6 +503,9 @@ class ControlFlowTest(test.TestCase):
     self.assertAllEqual(9, result)
 
   def testCond_3(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/111124878 (don't return tuple)")
+
     with self.test_session():
       x = constant_op.constant(10)
       pred = math_ops.less(1, 2)
@@ -490,6 +518,9 @@ class ControlFlowTest(test.TestCase):
     self.assertAllEqual(12, result)
 
   def testCond_4(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/113324949 (ref vars)")
+
     with self.test_session():
       v1 = variables.Variable(7)
       v2 = variables.Variable(7)
@@ -525,6 +556,9 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(4, count.eval())
 
   def testCond_6(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/111124878 (don't return tuple)")
+
     with self.test_session():
       v1 = variables.Variable([7])
 
@@ -549,6 +583,9 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual([11, 12], sess.run(r))
 
   def testCondRef(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/111124878 (don't return tuple)")
+
     with self.test_session():
       x = gen_state_ops.variable(
           shape=[1],
@@ -562,6 +599,9 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual([2.0], r.eval())
 
   def testCondWithControl(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/79881896")
+
     with self.test_session() as sess:
       control_holder = array_ops.placeholder(dtypes.float32, shape=())
       a = constant_op.constant(3)
@@ -601,6 +641,9 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual([1.0], sess.run(merged_op.output))
 
   def testCondSwitchIdentity(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/112477618 (Operation returned from cond)")
+
     # Make sure the recv identity is not removed by optimization.
     with session.Session(config=opt_cfg()) as sess:
       pred = constant_op.constant(True)
@@ -615,6 +658,9 @@ class ControlFlowTest(test.TestCase):
       sess.run(r)
 
   def testCondRecvIdentity(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/112477618 (Operation returned from cond)")
+
     # Make sure the switch identity is not removed by optimization.
     with session.Session(config=opt_cfg()) as sess:
       with ops.device(test.gpu_device_name()):
@@ -631,6 +677,9 @@ class ControlFlowTest(test.TestCase):
       sess.run(r)
 
   def testCondGrad_1(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/113346829 (gpu failure)")
+
     graph = ops.Graph()
     with graph.as_default():
       x = constant_op.constant(10.0, name="x")
@@ -642,13 +691,6 @@ class ControlFlowTest(test.TestCase):
       grad = gradients_impl.gradients(r, [x])[0]
       with self.test_session():
         self.assertAllEqual(1.0, grad.eval())
-    # The gradients computation creates a tensor with zeros by broadcasting a
-    # zeros constant to the required shape. Verify that the zero constant
-    # feeding into the fill is dominated by a Switch.
-    zero = graph.get_operation_by_name("gradients/zeros/Const")
-    self.assertEqual(len(zero.control_inputs), 1)
-    self.assertEqual(zero.control_inputs[0].type, "Identity")
-    self.assertEqual(zero.control_inputs[0].inputs[0].op.type, "Switch")
 
   def testCondGrad_2(self):
     with self.test_session():
@@ -664,6 +706,9 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(3.0, grad.eval(feed_dict={c: 3}))
 
   def testCondGrad_3(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/110550782 (gradient w.r.t external variable)")
+
     with self.test_session():
       c = array_ops.placeholder(dtypes.int32, shape=[])
       ox = constant_op.constant(10.0)
@@ -696,6 +741,9 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(1.0, result.eval())
 
   def testCondGrad_Gather(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/113327884")
+
     with self.test_session() as sess:
       v1 = variables.Variable([1.0, 42.0])
       c = array_ops.placeholder(dtypes.int32, shape=[])
@@ -868,6 +916,9 @@ class ControlFlowTest(test.TestCase):
       _ = gradients_impl.gradients(loop_with_maxiter, v)
 
   def testInvalidMaximumIterationsFromSiblingContextWhileLoopInXLAContext(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/113294340 (enable while_v2)")
+
     v = constant_op.constant(1.0)
 
     def create_while_loop():
@@ -1324,6 +1375,9 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(10, sess.run(r, {b: True}))
 
   def testWhileCondWithControl(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/113294377 (unknown shape)")
+
     # Ensure that no control edges by an outer control dependency context are
     # added to nodes inside cond/while contexts.
     with self.test_session() as sess:
@@ -1338,6 +1392,9 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(0, sess.run(loop))
 
   def testWhileCondWithControl_1(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/113324949 (ref vars)")
+
     with self.test_session():
       v = variable_scope.get_variable(
           "v", [], initializer=init_ops.constant_initializer(2))
@@ -1360,6 +1417,9 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(65536.0, v.eval())
 
   def testWhileCondExitControl(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/113294340 (enable while_v2)")
+
     with self.test_session():
       v = variables.Variable(1)
 
@@ -1383,6 +1443,9 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(99, v.eval())
 
   def testCondWhile_1(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/111124878 (don't return tuple)")
+
     with self.test_session():
       n = ops.convert_to_tensor(0, name="n")
       c = lambda x: math_ops.less(x, 10)
@@ -1393,6 +1456,9 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(10, r.eval())
 
   def testCondWhile_2(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/111124878 (don't return tuple)")
+
     with self.test_session():
       n = ops.convert_to_tensor(0)
       c = lambda x: math_ops.less(x, 10)
@@ -1403,6 +1469,9 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(10, r.eval())
 
   def _testCondWhile_3(self, use_gpu):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/113294340 (enable while_v2)")
+
     with self.test_session(use_gpu=use_gpu) as sess:
       p = array_ops.placeholder(dtypes.bool)
       n = constant_op.constant(0.0)
@@ -1429,6 +1498,9 @@ class ControlFlowTest(test.TestCase):
     self._testCondWhile_3(use_gpu=True)
 
   def testWhileCond_1(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/113294377 (unknown shape)")
+
     with self.test_session():
       i = ops.convert_to_tensor(0, name="i")
       n = ops.convert_to_tensor(10, name="n")
@@ -1444,6 +1516,9 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(10, r.eval())
 
   def testWhileCond_2(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/113294377 (unknown shape)")
+
     with self.test_session():
       n = ops.convert_to_tensor(0, name="n")
       c = lambda x: math_ops.less(x, 10)
@@ -1452,6 +1527,9 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(10, r.eval())
 
   def testWhileCond_3(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/113294377 (unknown shape)")
+
     with self.test_session():
       n = ops.convert_to_tensor(0)
       c = lambda x: math_ops.less(x, 10)
@@ -1794,6 +1872,9 @@ class ControlFlowTest(test.TestCase):
     self._testWhileGrad_Mul(use_gpu=True, p_iters=10)
 
   def _testNestedWhileCondWhileGrad(self, use_gpu):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/113294377 (unknown shape)")
+
     with self.test_session(use_gpu=use_gpu):
       v = constant_op.constant(1.0)
 
@@ -1832,6 +1913,9 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(216.0, r[0].eval())
 
   def testWhileGradInCond(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/110550782 (gradient w.r.t external variable)")
+
     with self.test_session():
       n = ops.convert_to_tensor(1.0, name="n")
       x = array_ops.placeholder(dtypes.float32, shape=None)
@@ -1880,6 +1964,9 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(9.0, r.eval(feed_dict={x: 1.0}))
 
   def testCondGradInNestedWhiles(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/113346829 (gpu failure)")
+
     def outer_body(i, x):
       _, x = control_flow_ops.while_loop(
           lambda j, x: j < 3, inner_body, [0, 0.0])
@@ -2193,6 +2280,9 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(1024.0, r.eval())
 
   def testWhileCondGrad_Simple(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/113294377 (unknown shape)")
+
     self._testWhileCondGrad_Simple(use_gpu=False)
     self._testWhileCondGrad_Simple(use_gpu=True)
 
@@ -2543,6 +2633,9 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(5.0, result.eval())
 
   def testOneValueCond(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/111124878 (don't return tuple)")
+
     with self.test_session():
       c = array_ops.placeholder(dtypes.int32, shape=[])
       one = ops.convert_to_tensor(1, name="one")
@@ -2558,6 +2651,9 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual([2], i.eval(feed_dict={c: 0}))
 
   def testExampleCond(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/111124878 (don't return tuple)")
+
     with self.test_session():
       x = ops.convert_to_tensor([-2.0, 2.0], name="x")
       d = array_ops.placeholder(dtypes.int32, shape=[])
@@ -2573,6 +2669,9 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(2.0 * math.sqrt(2), i.eval(feed_dict={d: 2}))
 
   def testCase(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/112477618 (Operation returned from cond)")
+
     with self.test_session():
       x = constant_op.constant(1)
       y = constant_op.constant(2)
@@ -2625,6 +2724,9 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(r6.eval(), 0)
 
   def testCaseSideEffects(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/112477618 (Operation returned from cond)")
+
     with self.test_session() as sess:
       v0 = variables.Variable(-1)
       v1 = variables.Variable(-1)
@@ -2660,6 +2762,9 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(sess.run([v0, v1, v2]), [0, -1, -1])
 
   def testOneOpCond(self):
+    if control_flow_ops._ENABLE_COND_V2:
+      return unittest.skip("b/113324949 (ref vars)")
+
     with self.test_session():
       v = variables.Variable(0)
       c = ops.convert_to_tensor(0)

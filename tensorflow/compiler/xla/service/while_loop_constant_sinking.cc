@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -32,7 +33,7 @@ static Status ReplaceUsesWhileKeepingLoopInvariance(
 
   std::vector<HloInstruction*> users;
   users.reserve(old_instr->user_count());
-  c_copy(old_instr->users(), std::back_inserter(users));
+  absl::c_copy(old_instr->users(), std::back_inserter(users));
 
   for (auto* user : users) {
     for (int64 i = 0, e = user->operand_count(); i < e; i++) {
@@ -108,10 +109,10 @@ StatusOr<bool> WhileLoopConstantSinking::Run(HloModule* module) {
     //
     // This will let us sink the constant into the outer while first and then
     // into the inner while in a single run of this pass.
-    c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
-              [](const HloInstruction* instr) {
-                return instr->opcode() == HloOpcode::kWhile;
-              });
+    absl::c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
+                    [](const HloInstruction* instr) {
+                      return instr->opcode() == HloOpcode::kWhile;
+                    });
   }
 
   for (HloInstruction* while_instr : while_instrs) {

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
-using tensorflow::gtl::ArraySlice;
 
 static StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
     HloInstruction* start_indices, int64 index_vector_dim) {
@@ -224,13 +224,13 @@ static StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
 
 static StatusOr<HloInstruction*> CreateGatherLoopAccumulatorInitValue(
     HloComputation* computation, PrimitiveType element_type,
-    ArraySlice<int64> slice_sizes, int64 gather_loop_trip_count,
+    absl::Span<const int64> slice_sizes, int64 gather_loop_trip_count,
     const GatherDimensionNumbers& dim_numbers) {
   std::vector<int64> accumulator_state_shape_dims;
   accumulator_state_shape_dims.reserve(1 + slice_sizes.size());
   accumulator_state_shape_dims.push_back(gather_loop_trip_count);
   for (int64 i = 0; i < slice_sizes.size(); i++) {
-    if (!c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
+    if (!absl::c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
       accumulator_state_shape_dims.push_back(slice_sizes[i]);
     }
   }
@@ -243,7 +243,7 @@ static StatusOr<HloInstruction*> CreateGatherLoopAccumulatorInitValue(
 // are the major dimensions and the offset dimensions are the minor dimensions.
 // Fix this up with a transpose.
 static StatusOr<HloInstruction*> PermuteBatchAndOffsetDims(
-    HloInstruction* accumulator, ArraySlice<int64> offset_dims,
+    HloInstruction* accumulator, absl::Span<const int64> offset_dims,
     int64 output_rank) {
   std::vector<int64> permutation;
   permutation.reserve(output_rank);
@@ -251,7 +251,7 @@ static StatusOr<HloInstruction*> PermuteBatchAndOffsetDims(
   int64 batch_idx_counter = 0;
   int64 offset_idx_counter = output_rank - offset_dims.size();
   for (int64 i = 0; i < output_rank; i++) {
-    bool is_offset_dim = c_binary_search(offset_dims, i);
+    bool is_offset_dim = absl::c_binary_search(offset_dims, i);
     if (is_offset_dim) {
       permutation.push_back(offset_idx_counter++);
     } else {
@@ -322,7 +322,7 @@ StatusOr<HloInstruction*> GatherExpander::ExpandGather(
     return Unimplemented(
         "Gather operations with more than 2147483647 gather indices are not "
         "supported. This error occurred for %s.",
-        gather_instr->ToString().c_str());
+        gather_instr->ToString());
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -373,8 +373,8 @@ StatusOr<bool> GatherExpander::Run(HloModule* module) {
 
   std::vector<HloInstruction*> gather_instrs;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    c_copy_if(computation->instructions(), std::back_inserter(gather_instrs),
-              is_nontrivial_gather);
+    absl::c_copy_if(computation->instructions(),
+                    std::back_inserter(gather_instrs), is_nontrivial_gather);
   }
 
   for (HloInstruction* inst : gather_instrs) {

@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/macros.h"
@@ -38,7 +38,7 @@ class NameUniquer {
 
   // Get a sanitized unique name in a string, with an optional prefix for
   // convenience.
-  string GetUniqueName(tensorflow::StringPiece prefix = "");
+  string GetUniqueName(absl::string_view prefix = "");
 
   // Sanitizes and returns the name. Unallowed characters will be replaced with
   // '_'. The result will match the regexp "[a-zA-Z_][a-zA-Z0-9_.-]*".

@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 Status FindNodesToDecluster(const Graph& graph, gtl::FlatSet<Node*>* result,
-                            gtl::ArraySlice<Node*> post_order) {
+                            absl::Span<Node* const> post_order) {
   // Find nodes that have at least one user outside their cluster that expects
   // hostmem output.  These nodes should be cloned to outside the cluster to
   // avoid the device-host copy we'd otherwise need.
@@ -30,7 +30,7 @@ Status FindNodesToDecluster(const Graph& graph, gtl::FlatSet<Node*>* result,
   MemoryTypeVector input_mtypes, output_mtypes;
 
   for (Node* n : post_order) {
-    gtl::optional<StringPiece> from_cluster = GetXlaClusterForNode(*n);
+    absl::optional<StringPiece> from_cluster = GetXlaClusterForNode(*n);
     if (!from_cluster) {
       continue;
     }
@@ -79,8 +79,8 @@ Status FindNodesToDecluster(const Graph& graph, gtl::FlatSet<Node*>* result,
       // Check if `dst` is in a different cluster, unclustered, or about to be
       // partially declustered (here we rely on the post-order traversal order).
       // If yes, decluster `n` to avoid the device-to-host memcpy.
-      gtl::optional<StringPiece> dst_cluster =
-          result->count(dst) ? gtl::nullopt : GetXlaClusterForNode(*dst);
+      absl::optional<StringPiece> dst_cluster =
+          result->count(dst) ? absl::nullopt : GetXlaClusterForNode(*dst);
       if (from_cluster != dst_cluster) {
         CHECK(result->insert(n).second);
         break;
@@ -99,7 +99,7 @@ Status PartiallyDeclusterNode(Graph* graph, Node* n) {
     }
 
     Node* dst = out_edge->dst();
-    gtl::optional<StringPiece> dst_cluster_name = GetXlaClusterForNode(*dst);
+    absl::optional<StringPiece> dst_cluster_name = GetXlaClusterForNode(*dst);
     if (dst_cluster_name != cluster_name) {
       out_edges_to_clone.push_back(out_edge);
     }

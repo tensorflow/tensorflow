@@ -30,6 +30,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -54,33 +55,47 @@ def _make_getter(captured_getter, captured_previous):
 
 @tf_export("VariableSynchronization")
 class VariableSynchronization(enum.Enum):
-  """Indicates when a distributed variable will be synced."""
+  """Indicates when a distributed variable will be synced.
 
-  # Indicates that the synchronization will be determined by the current
-  # `DistributionStrategy` (eg. With `MirroredStrategy` this would be
-  # `ON_WRITE`).
+  * `AUTO`: Indicates that the synchronization will be determined by the current
+    `DistributionStrategy` (eg. With `MirroredStrategy` this would be
+    `ON_WRITE`).
+  * `NONE`: Indicates that there will only be one copy of the variable, so
+    there is no need to sync.
+  * `ON_WRITE`: Indicates that the variable will be updated across devices
+    every time it is written.
+  * `ON_READ`: Indicates that the variable will be aggregated across devices
+    when it is read (eg. when checkpointing or when evaluating an op that uses
+    the variable).
+  """
   AUTO = 0
-
-  # Indicates that there will only be one copy of the variable, so there is no
-  # need to sync.
   NONE = 1
-
-  # Indicates that the variable will be aggregated across devices
-  # every time it is updated.
   ON_WRITE = 2
-
-  # Indicates that the variable will be aggregated across devices
-  # when it is read (eg. when checkpointing or when evaluating an op that uses
-  # the variable).
   ON_READ = 3
 
 
 @tf_export("VariableAggregation")
 class VariableAggregation(enum.Enum):
-  """Indicates how a distributed variable will be aggregated."""
+  """Indicates how a distributed variable will be aggregated.
+
+  `tf.contrib.distribute.DistributionStrategy` distributes a model by making
+  multiple copies (called "towers") acting data-parallel on different elements
+  of the input batch. When performing some variable-update operation, say
+  `var.assign_add(x)`, in a model, we need to resolve how to combine the
+  different values for `x` computed in the different towers.
+
+  * `NONE`: This is the default, giving an error if you use a
+    variable-update operation with multiple towers.
+  * `SUM`: Add the updates across towers.
+  * `MEAN`: Take the arithmetic mean ("average") of the updates across towers.
+  * `ONLY_FIRST_TOWER`: This is for when every tower is performing the same
+    update, but we only want to perform the update once. Used, e.g., for the
+    global step counter.
+  """
   NONE = 0
   SUM = 1
   MEAN = 2
+  ONLY_FIRST_TOWER = 3
 
 
 class VariableMetaclass(type):
@@ -458,7 +473,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
-  def assign(self, value, use_locking=False):
+  def assign(self, value, use_locking=False, name=None, read_value=True):
     """Assigns a new value to the variable.
 
     This is essentially a shortcut for `assign(self, value)`.
@@ -466,6 +481,9 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Args:
       value: A `Tensor`. The new value for this variable.
       use_locking: If `True`, use locking during the assignment.
+      name: The name of the operation to be created
+      read_value: if True, will return something which evaluates to the
+        new value of the variable; if False will return the assign op.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
@@ -473,7 +491,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
-  def assign_add(self, delta, use_locking=False):
+  def assign_add(self, delta, use_locking=False, name=None, read_value=True):
     """Adds a value to this variable.
 
      This is essentially a shortcut for `assign_add(self, delta)`.
@@ -481,6 +499,9 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Args:
       delta: A `Tensor`. The value to add to this variable.
       use_locking: If `True`, use locking during the operation.
+      name: The name of the operation to be created
+      read_value: if True, will return something which evaluates to the
+        new value of the variable; if False will return the assign op.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
@@ -488,7 +509,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
-  def assign_sub(self, delta, use_locking=False):
+  def assign_sub(self, delta, use_locking=False, name=None, read_value=True):
     """Subtracts a value from this variable.
 
     This is essentially a shortcut for `assign_sub(self, delta)`.
@@ -496,6 +517,9 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Args:
       delta: A `Tensor`. The value to subtract from this variable.
       use_locking: If `True`, use locking during the operation.
+      name: The name of the operation to be created
+      read_value: if True, will return something which evaluates to the
+        new value of the variable; if False will return the assign op.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
@@ -503,15 +527,200 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
-  def scatter_sub(self, sparse_delta, use_locking=False):
+  def scatter_sub(self, sparse_delta, use_locking=False, name=None):
     """Subtracts `IndexedSlices` from this variable.
-
-    This is essentially a shortcut for `scatter_sub(self, sparse_delta.indices,
-    sparse_delta.values)`.
 
     Args:
       sparse_delta: `IndexedSlices` to be subtracted from this variable.
       use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
+  def scatter_add(self, sparse_delta, use_locking=False, name=None):
+    """Adds `IndexedSlices` to this variable.
+
+    Args:
+      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
+  def scatter_update(self, sparse_delta, use_locking=False, name=None):
+    """Assigns `IndexedSlices` to this variable.
+
+    Args:
+      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
+  def scatter_nd_sub(self, indices, updates, name=None):
+    """Applies sparse subtraction to individual values or slices in a Variable.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    For example, say we want to add 4 scattered elements to a rank-1 tensor to
+    8 elements. In Python, that update would look like this:
+
+    ```python
+        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        indices = tf.constant([[4], [3], [1] ,[7]])
+        updates = tf.constant([9, 10, 11, 12])
+        op = ref.scatter_nd_sub(indices, updates)
+        with tf.Session() as sess:
+          print sess.run(op)
+    ```
+
+    The resulting update to ref would look like this:
+
+        [1, -9, 3, -6, -6, 6, 7, -4]
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
+  def scatter_nd_add(self, indices, updates, name=None):
+    """Applies sparse addition to individual values or slices in a Variable.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    For example, say we want to add 4 scattered elements to a rank-1 tensor to
+    8 elements. In Python, that update would look like this:
+
+    ```python
+        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        indices = tf.constant([[4], [3], [1] ,[7]])
+        updates = tf.constant([9, 10, 11, 12])
+        add = ref.scatter_nd_add(indices, updates)
+        with tf.Session() as sess:
+          print sess.run(add)
+    ```
+
+    The resulting update to ref would look like this:
+
+        [1, 13, 3, 14, 14, 6, 7, 20]
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
+  def scatter_nd_update(self, indices, updates, name=None):
+    """Applies sparse assignment to individual values or slices in a Variable.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    For example, say we want to add 4 scattered elements to a rank-1 tensor to
+    8 elements. In Python, that update would look like this:
+
+    ```python
+        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        indices = tf.constant([[4], [3], [1] ,[7]])
+        updates = tf.constant([9, 10, 11, 12])
+        op = ref.scatter_nd_assign(indices, updates)
+        with tf.Session() as sess:
+          print sess.run(op)
+    ```
+
+    The resulting update to ref would look like this:
+
+        [1, 11, 3, 10, 9, 6, 7, 12]
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
@@ -1264,7 +1473,7 @@ class RefVariable(Variable):
     """
     return self._constraint
 
-  def assign(self, value, use_locking=False):
+  def assign(self, value, use_locking=False, name=None, read_value=True):
     """Assigns a new value to the variable.
 
     This is essentially a shortcut for `assign(self, value)`.
@@ -1272,14 +1481,21 @@ class RefVariable(Variable):
     Args:
       value: A `Tensor`. The new value for this variable.
       use_locking: If `True`, use locking during the assignment.
+      name: The name of the operation to be created
+      read_value: if True, will return something which evaluates to the
+        new value of the variable; if False will return the assign op.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the assignment has completed.
     """
-    return state_ops.assign(self._variable, value, use_locking=use_locking)
+    assign = state_ops.assign(self._variable, value, use_locking=use_locking,
+                              name=name)
+    if read_value:
+      return assign
+    return assign.op
 
-  def assign_add(self, delta, use_locking=False):
+  def assign_add(self, delta, use_locking=False, name=None, read_value=True):
     """Adds a value to this variable.
 
      This is essentially a shortcut for `assign_add(self, delta)`.
@@ -1287,14 +1503,21 @@ class RefVariable(Variable):
     Args:
       delta: A `Tensor`. The value to add to this variable.
       use_locking: If `True`, use locking during the operation.
+      name: The name of the operation to be created
+      read_value: if True, will return something which evaluates to the
+        new value of the variable; if False will return the assign op.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the addition has completed.
     """
-    return state_ops.assign_add(self._variable, delta, use_locking=use_locking)
+    assign = state_ops.assign_add(
+        self._variable, delta, use_locking=use_locking, name=name)
+    if read_value:
+      return assign
+    return assign.op
 
-  def assign_sub(self, delta, use_locking=False):
+  def assign_sub(self, delta, use_locking=False, name=None, read_value=True):
     """Subtracts a value from this variable.
 
     This is essentially a shortcut for `assign_sub(self, delta)`.
@@ -1302,22 +1525,27 @@ class RefVariable(Variable):
     Args:
       delta: A `Tensor`. The value to subtract from this variable.
       use_locking: If `True`, use locking during the operation.
+      name: The name of the operation to be created
+      read_value: if True, will return something which evaluates to the
+        new value of the variable; if False will return the assign op.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the subtraction has completed.
     """
-    return state_ops.assign_sub(self._variable, delta, use_locking=use_locking)
+    assign = state_ops.assign_sub(
+        self._variable, delta, use_locking=use_locking, name=name)
+    if read_value:
+      return assign
+    return assign.op
 
-  def scatter_sub(self, sparse_delta, use_locking=False):
+  def scatter_sub(self, sparse_delta, use_locking=False, name=None):
     """Subtracts `IndexedSlices` from this variable.
-
-    This is essentially a shortcut for `scatter_sub(self, sparse_delta.indices,
-    sparse_delta.values)`.
 
     Args:
       sparse_delta: `IndexedSlices` to be subtracted from this variable.
       use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
@@ -1328,11 +1556,216 @@ class RefVariable(Variable):
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
       raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
-    return state_ops.scatter_sub(
+    return gen_state_ops.scatter_sub(
         self._variable,
         sparse_delta.indices,
         sparse_delta.values,
-        use_locking=use_locking)
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_add(self, sparse_delta, use_locking=False, name=None):
+    """Adds `IndexedSlices` from this variable.
+
+    Args:
+      sparse_delta: `IndexedSlices` to be added to this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return gen_state_ops.scatter_add(
+        self._variable,
+        sparse_delta.indices,
+        sparse_delta.values,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_update(self, sparse_delta, use_locking=False, name=None):
+    """Assigns `IndexedSlices` to this variable.
+
+    Args:
+      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return gen_state_ops.scatter_update(
+        self._variable,
+        sparse_delta.indices,
+        sparse_delta.values,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_nd_sub(self, indices, updates, name=None):
+    """Applies sparse subtraction to individual values or slices in a Variable.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    For example, say we want to add 4 scattered elements to a rank-1 tensor to
+    8 elements. In Python, that update would look like this:
+
+    ```python
+        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        indices = tf.constant([[4], [3], [1] ,[7]])
+        updates = tf.constant([9, 10, 11, 12])
+        op = ref.scatter_nd_sub(indices, updates)
+        with tf.Session() as sess:
+          print sess.run(op)
+    ```
+
+    The resulting update to ref would look like this:
+
+        [1, -9, 3, -6, -6, 6, 7, -4]
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    return gen_state_ops.scatter_nd_sub(
+        self._variable, indices, updates, use_locking=True, name=name)
+
+  def scatter_nd_add(self, indices, updates, name=None):
+    """Applies sparse addition to individual values or slices in a Variable.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    For example, say we want to add 4 scattered elements to a rank-1 tensor to
+    8 elements. In Python, that update would look like this:
+
+    ```python
+        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        indices = tf.constant([[4], [3], [1] ,[7]])
+        updates = tf.constant([9, 10, 11, 12])
+        add = ref.scatter_nd_add(indices, updates)
+        with tf.Session() as sess:
+          print sess.run(add)
+    ```
+
+    The resulting update to ref would look like this:
+
+        [1, 13, 3, 14, 14, 6, 7, 20]
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    return gen_state_ops.scatter_nd_add(
+        self._variable, indices, updates, use_locking=True, name=name)
+
+  def scatter_nd_update(self, indices, updates, name=None):
+    """Applies sparse assignment to individual values or slices in a Variable.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    For example, say we want to add 4 scattered elements to a rank-1 tensor to
+    8 elements. In Python, that update would look like this:
+
+    ```python
+        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        indices = tf.constant([[4], [3], [1] ,[7]])
+        updates = tf.constant([9, 10, 11, 12])
+        op = ref.scatter_nd_update(indices, updates)
+        with tf.Session() as sess:
+          print sess.run(op)
+    ```
+
+    The resulting update to ref would look like this:
+
+        [1, 11, 3, 10, 9, 6, 7, 12]
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    return gen_state_ops.scatter_nd_update(
+        self._variable, indices, updates, use_locking=True, name=name)
 
   def _strided_slice_assign(self,
                             begin,
@@ -1917,10 +2350,15 @@ class PartitionedVariable(object):
   def as_tensor(self):
     """Returns the overall concatenated value as a `Tensor`.
 
+    The returned tensor will not inherit the control dependencies from the scope
+    where the value is used, which is similar to getting the value of
+    `Variable`.
+
     Returns:
       `Tensor` containing the concatenated value.
     """
-    return self._concat()
+    with ops.control_dependencies(None):
+      return self._concat()
 
   @staticmethod
   def _TensorConversionFunction(v, dtype=None, name=None, as_ref=False):

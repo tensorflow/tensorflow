@@ -98,7 +98,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
     self._seed = 123
 
   def testCreate(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       tree = tree_ensemble_config.trees.add()
       _append_to_leaf(tree.nodes.add().leaf, 0, -0.4)
@@ -133,7 +133,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
 
   def testSerialization(self):
     with ops.Graph().as_default() as graph:
-      with self.test_session(graph):
+      with self.session(graph):
         tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
         # Bias tree only for second class.
         tree1 = tree_ensemble_config.trees.add()
@@ -164,7 +164,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
         serialized_config = serialized_config.eval()
 
     with ops.Graph().as_default() as graph:
-      with self.test_session(graph):
+      with self.session(graph):
         tree_ensemble_handle2 = model_ops.tree_ensemble_variable(
             stamp_token=9,
             tree_ensemble_config=serialized_config,
@@ -204,14 +204,14 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
         self.assertAllClose(result.eval(), [[0.5, -0.2], [0, 1.0]])
 
   def testRestore(self):
-    # Calling self.test_session() without a graph specified results in
+    # Calling self.cached_session() without a graph specified results in
     # TensorFlowTestCase caching the session and returning the same one
     # every time. In this test, we need to create two different sessions
-    # which is why we also create a graph and pass it to self.test_session()
+    # which is why we also create a graph and pass it to self.cached_session()
     # to ensure no caching occurs under the hood.
     save_path = os.path.join(self.get_temp_dir(), "restore-test")
     with ops.Graph().as_default() as graph:
-      with self.test_session(graph) as sess:
+      with self.session(graph) as sess:
         # Prepare learner config.
         learner_config = learner_pb2.LearnerConfig()
         learner_config.num_classes = 2
@@ -288,7 +288,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
     # Start a second session.  In that session the parameter nodes
     # have not been initialized either.
     with ops.Graph().as_default() as graph:
-      with self.test_session(graph) as sess:
+      with self.session(graph) as sess:
         tree_ensemble_handle = model_ops.tree_ensemble_variable(
             stamp_token=0, tree_ensemble_config="", name="restore_tree")
         my_saver = saver.Saver()
@@ -311,7 +311,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
         self.assertAllClose(result.eval(), [[-1.1], [-1.1]])
 
   def testUsedHandlers(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       tree_ensemble_config.growing_metadata.used_handler_ids.append(1)
       tree_ensemble_config.growing_metadata.used_handler_ids.append(5)

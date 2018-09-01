@@ -15,6 +15,9 @@ limitations under the License.
 
 // See docs in ../ops/math_ops.cc.
 
+#ifndef TENSORFLOW_CORE_KERNELS_BATCH_MATMUL_OP_IMPL_H_
+#define TENSORFLOW_CORE_KERNELS_BATCH_MATMUL_OP_IMPL_H_
+
 #define EIGEN_USE_THREADS
 
 #include <vector>
@@ -613,3 +616,5 @@ class BatchMatMul : public OpKernel {
       BatchMatMul<SYCLDevice, TYPE>)
 #endif  // TENSORFLOW_USE_SYCL
 }  // end namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_KERNELS_BATCH_MATMUL_OP_IMPL_H_

@@ -18,8 +18,10 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/clusters/single_machine.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
@@ -781,6 +783,46 @@ TEST_F(GraphPropertiesTest, InferRestoreOpShape_WithTwoNodesShareSameOutput) {
   const OpInfo::TensorProperties& prop = props[0];
   EXPECT_EQ(DT_FLOAT, prop.dtype());
   EXPECT_EQ("float: [128,256]", PropToString(prop));
+}
+
+TEST_F(GraphPropertiesTest, FunctionWithScalarInputTest) {
+  // Create graph with a function that takes a scalar value so that we use
+  // Placeholder with scalar as for input to the function shape inference.
+  // Placeholder -> Identity -> MyFunc, where MyFunc simply takes Identity of
+  // the input; all tensors are scalars.
+  FunctionDefLibrary library;
+  *library.add_function() = FunctionDefHelper::Create(
+      "MyFunc",                                                   // Name
+      {"x: float"},                                               // Inputs
+      {"out: float"},                                             // Outputs
+      {},                                                         // Attrs
+      {{{"a"}, "Identity", {"x"}, {{"T", DataType::DT_FLOAT}}}},  // Nodes
+      {{"out", "a:output:0"}});                                   // Returns
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  TF_CHECK_OK(s.graph()->AddFunctionLibrary(library));
+  Output placeholder =
+      ops::Placeholder(s.WithOpName("Placeholder"), DataType::DT_FLOAT,
+                       ops::Placeholder::Shape(TensorShape({})));
+  Output identity = ops::Identity(s.WithOpName("Identity"), placeholder);
+  auto _identity = tensorflow::ops::AsNodeOut(s, identity);
+  auto builder =
+      tensorflow::NodeBuilder("MyFunc", "MyFunc", s.graph()->op_registry());
+  tensorflow::Node* func_op;
+  TF_CHECK_OK(builder.Input(_identity).Finalize(s.graph(), &func_op));
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  // Tensorflow version < 21 infers output shape of Placeholder with empty shape
+  // as unknown, instead of scalar.
+  EXPECT_GT(item.graph.versions().producer(), 21);
+
+  // MyFunc output shouldn't be unknown rank.
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+  const auto out_props = properties.GetOutputProperties("MyFunc");
+  const OpInfo::TensorProperties out_prop0 = out_props[0];
+  EXPECT_EQ(DT_FLOAT, out_prop0.dtype());
+  EXPECT_FALSE(out_prop0.shape().unknown_rank());
 }
 
 TEST_F(GraphPropertiesTest, SimpleFunctionStaticShapeInference) {

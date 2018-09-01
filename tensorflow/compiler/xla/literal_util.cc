@@ -22,6 +22,9 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -30,18 +33,14 @@ limitations under the License.
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 
-using tensorflow::strings::StrCat;
-
 namespace xla {
-
 namespace {
+
+using absl::StrCat;
 
 // Return a literal with all arrays of type FromNativeT converted to type
 // ToNativeT in the given literal.
@@ -57,7 +56,7 @@ std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
               primitive_util::NativeToPrimitiveType<ToNativeT>());
         }
       });
-  auto result = MakeUnique<Literal>(result_shape);
+  auto result = absl::make_unique<Literal>(result_shape);
 
   // Then copy over the data from 'literal' converting FromNativeT values to
   // ToNativeT values as necessary.
@@ -85,8 +84,7 @@ std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
 }  // namespace
 
 /* static */ std::unique_ptr<Literal> LiteralUtil::CreateFromDimensions(
-    PrimitiveType primitive_type,
-    tensorflow::gtl::ArraySlice<int64> dimensions) {
+    PrimitiveType primitive_type, absl::Span<const int64> dimensions) {
   return Literal::CreateFromShape(
       ShapeUtil::MakeShape(primitive_type, dimensions));
 }
@@ -102,7 +100,7 @@ std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
 }
 
 /* static */ std::unique_ptr<Literal> LiteralUtil::CreateToken() {
-  return MakeUnique<Literal>(ShapeUtil::MakeTokenShape());
+  return absl::make_unique<Literal>(ShapeUtil::MakeTokenShape());
 }
 
 /* static */ Literal LiteralUtil::Zero(PrimitiveType primitive_type) {
@@ -279,15 +277,15 @@ std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
 
 /* static */ std::unique_ptr<Literal> LiteralUtil::CreateR1(
     const tensorflow::core::Bitmap& values) {
-  auto literal = MakeUnique<Literal>(
+  auto literal = absl::make_unique<Literal>(
       ShapeUtil::MakeShape(PRED, {static_cast<int64>(values.bits())}));
   literal->PopulateR1(values);
   return literal;
 }
 
 /* static */ std::unique_ptr<Literal> LiteralUtil::CreateR1U8(
-    tensorflow::StringPiece value) {
-  auto literal = MakeUnique<Literal>(
+    absl::string_view value) {
+  auto literal = absl::make_unique<Literal>(
       ShapeUtil::MakeShape(U8, {static_cast<int64>(value.size())}));
   for (int i = 0; i < value.size(); ++i) {
     literal->Set<uint8>({i}, value[i]);
@@ -302,9 +300,8 @@ std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
 }
 
 /* static */ std::unique_ptr<Literal> LiteralUtil::ReshapeSlice(
-    tensorflow::gtl::ArraySlice<int64> new_dimensions,
-    tensorflow::gtl::ArraySlice<int64> minor_to_major,
-    const LiteralSlice& literal) {
+    absl::Span<const int64> new_dimensions,
+    absl::Span<const int64> minor_to_major, const LiteralSlice& literal) {
   int64 new_num_elements = 1;
   for (int64 i = 0; i < new_dimensions.size(); ++i) {
     new_num_elements *= new_dimensions[i];
@@ -312,7 +309,7 @@ std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
   CHECK_EQ(ShapeUtil::ElementsIn(literal.shape()), new_num_elements);
   CHECK_EQ(new_dimensions.size(), minor_to_major.size());
 
-  auto new_literal = MakeUnique<Literal>(
+  auto new_literal = absl::make_unique<Literal>(
       ShapeUtil::MakeShape(literal.shape().element_type(), new_dimensions));
 
   // Create a new shape with the given minor-to-major layout. This shape is used
@@ -431,12 +428,13 @@ std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
 }
 
 /* static */ std::unique_ptr<Literal> LiteralUtil::MakeTuple(
-    tensorflow::gtl::ArraySlice<const Literal*> elements) {
+    absl::Span<const Literal* const> elements) {
   std::vector<Shape> element_shapes;
   for (const auto* element : elements) {
     element_shapes.push_back(element->shape());
   }
-  auto literal = MakeUnique<Literal>(ShapeUtil::MakeTupleShape(element_shapes));
+  auto literal =
+      absl::make_unique<Literal>(ShapeUtil::MakeTupleShape(element_shapes));
   for (int i = 0; i < elements.size(); ++i) {
     TF_CHECK_OK(literal->CopyFrom(*elements[i], /*dest_shape_index=*/{i}));
   }
@@ -444,12 +442,13 @@ std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
 }
 
 /* static */ std::unique_ptr<Literal> LiteralUtil::MakeTupleFromSlices(
-    tensorflow::gtl::ArraySlice<LiteralSlice> elements) {
+    absl::Span<const LiteralSlice> elements) {
   std::vector<Shape> element_shapes;
   for (const auto& element : elements) {
     element_shapes.push_back(element.shape());
   }
-  auto literal = MakeUnique<Literal>(ShapeUtil::MakeTupleShape(element_shapes));
+  auto literal =
+      absl::make_unique<Literal>(ShapeUtil::MakeTupleShape(element_shapes));
   for (int i = 0; i < elements.size(); ++i) {
     TF_CHECK_OK(literal->CopyFrom(elements[i], /*dest_shape_index=*/{i}));
   }
@@ -463,7 +462,8 @@ std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
   for (const auto& element : elements) {
     element_shapes.push_back(element->shape());
   }
-  auto literal = MakeUnique<Literal>(ShapeUtil::MakeTupleShape(element_shapes));
+  auto literal =
+      absl::make_unique<Literal>(ShapeUtil::MakeTupleShape(element_shapes));
   for (int64 i = 0; i < elements.size(); ++i) {
     TF_CHECK_OK(
         literal->MoveFrom(std::move(*elements[i]), /*dest_shape_index=*/{i}));
@@ -472,8 +472,8 @@ std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
 }
 
 /* static */ string LiteralUtil::MultiIndexAsString(
-    tensorflow::gtl::ArraySlice<int64> multi_index) {
-  return StrCat("{", tensorflow::str_util::Join(multi_index, ","), "}");
+    absl::Span<const int64> multi_index) {
+  return StrCat("{", absl::StrJoin(multi_index, ","), "}");
 }
 
 }  // namespace xla

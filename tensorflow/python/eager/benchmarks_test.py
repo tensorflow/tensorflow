@@ -350,6 +350,21 @@ class MicroBenchmarks(test.Benchmark):
     func = lambda: f(m, m, transpose_b)
     self._run(func, num_iters, execution_mode=execution_mode)
 
+  def _benchmark_defun_matmul_forward_backward(self,
+                                               m,
+                                               transpose_b,
+                                               num_iters,
+                                               execution_mode=None):
+    f = function.defun(math_ops.matmul)
+
+    def func():
+      with backprop.GradientTape() as gt:
+        gt.watch(m)
+        y = f(m, m, transpose_b)
+      _ = gt.gradient(y, m)
+
+    self._run(func, num_iters, execution_mode=execution_mode)
+
   def _benchmark_read_variable(self, m, num_iters):
     self._run(m.value, num_iters)
 
@@ -416,6 +431,21 @@ class MicroBenchmarks(test.Benchmark):
     with context.device(CPU):
       m = self._m_2_by_2.cpu()
       self._benchmark_defun_matmul(
+          m,
+          transpose_b=False,
+          num_iters=self._num_iters_2_by_2,
+          execution_mode=context.ASYNC)
+
+  def benchmark_defun_matmul_forward_backward_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = self._m_2_by_2.cpu()
+      self._benchmark_defun_matmul_forward_backward(
+          m, transpose_b=False, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_defun_matmul_forward_backward_2_by_2_CPU_async(self):
+    with context.device(CPU):
+      m = self._m_2_by_2.cpu()
+      self._benchmark_defun_matmul_forward_backward(
           m,
           transpose_b=False,
           num_iters=self._num_iters_2_by_2,

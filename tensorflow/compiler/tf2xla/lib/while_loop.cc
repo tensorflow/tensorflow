@@ -24,7 +24,7 @@ namespace tensorflow {
 xla::StatusOr<std::vector<xla::XlaOp>> XlaWhileLoop(
     const LoopConditionFunction& condition_function,
     const LoopBodyFunction& body_function,
-    gtl::ArraySlice<xla::XlaOp> initial_values, StringPiece name,
+    absl::Span<const xla::XlaOp> initial_values, StringPiece name,
     xla::XlaBuilder* builder) {
   int arity = initial_values.size();
   std::vector<xla::Shape> var_shapes;
@@ -84,15 +84,15 @@ xla::StatusOr<std::vector<xla::XlaOp>> XlaWhileLoop(
 xla::StatusOr<std::vector<xla::XlaOp>> XlaForEachIndex(
     int64 num_iterations, xla::PrimitiveType num_iterations_type,
     const ForEachIndexBodyFunction& body_function,
-    gtl::ArraySlice<xla::XlaOp> initial_values, StringPiece name,
+    absl::Span<const xla::XlaOp> initial_values, StringPiece name,
     xla::XlaBuilder* builder) {
   auto while_cond_fn =
-      [&](gtl::ArraySlice<xla::XlaOp> values,
+      [&](absl::Span<const xla::XlaOp> values,
           xla::XlaBuilder* cond_builder) -> xla::StatusOr<xla::XlaOp> {
     return xla::Lt(values[0], IntegerLiteral(cond_builder, num_iterations_type,
                                              num_iterations));
   };
-  auto while_body_fn = [&](gtl::ArraySlice<xla::XlaOp> values,
+  auto while_body_fn = [&](absl::Span<const xla::XlaOp> values,
                            xla::XlaBuilder* body_builder)
       -> xla::StatusOr<std::vector<xla::XlaOp>> {
     xla::XlaOp iteration = values[0];

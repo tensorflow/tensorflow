@@ -95,6 +95,18 @@ class ControlFlowTransformer(converter.Base):
       return 'no variables'
     return ', '.join(map(str, symbol_set))
 
+  def _validate_no_live_vars_created(self, node):
+    body_scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
+    live_vars_out = anno.getanno(node, anno.Static.LIVE_VARS_OUT)
+    live_vars_created_in_body = live_vars_out & body_scope.created
+    if live_vars_created_in_body:
+      raise ValueError(
+          'The following variables are created inside the loop and used later:'
+          '\n%s\n'
+          'Variables must be declared outside loops because loops may not'
+          ' necessarily execute.' % self._fmt_symbol_list(
+              live_vars_created_in_body))
+
   def visit_If(self, node):
     node = self.generic_visit(node)
 
@@ -197,13 +209,15 @@ class ControlFlowTransformer(converter.Base):
   def visit_While(self, node):
     self.generic_visit(node)
 
+    self._validate_no_live_vars_created(node)
+
     body_scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
     body_closure = body_scope.modified - body_scope.created
     all_referenced = body_scope.referenced
 
     cond_scope = anno.getanno(node, annos.NodeAnno.COND_SCOPE)
     cond_closure = set()
-    for s in cond_scope.referenced:
+    for s in cond_scope.used:
       for root in s.support_set:
         if root not in body_scope.created:
           cond_closure.add(root)
@@ -236,6 +250,7 @@ class ControlFlowTransformer(converter.Base):
     node_body = ast_util.rename_symbols(node.body, ssf_map)
     test = ast_util.rename_symbols(node.test, ssf_map)
 
+    # TODO(b/113118541) investigate the need-for and correctness-of extra_deps
     template = """
       def test_name(state_ssf):
         return test
@@ -261,6 +276,8 @@ class ControlFlowTransformer(converter.Base):
 
   def visit_For(self, node):
     self.generic_visit(node)
+
+    self._validate_no_live_vars_created(node)
 
     body_scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
     body_closure = body_scope.modified - body_scope.created
@@ -294,7 +311,9 @@ class ControlFlowTransformer(converter.Base):
     template = """
       def extra_test_name(state_ssf):
         return extra_test_expr
-      def body_name(iterate, state_ssf):
+      def body_name(loop_vars, state_ssf):
+        # Workaround for PEP-3113
+        iterate = loop_vars
         body
         return state_ssf,
       state_ast_tuple = ag__.for_stmt(

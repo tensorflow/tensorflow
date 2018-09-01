@@ -25,6 +25,10 @@ tf_module {
     argspec: "args=[\'pattern\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "parse_sequence_example"
+    argspec: "args=[\'serialized\', \'context_features\', \'sequence_features\', \'example_names\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "parse_tensor"
     argspec: "args=[\'serialized\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

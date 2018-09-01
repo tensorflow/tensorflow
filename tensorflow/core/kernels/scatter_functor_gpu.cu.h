@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_SCATTER_FUNCTOR_GPU_CU_H_
-#define TENSORFLOW_KERNELS_SCATTER_FUNCTOR_GPU_CU_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SCATTER_FUNCTOR_GPU_CU_H_
+#define TENSORFLOW_CORE_KERNELS_SCATTER_FUNCTOR_GPU_CU_H_
 
 #if GOOGLE_CUDA
 
@@ -161,4 +161,4 @@ struct ScatterScalarFunctor<GPUDevice, T, Index, op> {
 
 #endif  // GOOGLE_CUDA
 
-#endif  // TENSORFLOW_KERNELS_SCATTER_FUNCTOR_GPU_CU_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SCATTER_FUNCTOR_GPU_CU_H_

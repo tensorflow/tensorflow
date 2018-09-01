@@ -375,6 +375,7 @@ cc_library(
         ":lib_platform",
         ":platform_base",
         "//tensorflow/core/platform/default/build_config:port",
+        "@com_google_absl//absl/base",
         "@snappy",
     ],
 )
@@ -611,6 +612,7 @@ cc_library(
     copts = tf_copts(),
     deps = tf_lib_proto_parsing_deps() + [
         ":platform_base",
+        "@com_google_absl//absl/strings",
         "@double_conversion//:double-conversion",
     ],
 )
@@ -668,8 +670,11 @@ cc_library(
         "lib/io/table_builder.h",
         "lib/io/table_options.h",
         "lib/math/math_util.h",
+        "lib/monitoring/collected_metrics.h",
+        "lib/monitoring/collection_registry.h",
         "lib/monitoring/counter.h",
         "lib/monitoring/gauge.h",
+        "lib/monitoring/metric_def.h",
         "lib/monitoring/sampler.h",
         "lib/random/distribution_sampler.h",
         "lib/random/philox_random.h",
@@ -690,6 +695,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":lib_internal",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -726,10 +733,12 @@ cc_library(
 # required to use tf_cc_test, and that rule will change / into _
 cc_library(
     name = "core_stringpiece",
-    srcs = ["lib/core/stringpiece.cc"],
     hdrs = ["lib/core/stringpiece.h"],
     copts = tf_copts(),
-    deps = [":platform_base"],
+    deps = [
+        ":platform_base",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 # Test support library needed for all tests
@@ -864,7 +873,6 @@ tf_cuda_library(
         "util/sparse/sparse_tensor.h",
         "util/stat_summarizer.h",
         "util/stat_summarizer_options.h",
-        "util/status_util.h",
         "util/stream_executor_util.h",
         "util/strided_slice_op.h",
         "util/tensor_format.h",
@@ -928,15 +936,6 @@ cc_library(
 cc_library(
     name = "ptr_util",
     hdrs = ["util/ptr_util.h"],
-)
-
-cc_library(
-    name = "status_util",
-    hdrs = ["util/status_util.h"],
-    deps = [
-        ":graph",
-        ":lib",
-    ],
 )
 
 cc_library(
@@ -1572,6 +1571,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":mobile_additional_lib_deps",
         ":protos_all_cc_impl",
         ":stats_calculator_portable",
         "//third_party/eigen3",
@@ -1580,6 +1580,13 @@ cc_library(
         "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "mobile_additional_lib_deps",
+    deps = tf_additional_lib_deps() + [
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 # Native library support for iOS applications.
@@ -1613,6 +1620,7 @@ cc_library(
     copts = tf_copts() + ["-Os"] + ["-std=c++11"],
     visibility = ["//visibility:public"],
     deps = [
+        ":mobile_additional_lib_deps",
         ":protos_all_cc_impl",
         ":stats_calculator_portable",
         "//third_party/eigen3",
@@ -2009,9 +2017,6 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "lib/io/zlib_compression_options.h",
     "lib/io/zlib_inputstream.h",
     "lib/io/zlib_outputbuffer.h",
-    "lib/monitoring/collected_metrics.h",
-    "lib/monitoring/collection_registry.h",
-    "lib/monitoring/metric_def.h",
     "lib/monitoring/mobile_counter.h",
     "lib/monitoring/mobile_gauge.h",
     "lib/monitoring/mobile_sampler.h",
@@ -2059,6 +2064,7 @@ cc_library(
         ],
     }),
     deps = tf_additional_lib_deps() + [
+        "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "//tensorflow/core/platform/default/build_config:platformlib",
     ] + if_static([":lib_internal_impl"]),
@@ -2076,7 +2082,6 @@ cc_library(
         exclude = [
             "**/*test*",
             "framework/variant.cc",
-            "lib/core/stringpiece.cc",
             "lib/hash/crc32c_accelerate.cc",
             "lib/gif/**/*",
             "lib/jpeg/**/*",
@@ -2091,7 +2096,6 @@ cc_library(
     ) + tf_additional_lib_srcs(
         exclude = [
             "**/*test*",
-            "lib/core/stringpiece.cc",
             "platform/**/cuda.h",
             "platform/**/cuda_libdevice_path.cc",
             "platform/**/stream_executor.h",
@@ -2202,6 +2206,7 @@ cc_library(
         ":lib",
         ":lib_internal",
         "//tensorflow/core/platform/default/build_config:png",
+        "@com_google_absl//absl/strings",
         "@zlib_archive//:zlib",
     ],
 )
@@ -2217,7 +2222,7 @@ cc_library(
         "platform/macros.h",
         "platform/platform.h",
         "platform/types.h",
-    ],
+    ] + if_windows(["platform/windows/integral_types.h"]),
     copts = tf_copts(),
     linkopts = ["-ldl"],
     deps = [
@@ -2252,6 +2257,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform/default/build_config:jpeg",
         "//tensorflow/core/platform/default/build_config:logging",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2260,6 +2266,8 @@ cc_library(
     srcs = if_android([
         "lib/gif/gif_io.cc",
         "platform/gif.h",
+        "lib/strings/strcat.h",
+        "lib/strings/numbers.h",
     ]),
     hdrs = [
         "lib/bfloat16/bfloat16.h",
@@ -2281,6 +2289,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform/default/build_config:gif",
         "//tensorflow/core/platform/default/build_config:logging",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2308,6 +2317,7 @@ cc_library(
     linkopts = ["-ldl"],
     deps = [
         "//tensorflow/core/platform/default/build_config:logging",
+        "@com_google_absl//absl/strings",
         "@png_archive//:png",
     ],
 )
@@ -2350,6 +2360,7 @@ tf_generate_proto_text_sources(
     srcs = COMMON_PROTO_SRCS,
     protodeps = ERROR_CODES_PROTO_SRCS,
     srcs_relative_dir = "tensorflow/core/",
+    visibility = ["//visibility:public"],
     deps = [
         ":error_codes_proto_text",
         ":lib_internal",
@@ -2451,6 +2462,7 @@ tf_cuda_library(
 
 cc_header_only_library(
     name = "framework_internal_headers_lib",
+    includes = ["../../external/com_google_absl"],
     deps = [
         ":lib",
         ":lib_internal",
@@ -2462,6 +2474,7 @@ cc_header_only_library(
 
 cc_header_only_library(
     name = "core_cpu_headers_lib",
+    visibility = ["//visibility:public"],
     deps = [
         ":core_cpu_lib",
     ],
@@ -2534,6 +2547,11 @@ tf_cuda_library(
 
 cc_header_only_library(
     name = "framework_headers_lib",
+    extra_deps = [
+        # ABSL headers get dropped, so we add them back here.
+        "@com_google_absl//absl/strings",
+    ],
+    includes = ["../../external/com_google_absl"],
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
@@ -2543,6 +2561,7 @@ cc_header_only_library(
 
 cc_header_only_library(
     name = "stream_executor_headers_lib",
+    includes = ["../../external/com_google_absl"],
     visibility = ["//visibility:public"],
     deps = [
         ":stream_executor",
@@ -2585,6 +2604,7 @@ tf_cuda_library(
 # TODO(josh11b): Is this needed, or can we just use ":protos_all_cc"?
 cc_library(
     name = "protos_cc",
+    visibility = ["//visibility:public"],
     deps = ["//tensorflow/core/platform/default/build_config:protos_cc"],
 )
 
@@ -2694,12 +2714,13 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/allocator_retry.h",
     "common_runtime/base_collective_executor.h",
     "common_runtime/bfc_allocator.h",
-    "common_runtime/broadcaster.h",
+    "common_runtime/hierarchical_tree_broadcaster.h",
     "common_runtime/buf_rendezvous.h",
     "common_runtime/build_graph_options.h",
     "common_runtime/collective_executor_mgr.h",
     "common_runtime/collective_param_resolver_local.h",
     "common_runtime/collective_rma_local.h",
+    "common_runtime/collective_util.h",
     "common_runtime/constant_folding.h",
     "common_runtime/copy_tensor.h",
     "common_runtime/costmodel_manager.h",
@@ -2712,6 +2733,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/graph_optimizer.h",
     "common_runtime/local_device.h",
     "common_runtime/lower_if_op.h",
+    "common_runtime/lower_while_op.h",
     "common_runtime/memory_types.h",
     "common_runtime/mkl_cpu_allocator.h",
     "common_runtime/optimization_registry.h",
@@ -2730,6 +2752,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/stats_publisher_interface.h",
     "common_runtime/step_stats_collector.h",
     "common_runtime/threadpool_device.h",
+    "common_runtime/tracing_device.h",
     "common_runtime/visitable_allocator.h",
     "common_runtime/process_state.h",
     "common_runtime/pool_allocator.h",
@@ -2744,12 +2767,12 @@ tf_cuda_library(
         "common_runtime/allocator_retry.cc",
         "common_runtime/base_collective_executor.cc",
         "common_runtime/bfc_allocator.cc",
-        "common_runtime/broadcaster.cc",
         "common_runtime/buf_rendezvous.cc",
         "common_runtime/build_graph_options.cc",
         "common_runtime/collective_executor_mgr.cc",
         "common_runtime/collective_param_resolver_local.cc",
         "common_runtime/collective_rma_local.cc",
+        "common_runtime/collective_util.cc",
         "common_runtime/constant_folding.cc",
         "common_runtime/copy_tensor.cc",
         "common_runtime/costmodel_manager.cc",
@@ -2764,8 +2787,10 @@ tf_cuda_library(
         "common_runtime/function.cc",
         "common_runtime/graph_optimizer.cc",
         "common_runtime/graph_runner.cc",
+        "common_runtime/hierarchical_tree_broadcaster.cc",
         "common_runtime/local_device.cc",
         "common_runtime/lower_if_op.cc",
+        "common_runtime/lower_while_op.cc",
         "common_runtime/memory_types.cc",
         "common_runtime/mkl_cpu_allocator.cc",
         "common_runtime/optimization_registry.cc",
@@ -3190,7 +3215,6 @@ tf_cc_tests(
         "lib/core/status_test.cc",
         "lib/core/stringpiece_test.cc",
         "lib/core/threadpool_test.cc",
-        "lib/gtl/array_slice_test.cc",
         "lib/gtl/cleanup_test.cc",
         "lib/gtl/compactptrset_test.cc",
         "lib/gtl/edit_distance_test.cc",
@@ -3201,7 +3225,6 @@ tf_cc_tests(
         "lib/gtl/iterator_range_test.cc",
         "lib/gtl/manual_constructor_test.cc",
         "lib/gtl/map_util_test.cc",
-        "lib/gtl/optional_test.cc",
         "lib/gtl/top_n_test.cc",
         "lib/hash/crc32c_test.cc",
         "lib/hash/hash_test.cc",
@@ -3527,7 +3550,6 @@ tf_cc_tests(
         "util/semver_test.cc",
         "util/sparse/sparse_tensor_test.cc",
         "util/stat_summarizer_test.cc",
-        "util/status_util_test.cc",
         "util/tensor_format_test.cc",
         "util/tensor_slice_reader_test.cc",
         "util/tensor_slice_set_test.cc",
@@ -3552,7 +3574,6 @@ tf_cc_tests(
         ":ops",
         ":protos_all_cc",
         ":protos_test_cc",
-        ":status_util",
         ":test",
         ":test_main",
         ":testlib",
@@ -3650,10 +3671,10 @@ tf_cc_tests_gpu(
 )
 
 tf_cc_tests_gpu(
-    name = "broadcaster_test",
+    name = "hierarchical_tree_broadcaster_test",
     size = "small",
     srcs = [
-        "common_runtime/broadcaster_test.cc",
+        "common_runtime/hierarchical_tree_broadcaster_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
@@ -4045,6 +4066,7 @@ tf_cuda_cc_test(
         ":testlib",
         "//third_party/eigen3",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:collective_ops",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:dense_update_ops",
@@ -4086,6 +4108,7 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops",
         # Link with support for TensorFlow Debugger (tfdbg).
         "//tensorflow/core/debug",
+        "//tensorflow/core/kernels:collective_ops",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:dense_update_ops",
@@ -4551,6 +4574,29 @@ tf_cc_tests(
     name = "common_runtime_lower_if_op_test",
     size = "small",
     srcs = ["common_runtime/lower_if_op_test.cc"],
+    deps = [
+        ":all_kernels",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+    ],
+)
+
+tf_cc_tests(
+    name = "common_runtime_lower_while_op_test",
+    size = "small",
+    srcs = ["common_runtime/lower_while_op_test.cc"],
     deps = [
         ":all_kernels",
         ":core_cpu",

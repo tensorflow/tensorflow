@@ -37,7 +37,7 @@ GRAPH_MODE = 0
 EAGER_MODE = 1
 
 # Default execution mode.
-_default_mode = GRAPH_MODE
+default_execution_mode = GRAPH_MODE
 
 # Cache from (old_device_name, partial_new_device_name) -> (new_device_name,
 # new_device_spec).
@@ -56,14 +56,18 @@ SYNC = 0
 ASYNC = 1
 
 
-class _TensorCache(object):
+class _EagerTensorCache(object):
   """Simple cache which evicts items based on length in a FIFO manner."""
 
-  def __init__(self, max_items=256):
+  def __init__(self, max_items=256, max_tensor_size=10000):
     self._data = collections.OrderedDict()
-    self._max_items = max_items if max_items else 256
+    self._max_items = max_items
+    self._max_tensor_size = max_tensor_size
 
   def put(self, key, value):
+    if value._num_elements() > self._max_tensor_size:  # pylint: disable=protected-access
+      return
+
     self._data[key] = value
 
     if len(self._data) > self._max_items:
@@ -84,14 +88,14 @@ class _EagerContext(threading.local):
     super(_EagerContext, self).__init__()
     self.device_spec = pydev.DeviceSpec.from_string("")
     self.device_name = self.device_spec.to_string()
-    self.mode = _default_mode
-    self.is_eager = _default_mode == EAGER_MODE
+    self.mode = default_execution_mode
+    self.is_eager = default_execution_mode == EAGER_MODE
     self.scope_name = ""
     self.recording_summaries = False
     self.summary_writer_resource = None
     self.scalar_cache = {}
-    self.ones_rank_cache = _TensorCache()
-    self.zeros_cache = _TensorCache()
+    self.ones_rank_cache = _EagerTensorCache()
+    self.zeros_cache = _EagerTensorCache()
     self.execution_mode = None
 
 
@@ -111,8 +115,8 @@ class _ContextSwitchStack(threading.local):
       # Initialize the stack with a pointer to enter the eager context; this
       # ensures that the fact that eager execution was enabled is propagated
       # across threads, since (1) `enable_eager_execution` modifies a
-      # process-level flag (`_default_mode`) and (2) `__init__` is called each
-      # time a threading.local object is used in a separate thread.
+      # process-level flag (`default_execution_mode`) and (2) `__init__` is
+      # called each time a threading.local object is used in a separate thread.
       self.push(is_building_function=False, enter_context_fn=eager_mode)
 
   def push(self, is_building_function, enter_context_fn):
@@ -504,9 +508,7 @@ class Context(object):
     Args:
       fn: A wrapped TF_Function (returned from TF_GraphToFunction_wrapper).
     """
-    pywrap_tensorflow.TFE_ContextAddFunction(
-        self._handle,  # pylint: disable=protected-access
-        fn)
+    pywrap_tensorflow.TFE_ContextAddFunction(self._handle, fn)
 
   def add_function_def(self, fdef):
     """Add a function definition to the context.
@@ -519,9 +521,7 @@ class Context(object):
     """
     fdef_string = fdef.SerializeToString()
     pywrap_tensorflow.TFE_ContextAddFunctionDef(
-        self._handle,  # pylint: disable=protected-access
-        fdef_string,
-        len(fdef_string))
+        self._handle, fdef_string, len(fdef_string))
 
   def add_post_execution_callback(self, callback):
     """Add a post-execution callback to the context.
@@ -633,14 +633,7 @@ def context():
 
 
 def context_safe():
-  return _context
-
-
-# TODO(agarwal): remove this.
-def get_default_context():
-  """Same as context."""
-  if _context is None:
-    _initialize_context()
+  """Returns current context (or None if one hasn't been initialized)."""
   return _context
 
 

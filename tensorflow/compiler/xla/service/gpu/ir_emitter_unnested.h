@@ -105,13 +105,12 @@ class IrEmitterUnnested : public IrEmitter {
   // This kernel takes as arguments pointers to the given buffer allocations.
   llvm::Function* BuildKernelPrototype(
       const HloInstruction& inst,
-      tensorflow::gtl::ArraySlice<const BufferAllocation*> args);
+      absl::Span<const BufferAllocation* const> args);
 
   // Helper for writing extra outputs from inside a reduce kernel.
   Status EmitExtraOutputsForReduce(
       const HloInstruction* reduce, const llvm_ir::IrArray::Index& index,
-      tensorflow::gtl::ArraySlice<
-          std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
+      absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
           extra_output_gens);
 
   // EmitColumnReduction and EmitRowReduction emit code for column and row
@@ -127,12 +126,11 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitColumnReduction(
       int64 height, int64 width, HloInstruction* reduce,
       const Shape& input_shape,
-      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> input_gens,
-      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> init_value_gens,
-      tensorflow::gtl::ArraySlice<HloComputation*> reducers,
-      tensorflow::gtl::ArraySlice<ShapeIndex> reduce_output_shapes,
-      tensorflow::gtl::ArraySlice<
-          std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
+      absl::Span<const llvm_ir::ElementGenerator> input_gens,
+      absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
+      absl::Span<HloComputation* const> reducers,
+      absl::Span<const ShapeIndex> reduce_output_shapes,
+      absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
           extra_output_gens);
 
   // Emits code that reduces a 3D tensor of shape [depth x height x width] to a
@@ -143,23 +141,21 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitRowReduction(
       int64 depth, int64 height, int64 width, HloInstruction* reduce,
       const Shape& input_shape,
-      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> input_gens,
-      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> init_value_gens,
-      tensorflow::gtl::ArraySlice<HloComputation*> reducers,
-      tensorflow::gtl::ArraySlice<ShapeIndex> reduce_output_shapes,
-      tensorflow::gtl::ArraySlice<
-          std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
+      absl::Span<const llvm_ir::ElementGenerator> input_gens,
+      absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
+      absl::Span<HloComputation* const> reducers,
+      absl::Span<const ShapeIndex> reduce_output_shapes,
+      absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
           extra_output_gens);
 
   // Emits code that reduces a tensor of arbitrary rank to a scalar.
   Status EmitReductionToScalar(
       HloInstruction* reduce, const Shape& input_shape,
-      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> input_gens,
-      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> init_value_gens,
-      tensorflow::gtl::ArraySlice<HloComputation*> reducers,
-      tensorflow::gtl::ArraySlice<ShapeIndex> reduce_output_shapes,
-      tensorflow::gtl::ArraySlice<
-          std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
+      absl::Span<const llvm_ir::ElementGenerator> input_gens,
+      absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
+      absl::Span<HloComputation* const> reducers,
+      absl::Span<const ShapeIndex> reduce_output_shapes,
+      absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
           extra_output_gens);
 
   // Figures out whether `reduce` is a row or column reduction, and which
@@ -180,13 +176,12 @@ class IrEmitterUnnested : public IrEmitter {
   // Prerequisite: `IsReductionToVector(*reduce)`
   Status EmitReductionToVector(
       HloInstruction* reduce, const Shape& input_shape,
-      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> input_gens,
-      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> init_value_gens,
-      tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
-      tensorflow::gtl::ArraySlice<HloComputation*> reducers,
-      tensorflow::gtl::ArraySlice<ShapeIndex> reduce_output_shapes,
-      tensorflow::gtl::ArraySlice<
-          std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
+      absl::Span<const llvm_ir::ElementGenerator> input_gens,
+      absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
+      absl::Span<const int64> dimensions_to_reduce,
+      absl::Span<HloComputation* const> reducers,
+      absl::Span<const ShapeIndex> reduce_output_shapes,
+      absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
           extra_output_gens);
 
   // Returns true if a 0-2-1 tiling algorithm is already used to emit the kernel
@@ -195,10 +190,9 @@ class IrEmitterUnnested : public IrEmitter {
   // Emits a kernel for the hlo instruction using a 0-2-1 tiling algorithm and
   // returns the launch dimensions for the kernel. This is a helper to support
   // the implementation of CheckAndEmitHloWithTile021.
-  LaunchDimensions EmitHlo021Tile(
-      HloInstruction* hlo,
-      tensorflow::gtl::ArraySlice<int64> reduced_output_dims,
-      tensorflow::gtl::ArraySlice<int64> tiled_param_ids);
+  LaunchDimensions EmitHlo021Tile(HloInstruction* hlo,
+                                  absl::Span<const int64> reduced_output_dims,
+                                  absl::Span<const int64> tiled_param_ids);
   // Generates the IrArray for each output of hlo and returns the number of
   // outputs.
   int ConstructIrArrayForOutputs(const HloInstruction& hlo,
@@ -214,7 +208,7 @@ class IrEmitterUnnested : public IrEmitter {
   int ConstructOutputReducedShapeAndCastOutputIrArrayToShape(
       const HloInstruction& hlo,
       const std::vector<llvm_ir::IrArray>& output_arrays,
-      tensorflow::gtl::ArraySlice<int64> reduced_output_dims,
+      absl::Span<const int64> reduced_output_dims,
       std::vector<Shape>* output_reduced_shapes,
       std::vector<llvm_ir::IrArray>* output_in_reduced_shape_arrays);
   // For each input of the `hlo` instruction, checks its value in
@@ -226,7 +220,7 @@ class IrEmitterUnnested : public IrEmitter {
       const HloInstruction& hlo,
       const std::vector<llvm_ir::IrArray>& param_arrays,
       const std::vector<llvm::Value*>& param_buffers,
-      tensorflow::gtl::ArraySlice<int64> reduced_output_dims,
+      absl::Span<const int64> reduced_output_dims,
       std::vector<Shape>* param_reduced_shapes,
       std::vector<llvm_ir::IrArray>* param_in_reduced_shape_arrays);
 

@@ -41,7 +41,7 @@ clean() {
   mvn -q clean
   rm -rf libtensorflow_jni/src libtensorflow_jni/target libtensorflow_jni_gpu/src libtensorflow_jni_gpu/target \
     libtensorflow/src libtensorflow/target tensorflow-android/target proto/src proto/target \
-    hadoop/src hadoop/target spark-connector/src spark-connector/target
+    tensorflow-hadoop/src tensorflow-hadoop/target spark-tensorflow-connector/src spark-tensorflow-connector/target
 }
 
 update_version_in_pom() {
@@ -170,8 +170,8 @@ generate_java_protos() {
 # is updated for each module.
 download_tf_ecosystem() {
   ECOSYSTEM_DIR="/tmp/tensorflow-ecosystem"
-  HADOOP_DIR="${DIR}/hadoop"
-  SPARK_DIR="${DIR}/spark-connector"
+  HADOOP_DIR="${DIR}/tensorflow-hadoop"
+  SPARK_DIR="${DIR}/spark-tensorflow-connector"
 
   # Clean any previous attempts
   rm -rf "${ECOSYSTEM_DIR}"

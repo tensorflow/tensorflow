@@ -18,12 +18,12 @@ limitations under the License.
 #include <cmath>
 #include <memory>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -36,7 +36,7 @@ namespace {
 class ReferenceUtilTest : public ::testing::Test {
  protected:
   ReferenceUtilTest() {
-    matrix_ = MakeUnique<Array2D<float>>(rows_, cols_);
+    matrix_ = absl::make_unique<Array2D<float>>(rows_, cols_);
     // [1.f  2.f  3.f]
     // [4.f  5.f  6.f]
     for (int64 i = 0; i < rows_; ++i) {
@@ -112,8 +112,8 @@ TEST_F(ReferenceUtilTest, MapWithIndexArray2D) {
 }
 
 TEST_F(ReferenceUtilTest, MapArray4D) {
-  auto input = MakeUnique<Array4D<float>>(/*planes=*/2, /*depth=*/3,
-                                          /*height=*/4, /*width=*/5);
+  auto input = absl::make_unique<Array4D<float>>(/*planes=*/2, /*depth=*/3,
+                                                 /*height=*/4, /*width=*/5);
   input->FillWithMultiples(1.0f);
   auto multiply_by_two = [](float value) { return 2 * value; };
   auto result = ReferenceUtil::MapArray4D(*input, multiply_by_two);
@@ -126,8 +126,8 @@ TEST_F(ReferenceUtilTest, MapArray4D) {
 }
 
 TEST_F(ReferenceUtilTest, MapWithIndexArray4D) {
-  auto input = MakeUnique<Array4D<float>>(/*planes=*/2, /*depth=*/3,
-                                          /*height=*/4, /*width=*/5);
+  auto input = absl::make_unique<Array4D<float>>(/*planes=*/2, /*depth=*/3,
+                                                 /*height=*/4, /*width=*/5);
   input->FillWithMultiples(1.0f);
   auto subtract_index = [](float value, int64 plane, int64 depth, int64 height,
                            int64 width) {

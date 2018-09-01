@@ -20,18 +20,39 @@ from __future__ import division
 from __future__ import print_function
 
 from keras_applications import densenet
+
+from tensorflow.python.keras.applications import keras_modules_injection
 from tensorflow.python.util.tf_export import tf_export
 
-DenseNet121 = densenet.DenseNet121
-DenseNet169 = densenet.DenseNet169
-DenseNet201 = densenet.DenseNet201
-decode_predictions = densenet.decode_predictions
-preprocess_input = densenet.preprocess_input
 
-tf_export('keras.applications.densenet.DenseNet121',
-          'keras.applications.DenseNet121')(DenseNet121)
-tf_export('keras.applications.densenet.DenseNet169',
-          'keras.applications.DenseNet169')(DenseNet169)
-tf_export('keras.applications.densenet.DenseNet201',
-          'keras.applications.DenseNet201')(DenseNet201)
-tf_export('keras.applications.densenet.preprocess_input')(preprocess_input)
+@tf_export('keras.applications.densenet.DenseNet121',
+           'keras.applications.DenseNet121')
+@keras_modules_injection
+def DenseNet121(*args, **kwargs):
+  return densenet.DenseNet121(*args, **kwargs)
+
+
+@tf_export('keras.applications.densenet.DenseNet169',
+           'keras.applications.DenseNet169')
+@keras_modules_injection
+def DenseNet169(*args, **kwargs):
+  return densenet.DenseNet169(*args, **kwargs)
+
+
+@tf_export('keras.applications.densenet.DenseNet201',
+           'keras.applications.DenseNet201')
+@keras_modules_injection
+def DenseNet201(*args, **kwargs):
+  return densenet.DenseNet201(*args, **kwargs)
+
+
+@tf_export('keras.applications.densenet.decode_predictions')
+@keras_modules_injection
+def decode_predictions(*args, **kwargs):
+  return densenet.decode_predictions(*args, **kwargs)
+
+
+@tf_export('keras.applications.densenet.preprocess_input')
+@keras_modules_injection
+def preprocess_input(*args, **kwargs):
+  return densenet.preprocess_input(*args, **kwargs)

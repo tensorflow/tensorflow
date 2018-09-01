@@ -213,7 +213,6 @@ cc_library(
         "graph_transformations/quantization_util.cc",
         "graph_transformations/quantization_util.h",
         "graph_transformations/quantize.cc",
-        "graph_transformations/quantize_weights.cc",
         "graph_transformations/read_array_minmax_and_narrow_range_from_fake_quant.cc",
         "graph_transformations/remove_final_dequantize_op.cc",
         "graph_transformations/remove_tensorflow_assert.cc",

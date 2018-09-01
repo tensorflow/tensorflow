@@ -55,15 +55,13 @@ class GenericTransferManager : public TransferManager {
                                     const Shape& literal_shape,
                                     MutableBorrowingLiteral literal) override;
 
-  Status ResetDevices(
-      tensorflow::gtl::ArraySlice<se::StreamExecutor*> executors) override;
+  Status ResetDevices(absl::Span<se::StreamExecutor* const> executors) override;
 
   int64 GetByteSizeRequirement(const Shape& shape) const override;
 
  protected:
   Status WriteSingleTupleIndexTable(
-      se::Stream* stream,
-      tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> elements,
+      se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
       const Shape& shape, se::DeviceMemoryBase* region) override;
 
  private:

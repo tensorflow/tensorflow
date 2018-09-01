@@ -25,8 +25,8 @@ namespace xla {
 Status ShapeLayout::CopyLayoutFromShape(const Shape& other_shape) {
   if (!ShapeUtil::Compatible(other_shape, shape_)) {
     return InvalidArgument("Shape %s is not compatible with shape %s",
-                           ShapeUtil::HumanString(other_shape).c_str(),
-                           ShapeUtil::HumanString(shape()).c_str());
+                           ShapeUtil::HumanString(other_shape),
+                           ShapeUtil::HumanString(shape()));
   }
   shape_ = other_shape;
   return Status::OK();
@@ -35,8 +35,8 @@ Status ShapeLayout::CopyLayoutFromShape(const Shape& other_shape) {
 Status ShapeLayout::AssignLayoutToShape(Shape* to_shape) const {
   if (!ShapeUtil::Compatible(*to_shape, shape_)) {
     return InvalidArgument("Shape %s is not compatible with shape %s",
-                           ShapeUtil::HumanString(*to_shape).c_str(),
-                           ShapeUtil::HumanString(shape()).c_str());
+                           ShapeUtil::HumanString(*to_shape),
+                           ShapeUtil::HumanString(shape()));
   }
   *to_shape = shape_;
   return Status::OK();
