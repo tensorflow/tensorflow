@@ -119,7 +119,7 @@ struct ReluGrad<Device, Eigen::half> {
 #if GOOGLE_CUDA
 __global__ void Relu_int8x4_kernel(int vect_count, const int32* input,
                                    int32* output) {
-  CUDA_1D_KERNEL_LOOP(index, vect_count) {
+  GPU_1D_KERNEL_LOOP(index, vect_count) {
     output[index] = __vmaxs4(input[index], 0);
   }
 }
@@ -138,10 +138,10 @@ struct Relu<Device, qint8> {
 
     int32 vect_count = Eigen::divup(count, 4);
     constexpr int32 kThreadInBlock = 512;
-    CudaLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(
+    GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
         vect_count, d, Relu_int8x4_kernel, 0, kThreadInBlock);
-    Relu_int8x4_kernel<<<config.block_count, config.thread_per_block, 0,
-                         d.stream()>>>(
+    GPU_LAUNCH_KERNEL(Relu_int8x4_kernel,
+        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
         vect_count, reinterpret_cast<const int32*>(input.data()),
         reinterpret_cast<int32*>(output.data()));
   }
