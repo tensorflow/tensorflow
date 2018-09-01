@@ -45,7 +45,6 @@ from tensorflow.python.keras import metrics
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import metrics as metrics_lib
-from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
@@ -1609,21 +1608,6 @@ def maybe_overwrite_model_dir_and_session_config(config, model_dir):
   return config
 
 
-def create_per_tower_ready_op(scaffold):
-  """Create a `tf.train.Scaffold.ready_op` inside a tower."""
-  if scaffold.ready_op:
-    return scaffold.ready_op
-
-  def default_ready_op():
-    return array_ops.concat([
-        variables.report_uninitialized_variables(),
-        resources.report_uninitialized_resources()
-    ], 0)
-
-  return monitored_session.Scaffold.get_or_default(
-      'ready_op', ops.GraphKeys.READY_OP, default_ready_op)
-
-
 def create_per_tower_ready_for_local_init_op(scaffold):
   """Create a `tf.train.Scaffold.ready_for_local_init_op` inside a tower."""
   if scaffold.ready_for_local_init_op:
@@ -1673,11 +1657,9 @@ def _combine_distributed_scaffold(grouped_scaffold, distribution):
     return value[0]
 
   ready_op = distribution.call_for_each_tower(
-      create_per_tower_ready_op, grouped_scaffold)
+      lambda scaffold: scaffold.ready_op, grouped_scaffold)
   if ready_op is not None:
     ready_op = _unwrap_and_concat(ready_op)
-  else:
-    ready_op = None
 
   ready_for_local_init_op = distribution.call_for_each_tower(
       create_per_tower_ready_for_local_init_op, grouped_scaffold)
