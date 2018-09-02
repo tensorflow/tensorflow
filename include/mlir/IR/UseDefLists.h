@@ -108,6 +108,7 @@ public:
     other.removeFromCurrent();
     value = other.value;
     other.value = nullptr;
+    other.back = nullptr;
     nextUse = nullptr;
     back = nullptr;
     insertIntoCurrent();

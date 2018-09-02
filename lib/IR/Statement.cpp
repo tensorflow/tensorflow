@@ -366,10 +366,11 @@ IfStmt::IfStmt(Location *location, unsigned numOperands, IntegerSet *set)
 }
 
 IfStmt::~IfStmt() {
+  delete thenClause;
+
   if (elseClause)
     delete elseClause;
 
-  delete thenClause;
   // An IfStmt's IntegerSet 'set' should not be deleted since it is
   // allocated through MLIRContext's bump pointer allocator.
 }
