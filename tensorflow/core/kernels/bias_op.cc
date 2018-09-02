@@ -110,7 +110,8 @@ class BiasOp : public BinaryOp<T> {
     // Added by intel_tf to support NCHW on CPU regardless of MKL used or not.
     size_t channel_dim;
     if (data_format_ == FORMAT_NCHW) {
-      channel_dim = 1; // NCHW always have channel dim in 1 (with 3, 4, 5 dimensions data).
+      channel_dim = 1;  // NCHW always have channel dim in 1 (with 3, 4, 5
+                        // dimensions data).
     } else {
       channel_dim = input.shape().dims() - 1;  // End of code by intel_tf.
     }
@@ -131,39 +132,39 @@ class BiasOp : public BinaryOp<T> {
     // Added by intel_tf to support NCHW on CPU regardless of MKL used or not.
     if (data_format_ == FORMAT_NCHW) {
       int32 batch, height, width, depth, channel;
-      GetBiasValueDims(input, data_format_, &batch, &height, &width, &depth, &channel);
+      GetBiasValueDims(input, data_format_, &batch, &height, &width, &depth,
+                       &channel);
       switch (input.shape().dims()) {
         case 3: {
           Eigen::DSizes<int32, 3> three_dims(1, channel, 1);
           Eigen::DSizes<int32, 3> broad_cast_dims(batch, 1, height);
           const Device& d = context->eigen_device<Device>();
-          output->tensor<T, 3>().device(d) =
-              input.tensor<T, 3>() +
-              bias.tensor<T, 1>().reshape(three_dims).broadcast(broad_cast_dims);
-          }
-          break;
-      case 4: {
+          output->tensor<T, 3>().device(d) = input.tensor<T, 3>() +
+                                             bias.tensor<T, 1>()
+                                                 .reshape(three_dims)
+                                                 .broadcast(broad_cast_dims);
+        } break;
+        case 4: {
           Eigen::DSizes<int32, 4> four_dims(1, channel, 1, 1);
           Eigen::DSizes<int32, 4> broad_cast_dims(batch, 1, height, width);
           const Device& d = context->eigen_device<Device>();
           output->tensor<T, 4>().device(d) =
               input.tensor<T, 4>() +
               bias.tensor<T, 1>().reshape(four_dims).broadcast(broad_cast_dims);
-        }
-        break;
-      case 5: {
+        } break;
+        case 5: {
           Eigen::DSizes<int32, 5> four_dims(1, channel, 1, 1, 1);
-          Eigen::DSizes<int32, 5> broad_cast_dims(batch, 1, height, width, depth);
+          Eigen::DSizes<int32, 5> broad_cast_dims(batch, 1, height, width,
+                                                  depth);
           const Device& d = context->eigen_device<Device>();
           output->tensor<T, 5>().device(d) =
               input.tensor<T, 5>() +
               bias.tensor<T, 1>().reshape(four_dims).broadcast(broad_cast_dims);
-        }
-        break;
-      default:
-        OP_REQUIRES(context, false,
-                    errors::InvalidArgument("Only ranks up to 5 supported: ",
-                                            input.shape().DebugString()));
+        } break;
+        default:
+          OP_REQUIRES(context, false,
+                      errors::InvalidArgument("Only ranks up to 5 supported: ",
+                                              input.shape().DebugString()));
       }
       return;
     }  // End of code by intel_tf.
@@ -255,8 +256,8 @@ class BiasGradOp : public OpKernel {
         errors::InvalidArgument("BiasGrad requires tensor size <= int32 max"));
 
     int32 batch, height, width, depth, channel;
-    GetBiasValueDims(output_backprop, data_format_, &batch, &height, &width, &depth,
-                     &channel);
+    GetBiasValueDims(output_backprop, data_format_, &batch, &height, &width,
+                     &depth, &channel);
     Tensor* output = nullptr;
     TensorShape output_shape{channel};
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
