@@ -127,6 +127,8 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleImag(HloInstruction* imag) override;
 
+  Status HandleIota(HloInstruction* instruction) override;
+
   Status HandleConvolution(HloInstruction* convolution) override;
 
   Status HandleDivide(HloInstruction* divide) override;
@@ -1458,6 +1460,19 @@ Status AlgebraicSimplifierVisitor::HandleImag(HloInstruction* imag) {
   HloInstruction* op;
   if (Match(imag, m::Imag(m::Complex(m::Op(), m::Op(&op))))) {
     return ReplaceInstruction(imag, op);
+  }
+  return Status::OK();
+}
+
+Status AlgebraicSimplifierVisitor::HandleIota(HloInstruction* instruction) {
+  // iota -> zero if the iota dimension never produces an element other than
+  // zero.
+  auto* iota = Cast<HloIotaInstruction>(instruction);
+  if (iota->shape().dimensions(iota->iota_dimension()) <= 1) {
+    auto zero = computation_->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::Zero(iota->shape().element_type()).CloneToUnique()));
+    return ReplaceWithNewInstruction(
+        iota, HloInstruction::CreateBroadcast(iota->shape(), zero, {}));
   }
   return Status::OK();
 }
