@@ -778,6 +778,8 @@ class Dataset(object):
 
     - Be sure to shard before you use any randomizing operator (such as
       shuffle).
+    - Invoking repeat before shuffle may blur epoch boundaries. Consider
+      applying `tf.contrib.data.shuffle_and_repeat` if this is undesirable.
     - Generally it is best if the shard operator is used early in the dataset
       pipeline. For example, when reading from a set of TFRecord files, shard
       before converting the dataset to input samples. This avoids reading every
