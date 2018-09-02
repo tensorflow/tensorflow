@@ -2496,9 +2496,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d_with_relu, csinfo_.mkl_conv2d_with_relu,
                       CopyAttrsConv, AlwaysRewrite});
-    rinfo_.push_back({csinfo_.conv2d_with_bias_and_relu,
-                      csinfo_.mkl_conv2d_with_bias_and_relu, CopyAttrsConv,
-                      AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d_grad_filter,
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d_grad_filter),
                       CopyAttrsConv, AlwaysRewrite});
