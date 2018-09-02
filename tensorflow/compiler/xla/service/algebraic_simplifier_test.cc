@@ -1858,12 +1858,33 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshapeMerged) {
       ShapeUtil::Equal(computation->root_instruction()->shape(), result_shape));
 }
 
-TEST_F(AlgebraicSimplifierTest, IotaAndReshape_1_3x1_3) {
+TEST_F(AlgebraicSimplifierTest, IotaEffectiveScalar) {
   HloComputation::Builder builder(TestName());
   auto iota = builder.AddInstruction(
-      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {3, 1}), 1));
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {1, 1}), 0));
+  auto result_shape = iota->shape();
+
+  auto computation = module().AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Iota());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+
+  auto root = computation->root_instruction();
+  EXPECT_THAT(root, op::Broadcast(op::Constant()));
+  EXPECT_EQ(0.0f, root->operand(0)->literal().GetFirstElement<float>());
+  EXPECT_TRUE(
+      ShapeUtil::Equal(computation->root_instruction()->shape(), result_shape));
+}
+
+TEST_F(AlgebraicSimplifierTest, IotaAndReshape_1_3x2_6) {
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {3, 2}), 1));
   builder.AddInstruction(
-      HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {3}), iota));
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {6}), iota));
 
   auto computation = module().AddEntryComputation(builder.Build());
 
@@ -1897,12 +1918,12 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshape_4_3x2x4_6x1x1x4) {
             3);
 }
 
-TEST_F(AlgebraicSimplifierTest, IotaAndReshape_1_3x2x1_6x1x1x1) {
+TEST_F(AlgebraicSimplifierTest, IotaAndReshape_1_3x2x2_6x1x1x2) {
   HloComputation::Builder builder(TestName());
   auto iota = builder.AddInstruction(
-      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {3, 2, 1}), 2));
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {3, 2, 2}), 2));
   builder.AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeShape(F32, {6, 1, 1, 1}), iota));
+      ShapeUtil::MakeShape(F32, {6, 1, 1, 2}), iota));
 
   HloComputation* computation = module().AddEntryComputation(builder.Build());
 
