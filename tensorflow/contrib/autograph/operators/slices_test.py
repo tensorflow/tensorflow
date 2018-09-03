@@ -57,7 +57,7 @@ class SlicesTest(test.TestCase):
     t = slices.get_item(initial_list_str, 1, slices.GetItemOpts(element_dtype=initial_str.dtype))
 
     with self.test_session() as sess:
-      self.assertEqual(sess.run(t), b"bcde")
+      self.assertEqual(sess.run(t), b'bcde')
 
 
 if __name__ == '__main__':
