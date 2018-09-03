@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -93,19 +93,19 @@ class LocalClientTestBase : public ::testing::Test {
   // options.
   StatusOr<ScopedShapedBuffer> ExecuteLocally(
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
+      absl::Span<const ShapedBuffer* const> arguments);
   StatusOr<ScopedShapedBuffer> ExecuteLocally(
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      absl::Span<const ShapedBuffer* const> arguments,
       const ExecutableBuildOptions& build_options,
       const ExecutableRunOptions& run_options);
 
   ScopedShapedBuffer ExecuteLocallyOrDie(
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
+      absl::Span<const ShapedBuffer* const> arguments);
   ScopedShapedBuffer ExecuteLocallyOrDie(
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      absl::Span<const ShapedBuffer* const> arguments,
       const ExecutableBuildOptions& build_options,
       const ExecutableRunOptions& run_options);
 

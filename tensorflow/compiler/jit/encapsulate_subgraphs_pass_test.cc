@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 
+#include "absl/strings/match.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/function_testlib.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
@@ -124,8 +124,8 @@ bool EqualFunctionNodeDef(const NodeDef& a, const NodeDef& b,
   std::unordered_set<string> control_input_a;
   std::unordered_set<string> control_input_b;
   for (int i = 0; i < a.input_size(); ++i) {
-    if (str_util::StartsWith(a.input(i), "^")) {
-      if (!str_util::StartsWith(b.input(i), "^")) {
+    if (absl::StartsWith(a.input(i), "^")) {
+      if (!absl::StartsWith(b.input(i), "^")) {
         if (diff) {
           *diff = strings::StrCat(
               diff_preamble, " mismatch for node ", a.name(), " input ", i,
@@ -379,7 +379,7 @@ Node* InputShaped(const GraphDefBuilder::Options& opts) {
   return ops::SourceOp("InputTestShaped", opts);
 }
 
-Node* KnownShapeBase(DataType dtype, const gtl::ArraySlice<int>& shape,
+Node* KnownShapeBase(DataType dtype, absl::Span<const int> shape,
                      const GraphDefBuilder::Options& opts) {
   if (opts.HaveError()) return nullptr;
   NodeBuilder node_builder(opts.GetNameForOp("Const"), "Const",
@@ -394,7 +394,7 @@ Node* KnownShapeBase(DataType dtype, const gtl::ArraySlice<int>& shape,
       .FinalizeBuilder(&node_builder);
 }
 
-Node* KnownShape(const gtl::ArraySlice<int>& shape,
+Node* KnownShape(absl::Span<const int> shape,
                  const GraphDefBuilder::Options& opts) {
   return KnownShapeBase(DT_FLOAT, shape, opts);
 }
@@ -417,8 +417,7 @@ Node* KeyPlaceholder(const string& call_node,
 }
 
 Node* RecvAtHost(ops::NodeOut key_input, const string& cluster,
-                 const string& oc_cluster,
-                 const gtl::ArraySlice<DataType>& dtypes,
+                 const string& oc_cluster, absl::Span<const DataType> dtypes,
                  const GraphDefBuilder::Options& opts) {
   if (opts.HaveError()) return nullptr;
   string key =
@@ -768,7 +767,7 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Simple) {
         Graph* graph = graph_ptr->get();
         for (const Node* n : graph->nodes()) {
           if (n->type_string() == "_Arg" &&
-              str_util::StartsWith(n->name(), "const")) {
+              absl::StartsWith(n->name(), "const")) {
             ++guaranteed_consts;
             EXPECT_TRUE(HasGuaranteeConstAttr(*n));
           } else {
@@ -813,7 +812,7 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Add) {
         Graph* graph = graph_ptr->get();
         for (const Node* n : graph->nodes()) {
           if (n->type_string() == "_Arg" &&
-              str_util::StartsWith(n->name(), "const")) {
+              absl::StartsWith(n->name(), "const")) {
             ++guaranteed_consts;
             EXPECT_TRUE(HasGuaranteeConstAttr(*n));
           } else {
@@ -892,13 +891,13 @@ TEST(EncapsulateSubgraphsTest, OneFunctionOneOutside) {
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
            {"C:o:0", "c:o:0"},
-           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
-            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-            {"ancestors", gtl::ArraySlice<string>({})},
+           {{"Tinputs", absl::Span<const DataType>({DT_FLOAT, DT_FLOAT})},
+            {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
+            {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph",
              "_outside_compilation_shape_inference_F1_O1"},
-            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"shapes", absl::Span<const DataType>({})},
             {"_outside_compilation_subgraph", "O1"}},
            {"c"}},
       },
@@ -1038,26 +1037,26 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
           {{"outside_compilation_O2_host_compute"},
            "XlaHostCompute",
            {"F:o:0", "D:o:0"},
-           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
-            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+           {{"Tinputs", absl::Span<const DataType>({DT_FLOAT, DT_FLOAT})},
+            {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
             {"ancestors",
-             gtl::ArraySlice<string>({"outside_compilation_O1_host_compute"})},
+             absl::Span<const string>({"outside_compilation_O1_host_compute"})},
             {"key", "host_compute_channel_F1_O2"},
             {"shape_inference_graph",
              "_outside_compilation_shape_inference_F1_O2"},
-            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"shapes", absl::Span<const DataType>({})},
             {"_outside_compilation_subgraph", "O2"}},
            {"F", "outside_compilation_O1_host_compute"}},
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
            {"C:o:0", "D:o:0"},
-           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
-            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-            {"ancestors", gtl::ArraySlice<string>({})},
+           {{"Tinputs", absl::Span<const DataType>({DT_FLOAT, DT_FLOAT})},
+            {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
+            {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph",
              "_outside_compilation_shape_inference_F1_O1"},
-            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"shapes", absl::Span<const DataType>({})},
             {"_outside_compilation_subgraph", "O1"}},
            {"D"}},
       },
@@ -1190,13 +1189,13 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
            {"C:o:0", "D:o:0"},
-           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
-            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-            {"ancestors", gtl::ArraySlice<string>({})},
+           {{"Tinputs", absl::Span<const DataType>({DT_FLOAT, DT_FLOAT})},
+            {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
+            {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph",
              "_outside_compilation_shape_inference_F1_O1"},
-            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"shapes", absl::Span<const DataType>({})},
             {"_outside_compilation_subgraph", "O1"}},
            {"D"}},
       },
@@ -1213,13 +1212,13 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
            {"G:o:0"},
-           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-            {"ancestors", gtl::ArraySlice<string>({})},
+           {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
+            {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
+            {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F2_O1"},
             {"shape_inference_graph", ""},
             {"shapes",
-             gtl::ArraySlice<TensorShapeProto>({shape_proto_expected})},
+             absl::Span<const TensorShapeProto>({shape_proto_expected})},
             {"_outside_compilation_subgraph", "O1"}}},
       },
       {{"g_0_retval", "G:o:0"}, {"i_0_retval", "I:o:0"}});
@@ -1364,13 +1363,13 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutsideDependencyFromOutside) {
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
            {"C:o:0", "D:o:0"},
-           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
-            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-            {"ancestors", gtl::ArraySlice<string>({})},
+           {{"Tinputs", absl::Span<const DataType>({DT_FLOAT, DT_FLOAT})},
+            {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
+            {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph",
              "_outside_compilation_shape_inference_F1_O1"},
-            {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+            {"shapes", absl::Span<const TensorShapeProto>({})},
             {"_outside_compilation_subgraph", "O1"}},
            {"D"}},
       },
@@ -1386,13 +1385,13 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutsideDependencyFromOutside) {
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
            {"G:o:0"},
-           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-            {"ancestors", gtl::ArraySlice<string>({})},
+           {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
+            {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
+            {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F2_O1"},
             {"shape_inference_graph",
              "_outside_compilation_shape_inference_F2_O1"},
-            {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+            {"shapes", absl::Span<const TensorShapeProto>({})},
             {"_outside_compilation_subgraph", "O1"}}},
       },
       {{"i_0_retval", "I:o:0"}});
@@ -1495,13 +1494,13 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputs) {
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
            {},
-           {{"Tinputs", gtl::ArraySlice<DataType>({})},
-            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-            {"ancestors", gtl::ArraySlice<string>({})},
+           {{"Tinputs", absl::Span<const DataType>({})},
+            {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
+            {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", ""},
             {"shapes",
-             gtl::ArraySlice<TensorShapeProto>({shape_proto_expected})},
+             absl::Span<const TensorShapeProto>({shape_proto_expected})},
             {"_outside_compilation_subgraph", "O1"}}},
       },
       {{"f_0_retval", "F:o:0"}});
@@ -1579,13 +1578,13 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlInput) {
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
            {},
-           {{"Tinputs", gtl::ArraySlice<DataType>({})},
-            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-            {"ancestors", gtl::ArraySlice<string>({})},
+           {{"Tinputs", absl::Span<const DataType>({})},
+            {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
+            {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", ""},
             {"shapes",
-             gtl::ArraySlice<TensorShapeProto>({shape_proto_expected})},
+             absl::Span<const TensorShapeProto>({shape_proto_expected})},
             {"_outside_compilation_subgraph", "O1"}},
            {"D"}},
       },
@@ -1661,12 +1660,12 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoOutputs) {
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
            {"D:o:0"},
-           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-            {"Toutputs", gtl::ArraySlice<DataType>({})},
-            {"ancestors", gtl::ArraySlice<string>({})},
+           {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
+            {"Toutputs", absl::Span<const DataType>({})},
+            {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", ""},
-            {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+            {"shapes", absl::Span<const TensorShapeProto>({})},
             {"_outside_compilation_subgraph", "O1"}}},
       },
       {{"f_0_retval", "F:o:0"}});
@@ -1742,12 +1741,12 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlOutput) {
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
            {"D:o:0"},
-           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-            {"Toutputs", gtl::ArraySlice<DataType>({})},
-            {"ancestors", gtl::ArraySlice<string>({})},
+           {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
+            {"Toutputs", absl::Span<const DataType>({})},
+            {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", ""},
-            {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+            {"shapes", absl::Span<const TensorShapeProto>({})},
             {"_outside_compilation_subgraph", "O1"}}},
       },
       {{"f_0_retval", "F:o:0"}});
@@ -1846,13 +1845,13 @@ TEST(EncapsulateSubgraphsTest,
           {{"outside_compilation_O2_host_compute"},
            "XlaHostCompute",
            {"F:o:0"},
-           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-            {"ancestors", gtl::ArraySlice<string>({})},
+           {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
+            {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
+            {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_O2"},
             {"shape_inference_graph",
              "_outside_compilation_shape_inference_F1_O2"},
-            {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+            {"shapes", absl::Span<const TensorShapeProto>({})},
             {"_outside_compilation_subgraph", "O2"}}},
       },
       {{"h_0_retval", "H:o:0"}});
@@ -1955,13 +1954,13 @@ TEST(EncapsulateSubgraphsTest,
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
            {"D:o:0"},
-           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-            {"ancestors", gtl::ArraySlice<string>({})},
+           {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
+            {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
+            {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph",
              "_outside_compilation_shape_inference_F1_O1"},
-            {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+            {"shapes", absl::Span<const TensorShapeProto>({})},
             {"_outside_compilation_subgraph", "O1"}}},
       },
       {{"h_0_retval", "H:o:0"}});
@@ -2066,37 +2065,37 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationClusterDependency) {
        {{"outside_compilation_O1_host_compute"},
         "XlaHostCompute",
         {"D:o:0"},
-        {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-         {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-         {"ancestors", gtl::ArraySlice<string>({})},
+        {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
+         {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
+         {"ancestors", absl::Span<const string>({})},
          {"key", "host_compute_channel_F1_O1"},
          {"shape_inference_graph",
           "_outside_compilation_shape_inference_F1_O1"},
-         {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+         {"shapes", absl::Span<const TensorShapeProto>({})},
          {"_outside_compilation_subgraph", "O1"}}},
        {{"outside_compilation_O2_host_compute"},
         "XlaHostCompute",
         {"D:o:0"},
-        {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-         {"Toutputs", gtl::ArraySlice<DataType>({})},
+        {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
+         {"Toutputs", absl::Span<const DataType>({})},
          {"ancestors",
-          gtl::ArraySlice<string>({"outside_compilation_O1_host_compute"})},
+          absl::Span<const string>({"outside_compilation_O1_host_compute"})},
          {"key", "host_compute_channel_F1_O2"},
          {"shape_inference_graph", ""},
-         {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+         {"shapes", absl::Span<const TensorShapeProto>({})},
          {"_outside_compilation_subgraph", "O2"}},
         {"outside_compilation_O1_host_compute"}},
        {{"outside_compilation_O3_host_compute"},
         "XlaHostCompute",
         {"D:o:0"},
-        {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-         {"Toutputs", gtl::ArraySlice<DataType>({})},
+        {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
+         {"Toutputs", absl::Span<const DataType>({})},
          {"ancestors",
-          gtl::ArraySlice<string>({"outside_compilation_O1_host_compute",
-                                   "outside_compilation_O2_host_compute"})},
+          absl::Span<const string>({"outside_compilation_O1_host_compute",
+                                    "outside_compilation_O2_host_compute"})},
          {"key", "host_compute_channel_F1_O3"},
          {"shape_inference_graph", ""},
-         {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+         {"shapes", absl::Span<const TensorShapeProto>({})},
          {"_outside_compilation_subgraph", "O3"}},
         {"outside_compilation_O1_host_compute",
          "outside_compilation_O2_host_compute"}}},
@@ -2272,13 +2271,13 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationShapeInference) {
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
            {"c:o:0"},
-           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
-            {"ancestors", gtl::ArraySlice<string>({})},
+           {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
+            {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
+            {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph",
              "_outside_compilation_shape_inference_F1_O1"},
-            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"shapes", absl::Span<const DataType>({})},
             {"_outside_compilation_subgraph", "O1"}},
            {"c"}},
       },

@@ -38,7 +38,7 @@ files. The flag `--output_file` is always required. Additionally, either
             of TFLite specific transformations. Therefore, the resulting
             visualization may not reflect the final set of graph
             transformations. To get a final visualization with all graph
-            transformations use `--dump_graphviz` instead.
+            transformations use `--dump_graphviz_dir` instead.
 
 The following flags specify optional parameters when using SavedModels.
 
@@ -67,21 +67,22 @@ based on index.
 
 *   `--input_shapes`. Type: colon-separated list of comma-separated lists of
     integers. Each comma-separated list of integers gives the shape of one of
-    the input arrays specified in [TensorFlow
-    convention](https://www.tensorflow.org/versions/r1.2/programmers_guide/dims_types#shape).
+    the input arrays specified in
+    [TensorFlow convention](https://www.tensorflow.org/versions/r1.2/programmers_guide/dims_types#shape).
     *   Example: `--input_shapes=1,60,80,3` for a typical vision model means a
         batch size of 1, an input image height of 60, an input image width of
         80, and an input image depth of 3 (representing RGB channels).
     *   Example: `--input_arrays=foo,bar --input_shapes=2,3:4,5,6` means "foo"
         has a shape of [2, 3] and "bar" has a shape of [4, 5, 6].
-*   `--std_dev_values`, `--mean_values`. Type: comma-separated list of integers.
+*   `--std_dev_values`, `--mean_values`. Type: comma-separated list of floats.
     These specify the (de-)quantization parameters of the input array, when it
-    is quantized.
+    is quantized. This is only needed if `inference_input_type` is
+    `QUANTIZED_UINT8`.
     *   The meaning of `mean_values` and `std_dev_values` is as follows: each
         quantized value in the quantized input array will be interpreted as a
         mathematical real number (i.e. as an input activation value) according
         to the following formula:
-        *   `real_value = (quantized_input_value - mean_value) / std_value`.
+        *   `real_value = (quantized_input_value - mean_value) / std_dev_value`.
     *   When performing float inference (`--inference_type=FLOAT`) on a
         quantized input, the quantized input would be immediately dequantized by
         the inference code according to the above formula, before proceeding
@@ -91,7 +92,8 @@ based on index.
         the inference code. However, the quantization parameters of all arrays,
         including those of the input arrays as specified by `mean_value` and
         `std_dev_value`, determine the fixed-point multipliers used in the
-        quantized inference code.
+        quantized inference code. `mean_value` must be an integer when
+        performing quantized inference.
 
 ## Transformation flags
 
@@ -147,10 +149,10 @@ have.
     true, custom ops are created for any op that is unknown. The developer will
     need to provide these to the TensorFlow Lite runtime with a custom resolver.
 
-*   `--quantize_weights`. Type: boolean. Default: False. Indicates whether to
-    store weights as quantized weights followed by dequantize operations.
-    Computation is still done in float, but reduces model size (at the cost of
-    accuracy and latency).
+*   `--post_training_quantize`. Type: boolean. Default: False. Boolean
+    indicating whether to quantize the weights of the converted float model.
+    Model size will be reduced and there will be latency improvements (at the
+    cost of accuracy).
 
 ## Logging flags
 

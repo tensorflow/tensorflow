@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 namespace gpu {
@@ -53,8 +55,9 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
       input_layout.push_back(dnums.input_feature_dimension());
       break;
     default:
-      return tensorflow::errors::Internal("Invalid input layout: ",
-                                          DataLayoutString(input));
+      return InternalError("Invalid input layout %s for conv with dnums %s",
+                           DataLayoutString(input),
+                           ConvolutionDimensionNumbersToString(dnums));
   }
 
   std::vector<int64> filter_layout;
@@ -74,8 +77,9 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
       filter_layout.push_back(dnums.kernel_input_feature_dimension());
       break;
     default:
-      return tensorflow::errors::Internal("Invalid filter layout: ",
-                                          FilterLayoutString(filter));
+      return InternalError("Invalid filter layout %s for conv with dnums %s",
+                           FilterLayoutString(filter),
+                           ConvolutionDimensionNumbersToString(dnums));
   }
 
   std::vector<int64> output_layout;
@@ -95,8 +99,9 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
       output_layout.push_back(dnums.output_feature_dimension());
       break;
     default:
-      return tensorflow::errors::Internal("Invalid output layout: ",
-                                          DataLayoutString(output));
+      return InternalError("Invalid output layout %s for conv with dnums %s",
+                           DataLayoutString(output),
+                           ConvolutionDimensionNumbersToString(dnums));
   }
 
   return std::make_tuple(LayoutUtil::MakeLayoutFromMajorToMinor(input_layout),
@@ -128,8 +133,9 @@ XlaConvLayoutsToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
   } else if (LayoutUtil::Equal(input, nhwc_input)) {
     input_layout = DataLayout::kBatchYXDepth;
   } else {
-    return tensorflow::errors::Internal("Invalid input layout: ",
-                                        input.ShortDebugString());
+    return InternalError("Invalid input layout %s for conv with dnums %s",
+                         LayoutUtil::HumanString(input),
+                         ConvolutionDimensionNumbersToString(dnums));
   }
 
   FilterLayout filter_layout;
@@ -138,8 +144,9 @@ XlaConvLayoutsToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
   } else if (LayoutUtil::Equal(filter, nhwc_filter)) {
     filter_layout = FilterLayout::kOutputYXInput;
   } else {
-    return tensorflow::errors::Internal("Invalid filter layout: ",
-                                        filter.ShortDebugString());
+    return InternalError("Invalid filter layout %s for conv with dnums %s",
+                         LayoutUtil::HumanString(filter),
+                         ConvolutionDimensionNumbersToString(dnums));
   }
 
   DataLayout output_layout;
@@ -148,8 +155,9 @@ XlaConvLayoutsToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
   } else if (LayoutUtil::Equal(output, nhwc_output)) {
     output_layout = DataLayout::kBatchYXDepth;
   } else {
-    return tensorflow::errors::Internal("Invalid output layout: ",
-                                        output.ShortDebugString());
+    return InternalError("Invalid output layout %s for conv with dnums %s",
+                         LayoutUtil::HumanString(output),
+                         ConvolutionDimensionNumbersToString(dnums));
   }
 
   return std::make_tuple(input_layout, filter_layout, output_layout);

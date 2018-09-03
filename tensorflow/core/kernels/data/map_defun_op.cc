@@ -74,7 +74,11 @@ class MapDefunOp : public AsyncOpKernel {
       arg_shapes->at(i).RemoveDim(0);  // Remove the first batch dimension
       OP_REQUIRES_ASYNC(
           ctx, batch_size == ctx->input(i).dim_size(0),
-          errors::InvalidArgument("All inputs must have the same dimension 0."),
+          errors::InvalidArgument(
+              "All inputs must have the same dimension 0. Input ", i,
+              " has leading dimension ", ctx->input(i).dim_size(0),
+              ", while all previous inputs have leading dimension ", batch_size,
+              "."),
           done);
     }
 

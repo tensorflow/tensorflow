@@ -53,10 +53,11 @@ class BroadcastSimpleTest : public ClientLibraryTestBase {
     }
   }
 
-  std::unique_ptr<GlobalData> MakeR3Data(
-      tensorflow::gtl::ArraySlice<int64> bounds,
-      tensorflow::gtl::ArraySlice<int64> minor_to_major, Shape* r3_shape,
-      Array3D<float>* r3_array, float start, float end, int seed) {
+  std::unique_ptr<GlobalData> MakeR3Data(absl::Span<const int64> bounds,
+                                         absl::Span<const int64> minor_to_major,
+                                         Shape* r3_shape,
+                                         Array3D<float>* r3_array, float start,
+                                         float end, int seed) {
     *r3_shape = ShapeUtil::MakeShapeWithLayout(F32, bounds, minor_to_major);
     r3_array->FillRandom(start, end, seed);
     auto r3_data = LiteralUtil::CreateR3FromArray3D(*r3_array)->Relayout(
@@ -66,10 +67,11 @@ class BroadcastSimpleTest : public ClientLibraryTestBase {
     return r3_global_data;
   }
 
-  std::unique_ptr<GlobalData> MakeR2Data(
-      tensorflow::gtl::ArraySlice<int64> bounds,
-      tensorflow::gtl::ArraySlice<int64> minor_to_major, Shape* r2_shape,
-      Array2D<float>* r2_array, float start, float end, int seed) {
+  std::unique_ptr<GlobalData> MakeR2Data(absl::Span<const int64> bounds,
+                                         absl::Span<const int64> minor_to_major,
+                                         Shape* r2_shape,
+                                         Array2D<float>* r2_array, float start,
+                                         float end, int seed) {
     *r2_shape = ShapeUtil::MakeShapeWithLayout(F32, bounds, minor_to_major);
     r2_array->FillRandom(start, end, seed);
     auto r2_data = LiteralUtil::CreateR2FromArray2D(*r2_array)->Relayout(
@@ -348,7 +350,7 @@ XLA_TEST_P(BroadcastR3ImplicitTest, Doit) {
 
   Array3D<float> expected_array(spec.output_bounds[0], spec.output_bounds[1],
                                 spec.output_bounds[2]);
-  auto Each = ([&](tensorflow::gtl::ArraySlice<int64> indices, float* value) {
+  auto Each = ([&](absl::Span<const int64> indices, float* value) {
     float r3_implicit = r3_implicit_array(indices[0] % spec.input_bounds[0],
                                           indices[1] % spec.input_bounds[1],
                                           indices[2] % spec.input_bounds[2]);

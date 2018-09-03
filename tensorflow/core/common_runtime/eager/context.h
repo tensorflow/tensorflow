@@ -93,6 +93,9 @@ class EagerContext {
 
   // TODO(apassos) make this return a constant reference
   std::vector<Device*>* devices() { return &devices_; }
+  const std::vector<DeviceType>& prioritized_device_type_list() {
+    return prioritized_device_type_list_;
+  }
 
   // Clears the kernel caches.
   void ClearCaches();
@@ -133,8 +136,6 @@ class EagerContext {
   bool LogDevicePlacement() { return log_device_placement_; }
 
   Rendezvous* GetRendezvous() { return rendezvous_; }
-
-  mutex* FunctionsMu() { return &functions_mu_; }
 
   const tensorflow::DeviceMgr* local_device_mgr() const {
     return (local_device_manager_ != nullptr) ? local_device_manager_.get()
@@ -208,9 +209,11 @@ class EagerContext {
   // Only one of the below is set.
   std::unique_ptr<DeviceMgr> local_device_manager_;
   DeviceMgr* local_unowned_device_manager_;
+  std::unique_ptr<DeviceMgr> remote_device_manager_;
 
   // Devices owned by device_manager
   std::vector<Device*> devices_;
+  std::vector<DeviceType> prioritized_device_type_list_;
   // All devices are not owned.
   gtl::FlatMap<string, Device*, StringPieceHasher> devices_map_;
   Rendezvous* rendezvous_;
@@ -255,7 +258,6 @@ class EagerContext {
 
 #ifndef __ANDROID__
   void CloseRemoteContexts();
-  std::unique_ptr<DeviceMgr> remote_device_manager_;
 
   // The server_ is not const since we release it when the context is destroyed.
   // Therefore the server_ object is not marked as const (even though it should

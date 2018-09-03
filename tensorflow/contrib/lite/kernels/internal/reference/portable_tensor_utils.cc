@@ -73,10 +73,12 @@ void PortableMatrixBatchVectorMultiplyAccumulate(const float* matrix,
   for (int b = 0; b < n_batch; b++) {
     const float* matrix_ptr = matrix;
     for (int r = 0; r < m_rows; r++) {
+      float dot_prod = 0.0f;
       const float* vector_in_batch = vector + b * m_cols;
       for (int c = 0; c < m_cols; c++) {
-        *result_in_batch += *matrix_ptr++ * *vector_in_batch++;
+        dot_prod += *matrix_ptr++ * *vector_in_batch++;
       }
+      *result_in_batch += dot_prod;
       result_in_batch += result_stride;
     }
   }
@@ -146,6 +148,16 @@ void PortableVectorVectorCwiseProductAccumulate(const float* vector1,
                                                 int v_size, float* result) {
   for (int v = 0; v < v_size; v++) {
     *result++ += *vector1++ * *vector2++;
+  }
+}
+
+void PortableVectorBatchVectorCwiseProduct(const float* vector, int v_size,
+                                           const float* batch_vector,
+                                           int n_batch, float* result) {
+  for (int b = 0; b < n_batch; b++) {
+    for (int v = 0; v < v_size; v++) {
+      *result++ = vector[v] * *batch_vector++;
+    }
   }
 }
 

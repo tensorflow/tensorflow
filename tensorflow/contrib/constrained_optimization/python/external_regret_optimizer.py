@@ -70,11 +70,13 @@ def _project_multipliers_wrt_euclidean_norm(multipliers, radius):
       region w.r.t. the Euclidean norm.
 
   Raises:
-    ValueError: if the `multipliers` tensor does not have a fully-known shape,
-      or is not one-dimensional.
+    ValueError: if the `multipliers` tensor is not floating-point, does not have
+      a fully-known shape, or is not one-dimensional.
   """
+  if not multipliers.dtype.is_floating:
+    raise ValueError("multipliers must have a floating-point dtype")
   multipliers_shape = multipliers.get_shape()
-  if multipliers_shape is None:
+  if multipliers_shape.ndims is None:
     raise ValueError("multipliers must have known shape")
   if multipliers_shape.ndims != 1:
     raise ValueError(
@@ -101,12 +103,12 @@ def _project_multipliers_wrt_euclidean_norm(multipliers, radius):
         (radius - standard_ops.reduce_sum(multipliers)) / standard_ops.maximum(
             1.0, standard_ops.reduce_sum(inactive)))
     multipliers += scale * inactive
-    new_inactive = standard_ops.to_float(multipliers > 0)
+    new_inactive = standard_ops.cast(multipliers > 0, multipliers.dtype)
     multipliers *= new_inactive
     return (iteration, multipliers, new_inactive, inactive)
 
   iteration = standard_ops.constant(0)
-  inactive = standard_ops.ones_like(multipliers)
+  inactive = standard_ops.ones_like(multipliers, dtype=multipliers.dtype)
 
   # We actually want a do-while loop, so we explicitly call while_loop_body()
   # once before tf.while_loop().
@@ -189,16 +191,16 @@ class _ExternalRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
   def _projection_op(self, state, name=None):
     pass
 
-  def minimize_constrained(self,
-                           minimization_problem,
-                           global_step=None,
-                           var_list=None,
-                           gate_gradients=train_optimizer.Optimizer.GATE_OP,
-                           aggregation_method=None,
-                           colocate_gradients_with_ops=False,
-                           name=None,
-                           grad_loss=None):
-    """Returns an `Op` for minimizing the constrained problem.
+  def _minimize_constrained(self,
+                            minimization_problem,
+                            global_step=None,
+                            var_list=None,
+                            gate_gradients=train_optimizer.Optimizer.GATE_OP,
+                            aggregation_method=None,
+                            colocate_gradients_with_ops=False,
+                            name=None,
+                            grad_loss=None):
+    """Returns an `Operation` for minimizing the constrained problem.
 
     The `optimizer` constructor parameter will be used to update the model
     parameters, while the Lagrange multipliers will be updated using
@@ -216,8 +218,11 @@ class _ExternalRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
       name: as in `tf.train.Optimizer`'s `minimize` method.
       grad_loss: as in `tf.train.Optimizer`'s `minimize` method.
 
+    Raises:
+      ValueError: If the minimization_problem tensors have different dtypes.
+
     Returns:
-      TensorFlow Op.
+      `Operation`, the train_op.
     """
     objective = minimization_problem.objective
 
@@ -225,6 +230,14 @@ class _ExternalRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
     proxy_constraints = minimization_problem.proxy_constraints
     if proxy_constraints is None:
       proxy_constraints = constraints
+
+    # Make sure that the objective, constraints and proxy constraints all have
+    # the same dtype.
+    if (objective.dtype.base_dtype != constraints.dtype.base_dtype or
+        objective.dtype.base_dtype != proxy_constraints.dtype.base_dtype):
+      raise ValueError("objective, constraints and proxy_constraints must "
+                       "have the same dtype")
+
     # Flatten both constraints tensors to 1d.
     num_constraints = minimization_problem.num_constraints
     constraints = standard_ops.reshape(constraints, shape=(num_constraints,))
@@ -241,8 +254,10 @@ class _ExternalRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
 
     multipliers = self._lagrange_multipliers(state)
     loss = (
-        objective + standard_ops.tensordot(multipliers, proxy_constraints, 1))
-    multipliers_gradient = constraints
+        objective + standard_ops.tensordot(
+            standard_ops.cast(multipliers, proxy_constraints.dtype),
+            proxy_constraints, 1))
+    multipliers_gradient = standard_ops.cast(constraints, multipliers.dtype)
 
     update_ops = []
     if self.constraint_optimizer is None:
@@ -356,6 +371,8 @@ class AdditiveExternalRegretOptimizer(_ExternalRegretOptimizer):
     # For an AdditiveExternalRegretOptimizer, the internal state is simply a
     # tensor of Lagrange multipliers with shape (m,), where m is the number of
     # constraints.
+    #
+    # FUTURE WORK: make the dtype a parameter.
     return standard_ops.zeros((num_constraints,), dtype=dtypes.float32)
 
   def _lagrange_multipliers(self, state):

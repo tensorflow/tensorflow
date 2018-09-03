@@ -37,6 +37,14 @@ REGISTER_OP("RegexReplace")
       return Status::OK();
     });
 
+REGISTER_OP("StaticRegexReplace")
+    .Input("input: string")
+    .Attr("pattern: string")
+    .Attr("rewrite: string")
+    .Output("output: string")
+    .Attr("replace_global: bool = true")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("RegexFullMatch")
     .Input("input: string")
     .Input("pattern: string")
@@ -157,6 +165,11 @@ REGISTER_OP("StringSplitV2")
 REGISTER_OP("StringStrip")
     .Input("input: string")
     .Output("output: string")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("StringLength")
+    .Input("input: string")
+    .Output("output: int32")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("EncodeBase64")

@@ -161,7 +161,7 @@ class Saver(object):
     Args:
       file_prefix: Path prefix where parameters were previously saved.
         Typically obtained from a previous `save()` call, or from
-        @{tf.train.latest_checkpoint}.
+        `tf.train.latest_checkpoint`.
     """
     with ops.device("/device:CPU:0"):
       self._saver.restore(None, file_prefix)

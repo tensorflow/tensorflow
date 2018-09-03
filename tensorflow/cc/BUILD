@@ -379,9 +379,11 @@ tf_cc_test(
     srcs = ["gradients/math_grad_test.cc"],
     deps = [
         ":cc_ops",
+        ":client_session",
         ":grad_op_registry",
         ":grad_testutil",
         ":gradient_checker",
+        ":gradients",
         ":math_grad",
         ":testutil",
         "//tensorflow/core:lib_internal",
@@ -626,7 +628,6 @@ tf_cc_binary(
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//tensorflow:darwin": [
             "-lm",
             "-lpthread",

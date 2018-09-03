@@ -226,14 +226,13 @@ class RevNetBenchmark(tf.test.Benchmark):
                              label,
                              device_and_format,
                              defun=False,
-                             execution_mode=None,
-                             compiled=False):
+                             execution_mode=None):
     config = config_.get_hparams_imagenet_56()
     with tfe.execution_mode(execution_mode):
       device, data_format = device_and_format
       model = revnet.RevNet(config=config)
       if defun:
-        model.call = tfe.defun(model.call, compiled=compiled)
+        model.call = tfe.defun(model.call)
       batch_size = 64
       num_burn = 5
       num_iters = 10
@@ -271,8 +270,7 @@ class RevNetBenchmark(tf.test.Benchmark):
                              make_iterator,
                              device_and_format,
                              defun=False,
-                             execution_mode=None,
-                             compiled=False):
+                             execution_mode=None):
     config = config_.get_hparams_imagenet_56()
     with tfe.execution_mode(execution_mode):
       device, data_format = device_and_format

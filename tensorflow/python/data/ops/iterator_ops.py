@@ -220,9 +220,9 @@ class Iterator(checkpointable.CheckpointableBase):
     """Creates a new, uninitialized `Iterator` based on the given handle.
 
     This method allows you to define a "feedable" iterator where you can choose
-    between concrete iterators by feeding a value in a @{tf.Session.run} call.
-    In that case, `string_handle` would be a @{tf.placeholder}, and you would
-    feed it with the value of @{tf.data.Iterator.string_handle} in each step.
+    between concrete iterators by feeding a value in a `tf.Session.run` call.
+    In that case, `string_handle` would be a `tf.placeholder`, and you would
+    feed it with the value of `tf.data.Iterator.string_handle` in each step.
 
     For example, if you had two iterators that marked the current position in
     a training dataset and a test dataset, you could choose which to use in
@@ -362,9 +362,9 @@ class Iterator(checkpointable.CheckpointableBase):
 
     In graph mode, you should typically call this method *once* and use its
     result as the input to another computation. A typical loop will then call
-    @{tf.Session.run} on the result of that computation. The loop will terminate
+    `tf.Session.run` on the result of that computation. The loop will terminate
     when the `Iterator.get_next()` operation raises
-    @{tf.errors.OutOfRangeError}. The following skeleton shows how to use
+    `tf.errors.OutOfRangeError`. The following skeleton shows how to use
     this method when building a training loop:
 
     ```python

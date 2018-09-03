@@ -184,14 +184,16 @@ def validate_distributed_dataset_inputs(distribution_strategy, x, y):
   """Validate all the components of a DistributedValue Dataset input.
 
   Args:
-    distribution_strategy: The current DistributionStrategy using to call
+    distribution_strategy: The current DistributionStrategy used to call
         `fit`/`evaluate`.
     x: Input Dataset DistributedValue object. For example, when we use
         `MirroredStrategy` this is a PerDevice object with a tensor for each
-        device set in the dict.
+        device set in the dict. x can also be a tuple or dict. The keys of the
+        dict should match the names of the input layers of the model.
     y: Target Dataset DistributedValue object. For example, when we use
         `MirroredStrategy` this is a PerDevice object with a tensor for each
-        device set in the dict.
+        device set in the dict. y can also be a tuple or dict. The keys of the
+        dict should match the names of the output layers of the model.
 
   Returns:
     The unwrapped values list of the x and y DistributedValues inputs.
@@ -206,30 +208,50 @@ def validate_distributed_dataset_inputs(distribution_strategy, x, y):
   # and targets to a model should be from a `tf.data.Dataset`.
 
   # If each element of x and y are not tensors, we cannot standardize and
-  # validate the input and targets.`
-  if not tensor_util.is_tensor(x):
-    raise ValueError('Dataset input to the model should be tensors instead they'
-                     ' are of type {}'.format(type(x)))
+  # validate the input and targets.
+  x_values_list = validate_per_device_inputs(distribution_strategy, x)
 
-  if not tensor_util.is_tensor(y):
-    raise ValueError('Dataset input to the model should be tensors instead they'
-                     ' are of type {}'.format(type(y)))
-
-  # At this point both x and y contain tensors in the `DistributedValues`
-  # structure.
-  x_values = distribution_strategy.unwrap(x)
-  y_values = distribution_strategy.unwrap(y)
-
-  # Validate that the shape and dtype of all the elements in x are the same.
-  validate_all_tensor_shapes(x, x_values)
-  validate_all_tensor_types(x, x_values)
-
-  # Similarly for y, we perform the same validation
-  validate_all_tensor_shapes(y, y_values)
-  validate_all_tensor_types(y, y_values)
+  y_values_list = validate_per_device_inputs(distribution_strategy, y)
 
   # Return the unwrapped values to avoid calling `unwrap` a second time.
-  return x_values, y_values
+  return x_values_list, y_values_list
+
+
+def validate_per_device_inputs(distribution_strategy, x):
+  """Validates PerDevice dataset input list.
+
+  Args:
+    distribution_strategy: The current DistributionStrategy used to call
+      `fit`, `evaluate` and `predict`.
+    x: A list of PerDevice objects that represent the input or
+      target values.
+
+  Returns:
+    List containing the first element of each of the PerDevice objects in
+    the input list.
+
+  Raises:
+    ValueError: If any of the objects in the `per_device_list` is not a tensor.
+
+  """
+  # Convert the inputs and targets into a list of PerDevice objects.
+  per_device_list = nest.flatten(x)
+  x_values_list = []
+  for x in per_device_list:
+    if not tensor_util.is_tensor(x):
+      raise ValueError('Dataset input to the model should be tensors instead '
+                       'they are of type {}'.format(type(x)))
+
+    # At this point both x and y contain tensors in the `DistributedValues`
+    # structure.
+    x_values = distribution_strategy.unwrap(x)
+
+    # Validate that the shape and dtype of all the elements in x are the same.
+    validate_all_tensor_shapes(x, x_values)
+    validate_all_tensor_types(x, x_values)
+
+    x_values_list.append(x_values[0])
+  return x_values_list
 
 
 def validate_all_tensor_types(x, x_values):

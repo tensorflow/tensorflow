@@ -2030,6 +2030,130 @@ TEST_F(ConstantFoldingTest, TileWithMultipliesBeingOne) {
   CompareGraphs(want, got);
 }
 
+TEST_F(ConstantFoldingTest, MergeConcat) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Output in1 = ops::Variable(scope.WithOpName("in1"), {4, 6}, DT_FLOAT);
+  Output in2 = ops::Variable(scope.WithOpName("in2"), {4, 6}, DT_FLOAT);
+  Output in3 = ops::Variable(scope.WithOpName("in3"), {4, 6}, DT_FLOAT);
+  Output axis = ops::Const(scope.WithOpName("axis"), 0, {});
+
+  ops::Concat c1(scope.WithOpName("c1"), {in1, in2}, axis);
+  ops::Concat c2(scope.WithOpName("c2"), {Output(c1), in3}, axis);
+
+  GrapplerItem item;
+  item.fetch = {"c2"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef got;
+  Status status = optimizer.Optimize(nullptr, item, &got);
+  TF_EXPECT_OK(status);
+
+  GraphDef want;
+  AddNode("in1", "VariableV2", {}, {}, &want);
+  AddNode("in2", "VariableV2", {}, {}, &want);
+  AddNode("in3", "VariableV2", {}, {}, &want);
+  AddNode("axis", "Const", {}, {}, &want);
+  AddNode("c2", "ConcatV2", {"in1", "in2", "in3", "axis"}, {}, &want);
+
+  CompareGraphs(want, got);
+}
+
+TEST_F(ConstantFoldingTest, MergeConcat_SameInput) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Output in1 = ops::Variable(scope.WithOpName("in1"), {4, 6}, DT_FLOAT);
+  Output in2 = ops::Variable(scope.WithOpName("in2"), {4, 6}, DT_FLOAT);
+  Output in3 = ops::Variable(scope.WithOpName("in3"), {4, 6}, DT_FLOAT);
+  Output axis = ops::Const(scope.WithOpName("axis"), 0, {});
+
+  ops::Concat c1(scope.WithOpName("c1"), {in1, in2}, axis);
+  ops::Concat c2(scope.WithOpName("c2"), {Output(c1), in3, Output(c1)}, axis);
+
+  GrapplerItem item;
+  item.fetch = {"c2"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef got;
+  Status status = optimizer.Optimize(nullptr, item, &got);
+  TF_EXPECT_OK(status);
+
+  GraphDef want;
+  AddNode("in1", "VariableV2", {}, {}, &want);
+  AddNode("in2", "VariableV2", {}, {}, &want);
+  AddNode("in3", "VariableV2", {}, {}, &want);
+  AddNode("axis", "Const", {}, {}, &want);
+  AddNode("c2", "ConcatV2", {"in1", "in2", "in3", "in1", "in2", "axis"}, {},
+          &want);
+
+  CompareGraphs(want, got);
+}
+
+TEST_F(ConstantFoldingTest, MergeConcat_ConcatWithConst) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Output in1 = ops::Variable(scope.WithOpName("in1"), {2, 6}, DT_FLOAT);
+  Output in2 = ops::Variable(scope.WithOpName("in2"), {}, DT_FLOAT);
+  Output in3 = ops::Variable(scope.WithOpName("in3"), {4, 6}, DT_FLOAT);
+  Output axis = ops::Const(scope.WithOpName("axis"), 0, {});
+
+  ops::Concat c1(scope.WithOpName("c1"), {in1, in2}, axis);
+  ops::Concat c2(scope.WithOpName("c2"), {Output(c1), in3}, axis);
+
+  GrapplerItem item;
+  item.fetch = {"c2"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef got;
+  Status status = optimizer.Optimize(nullptr, item, &got);
+  TF_EXPECT_OK(status);
+
+  GraphDef want;
+  AddNode("in1", "VariableV2", {}, {}, &want);
+  AddNode("in2", "VariableV2", {}, {}, &want);
+  AddNode("in3", "VariableV2", {}, {}, &want);
+  AddNode("axis", "Const", {}, {}, &want);
+  AddNode("c2", "ConcatV2", {"in1", "in2", "in3", "axis"}, {}, &want);
+
+  CompareGraphs(want, got);
+}
+
+TEST_F(ConstantFoldingTest, MergeConcat_AxisMismatch) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Output in1 = ops::Variable(scope.WithOpName("in1"), {2, 5}, DT_FLOAT);
+  Output in2 = ops::Variable(scope.WithOpName("in2"), {}, DT_FLOAT);
+  Output in3 = ops::Variable(scope.WithOpName("in3"), {4, 6}, DT_FLOAT);
+  Output axis1 = ops::Const(scope.WithOpName("axis1"), 0, {});
+  Output axis2 = ops::Const(scope.WithOpName("axis2"), 1, {});
+
+  ops::Concat c1(scope.WithOpName("c1"), {in1, in2}, axis2);
+  ops::Concat c2(scope.WithOpName("c2"), {Output(c1), in3}, axis1);
+
+  GrapplerItem item;
+  item.fetch = {"c2"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef got;
+  Status status = optimizer.Optimize(nullptr, item, &got);
+  TF_EXPECT_OK(status);
+
+  GraphDef want;
+  AddNode("in1", "VariableV2", {}, {}, &want);
+  AddNode("in2", "VariableV2", {}, {}, &want);
+  AddNode("in3", "VariableV2", {}, {}, &want);
+  AddNode("axis1", "Const", {}, {}, &want);
+  AddNode("axis2", "Const", {}, {}, &want);
+  AddNode("c1", "ConcatV2", {"in1", "in2", "axis2"}, {}, &want);
+  AddNode("c2", "ConcatV2", {"c1", "in3", "axis1"}, {}, &want);
+
+  CompareGraphs(want, got);
+}
+
 TEST_F(ConstantFoldingTest, PaddingWithZeroSize) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
 
@@ -3045,6 +3169,39 @@ TEST_F(ConstantFoldingTest, TensorArraySize) {
   EXPECT_EQ(2, tensors_actual.size());
   test::ExpectTensorEqual<int32>(tensors_expected[0], tensors_actual[0]);
   test::ExpectTensorEqual<int32>(tensors_expected[1], tensors_actual[1]);
+}
+
+TEST_F(ConstantFoldingTest, FoldingPreservesDenormalFlushing) {
+  // Multiplying min() with 0.1 gives a denormal without FTZ and zero with FTZ.
+  // Make sure constant folding behaves the same way as TensorFlow.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  Output a =
+      ops::Const(s.WithOpName("a"), std::numeric_limits<float>::min(), {1});
+  Output b = ops::Const(s.WithOpName("b"), 0.1f, {1});
+  Output c = ops::Mul(s.WithOpName("c"), a, b);
+
+  GrapplerItem item;
+  item.fetch.push_back("c");
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(1, output.node_size());
+
+  const NodeDef& node_d = output.node(0);
+  EXPECT_EQ("c", node_d.name());
+  EXPECT_EQ("Const", node_d.op());
+
+  std::vector<string> fetch = {"c"};
+  auto tensors_expected = EvaluateNodes(item.graph, fetch);
+  auto tensors = EvaluateNodes(output, fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
 }  // namespace

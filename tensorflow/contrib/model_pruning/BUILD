@@ -113,12 +113,13 @@ py_library(
 
 py_test(
     name = "pruning_utils_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/pruning_utils_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":pruning_utils",
         "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

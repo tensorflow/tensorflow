@@ -120,45 +120,30 @@ xla::XlaOp CreateExpandedFilterMask(const TensorShape& filter_shape,
                  {expanded_filter_shape.dims() - 2});
 }
 
-// Expands a filter of shape [H, W, ..., M, N] to [H, W, ..., M, M*N] by adding
-// zeros for the cross-depth filters. Used to build a depthwise convolution.
-xla::XlaOp ExpandFilterForDepthwiseConvolution(const TensorShape& filter_shape,
-                                               DataType dtype,
-                                               const xla::XlaOp& filter,
-                                               xla::XlaBuilder* builder) {
-  int64 depthwise_multiplier = filter_shape.dim_size(filter_shape.dims() - 1);
-  int64 input_feature = filter_shape.dim_size(filter_shape.dims() - 2);
-  TensorShape expanded_filter_shape =
-      ExpandedFilterShapeForDepthwiseConvolution(filter_shape);
+// Reshapes a filter of shape [H, W, ..., M, N] to [H, W, ..., 1, M*N]. Used to
+// build a depthwise convolution.
+xla::XlaOp ReshapeFilterForDepthwiseConvolution(const TensorShape& filter_shape,
+                                                const xla::XlaOp& filter) {
+  int64 input_feature_dim = filter_shape.dims() - 2;
+  int64 output_feature_dim = filter_shape.dims() - 1;
+  int64 depthwise_multiplier = filter_shape.dim_size(output_feature_dim);
+  int64 input_feature = filter_shape.dim_size(input_feature_dim);
 
   // Create a [H, W, ..., 1, N*M] reshape of the filter.
-  TensorShape implicit_broadcast_filter_shape = expanded_filter_shape;
-  implicit_broadcast_filter_shape.set_dim(
-      implicit_broadcast_filter_shape.dims() - 2, 1);
-  implicit_broadcast_filter_shape.set_dim(
-      implicit_broadcast_filter_shape.dims() - 1,
-      depthwise_multiplier * input_feature);
-  auto implicit_broadcast_filter =
-      xla::Reshape(filter, implicit_broadcast_filter_shape.dim_sizes());
-
-  // Broadcast the filter to  [H, W, ..., M, M*N].
-  auto expanded_zero = CreateExpandedZero(filter_shape, dtype, builder);
-  auto expanded_filter = xla::Add(implicit_broadcast_filter, expanded_zero);
-
-  // If the filter mask is set, choose the broadcasted filter, othwerwise,
-  // choose zero.
-  return xla::Select(CreateExpandedFilterMask(filter_shape, builder),
-                     expanded_filter, expanded_zero);
+  TensorShape implicit_broadcast_filter_shape = filter_shape;
+  implicit_broadcast_filter_shape.set_dim(input_feature_dim, 1);
+  implicit_broadcast_filter_shape.set_dim(output_feature_dim,
+                                          depthwise_multiplier * input_feature);
+  return xla::Reshape(filter, implicit_broadcast_filter_shape.dim_sizes());
 }
 
-// Inverse of ExpandFilterForDepthwiseConvolution.
+// Reduces the results of the convolution with an expanded filter to the
+// non-expanded filter.
 xla::XlaOp ContractFilterForDepthwiseBackprop(XlaOpKernelContext* ctx,
                                               const TensorShape& filter_shape,
                                               DataType dtype,
                                               const xla::XlaOp& filter_backprop,
                                               xla::XlaBuilder* builder) {
-  TensorShape expanded_filter_shape =
-      ExpandedFilterShapeForDepthwiseConvolution(filter_shape);
   auto masked_expanded_filter = xla::Select(
       CreateExpandedFilterMask(filter_shape, builder), filter_backprop,
       CreateExpandedZero(filter_shape, dtype, builder));
@@ -168,8 +153,7 @@ xla::XlaOp ContractFilterForDepthwiseBackprop(XlaOpKernelContext* ctx,
       // ExpandedZero guarantees that only one element is non zero, so there
       // cannot be accumulated precision error.
       xla::Reduce(masked_expanded_filter, XlaHelpers::Zero(builder, dtype),
-                  *ctx->GetOrCreateAdd(dtype),
-                  {expanded_filter_shape.dims() - 2}),
+                  *ctx->GetOrCreateAdd(dtype), {filter_shape.dims() - 2}),
       filter_shape.dim_sizes());
 }
 
@@ -245,15 +229,9 @@ class ConvOp : public XlaOpKernel {
                     "input and filter must have the same depth: ", in_depth,
                     " vs ", input_shape.dim_size(feature_dim)));
 
-    xla::XlaBuilder* b = ctx->builder();
-
     xla::XlaOp filter = ctx->Input(1);
-    TensorShape expanded_filter_shape = filter_shape;
     if (depthwise_) {
-      filter = ExpandFilterForDepthwiseConvolution(
-          filter_shape, ctx->input_type(0), filter, b);
-      expanded_filter_shape =
-          ExpandedFilterShapeForDepthwiseConvolution(filter_shape);
+      filter = ReshapeFilterForDepthwiseConvolution(filter_shape, filter);
     }
 
     xla::ConvolutionDimensionNumbers dims;
@@ -280,14 +258,15 @@ class ConvOp : public XlaOpKernel {
       int64 unused_output_size;
       OP_REQUIRES_OK(
           ctx, GetWindowedOutputSizeVerboseV2(
-                   input_shape.dim_size(dim), expanded_filter_shape.dim_size(i),
+                   input_shape.dim_size(dim), filter_shape.dim_size(i),
                    rhs_dilation[i], window_strides[i], padding_,
                    &unused_output_size, &padding[i].first, &padding[i].second));
     }
 
-    xla::XlaOp conv =
-        xla::ConvGeneralDilated(ctx->Input(0), filter, window_strides, padding,
-                                lhs_dilation, rhs_dilation, dims);
+    xla::XlaOp conv = xla::ConvGeneralDilated(
+        ctx->Input(0), filter, window_strides, padding, lhs_dilation,
+        rhs_dilation, dims,
+        /*feature_group_count=*/depthwise_ ? in_depth : 1);
     ctx->SetOutput(0, conv);
   }
 
@@ -388,7 +367,6 @@ class ConvBackpropInputOp : public XlaOpKernel {
                        expanded_filter_shape, out_backprop_shape, dilations_,
                        strides_, padding_, data_format_, &dims));
 
-    xla::XlaBuilder* b = ctx->builder();
     auto filter = ctx->Input(1);
     auto out_backprop = ctx->Input(2);
 
@@ -425,12 +403,6 @@ class ConvBackpropInputOp : public XlaOpKernel {
       rhs_dilation[i] = dilations_[dim];
     }
 
-    // If this is a depthwise convolution, expand the filter.
-    if (depthwise_) {
-      filter = ExpandFilterForDepthwiseConvolution(
-          filter_shape, ctx->input_type(1), filter, b);
-    }
-
     // Mirror the filter in the spatial dimensions.
     xla::XlaOp mirrored_weights = xla::Rev(filter, kernel_spatial_dims);
 
@@ -438,7 +410,11 @@ class ConvBackpropInputOp : public XlaOpKernel {
     //   = gradients (with padding and dilation) <conv> mirrored_weights
     xla::XlaOp in_backprop = xla::ConvGeneralDilated(
         out_backprop, mirrored_weights, /*window_strides=*/ones, padding,
-        lhs_dilation, rhs_dilation, dnums);
+        lhs_dilation, rhs_dilation, dnums,
+        /*feature_group_count=*/
+        depthwise_ ? out_backprop_shape.dim_size(feature_dim) /
+                         filter_shape.dim_size(num_spatial_dims_ + 1)
+                   : 1);
 
     ctx->SetOutput(0, in_backprop);
   }

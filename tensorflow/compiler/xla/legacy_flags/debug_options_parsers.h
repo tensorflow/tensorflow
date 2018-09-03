@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_LEGACY_FLAGS_DEBUG_OPTIONS_PARSERS_H_
 
 #include <vector>
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
 namespace legacy_flags {
@@ -30,7 +30,7 @@ template <typename T>
 void parse_xla_backend_extra_options(T* extra_options_map,
                                      string comma_separated_values) {
   std::vector<string> extra_options_parts =
-      tensorflow::str_util::Split(comma_separated_values, ',');
+      absl::StrSplit(comma_separated_values, ',');
 
   // The flag contains a comma-separated list of options; some options
   // have arguments following "=", some don't.
@@ -59,8 +59,7 @@ void parse_xla_backend_extra_options(T* extra_options_map,
 inline bool parse_xla_reduce_precision_option(
     HloReducePrecisionOptions* options, string option_string) {
   // Split off "LOCATION" from remainder of string.
-  std::vector<string> eq_split =
-      tensorflow::str_util::Split(option_string, '=');
+  std::vector<string> eq_split = absl::StrSplit(option_string, '=');
   if (eq_split.size() != 2) {
     return false;
   }
@@ -80,26 +79,25 @@ inline bool parse_xla_reduce_precision_option(
   }
 
   // Split off "E,M" from remainder of string.
-  std::vector<string> colon_split =
-      tensorflow::str_util::Split(eq_split[1], ':');
+  std::vector<string> colon_split = absl::StrSplit(eq_split[1], ':');
   if (colon_split.size() != 2) {
     return false;
   }
 
   // Split E and M, and parse.
   std::vector<int32> bitsizes;
-  if (!tensorflow::str_util::SplitAndParseAsInts(colon_split[0], ',',
-                                                 &bitsizes) ||
-      bitsizes.size() != 2) {
-    return false;
+  for (const auto& s : absl::StrSplit(colon_split[0], ',')) {
+    bitsizes.emplace_back();
+    if (!absl::SimpleAtoi(s, &bitsizes.back())) {
+      return false;
+    }
   }
   options->set_exponent_bits(bitsizes[0]);
   options->set_mantissa_bits(bitsizes[1]);
 
   // Split off OPS comma-separated list from remainder of string, if the
   // remainder exists.
-  std::vector<string> semicolon_split =
-      tensorflow::str_util::Split(colon_split[1], ';');
+  std::vector<string> semicolon_split = absl::StrSplit(colon_split[1], ';');
   if (semicolon_split.size() > 2) {
     return false;
   }
@@ -113,8 +111,7 @@ inline bool parse_xla_reduce_precision_option(
       options->add_opcodes_to_suffix(i);
     }
   } else {
-    std::vector<string> opcodes =
-        tensorflow::str_util::Split(opcode_string, ',');
+    std::vector<string> opcodes = absl::StrSplit(opcode_string, ',');
     for (const string& opcode : opcodes) {
       bool found = false;
       for (int i = 0; i < HloOpcodeCount(); i++) {
@@ -132,8 +129,7 @@ inline bool parse_xla_reduce_precision_option(
 
   // Process the NAMES string, if it exists.
   if (semicolon_split.size() == 2) {
-    std::vector<string> opnames =
-        tensorflow::str_util::Split(semicolon_split[1], ',');
+    std::vector<string> opnames = absl::StrSplit(semicolon_split[1], ',');
     for (const string& opname : opnames) {
       if (opname.length() > 0) {
         options->add_opname_substrings_to_suffix(opname);

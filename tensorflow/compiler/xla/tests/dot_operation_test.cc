@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -261,16 +262,14 @@ string PrintDotTestParam(
     const ::testing::TestParamInfo<DotTestParam>& test_param) {
   const DotTestParam& param = test_param.param;
   if (param.has_addend) {
-    return tensorflow::strings::StrCat(param.m, "x", param.k, "x", param.n,
-                                       "_MajorToMinor",
-                                       param.dot_lhs_row_major ? "T" : "F",
-                                       param.dot_rhs_row_major ? "T" : "F",
-                                       param.addend_row_major ? "T" : "F");
+    return absl::StrCat(param.m, "x", param.k, "x", param.n, "_MajorToMinor",
+                        param.dot_lhs_row_major ? "T" : "F",
+                        param.dot_rhs_row_major ? "T" : "F",
+                        param.addend_row_major ? "T" : "F");
   } else {
-    return tensorflow::strings::StrCat(param.m, "x", param.k, "x", param.n,
-                                       "_MajorToMinor",
-                                       param.dot_lhs_row_major ? "T" : "F",
-                                       param.dot_rhs_row_major ? "T" : "F");
+    return absl::StrCat(param.m, "x", param.k, "x", param.n, "_MajorToMinor",
+                        param.dot_lhs_row_major ? "T" : "F",
+                        param.dot_rhs_row_major ? "T" : "F");
   }
 }
 

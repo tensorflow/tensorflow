@@ -1070,6 +1070,8 @@ class PFor(object):
       If y does not need to be converted, it returns y as is. Else it returns
       the "converted value" corresponding to y.
     """
+    if y is None:
+      return None
     if isinstance(y, sparse_tensor.SparseTensor):
       return self._convert_sparse(y)
     output = self._convert_helper(y)

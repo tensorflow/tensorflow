@@ -43,6 +43,7 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.training.checkpointable import data_structures
 from tensorflow.python.training.checkpointable import layer_utils as checkpointable_layer_utils
@@ -393,10 +394,10 @@ class Network(base_layer.Layer):
     no_dependency = isinstance(value, data_structures.NoDependency)
     value = data_structures.sticky_attribute_assignment(
         checkpointable=self, value=value, name=name)
-    if isinstance(value, (
-        base_layer.Layer,
-        Network,
-        data_structures.CheckpointableDataStructure)):
+    if (isinstance(value, (base_layer.Layer,
+                           Network,
+                           data_structures.CheckpointableDataStructure))
+        or checkpointable_layer_utils.has_weights(value)):
       try:
         is_graph_network = self._is_graph_network
       except AttributeError:
@@ -688,14 +689,14 @@ class Network(base_layer.Layer):
   def trainable_weights(self):
     return checkpointable_layer_utils.gather_trainable_weights(
         trainable=self.trainable,
-        sub_layers=self.layers,
+        sub_layers=self._layers,
         extra_variables=self._extra_variables)
 
   @property
   def non_trainable_weights(self):
     return checkpointable_layer_utils.gather_non_trainable_weights(
         trainable=self.trainable,
-        sub_layers=self.layers,
+        sub_layers=self._layers,
         extra_variables=self._extra_variables)
 
   @property
@@ -1455,6 +1456,11 @@ class Network(base_layer.Layer):
              'saved.\n\nConsider using a TensorFlow optimizer from `tf.train`.')
             % (optimizer,))
       self._checkpointable_saver.save(filepath, session=session)
+      # Record this checkpoint so it's visible from tf.train.latest_checkpoint.
+      checkpoint_management.update_checkpoint_state(
+          save_dir=os.path.dirname(filepath),
+          model_checkpoint_path=filepath,
+          all_model_checkpoint_paths=[filepath])
 
   def load_weights(self, filepath, by_name=False):
     """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.

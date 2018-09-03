@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "llvm/IR/DataLayout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -83,7 +84,7 @@ Status GpuTransferManager::EnqueueBuffersToInfeed(
   Status block_status = stream->BlockHostUntilDone();
   if (!block_status.ok()) {
     return InternalError("Failed to complete data transfer on stream %p: %s",
-                         stream, block_status.error_message().c_str());
+                         stream, block_status.error_message());
   }
 
   infeed_manager->EnqueueDestination(std::move(buffers));
@@ -96,7 +97,7 @@ Status GpuTransferManager::EnqueueBuffersToInfeed(
 StatusOr<InfeedBuffer> GpuTransferManager::TransferBufferToInfeedInternal(
     se::StreamExecutor* executor, int64 size, const void* source) {
   if (size > std::numeric_limits<int32>::max()) {
-    return InvalidArgument("Infeed shape is too large: needs %lld bytes", size);
+    return InvalidArgument("Infeed shape is too large: needs %d bytes", size);
   }
 
   if (size == 0) {
@@ -160,9 +161,10 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
         if (ShapeUtil::IsTuple(shape)) {
           return;
         }
-        *buffer = MakeUnique<gpu::OutfeedBuffer>(GetByteSizeRequirement(shape));
+        *buffer = absl::make_unique<gpu::OutfeedBuffer>(
+            GetByteSizeRequirement(shape));
         (*buffer)->set_destination(
-            MakeUnique<MutableBorrowingLiteral>(literal, index));
+            absl::make_unique<MutableBorrowingLiteral>(literal, index));
       });
 
   // Give the tree of buffers to the outfeed mananger. The device will fill it
@@ -179,7 +181,7 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
 }  // namespace xla
 
 static std::unique_ptr<xla::TransferManager> CreateNVPTXTransferManager() {
-  return xla::MakeUnique<xla::gpu::GpuTransferManager>(
+  return absl::make_unique<xla::gpu::GpuTransferManager>(
       /*id=*/stream_executor::cuda::kCudaPlatformId,
       /*pointer_size=*/llvm::DataLayout(xla::gpu::NVPTXCompiler::kDataLayout)
           .getPointerSize(0 /* default address space */));

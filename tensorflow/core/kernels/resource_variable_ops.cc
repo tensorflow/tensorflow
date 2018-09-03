@@ -211,7 +211,8 @@ class AssignVariableOp : public OpKernel {
     OP_REQUIRES(context, dtype_ == context->input(1).dtype(),
                 errors::InvalidArgument(
                     "Variable and value dtypes don't match; respectively, ",
-                    dtype_, " and ", context->input(1).dtype()));
+                    DataTypeString(dtype_), " and ",
+                    DataTypeString(context->input(1).dtype())));
     Var* variable = nullptr;
     const Tensor& value = context->input(1);
     // Note: every resource-variable-manipulating op assumes copy-on-write
@@ -231,12 +232,12 @@ class AssignVariableOp : public OpKernel {
                                   return Status::OK();
                                 }));
     core::ScopedUnref s(variable);
+    mutex_lock ml(*variable->mu());
     OP_REQUIRES(context, variable->tensor()->dtype() == dtype_,
                 errors::InvalidArgument(
                     "Trying to assign variable with wrong dtype. Expected ",
                     DataTypeString(variable->tensor()->dtype()), " got ",
                     DataTypeString(dtype_)));
-    mutex_lock ml(*variable->mu());
     variable->is_initialized = true;
     *variable->tensor() = value;
   }
@@ -267,11 +268,6 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
                                   return Status::OK();
                                 }));
     core::ScopedUnref s(variable);
-    OP_REQUIRES(context, variable->tensor()->dtype() == DT_VARIANT,
-                errors::InvalidArgument(
-                    "Trying to assign variable with wrong dtype. Expected ",
-                    DataTypeString(variable->tensor()->dtype()), " got ",
-                    DataTypeString(DT_VARIANT)));
 
     // For purposes of forwarding DT_VARIANT, we want the least
     // restrictive attr; we already know the input is on host.
@@ -292,6 +288,11 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
         attr);
 
     mutex_lock ml(*variable->mu());
+    OP_REQUIRES(context, variable->tensor()->dtype() == DT_VARIANT,
+                errors::InvalidArgument(
+                    "Trying to assign variable with wrong dtype. Expected ",
+                    DataTypeString(variable->tensor()->dtype()), " got ",
+                    DataTypeString(DT_VARIANT)));
     variable->is_initialized = true;
     *variable->tensor() = Tensor(DT_VARIANT, value.shape());
 

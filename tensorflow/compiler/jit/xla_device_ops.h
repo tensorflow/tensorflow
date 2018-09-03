@@ -215,6 +215,8 @@ class XlaAssignVariableOp : public AsyncOpKernel {
                           AnonymousIteratorHandleOp);                          \
   REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE),              \
                           IteratorGetNextOp);                                  \
+  REGISTER_KERNEL_BUILDER(Name("IteratorGetNextSync").Device(DEVICE),          \
+                          IteratorGetNextSyncOp);                              \
   REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle")                       \
                               .Device(DEVICE)                                  \
                               .HostMemory("string_handle"),                    \

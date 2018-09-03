@@ -1,4 +1,4 @@
-# Bigtable #
+# Google Cloud Bigtable
 
 [Cloud Bigtable](https://cloud.google.com/bigtable/) is a high
 performance storage system that can store and serve training data. This contrib
@@ -13,7 +13,7 @@ Bigtable at high speed, in particular to feed modern accelerators. For
 general-purpose Cloud Bigtable
 APIs, see the [official Cloud Bigtable client library documentation][clientdoc].
 
-[clientdoc]:  https://cloud.google.com/bigtable/docs/reference/libraries
+[clientdoc]: https://cloud.google.com/bigtable/docs/reference/libraries
 
 ## Sample Use
 
@@ -324,8 +324,14 @@ If you encounter a log line that includes the following:
 "filename":"/usr/share/grpc/roots.pem"
 ```
 
-you likely need to copy the [gRPC `roots.pem` file][grpcPem] to
-`/usr/share/grpc/roots.pem` on your local machine.
+you can solve it via either of the following approaches:
+
+* copy the [gRPC `roots.pem` file][grpcPem] to
+  `/usr/share/grpc/roots.pem` on your local machine, which is the default
+  location where gRPC will look for this file
+* export the environment variable `GRPC_DEFAULT_SSL_ROOTS_FILE_PATH` to point to
+  the full path of the gRPC `roots.pem` file on your file system if it's in a
+  different location
 
 [grpcPem]: https://github.com/grpc/grpc/blob/master/etc/roots.pem
 

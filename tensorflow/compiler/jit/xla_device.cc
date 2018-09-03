@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <unordered_set>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -100,7 +102,7 @@ XlaDeviceAllocator* XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
   }
 
   std::unique_ptr<XlaDeviceAllocator> alloc =
-      xla::MakeUnique<XlaDeviceAllocator>();
+      absl::make_unique<XlaDeviceAllocator>();
   XlaDeviceAllocator* alloc_ptr = alloc.get();
   state.allocators_[{backend, device_ordinal}] = std::move(alloc);
   return alloc_ptr;
@@ -183,20 +185,29 @@ const DeviceType& XlaDevice::Metadata::jit_device_type() const {
   return device_type_;
 }
 
-/* static */ Status XlaDevice::GetMetadata(OpKernelContext* ctx,
-                                           const Metadata** metadata) {
+/*static*/ Status XlaDevice::GetMetadataFromDevice(
+    DeviceBase* device, const XlaDevice::Metadata** metadata) {
   *metadata = nullptr;
-  XlaDevice* xla_device =
-      dynamic_cast<XlaDevice*>(ctx->device()->UnderlyingDevice());
+  XlaDevice* xla_device = dynamic_cast<XlaDevice*>(device->UnderlyingDevice());
   if (xla_device == nullptr) {
     return errors::Internal(
-        "Cannot get XLA metadata from non-XLA device \"", ctx->device()->name(),
+        "Cannot get XLA metadata from non-XLA device \"", device->name(),
         "\". GetMetadata must only be called on an XLA device. Either an "
         "internal bug has been triggered, or an XLA-specific op has been "
         "placed on the wrong device.");
   }
   *metadata = &(xla_device->xla_metadata_);
   return Status::OK();
+}
+
+/* static */ Status XlaDevice::GetMetadata(OpKernelContext* ctx,
+                                           const Metadata** metadata) {
+  return GetMetadataFromDevice(ctx->device(), metadata);
+}
+
+/* static */ Status XlaDevice::GetMetadata(OpKernelConstruction* ctx,
+                                           const Metadata** metadata) {
+  return GetMetadataFromDevice(ctx->device(), metadata);
 }
 
 XlaDevice::XlaDevice(
@@ -216,6 +227,8 @@ XlaDevice::XlaDevice(
       transfer_as_literal_(transfer_as_literal),
       shape_representation_fn_(shape_representation_fn) {
   VLOG(1) << "Created XLA device " << jit_device_name << " " << this;
+  thread_pool_.reset(new thread::ThreadPool(options.env, "xla_device",
+                                            /*num_threads=*/1));
 }
 
 XlaDevice::~XlaDevice() {
@@ -262,10 +275,12 @@ Status XlaDevice::EnsureDeviceContextOk() {
 
 Status XlaDevice::EnsureStreamOkLocked(xla::Backend* backend,
                                        const string& name,
-                                       xla::StreamPool::Ptr* stream,
+                                       std::shared_ptr<se::Stream>* stream,
                                        bool* stream_was_changed) {
   if (!(*stream) || !(*stream)->ok()) {
-    TF_ASSIGN_OR_RETURN(*stream, backend->BorrowStream(device_ordinal_));
+    xla::StreamPool::Ptr ptr;
+    TF_ASSIGN_OR_RETURN(ptr, backend->BorrowStream(device_ordinal_));
+    *stream = std::shared_ptr<se::Stream>(std::move(ptr));
     VLOG(1) << "XlaDevice " << this << " new " << name << " "
             << (*stream)->DebugStreamPointers();
     *stream_was_changed = true;
@@ -281,8 +296,8 @@ xla::StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextLocked() {
   TF_RETURN_IF_ERROR(EnsureStreamOkLocked(backend, "stream", &stream_,
                                           &need_new_device_context));
 
-  se::Stream* host_to_device_stream = stream_.get();
-  se::Stream* device_to_host_stream = stream_.get();
+  std::shared_ptr<se::Stream> host_to_device_stream = stream_;
+  std::shared_ptr<se::Stream> device_to_host_stream = stream_;
   if (use_multiple_streams_) {
     TF_RETURN_IF_ERROR(EnsureStreamOkLocked(backend, "host_to_device_stream",
                                             &host_to_device_stream_,
@@ -290,8 +305,8 @@ xla::StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextLocked() {
     TF_RETURN_IF_ERROR(EnsureStreamOkLocked(backend, "device_to_host_stream",
                                             &device_to_host_stream_,
                                             &need_new_device_context));
-    host_to_device_stream = host_to_device_stream_.get();
-    device_to_host_stream = device_to_host_stream_.get();
+    host_to_device_stream = host_to_device_stream_;
+    device_to_host_stream = device_to_host_stream_;
   }
 
   if (!need_new_device_context) {
@@ -304,9 +319,13 @@ xla::StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextLocked() {
   if (device_context_) {
     device_context_->Unref();
   }
+  // The XlaDeviceContext keeps a reference count to the streams, and the
+  // XlaDeviceContext remains live for the duration of a Executor run. This
+  // ensures that the streams remain live for the duration of a run, even if
+  // an error is encountered and the streams are replaced with new ones.
   device_context_ = new XlaDeviceContext(
-      stream_.get(), host_to_device_stream, device_to_host_stream, client(),
-      transfer_as_literal_, shape_representation_fn_);
+      stream_, host_to_device_stream, device_to_host_stream, client(),
+      transfer_as_literal_, shape_representation_fn_, thread_pool_.get());
   VLOG(1) << "XlaDevice " << this << " new XlaDeviceContext "
           << device_context_;
 
@@ -318,7 +337,7 @@ xla::StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextLocked() {
   // to those methods; see the bug for details. Our only saving grace at the
   // moment is that this race doesn't seem to occur in practice.
   if (use_gpu_device_info_) {
-    auto gpu_device_info = MakeUnique<GpuDeviceInfo>();
+    auto gpu_device_info = absl::make_unique<GpuDeviceInfo>();
     gpu_device_info->stream = stream_.get();
     gpu_device_info->default_context = device_context_;
     set_tensorflow_gpu_device_info(gpu_device_info.get());
@@ -355,11 +374,7 @@ Status XlaDevice::FillContextMap(const Graph* graph,
 void XlaDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   VLOG(2) << "XlaDevice::Compute " << op_kernel->name() << ":"
           << op_kernel->type_string();
-  // When Xprof profiling is off (which is the default), constructing the
-  // activity is simple enough that its overhead is negligible.
-  tracing::ScopedActivity activity(op_kernel->name(), op_kernel->type_string(),
-                                   op_kernel->IsExpensive());
-  op_kernel->Compute(context);
+  TracingDevice::Compute(op_kernel, context);
 }
 
 void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
@@ -369,6 +384,22 @@ void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
   tracing::ScopedActivity activity(op_kernel->name(), op_kernel->type_string(),
                                    op_kernel->IsExpensive());
   op_kernel->ComputeAsync(context, done);
+}
+
+Status XlaDevice::Sync() {
+  VLOG(1) << "XlaDevice::Sync";
+  std::shared_ptr<se::Stream> stream;
+  {
+    mutex_lock lock(mu_);
+    stream = stream_;
+  }
+  if (!stream) return Status::OK();
+
+  if (!stream->parent()->SynchronizeAllActivity() || !stream->ok()) {
+    return errors::Internal("XlaDevice::Sync() failed.");
+  }
+  VLOG(1) << "XlaDevice::Sync completed";
+  return Status::OK();
 }
 
 Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,

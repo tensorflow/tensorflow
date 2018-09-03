@@ -172,6 +172,7 @@ cc_library(
         "expand_dims.cc",
         "fake_quant.cc",
         "floor.cc",
+        "floor_div.cc",
         "fully_connected.cc",
         "gather.cc",
         "hashtable_lookup.cc",
@@ -211,6 +212,7 @@ cc_library(
         "transpose_conv.cc",
         "unidirectional_sequence_lstm.cc",
         "unidirectional_sequence_rnn.cc",
+        "unpack.cc",
     ],
     hdrs = [
         "padding.h",
@@ -225,6 +227,7 @@ cc_library(
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string_util",
+        "//tensorflow/contrib/lite:util",
         "//tensorflow/contrib/lite/kernels:gemm_support",
         "//tensorflow/contrib/lite/kernels/internal:audio_utils",
         "//tensorflow/contrib/lite/kernels/internal:kernel_utils",
@@ -1190,6 +1193,34 @@ tf_cc_test(
     name = "logical_test",
     size = "small",
     srcs = ["logical_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "unpack_test",
+    size = "small",
+    srcs = ["unpack_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "floor_div_test",
+    size = "small",
+    srcs = ["floor_div_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",

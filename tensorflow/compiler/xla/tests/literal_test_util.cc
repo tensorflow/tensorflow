@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/literal_comparison.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -35,8 +35,7 @@ void WriteLiteralToTempFile(const LiteralSlice& literal, const string& name) {
   int64 now_usec = tensorflow::Env::Default()->NowMicros();
   string filename = tensorflow::io::JoinPath(
       tensorflow::testing::TmpDir(),
-      tensorflow::strings::Printf("tempfile-%s-%llx-%s", get_hostname().c_str(),
-                                  now_usec, name.c_str()));
+      absl::StrFormat("tempfile-%s-%x-%s", get_hostname(), now_usec, name));
   TF_CHECK_OK(tensorflow::WriteBinaryProto(tensorflow::Env::Default(), filename,
                                            literal.ToProto()));
   LOG(ERROR) << "wrote to " << name << " file: " << filename;
@@ -94,7 +93,7 @@ void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
 
 /* static */ ::testing::AssertionResult LiteralTestUtil::NearOrEqual(
     const LiteralSlice& expected, const LiteralSlice& actual,
-    const tensorflow::gtl::optional<ErrorSpec>& error) {
+    const absl::optional<ErrorSpec>& error) {
   if (error.has_value()) {
     VLOG(1) << "Expects near";
     return StatusToAssertion(literal_comparison::Near(

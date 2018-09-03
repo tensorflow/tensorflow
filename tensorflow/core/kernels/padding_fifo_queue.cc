@@ -347,7 +347,7 @@ Status HandleElementToLargerSliceWithRank(const Tensor& element, Tensor* parent,
     default:
       return errors::Unimplemented(
           "HandleElementToLargerSliceWithRank Unhandled data type: ",
-          element.dtype());
+          DataTypeString(element.dtype()));
   }
 }
 
@@ -392,7 +392,7 @@ Status PaddingFIFOQueue::SetElementZero(Tensor* element) {
   TF_CALL_ALL_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
   return errors::Unimplemented("SetElementZero Unhandled data type: ",
-                               element->dtype());
+                               DataTypeString(element->dtype()));
 }
 
 std::vector<TensorShape> PaddingFIFOQueue::ConvertShapesPartialDimensionsToZero(

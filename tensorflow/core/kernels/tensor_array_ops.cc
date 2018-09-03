@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 #if GOOGLE_CUDA
@@ -683,7 +684,7 @@ class TensorArrayPackOrGatherOp : public OpKernel {
         output_tensor->shaped<T, 2>({1, output_shape.num_elements()});
 
     // Insert the first value
-    input_tensors_flat.emplace_back(new ConstMatrix(
+    input_tensors_flat.push_back(MakeUnique<ConstMatrix>(
         value_0_t->shaped<T, 2>({1, value_0_t->NumElements()})));
 
     for (int i = 1; i < num_indices; ++i) {
@@ -694,8 +695,8 @@ class TensorArrayPackOrGatherOp : public OpKernel {
               "TensorArray has inconsistent shapes.  Index 0 has shape: ",
               value_0_t->shape().DebugString(), " but index ", i,
               " has shape: ", value_t->shape().DebugString()));
-      input_tensors_flat.emplace_back(
-          new ConstMatrix(value_t->shaped<T, 2>({1, value_t->NumElements()})));
+      input_tensors_flat.push_back(MakeUnique<ConstMatrix>(
+          value_t->shaped<T, 2>({1, value_t->NumElements()})));
     }
 
 #if GOOGLE_CUDA
@@ -922,7 +923,7 @@ class TensorArrayConcatOp : public OpKernel {
     for (size_t i = 0; i < values.size(); ++i) {
       const Tensor* value_t = value_tensors[i];
       if (value_t->NumElements() > 0) {
-        input_tensors_flat.emplace_back(new ConstMatrix(
+        input_tensors_flat.push_back(MakeUnique<ConstMatrix>(
             value_t->shaped<T, 2>({1, value_t->NumElements()})));
       }
     }
@@ -1118,8 +1119,8 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
         {1, num_values, element_shape.num_elements()});
 
     Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, 0, 0};
-    Eigen::DSizes<Eigen::DenseIndex, 3> sizes{1, 1,
-                                              element_shape.num_elements()};
+    Eigen::DSizes<Eigen::DenseIndex, 3> sizes{
+        1, 1, static_cast<Eigen::DenseIndex>(element_shape.num_elements())};
 
     std::vector<PersistentTensor> write_values;
     write_values.reserve(num_values);
@@ -1314,9 +1315,11 @@ class TensorArraySplitOp : public OpKernel {
       PersistentTensor persistent_tensor;
 
       int64 previous_length = (i == 0) ? 0 : cumulative_lengths[i - 1];
-      Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, previous_length, 0};
-      Eigen::DSizes<Eigen::DenseIndex, 3> sizes{1, tensor_lengths_t(i),
-                                                elements_per_row};
+      Eigen::DSizes<Eigen::DenseIndex, 3> indices{
+          0, static_cast<Eigen::DenseIndex>(previous_length), 0};
+      Eigen::DSizes<Eigen::DenseIndex, 3> sizes{
+          1, static_cast<Eigen::DenseIndex>(tensor_lengths_t(i)),
+          static_cast<Eigen::DenseIndex>(elements_per_row)};
 
       OP_REQUIRES_OK(ctx, ctx->allocate_persistent(
                               tensor_array->ElemType(), element_shapes[i],

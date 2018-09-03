@@ -301,7 +301,6 @@ tensorflow/core/ops/array_grad.cc
 tensorflow/core/kernels/spacetobatch_functor.cc
 tensorflow/core/kernels/spacetobatch_op.cc
 tensorflow/core/kernels/batchtospace_op.cc
-tensorflow/core/kernels/warn_about_ints.cc
 tensorflow/core/kernels/segment_reduction_ops.cc
 tensorflow/core/ops/audio_ops.cc
 tensorflow/core/kernels/decode_proto_op.cc

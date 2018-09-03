@@ -46,7 +46,7 @@ class MovingAverageOptimizerTest(test.TestCase):
   def _helpTestRun(self, use_resource=False):
     for sequential_update in [True, False]:
       for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-        with self.test_session(graph=ops.Graph()) as sess:
+        with self.session(graph=ops.Graph()) as sess:
           orig_val0 = [1.0, 2.0]
           orig_val1 = [3.0, 4.0]
           var0 = variable_scope.get_variable(
@@ -165,7 +165,7 @@ class MovingAverageOptimizerTest(test.TestCase):
             self.assertLess(avg_val1[i], orig_val1[i])
 
   def testFailWhenSaverCreatedBeforeInitialized(self):
-    with self.test_session():
+    with self.cached_session():
       var = variables.Variable([1.0], name='var', dtype=dtypes.float32)
       opt = moving_average_optimizer.MovingAverageOptimizer(
           gradient_descent.GradientDescentOptimizer(learning_rate=2.0))
@@ -187,7 +187,7 @@ class MovingAverageOptimizerTest(test.TestCase):
         self.apply_gradients_called = True
         return super(WrapperOptimizer, self).apply_gradients(*args, **kwargs)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       var = variables.Variable([1.2], name='var', dtype=dtypes.float32)
       loss = var ** 2
       wrapper_opt = WrapperOptimizer(learning_rate=2.0)
