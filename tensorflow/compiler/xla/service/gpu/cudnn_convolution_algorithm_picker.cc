@@ -193,6 +193,12 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
   // concurrently and then run them sequentially.
   tensorflow::mutex_lock lock = LockGpu(stream_exec_);
 
+  // Make sure any previous activity on this executor is done. We don't want to
+  // interfere with programs that are still running on the GPU.
+  if (!stream_exec_->SynchronizeAllActivity()) {
+    return InternalError("Failed to synchronize GPU for autotuning.");
+  }
+
   // Create a stream for us to do our work on.
   se::Stream stream{stream_exec_};
   stream.Init();
