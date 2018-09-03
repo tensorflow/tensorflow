@@ -51,7 +51,8 @@ class CudnnConvolutionAlgorithmPicker : public HloPassInterface {
   StatusOr<std::tuple<int64, bool, int64>> PickBestAlgorithm(
       CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
       const Shape& output_shape, const Window& window,
-      const ConvolutionDimensionNumbers& dnums, HloInstruction* instr);
+      const ConvolutionDimensionNumbers& dnums, int64 feature_group_count,
+      HloInstruction* instr);
 
   se::StreamExecutor* stream_exec_;                   // never null
   DeviceMemoryAllocator* allocator_;                  // may be null

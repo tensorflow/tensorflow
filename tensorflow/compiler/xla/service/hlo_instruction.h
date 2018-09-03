@@ -1475,6 +1475,8 @@ class HloInstruction {
   // dimension and output feature dimension.
   int64 feature_group_count() const;
 
+  void set_feature_group_count(int64 feature_group_count);
+
   // Delegates to HloSelectAndScatterInstruction::select.
   HloComputation* select() const;
 

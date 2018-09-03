@@ -385,6 +385,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             ->set_convolution_dimension_numbers(
                 proto.convolution_dimension_numbers());
       }
+      static_cast<HloCustomCallInstruction*>(instruction.get())
+          ->set_feature_group_count(
+              std::max(static_cast<int64>(proto.feature_group_count()), 1LL));
       break;
     case HloOpcode::kPad:
       TF_RET_CHECK(proto.operand_ids_size() == 2)
@@ -3269,7 +3272,15 @@ void HloInstruction::set_convolution_dimension_numbers(
 }
 
 int64 HloInstruction::feature_group_count() const {
-  return Cast<HloConvolutionInstruction>(this)->feature_group_count();
+  if (auto convolution = DynCast<HloConvolutionInstruction>(this)) {
+    return convolution->feature_group_count();
+  }
+  return Cast<HloCustomCallInstruction>(this)->feature_group_count();
+}
+
+void HloInstruction::set_feature_group_count(int64 feature_group_count) {
+  Cast<HloCustomCallInstruction>(this)->set_feature_group_count(
+      feature_group_count);
 }
 
 HloComputation* HloInstruction::select() const {

@@ -1660,6 +1660,7 @@ HloInstructionProto HloConvolutionInstruction::ToProto() const {
   *proto.mutable_window() = window_;
   *proto.mutable_convolution_dimension_numbers() =
       convolution_dimension_numbers_;
+  proto.set_feature_group_count(feature_group_count_);
   return proto;
 }
 
@@ -1681,6 +1682,9 @@ bool HloConvolutionInstruction::IdenticalSlowPath(
         eq_computations) const {
   const auto& casted_other =
       static_cast<const HloConvolutionInstruction&>(other);
+  if (feature_group_count_ != other.feature_group_count()) {
+    return false;
+  }
   return protobuf_util::ProtobufEquals(window(), casted_other.window()) &&
          protobuf_util::ProtobufEquals(
              convolution_dimension_numbers(),
@@ -1793,8 +1797,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::string_view custom_call_target)
     : HloInstruction(HloOpcode::kCustomCall, shape),
-      custom_call_target_(custom_call_target.begin(),
-                          custom_call_target.end()) {
+      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      feature_group_count_(1) {
   for (auto operand : operands) {
     AppendOperand(operand);
   }
@@ -1810,6 +1814,7 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
         *convolution_dimension_numbers_;
   }
   proto.set_custom_call_target(custom_call_target_);
+  proto.set_feature_group_count(feature_group_count_);
   return proto;
 }
 
@@ -1823,6 +1828,9 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
     extra.push_back(StrCat(
         "dim_labels=",
         ConvolutionDimensionNumbersToString(*convolution_dimension_numbers_)));
+  }
+  if (feature_group_count_ != 1) {
+    extra.push_back(StrCat("feature_group_count=", feature_group_count_));
   }
   // By contract, we print the custom call target even if
   // options.print_subcomputation_mode() == kOff, because the call target is not
@@ -1851,6 +1859,9 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
            casted_other.convolution_dimension_numbers()))) {
     return false;
   }
+  if (feature_group_count_ != casted_other.feature_group_count_) {
+    return false;
+  }
   return custom_call_target_ == casted_other.custom_call_target_;
 }
 
@@ -1866,6 +1877,7 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
   if (convolution_dimension_numbers_ != nullptr) {
     cloned->set_convolution_dimension_numbers(*convolution_dimension_numbers_);
   }
+  cloned->set_feature_group_count(feature_group_count_);
   return std::move(cloned);
 }
 
