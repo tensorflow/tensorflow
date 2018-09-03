@@ -180,8 +180,7 @@ TEST_F(NNGradTest, LeakyReluGradGrad) {
   // Avoid input values where Leaky ReLU gradient is not well defined (around
   // zero).
   Tensor x_init_value = test::AsTensor<float>(
-      {2.3f, 1.9f, 1.5f, 1.1f, 0.7f, 0.3f, -0.1f, -0.5f, -0.9f, -1.3f},
-      {5, 2});
+      {2.3f, 1.9f, 1.5f, 1.1f, 0.7f, 0.3f, -0.1f, -0.5f, -0.9f, -1.3f}, {5, 2});
   Tensor features = test::AsTensor<float>(
       {-0.9f, -0.7f, -0.5f, -0.3f, -0.1f, 0.1f, 0.3f, 0.5f, 0.7f, 0.9f},
       {5, 2});

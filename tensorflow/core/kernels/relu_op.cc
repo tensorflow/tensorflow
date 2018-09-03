@@ -106,15 +106,15 @@ namespace functor {
                                                                                \
   template <>                                                                  \
   void LeakyRelu<GPUDevice, T>::operator()(                                    \
-      const GPUDevice& d, typename TTypes<T>::ConstTensor features,            \
-      T alpha, typename TTypes<T>::Tensor activations);                        \
+      const GPUDevice& d, typename TTypes<T>::ConstTensor features, T alpha,   \
+      typename TTypes<T>::Tensor activations);                                 \
   extern template struct LeakyRelu<GPUDevice, T>;                              \
                                                                                \
   template <>                                                                  \
   void LeakyReluGrad<GPUDevice, T>::operator()(                                \
       const GPUDevice& d, typename TTypes<T>::ConstTensor gradients,           \
-      typename TTypes<T>::ConstTensor features,                                \
-      T alpha, typename TTypes<T>::Tensor backprops);                          \
+      typename TTypes<T>::ConstTensor features, T alpha,                       \
+      typename TTypes<T>::Tensor backprops);                                   \
   extern template struct LeakyReluGrad<GPUDevice, T>;                          \
                                                                                \
   template <>                                                                  \
