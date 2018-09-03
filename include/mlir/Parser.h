@@ -22,29 +22,18 @@
 #ifndef MLIR_PARSER_H
 #define MLIR_PARSER_H
 
-#include <functional>
-
 namespace llvm {
   class SourceMgr;
-  class SMDiagnostic;
 } // end namespace llvm
 
 namespace mlir {
 class Module;
 class MLIRContext;
 
-using SMDiagnosticHandlerTy =
-    std::function<void(const llvm::SMDiagnostic &error)>;
-
-/// Default error reproter that prints out the error using the SourceMgr of the
-/// error.
-void defaultErrorReporter(const llvm::SMDiagnostic &error);
-
 /// This parses the file specified by the indicated SourceMgr and returns an
-/// MLIR module if it was valid.  If not, the errorReporter is used to report
-/// the error diagnostics and this function returns null.
-Module *parseSourceFile(llvm::SourceMgr &sourceMgr, MLIRContext *context,
-                        SMDiagnosticHandlerTy errorReporter = nullptr);
+/// MLIR module if it was valid.  If not, the error message is emitted through
+/// the error handler registered in the context, and a null pointer is returned.
+Module *parseSourceFile(llvm::SourceMgr &sourceMgr, MLIRContext *context);
 
 } // end namespace mlir
 

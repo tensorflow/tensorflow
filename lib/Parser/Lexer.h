@@ -26,11 +26,12 @@
 #include "Token.h"
 
 namespace mlir {
+class Location;
 
 /// This class breaks up the current file into a token stream.
 class Lexer {
   llvm::SourceMgr &sourceMgr;
-  const SMDiagnosticHandlerTy errorReporter;
+  MLIRContext *context;
 
   StringRef curBuffer;
   const char *curPtr;
@@ -38,16 +39,20 @@ class Lexer {
   Lexer(const Lexer&) = delete;
   void operator=(const Lexer&) = delete;
 public:
- explicit Lexer(llvm::SourceMgr &sourceMgr,
-                SMDiagnosticHandlerTy errorReporter);
+  explicit Lexer(llvm::SourceMgr &sourceMgr, MLIRContext *context);
 
- llvm::SourceMgr &getSourceMgr() { return sourceMgr; }
+  llvm::SourceMgr &getSourceMgr() { return sourceMgr; }
 
- Token lexToken();
+  Token lexToken();
 
- /// Change the position of the lexer cursor.  The next token we lex will start
- /// at the designated point in the input.
- void resetPointer(const char *newPointer) { curPtr = newPointer; }
+  /// Encode the specified source location information into a Location object
+  /// for attachment to the IR or error reporting.
+  Location *getEncodedSourceLocation(llvm::SMLoc loc);
+
+  /// Change the position of the lexer cursor.  The next token we lex will start
+  /// at the designated point in the input.
+  void resetPointer(const char *newPointer) { curPtr = newPointer; }
+
 private:
   // Helpers.
   Token formToken(Token::Kind kind, const char *tokStart) {

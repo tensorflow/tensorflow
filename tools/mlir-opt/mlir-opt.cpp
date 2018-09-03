@@ -22,6 +22,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
@@ -40,6 +41,7 @@
 
 using namespace mlir;
 using namespace llvm;
+using llvm::SMLoc;
 
 static cl::opt<std::string>
 inputFilename(cl::Positional, cl::desc("<input file>"), cl::init("-"));
@@ -49,8 +51,16 @@ outputFilename("o", cl::desc("Output filename"), cl::value_desc("filename"),
                cl::init("-"));
 
 static cl::opt<bool>
-checkParserErrors("check-parser-errors", cl::desc("Check for parser errors"),
-                  cl::init(false));
+    splitInputFile("split-input-file",
+                   cl::desc("Split the input file into pieces and process each "
+                            "chunk independently"),
+                   cl::init(false));
+
+static cl::opt<bool>
+    verifyDiagnostics("verify",
+                      cl::desc("Check that emitted diagnostics match "
+                               "expected-* lines on the corresponding line"),
+                      cl::init(false));
 
 enum Passes {
   ConvertToCFG,
@@ -93,18 +103,56 @@ static std::unique_ptr<ToolOutputFile> getOutputStream() {
 // context initializations (e.g., op registrations).
 extern void initializeMLIRContext(MLIRContext *ctx);
 
-/// Parses the memory buffer and, if successfully parsed, prints the parsed
-/// output. Optionally, convert ML functions into CFG functions.
-/// TODO: pull parsing and printing into separate functions.
-OptResult parseAndPrintMemoryBuffer(std::unique_ptr<MemoryBuffer> buffer) {
-  // Tell sourceMgr about this buffer, which is what the parser will pick up.
-  SourceMgr sourceMgr;
-  sourceMgr.AddNewSourceBuffer(std::move(buffer), SMLoc());
+/// Given a MemoryBuffer along with a line and column within it, return the
+/// location being referenced.
+static SMLoc getLocFromLineAndCol(MemoryBuffer &membuf, unsigned lineNo,
+                                  unsigned columnNo) {
+  // TODO: This should really be upstreamed to be a method on llvm::SourceMgr.
+  // Doing so would allow it to use the offset cache that is already maintained
+  // by SrcBuffer, making this more efficient.
 
-  // Parse the input file.
-  MLIRContext context;
-  initializeMLIRContext(&context);
-  std::unique_ptr<Module> module(parseSourceFile(sourceMgr, &context));
+  // Scan for the correct line number.
+  const char *position = membuf.getBufferStart();
+  const char *end = membuf.getBufferEnd();
+
+  // We start counting line and column numbers from 1.
+  --lineNo;
+  --columnNo;
+
+  while (position < end && lineNo) {
+    auto curChar = *position++;
+
+    // Scan for newlines.  If this isn't one, ignore it.
+    if (curChar != '\r' && curChar != '\n')
+      continue;
+
+    // We saw a line break, decrement our counter.
+    --lineNo;
+
+    // Check for \r\n and \n\r and treat it as a single escape.  We know that
+    // looking past one character is safe because MemoryBuffer's are always nul
+    // terminated.
+    if (*position != curChar && (*position == '\r' || *position == '\n'))
+      ++position;
+  }
+
+  // If the line/column counter was invalid, return a pointer to the start of
+  // the buffer.
+  if (lineNo || position + columnNo > end)
+    return SMLoc::getFromPointer(membuf.getBufferStart());
+
+  // Otherwise return the right pointer.
+  return SMLoc::getFromPointer(position + columnNo);
+}
+
+/// Perform the actions on the input file indicated by the command line flags
+/// within the specified context.
+///
+/// This typically parses the main source file, runs zero or more optimization
+/// passes, then prints the output.
+///
+static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
+  std::unique_ptr<Module> module(parseSourceFile(sourceMgr, context));
   if (!module)
     return OptFailure;
 
@@ -138,115 +186,156 @@ OptResult parseAndPrintMemoryBuffer(std::unique_ptr<MemoryBuffer> buffer) {
   auto output = getOutputStream();
   module->print(output->os());
   output->keep();
-
   return OptSuccess;
 }
 
-/// Split the memory buffer into multiple buffers using the marker -----.
-OptResult
-splitMemoryBufferForErrorChecking(std::unique_ptr<MemoryBuffer> buffer) {
-  const char marker[] = "-----";
-  SmallVector<StringRef, 2> sourceBuffers;
-  buffer->getBuffer().split(sourceBuffers, marker);
+/// Parses the memory buffer.  If successfully, run a series of passes against
+/// it and print the result.
+static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
+  // Tell sourceMgr about this buffer, which is what the parser will pick up.
+  SourceMgr sourceMgr;
+  auto &buffer = *ownedBuffer;
+  sourceMgr.AddNewSourceBuffer(std::move(ownedBuffer), SMLoc());
 
-  // Error reporter that verifies error reports matches expected error
-  // substring.
-  // TODO: Only checking for error cases below. Could be expanded to other kinds
-  // of diagnostics.
-  // TODO: Enable specifying errors on different lines (@-1).
-  // TODO: Currently only checking if substring matches, enable regex checking.
-  OptResult opt_result = OptSuccess;
-  SourceMgr fileSourceMgr;
-  fileSourceMgr.AddNewSourceBuffer(std::move(buffer), SMLoc());
+  // Parse the input file.
+  MLIRContext context;
+  initializeMLIRContext(&context);
 
-  // Record the expected errors's position, substring and whether it was seen.
-  struct ExpectedError {
-    int lineNo;
-    StringRef substring;
-    SMLoc fileLoc;
-    bool matched;
-  };
+  // If we are in verify mode then we have a lot of work to do, otherwise just
+  // perform the actions without worrying about it.
+  if (!verifyDiagnostics) {
 
-  // Tracks offset of subbuffer into original buffer.
-  const char *fileOffset =
-      fileSourceMgr.getMemoryBuffer(fileSourceMgr.getMainFileID())
-          ->getBufferStart();
-
-  for (auto &subbuffer : sourceBuffers) {
-    SourceMgr sourceMgr;
-    // Tell sourceMgr about this buffer, which is what the parser will pick up.
-    sourceMgr.AddNewSourceBuffer(MemoryBuffer::getMemBufferCopy(subbuffer),
-                                 SMLoc());
-
-    // Extract the expected errors.
-    llvm::Regex expected("expected-error *(@[+-][0-9]+)? *{{(.*)}}");
-    SmallVector<ExpectedError, 2> expectedErrors;
-    SmallVector<StringRef, 100> lines;
-    subbuffer.split(lines, '\n');
-    size_t bufOffset = 0;
-    for (int lineNo = 0; lineNo < lines.size(); ++lineNo) {
-      SmallVector<StringRef, 3> matches;
-      if (expected.match(lines[lineNo], &matches)) {
-        // Point to the start of expected-error.
-        SMLoc errorStart =
-            SMLoc::getFromPointer(fileOffset + bufOffset +
-                                  lines[lineNo].size() - matches[2].size() - 2);
-        ExpectedError expErr{lineNo + 1, matches[2], errorStart, false};
-        int offset;
-        if (!matches[1].empty() &&
-            !matches[1].drop_front().getAsInteger(0, offset)) {
-          expErr.lineNo += offset;
-        }
-        expectedErrors.push_back(expErr);
+    // Register a simple diagnostic handler that prints out info with context.
+    context.registerDiagnosticHandler([&](Location *location, StringRef message,
+                                          MLIRContext::DiagnosticKind kind) {
+      unsigned line = 1, column = 1;
+      if (auto fileLoc = dyn_cast<FileLineColLoc>(location)) {
+        line = fileLoc->getLine();
+        column = fileLoc->getColumn();
       }
-      bufOffset += lines[lineNo].size() + 1;
-    }
 
-    // Error checker that verifies reported error was expected.
-    auto checker = [&](const SMDiagnostic &err) {
-      for (auto &e : expectedErrors) {
-        if (err.getLineNo() == e.lineNo &&
-            err.getMessage().contains(e.substring)) {
-          e.matched = true;
-          return;
-        }
-      }
-      // Report error if no match found.
-      const auto &sourceMgr = *err.getSourceMgr();
-      const char *bufferStart =
-          sourceMgr.getMemoryBuffer(sourceMgr.getMainFileID())
-              ->getBufferStart();
+      auto unexpectedLoc = getLocFromLineAndCol(buffer, line, column);
+      sourceMgr.PrintMessage(unexpectedLoc, SourceMgr::DK_Error, message);
+    });
 
-      size_t offset = err.getLoc().getPointer() - bufferStart;
-      SMLoc loc = SMLoc::getFromPointer(fileOffset + offset);
-      fileSourceMgr.PrintMessage(loc, SourceMgr::DK_Error,
-                                 "unexpected error: " + err.getMessage());
-      opt_result = OptFailure;
-    };
-
-    // Parse the input file.
-    MLIRContext context;
-    initializeMLIRContext(&context);
-    std::unique_ptr<Module> module(
-        parseSourceFile(sourceMgr, &context, checker));
-
-    // Verify that all expected errors were seen.
-    for (auto err : expectedErrors) {
-      if (!err.matched) {
-        SMRange range(err.fileLoc,
-                      SMLoc::getFromPointer(err.fileLoc.getPointer() +
-                                            err.substring.size()));
-        fileSourceMgr.PrintMessage(
-            err.fileLoc, SourceMgr::DK_Error,
-            "expected error \"" + err.substring + "\" was not produced", range);
-        opt_result = OptFailure;
-      }
-    }
-
-    fileOffset += subbuffer.size() + strlen(marker);
+    // Run the test actions.
+    return performActions(sourceMgr, &context);
   }
 
-  return opt_result;
+  // Keep track of the result of this file processing.  If there are no issues,
+  // then we succeed.
+  auto result = OptSuccess;
+
+  // Record the expected error's position, substring and whether it was seen.
+  struct ExpectedError {
+    unsigned lineNo;
+    StringRef substring;
+    SMLoc fileLoc;
+    bool matched = false;
+  };
+  SmallVector<ExpectedError, 2> expectedErrors;
+
+  // Error checker that verifies reported error was expected.
+  auto checker = [&](Location *location, StringRef message,
+                     MLIRContext::DiagnosticKind kind) {
+    unsigned line = 1, column = 1;
+    if (auto *fileLoc = dyn_cast<FileLineColLoc>(location)) {
+      line = fileLoc->getLine();
+      column = fileLoc->getColumn();
+    }
+
+    // If this was an expected error, remember that we saw it and return.
+    for (auto &e : expectedErrors) {
+      if (line == e.lineNo && message.contains(e.substring)) {
+        e.matched = true;
+        return;
+      }
+    }
+
+    // If this error wasn't expected, produce an error out of mlir-opt saying
+    // so.
+    auto unexpectedLoc = getLocFromLineAndCol(buffer, line, column);
+    sourceMgr.PrintMessage(unexpectedLoc, SourceMgr::DK_Error,
+                           "unexpected error: " + Twine(message));
+    result = OptFailure;
+  };
+
+  // Scan the file for expected-* designators and register a callback for the
+  // error handler.
+  // Extract the expected errors from the file.
+  llvm::Regex expected("expected-error *(@[+-][0-9]+)? *{{(.*)}}");
+  SmallVector<StringRef, 100> lines;
+  buffer.getBuffer().split(lines, '\n');
+  for (unsigned lineNo = 0, e = lines.size(); lineNo < e; ++lineNo) {
+    SmallVector<StringRef, 3> matches;
+    if (expected.match(lines[lineNo], &matches)) {
+      // Point to the start of expected-error.
+      SMLoc errorStart = SMLoc::getFromPointer(matches[0].data());
+      ExpectedError expErr{lineNo + 1, matches[2], errorStart, false};
+      auto offsetMatch = matches[1];
+      if (!offsetMatch.empty()) {
+        int offset;
+        // Get the integer value without the @ and +/- prefix.
+        if (!offsetMatch.drop_front(2).getAsInteger(0, offset)) {
+          if (offsetMatch[1] == '+')
+            expErr.lineNo += offset;
+          else
+            expErr.lineNo -= offset;
+        }
+      }
+      expectedErrors.push_back(expErr);
+    }
+  }
+
+  // Finally, register the error handler to capture them.
+  context.registerDiagnosticHandler(checker);
+
+  // Do any processing requested by command line flags.  We don't care whether
+  // these actions succeed or fail, we only care what diagnostics they produce
+  // and whether they match our expectations.
+  performActions(sourceMgr, &context);
+
+  // Verify that all expected errors were seen.
+  for (auto &err : expectedErrors) {
+    if (!err.matched) {
+      SMRange range(err.fileLoc,
+                    SMLoc::getFromPointer(err.fileLoc.getPointer() +
+                                          err.substring.size()));
+      sourceMgr.PrintMessage(
+          err.fileLoc, SourceMgr::DK_Error,
+          "expected error \"" + err.substring + "\" was not produced", range);
+      result = OptFailure;
+    }
+  }
+
+  return result;
+}
+
+/// Split the specified file on a marker and process each chunk independently
+/// according to the normal processFile logic.  This is primarily used to
+/// allow a large number of small independent parser tests to be put into a
+/// single test, but could be used for other purposes as well.
+static OptResult
+splitAndProcessFile(std::unique_ptr<MemoryBuffer> originalBuffer) {
+  const char marker[] = "-----";
+  SmallVector<StringRef, 8> sourceBuffers;
+  originalBuffer->getBuffer().split(sourceBuffers, marker);
+
+  // Add the original buffer to the source manager.
+  SourceMgr fileSourceMgr;
+  fileSourceMgr.AddNewSourceBuffer(std::move(originalBuffer), SMLoc());
+
+  bool hadUnexpectedResult = false;
+
+  // Process each chunk in turn.  If any fails, then return a failure of the
+  // tool.
+  for (auto &subBuffer : sourceBuffers) {
+    auto subMemBuffer = MemoryBuffer::getMemBufferCopy(subBuffer);
+    if (processFile(std::move(subMemBuffer)))
+      hadUnexpectedResult = true;
+  }
+
+  return hadUnexpectedResult ? OptFailure : OptSuccess;
 }
 
 int main(int argc, char **argv) {
@@ -263,8 +352,10 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  if (checkParserErrors)
-    return splitMemoryBufferForErrorChecking(std::move(*fileOrErr));
+  // The split-input-file mode is a very specific mode that slices the file
+  // up into small pieces and checks each independently.
+  if (splitInputFile)
+    return splitAndProcessFile(std::move(*fileOrErr));
 
-  return parseAndPrintMemoryBuffer(std::move(*fileOrErr));
+  return processFile(std::move(*fileOrErr));
 }

@@ -319,11 +319,17 @@ void MLIRContext::emitDiagnostic(Location *location, const llvm::Twine &message,
   if (kind != DiagnosticKind::Error)
     return;
 
-  // TODO(clattner): can improve this now!
+  auto &os = llvm::errs();
+
+  if (auto fileLoc = dyn_cast<FileLineColLoc>(location))
+    os << fileLoc->getFilename() << ':' << fileLoc->getLine() << ':'
+       << fileLoc->getColumn() << ": ";
+
+  os << "error: ";
 
   // The default behavior for errors is to emit them to stderr and exit.
-  llvm::errs() << message.str() << "\n";
-  llvm::errs().flush();
+  os << message.str() << '\n';
+  os.flush();
   exit(1);
 }
 

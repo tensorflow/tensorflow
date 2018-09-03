@@ -41,6 +41,7 @@ class OpAsmPrinter;
 template <typename OpType>
 class OpPointer {
 public:
+  explicit OpPointer() : value(Operation::getNull<OpType>().value) {}
   explicit OpPointer(OpType value) : value(value) {}
 
   OpType &operator*() { return value; }
@@ -49,7 +50,7 @@ public:
 
   operator bool() const { return value.getOperation(); }
 
-public:
+private:
   OpType value;
 };
 
@@ -58,6 +59,7 @@ public:
 template <typename OpType>
 class ConstOpPointer {
 public:
+  explicit ConstOpPointer() : value(Operation::getNull<OpType>().value) {}
   explicit ConstOpPointer(OpType value) : value(value) {}
 
   const OpType &operator*() const { return value; }
@@ -67,7 +69,7 @@ public:
   /// Return true if non-null.
   operator bool() const { return value.getOperation(); }
 
-public:
+private:
   const OpType value;
 };
 

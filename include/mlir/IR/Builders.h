@@ -191,7 +191,8 @@ public:
   /// Create an operation given the fields represented as an OperationState.
   OperationInst *createOperation(const OperationState &state);
 
-  /// Create operation of specific op type at the current insertion point.
+  /// Create operation of specific op type at the current insertion point
+  /// without verifying to see if it is valid.
   template <typename OpTy, typename... Args>
   OpPointer<OpTy> create(Location *location, Args... args) {
     OperationState state(getContext(), location, OpTy::getOperationName());
@@ -200,6 +201,27 @@ public:
     auto result = inst->template getAs<OpTy>();
     assert(result && "Builder didn't return the right type");
     return result;
+  }
+
+  /// Create operation of specific op type at the current insertion point.  If
+  /// the result is an invalid op (the verifier hook fails), emit a the
+  /// specified error message and return null.
+  template <typename OpTy, typename... Args>
+  OpPointer<OpTy> createChecked(const Twine &message, Location *location,
+                                Args... args) {
+    OperationState state(getContext(), location, OpTy::getOperationName());
+    OpTy::build(this, &state, args...);
+    auto *inst = createOperation(state);
+    auto result = inst->template getAs<OpTy>();
+    assert(result && "Builder didn't return the right type");
+
+    // If the operation we produce is valid, return it.
+    if (!result->verify())
+      return result;
+    // Otherwise, emit the provided message and return null.
+    inst->emitError(message);
+    inst->eraseFromBlock();
+    return OpPointer<OpTy>();
   }
 
   OperationInst *cloneOperation(const OperationInst &srcOpInst) {
@@ -305,6 +327,27 @@ public:
     auto result = stmt->template getAs<OpTy>();
     assert(result && "Builder didn't return the right type");
     return result;
+  }
+
+  /// Create operation of specific op type at the current insertion point.  If
+  /// the result is an invalid op (the verifier hook fails), emit an error and
+  /// return null.
+  template <typename OpTy, typename... Args>
+  OpPointer<OpTy> createChecked(const Twine &message, Location *location,
+                                Args... args) {
+    OperationState state(getContext(), location, OpTy::getOperationName());
+    OpTy::build(this, &state, args...);
+    auto *stmt = createOperation(state);
+    auto result = stmt->template getAs<OpTy>();
+    assert(result && "Builder didn't return the right type");
+
+    // If the operation we produce is valid, return it.
+    if (!result->verify())
+      return result;
+    // Otherwise, emit the provided message and return null.
+    stmt->emitError(message);
+    stmt->eraseFromBlock();
+    return OpPointer<OpTy>();
   }
 
   /// Create a deep copy of the specified statement, remapping any operands that

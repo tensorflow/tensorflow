@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -o - -check-parser-errors
+// RUN: mlir-opt %s -o - -split-input-file -verify
 
 // Check different error cases.
 // -----

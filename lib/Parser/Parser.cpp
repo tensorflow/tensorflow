@@ -45,14 +45,6 @@ using llvm::SourceMgr;
 /// bool value.  Failure is "true" in a boolean context.
 enum ParseResult { ParseSuccess, ParseFailure };
 
-/// Return a uniqued filename for the main file the specified SourceMgr is
-/// looking at.
-static UniquedFilename getUniquedFilename(llvm::SourceMgr &sourceMgr,
-                                          MLIRContext *context) {
-  auto *buffer = sourceMgr.getMemoryBuffer(sourceMgr.getMainFileID());
-  return UniquedFilename::get(buffer->getBufferIdentifier(), context);
-}
-
 namespace {
 class Parser;
 
@@ -61,13 +53,9 @@ class Parser;
 /// methods to access this.
 class ParserState {
 public:
-  ParserState(llvm::SourceMgr &sourceMgr, Module *module,
-              SMDiagnosticHandlerTy errorReporter)
-      : context(module->getContext()), module(module),
-        filename(getUniquedFilename(sourceMgr, context)),
-        lex(sourceMgr, errorReporter), curToken(lex.lexToken()),
-        errorReporter(errorReporter), operationSet(OperationSet::get(context)) {
-  }
+  ParserState(llvm::SourceMgr &sourceMgr, Module *module)
+      : context(module->getContext()), module(module), lex(sourceMgr, context),
+        curToken(lex.lexToken()), operationSet(OperationSet::get(context)) {}
 
   // A map from affine map identifier to AffineMap.
   llvm::StringMap<AffineMap *> affineMapDefinitions;
@@ -92,17 +80,11 @@ private:
   // This is the module we are parsing into.
   Module *const module;
 
-  /// The filename to use for location generation.
-  UniquedFilename filename;
-
   // The lexer for the source file we're parsing.
   Lexer lex;
 
   // This is the next token that hasn't been consumed yet.
   Token curToken;
-
-  // The diagnostic error reporter.
-  SMDiagnosticHandlerTy const errorReporter;
 
   // The active OperationSet we're parsing with.
   OperationSet &operationSet;
@@ -136,7 +118,9 @@ public:
 
   /// Encode the specified source location information into an attribute for
   /// attachment to the IR.
-  Location *getEncodedSourceLocation(llvm::SMLoc loc);
+  Location *getEncodedSourceLocation(llvm::SMLoc loc) {
+    return state.lex.getEncodedSourceLocation(loc);
+  }
 
   /// Emit an error and return failure.
   ParseResult emitError(const Twine &message) {
@@ -221,25 +205,14 @@ private:
 // Helper methods.
 //===----------------------------------------------------------------------===//
 
-/// Encode the specified source location information into an attribute for
-/// attachment to the IR.
-Location *Parser::getEncodedSourceLocation(llvm::SMLoc loc) {
-  auto &sourceMgr = getSourceMgr();
-  auto lineAndColumn =
-      sourceMgr.getLineAndColumn(loc, sourceMgr.getMainFileID());
-
-  return FileLineColLoc::get(state.filename, lineAndColumn.first,
-                             lineAndColumn.second, getContext());
-}
-
 ParseResult Parser::emitError(SMLoc loc, const Twine &message) {
   // If we hit a parse error in response to a lexer error, then the lexer
   // already reported the error.
   if (getToken().is(Token::error))
     return ParseFailure;
 
-  auto &sourceMgr = state.lex.getSourceMgr();
-  state.errorReporter(sourceMgr.GetMessage(loc, SourceMgr::DK_Error, message));
+  getContext()->emitDiagnostic(getEncodedSourceLocation(loc), message,
+                               MLIRContext::DiagnosticKind::Error);
   return ParseFailure;
 }
 
@@ -3026,78 +2999,34 @@ ParseResult ModuleParser::parseModule() {
 
 //===----------------------------------------------------------------------===//
 
-void mlir::defaultErrorReporter(const llvm::SMDiagnostic &error) {
-  const auto &sourceMgr = *error.getSourceMgr();
-  sourceMgr.PrintMessage(error.getLoc(), error.getKind(), error.getMessage());
-}
-
 /// This parses the file specified by the indicated SourceMgr and returns an
 /// MLIR module if it was valid.  If not, it emits diagnostics and returns null.
-Module *mlir::parseSourceFile(llvm::SourceMgr &sourceMgr, MLIRContext *context,
-                              SMDiagnosticHandlerTy errorReporter) {
-  if (!errorReporter)
-    errorReporter = defaultErrorReporter;
-
-  // We are going to replace the context's handler and redirect it to use the
-  // error reporter.  Save the existing handler and reinstate it when we're
-  // done.
-  auto existingContextHandler = context->getDiagnosticHandler();
-
-  // Install a new handler that uses the error reporter.
-  context->registerDiagnosticHandler([&](Location *location, StringRef message,
-                                         MLIRContext::DiagnosticKind kind) {
-    SourceMgr::DiagKind diagKind;
-    switch (kind) {
-    case MLIRContext::DiagnosticKind::Error:
-      diagKind = SourceMgr::DK_Error;
-      break;
-    case MLIRContext::DiagnosticKind::Warning:
-      diagKind = SourceMgr::DK_Warning;
-      break;
-    case MLIRContext::DiagnosticKind::Note:
-      diagKind = SourceMgr::DK_Note;
-      break;
-    }
-
-    StringRef filename;
-    unsigned line = 0, column = 0;
-    if (auto fileLoc = dyn_cast<FileLineColLoc>(location)) {
-      filename = fileLoc->getFilename();
-      line = fileLoc->getLine();
-      column = fileLoc->getColumn();
-    }
-
-    auto diag = llvm::SMDiagnostic(sourceMgr, SMLoc(), filename, line, column,
-                                   diagKind, message, /*LineStr=*/StringRef(),
-                                   /*Ranges=*/{}, /*FixIts=*/{});
-
-    errorReporter(diag);
-  });
+Module *mlir::parseSourceFile(llvm::SourceMgr &sourceMgr,
+                              MLIRContext *context) {
 
   // This is the result module we are parsing into.
   std::unique_ptr<Module> module(new Module(context));
 
-  ParserState state(sourceMgr, module.get(), errorReporter);
+  ParserState state(sourceMgr, module.get());
   if (ModuleParser(state).parseModule()) {
-    context->registerDiagnosticHandler(existingContextHandler);
     return nullptr;
   }
 
   // Make sure the parse module has no other structural problems detected by the
   // verifier.
+  //
+  // TODO(clattner): The verifier should always emit diagnostics when we have
+  // more location information available.  We shouldn't need this hook.
   std::string errorResult;
   module->verify(&errorResult);
 
   // We don't have location information for general verifier errors, so emit the
-  // error on the first line.
+  // error with an unknown location.
   if (!errorResult.empty()) {
-    auto *mainBuffer = sourceMgr.getMemoryBuffer(sourceMgr.getMainFileID());
-    errorReporter(sourceMgr.GetMessage(
-        SMLoc::getFromPointer(mainBuffer->getBufferStart()),
-        SourceMgr::DK_Error, errorResult));
+    context->emitDiagnostic(UnknownLoc::get(context), errorResult,
+                            MLIRContext::DiagnosticKind::Error);
     return nullptr;
   }
 
-  context->registerDiagnosticHandler(existingContextHandler);
   return module.release();
 }

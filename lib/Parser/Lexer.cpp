@@ -20,8 +20,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "Lexer.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
 #include "llvm/Support/SourceMgr.h"
-#include <cctype>
 using namespace mlir;
 using llvm::SMLoc;
 using llvm::SourceMgr;
@@ -32,17 +33,30 @@ static bool isPunct(char c) {
   return c == '$' || c == '.' || c == '_' || c == '-';
 }
 
-Lexer::Lexer(llvm::SourceMgr &sourceMgr, SMDiagnosticHandlerTy errorReporter)
-    : sourceMgr(sourceMgr), errorReporter(errorReporter) {
+Lexer::Lexer(llvm::SourceMgr &sourceMgr, MLIRContext *context)
+    : sourceMgr(sourceMgr), context(context) {
   auto bufferID = sourceMgr.getMainFileID();
   curBuffer = sourceMgr.getMemoryBuffer(bufferID)->getBuffer();
   curPtr = curBuffer.begin();
 }
 
+/// Encode the specified source location information into an attribute for
+/// attachment to the IR.
+Location *Lexer::getEncodedSourceLocation(llvm::SMLoc loc) {
+  auto &sourceMgr = getSourceMgr();
+  unsigned mainFileID = sourceMgr.getMainFileID();
+  auto lineAndColumn = sourceMgr.getLineAndColumn(loc, mainFileID);
+  auto *buffer = sourceMgr.getMemoryBuffer(mainFileID);
+  auto filename = UniquedFilename::get(buffer->getBufferIdentifier(), context);
+
+  return FileLineColLoc::get(filename, lineAndColumn.first,
+                             lineAndColumn.second, context);
+}
+
 /// emitError - Emit an error message and return an Token::error token.
 Token Lexer::emitError(const char *loc, const Twine &message) {
-  errorReporter(sourceMgr.GetMessage(SMLoc::getFromPointer(loc),
-                                     SourceMgr::DK_Error, message));
+  context->emitDiagnostic(getEncodedSourceLocation(SMLoc::getFromPointer(loc)),
+                          message, MLIRContext::DiagnosticKind::Error);
   return formToken(Token::error, loc);
 }
 

@@ -216,6 +216,11 @@ public:
   /// OperationSet, return it.  Otherwise return null.
   const AbstractOperation *getAbstractOperation() const;
 
+  // Return a null OpPointer for the specified type.
+  template <typename OpClass> static OpPointer<OpClass> getNull() {
+    return OpPointer<OpClass>(OpClass(nullptr));
+  }
+
   /// The getAs methods perform a dynamic cast from an Operation (like
   /// OperationInst and OperationStmt) to a typed Op like DimOp.  This returns
   /// a null OpPointer on failure.
