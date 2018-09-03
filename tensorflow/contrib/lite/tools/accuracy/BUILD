@@ -45,7 +45,10 @@ tf_cc_test(
     data = ["//tensorflow/contrib/lite:testdata/multi_add.bin"],
     linkopts = common_linkopts,
     linkstatic = 1,
-    tags = ["tflite_not_portable_ios"],
+    tags = [
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
     deps = [
         ":utils",
         "@com_google_googletest//:gtest",
