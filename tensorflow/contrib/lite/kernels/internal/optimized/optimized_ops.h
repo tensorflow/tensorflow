@@ -1948,7 +1948,7 @@ inline void HybridConv(const int8_t* input_data, const Dims<4>& input_dims,
   const int filter_width = ArraySize(filter_dims, 1);
   const int filter_height = ArraySize(filter_dims, 2);
 
-  const int8* gemm_input_data = nullptr;
+  const int8_t* gemm_input_data = nullptr;
   int num_input;
   const bool need_im2col = stride_width != 1 || stride_height != 1 ||
                            filter_width != 1 || filter_height != 1;

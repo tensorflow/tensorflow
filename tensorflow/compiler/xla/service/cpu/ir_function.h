@@ -80,8 +80,9 @@ class IrFunction {
   // Get the llvm::Value* that represents this functions parameters argument.
   llvm::Value* parameters_arg() { return parameters_arg_; }
 
-  // Get the llvm::Value* that represents this functions "temps" argument.
-  llvm::Value* temp_buffers_arg() { return temp_buffers_arg_; }
+  // Get the llvm::Value* that represents this functions "buffer_table"
+  // argument.
+  llvm::Value* buffer_table_arg() { return buffer_table_arg_; }
 
   // Get the llvm::Value* that represents this functions "prof_counters"
   // argument.
@@ -108,7 +109,7 @@ class IrFunction {
   llvm::Argument* result_arg_;
   llvm::Value* exec_run_options_arg_;
   llvm::Value* parameters_arg_;
-  llvm::Value* temp_buffers_arg_;
+  llvm::Value* buffer_table_arg_;
   llvm::Value* dynamic_loop_bounds_arg_ = nullptr;
   llvm::Value* profile_counters_arg_;
 };
@@ -117,7 +118,7 @@ class IrFunction {
 std::vector<llvm::Value*> GetArrayFunctionCallArguments(
     absl::Span<llvm::Value* const> parameter_addresses, llvm::IRBuilder<>* b,
     absl::string_view name, llvm::Value* return_value_buffer,
-    llvm::Value* exec_run_options_arg, llvm::Value* temp_buffers_arg,
+    llvm::Value* exec_run_options_arg, llvm::Value* buffer_table_arg,
     llvm::Value* profile_counters_arg);
 
 // Emits a call to a runtime fork/join function which dispatches parallel

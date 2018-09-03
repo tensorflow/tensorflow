@@ -24,7 +24,13 @@ REGISTER_LINALG_OP("Qr", (QrOp<double>), double);
 // cuSolver affecting older hardware. The cuSolver team is tracking the issue
 // (https://partners.nvidia.com/bug/viewbug/2171459) and we will re-enable
 // this feature when a fix is available.
-// REGISTER_LINALG_OP_GPU("Qr", (QrOpGpu<double>), double);
+REGISTER_KERNEL_BUILDER(Name("Qr")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<double>("T")
+                            .HostMemory("input")
+                            .HostMemory("q")
+                            .HostMemory("r"),
+                        QrOp<double>);
 #endif
 
 }  // namespace tensorflow

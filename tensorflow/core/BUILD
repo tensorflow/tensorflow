@@ -696,6 +696,7 @@ cc_library(
     deps = [
         ":lib_internal",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -872,7 +873,6 @@ tf_cuda_library(
         "util/sparse/sparse_tensor.h",
         "util/stat_summarizer.h",
         "util/stat_summarizer_options.h",
-        "util/status_util.h",
         "util/stream_executor_util.h",
         "util/strided_slice_op.h",
         "util/tensor_format.h",
@@ -936,15 +936,6 @@ cc_library(
 cc_library(
     name = "ptr_util",
     hdrs = ["util/ptr_util.h"],
-)
-
-cc_library(
-    name = "status_util",
-    hdrs = ["util/status_util.h"],
-    deps = [
-        ":graph",
-        ":lib",
-    ],
 )
 
 cc_library(
@@ -3234,7 +3225,6 @@ tf_cc_tests(
         "lib/gtl/iterator_range_test.cc",
         "lib/gtl/manual_constructor_test.cc",
         "lib/gtl/map_util_test.cc",
-        "lib/gtl/optional_test.cc",
         "lib/gtl/top_n_test.cc",
         "lib/hash/crc32c_test.cc",
         "lib/hash/hash_test.cc",
@@ -3560,7 +3550,6 @@ tf_cc_tests(
         "util/semver_test.cc",
         "util/sparse/sparse_tensor_test.cc",
         "util/stat_summarizer_test.cc",
-        "util/status_util_test.cc",
         "util/tensor_format_test.cc",
         "util/tensor_slice_reader_test.cc",
         "util/tensor_slice_set_test.cc",
@@ -3585,7 +3574,6 @@ tf_cc_tests(
         ":ops",
         ":protos_all_cc",
         ":protos_test_cc",
-        ":status_util",
         ":test",
         ":test_main",
         ":testlib",
@@ -4078,6 +4066,7 @@ tf_cuda_cc_test(
         ":testlib",
         "//third_party/eigen3",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:collective_ops",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:dense_update_ops",
@@ -4119,6 +4108,7 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops",
         # Link with support for TensorFlow Debugger (tfdbg).
         "//tensorflow/core/debug",
+        "//tensorflow/core/kernels:collective_ops",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:dense_update_ops",

@@ -168,6 +168,7 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(const ModelT* model,
 
   bool eval_hybrid = IsHybridEvaluationOp(op, op_code);
 
+  bool skipped_tensor = false;
   std::vector<int32_t> op_input_indices = GetWeightInputIndices(op_code);
   for (const int32_t op_input_idx : op_input_indices) {
     int32_t tensor_idx = op->inputs[op_input_idx];
@@ -177,6 +178,7 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(const ModelT* model,
     if (CountTensorConsumers(model, subgraph, tensor_idx) != 1) {
       LOG(INFO) << "Skipping quantization of tensor that is shared between "
                    "multiple multiple operations.";
+      skipped_tensor = true;
       continue;
     }
 
@@ -184,6 +186,7 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(const ModelT* model,
 
     if (tensor->type != TensorType_FLOAT32) {
       LOG(INFO) << "Skipping quantization of tensor that is not type float.";
+      skipped_tensor = true;
       continue;
     }
 
@@ -191,6 +194,7 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(const ModelT* model,
     if (num_elements < kWeightsMinSize) {
       LOG(INFO) << "Skipping quantization of tensor because it has fewer than "
                 << kWeightsMinSize << " elements (" << num_elements << ").";
+      skipped_tensor = true;
       continue;
     }
 
@@ -203,6 +207,12 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(const ModelT* model,
     tensor_infos.push_back(tensor_info);
   }
 
+  // For hybrid operations we either need to quantize all tensors or none. So
+  // if we skipped any tensors we need to return no quantized tensors.
+  if (eval_hybrid && skipped_tensor) {
+    return {};
+  }
+
   return tensor_infos;
 }
 
@@ -212,11 +222,16 @@ TfLiteStatus AsymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
   BufferT* buffer = model->buffers[tensor->buffer].get();
   float* float_data = reinterpret_cast<float*>(buffer->data.data());
   const uint64_t num_elements = NumElements(tensor);
-  LOG(INFO) << "Quantizing tensor with " << num_elements << " elements.";
+  LOG(INFO) << "Quantizing tensor " << tensor->name << " with " << num_elements
+            << " elements for float evaluation.";
 
   // Compute the quantization params.
   float min_value = *std::min_element(float_data, float_data + num_elements);
   float max_value = *std::max_element(float_data, float_data + num_elements);
+
+  if (tensor->quantization == nullptr) {
+    tensor->quantization = absl::make_unique<QuantizationParametersT>();
+  }
   GetAsymmetricQuantizationParams(min_value, max_value, 0, 255,
                                   tensor->quantization.get());
 
@@ -251,7 +266,8 @@ TfLiteStatus SymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
   BufferT* buffer = model->buffers[tensor->buffer].get();
   float* float_data = reinterpret_cast<float*>(buffer->data.data());
   const uint64_t num_elements = NumElements(tensor);
-  LOG(INFO) << "Quantizing tensor with " << num_elements << " elements.";
+  LOG(INFO) << "Quantizing tensor " << tensor->name << " with " << num_elements
+            << " elements for hybrid evaluation.";
 
   std::vector<int8_t> quantized_buffer;
   quantized_buffer.resize(num_elements);
@@ -260,6 +276,10 @@ TfLiteStatus SymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
   tensor_utils::SymmetricQuantizeFloats(float_data, num_elements,
                                         quantized_buffer.data(), &min_value,
                                         &max_value, &scaling_factor);
+
+  if (tensor->quantization == nullptr) {
+    tensor->quantization = absl::make_unique<QuantizationParametersT>();
+  }
   tensor->quantization->scale = std::vector<float>(1, scaling_factor);
   tensor->quantization->zero_point = std::vector<int64_t>(1, 0);
 

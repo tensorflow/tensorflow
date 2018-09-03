@@ -117,6 +117,9 @@ class DirectSession : public Session {
   ::tensorflow::Status ReleaseCallable(CallableHandle handle) override;
 
  private:
+  // For access to collective_graph_key_.
+  friend class DirectSessionCollectiveTest;
+
   // We create one executor and its dependent library runtime for
   // every partition.
   struct PerPartitionExecutorsAndLib {
@@ -150,6 +153,8 @@ class DirectSession : public Session {
     DataTypeVector output_types;
 
     CallableOptions callable_options;
+
+    int64 collective_graph_key = BuildGraphOptions::kNoCollectiveGraphKey;
   };
 
   // A FunctionInfo object is created for every unique set of feeds/fetches.
@@ -203,6 +208,7 @@ class DirectSession : public Session {
     string handle;
     std::unique_ptr<Graph> graph;
     const DebugOptions& debug_options;
+    int64 collective_graph_key = BuildGraphOptions::kNoCollectiveGraphKey;
   };
 
   // Initializes the base execution state given the 'graph',
@@ -234,7 +240,7 @@ class DirectSession : public Session {
       std::unordered_map<string, std::unique_ptr<Graph>>* outputs,
       std::unique_ptr<FunctionLibraryDefinition>* flib_def,
       RunStateArgs* run_state_args, DataTypeVector* input_types,
-      DataTypeVector* output_types);
+      DataTypeVector* output_types, int64* collective_graph_key);
 
   ::tensorflow::Status RunInternal(int64 step_id, const RunOptions& run_options,
                                    CallFrameInterface* call_frame,
@@ -390,6 +396,10 @@ class DirectSession : public Session {
   CostModelManager cost_model_manager_;
 
   Executor::Args::NodeOutputsCallback node_outputs_callback_ = nullptr;
+
+  // For testing collective graph key generation.
+  mutex collective_graph_key_lock_;
+  int64 collective_graph_key_ GUARDED_BY(collective_graph_key_lock_) = -1;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 

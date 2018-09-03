@@ -177,9 +177,10 @@ DECLARE_GRAPH_TRANSFORMATION(ResolveSpaceToBatchNDAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolveBatchToSpaceNDAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolvePadAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolvePadV2Attributes)
-DECLARE_GRAPH_TRANSFORMATION(ResolveStridedSliceAttributes)
-DECLARE_GRAPH_TRANSFORMATION(ResolveSliceAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolveReduceAttributes)
+DECLARE_GRAPH_TRANSFORMATION(ResolveReshapeAttributes)
+DECLARE_GRAPH_TRANSFORMATION(ResolveSliceAttributes)
+DECLARE_GRAPH_TRANSFORMATION(ResolveStridedSliceAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolveTransposeAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantPack)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantRandomUniform)
@@ -214,12 +215,6 @@ class PropagateDefaultMinMax : public GraphTransformation {
  private:
   bool SetArrayMinMax(const string& array_name, Array* array);
   std::vector<std::pair<ArrayDataType, MinMax>> type_ranges_;
-};
-
-class ResolveReshapeAttributes : public GraphTransformation {
- public:
-  bool Run(Model* model, std::size_t op_index) override;
-  const char* Name() const override { return "ResolveReshapeAttributes"; }
 };
 
 class RemoveTrivialReshape : public GraphTransformation {

@@ -36,13 +36,11 @@ import math
 
 import numpy as np
 
-from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import linalg_ops_impl
 from tensorflow.python.ops import gen_linalg_ops
+from tensorflow.python.ops import linalg_ops_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.util.deprecation import deprecated
@@ -542,11 +540,7 @@ class Orthogonal(Initializer):
     # Generate a random matrix
     a = random_ops.random_normal(flat_shape, dtype=dtype, seed=self.seed)
     # Compute the qr factorization
-    if context.executing_eagerly():
-      with ops.device("cpu:0"):  # TODO(b/73102536)
-        q, r = gen_linalg_ops.qr(a, full_matrices=False)
-    else:
-      q, r = gen_linalg_ops.qr(a, full_matrices=False)
+    q, r = gen_linalg_ops.qr(a, full_matrices=False)
     # Make Q uniform
     d = array_ops.diag_part(r)
     q *= math_ops.sign(d)
@@ -596,11 +590,7 @@ class ConvolutionDeltaOrthogonal(Initializer):
     a = random_ops.random_normal([shape[-1], shape[-1]],
                                  dtype=dtype, seed=self.seed)
     # Compute the qr factorization
-    if context.executing_eagerly():
-      with ops.device("cpu:0"):  # TODO(b/73102536)
-        q, r = gen_linalg_ops.qr(a, full_matrices=False)
-    else:
-      q, r = gen_linalg_ops.qr(a, full_matrices=False)
+    q, r = gen_linalg_ops.qr(a, full_matrices=False)
     # Make Q uniform
     d = array_ops.diag_part(r)
     q *= math_ops.sign(d)
@@ -1120,29 +1110,10 @@ class Identity(Initializer):
   def get_config(self):
     return {"gain": self.gain, "dtype": self.dtype.name}
 
-# Aliases.
-
-# pylint: disable=invalid-name
-zeros_initializer = Zeros
-ones_initializer = Ones
-constant_initializer = Constant
-random_uniform_initializer = RandomUniform
-random_normal_initializer = RandomNormal
-truncated_normal_initializer = TruncatedNormal
-uniform_unit_scaling_initializer = UniformUnitScaling
-variance_scaling_initializer = VarianceScaling
-orthogonal_initializer = Orthogonal
-identity_initializer = Identity
-convolutional_delta_orthogonal = ConvolutionDeltaOrthogonal
-convolutional_orthogonal_1d = ConvolutionOrthogonal1D
-convolutional_orthogonal_2d = ConvolutionOrthogonal2D
-convolutional_orthogonal_3d = ConvolutionOrthogonal3D
-# pylint: enable=invalid-name
-
 
 @tf_export("glorot_uniform_initializer", "keras.initializers.glorot_uniform",
            "initializers.glorot_uniform")
-def glorot_uniform_initializer(seed=None, dtype=dtypes.float32):
+class GlorotUniform(VarianceScaling):
   """The Glorot uniform initializer, also called Xavier uniform initializer.
 
   It draws samples from a uniform distribution within [-limit, limit]
@@ -1157,17 +1128,28 @@ def glorot_uniform_initializer(seed=None, dtype=dtypes.float32):
       `tf.set_random_seed`
       for behavior.
     dtype: The data type. Only floating point types are supported.
-
-  Returns:
-    An initializer.
   """
-  return variance_scaling_initializer(
-      scale=1.0, mode="fan_avg", distribution="uniform", seed=seed, dtype=dtype)
+
+  def __init__(self,
+               seed=None,
+               dtype=dtypes.float32):
+    super(GlorotUniform, self).__init__(
+        scale=1.0,
+        mode="fan_avg",
+        distribution="uniform",
+        seed=seed,
+        dtype=dtype)
+
+  def get_config(self):
+    return {
+        "seed": self.seed,
+        "dtype": self.dtype.name
+    }
 
 
 @tf_export("glorot_normal_initializer", "keras.initializers.glorot_normal",
            "initializers.glorot_normal")
-def glorot_normal_initializer(seed=None, dtype=dtypes.float32):
+class GlorotNormal(VarianceScaling):
   """The Glorot normal initializer, also called Xavier normal initializer.
 
   It draws samples from a truncated normal distribution centered on 0
@@ -1182,16 +1164,45 @@ def glorot_normal_initializer(seed=None, dtype=dtypes.float32):
       `tf.set_random_seed`
       for behavior.
     dtype: The data type. Only floating point types are supported.
-
-  Returns:
-    An initializer.
   """
-  return variance_scaling_initializer(
-      scale=1.0,
-      mode="fan_avg",
-      distribution="truncated_normal",
-      seed=seed,
-      dtype=dtype)
+
+  def __init__(self,
+               seed=None,
+               dtype=dtypes.float32):
+    super(GlorotNormal, self).__init__(
+        scale=1.0,
+        mode="fan_avg",
+        distribution="truncated_normal",
+        seed=seed,
+        dtype=dtype)
+
+  def get_config(self):
+    return {
+        "seed": self.seed,
+        "dtype": self.dtype.name
+    }
+
+
+# Aliases.
+
+# pylint: disable=invalid-name
+zeros_initializer = Zeros
+ones_initializer = Ones
+constant_initializer = Constant
+random_uniform_initializer = RandomUniform
+random_normal_initializer = RandomNormal
+truncated_normal_initializer = TruncatedNormal
+uniform_unit_scaling_initializer = UniformUnitScaling
+variance_scaling_initializer = VarianceScaling
+glorot_uniform_initializer = GlorotUniform
+glorot_normal_initializer = GlorotNormal
+orthogonal_initializer = Orthogonal
+identity_initializer = Identity
+convolutional_delta_orthogonal = ConvolutionDeltaOrthogonal
+convolutional_orthogonal_1d = ConvolutionOrthogonal1D
+convolutional_orthogonal_2d = ConvolutionOrthogonal2D
+convolutional_orthogonal_3d = ConvolutionOrthogonal3D
+# pylint: enable=invalid-name
 
 
 @tf_export("keras.initializers.lecun_normal", "initializers.lecun_normal")
