@@ -35,9 +35,13 @@
 #include "mlir/IR/StmtVisitor.h"
 #include "mlir/IR/Types.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
+#include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
+
 using namespace mlir;
+using llvm::MemoryBuffer;
 using llvm::SMLoc;
 using llvm::SourceMgr;
 
@@ -3029,4 +3033,16 @@ Module *mlir::parseSourceFile(llvm::SourceMgr &sourceMgr,
   }
 
   return module.release();
+}
+
+/// This parses the program string to a MLIR module if it was valid. If not, it
+/// emits diagnostics and returns null.
+Module *mlir::parseSourceString(StringRef moduleStr, MLIRContext *context) {
+  auto memBuffer = MemoryBuffer::getMemBuffer(moduleStr);
+  if (!memBuffer)
+    return nullptr;
+
+  SourceMgr sourceMgr;
+  sourceMgr.AddNewSourceBuffer(std::move(memBuffer), SMLoc());
+  return parseSourceFile(sourceMgr, context);
 }

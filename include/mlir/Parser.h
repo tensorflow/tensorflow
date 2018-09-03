@@ -23,7 +23,9 @@
 #define MLIR_PARSER_H
 
 namespace llvm {
-  class SourceMgr;
+class SourceMgr;
+class SMDiagnostic;
+class StringRef;
 } // end namespace llvm
 
 namespace mlir {
@@ -34,6 +36,11 @@ class MLIRContext;
 /// MLIR module if it was valid.  If not, the error message is emitted through
 /// the error handler registered in the context, and a null pointer is returned.
 Module *parseSourceFile(llvm::SourceMgr &sourceMgr, MLIRContext *context);
+
+/// This parses the module string to a MLIR module if it was valid.  If not, the
+/// error message is emitted through / the error handler registered in the
+/// context, and a null pointer is returned.
+Module *parseSourceString(llvm::StringRef moduleStr, MLIRContext *context);
 
 } // end namespace mlir
 
