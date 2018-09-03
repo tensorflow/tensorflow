@@ -15,6 +15,7 @@ exports_files([
     "leakr_file_type_recipe.ftrcp",
 ])
 
+load("//tensorflow:tensorflow.bzl", "VERSION")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library_additional_deps_impl")
 load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
@@ -490,6 +491,7 @@ tf_cc_shared_object(
     }),
     linkstatic = 1,
     per_os_targets = True,
+    soversion = VERSION,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:core_cpu_impl",
@@ -530,6 +532,7 @@ tf_cc_shared_object(
         ],
     }),
     per_os_targets = True,
+    soversion = VERSION,
     visibility = ["//visibility:public"],
     # add win_def_file for tensorflow
     win_def_file = select({
@@ -560,6 +563,7 @@ tf_cc_shared_object(
         ],
     }),
     per_os_targets = True,
+    soversion = VERSION,
     visibility = ["//visibility:public"],
     # add win_def_file for tensorflow_cc
     win_def_file = select({
