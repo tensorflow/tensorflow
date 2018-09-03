@@ -178,7 +178,8 @@ StatusOr<std::tuple<int64, bool, int64>>
 CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
     CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
     const Shape& output_shape, const Window& window,
-    const ConvolutionDimensionNumbers& dnums, HloInstruction* instr) {
+    const ConvolutionDimensionNumbers& dnums, int64 feature_group_count,
+    HloInstruction* instr) {
   CHECK_EQ(input_shape.element_type(), filter_shape.element_type());
   CHECK_EQ(input_shape.element_type(), output_shape.element_type());
   // TODO(timshen): for now only check fp16. It can be expanded to other types,
@@ -289,10 +290,10 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
             << instr->ToString();
 
     bool launch_ok =
-        RunCudnnConvolution(kind, input_shape, filter_shape, output_shape,
-                            input_buf, filter_buf, output_buf,
-                            &scratch_allocator, window, dnums,
-                            AlgorithmConfig(alg), &stream, &profile_result)
+        RunCudnnConvolution(
+            kind, input_shape, filter_shape, output_shape, input_buf,
+            filter_buf, output_buf, &scratch_allocator, window, dnums,
+            feature_group_count, AlgorithmConfig(alg), &stream, &profile_result)
             .ok();
 
     if (launch_ok && profile_result.is_valid()) {
@@ -378,17 +379,20 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
         PickBestAlgorithm(CudnnConvKind::kForward, /*input_shape=*/lhs_shape,
                           /*filter_shape=*/rhs_shape,
                           /*output_shape=*/conv_result_shape, instr->window(),
-                          instr->convolution_dimension_numbers(), instr);
+                          instr->convolution_dimension_numbers(),
+                          instr->feature_group_count(), instr);
   } else if (call_target == kCudnnConvBackwardInputCallTarget) {
     alg_scratch_and_tc = PickBestAlgorithm(
         CudnnConvKind::kBackwardInput, /*input_shape=*/conv_result_shape,
         /*filter_shape=*/rhs_shape, /*output_shape=*/lhs_shape, instr->window(),
-        instr->convolution_dimension_numbers(), instr);
+        instr->convolution_dimension_numbers(), instr->feature_group_count(),
+        instr);
   } else if (call_target == kCudnnConvBackwardFilterCallTarget) {
     alg_scratch_and_tc = PickBestAlgorithm(
         CudnnConvKind::kBackwardFilter, /*input_shape=*/lhs_shape,
         /*filter_shape=*/conv_result_shape, /*output_shape=*/rhs_shape,
-        instr->window(), instr->convolution_dimension_numbers(), instr);
+        instr->window(), instr->convolution_dimension_numbers(),
+        instr->feature_group_count(), instr);
   } else {
     LOG(FATAL) << "Unknown custom call target for cudnn conv: "
                << instr->ToString();
@@ -422,14 +426,9 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
   backend_config.set_algorithm(algorithm);
   backend_config.set_tensor_ops_enabled(tensor_ops_enabled);
 
-  HloInstruction* new_call =
-      computation->AddInstruction(HloInstruction::CreateCustomCall(
-          new_call_shape,
-          {instr->mutable_operand(0), instr->mutable_operand(1)},
-          instr->custom_call_target()));
-  new_call->set_window(instr->window());
-  new_call->set_convolution_dimension_numbers(
-      instr->convolution_dimension_numbers());
+  HloInstruction* new_call = computation->AddInstruction(
+      instr->CloneWithNewOperands(new_call_shape, {instr->mutable_operand(0),
+                                                   instr->mutable_operand(1)}));
   TF_RETURN_IF_ERROR(new_call->set_backend_config(backend_config));
 
   // Repackage new_call so it has the same shape as the original call, namely

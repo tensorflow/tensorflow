@@ -489,8 +489,8 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
           /*filter_shape=*/rhs_shape,
           /*output_shape=*/conv_result_shape,  //
           custom_call->window(), custom_call->convolution_dimension_numbers(),
-          backend_config.algorithm(), backend_config.tensor_ops_enabled(),
-          custom_call);
+          custom_call->feature_group_count(), backend_config.algorithm(),
+          backend_config.tensor_ops_enabled(), custom_call);
     } else if (target == kCudnnConvBackwardInputCallTarget) {
       thunk = absl::make_unique<ConvolutionThunk>(
           CudnnConvKind::kBackwardInput,
@@ -503,8 +503,8 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
           /*filter_shape=*/rhs_shape,
           /*output_shape=*/lhs_shape,  //
           custom_call->window(), custom_call->convolution_dimension_numbers(),
-          backend_config.algorithm(), backend_config.tensor_ops_enabled(),
-          custom_call);
+          custom_call->feature_group_count(), backend_config.algorithm(),
+          backend_config.tensor_ops_enabled(), custom_call);
     } else if (target == kCudnnConvBackwardFilterCallTarget) {
       thunk = absl::make_unique<ConvolutionThunk>(
           CudnnConvKind::kBackwardFilter,
@@ -517,8 +517,8 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
           /*filter_shape=*/conv_result_shape,
           /*output_shape=*/rhs_shape,  //
           custom_call->window(), custom_call->convolution_dimension_numbers(),
-          backend_config.algorithm(), backend_config.tensor_ops_enabled(),
-          custom_call);
+          custom_call->feature_group_count(), backend_config.algorithm(),
+          backend_config.tensor_ops_enabled(), custom_call);
     } else {
       LOG(FATAL) << "Unexpected custom call target: "
                  << custom_call->custom_call_target();

@@ -1079,6 +1079,10 @@ class HloCustomCallInstruction : public HloInstruction {
         absl::make_unique<ConvolutionDimensionNumbers>(dnums);
   }
   const string& custom_call_target() const { return custom_call_target_; }
+  void set_feature_group_count(int64 feature_group_count) {
+    feature_group_count_ = feature_group_count;
+  }
+  int64 feature_group_count() const { return feature_group_count_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1099,6 +1103,8 @@ class HloCustomCallInstruction : public HloInstruction {
   std::unique_ptr<Window> window_;
   // Describes the dimension numbers used for a convolution.
   std::unique_ptr<ConvolutionDimensionNumbers> convolution_dimension_numbers_;
+  // The number of feature groups. This is used for grouped convolutions.
+  int64 feature_group_count_;
 };
 
 class HloPadInstruction : public HloInstruction {
