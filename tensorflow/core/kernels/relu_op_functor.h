@@ -91,7 +91,6 @@ struct Relu6Grad {
   }
 };
 
-
 // Functor used by LeakyReluOp to do the computations.
 template <typename Device, typename T>
 struct LeakyRelu {

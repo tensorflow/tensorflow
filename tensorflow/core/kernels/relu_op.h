@@ -143,8 +143,8 @@ class LeakyReluOp : public UnaryElementWiseOp<T, LeakyReluOp<Device, T>> {
 
   void Operate(OpKernelContext* context, const Tensor& input, Tensor* output) {
     functor::LeakyRelu<Device, T> functor;
-    functor(context->eigen_device<Device>(), input.flat<T>(),
-            alpha_, output->flat<T>());
+    functor(context->eigen_device<Device>(), input.flat<T>(), alpha_,
+            output->flat<T>());
   }
 
  private:
@@ -183,7 +183,9 @@ class LeakyReluGradOp
 
 template <typename Device, typename T>
 void LeakyReluGradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
-    const Tensor& g, const Tensor& a, T alpha, Tensor* output) {
+                                                   const Tensor& g,
+                                                   const Tensor& a, T alpha,
+                                                   Tensor* output) {
   if (!ReluHelpers::ValidateSameSize(context, g, a)) return;
   functor::LeakyReluGrad<Device, T> functor;
   functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(), alpha,

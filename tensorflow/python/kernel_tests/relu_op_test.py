@@ -323,37 +323,37 @@ class LeakyReluTest(test.TestCase):
   def testGradGradFloat32(self):
     with compat.forward_compatibility_horizon(2018, 10, 2):
       with self.test_session():
-	x = constant_op.constant(
-	    [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
-	    shape=[2, 5],
-	    name="x")
-	y = nn_ops.leaky_relu(x, alpha=0.1, name="leaky_relu")
-	z = gradients_impl.gradients(y, x)
-	x_init = np.asarray(
-	    [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
-	    dtype=np.float32,
-	    order="F")
-	err = gradient_checker.compute_gradient_error(
-	    x, [2, 5], z[0], [2, 5], x_init_value=x_init)
+        x = constant_op.constant(
+            [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
+            shape=[2, 5],
+            name="x")
+        y = nn_ops.leaky_relu(x, alpha=0.1, name="leaky_relu")
+        z = gradients_impl.gradients(y, x)
+        x_init = np.asarray(
+            [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
+            dtype=np.float32,
+            order="F")
+        err = gradient_checker.compute_gradient_error(
+            x, [2, 5], z[0], [2, 5], x_init_value=x_init)
       print("leaky_relu (float32) gradient of gradient err = ", err)
       self.assertLess(err, 1e-4)
 
   def testGradGradFloat64(self):
     with compat.forward_compatibility_horizon(2018, 10, 2):
       with self.test_session():
-	x = constant_op.constant(
-	    [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
-	    shape=[2, 5],
-	    dtype=dtypes.float64,
-	    name="x")
-	y = nn_ops.leaky_relu(x, alpha=0.02, name="leaky_relu")
-	z = gradients_impl.gradients(y, x)
-	x_init = np.asarray(
-	    [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
-	    dtype=np.float64,
-	    order="F")
-	err = gradient_checker.compute_gradient_error(
-	    x, [2, 5], z[0], [2, 5], x_init_value=x_init)
+        x = constant_op.constant(
+            [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
+            shape=[2, 5],
+            dtype=dtypes.float64,
+            name="x")
+        y = nn_ops.leaky_relu(x, alpha=0.02, name="leaky_relu")
+        z = gradients_impl.gradients(y, x)
+        x_init = np.asarray(
+            [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
+            dtype=np.float64,
+            order="F")
+        err = gradient_checker.compute_gradient_error(
+            x, [2, 5], z[0], [2, 5], x_init_value=x_init)
       print("leaky_relu (float64) gradient of gradient err = ", err)
       self.assertLess(err, 1e-10)
 
