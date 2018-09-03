@@ -23,7 +23,7 @@ java_library(
         ":java_op_sources",
         ":java_sources",
     ],
-    data = [":libtensorflow_jni"],
+    data = [":libtensorflow_jni"] + tf_binary_additional_srcs(),
     javacopts = JAVACOPTS,
     plugins = [":processor"],
     visibility = ["//visibility:public"],
