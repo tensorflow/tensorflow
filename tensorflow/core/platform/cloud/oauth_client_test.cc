@@ -126,9 +126,9 @@ TEST(OAuthClientTest, GetTokenFromServiceAccountJson) {
   EXPECT_EQ("urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer",
             grant_type);
 
-  int last_dot = std::string(assertion).find_last_of(".");
-  string header_dot_claim = std::string(assertion.substr(0, last_dot));
-  string signature_encoded = std::string(assertion.substr(last_dot + 1));
+  int last_dot = assertion.rfind('.');
+  string header_dot_claim(assertion.substr(0, last_dot));
+  string signature_encoded(assertion.substr(last_dot + 1));
 
   // Check that 'signature' signs 'header_dot_claim'.
 

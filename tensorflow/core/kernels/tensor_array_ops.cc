@@ -297,7 +297,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
                                        resource.name());
       }
       tensor_array_name =
-          std::string(StringPiece(resource.name()).substr(container.size()));
+          string(StringPiece(resource.name()).substr(container.size()));
     }
 
     auto output_handle = tensor_array_output_handle->flat<string>();
