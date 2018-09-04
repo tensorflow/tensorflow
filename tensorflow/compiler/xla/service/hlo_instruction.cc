@@ -341,17 +341,21 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                             source_target_pairs);
       break;
     }
-    case HloOpcode::kConvolution:
+    case HloOpcode::kConvolution: {
       TF_RET_CHECK(proto.operand_ids_size() == 2)
           << "Convolution instruction should have 2 operands but sees "
           << proto.operand_ids_size();
       TF_RET_CHECK(proto.has_window());
       TF_RET_CHECK(proto.has_convolution_dimension_numbers());
+      PrecisionConfigProto precision_config = proto.precision_config();
+      precision_config.mutable_operand_precision()->Resize(
+          proto.operand_ids_size(), PrecisionConfigProto::DEFAULT);
       instruction = CreateConvolve(
-          proto.shape(), operands(0), operands(1), proto.window(),
-          proto.convolution_dimension_numbers(),
-          std::max(static_cast<int64>(proto.feature_group_count()), 1LL));
+          proto.shape(), operands(0), operands(1),
+          std::max<int64>(proto.feature_group_count(), 1), proto.window(),
+          proto.convolution_dimension_numbers(), precision_config);
       break;
+    }
     case HloOpcode::kReduceWindow:
       TF_RET_CHECK(proto.operand_ids_size() == 2)
           << "ReduceWindow instruction should have 2 operands but sees "
@@ -468,6 +472,20 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
               computation_map.at(computation_id));
         }
       }
+      if (instruction->opcode() == HloOpcode::kDot) {
+        instruction->precision_config_ = proto.precision_config();
+        instruction->precision_config_.mutable_operand_precision()->Resize(
+            instruction->operand_count(), PrecisionConfigProto::DEFAULT);
+        TF_RET_CHECK(proto.has_dot_dimension_numbers());
+        instruction->dot_dimension_numbers_ =
+            absl::make_unique<DotDimensionNumbers>(
+                proto.dot_dimension_numbers());
+      } else {
+        TF_RET_CHECK(!proto.has_precision_config())
+            << instruction->opcode() << proto.DebugString();
+        TF_RET_CHECK(!proto.has_dot_dimension_numbers())
+            << instruction->opcode();
+      }
       break;
     }
   }
@@ -476,12 +494,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->SetAndSanitizeName(proto.name());
   instruction->metadata_ = proto.metadata();
   instruction->backend_config_ = proto.backend_config();
-  instruction->precision_config_ = proto.precision_config();
-
-  if (proto.has_dot_dimension_numbers()) {
-    instruction->dot_dimension_numbers_ =
-        absl::make_unique<DotDimensionNumbers>(proto.dot_dimension_numbers());
-  }
 
   if (proto.has_sharding()) {
     TF_ASSIGN_OR_RETURN(const auto& sharding,
@@ -643,10 +655,12 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConvolve(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-    const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count) {
+    int64 feature_group_count, const Window& window,
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    const PrecisionConfigProto& precision_config) {
   return absl::make_unique<HloConvolutionInstruction>(
-      shape, lhs, rhs, window, dimension_numbers, feature_group_count);
+      shape, lhs, rhs, feature_group_count, window, dimension_numbers,
+      precision_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFft(
@@ -658,13 +672,15 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDot(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-    const DotDimensionNumbers& dimension_numbers) {
+    const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfigProto& precision_config) {
   auto instruction =
       absl::WrapUnique(new HloInstruction(HloOpcode::kDot, shape));
   instruction->AppendOperand(lhs);
   instruction->AppendOperand(rhs);
   instruction->dot_dimension_numbers_ =
       absl::make_unique<DotDimensionNumbers>(dimension_numbers);
+  instruction->set_precision_config(precision_config);
   return instruction;
 }
 
@@ -1057,7 +1073,6 @@ void HloInstruction::SetupDerivedInstruction(
     derived_instruction->clear_sharding();
   }
   derived_instruction->set_metadata(metadata_);
-  derived_instruction->set_precision_config(precision_config_);
 }
 
 bool HloInstruction::HasSideEffectNoRecurse() const {
@@ -1278,7 +1293,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kDot:
       CHECK_EQ(new_operands.size(), 2);
       clone = CreateDot(shape, new_operands[0], new_operands[1],
-                        *dot_dimension_numbers_);
+                        *dot_dimension_numbers_, precision_config());
       break;
     case HloOpcode::kReshape:
       CHECK_EQ(new_operands.size(), 1);
@@ -2167,7 +2182,9 @@ HloInstructionProto HloInstruction::ToProto() const {
 
   *proto.mutable_metadata() = metadata_;
   proto.set_backend_config(backend_config_);
-  *proto.mutable_precision_config() = precision_config_;
+  if (opcode() == HloOpcode::kConvolution || opcode() == HloOpcode::kDot) {
+    *proto.mutable_precision_config() = precision_config_;
+  }
   if (opcode() != HloOpcode::kFusion) {
     for (const HloComputation* computation : called_computations_) {
       proto.add_called_computation_ids(computation->unique_id());
@@ -2948,7 +2965,11 @@ StatusOr<RandomDistribution> StringToRandomDistribution(const string& name) {
 }
 
 string HloInstruction::PrecisionConfigToString() const {
-  if (precision_config_.operand_precision().empty()) {
+  if (absl::c_all_of(
+          precision_config_.operand_precision(), [](int32 precision) {
+            return static_cast<PrecisionConfigProto::Precision>(precision) ==
+                   PrecisionConfigProto::DEFAULT;
+          })) {
     return "";
   }
   return StrCat(

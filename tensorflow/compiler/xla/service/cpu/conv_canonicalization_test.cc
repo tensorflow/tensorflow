@@ -56,6 +56,13 @@ class ConvCanonicalizationTest : public HloTestBase {
   static constexpr int kOutputFeatureCount = 64;
 };
 
+PrecisionConfigProto DefaultPrecisionConfig(int operands) {
+  PrecisionConfigProto precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      operands, PrecisionConfigProto::DEFAULT);
+  return precision_config;
+}
+
 TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
   auto builder = HloComputation::Builder(TestName());
   // The input dimensions are in CNHW order.
@@ -84,7 +91,8 @@ TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(
           F32, {kOutputFeatureCount, kBatchSize, output_size, output_size}),
-      input, kernel, conv_window_, dnums));
+      input, kernel, /*feature_group_count=*/1, conv_window_, dnums,
+      DefaultPrecisionConfig(2)));
 
   auto module = CreateNewModule();
   HloComputation* entry_computation =
@@ -146,7 +154,8 @@ TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(
           F32, {kBatchSize, output_size, output_size, kOutputFeatureCount}),
-      input, kernel, conv_window_, dnums));
+      input, kernel, /*feature_group_count=*/1, conv_window_, dnums,
+      DefaultPrecisionConfig(2)));
 
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());

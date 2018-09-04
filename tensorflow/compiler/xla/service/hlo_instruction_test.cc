@@ -1122,6 +1122,13 @@ TEST_F(HloInstructionTest, PartiallyElementwiseWithReuse) {
   }
 }
 
+PrecisionConfigProto DefaultPrecisionConfig(int operands) {
+  PrecisionConfigProto precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      operands, PrecisionConfigProto::DEFAULT);
+  return precision_config;
+}
+
 TEST_F(HloInstructionTest, CloneOfFusionPreservesShape) {
   // Fused expression:
   //
@@ -1147,8 +1154,8 @@ TEST_F(HloInstructionTest, CloneOfFusionPreservesShape) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  HloInstruction* dot = builder.AddInstruction(
-      HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
+  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+      sout, x, reshape, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto module = CreateNewModule();
   auto* computation = module->AddEntryComputation(builder.Build());
@@ -1188,8 +1195,8 @@ TEST_F(HloInstructionTest, NoRedundantFusionOperandsAfterReplacingUse) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  HloInstruction* dot = builder.AddInstruction(
-      HloInstruction::CreateDot(s, x, reshape, dot_dnums));
+  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+      s, x, reshape, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto module = CreateNewModule();
   auto* computation = module->AddEntryComputation(builder.Build());
@@ -1239,8 +1246,8 @@ TEST_F(HloInstructionTest, NestedFusionEquality) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto dot = builder.AddInstruction(
-      HloInstruction::CreateDot(data_shape, a, b_t, dot_dnums));
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      data_shape, a, b_t, dot_dnums, DefaultPrecisionConfig(2)));
   auto one = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto add_operand = builder.AddInstruction(
@@ -1320,8 +1327,8 @@ TEST_F(HloInstructionTest, Stringification) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  HloInstruction* dot = builder.AddInstruction(
-      HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
+  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+      sout, x, reshape, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto options = HloPrintOptions().set_print_metadata(false);
 
@@ -1485,8 +1492,8 @@ TEST_F(HloInstructionTest, CanonnicalStringificationFusion) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  HloInstruction* dot = builder.AddInstruction(
-      HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
+  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+      sout, x, reshape, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto options = HloPrintOptions().Canonical();
 
@@ -1527,8 +1534,8 @@ TEST_F(HloInstructionTest, CanonnicalStringificationWhile) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  HloInstruction* dot = builder.AddInstruction(
-      HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
+  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+      sout, x, reshape, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto module = CreateNewModule();
   auto* computation = module->AddEntryComputation(builder.Build());
@@ -1583,8 +1590,8 @@ TEST_F(HloInstructionTest, CanonnicalStringificationConditional) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  HloInstruction* dot = builder.AddInstruction(
-      HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
+  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+      sout, x, reshape, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto module = CreateNewModule();
   auto* computation = module->AddEntryComputation(builder.Build());

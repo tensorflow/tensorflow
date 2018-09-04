@@ -1013,6 +1013,13 @@ TEST_F(AlgebraicSimplifierTest, PowNegative1) {
             1);
 }
 
+PrecisionConfigProto DefaultPrecisionConfig(int operands) {
+  PrecisionConfigProto precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      operands, PrecisionConfigProto::DEFAULT);
+  return precision_config;
+}
+
 TEST_F(AlgebraicSimplifierTest, ZeroSizedConvolution) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* lhs = builder.AddInstruction(HloInstruction::CreateParameter(
@@ -1044,7 +1051,8 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedConvolution) {
   dim->set_window_reversal(false);
   // Create add computation.
   builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeUtil::MakeShape(F32, {3, 3, 3}), lhs, rhs, window, dnums));
+      ShapeUtil::MakeShape(F32, {3, 3, 3}), lhs, rhs, /*feature_group_count=*/1,
+      window, dnums, DefaultPrecisionConfig(2)));
   module().AddEntryComputation(builder.Build());
   HloPassFix<AlgebraicSimplifier> simplifier(/*is_layout_sensitive=*/false,
                                              non_bitcasting_callback());
@@ -2260,9 +2268,11 @@ TEST_P(ConvInputPaddingTest, DoTest) {
           .ValueOrDie();
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeInference::InferConvolveShape(lhs_pad->shape(), filter->shape(),
-                                         window, dnums)
+                                         /*feature_group_count=*/1, window,
+                                         dnums)
           .ValueOrDie(),
-      lhs_pad, filter, window, dnums));
+      lhs_pad, filter, /*feature_group_count=*/1, window, dnums,
+      DefaultPrecisionConfig(2)));
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
@@ -2368,9 +2378,11 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
                       .ValueOrDie();
   auto* orig_conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeInference::InferConvolveShape(input->shape(), rhs_pad->shape(),
-                                         window, dnums)
+                                         /*feature_group_count=*/1, window,
+                                         dnums)
           .ValueOrDie(),
-      input, rhs_pad, window, dnums));
+      input, rhs_pad, /*feature_group_count=*/1, window, dnums,
+      DefaultPrecisionConfig(2)));
 
   // Add a PrecisionConfig and check that AlgebraicSimplifier keeps it in place
   // after the transformation.
@@ -2522,8 +2534,9 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
     HloInstruction* filter =
         b.AddInstruction(HloInstruction::CreateParameter(1, f_shape, "filter"));
 
-    b.AddInstruction(HloInstruction::CreateConvolve(out_shape, input, filter,
-                                                    window, dnums));
+    b.AddInstruction(HloInstruction::CreateConvolve(
+        out_shape, input, filter,
+        /*feature_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
 
     // TODO(b/80488902): verify this module.
     auto module = HloTestBase::CreateNewModule();
@@ -2901,7 +2914,8 @@ TEST_F(AlgebraicSimplifierTest, IteratorInvalidation) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  builder.AddInstruction(HloInstruction::CreateDot(r1f32, x, y, dot_dnums));
+  builder.AddInstruction(HloInstruction::CreateDot(r1f32, x, y, dot_dnums,
+                                                   DefaultPrecisionConfig(2)));
   std::unique_ptr<HloComputation> dot_computation(builder.Build());
 
   HloComputation::Builder call_builder(TestName() + ".Call");
@@ -3253,8 +3267,8 @@ TEST_P(DotStrengthReductionTest, DotStrengthReduction) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  builder.AddInstruction(
-      HloInstruction::CreateDot(dot_shape, lhs, rhs, dot_dnums));
+  builder.AddInstruction(HloInstruction::CreateDot(
+      dot_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
   auto computation = module().AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
                                  non_bitcasting_callback());
@@ -3329,8 +3343,8 @@ TEST_P(DotOfConcatSimplificationTest, ConstantLHS) {
   dot_dnums.add_rhs_contracting_dimensions(0);
 
   Shape dot_shape = ShapeUtil::MakeShape(F32, {spec.m, spec.n});
-  builder.AddInstruction(
-      HloInstruction::CreateDot(dot_shape, lhs, rhs, dot_dnums));
+  builder.AddInstruction(HloInstruction::CreateDot(
+      dot_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto computation = module().AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
@@ -3393,8 +3407,8 @@ TEST_P(DotOfConcatSimplificationTest, ConstantRHS) {
   dot_dnums.add_rhs_contracting_dimensions(0);
 
   Shape dot_shape = ShapeUtil::MakeShape(F32, {spec.m, spec.n});
-  builder.AddInstruction(
-      HloInstruction::CreateDot(dot_shape, lhs, rhs, dot_dnums));
+  builder.AddInstruction(HloInstruction::CreateDot(
+      dot_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto computation = module().AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
@@ -3511,8 +3525,8 @@ TEST_P(DotOfGatherSimplificationTest, ConstantRHS) {
   int64 dot_row_size = 1;
   int64 dot_col_size = spec.n;
   Shape dot_shape = ShapeUtil::MakeShape(F32, {dot_row_size, dot_col_size});
-  builder.AddInstruction(
-      HloInstruction::CreateDot(dot_shape, ds, rhs, dot_dnums));
+  builder.AddInstruction(HloInstruction::CreateDot(
+      dot_shape, ds, rhs, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto computation = module().AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
@@ -3581,8 +3595,8 @@ TEST_P(DotOfGatherSimplificationTest, ConstantLHS) {
   int64 dot_row_size = spec.m;
   int64 dot_col_size = 1;
   Shape dot_shape = ShapeUtil::MakeShape(F32, {dot_row_size, dot_col_size});
-  builder.AddInstruction(
-      HloInstruction::CreateDot(dot_shape, lhs, ds, dot_dnums));
+  builder.AddInstruction(HloInstruction::CreateDot(
+      dot_shape, lhs, ds, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto computation = module().AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,

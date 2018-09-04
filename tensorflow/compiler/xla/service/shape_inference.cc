@@ -1552,8 +1552,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferConvolveShape(
-    const Shape& lhs, const Shape& rhs, const Window& window,
-    const ConvolutionDimensionNumbers& dnums, int64 feature_group_count) {
+    const Shape& lhs, const Shape& rhs, int64 feature_group_count,
+    const Window& window, const ConvolutionDimensionNumbers& dnums) {
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of convolution"));
   TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of convolution"));
 

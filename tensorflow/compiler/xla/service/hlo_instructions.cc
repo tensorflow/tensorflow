@@ -1628,12 +1628,13 @@ std::unique_ptr<HloInstruction> HloOutfeedInstruction::CloneWithNewOperandsImpl(
 
 HloConvolutionInstruction::HloConvolutionInstruction(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-    const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count)
+    int64 feature_group_count, const Window& window,
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    const PrecisionConfigProto& precision_config)
     : HloInstruction(HloOpcode::kConvolution, shape),
+      feature_group_count_(feature_group_count),
       window_(window),
-      convolution_dimension_numbers_(dimension_numbers),
-      feature_group_count_(feature_group_count) {
+      convolution_dimension_numbers_(dimension_numbers) {
   if (window_util::HasBaseDilation(window)) {
     SetAndSanitizeName(StrCat(name(), "-base-dilated"));
   }
@@ -1642,6 +1643,7 @@ HloConvolutionInstruction::HloConvolutionInstruction(
   }
   AppendOperand(lhs);
   AppendOperand(rhs);
+  set_precision_config(precision_config);
 }
 
 string HloConvolutionInstruction::ToCategory() const {
@@ -1697,8 +1699,8 @@ HloConvolutionInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 2);
   return absl::make_unique<HloConvolutionInstruction>(
-      shape, new_operands[0], new_operands[1], window(),
-      convolution_dimension_numbers_, feature_group_count_);
+      shape, new_operands[0], new_operands[1], feature_group_count_, window(),
+      convolution_dimension_numbers_, precision_config());
 }
 
 HloReduceWindowInstruction::HloReduceWindowInstruction(
