@@ -68,6 +68,8 @@ tf_cc_test(
         "test/conversions.cpp",
         "test/padding.cpp",
         "test/graph_rewrites/assign_clusters.cc",
+        "test/test_utilities.h",
+        "test/test_utilities.cpp",
         "test/main.cpp",
     ],
     deps = [
