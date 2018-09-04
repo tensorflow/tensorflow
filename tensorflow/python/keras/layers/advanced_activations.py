@@ -330,9 +330,9 @@ class ReLU(Layer):
 
   def get_config(self):
     config = {
-        'max_value': self.max_value,
-        'negative_slope': self.negative_slope,
-        'threshold': self.threshold
+        'max_value': float(self.max_value),
+        'negative_slope': float(self.negative_slope),
+        'threshold': float(self.threshold)
     }
     base_config = super(ReLU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
