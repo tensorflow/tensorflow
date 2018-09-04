@@ -288,14 +288,13 @@ Status ShapeVerifier::HandleGetTupleElement(HloInstruction* get_tuple_element) {
 }
 
 Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
-  if (!ShapeUtil::IsArray(reduce->shape())) {
-    return InvalidArgument("Variadic reduce is not supported.");
+  std::vector<const Shape*> operand_shapes;
+  for (const HloInstruction* operand : reduce->operands()) {
+    operand_shapes.push_back(&operand->shape());
   }
-  return CheckShape(
-      reduce,
-      ShapeInference::InferReduceShape(
-          {&reduce->operand(0)->shape(), &reduce->operand(1)->shape()},
-          reduce->dimensions(), reduce->to_apply()->ComputeProgramShape()));
+  return CheckShape(reduce, ShapeInference::InferReduceShape(
+                                operand_shapes, reduce->dimensions(),
+                                reduce->to_apply()->ComputeProgramShape()));
 }
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
@@ -700,8 +699,7 @@ Status ShapeVerifier::CheckVariadicShape(const HloInstruction* instruction) {
                         instruction->opcode(), instruction->operands()));
 }
 
-string ComputationsToString(
-    tensorflow::gtl::ArraySlice<HloComputation*> computations) {
+string ComputationsToString(absl::Span<HloComputation* const> computations) {
   return absl::StrJoin(computations, ",",
                        [](string* s, const HloComputation* computation) {
                          s->append(computation->name());
@@ -1069,9 +1067,9 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
       TF_RET_CHECK(instruction->parent() == computation);
       if (instruction->opcode() == HloOpcode::kFusion) {
         TF_RETURN_IF_ERROR(CheckFusionInstruction(instruction));
-        TF_RET_CHECK(
-            ContainersEqual(instruction->called_computations(),
-                            {instruction->fused_instructions_computation()}))
+        TF_RET_CHECK(instruction->called_computations() ==
+                     absl::Span<HloComputation* const>(
+                         {instruction->fused_instructions_computation()}))
             << "Fusion HLO calls computations other than the "
                "fused_instructions_computation: "
             << instruction->ToString()

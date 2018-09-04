@@ -18,6 +18,8 @@ limitations under the License.
 #include <stddef.h>
 #include <string.h>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -418,6 +420,19 @@ Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
     if (str_util::Lowercase(url).find(kFileURLScheme) == 0) {
       const string dump_root_dir = url.substr(strlen(kFileURLScheme));
 
+      const int64 tensorBytes =
+          tensor.IsInitialized() ? tensor.TotalBytes() : 0;
+      if (!DebugFileIO::requestDiskByteUsage(tensorBytes)) {
+        return errors::ResourceExhausted(
+            "TensorFlow Debugger has exhausted file-system byte-size "
+            "allowance (",
+            DebugFileIO::globalDiskBytesLimit, "), therefore it cannot ",
+            "dump an additional ", tensorBytes, " byte(s) of tensor data ",
+            "for the debug tensor ", debug_node_key.node_name, ":",
+            debug_node_key.output_slot, ". You may use the environment ",
+            "variable TFDBG_DISK_BYTES_LIMIT to set a higher limit.");
+      }
+
       Status s = DebugFileIO::DumpTensorToDir(
           debug_node_key, tensor, wall_time_us, dump_root_dir, nullptr);
       if (!s.ok()) {
@@ -668,6 +683,42 @@ Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
     return Status(error::ABORTED,
                   strings::StrCat("Failed to create directory  ", parent_dir));
   }
+}
+
+// Default total disk usage limit: 100 GBytes
+const uint64 DebugFileIO::defaultGlobalDiskBytesLimit = 107374182400L;
+uint64 DebugFileIO::globalDiskBytesLimit = 0;
+uint64 DebugFileIO::diskBytesUsed = 0;
+
+mutex DebugFileIO::bytes_mu(LINKER_INITIALIZED);
+
+bool DebugFileIO::requestDiskByteUsage(uint64 bytes) {
+  if (globalDiskBytesLimit == 0) {
+    const char* env_tfdbg_disk_bytes_limit = getenv("TFDBG_DISK_BYTES_LIMIT");
+    if (env_tfdbg_disk_bytes_limit == nullptr ||
+        strlen(env_tfdbg_disk_bytes_limit) == 0) {
+      globalDiskBytesLimit = defaultGlobalDiskBytesLimit;
+    } else {
+      strings::safe_strtou64(string(env_tfdbg_disk_bytes_limit),
+                             &globalDiskBytesLimit);
+    }
+  }
+
+  if (bytes == 0) {
+    return true;
+  }
+  mutex_lock l(bytes_mu);
+  if (diskBytesUsed + bytes < globalDiskBytesLimit) {
+    diskBytesUsed += bytes;
+    return true;
+  } else {
+    return false;
+  }
+}
+
+void DebugFileIO::resetDiskByteUsage() {
+  mutex_lock l(bytes_mu);
+  diskBytesUsed = 0;
 }
 
 #ifndef PLATFORM_WINDOWS

@@ -286,6 +286,39 @@ TEST_F(FusionMergerTest, WillMergeIntoInputFusion) {
               op::Fusion(op::Parameter()));
 }
 
+TEST_F(FusionMergerTest, WillNotMergeReduceUnfriendlyLayouts) {
+  auto module = ParseHloString(R"(
+    HloModule m
+
+    f1_computation {
+      f1_p0 = f32[16,16,256]{0,1,2} parameter(0)
+      add = f32[16,16,256]{0,1,2} add(f1_p0, f1_p0)
+      // Note that the copy changes the layout from {0,1,2} to {2,1,0}.
+      ROOT f1_root = f32[16,16,256]{2,1,0} copy(add)
+    }
+
+    add_computation {
+      add_lhs = f32[] parameter(0)
+      add_rhs = f32[] parameter(1)
+      ROOT add_root = f32[] add(add_lhs, add_rhs)
+    }
+
+    f2_computation {
+      f2_p0 = f32[16,16,256]{2,1,0} parameter(0)
+      f2_zero = f32[] constant(0)
+      ROOT f2_root = f32[] reduce(f2_p0, f2_zero), dimensions={0,1,2},
+             to_apply=add_computation
+    }
+
+    ENTRY entry {
+      p0 = f32[16,16,256]{0,1,2} parameter(0)
+      f1 = f32[16,16,256]{2,1,0} fusion(p0), kind=kLoop, calls=f1_computation
+      ROOT f2 = f32[] fusion(f1), kind=kInput, calls=f2_computation
+    })")
+                    .ValueOrDie();
+  EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

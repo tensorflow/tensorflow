@@ -23,13 +23,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -144,8 +144,7 @@ class ReferenceUtil {
   // Returns the result of reducing the 4D array to a vector, reducing away
   // the dimensions specified in dims.
   static std::vector<float> Reduce4DTo1D(
-      const Array4D<float>& array, float init,
-      tensorflow::gtl::ArraySlice<int64> dims,
+      const Array4D<float>& array, float init, absl::Span<const int64> dims,
       const std::function<float(float, float)>& reduce_function);
 
   // Broadcast 1D dimension to 4D, from the dimension `broadcast_from_dim`.
@@ -156,8 +155,7 @@ class ReferenceUtil {
   // Returns the result of reducing the 3D array to a 2D array, reducing away
   // the dimensions specified in dims.
   static std::unique_ptr<Array2D<float>> Reduce3DTo2D(
-      const Array3D<float>& array, float init,
-      tensorflow::gtl::ArraySlice<int64> dims,
+      const Array3D<float>& array, float init, absl::Span<const int64> dims,
       const std::function<float(float, float)>& reduce_function);
 
   // Applies map_function to each element in the input (2D array) and returns
@@ -179,47 +177,47 @@ class ReferenceUtil {
 
   // Windowed reductions with Add as the function to apply.
   static std::unique_ptr<std::vector<float>> ReduceWindow1DAdd(
-      const tensorflow::gtl::ArraySlice<float>& operand, float init,
-      const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+      const absl::Span<const float>& operand, float init,
+      const absl::Span<const int64>& window,
+      const absl::Span<const int64>& stride, Padding padding);
   static std::unique_ptr<Array2D<float>> ReduceWindow2DAdd(
       const Array2D<float>& operand, float init,
-      const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+      const absl::Span<const int64>& window,
+      const absl::Span<const int64>& stride, Padding padding);
   static std::unique_ptr<Array3D<float>> ReduceWindow3DAdd(
       const Array3D<float>& operand, float init,
-      const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+      const absl::Span<const int64>& window,
+      const absl::Span<const int64>& stride, Padding padding);
   static std::unique_ptr<Array4D<float>> ReduceWindow4DAdd(
       const Array4D<float>& operand, float init,
-      const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+      const absl::Span<const int64>& window,
+      const absl::Span<const int64>& stride, Padding padding);
 
   // Windowed reductions with a generic reduce function.
   static std::unique_ptr<std::vector<float>> ReduceWindow1DGeneric(
-      const tensorflow::gtl::ArraySlice<float>& operand, float init,
+      const absl::Span<const float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
-      const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride,
-      const tensorflow::gtl::ArraySlice<std::pair<int64, int64>>& padding);
+      const absl::Span<const int64>& window,
+      const absl::Span<const int64>& stride,
+      const absl::Span<const std::pair<int64, int64>>& padding);
   static std::unique_ptr<Array2D<float>> ReduceWindow2DGeneric(
       const Array2D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
-      const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride,
-      const tensorflow::gtl::ArraySlice<std::pair<int64, int64>>& padding);
+      const absl::Span<const int64>& window,
+      const absl::Span<const int64>& stride,
+      const absl::Span<const std::pair<int64, int64>>& padding);
   static std::unique_ptr<Array4D<float>> ReduceWindow4DGeneric(
       const Array4D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
-      const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+      const absl::Span<const int64>& window,
+      const absl::Span<const int64>& stride, Padding padding);
   // With arbitrary padding.
   static std::unique_ptr<Array4D<float>> ReduceWindow4DGeneric(
       const Array4D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
-      const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride,
-      const tensorflow::gtl::ArraySlice<std::pair<int64, int64>>& padding);
+      const absl::Span<const int64>& window,
+      const absl::Span<const int64>& stride,
+      const absl::Span<const std::pair<int64, int64>>& padding);
 
   // Batch normalize data.
   static std::unique_ptr<Array4D<float>> BatchNorm4D(
@@ -232,8 +230,8 @@ class ReferenceUtil {
   // TODO(b/74533103) Switch tests to evaluator and remove this implementation.
   static std::unique_ptr<Array4D<float>> SelectAndScatter4DGePlus(
       const Array4D<float>& operand, const Array4D<float>& source, float init,
-      const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride, bool same_padding);
+      const absl::Span<const int64>& window,
+      const absl::Span<const int64>& stride, bool same_padding);
 
   // Concatenates the lhs and rhs arrays along the concatenate_dimension.
   // E.g. if concatenate_dimension is 0, the "n1"/height dimension is
@@ -334,8 +332,8 @@ class ReferenceUtil {
 
   // Slices with index clamping
   template <typename T>
-  static std::vector<T> ClampSlice1D(
-      const tensorflow::gtl::ArraySlice<T>& input, int64 start, int64 size) {
+  static std::vector<T> ClampSlice1D(const absl::Span<const T>& input,
+                                     int64 start, int64 size) {
     start = std::min<int64>(std::max<int64>(0, start), input.size() - size);
     std::vector<T> result;
     for (int64 i = 0; i < size; ++i) {
@@ -633,7 +631,7 @@ class ReferenceUtil {
     Array4D<NativeT> result(output_bounds[0], output_bounds[1],
                             output_bounds[2], output_bounds[3]);
     result.Each(
-        [&](tensorflow::gtl::ArraySlice<int64> indices, NativeT* value) {
+        [&](absl::Span<const int64> indices, NativeT* value) {
           for (int i = 0; i < 4; ++i) {
             bool in_low_padding = indices[i] < pad_low[i];
             bool in_high_padding = indices[i] >= output_bounds[i] - pad_high[i];

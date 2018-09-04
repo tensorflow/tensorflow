@@ -558,7 +558,7 @@ HloComputation::CreateFromProto(
 }
 
 void HloComputation::FuseInstructionsInto(
-    tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
+    absl::Span<HloInstruction* const> instructions_to_fuse,
     HloInstruction* fusion_instruction) {
   CHECK_EQ(HloOpcode::kFusion, fusion_instruction->opcode());
   HloInstruction* root = instructions_to_fuse.front();
@@ -577,7 +577,7 @@ void HloComputation::FuseInstructionsInto(
 }
 
 HloInstruction* HloComputation::CreateFusionInstruction(
-    tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
+    absl::Span<HloInstruction* const> instructions_to_fuse,
     HloInstruction::FusionKind fusion_kind) {
   HloInstruction* root = instructions_to_fuse.front();
   HloInstruction* fusion_instruction = AddInstruction(

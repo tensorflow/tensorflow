@@ -45,7 +45,7 @@ _DEFAULT_TENSORRT_PATH_LINUX = '/usr/lib/%s-linux-gnu' % platform.machine()
 _TF_OPENCL_VERSION = '1.2'
 _DEFAULT_COMPUTECPP_TOOLKIT_PATH = '/usr/local/computecpp'
 _DEFAULT_TRISYCL_INCLUDE_DIR = '/usr/local/triSYCL/include'
-_SUPPORTED_ANDROID_NDK_VERSIONS = [10, 11, 12, 13, 14, 15]
+_SUPPORTED_ANDROID_NDK_VERSIONS = [10, 11, 12, 13, 14, 15, 16]
 
 _DEFAULT_PROMPT_ASK_ATTEMPTS = 10
 
@@ -1543,6 +1543,10 @@ def main():
       if environ_cp.get('TF_DOWNLOAD_CLANG') != '1':
         # Set up which clang we should use as the cuda / host compiler.
         set_clang_cuda_compiler_path(environ_cp)
+      else:
+        # Use downloaded LLD for linking.
+        write_to_bazelrc('build:cuda_clang --config=download_clang_use_lld')
+        write_to_bazelrc('test:cuda_clang --config=download_clang_use_lld')
     else:
       # Set up which gcc nvcc should use as the host compiler
       # No need to set this on Windows

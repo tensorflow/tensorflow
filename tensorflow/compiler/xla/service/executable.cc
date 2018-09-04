@@ -26,13 +26,12 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
 
-using tensorflow::gtl::ArraySlice;
 
 namespace xla {
 
 StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
-    ArraySlice<const ServiceExecutableRunOptions> run_options,
-    ArraySlice<ArraySlice<const ShapedBuffer*>> arguments) {
+    absl::Span<const ServiceExecutableRunOptions> run_options,
+    absl::Span<const absl::Span<const ShapedBuffer* const>> arguments) {
   TF_RET_CHECK(run_options.size() == arguments.size());
 
   std::vector<ScopedShapedBuffer> return_values;
@@ -63,7 +62,7 @@ StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
 
 StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
     const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
-    ArraySlice<const ShapedBuffer*> arguments) {
+    absl::Span<const ShapedBuffer* const> arguments) {
   se::Stream* stream = run_options->stream();
   std::unique_ptr<se::Timer> timer;
   if (profile != nullptr) {

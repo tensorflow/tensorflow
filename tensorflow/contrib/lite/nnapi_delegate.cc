@@ -98,7 +98,10 @@ int32_t GetAndroidSdkVersion() {
   return 0;
 }
 
-static const int32_t kAndroidSdkVersion = GetAndroidSdkVersion();
+int32_t GetAndroidSdkVersionCached() {
+  static int32_t androidSdkVersion = GetAndroidSdkVersion();
+  return androidSdkVersion;
+}
 
 }  // namespace
 
@@ -660,7 +663,7 @@ TfLiteStatus AddOpsAndParams(
         break;
     }
 
-    if (nnapi_version == 11 && kAndroidSdkVersion < 28) {
+    if (nnapi_version == 11 && GetAndroidSdkVersionCached() < 28) {
       FATAL("Op %d needs NNAPI1.1", builtin);
     }
 

@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
@@ -147,7 +147,7 @@ class ShapeIndexView {
   string ToString() const;
 
  private:
-  tensorflow::gtl::ArraySlice<int64> indices_;
+  absl::Span<const int64> indices_;
 };
 
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
@@ -328,7 +328,7 @@ class ShapeUtil {
   static Shape ChangeElementType(const Shape& original, PrimitiveType type);
 
   // Creates a tuple shape from a slice of element shapes within the tuple.
-  static Shape MakeTupleShape(tensorflow::gtl::ArraySlice<Shape> shapes);
+  static Shape MakeTupleShape(absl::Span<const Shape> shapes);
 
   // Creates an opaque shape. These are generally used for threading a context
   // into a custom operation.
@@ -355,31 +355,29 @@ class ShapeUtil {
   // Constructs a new shape with the given element type and sequence of
   // dimensions.
   static Shape MakeShape(PrimitiveType element_type,
-                         tensorflow::gtl::ArraySlice<int64> dimensions);
+                         absl::Span<const int64> dimensions);
 
   // Creates a Shape with element type corresponding to T and the given
   // dimensions
   template <typename T>
-  static Shape MakeShapeWithType(
-      tensorflow::gtl::ArraySlice<int64> dimensions) {
+  static Shape MakeShapeWithType(absl::Span<const int64> dimensions) {
     return ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<T>(),
                                 dimensions);
   }
 
   // Constructs a new shape with the given minor_to_major order in its Layout.
   // Returns a value shape such that shape.has_layout().
-  static Shape MakeShapeWithLayout(
-      PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
-      tensorflow::gtl::ArraySlice<int64> minor_to_major);
+  static Shape MakeShapeWithLayout(PrimitiveType element_type,
+                                   absl::Span<const int64> dimensions,
+                                   absl::Span<const int64> minor_to_major);
 
-  static Shape MakeShapeWithSparseLayout(
-      PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
-      int64 max_sparse_elements);
+  static Shape MakeShapeWithSparseLayout(PrimitiveType element_type,
+                                         absl::Span<const int64> dimensions,
+                                         int64 max_sparse_elements);
 
   // Constructs a new shape with major-first layout (i.e. {n, n-1, ..., 0}).
   static Shape MakeShapeWithDescendingLayout(
-      PrimitiveType element_type,
-      tensorflow::gtl::ArraySlice<int64> dimensions);
+      PrimitiveType element_type, absl::Span<const int64> dimensions);
 
   // Returns a new Shape based on the given Shape with low-dimension-major
   // layout (i.e. {n, n-1, ..., 0}, like Fortran), and with the dimensions
@@ -391,8 +389,7 @@ class ShapeUtil {
 
   // As MakeShape, but the object to write to is passed in.
   static void PopulateShape(PrimitiveType element_type,
-                            tensorflow::gtl::ArraySlice<int64> dimensions,
-                            Shape* shape);
+                            absl::Span<const int64> dimensions, Shape* shape);
 
   // Validates that the provided shape satisfies invariants.
   static Status ValidateShape(const Shape& shape);
@@ -539,7 +536,7 @@ class ShapeUtil {
   //   !HasLayout(shape) ||
   //   TransposeIsBitcast(shape, PermuteDimensions(permutation, shape),
   //                      InversePermutation(permutation)).
-  static Shape PermuteDimensions(tensorflow::gtl::ArraySlice<int64> permutation,
+  static Shape PermuteDimensions(absl::Span<const int64> permutation,
                                  const Shape& shape);
 
   // If we can go from `shape_pre` to `shape_post` by merely inserting or
@@ -580,9 +577,9 @@ class ShapeUtil {
   // to its input and thus may be replaced with a bitcast.
   //
   // Precondition: Both input_shape and output_shape have explicit layouts.
-  static bool TransposeIsBitcast(
-      const Shape& input_shape, const Shape& output_shape,
-      tensorflow::gtl::ArraySlice<int64> dimension_mapping);
+  static bool TransposeIsBitcast(const Shape& input_shape,
+                                 const Shape& output_shape,
+                                 absl::Span<const int64> dimension_mapping);
 
   // Returns whether a reshape from "input_shape" to "output_shape" is a
   // bitcast.
@@ -621,12 +618,12 @@ class ShapeUtil {
   // continue, or false otherwise.
   //
   // visitor_function must be a callable of type
-  // StatusOr<bool>(ArraySlice<int64>) or compatible.
+  // StatusOr<bool>(Span<int64>) or compatible.
   template <typename FnType>
   static Status ForEachIndexWithStatus(const Shape& shape,
-                                       tensorflow::gtl::ArraySlice<int64> base,
-                                       tensorflow::gtl::ArraySlice<int64> count,
-                                       tensorflow::gtl::ArraySlice<int64> incr,
+                                       absl::Span<const int64> base,
+                                       absl::Span<const int64> count,
+                                       absl::Span<const int64> incr,
                                        const FnType& visitor_function) {
     return ForEachIndexInternal(shape, base, count, incr, visitor_function);
   }
@@ -648,13 +645,12 @@ class ShapeUtil {
   }
 
   template <typename FnType>
-  static void ForEachIndex(const Shape& shape,
-                           tensorflow::gtl::ArraySlice<int64> base,
-                           tensorflow::gtl::ArraySlice<int64> count,
-                           tensorflow::gtl::ArraySlice<int64> incr,
+  static void ForEachIndex(const Shape& shape, absl::Span<const int64> base,
+                           absl::Span<const int64> count,
+                           absl::Span<const int64> incr,
                            const FnType& visitor_function) {
     ForEachIndexWithStatus(shape, base, count, incr,
-                           [&](tensorflow::gtl::ArraySlice<int64> indices) {
+                           [&](absl::Span<const int64> indices) {
                              return StatusOr<bool>(visitor_function(indices));
                            })
         .IgnoreError();
@@ -676,7 +672,7 @@ class ShapeUtil {
   template <typename FnType>
   static void ForEachIndex(const Shape& shape, const FnType& visitor_function) {
     ForEachIndexWithStatus(shape,
-                           [&](tensorflow::gtl::ArraySlice<int64> indices) {
+                           [&](absl::Span<const int64> indices) {
                              return StatusOr<bool>(visitor_function(indices));
                            })
         .IgnoreError();
@@ -687,18 +683,18 @@ class ShapeUtil {
   // matter.
   //
   // visitor_function must be a callable of type
-  // void(ArraySlice<int64>) or compatible.
+  // void(Span<int64>) or compatible.
   template <typename FnType>
   static void ForEachIndexParallel(const Shape& shape,
-                                   tensorflow::gtl::ArraySlice<int64> base,
-                                   tensorflow::gtl::ArraySlice<int64> count,
-                                   tensorflow::gtl::ArraySlice<int64> incr,
+                                   absl::Span<const int64> base,
+                                   absl::Span<const int64> count,
+                                   absl::Span<const int64> incr,
                                    const FnType& visitor_function) {
     // The parallel version of ForEachIndexInternal can never fail.
     CHECK(ForEachIndexInternal(
               shape, base, count, incr,
-              [&visitor_function](tensorflow::gtl::ArraySlice<int64> indexes)
-                  -> StatusOr<bool> {
+              [&visitor_function](
+                  absl::Span<const int64> indexes) -> StatusOr<bool> {
                 visitor_function(indexes);
                 return true;
               },
@@ -720,9 +716,9 @@ class ShapeUtil {
 
   template <typename FnType>
   static Status ForEachIndexInternal(const Shape& shape,
-                                     tensorflow::gtl::ArraySlice<int64> base,
-                                     tensorflow::gtl::ArraySlice<int64> count,
-                                     tensorflow::gtl::ArraySlice<int64> incr,
+                                     absl::Span<const int64> base,
+                                     absl::Span<const int64> count,
+                                     absl::Span<const int64> incr,
                                      const FnType& visitor_function,
                                      bool parallel = false) {
     if (ShapeUtil::IsZeroElementArray(shape)) {

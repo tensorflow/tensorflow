@@ -36,7 +36,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using tensorflow::gtl::ArraySlice;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 
@@ -122,10 +121,10 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
   auto bf16_lit = LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(0.5f));
   EXPECT_EQ("0.5", bf16_lit->ToString());
 
-  // 3.14 will be truncated to 3.125 in bfloat16 format.
+  // 3.14 will be rounded to 3.14062 in bfloat16 format.
   auto bf16_lit_truncated =
       LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(3.14f));
-  EXPECT_EQ("3.125", bf16_lit_truncated->ToString());
+  ASSERT_EQ("3.14062", bf16_lit_truncated->ToString());
 
   auto bf16_lit_truncated2 =
       LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(9.001f));
@@ -222,9 +221,9 @@ TEST_F(LiteralUtilTest, CreateSparse) {
   std::vector<int64> expected_values = {8, 9, 7, 10};
 
   EXPECT_EQ(literal->sparse_indices()->data(),
-            ArraySlice<int64>(expected_indices.data(),
-                              expected_indices.num_elements()));
-  EXPECT_EQ(literal->data<int64>(), ArraySlice<int64>(expected_values));
+            absl::Span<const int64>(expected_indices.data(),
+                                    expected_indices.num_elements()));
+  EXPECT_EQ(literal->data<int64>(), absl::Span<const int64>(expected_values));
 }
 
 TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
@@ -296,7 +295,7 @@ TEST_F(LiteralUtilTest, EachCellR2F32) {
   // clang-format on
   std::vector<std::tuple<int64, int64, string>> seen;
   literal->EachCellAsString(
-      [&seen](ArraySlice<int64> indices, const string& value) {
+      [&seen](absl::Span<const int64> indices, const string& value) {
         seen.emplace_back(indices[0], indices[1], value);
       });
 
@@ -649,7 +648,7 @@ TEST_F(LiteralUtilTest, TransposeR4) {
   // clang-format on
   auto reshape = original->Transpose(/*permutation=*/{2, 3, 0, 1});
 
-  reshape->EachCell<float>([&](ArraySlice<int64> indices, float value) {
+  reshape->EachCell<float>([&](absl::Span<const int64> indices, float value) {
     EXPECT_EQ(value, original->Get<float>(
                          {indices[2], indices[3], indices[0], indices[1]}));
   });
@@ -889,7 +888,7 @@ TEST_F(LiteralUtilTest, CopySliceFrom) {
     const int64 zero_base[] = {0, 0, 0, 0};
     const int64 step[] = {1, 1, 1, 1};
     uint32 seqnr = 0;
-    auto init_proc = [&](ArraySlice<int64> indexes) {
+    auto init_proc = [&](absl::Span<const int64> indexes) {
       source->Set(indexes, ++seqnr);
       return true;
     };
@@ -905,7 +904,7 @@ TEST_F(LiteralUtilTest, CopySliceFrom) {
     std::vector<int64> source_indexes(TF_ARRAYSIZE(dimensions), 0);
     std::vector<int64> blank_indexes(TF_ARRAYSIZE(dimensions), 0);
     bool matched = true;
-    auto check_proc = [&](ArraySlice<int64> indexes) {
+    auto check_proc = [&](absl::Span<const int64> indexes) {
       std::copy(indexes.begin(), indexes.end(), source_indexes.begin());
       std::transform(source_indexes.begin(), source_indexes.end(), src_base,
                      source_indexes.begin(), std::plus<int64>());
@@ -1093,7 +1092,7 @@ TEST_F(LiteralUtilTest, Populate) {
         primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
         data.layout);
     auto literal = absl::make_unique<Literal>(shape);
-    auto generator = [&](ArraySlice<int64> indexes) -> uint32 {
+    auto generator = [&](absl::Span<const int64> indexes) -> uint32 {
       // Offsets from linear index just to avoid R0 literals to be initialized
       // with zero.
       return IndexUtil::MultidimensionalIndexToLinearIndex(literal->shape(),
@@ -1105,7 +1104,7 @@ TEST_F(LiteralUtilTest, Populate) {
     std::vector<int64> zero_base(data.dimensions.size(), 0);
     std::vector<int64> step(data.dimensions.size(), 1);
     bool matched = true;
-    auto check_function = [&](ArraySlice<int64> indexes) {
+    auto check_function = [&](absl::Span<const int64> indexes) {
       auto value = literal->Get<uint32>(indexes);
       matched = matched && (value == generator(indexes));
       return matched;
@@ -1135,7 +1134,7 @@ TEST_F(LiteralUtilTest, PopulateParallel) {
         primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
         data.layout);
     auto literal = absl::make_unique<Literal>(shape);
-    auto generator = [&](ArraySlice<int64> indexes) -> uint32 {
+    auto generator = [&](absl::Span<const int64> indexes) -> uint32 {
       // Offsets from linear index just to avoid R0 literals to be initialized
       // with zero.
       return IndexUtil::MultidimensionalIndexToLinearIndex(literal->shape(),
@@ -1147,7 +1146,7 @@ TEST_F(LiteralUtilTest, PopulateParallel) {
     std::vector<int64> zero_base(data.dimensions.size(), 0);
     std::vector<int64> step(data.dimensions.size(), 1);
     bool matched = true;
-    auto check_function = [&](ArraySlice<int64> indexes) {
+    auto check_function = [&](absl::Span<const int64> indexes) {
       auto value = literal->Get<uint32>(indexes);
       matched = matched && (value == generator(indexes));
       return matched;
@@ -1561,7 +1560,7 @@ TEST_F(LiteralUtilTest, MoveIntoTuple) {
 
                                    ));
 
-  Literal literal = Literal::MoveIntoTuple(&elements);
+  Literal literal = Literal::MoveIntoTuple(absl::MakeSpan(elements));
   ASSERT_TRUE(ShapeUtil::IsTuple(literal.shape()));
   ASSERT_EQ(ShapeUtil::TupleElementCount(literal.shape()), 3);
 

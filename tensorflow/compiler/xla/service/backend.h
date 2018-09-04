@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -149,7 +149,7 @@ class Backend {
  private:
   struct EigenThreadPoolWrapper;
   Backend(se::Platform* platform, Compiler* compiler,
-          tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors,
+          absl::Span<se::StreamExecutor* const> stream_executors,
           TransferManager* transfer_manager,
           ComputationPlacer* computation_placer,
           int intra_op_parallelism_threads);

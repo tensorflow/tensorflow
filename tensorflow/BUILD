@@ -24,6 +24,10 @@ load(
     "gen_api_init_files",  # @unused
 )
 load(
+    "//tensorflow/python/tools/api/generator:api_init_files_v1.bzl",
+    "TENSORFLOW_API_INIT_FILES_V1",  # @unused
+)
+load(
     "//third_party/ngraph:build_defs.bzl",
     "if_ngraph",
 )
@@ -589,6 +593,7 @@ gen_api_init_files(
     name = "tensorflow_python_api_gen",
     srcs = ["api_template.__init__.py"],
     api_version = 1,
+    output_files = TENSORFLOW_API_INIT_FILES_V1,
     root_init_template = "api_template.__init__.py",
 )
 

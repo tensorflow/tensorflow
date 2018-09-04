@@ -192,7 +192,9 @@ void OrderTaskDeviceMap(TaskDeviceMap* tdm) {
   int next_rank = 0;
   while (true) {
     selected.insert(next_device);
-    DevRec* dr = &(*tdm)[next_device];
+    auto next_dev_it = tdm->find(next_device);
+    CHECK(next_dev_it != tdm->end());
+    DevRec* dr = &next_dev_it->second;
     dr->local_rank = next_rank;
     ++next_rank;
     if (selected.size() == tdm->size()) {
@@ -206,7 +208,13 @@ void OrderTaskDeviceMap(TaskDeviceMap* tdm) {
         parsed_name.id = il.device_id();
         string endpoint_device =
             DeviceNameUtils::ParsedNameToString(parsed_name);
+        // Skip the device if we've already seen it.
         if (selected.find(endpoint_device) != selected.end()) {
+          continue;
+        }
+        // Skip the device if it is not participating in this collective
+        // instance.
+        if (tdm->find(endpoint_device) == tdm->end()) {
           continue;
         }
         if (best_link == nullptr || il.strength() > best_link->strength()) {
@@ -407,6 +415,10 @@ void CollectiveParamResolverLocal::InitInstanceSharedParams(
           });
 }
 
+// NOTE(ayushd): The DeviceLocality objects in localities will have LocalLinks
+// to all devices that they are physically connected to and visible to the
+// TensorFlow runtime.  This set of devices may be a superset of the devices
+// participating in this instance of collectives.
 void CollectiveParamResolverLocal::CompleteDefaultRanking(
     const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir,
     const std::vector<DeviceLocality>& localities) {

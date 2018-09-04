@@ -693,9 +693,6 @@ def strided_slice(input_,
   parent_name = name
 
   if not (var is None and isinstance(op, ops.EagerTensor)):
-    # TODO(b/113297051): Assigning a function to an EagerTensor seems to leak
-    # memory. Slicing variables still leaks, although ".assign" is removed for
-    # EagerTensors which are not variable slices to mitigate the issue.
     def assign(val, name=None):
       """Closure that holds all the arguments to create an assignment."""
 

@@ -29,8 +29,8 @@ namespace xla {
 // performs verification on that module on tear-down.
 class HloVerifiedTestBase : public HloTestBase {
  protected:
-  explicit HloVerifiedTestBase(bool layout_sensitive,
-                               bool allow_mixed_precision);
+  explicit HloVerifiedTestBase(bool layout_sensitive = false,
+                               bool allow_mixed_precision = false);
   ~HloVerifiedTestBase() override;
 
   // Constructs a default shape verifier.

@@ -29,13 +29,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
@@ -101,65 +101,63 @@ struct ScopedLoggingTimer {
   uint64 start_micros;
 };
 
-// Given a vector<T>, returns a MutableArraySlice<char> that points at its
+// Given a vector<T>, returns a Span<char> that points at its
 // internals.
 //
 // Warning: if the vector is updated its storage pointer may change, so use this
 // with caution (ideally in limited scopes with temporary lifetimes).
 template <typename T>
-tensorflow::gtl::MutableArraySlice<uint8> MutableByteSlice(std::vector<T>* v) {
-  return tensorflow::gtl::MutableArraySlice<uint8>(
-      reinterpret_cast<uint8*>(v->data()), v->size() * sizeof(T));
+absl::Span<uint8> MutableByteSlice(std::vector<T>* v) {
+  return absl::Span<uint8>(reinterpret_cast<uint8*>(v->data()),
+                           v->size() * sizeof(T));
 }
 
 // Turns an immutable slice of type T into an immutable slice of bytes with the
 // same byte size.
 template <typename T>
-tensorflow::gtl::ArraySlice<uint8> CastToByteSlice(
-    tensorflow::gtl::ArraySlice<T> slice) {
-  return tensorflow::gtl::ArraySlice<uint8>(
-      reinterpret_cast<const uint8*>(slice.data()), slice.size() * sizeof(T));
+absl::Span<const uint8> CastToByteSlice(absl::Span<const T> slice) {
+  return absl::Span<const uint8>(reinterpret_cast<const uint8*>(slice.data()),
+                                 slice.size() * sizeof(T));
 }
 
 // Casts a byte slice to a non-byte type T, checking that the original slice
 // length is a multiple of sizeof(T).
 template <typename T>
-tensorflow::gtl::ArraySlice<T> CastByteSlice(
-    tensorflow::gtl::ArraySlice<uint8> slice) {
+absl::Span<const T> CastByteSlice(absl::Span<const uint8> slice) {
   CHECK_EQ(0, slice.size() % sizeof(T));
-  return tensorflow::gtl::ArraySlice<T>(
-      reinterpret_cast<const T*>(slice.data()), slice.size() / sizeof(T));
+  return absl::Span<const T>(reinterpret_cast<const T*>(slice.data()),
+                             slice.size() / sizeof(T));
 }
 
 // Convenience function to force a vector to convert to an immutable slice.
 template <typename T>
-tensorflow::gtl::ArraySlice<T> AsSlice(const std::vector<T>& v) {
-  return tensorflow::gtl::ArraySlice<T>(v);
+absl::Span<const T> AsSlice(const std::vector<T>& v) {
+  return absl::Span<const T>(v);
 }
 
-// Converts a mutable vector pointer into a MutableArraySlice of the same
+// Converts a mutable vector pointer into a Span of the same
 // type.
 template <typename T>
-tensorflow::gtl::MutableArraySlice<T> AsMutableSlice(std::vector<T>* v) {
-  return tensorflow::gtl::MutableArraySlice<T>(v->data(), v->size());
+absl::Span<T> AsMutableSlice(std::vector<T>* v) {
+  return absl::Span<T>(v->data(), v->size());
 }
 
 // xla::int64 is not the same type as tensorflow::protobuf_int64 in open-source.
 // Wrapper function that gives an int64 array slice view of a repeated int64
 // protobuf field.
-static inline tensorflow::gtl::ArraySlice<int64> AsInt64Slice(
+static inline absl::Span<const int64> AsInt64Slice(
     const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>& v) {
-  tensorflow::gtl::ArraySlice<tensorflow::protobuf_int64> slice(v);
-  return tensorflow::gtl::ArraySlice<int64>(
-      reinterpret_cast<const int64*>(slice.data()), slice.size());
+  absl::Span<const tensorflow::protobuf_int64> slice(v);
+  return absl::Span<const int64>(reinterpret_cast<const int64*>(slice.data()),
+                                 slice.size());
 }
 
 // As above, but for uint64 types.
-static inline tensorflow::gtl::ArraySlice<uint64> AsUInt64Slice(
+static inline absl::Span<const uint64> AsUInt64Slice(
     const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_uint64>& v) {
-  tensorflow::gtl::ArraySlice<tensorflow::protobuf_uint64> slice(v);
-  return tensorflow::gtl::ArraySlice<uint64>(
-      reinterpret_cast<const uint64*>(slice.data()), slice.size());
+  absl::Span<const tensorflow::protobuf_uint64> slice(v);
+  return absl::Span<const uint64>(reinterpret_cast<const uint64*>(slice.data()),
+                                  slice.size());
 }
 
 // Compares two containers for equality. Returns true iff the two containers
@@ -175,7 +173,7 @@ template <typename Container1T,
           typename ElementType = typename Container1T::value_type>
 bool ContainersEqual(const Container1T& c1,
                      std::initializer_list<ElementType> il) {
-  tensorflow::gtl::ArraySlice<ElementType> c2{il};
+  absl::Span<const ElementType> c2{il};
   return ContainersEqual(c1, c2);
 }
 
@@ -193,9 +191,9 @@ bool ContainersEqual(const Container1T& c1, const Container2T& c2,
 // source and destination. The source starting index is src_base, while the
 // destination one is dest_base.
 template <typename D, typename S>
-void StridedCopy(tensorflow::gtl::MutableArraySlice<D> dest, int64 dest_base,
-                 int64 dest_stride, tensorflow::gtl::ArraySlice<S> src,
-                 int64 src_base, int64 src_stride, int64 count) {
+void StridedCopy(absl::Span<D> dest, int64 dest_base, int64 dest_stride,
+                 absl::Span<const S> src, int64 src_base, int64 src_stride,
+                 int64 count) {
   for (; count > 0; --count, dest_base += dest_stride, src_base += src_stride) {
     dest[dest_base] = static_cast<D>(src[src_base]);
   }
@@ -285,7 +283,7 @@ Status ResourceExhaustedStrCat(Args&&... concat) {
 string Reindent(absl::string_view original, absl::string_view indentation);
 
 // Checks whether permutation is a permutation of the [0, rank) integer range.
-bool IsPermutation(tensorflow::gtl::ArraySlice<int64> permutation, int64 rank);
+bool IsPermutation(absl::Span<const int64> permutation, int64 rank);
 
 // Applies `permutation` on `input` and returns the permuted array.
 // For each i, output[permutation[i]] = input[i].
@@ -293,10 +291,11 @@ bool IsPermutation(tensorflow::gtl::ArraySlice<int64> permutation, int64 rank);
 // Precondition:
 // 1. `permutation` is a permutation of 0..permutation.size()-1.
 // 2. permutation.size() == input.size().
-template <template <typename...> class C, typename T>
-std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
-                       C<T> input) {
-  tensorflow::gtl::ArraySlice<T> data(input);
+template <typename Container>
+std::vector<typename Container::value_type> Permute(
+    absl::Span<const int64> permutation, const Container& input) {
+  using T = typename Container::value_type;
+  absl::Span<const T> data(input);
   CHECK(IsPermutation(permutation, data.size()));
   std::vector<T> output(data.size());
   for (size_t i = 0; i < permutation.size(); ++i) {
@@ -305,27 +304,16 @@ std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
   return output;
 }
 
-// Override of the above that works around compile failures with gcc 7.1.1.
-// For details see https://github.com/tensorflow/tensorflow/issues/10843
-// Hide this workaround from MSVC as it causes ambiguous error.
-#ifndef _MSC_VER
-template <typename T>
-std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
-                       const std::vector<T>& input) {
-  return Permute<std::vector, T>(permutation, input);
-}
-#endif
-
 // Inverts a permutation, i.e., output_permutation[input_permutation[i]] = i.
 std::vector<int64> InversePermutation(
-    tensorflow::gtl::ArraySlice<int64> input_permutation);
+    absl::Span<const int64> input_permutation);
 
 // Composes two permutations: output[i] = p1[p2[i]].
-std::vector<int64> ComposePermutations(tensorflow::gtl::ArraySlice<int64> p1,
-                                       tensorflow::gtl::ArraySlice<int64> p2);
+std::vector<int64> ComposePermutations(absl::Span<const int64> p1,
+                                       absl::Span<const int64> p2);
 
 // Returns true iff permutation == {0, 1, 2, ...}.
-bool IsIdentityPermutation(tensorflow::gtl::ArraySlice<int64> permutation);
+bool IsIdentityPermutation(absl::Span<const int64> permutation);
 
 template <typename Container>
 int64 PositionInContainer(const Container& container, int64 value) {
@@ -379,7 +367,7 @@ PaddingConfig MakeNoPaddingConfig(int64 rank);
 // Returns a PaddingConfig object where 'padding' contains
 // (low edge padding, high edge padding) pairs for each dimension.
 PaddingConfig MakeEdgePaddingConfig(
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding);
+    absl::Span<const std::pair<int64, int64>> padding);
 
 // Returns true if the padding configuration has at least one dimension with
 // non-zero interior padding.
@@ -446,7 +434,7 @@ std::unique_ptr<Derived> unique_ptr_static_cast(std::unique_ptr<Base> ptr) {
   return std::unique_ptr<Derived>(static_cast<Derived*>(ptr.release()));
 }
 
-int64 Product(tensorflow::gtl::ArraySlice<int64> xs);
+int64 Product(absl::Span<const int64> xs);
 
 // Returns the start indices of consecutive non-overlapping subsequences of `a`
 // and `b` with the same product, i.e. `(i, j)` so
@@ -459,8 +447,8 @@ int64 Product(tensorflow::gtl::ArraySlice<int64> xs);
 //
 // If the given shapes have non-zero size, returns the bounds of the shortest
 // possible such subsequences; else, returns `{(0, 0), (a.size, b.size)}`.
-std::vector<std::pair<int64, int64>> CommonFactors(
-    tensorflow::gtl::ArraySlice<int64> a, tensorflow::gtl::ArraySlice<int64> b);
+std::vector<std::pair<int64, int64>> CommonFactors(absl::Span<const int64> a,
+                                                   absl::Span<const int64> b);
 
 // Removes illegal characters from filenames.
 string SanitizeFileName(string file_name);
@@ -469,11 +457,6 @@ template <typename C, typename Value>
 int64 FindIndex(const C& c, Value&& value) {
   auto it = absl::c_find(c, std::forward<Value>(value));
   return std::distance(c.begin(), it);
-}
-
-template <typename T>
-bool ArrayContains(tensorflow::gtl::ArraySlice<T> c, const T& value) {
-  return absl::c_find(c, value) != c.end();
 }
 
 template <typename C, typename Value>
@@ -487,7 +470,7 @@ void EraseAt(C* c, int64 index) {
 }
 
 template <typename T>
-std::vector<T> ArraySliceToVector(tensorflow::gtl::ArraySlice<T> slice) {
+std::vector<T> ArraySliceToVector(absl::Span<const T> slice) {
   return std::vector<T>(slice.begin(), slice.end());
 }
 

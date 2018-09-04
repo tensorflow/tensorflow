@@ -24,7 +24,6 @@ limitations under the License.
 
 namespace xla {
 using absl::StrCat;
-using tensorflow::gtl::ArraySlice;
 
 StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
                                         HloInstruction* rhs) {
@@ -50,9 +49,9 @@ StatusOr<HloInstruction*> MakePadHlo(HloInstruction* operand,
 }
 
 StatusOr<HloInstruction*> MakeSliceHlo(HloInstruction* operand,
-                                       ArraySlice<int64> start_indices,
-                                       ArraySlice<int64> limit_indices,
-                                       ArraySlice<int64> strides) {
+                                       absl::Span<const int64> start_indices,
+                                       absl::Span<const int64> limit_indices,
+                                       absl::Span<const int64> strides) {
   HloComputation* computation = operand->parent();
   TF_ASSIGN_OR_RETURN(Shape slice_shape, ShapeInference::InferSliceShape(
                                              operand->shape(), start_indices,
@@ -74,7 +73,7 @@ StatusOr<HloInstruction*> MakeConvolveHlo(
 }
 
 StatusOr<HloInstruction*> MakeTransposeHlo(HloInstruction* operand,
-                                           ArraySlice<int64> dimensions) {
+                                           absl::Span<const int64> dimensions) {
   HloComputation* computation = operand->parent();
   TF_ASSIGN_OR_RETURN(
       Shape transpose_shape,
@@ -91,15 +90,15 @@ StatusOr<HloInstruction*> MakeReshapeHlo(const Shape& result_shape,
 }
 
 StatusOr<HloInstruction*> MakeReshapeHlo(
-    ArraySlice<int64> result_shape_dim_bounds, HloInstruction* operand) {
+    absl::Span<const int64> result_shape_dim_bounds, HloInstruction* operand) {
   Shape new_shape = ShapeUtil::MakeShape(operand->shape().element_type(),
                                          result_shape_dim_bounds);
   return MakeReshapeHlo(new_shape, operand);
 }
 
-StatusOr<HloInstruction*> MakeDynamicSliceHlo(HloInstruction* operand,
-                                              HloInstruction* start_indices,
-                                              ArraySlice<int64> slice_sizes) {
+StatusOr<HloInstruction*> MakeDynamicSliceHlo(
+    HloInstruction* operand, HloInstruction* start_indices,
+    absl::Span<const int64> slice_sizes) {
   HloComputation* computation = operand->parent();
   CHECK_EQ(computation, start_indices->parent());
   TF_ASSIGN_OR_RETURN(
@@ -125,8 +124,8 @@ StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
 }
 
 StatusOr<HloInstruction*> MakeBroadcastHlo(
-    HloInstruction* operand, ArraySlice<int64> broadcast_dimensions,
-    ArraySlice<int64> result_shape_bounds) {
+    HloInstruction* operand, absl::Span<const int64> broadcast_dimensions,
+    absl::Span<const int64> result_shape_bounds) {
   HloComputation* computation = operand->parent();
   Shape broadcast_shape = ShapeUtil::MakeShape(operand->shape().element_type(),
                                                result_shape_bounds);
@@ -146,8 +145,8 @@ StatusOr<HloInstruction*> MakeGetTupleElementHlo(HloInstruction* operand,
       HloInstruction::CreateGetTupleElement(gte_shape, operand, index));
 }
 
-StatusOr<HloInstruction*> MakeConcatHlo(ArraySlice<HloInstruction*> operands,
-                                        int64 dimension) {
+StatusOr<HloInstruction*> MakeConcatHlo(
+    absl::Span<HloInstruction* const> operands, int64 dimension) {
   CHECK_GT(operands.size(), 0);
 
   HloComputation* computation = operands[0]->parent();
@@ -176,9 +175,8 @@ StatusOr<HloInstruction*> MakeDotHlo(HloInstruction* lhs, HloInstruction* rhs,
       HloInstruction::CreateDot(dot_shape, lhs, rhs, dim_numbers));
 }
 
-StatusOr<HloInstruction*> MakeMapHlo(
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    HloComputation* map_computation) {
+StatusOr<HloInstruction*> MakeMapHlo(absl::Span<HloInstruction* const> operands,
+                                     HloComputation* map_computation) {
   CHECK(!operands.empty()) << "Map Hlo requires at least one operand.";
   HloComputation* computation = operands.front()->parent();
   std::vector<const Shape*> operand_shapes;
@@ -235,7 +233,7 @@ StatusOr<HloInstruction*> PrependDegenerateDims(HloInstruction* operand,
 }
 
 StatusOr<HloInstruction*> ExpandFirstDimIntoNDims(
-    HloInstruction* operand, ArraySlice<int64> expanded_dims) {
+    HloInstruction* operand, absl::Span<const int64> expanded_dims) {
   CHECK_GT(operand->shape().dimensions_size(), 0);
   CHECK_EQ(operand->shape().dimensions(0), Product(expanded_dims));
 
@@ -251,8 +249,8 @@ StatusOr<HloInstruction*> ExpandFirstDimIntoNDims(
   return MakeReshapeHlo(new_shape, operand);
 }
 
-StatusOr<HloInstruction*> ElideDegenerateDims(HloInstruction* operand,
-                                              ArraySlice<int64> dims_to_elide) {
+StatusOr<HloInstruction*> ElideDegenerateDims(
+    HloInstruction* operand, absl::Span<const int64> dims_to_elide) {
   CHECK(absl::c_is_sorted(dims_to_elide));
 
   const Shape& input_shape = operand->shape();
@@ -277,7 +275,7 @@ StatusOr<HloInstruction*> ElideDegenerateDims(HloInstruction* operand,
 }
 
 StatusOr<HloInstruction*> InsertDegenerateDims(
-    HloInstruction* operand, ArraySlice<int64> dims_to_insert) {
+    HloInstruction* operand, absl::Span<const int64> dims_to_insert) {
   CHECK(absl::c_is_sorted(dims_to_insert));
 
   const Shape& operand_shape = operand->shape();
@@ -327,7 +325,7 @@ StatusOr<HloInstruction*> PadVectorWithZeros(HloInstruction* operand,
 
 StatusOr<HloInstruction*> BroadcastZeros(
     HloComputation* computation, PrimitiveType element_type,
-    ArraySlice<int64> broadcast_dimensions) {
+    absl::Span<const int64> broadcast_dimensions) {
   HloInstruction* zero =
       computation->AddInstruction(HloInstruction::CreateConstant(
           absl::make_unique<Literal>(LiteralUtil::Zero(element_type))));
@@ -336,7 +334,7 @@ StatusOr<HloInstruction*> BroadcastZeros(
 }
 
 StatusOr<std::unique_ptr<HloComputation>> CreateComputationWithSignature(
-    ArraySlice<const Shape*> domain, const Shape& range,
+    absl::Span<const Shape* const> domain, const Shape& range,
     absl::string_view name) {
   HloComputation::Builder b{string(name)};
   int64 param_idx = 0;

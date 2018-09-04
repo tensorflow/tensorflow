@@ -54,7 +54,7 @@ class CopyOpTest : public HloTestBase {
 
   void TestCopyConstantLayout021(size_t n1, size_t n2, size_t n3);
   void TestCopyConstantLayoutR4(size_t n1, size_t n2, size_t n3, size_t n4,
-                                tensorflow::gtl::ArraySlice<int64> permutation);
+                                absl::Span<const int64> permutation);
 };
 
 XLA_TEST_F(CopyOpTest, CopyR0Bool) {
@@ -187,9 +187,9 @@ void CopyOpTest::TestCopyConstantLayout021(size_t n1, size_t n2, size_t n3) {
   LiteralTestUtil::ExpectR3EqualArray3D(a, *result);
 }
 
-void CopyOpTest::TestCopyConstantLayoutR4(
-    size_t n1, size_t n2, size_t n3, size_t n4,
-    tensorflow::gtl::ArraySlice<int64> permutation) {
+void CopyOpTest::TestCopyConstantLayoutR4(size_t n1, size_t n2, size_t n3,
+                                          size_t n4,
+                                          absl::Span<const int64> permutation) {
   Array4D<int32> a(n1, n2, n3, n4);
   for (size_t i = 0; i < n1; ++i) {
     for (size_t j = 0; j < n2; ++j) {

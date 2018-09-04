@@ -126,7 +126,7 @@ def build_toco_convert_protos(input_tensors,
                               reorder_across_fake_quant=False,
                               allow_custom_ops=False,
                               change_concat_input_ranges=False,
-                              quantize_weights=False,
+                              post_training_quantize=False,
                               dump_graphviz_dir=None,
                               dump_graphviz_video=False):
   """Builds protocol buffers describing a conversion of a model using TOCO.
@@ -149,9 +149,11 @@ def build_toco_convert_protos(input_tensors,
       as `input_tensors`, or None. (default None)
     output_format: Output file format. Currently must be `{TFLITE,
       GRAPHVIZ_DOT}`. (default TFLITE)
-    quantized_input_stats: List of tuples of integers representing the mean and
+    quantized_input_stats: List of tuples of floats representing the mean and
       standard deviation. Each tuple maps to the corresponding input tensor.
-      Only need if `inference_type` is `QUANTIZED_UINT8`. (default None)
+      Only need if `inference_input_type` is `QUANTIZED_UINT8`.
+      real_input_value = (quantized_input_value - mean_value) / std_dev_value.
+      (default None)
     default_ranges_stats: Tuple of integers representing (min, max) range values
       for all arrays without a specified range. Intended for experimenting with
       quantization via "dummy quantization". (default None)
@@ -171,9 +173,9 @@ def build_toco_convert_protos(input_tensors,
     change_concat_input_ranges: Boolean to change behavior of min/max ranges for
       inputs and outputs of the concat operator for quantized models. Changes
       the ranges of concat operator overlap when true. (default False)
-    quantize_weights: Boolean indicating whether to store weights as quantized
-      weights followed by dequantize operations. Computation is still done in
-      float, but reduces model size (at the cost of accuracy and latency).
+    post_training_quantize: Boolean indicating whether to quantize the weights
+      of the converted float model. Model size will be reduced and there will be
+      latency improvements (at the cost of accuracy).
       (default False)
     dump_graphviz_dir: Full filepath of folder to dump the graphs at various
       stages of processing GraphViz .dot files. Preferred over
@@ -197,10 +199,12 @@ def build_toco_convert_protos(input_tensors,
   toco.inference_type = inference_type
   if inference_input_type:
     toco.inference_input_type = inference_input_type
+  else:
+    toco.inference_input_type = toco.inference_type
   toco.drop_control_dependency = drop_control_dependency
   toco.reorder_across_fake_quant = reorder_across_fake_quant
   toco.allow_custom_ops = allow_custom_ops
-  toco.quantize_weights = quantize_weights
+  toco.post_training_quantize = post_training_quantize
   if default_ranges_stats:
     toco.default_ranges_min = default_ranges_stats[0]
     toco.default_ranges_max = default_ranges_stats[1]
@@ -212,7 +216,7 @@ def build_toco_convert_protos(input_tensors,
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):
     input_array = model.input_arrays.add()
-    if inference_type == lite_constants.QUANTIZED_UINT8:
+    if toco.inference_input_type == lite_constants.QUANTIZED_UINT8:
       input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
     input_array.name = tensor_name(input_tensor)
     if input_shapes is None:
@@ -224,6 +228,54 @@ def build_toco_convert_protos(input_tensors,
   for output_tensor in output_tensors:
     model.output_arrays.append(tensor_name(output_tensor))
   return model, toco
+
+
+def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
+                           *args, **kwargs):
+  """"Convert a model using TOCO.
+
+  This function is used to convert GraphDefs that cannot be loaded into
+  TensorFlow to TFLite. Conversion can be customized by providing arguments
+  that are forwarded to `build_toco_convert_protos` (see documentation for
+  details).
+
+  Args:
+    input_data: Input data (i.e. often `sess.graph_def`),
+    input_arrays_with_shape: Tuple of strings representing input tensor names
+      and list of integers representing input shapes
+      (e.g., [("foo" : [1, 16, 16, 3])]). Use only when graph cannot be loaded
+      into TensorFlow and when `input_tensors` is None. (default None)
+    output_arrays: List of output tensors to freeze graph with. Use only when
+      graph cannot be loaded into TensorFlow and when `output_tensors` is None.
+      (default None)
+    *args: See `build_toco_convert_protos`,
+    **kwargs: See `build_toco_convert_protos`.
+
+  Returns:
+    The converted data. For example if TFLite was the destination, then
+    this will be a tflite flatbuffer in a bytes array.
+
+  Raises:
+    Defined in `build_toco_convert_protos`.
+  """
+  model_flags, toco_flags = build_toco_convert_protos(
+      input_tensors=[], output_tensors=[], *args, **kwargs)
+
+  for idx, (name, shape) in enumerate(input_arrays_with_shape):
+    input_array = model_flags.input_arrays.add()
+    if kwargs["inference_type"] == lite_constants.QUANTIZED_UINT8:
+      input_array.mean_value, input_array.std_value = kwargs[
+          "quantized_input_stats"][idx]
+    input_array.name = name
+    input_array.shape.dims.extend(map(int, shape))
+
+  for name in output_arrays:
+    model_flags.output_arrays.append(name)
+
+  data = toco_convert_protos(model_flags.SerializeToString(),
+                             toco_flags.SerializeToString(),
+                             input_data.SerializeToString())
+  return data
 
 
 def toco_convert_impl(input_data, input_tensors, output_tensors, *args,

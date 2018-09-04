@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/tuple_util.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 
@@ -40,7 +40,7 @@ namespace xla {
 
 /*static*/ HloInstruction* TupleUtil::AppendSuffix(
     HloInstruction* input_tuple,
-    tensorflow::gtl::ArraySlice<HloInstruction*> trailing_values) {
+    absl::Span<HloInstruction* const> trailing_values) {
   CHECK(ShapeUtil::IsTuple(input_tuple->shape()));
 
   HloComputation* computation = input_tuple->parent();

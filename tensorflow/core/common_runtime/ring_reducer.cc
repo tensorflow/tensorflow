@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -497,13 +498,6 @@ bool RingReducer::RunAsyncParts() {
   rfv_.clear();
   rfv_.resize(group_size_ * num_subdivs_);
   PCQueue ready_queue;
-  int field_done_count = 0;
-  int send_pending_count = 0;
-  int recv_pending_count = 0;
-  std::atomic<bool> aborted(false);
-  field_done_count = 0;
-  send_pending_count = 0;
-  recv_pending_count = 0;
   for (int chunk_idx = 0; chunk_idx < group_size_; ++chunk_idx) {
     for (int subdiv_idx = 0; subdiv_idx < num_subdivs_; ++subdiv_idx) {
       int rf_index = (chunk_idx * num_subdivs_) + subdiv_idx;
@@ -511,6 +505,30 @@ bool RingReducer::RunAsyncParts() {
       ready_queue.Enqueue(&rfv_[rf_index]);
     }
   }
+  const DeviceBase::GpuDeviceInfo* gpu_info =
+      col_ctx_->device->tensorflow_gpu_device_info();
+  if (gpu_info) {
+    // Wait for all currently queued events on the CPU compute stream to
+    // complete before proceeding.  The previous InitRingField calls allocated
+    // temp memory buffers that are not guaranteed to be valid (e.g. for RDMA
+    // write) unless we do.
+    Notification note;
+    Status s = gpu_info->default_context->ThenExecute(
+        col_ctx_->device, gpu_info->stream, [&note]() { note.Notify(); });
+    if (s.ok()) {
+      note.WaitForNotification();
+    } else {
+      mutex_lock l(status_mu_);
+      status_ =
+          errors::Internal("Failed to dispatch ThenExecute in RingReducer");
+      return false;
+    }
+  }
+
+  int field_done_count = 0;
+  int send_pending_count = 0;
+  int recv_pending_count = 0;
+  std::atomic<bool> aborted(false);
 
   // Loop until all RingFields have advanced to completion.
   while (field_done_count < rfv_.size()) {

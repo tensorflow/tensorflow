@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.data.python.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.contrib.data.python.kernel_tests import stats_dataset_test_base
 from tensorflow.contrib.data.python.ops import stats_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -173,46 +172,6 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
       self._assertSummaryHasCount(sess.run(summary_t), "record_latency", 200.0)
-
-
-class FeatureStatsDatasetTest(
-    stats_dataset_test_base.StatsDatasetTestBase,
-    reader_dataset_ops_test_base.ReadBatchFeaturesTestBase):
-
-  def testFeaturesStats(self):
-    num_epochs = 5
-    total_records = num_epochs * self._num_records
-    batch_size = 2
-    stats_aggregator = stats_ops.StatsAggregator()
-    dataset = self.make_batch_feature(
-        filenames=self.test_filenames[0],
-        num_epochs=num_epochs,
-        batch_size=batch_size,
-        shuffle=True,
-        shuffle_seed=5,
-        drop_final_batch=False).apply(
-            stats_ops.set_stats_aggregator(stats_aggregator))
-    iterator = dataset.make_initializable_iterator()
-    next_element = iterator.get_next()
-    summary_t = stats_aggregator.get_summary()
-
-    with self.test_session() as sess:
-      sess.run(iterator.initializer)
-      for _ in range(total_records // batch_size + 1 if total_records %
-                     batch_size else total_records // batch_size):
-        sess.run(next_element)
-
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
-      self._assertSummaryHasCount(
-          sess.run(summary_t), "record_stats:features", total_records)
-      self._assertSummaryHasCount(
-          sess.run(summary_t), "record_stats:feature-values", total_records)
-      self._assertSummaryHasSum(
-          sess.run(summary_t), "record_stats:features", total_records * 3)
-      self._assertSummaryHasSum(
-          sess.run(summary_t), "record_stats:feature-values",
-          self._sum_keywords(1) * num_epochs + 2 * total_records)
 
 
 if __name__ == "__main__":

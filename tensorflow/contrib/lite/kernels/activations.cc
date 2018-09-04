@@ -590,10 +590,10 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
                          input->type);
     return kTfLiteError;
   }
-  reference_ops::BroadcastBinaryFunction<float, float, float>(
-      GetTensorData<float>(input), GetTensorDims(input),
-      GetTensorData<float>(alpha), GetTensorDims(alpha),
-      GetTensorData<float>(output), GetTensorDims(output), ApplyPrelu<float>);
+  reference_ops::BroadcastBinaryFunction4DSlow<float, float, float>(
+      GetTensorShape(input), GetTensorData<float>(input), GetTensorShape(alpha),
+      GetTensorData<float>(alpha), GetTensorShape(output),
+      GetTensorData<float>(output), ApplyPrelu<float>);
   return kTfLiteOk;
 }
 

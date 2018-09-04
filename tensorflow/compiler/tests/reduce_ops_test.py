@@ -219,7 +219,7 @@ class ReduceOpPrecisionTest(xla_test.XLATestCase):
 
     bf16_max = np.float32(dtypes.bfloat16.max)
     f32_max = dtypes.float32.max
-    value = min(bf16_max, f32_max - bf16_max)
+    value = min(bf16_max, f32_max - bf16_max) / 2
     self._testReduceSum(
         dtypes.bfloat16.as_numpy_dtype(value), dtypes.bfloat16.as_numpy_dtype,
         itertools.permutations([bf16_max, value, bf16_max * (-1.0)], 3))

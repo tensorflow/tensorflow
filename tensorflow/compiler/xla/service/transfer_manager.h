@@ -20,12 +20,12 @@ limitations under the License.
 #include <set>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -130,7 +130,7 @@ class TransferManager {
 
   // Resets the devices associated with this transfer manager.
   virtual Status ResetDevices(
-      tensorflow::gtl::ArraySlice<se::StreamExecutor*> executor) = 0;
+      absl::Span<se::StreamExecutor* const> executor) = 0;
 
   // Given an allocated ShapedBuffer, constructs the tuple index table(s) in
   // each buffer of the given ShapedBuffer corresponding to tuple shapes. If the
@@ -211,8 +211,7 @@ class TransferManager {
   // to construct a tuple index table in the platform-specific tuple
   // representation.
   virtual Status WriteSingleTupleIndexTable(
-      se::Stream* stream,
-      tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> elements,
+      se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
       const Shape& shape, se::DeviceMemoryBase* region) = 0;
 
  private:
