@@ -91,7 +91,7 @@ class NormalTest(test.TestCase):
     self._testParamStaticShapes(
         tensor_shape.TensorShape(sample_shape), sample_shape)
 
-  @test_util.run_in_graph_and_eager_modes
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testNormalWithSoftplusScale(self):
     with self.test_session():
       mu = array_ops.zeros((10, 3))
@@ -329,7 +329,7 @@ class NormalTest(test.TestCase):
       self.assertAllEqual(normal.batch_shape, entropy.get_shape())
       self.assertAllEqual(normal.batch_shape, self.evaluate(entropy).shape)
 
-  @test_util.run_in_graph_and_eager_modes
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testNormalMeanAndMode(self):
     with self.test_session():
       # Mu will be broadcast to [7, 7, 7].
