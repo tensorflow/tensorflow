@@ -2447,6 +2447,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.tanh = "Tanh";
     csinfo_.tanh_grad = "TanhGrad";
     csinfo_.reshape = "Reshape";
+    csinfo_.slice = "Slice";
     csinfo_.softmax = "Softmax";
     csinfo_.split = "Split";
     // Element-wise ops. Ensure you also add any new ops to IsOpElementWise
@@ -2554,6 +2555,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.reshape,
                       mkl_op_registry::GetMklOpName(csinfo_.reshape),
                       CopyAttrsReshape, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.slice,
+                      mkl_op_registry::GetMklOpName(csinfo_.slice),
+                      CopyAttrsSlice, AlwaysRewrite});
     rinfo_.push_back({csinfo_.softmax,
                       mkl_op_registry::GetMklOpName(csinfo_.softmax),
                       CopyAttrsDataType, AlwaysRewrite});
@@ -2673,6 +2677,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string tanh;
     string tanh_grad;
     string reshape;
+    string slice;
     string softmax;
     string split;
     string squared_difference;
@@ -3131,6 +3136,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static void CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsPooling(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsReshape(const Node* orig_node, NodeBuilder* nb);
+  static void CopyAttrsSlice(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsSplit(const Node* orig_node, NodeBuilder* nb);
 
   // Generate a graph node in graph 'g' representing a dummy Mkl tensor node,
@@ -3732,6 +3738,19 @@ void MklLayoutRewritePass::CopyAttrsReshape(const Node* orig_node,
   // Add attributes to new node.
   nb->Attr("T", T);
   nb->Attr("Tshape", Tshape);
+}
+
+void MklLayoutRewritePass::CopyAttrsSlice(const Node* orig_node,
+                                          NodeBuilder* nb) {
+  DataType T;
+  DataType Index;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Index", &Index));
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("Index", Index);
 }
 
 void MklLayoutRewritePass::CopyAttrsSplit(const Node* orig_node,

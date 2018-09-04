@@ -6329,6 +6329,15 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
+    name = "mkl_slice_op",
+    prefix = "mkl_slice_op",
+    deps = ARRAY_DEPS + if_mkl([
+        "//third_party/mkl:intel_binary_blob",
+        "@mkl_dnn",
+    ]),
+)
+
+tf_mkl_kernel_library(
     name = "mkl_identity_op",
     prefix = "mkl_identity_op",
     deps = ARRAY_DEPS + mkl_deps(),
