@@ -1679,6 +1679,7 @@ def make_pad_tests(zip_path):
 
   # TODO(nupurgarg): Add test for tf.uint8.
   test_parameters = [
+      # 4D:
       {
           "dtype": [tf.int32, tf.int64, tf.float32],
           "input_shape": [[1, 1, 2, 1], [2, 1, 1, 1]],
@@ -1686,12 +1687,19 @@ def make_pad_tests(zip_path):
                                                           [0, 0], [2, 3]]],
           "constant_paddings": [True, False],
       },
-      # Non-4D use case.
+      # 2D:
       {
           "dtype": [tf.int32, tf.int64, tf.float32],
-          "input_shape": [[1, 2], [0, 1, 2]],
+          "input_shape": [[1, 2]],
           "paddings": [[[0, 1], [2, 3]]],
           "constant_paddings": [True, False],
+      },
+      # 1D:
+      {
+          "dtype": [tf.int32],
+          "input_shape": [[1]],
+          "paddings": [[[1, 2]]],
+          "constant_paddings": [False],
       },
   ]
 
@@ -1730,6 +1738,7 @@ def make_padv2_tests(zip_path):
 
   # TODO(nupurgarg): Add test for tf.uint8.
   test_parameters = [
+      # 4D:
       {
           "dtype": [tf.int32, tf.int64, tf.float32],
           "input_shape": [[1, 1, 2, 1], [2, 1, 1, 1]],
@@ -1738,12 +1747,20 @@ def make_padv2_tests(zip_path):
           "constant_paddings": [True, False],
           "constant_values": [0, 2],
       },
-      # Non-4D use case.
+      # 2D:
       {
           "dtype": [tf.int32, tf.int64, tf.float32],
-          "input_shape": [[1, 2], [0, 1, 2]],
+          "input_shape": [[1, 2]],
           "paddings": [[[0, 1], [2, 3]]],
           "constant_paddings": [True, False],
+          "constant_values": [0, 2],
+      },
+      # 1D:
+      {
+          "dtype": [tf.int32],
+          "input_shape": [[1]],
+          "paddings": [[[0, 1]]],
+          "constant_paddings": [False],
           "constant_values": [0, 2],
       },
   ]
