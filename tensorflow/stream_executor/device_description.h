@@ -24,7 +24,6 @@ limitations under the License.
 #include <memory>
 #include "tensorflow/stream_executor/platform/port.h"
 
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
@@ -323,22 +322,6 @@ uint64 DivideCeil(uint64 x, uint64 y);
 void CalculateDimensionality(const DeviceDescription &device_description,
                              uint64 element_count, uint64 *threads_per_block,
                              uint64 *block_count);
-
-// Compute and return maximum blocks per core (occupancy) based on the
-// device description, some kernel characteristics and the number of threads per
-// block.  If unable to compute occupancy, zero is returned.
-int CalculateOccupancy(const DeviceDescription& device_description,
-                       uint64 registers_per_thread,
-                       uint64 shared_memory_per_block,
-                       const ThreadDim& thread_dims, CUfunction func);
-
-// Compute and return the suggested thread count to acheive ideal occupancy.
-// If the provided thread dimensions match this number, zero is returned.
-int CompareOccupancy(int* initial_blocks,
-                     const DeviceDescription& device_description,
-                     uint64 registers_per_thread,
-                     uint64 shared_memory_per_block,
-                     const ThreadDim& thread_dims, CUfunction func);
 
 }  // namespace stream_executor
 
