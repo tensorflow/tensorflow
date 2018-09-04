@@ -103,6 +103,26 @@ class AffineBinaryOpExpr : public AffineExpr {
 public:
   static AffineExpr *get(Kind kind, AffineExpr *lhs, AffineExpr *rhs,
                          MLIRContext *context);
+  static AffineExpr *getAdd(AffineExpr *lhs, AffineExpr *rhs,
+                            MLIRContext *context) {
+    return get(AffineExpr::Kind::Add, lhs, rhs, context);
+  }
+  static AffineExpr *getMul(AffineExpr *lhs, AffineExpr *rhs,
+                            MLIRContext *context) {
+    return get(AffineExpr::Kind::Mul, lhs, rhs, context);
+  }
+  static AffineExpr *getFloorDiv(AffineExpr *lhs, AffineExpr *rhs,
+                                 MLIRContext *context) {
+    return get(AffineExpr::Kind::FloorDiv, lhs, rhs, context);
+  }
+  static AffineExpr *getCeilDiv(AffineExpr *lhs, AffineExpr *rhs,
+                                MLIRContext *context) {
+    return get(AffineExpr::Kind::CeilDiv, lhs, rhs, context);
+  }
+  static AffineExpr *getMod(AffineExpr *lhs, AffineExpr *rhs,
+                            MLIRContext *context) {
+    return get(AffineExpr::Kind::Mod, lhs, rhs, context);
+  }
 
   AffineExpr *getLHS() const { return lhs; }
   AffineExpr *getRHS() const { return rhs; }
