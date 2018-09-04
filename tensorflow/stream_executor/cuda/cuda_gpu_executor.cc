@@ -483,7 +483,7 @@ void CUDAExecutor::VlogOccupancyInfo(const KernelBase &kernel,
       CompareOccupancy(&blocks_per_sm, device_description, regs_per_thread,
                        smem_per_block, thread_dims, cufunc);
   if (suggested_threads != 0) {
-    VLOG(2) << "The cuda occupancy calculator reccommends using "
+    VLOG(2) << "The cuda occupancy calculator recommends using "
             << suggested_threads
             << " threads per block to acheive an occupancy of " << blocks_per_sm
             << " blocks per SM.";
