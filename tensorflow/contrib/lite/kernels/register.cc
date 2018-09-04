@@ -22,6 +22,7 @@ namespace ops {
 namespace custom {
 
 TfLiteRegistration* Register_AUDIO_SPECTROGRAM();
+TfLiteRegistration* Register_LAYER_NORM_LSTM();
 TfLiteRegistration* Register_MFCC();
 TfLiteRegistration* Register_DETECTION_POSTPROCESS();
 
@@ -247,6 +248,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddCustom("Mfcc", tflite::ops::custom::Register_MFCC());
   AddCustom("AudioSpectrogram",
             tflite::ops::custom::Register_AUDIO_SPECTROGRAM());
+  AddCustom("LayerNormLstm", tflite::ops::custom::Register_LAYER_NORM_LSTM());
   AddCustom("TFLite_Detection_PostProcess",
             tflite::ops::custom::Register_DETECTION_POSTPROCESS());
 }

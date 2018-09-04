@@ -177,6 +177,7 @@ cc_library(
         "gather.cc",
         "hashtable_lookup.cc",
         "l2norm.cc",
+        "layer_norm_lstm.cc",
         "local_response_norm.cc",
         "logical.cc",
         "lsh_projection.cc",
@@ -900,6 +901,20 @@ tf_cc_test(
         "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "layer_norm_lstm_test",
+    size = "small",
+    srcs = ["layer_norm_lstm_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
     ],
 )
 

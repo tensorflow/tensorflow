@@ -87,6 +87,10 @@ void PortableVectorBatchVectorCwiseProductAccumulate(const float* vector,
 void PortableVectorBatchVectorAssign(const float* vector, int v_size,
                                      int n_batch, float* batch_vector);
 
+// Add another vector for each batch in the batch vector.
+void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
+                                  float* batch_vector);
+
 // Apply sigmoid to elements of a vector.
 void PortableApplySigmoidToVector(const float* vector, int v_size,
                                   float* result);
@@ -124,6 +128,12 @@ void PortableVectorShiftLeft(float* vector, int v_size, float shift_value);
 // added to get one element of output.
 void PortableReductionSumVector(const float* input_vector, float* output_vector,
                                 int output_size, int reduction_size);
+
+// Layer norm for each batch.
+// normalization_epsilon is added to avoid divergence.
+void PortableMeanStddevNormalization(const float* input_vector,
+                                     float* output_vector, int v_size,
+                                     int n_batch, float normalization_epsilon);
 
 float Clip(float f, float abs_limit) { return PortableClip(f, abs_limit); }
 
@@ -193,6 +203,11 @@ void BatchVectorBatchVectorDotProduct(const float* vector1,
                                            result, result_stride);
 }
 
+void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
+                          float* batch_vector) {
+  PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
+}
+
 void VectorBatchVectorAssign(const float* vector, int v_size, int n_batch,
                              float* batch_vector) {
   PortableVectorBatchVectorAssign(vector, v_size, n_batch, batch_vector);
@@ -238,6 +253,13 @@ void ReductionSumVector(const float* input_vector, float* output_vector,
                         int output_size, int reduction_size) {
   PortableReductionSumVector(input_vector, output_vector, output_size,
                              reduction_size);
+}
+
+void MeanStddevNormalization(const float* input_vector, float* output_vector,
+                             int v_size, int n_batch,
+                             float normalization_epsilon) {
+  PortableMeanStddevNormalization(input_vector, output_vector, v_size, n_batch,
+                                  normalization_epsilon);
 }
 
 }  // namespace tensor_utils
