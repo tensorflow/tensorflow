@@ -33,6 +33,7 @@ from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.training.checkpointable import data_structures
+from tensorflow.python.util.tf_export import tf_export
 
 # API entries importable from `keras.models`:
 Model = training.Model  # pylint: disable=invalid-name
@@ -226,6 +227,7 @@ def _clone_sequential_model(model, input_tensors=None):
     return Sequential(layers=[input_layer] + layers, name=model.name)
 
 
+@tf_export('keras.models.clone_model')
 def clone_model(model, input_tensors=None):
   """Clone any `Model` instance.
 
@@ -447,10 +449,13 @@ def clone_and_build_model(
   elif model.optimizer:
     if isinstance(model.optimizer, optimizers.TFOptimizer):
       optimizer = model.optimizer
+      K.track_tf_optimizer(optimizer)
     else:
       optimizer_config = model.optimizer.get_config()
       optimizer = model.optimizer.__class__.from_config(optimizer_config)
-    optimizer.iterations = training_util.get_or_create_global_step()
+    global_step = training_util.get_or_create_global_step()
+    K.track_variable(global_step)
+    optimizer.iterations = global_step
 
     clone.compile(
         optimizer,

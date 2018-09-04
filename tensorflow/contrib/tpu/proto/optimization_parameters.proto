@@ -119,7 +119,9 @@ message OptimizationParameters {
 
   // Whether to use gradient accumulation (do two passes over the input
   // gradients: one to accumulate them into a temporary array and another to
-  // apply them using the actual optimization algorithm).
+  // apply them using the actual optimization algorithm). This feature is
+  // experimental -- it has not been fully verified and may cause training
+  // crashes and/or failures.
   bool use_gradient_accumulation = 15;
 
   // Optimization algorithm parameters; which field is selected determines which

@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/resources/trt_resources.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/tensor.pb.h"        // NOLINT
 #include "tensorflow/core/framework/tensor_shape.pb.h"  // NOLINT
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -77,6 +78,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
+// TODO(aaroey): put these constants into some class.
+const char* const kInputPHName = "TensorRTInputPH_";
+const char* const kOutputPHName = "TensorRTOutputPH_";
+
 namespace convert {
 using ::tensorflow::str_util::Split;
 using ::tensorflow::strings::StrAppend;

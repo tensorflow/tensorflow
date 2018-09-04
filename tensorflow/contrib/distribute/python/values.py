@@ -183,6 +183,14 @@ class Mirrored(DistributedDelegate):
       return self._index[device]
     return list(self._index.values())[0]
 
+  def _as_graph_element(self):
+    obj = self.get()
+    # pylint: disable=protected-access
+    conv_fn = getattr(obj, "_as_graph_element", None)
+    if conv_fn and callable(conv_fn):
+      return conv_fn()
+    return obj
+
 
 def _assign_on_device(device, variable, tensor):
   with ops.device(device):
@@ -296,6 +304,10 @@ class DistributedVariable(DistributedDelegate):
                               self._primary_var.op.type)
     return self.get().op
 
+  @property
+  def _in_graph_mode(self):
+    return self._primary_var._in_graph_mode   # pylint: disable=protected-access
+
   def read_value(self):
     return distribution_strategy_context.get_distribution_strategy().read_var(
         self)
@@ -306,26 +318,6 @@ class DistributedVariable(DistributedDelegate):
 
 
 ops.register_dense_tensor_like_type(DistributedVariable)
-
-
-def _get_update_device():
-  """Validate we are in update/update_non_slot() and return current device.
-
-  This is used in MirroredVariable.assign* members, to make sure they
-  are only called via an update method, to make sure all components of the
-  variable are being updated in a consistent way.
-
-  Returns:
-    A string device.
-
-  Raises:
-    RuntimeError: If not in distribution.update()/.update_non_slot().
-  """
-  device = distribute_lib.get_update_device()
-  if device is None:
-    raise RuntimeError(
-        "Use DistributionStrategy.update() to modify a MirroredVariable.")
-  return device
 
 
 class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
@@ -366,15 +358,27 @@ class MirroredVariable(DistributedVariable, Mirrored,
     f = kwargs.pop("f")
     if distribution_strategy_context.get_cross_tower_context():
       update_device = distribute_lib.get_update_device()
-      # We are calling update on the mirrored variable in cross tower context.
       if update_device is not None:
-        # We are calling an assign function on the mirrored variable in cross
-        # tower context.
+        # We are calling an assign function on the mirrored variable in an
+        # update context.
         v = self.get(device=update_device)
         return f(v, *args, **kwargs)
 
-      return distribution_strategy_context.get_distribution_strategy().update(
-          self, f, *args, **kwargs)
+      # We are calling assign on the mirrored variable in cross tower context,
+      # use update to update the variable.
+      strategy = distribution_strategy_context.get_distribution_strategy()
+      updates = strategy.update(self, f, *args, **kwargs)
+      grouped = strategy.group(updates)
+      if isinstance(updates, DistributedValues) and updates.is_tensor_like:
+        # Make sure we run all updates. Without this, something like
+        # session.run(mirrored_var.assign*(...)) may only update one tower.
+        index = {}
+        for d in updates.devices:
+          with ops.device(d), ops.control_dependencies([grouped]):
+            index[d] = array_ops.identity(updates.get(d))
+        return Mirrored(index)
+      else:
+        return grouped
     else:
       _assert_tower_context()
       # We are calling an assign function on the mirrored variable in tower
@@ -1057,3 +1061,160 @@ def value_container(val):
     if container is not None:
       return container
   return val
+
+
+# TODO(josh11b): Descend from Variable.
+class AggregatingVariable(checkpointable.CheckpointableBase):
+  """A wrapper around a variable that aggregates updates across towers."""
+
+  def __init__(self, v, aggregation):
+    self._v = v
+    # TODO(josh11b): Set v._distributed_container?
+    # v._distributed_container = weakref.ref(self)  # pylint: disable=protected-access
+    self._aggregation = aggregation
+
+  def get(self):
+    return self._v
+
+  def __getattr__(self, name):
+    return getattr(self._v, name)
+
+  def _assign_func(self, *args, **kwargs):
+    f = kwargs.pop("f")
+    if distribution_strategy_context.get_cross_tower_context():
+      update_device = distribute_lib.get_update_device()
+      if update_device is not None:
+        # We are calling an assign function in an update context.
+        return f(self._v, *args, **kwargs)
+
+      # We are calling an assign function in cross tower context, wrap it in an
+      # update call.
+      return distribution_strategy_context.get_distribution_strategy().update(
+          self, f, *args, **kwargs)
+    else:
+      assert distribution_strategy_context.get_tower_context()
+      # We are calling an assign function in tower context.
+      # We reduce the value we want to assign/add/sub. More details about how we
+      # handle the different use cases can be found in the _reduce method.
+      # We call the function with the reduced value.
+      if self._aggregation == vs.VariableAggregation.NONE:
+        raise ValueError("You must specify an aggregation method to update a "
+                         "a variable in Tower Context.")
+
+      def merge_fn(strategy, value, *other_args, **other_kwargs):
+        return strategy.update(
+            self, f,
+            strategy.reduce(
+                aggregation=self._aggregation, value=value, destinations=self),
+            *other_args, **other_kwargs)
+
+      return distribution_strategy_context.get_tower_context().merge_call(
+          merge_fn, *args, **kwargs)
+
+  def assign_sub(self, *args, **kwargs):
+    assign_sub_fn = lambda var, *a, **kw: var.assign_sub(*a, **kw)
+    return self._assign_func(f=assign_sub_fn, *args, **kwargs)
+
+  def assign_add(self, *args, **kwargs):
+    assign_add_fn = lambda var, *a, **kw: var.assign_add(*a, **kw)
+    return self._assign_func(f=assign_add_fn, *args, **kwargs)
+
+  def assign(self, *args, **kwargs):
+    assign_fn = lambda var, *a, **kw: var.assign(*a, **kw)
+    return self._assign_func(f=assign_fn, *args, **kwargs)
+
+  @property
+  def aggregation(self):
+    return self._aggregation
+
+  @property
+  def name(self):
+    return self._v.name
+
+  @property
+  def dtype(self):
+    return self._v.dtype
+
+  # TODO(josh11b): Test saving & restoring.
+  def _gather_saveables_for_checkpoint(self):
+    return {checkpointable.VARIABLE_VALUE_KEY: self._v}
+
+  # pylint: disable=multiple-statements
+  def __add__(self, o): return self._v + o
+  def __radd__(self, o): return o + self._v
+  def __sub__(self, o): return self._v - o
+  def __rsub__(self, o): return o - self._v
+  def __mul__(self, o): return self._v * o
+  def __rmul__(self, o): return o * self._v
+  def __truediv__(self, o): return self._v / o
+  def __rtruediv__(self, o): return o / self._v
+  def __floordiv__(self, o): return self._v // o
+  def __rfloordiv__(self, o): return o // self._v
+  def __mod__(self, o): return self._v % o
+  def __rmod__(self, o): return o % self._v
+  def __lt__(self, o): return self._v < o
+  def __le__(self, o): return self._v <= o
+  def __gt__(self, o): return self._v > o
+  def __ge__(self, o): return self._v >= o
+  def __and__(self, o): return self._v & o
+  def __rand__(self, o): return o & self._v
+  def __or__(self, o): return self._v | o
+  def __ror__(self, o): return o | self._v
+  def __xor__(self, o): return self._v ^ o
+  def __rxor__(self, o): return o ^ self._v
+  def __getitem__(self, o): return self._v[o]
+  def __pow__(self, o, modulo=None): return pow(self._v, o, modulo)
+  def __rpow__(self, o): return pow(o, self._v)
+  def __invert__(self): return ~self._v
+  def __neg__(self): return -self._v
+  def __abs__(self): return abs(self._v)
+
+  def __div__(self, o):
+    try:
+      return self._v.__div__(o)
+    except AttributeError:
+      # See https://docs.python.org/3/library/constants.html#NotImplemented
+      return NotImplemented
+
+  def __rdiv__(self, o):
+    try:
+      return self._v.__rdiv__(o)
+    except AttributeError:
+      # See https://docs.python.org/3/library/constants.html#NotImplemented
+      return NotImplemented
+
+  def __matmul__(self, o):
+    try:
+      return self._v.__matmul__(o)
+    except AttributeError:
+      # See https://docs.python.org/3/library/constants.html#NotImplemented
+      return NotImplemented
+
+  def __rmatmul__(self, o):
+    try:
+      return self._v.__rmatmul__(o)
+    except AttributeError:
+      # See https://docs.python.org/3/library/constants.html#NotImplemented
+      return NotImplemented
+
+  def __str__(self):
+    return str(self._v)
+
+  def __repr__(self):
+    return repr(self._v)
+
+  def _should_act_as_resource_variable(self):
+    """Pass resource_variable_ops.is_resource_variable check."""
+    pass
+
+
+# Register a conversion function which reads the value of the variable,
+# allowing instances of the class to be used as tensors.
+def _tensor_conversion_aggregate(var, dtype=None, name=None, as_ref=False):
+  return ops.internal_convert_to_tensor(
+      var.get(), dtype=dtype, name=name, as_ref=as_ref)
+
+
+ops.register_tensor_conversion_function(
+    AggregatingVariable, _tensor_conversion_aggregate)
+ops.register_dense_tensor_like_type(AggregatingVariable)

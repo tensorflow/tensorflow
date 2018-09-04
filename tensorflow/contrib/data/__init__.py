@@ -25,6 +25,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@Counter
 @@CheckpointInputPipelineHook
 @@CsvDataset
+@@LMDBDataset
 @@RandomDataset
 @@Reducer
 @@SqlDataset
@@ -49,6 +50,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@map_and_batch
 @@padded_batch_and_drop_remainder
 @@parallel_interleave
+@@parse_example_dataset
 @@prefetch_to_device
 @@read_batch_features
 @@rejection_resample
@@ -89,10 +91,12 @@ from tensorflow.contrib.data.python.ops.interleave_ops import sample_from_datase
 from tensorflow.contrib.data.python.ops.interleave_ops import sloppy_interleave
 from tensorflow.contrib.data.python.ops.iterator_ops import CheckpointInputPipelineHook
 from tensorflow.contrib.data.python.ops.iterator_ops import make_saveable_from_iterator
+from tensorflow.contrib.data.python.ops.parsing_ops import parse_example_dataset
 from tensorflow.contrib.data.python.ops.prefetching_ops import copy_to_device
 from tensorflow.contrib.data.python.ops.prefetching_ops import prefetch_to_device
 from tensorflow.contrib.data.python.ops.random_ops import RandomDataset
 from tensorflow.contrib.data.python.ops.readers import CsvDataset
+from tensorflow.contrib.data.python.ops.readers import LMDBDataset
 from tensorflow.contrib.data.python.ops.readers import make_batched_features_dataset
 from tensorflow.contrib.data.python.ops.readers import make_csv_dataset
 from tensorflow.contrib.data.python.ops.readers import read_batch_features

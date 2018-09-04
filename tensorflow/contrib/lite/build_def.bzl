@@ -267,6 +267,7 @@ def generated_test_models():
         "prelu",
         "pow",
         "reduce_max",
+        "reduce_min",
         "reduce_prod",
         "relu",
         "relu1",
@@ -292,6 +293,7 @@ def generated_test_models():
         "topk",
         "transpose",
         #"transpose_conv",   # disabled due to b/111213074
+        "unpack",
         "where",
     ]
 

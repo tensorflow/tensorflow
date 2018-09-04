@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
@@ -92,7 +93,7 @@ static StatusOr<HloInstruction*> PermuteScatterAndWindowDims(
   permutation.reserve(updates_rank);
 
   for (int64 i = 0; i < updates_rank; ++i) {
-    bool is_scatter_dim = !c_binary_search(update_window_dims, i);
+    bool is_scatter_dim = !absl::c_binary_search(update_window_dims, i);
     if (is_scatter_dim) {
       permutation.push_back(i);
     }
@@ -290,7 +291,7 @@ StatusOr<HloInstruction*> ScatterExpander::ExpandScatter(
     return Unimplemented(
         "Scatter operations with more than 2147483647 scatter indices are not "
         "supported. This error occurred for %s.",
-        scatter->ToString().c_str());
+        scatter->ToString());
   }
 
   // Canonicalize the scatter_indices, after which the size of its most-major

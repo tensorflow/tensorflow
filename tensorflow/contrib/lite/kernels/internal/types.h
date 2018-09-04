@@ -668,9 +668,9 @@ static_assert(sizeof(MinMax) == 8, "");
 
 struct ActivationParams {
   FusedActivationFunctionType activation_type;
-  // Quantized inference params.
-  int32 activation_min;
-  int32 activation_max;
+  // uint8, etc, activation params.
+  int32 quantized_activation_min;
+  int32 quantized_activation_max;
 };
 
 // For Add, Sub, Mul ops.
@@ -745,7 +745,7 @@ struct ConvParams {
 };
 
 struct DepthToSpaceParams {
-  int16 block_size;
+  int32 block_size;
 };
 
 struct DepthwiseParams {
@@ -871,8 +871,13 @@ struct SoftmaxParams {
   int diff_min;
 };
 
+struct SpaceToBatchParams {
+  // "Zero" padding for uint8 means padding with the output offset.
+  int32 output_offset;
+};
+
 struct SpaceToDepthParams {
-  int16 block_size;
+  int32 block_size;
 };
 
 struct SplitParams {

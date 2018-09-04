@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <unordered_set>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
@@ -101,7 +102,7 @@ XlaDeviceAllocator* XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
   }
 
   std::unique_ptr<XlaDeviceAllocator> alloc =
-      xla::MakeUnique<XlaDeviceAllocator>();
+      absl::make_unique<XlaDeviceAllocator>();
   XlaDeviceAllocator* alloc_ptr = alloc.get();
   state.allocators_[{backend, device_ordinal}] = std::move(alloc);
   return alloc_ptr;
@@ -327,7 +328,7 @@ xla::StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextLocked() {
   // to those methods; see the bug for details. Our only saving grace at the
   // moment is that this race doesn't seem to occur in practice.
   if (use_gpu_device_info_) {
-    auto gpu_device_info = MakeUnique<GpuDeviceInfo>();
+    auto gpu_device_info = absl::make_unique<GpuDeviceInfo>();
     gpu_device_info->stream = stream_.get();
     gpu_device_info->default_context = device_context_;
     set_tensorflow_gpu_device_info(gpu_device_info.get());
@@ -364,11 +365,7 @@ Status XlaDevice::FillContextMap(const Graph* graph,
 void XlaDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   VLOG(2) << "XlaDevice::Compute " << op_kernel->name() << ":"
           << op_kernel->type_string();
-  // When Xprof profiling is off (which is the default), constructing the
-  // activity is simple enough that its overhead is negligible.
-  tracing::ScopedActivity activity(op_kernel->name(), op_kernel->type_string(),
-                                   op_kernel->IsExpensive());
-  op_kernel->Compute(context);
+  TracingDevice::Compute(op_kernel, context);
 }
 
 void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,

@@ -20,9 +20,9 @@ limitations under the License.
 #include <memory>
 #include <random>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -95,8 +95,8 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
 
 // Check that a given module satisfies various constraints before trying to
 // execute it.
-Status VerifyHloModule(HloModule* const module,
-                       bool allow_mixed_precision = false);
+Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
+                       bool allow_mixed_precision);
 
 }  // namespace xla
 

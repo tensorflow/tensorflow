@@ -19,8 +19,10 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -29,8 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -78,8 +78,8 @@ bool MultiDynamicSliceUseShareSameIndices(
 
 }  // namespace
 
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
+using absl::StrAppend;
+using absl::StrCat;
 
 HloDataflowAnalysis::HloDataflowAnalysis(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
@@ -93,7 +93,7 @@ HloDataflowAnalysis::HloDataflowAnalysis(
 bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
     const HloInstruction* inst) {
   tensorflow::gtl::FlatSet<const HloInstruction*> visited;
-  tensorflow::gtl::InlinedVector<const HloInstruction*, 4> stack;
+  absl::InlinedVector<const HloInstruction*, 4> stack;
   stack.push_back(inst);
   while (!stack.empty()) {
     const HloInstruction* current = stack.back();
@@ -837,7 +837,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
             return Unimplemented(
                 "Computation %s is called in both a parallel (eg, kMap) and "
                 "sequential (eg, kCall) context",
-                computation->name().c_str());
+                computation->name());
           }
           if (call_graph_node.caller_callsites().empty() ||
               call_graph_node.context() == CallContext::kParallel) {
@@ -886,7 +886,7 @@ StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
   VLOG(1) << "HloDataflowAnalysis::Run on module " << module.name();
   XLA_VLOG_LINES(2, module.ToString());
 
-  auto dataflow_analysis = WrapUnique(new HloDataflowAnalysis(
+  auto dataflow_analysis = absl::WrapUnique(new HloDataflowAnalysis(
       module, ssa_form, bitcast_defines_value, fusion_can_share_buffer));
 
   TF_RETURN_IF_ERROR(dataflow_analysis->InitializeInstructionValueSets());
@@ -976,28 +976,22 @@ Status HloDataflowAnalysis::Verify() const {
 bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
     const HloInstruction* operand, const ShapeIndex& index,
     const HloInstruction* user) const {
-  CHECK(user->IsUserOf(operand))
-      << "user: " << user->ToString() << " operand: " << operand->ToString();
-  if (user->opcode() == HloOpcode::kFusion &&
-      user->fusion_kind() == HloInstruction::FusionKind::kLoop) {
-    // Find fusion parameter associated with 'operand'.
-    HloInstruction* fusion_param =
-        user->fused_parameter(user->operand_index(operand));
-    // Iterate through all users of all uses of the fusion parameter value.
-    // Return false if any uses are detected, returns true otherwise.
-    const HloValue& value = GetValueDefinedAt(fusion_param, index);
-    return value.uses().empty();
-  } else {
-    // Return false if no value at 'operand' and 'index' is used at 'user'.
-    for (const HloValue* value : GetValueSet(operand, index).values()) {
-      for (const HloUse& use : value->uses()) {
-        if (use.instruction == user) {
-          return false;
+  // Return false if no value at 'operand' and 'index' is used at 'user'.
+  for (const HloValue* value : GetValueSet(operand, index).values()) {
+    for (const HloUse& use : value->uses()) {
+      if (use.instruction == user) {
+        if (user->opcode() == HloOpcode::kFusion &&
+            user->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+          HloInstruction* fusion_param =
+              user->fused_parameter(use.operand_number);
+          const HloValue& value =
+              GetValueDefinedAt(fusion_param, use.operand_index);
+          return value.uses().empty();
         }
+        return false;
       }
     }
   }
-
   return true;
 }
 

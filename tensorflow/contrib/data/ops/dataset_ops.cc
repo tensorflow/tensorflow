@@ -266,4 +266,13 @@ REGISTER_OP("AssertNextDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("LMDBDataset")
+    .Input("filenames: string")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
+    .SetShapeFn(shape_inference::ScalarShape);
+
 }  // namespace tensorflow

@@ -20,8 +20,10 @@ from __future__ import print_function
 
 import contextlib
 import copy
+import json
 import os
 import sys
+import time
 import threading
 import six
 
@@ -58,6 +60,8 @@ INDEPENDENT_WORKER = distribute_coordinator.CoordinatorMode.INDEPENDENT_WORKER
 
 NUM_WORKERS = 3
 NUM_PS = 2
+
+original_sys_exit = sys.exit
 
 
 def _bytes_to_str(maybe_bytes):
@@ -369,7 +373,8 @@ class DistributeCoordinatorTestBase(test.TestCase):
                            cluster_spec=None,
                            task_type=None,
                            task_id=None,
-                           rpc_layer=None):
+                           rpc_layer=None,
+                           environment=None):
     task_type = str(task_type)
     task_id = task_id or 0
     with self._lock:
@@ -729,6 +734,63 @@ class DistributeCoordinatorTestInpendentWorkerMode(
     self.assertTrue(self._std_servers[WORKER][1].joined)
     self.assertTrue(self._std_servers[WORKER][2].joined)
     self.assertFalse(self._std_servers[EVALUATOR][0].joined)
+
+  def testRunStdServerInGoogleEnvironment(self):
+    cluster_spec = {"worker": ["fake_worker"], "ps": ["localhost:0"]}
+    tf_config = {"cluster": cluster_spec, "environment": "google"}
+
+    joined = [False]
+
+    def _fake_sleep(_):
+      joined[0] = True
+      original_sys_exit(0)
+
+    def _thread_fn(cluster_spec):
+      distribute_coordinator.run_distribute_coordinator(
+          None,
+          None,
+          mode=INDEPENDENT_WORKER,
+          cluster_spec=cluster_spec,
+          task_type="ps",
+          task_id=0)
+
+    with test.mock.patch.dict(
+        "os.environ",
+        {"TF_CONFIG": json.dumps(tf_config)}), test.mock.patch.object(
+            time, "sleep", _fake_sleep):
+      t = threading.Thread(target=_thread_fn, args=(cluster_spec,))
+      t.start()
+      t.join()
+    self.assertTrue(joined[0])
+
+  def testRpcLayerEnvironmentVariable(self):
+    cluster_spec = {"worker": ["fake_worker"], "ps": ["fake_ps"]}
+    tf_config = {"cluster": cluster_spec, "rpc_layer": "cake"}
+
+    rpc_layer_from_coordinator = [None]
+
+    def _run_mock_server(cluster_spec=None,
+                         task_type=None,
+                         task_id=None,
+                         session_config=None,
+                         rpc_layer=None,
+                         environment=None):
+      del cluster_spec, task_type, task_id, session_config, environment
+      rpc_layer_from_coordinator[0] = rpc_layer
+      return MockServer()
+
+    with test.mock.patch.dict(
+        "os.environ",
+        {"TF_CONFIG": json.dumps(tf_config)}), test.mock.patch.object(
+            distribute_coordinator, "_run_std_server", _run_mock_server):
+      distribute_coordinator.run_distribute_coordinator(
+          None,
+          None,
+          mode=INDEPENDENT_WORKER,
+          cluster_spec=cluster_spec,
+          task_type="ps",
+          task_id=0)
+    self.assertEqual(rpc_layer_from_coordinator[0], "cake")
 
 
 if __name__ == "__main__":

@@ -18,6 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <unordered_set>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -47,7 +49,7 @@ class HloScheduleTest : public HloTestBase {
     auto debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_disable_multi_streaming(false);
     config.set_debug_options(debug_options);
-    return MakeUnique<HloModule>("test_module", config);
+    return absl::make_unique<HloModule>("test_module", config);
   }
 
   HloVec RemoveHlo(const HloVec& input,
@@ -265,7 +267,7 @@ TEST_F(HloScheduleTest, LatticeMatMul) {
   params.reserve(6);
   for (int i = 0; i < 6; ++i) {
     params.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
-        i, f32_2x2_, /*name=*/tensorflow::strings::Printf("param%d", i))));
+        i, f32_2x2_, /*name=*/absl::StrFormat("param%d", i))));
   }
   HloInstruction* d00 = builder.AddInstruction(
       HloInstruction::CreateCanonicalDot(f32_2x2_, params[2], params[3]));

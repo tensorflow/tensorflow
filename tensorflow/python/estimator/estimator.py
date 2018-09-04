@@ -431,7 +431,11 @@ class Estimator(object):
     Returns:
       A dict containing the evaluation metrics specified in `model_fn` keyed by
       name, as well as an entry `global_step` which contains the value of the
-      global step for which this evaluation was performed.
+      global step for which this evaluation was performed. For canned
+      estimators, the dict contains the `loss` (mean loss per mini-batch) and
+      the `average_loss` (mean loss per sample). Canned classifiers also return
+      the `accuracy`. Canned regressors also return the `label/mean` and the
+      `prediction/mean`.
 
     Raises:
       ValueError: If `steps <= 0`.
@@ -1237,7 +1241,8 @@ class Estimator(object):
       # We want to create the iterations variable outside the distribution scope
       # as that is just stored on the host and mainly used to drive the loop
       # and doesn't need to be a Mirrored/Device variable.
-      steps_per_run_variable = training.get_or_create_steps_per_run_variable()
+      if is_tpu_strategy:
+        steps_per_run_variable = training.get_or_create_steps_per_run_variable()
       with self._train_distribution.scope():
         random_seed.set_random_seed(self._config.tf_random_seed)
         iterator, input_hooks = self._get_iterator_from_input_fn(
@@ -1252,7 +1257,7 @@ class Estimator(object):
 
         if is_tpu_strategy:
           # Create a step_fn from the train_op of grouped_estimator_spec
-          def step_fn(ctx, features, labels):
+          def step_fn(ctx, features, labels=None):
             """A single step that is passed to run_on_dataset."""
             estimator_spec = self._train_distribution.call_for_each_tower(
                 self._call_model_fn,
@@ -1277,7 +1282,8 @@ class Estimator(object):
           loss = ctx.last_step_outputs['loss']
           grouped_estimator_spec = ctx.non_tensor_outputs['estimator_spec']
         else:
-          features, labels = iterator.get_next()
+          features, labels = estimator_util.parse_iterator_result(
+              iterator.get_next())
           grouped_estimator_spec = self._train_distribution.call_for_each_tower(
               self._call_model_fn,
               features,
@@ -1466,7 +1472,7 @@ class Estimator(object):
         self._eval_distribution.__class__.__name__ == 'TPUStrategy')
 
     if is_tpu_strategy:
-      def step_fn(ctx, features, labels):
+      def step_fn(ctx, features, labels=None):
         """Runs one step of the eval computation and captures outputs."""
         estimator_spec = self._eval_distribution.call_for_each_tower(
             self._call_model_fn, features, labels, model_fn_lib.ModeKeys.EVAL,
@@ -1487,7 +1493,8 @@ class Estimator(object):
       eval_dict = ctx.non_tensor_outputs['eval_dict']
       grouped_estimator_spec = ctx.non_tensor_outputs['estimator_spec']
     else:
-      features, labels = iterator.get_next()
+      features, labels = estimator_util.parse_iterator_result(
+          iterator.get_next())
       grouped_estimator_spec = self._eval_distribution.call_for_each_tower(
           self._call_model_fn, features, labels,
           model_fn_lib.ModeKeys.EVAL, config)

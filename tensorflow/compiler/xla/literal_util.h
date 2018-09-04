@@ -27,6 +27,8 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -34,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/sparse_index_array.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/bitmap.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -187,7 +187,7 @@ class LiteralUtil {
       const Array4D<NativeT>& values, const Layout& layout);
 
   // Creates a new vector of U8s literal value from a string.
-  static std::unique_ptr<Literal> CreateR1U8(tensorflow::StringPiece value);
+  static std::unique_ptr<Literal> CreateR1U8(absl::string_view value);
 
   // Creates a linspace-populated literal with the given number of rows and
   // columns.
@@ -327,7 +327,7 @@ std::ostream& operator<<(std::ostream& out, const Literal& literal);
 
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> LiteralUtil::CreateR0(NativeT value) {
-  auto literal = MakeUnique<Literal>(ShapeUtil::MakeShape(
+  auto literal = absl::make_unique<Literal>(ShapeUtil::MakeShape(
       primitive_util::NativeToPrimitiveType<NativeT>(), {}));
   literal->Set({}, value);
   return literal;
@@ -336,7 +336,7 @@ template <typename NativeT>
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> LiteralUtil::CreateR1(
     tensorflow::gtl::ArraySlice<NativeT> values) {
-  auto literal = MakeUnique<Literal>(
+  auto literal = absl::make_unique<Literal>(
       ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<NativeT>(),
                            {static_cast<int64>(values.size())}));
   literal->PopulateR1(values);
@@ -347,7 +347,7 @@ template <typename NativeT>
 /* static */ std::unique_ptr<Literal> LiteralUtil::CreateR2WithLayout(
     std::initializer_list<std::initializer_list<NativeT>> values,
     const Layout& layout) {
-  auto literal = MakeUnique<Literal>(ShapeUtil::MakeShapeWithLayout(
+  auto literal = absl::make_unique<Literal>(ShapeUtil::MakeShapeWithLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(),
       {static_cast<int64>(values.size()),
        static_cast<int64>(values.begin()->size())},
@@ -433,9 +433,10 @@ template <typename NativeT>
   int64 rank = dimensions.size();
   CHECK_EQ(num_elements, indices.index_count());
   CHECK_EQ(rank, indices.rank());
-  auto literal = MakeUnique<Literal>(ShapeUtil::MakeShapeWithSparseLayout(
-      primitive_util::NativeToPrimitiveType<NativeT>(), dimensions,
-      indices.max_indices()));
+  auto literal =
+      absl::make_unique<Literal>(ShapeUtil::MakeShapeWithSparseLayout(
+          primitive_util::NativeToPrimitiveType<NativeT>(), dimensions,
+          indices.max_indices()));
   literal->PopulateSparse(indices, values, sort);
   return literal;
 }
@@ -451,7 +452,7 @@ template <typename NativeT>
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> LiteralUtil::CreateFromArrayWithLayout(
     const Array<NativeT>& values, const Layout& layout) {
-  auto literal = MakeUnique<Literal>(ShapeUtil::MakeShapeWithLayout(
+  auto literal = absl::make_unique<Literal>(ShapeUtil::MakeShapeWithLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(), values.dimensions(),
       AsInt64Slice(layout.minor_to_major())));
   literal->PopulateFromArray(values);
@@ -571,8 +572,9 @@ template <typename NativeT>
 /* static */ std::unique_ptr<Literal>
 LiteralUtil::CreateFullWithDescendingLayout(
     tensorflow::gtl::ArraySlice<int64> dimensions, NativeT value) {
-  auto literal = MakeUnique<Literal>(ShapeUtil::MakeShapeWithDescendingLayout(
-      primitive_util::NativeToPrimitiveType<NativeT>(), dimensions));
+  auto literal =
+      absl::make_unique<Literal>(ShapeUtil::MakeShapeWithDescendingLayout(
+          primitive_util::NativeToPrimitiveType<NativeT>(), dimensions));
   literal->PopulateWithValue(value);
   return literal;
 }
@@ -584,7 +586,7 @@ LiteralUtil::CreateRandomLiteral(
     const std::function<T(tensorflow::gtl::ArraySlice<int64>)>& generator) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
   TF_RET_CHECK(shape.element_type() == type);
-  auto literal = MakeUnique<Literal>(shape);
+  auto literal = absl::make_unique<Literal>(shape);
   TF_RETURN_IF_ERROR(literal.get()->Populate<NativeT>(
       [&](tensorflow::gtl::ArraySlice<int64> indexes) {
         return generator(indexes);

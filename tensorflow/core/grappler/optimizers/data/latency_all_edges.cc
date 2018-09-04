@@ -33,7 +33,7 @@ namespace {
 
 constexpr char kInsertOpName[] = "LatencyStatsDataset";
 
-NodeDef make_latency_node(const NodeDef& node, MutableGraphView* graph) {
+NodeDef MakeLatencyNode(const NodeDef& node, MutableGraphView* graph) {
   NodeDef new_node;
   new_node.set_op(kInsertOpName);
   graph_utils::SetUniqueGraphNodeName(
@@ -96,7 +96,7 @@ Status LatencyAllEdges::Optimize(Cluster* cluster, const GrapplerItem& item,
       }
     }
 
-    graph.InsertNode(node, make_latency_node(node, &graph));
+    graph.InsertNode(node, MakeLatencyNode(node, &graph));
   }
   return Status::OK();
 }

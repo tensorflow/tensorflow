@@ -105,7 +105,7 @@ struct ReluGrad<Device, Eigen::half> {
     int32 count = gradient.size();
     if (count == 0) return;
     int32 half2_count = Eigen::divup(count, 2);
-    const int32 kThreadInBlock = 512;
+    constexpr int32 kThreadInBlock = 512;
     GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
         half2_count, d, ReluGradHalfKernel, 0, kThreadInBlock);
     GPU_LAUNCH_KERNEL(ReluGradHalfKernel,
@@ -115,6 +115,39 @@ struct ReluGrad<Device, Eigen::half> {
 };
 
 #endif  // TF_HAS_GPU_FP16
+  
+#if GOOGLE_CUDA
+__global__ void Relu_int8x4_kernel(int vect_count, const int32* input,
+                                   int32* output) {
+  GPU_1D_KERNEL_LOOP(index, vect_count) {
+    output[index] = __vmaxs4(input[index], 0);
+  }
+}
+
+// Functor used by ReluOp to do the computations.
+template <typename Device>
+struct Relu<Device, qint8> {
+  // Computes Relu activation of 'input' containing int8 elements, whose buffer
+  // size should be a multiple of 4, and aligned to an int32* boundary.
+  // (Alignment should be guaranteed by the GPU tensor allocator).
+  // 'output' should have the same size as 'input'.
+  void operator()(const Device& d, typename TTypes<qint8>::ConstTensor input,
+                  typename TTypes<qint8>::Tensor output) {
+    int32 count = input.size();
+    if (count == 0) return;
+
+    int32 vect_count = Eigen::divup(count, 4);
+    constexpr int32 kThreadInBlock = 512;
+    GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
+        vect_count, d, Relu_int8x4_kernel, 0, kThreadInBlock);
+    GPU_LAUNCH_KERNEL(Relu_int8x4_kernel,
+        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
+        vect_count, reinterpret_cast<const int32*>(input.data()),
+        reinterpret_cast<int32*>(output.data()));
+  }
+};
+#endif // GOOGLE_CUDA
+
 }  // namespace functor
 
 // Definition of the GPU implementations declared in relu_op.cc.
@@ -129,6 +162,9 @@ struct ReluGrad<Device, Eigen::half> {
   template struct functor::SeluGrad<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
+#if GOOGLE_CUDA
+template struct functor::Relu<GPUDevice, qint8>;
+#endif // GOOGLE_CUDA
 
 }  // end namespace tensorflow
 

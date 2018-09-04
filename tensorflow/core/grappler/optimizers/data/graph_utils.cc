@@ -94,11 +94,11 @@ NodeDef* AddNode(StringPiece name, StringPiece op,
                  MutableGraphView* graph) {
   NodeDef node;
   if (!name.empty()) {
-    node.set_name(name.ToString());
+    node.set_name(string(name));
   } else {
     SetUniqueGraphNodeName(op, graph->GetGraph(), &node);
   }
-  node.set_op(op.ToString());
+  node.set_op(string(op));
   for (const string& input : inputs) {
     node.add_input(input);
   }
@@ -106,6 +106,26 @@ NodeDef* AddNode(StringPiece name, StringPiece op,
     (*node.mutable_attr())[attr.first] = attr.second;
   }
   return graph->AddNode(std::move(node));
+}
+
+NodeDef* AddNode(StringPiece name, StringPiece op,
+                 const std::vector<string>& inputs,
+                 const std::vector<std::pair<string, AttrValue>>& attributes,
+                 FunctionDef* fd) {
+  NodeDef* node = fd->add_node_def();
+  if (!name.empty()) {
+    node->set_name(string(name));
+  } else {
+    SetUniqueFunctionNodeName(op, fd, node);
+  }
+  node->set_op(string(op));
+  for (const string& input : inputs) {
+    node->add_input(input);
+  }
+  for (auto attr : attributes) {
+    (*node->mutable_attr())[attr.first] = attr.second;
+  }
+  return node;
 }
 
 template <>
@@ -181,7 +201,7 @@ bool ContainsGraphNodeWithName(StringPiece name, const GraphDef& graph) {
 }
 
 bool ContainsNodeWithOp(StringPiece op, const GraphDef& graph) {
-  return FindNodeWithOp(op, graph) != -1;
+  return FindGraphNodeWithOp(op, graph) != -1;
 }
 
 bool ContainsGraphFunctionWithName(StringPiece name,
@@ -205,7 +225,7 @@ int FindGraphNodeWithName(StringPiece name, const GraphDef& graph) {
   return indices.empty() ? -1 : indices.front();
 }
 
-int FindNodeWithOp(StringPiece op, const GraphDef& graph) {
+int FindGraphNodeWithOp(StringPiece op, const GraphDef& graph) {
   std::vector<int> indices = GetElementIndicesWithPredicate(
       [&op](const NodeDef& node) { return node.op() == op; }, graph.node());
   return indices.empty() ? -1 : indices.front();
@@ -242,9 +262,15 @@ int FindFunctionNodeWithOp(StringPiece op, const FunctionDef& function) {
   return indices.empty() ? -1 : indices.front();
 }
 
+NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph) {
+  if (node.input_size() == 0) return nullptr;
+  GraphView::InputPort input_port = graph.GetInputPort(node.name(), 0);
+  return graph.GetRegularFanin(input_port).node;
+}
+
 void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph,
                             NodeDef* node) {
-  string name = prefix.ToString();
+  string name = string(prefix);
   int id = graph->node_size();
   while (ContainsGraphNodeWithName(name, *graph)) {
     if (name.rfind("_generated") != std::string::npos &&
@@ -260,7 +286,7 @@ void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph,
 
 void SetUniqueFunctionNodeName(StringPiece prefix, FunctionDef* function,
                                NodeDef* node) {
-  string name = prefix.ToString();
+  string name = string(prefix);
   int id = function->node_def_size();
   while (ContainsFunctionNodeWithName(name, *function)) {
     name = strings::StrCat(prefix, "/_", id);
@@ -271,7 +297,7 @@ void SetUniqueFunctionNodeName(StringPiece prefix, FunctionDef* function,
 
 void SetUniqueGraphFunctionName(StringPiece prefix, FunctionDefLibrary* library,
                                 FunctionDef* function) {
-  string name = prefix.ToString();
+  string name = string(prefix);
   int id = library->function_size();
   while (ContainsGraphFunctionWithName(name, *library)) {
     name = strings::StrCat(prefix, "/_", id);

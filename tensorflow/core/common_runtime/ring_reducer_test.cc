@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
-namespace {
 
 // Wraps CollectiveRemoteAccessLocal with the ability to return an
 // error status to the N'th action.
@@ -135,27 +134,28 @@ class RingReducerTest : public ::testing::Test {
  protected:
   RingReducerTest() : device_type_(DEVICE_CPU) {}
 
-  void SetUp() override {
-#if GOOGLE_CUDA
+#ifdef GOOGLE_CUDA
+  void InitGPUDevices() {
     auto device_factory = DeviceFactory::GetFactory("GPU");
     CHECK(device_factory);
     SessionOptions options;
     Status s = device_factory->CreateDevices(
         options, "/job:worker/replica:0/task:0", &gpu_devices_);
     CHECK(s.ok());
-#endif
   }
+#endif
 
   ~RingReducerTest() override {
     stop_ = true;
-    for (auto i : instances_) {
-      delete i;
-    }
+    for (auto i : instances_) delete i;
     if (col_exec_) col_exec_->Unref();
   }
 
   void Init(int num_workers, int num_devices, DataType dtype,
             const DeviceType& device_type, int num_subdivs, int fail_after) {
+#ifdef GOOGLE_CUDA
+    InitGPUDevices();
+#endif
     device_type_ = device_type;
     std::vector<Device*> local_devices;
     SessionOptions sess_opts;
@@ -201,6 +201,7 @@ class RingReducerTest : public ::testing::Test {
     col_params_.instance.instance_key = kInstanceKey;
     col_params_.instance.impl_details.subdiv_offsets.clear();
     col_params_.instance.type = REDUCTION_COLLECTIVE;
+    col_params_.instance.impl_details.collective_name = "RingReduce";
     col_params_.instance.data_type = dtype;
     col_params_.instance.impl_details.subdiv_permutations.resize(num_subdivs);
     col_params_.subdiv_rank.resize(num_subdivs);
@@ -373,6 +374,22 @@ class RingReducerTest : public ::testing::Test {
     return GetKernel(node_def, device_type, device);
   }
 
+  void RunSubdivPermsTest(
+      CollectiveParams* cp,
+      const std::vector<std::vector<int>>& expected_subdiv_perms,
+      const std::vector<int>& expected_subdiv_rank) {
+    col_exec_ = nullptr;
+    cp->instance.impl_details.subdiv_permutations.clear();
+    cp->subdiv_rank.clear();
+    // Create a stub ring reducer only for testing param initialization.
+    RingReducer reducer;
+    TF_CHECK_OK(reducer.InitializeCollectiveParams(cp));
+    EXPECT_EQ(expected_subdiv_perms,
+              cp->instance.impl_details.subdiv_permutations);
+    EXPECT_EQ(expected_subdiv_rank, cp->subdiv_rank);
+    reducer.group_size_tensor_ready_.Notify();  // To unblock destructor.
+  }
+
   class DeviceInstance {
    public:
     DeviceInstance(int rank, const string& dev_name,
@@ -475,8 +492,8 @@ class RingReducerTest : public ::testing::Test {
       op_params.op_kernel = op.get();
       OpKernelContext ctx(&op_params, 1);
 
-      // We never actually execute the kernel, so we need to do the
-      // output allocation that it would do, ourselves.
+      // We never actually execute the kernel, so we need to do the output
+      // allocation it would do, ourselves.
       Tensor* output_tensor_ptr = nullptr;
       TF_CHECK_OK(ctx.forward_input_or_allocate_output({0}, 0, tensor_.shape(),
                                                        &output_tensor_ptr));
@@ -485,20 +502,17 @@ class RingReducerTest : public ::testing::Test {
       // Prepare a RingReducer instance.
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
-      RingReducer rr(parent_->col_exec_, parent_->dev_mgr_.get(), &ctx,
-                     &op_params, col_params_, exec_key, kStepId, &tensor_,
-                     &tensor_);
+      RingReducer reducer;
+      CollectiveContext col_ctx(parent_->col_exec_, parent_->dev_mgr_.get(),
+                                &ctx, &op_params, col_params_, exec_key,
+                                kStepId, &tensor_, &tensor_);
+      TF_CHECK_OK(reducer.InitializeCollectiveContext(&col_ctx));
 
-      // Start execution in a threadpool then wait for completion.
-      Notification notification;
-      SchedClosure([this, &notification, &rr]() {
-        rr.Run([this, &notification](Status s) {
-          status_ = s;
-          notification.Notify();
-        });
-      });
-      notification.WaitForNotification();
-      CHECK(tensor_.CopyFrom(*ctx.mutable_output(0), tensor_.shape()));
+      // Run the all-reduce.
+      reducer.Run([this](Status s) { status_ = s; });
+      if (status_.ok()) {
+        CHECK(tensor_.CopyFrom(*ctx.mutable_output(0), tensor_.shape()));
+      }
 
       dev_ctx->Unref();
     }
@@ -531,6 +545,57 @@ class RingReducerTest : public ::testing::Test {
   int32 reduce_counter_ GUARDED_BY(mu_) = 0;
 };
 
+TEST_F(RingReducerTest, InitializeParams) {
+  static const int kNumDevsPerTask = 8;
+  static const int kNumTasks = 3;
+  static const int kNumDevs = kNumDevsPerTask * kNumTasks;
+  CollectiveParams cp;
+  std::vector<string> device_names;
+  std::vector<string> task_names;
+  cp.group.group_key = 1;
+  cp.group.group_size = kNumDevs;
+  cp.group.device_type = DeviceType("GPU");
+  cp.group.num_tasks = kNumTasks;
+  cp.instance.instance_key = 3;
+  cp.instance.type = REDUCTION_COLLECTIVE;
+  cp.instance.data_type = DataType(DT_FLOAT);
+  cp.instance.shape = TensorShape({5});
+  cp.instance.impl_details.collective_name = "RingReduce";
+  cp.instance.impl_details.subdiv_offsets.push_back(0);
+  cp.is_source = false;
+  for (int i = 0; i < kNumDevs; ++i) {
+    int task_id = i / kNumDevsPerTask;
+    int dev_id = i % kNumDevsPerTask;
+    string task_name = strings::StrCat("/job:worker/replica:0/task:", task_id);
+    task_names.push_back(task_name);
+    string device_name = strings::StrCat(task_name, "/device:GPU:", dev_id);
+    device_names.push_back(device_name);
+    cp.instance.task_names.push_back(task_name);
+    cp.instance.device_names.push_back(device_name);
+  }
+
+  int test_rank = 0;
+  cp.default_rank = test_rank;
+  cp.instance.impl_details.subdiv_offsets = {0, 4};
+  RunSubdivPermsTest(&cp,
+                     {{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                       12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},
+                      {4, 5, 6,  7,  0,  1,  2,  3,  12, 13, 14, 15,
+                       8, 9, 10, 11, 20, 21, 22, 23, 16, 17, 18, 19}},
+                     {0, 4});
+
+  test_rank = 3;
+  cp.default_rank = test_rank;
+  cp.instance.impl_details.subdiv_offsets = {3, -3};
+  RunSubdivPermsTest(&cp,
+                     {{3,  4, 5, 6,  7,  0,  1,  2,  11, 12, 13, 14,
+                       15, 8, 9, 10, 19, 20, 21, 22, 23, 16, 17, 18},
+                      {4, 3,  2,  1,  0,  7,  6,  5,  12, 11, 10, 9,
+                       8, 15, 14, 13, 20, 19, 18, 17, 16, 23, 22, 21}},
+                     {0, 1});
+}
+
+// TODO(b/113171733): change to use TEST_P.
 #define DEF_TEST(B, T, W, D, S, L, A)                                         \
   TEST_F(RingReducerTest,                                                     \
          DaTy##B##_DevTy##T##_Wkr##W##_Dev##D##_Sdiv##S##_Len##L##_Abrt##A) { \
@@ -604,5 +669,4 @@ DEF_TEST(FLOAT, GPU, 1, 8, 1, 9408, 2)
 DEF_TEST(FLOAT, GPU, 1, 8, 2, 9408, 5)
 #endif
 
-}  // namespace
 }  // namespace tensorflow

@@ -480,7 +480,7 @@ class EmbeddingLookupTest(test.TestCase):
               id_vals, shape=ids_shape, dtype=dtypes.int32)
           x, params, _ = _EmbeddingParams(num_shards, vocab_size, shape=[2])
           y = embedding_ops.embedding_lookup(x, ids)
-          y_shape = [num_ids] + list(params[_PName(0) + ":0"].shape[1:])
+          y_shape = ids_shape + tuple(params[_PName(0) + ":0"].shape[1:])
           x_name = [_PName(i) for i in range(num_shards)]
           x_init_value = [params[x_n + ":0"] for x_n in x_name]
           x_shape = [i.shape for i in x_init_value]
@@ -663,8 +663,9 @@ class EmbeddingLookupSparseTest(test.TestCase):
         np.ones(np.sum(vals_per_batch_entry)), vals_per_batch_entry)
 
     for num_shards, combiner, dtype, ignore_weights in itertools.product(
-        [1, 5], ["sum", "mean", "sqrtn"], [dtypes.float32,
-                                           dtypes.float64], [True, False]):
+        [1, 5], ["sum", "mean", "sqrtn"],
+        [dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64],
+        [True, False]):
 
       with self.test_session():
         p, params, feed_dict = _EmbeddingParams(
@@ -677,6 +678,10 @@ class EmbeddingLookupSparseTest(test.TestCase):
 
         self.assertEqual(embedding_sum.get_shape().as_list(),
                          expected_lookup_result_shape)
+        if dtype in (dtypes.float16, dtypes.bfloat16):
+          self.assertEqual(embedding_sum.dtype, dtypes.float32)
+        else:
+          self.assertEqual(embedding_sum.dtype, dtype)
 
         tf_embedding_sum = embedding_sum.eval(feed_dict=feed_dict)
 
@@ -692,7 +697,14 @@ class EmbeddingLookupSparseTest(test.TestCase):
         if combiner == "sqrtn":
           np_embedding_sum /= np.reshape(
               np.sqrt(np_weight_sq_sum), (batch_size, 1, 1))
-        self.assertAllClose(np_embedding_sum, tf_embedding_sum)
+
+        rtol = 1e-6
+        if dtype == dtypes.bfloat16:
+          rtol = 1e-2
+        elif dtype == dtypes.float16:
+          rtol = 1e-3
+        atol = rtol
+        self.assertAllClose(np_embedding_sum, tf_embedding_sum, rtol, atol)
 
   def testGradientsEmbeddingLookupSparse(self):
     vocab_size = 12

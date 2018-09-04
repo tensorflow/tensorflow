@@ -15,11 +15,11 @@ limitations under the License.
 
 #include <array>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -29,16 +29,13 @@ limitations under the License.
 namespace xla {
 namespace {
 
-namespace str_util = tensorflow::str_util;
-namespace strings = tensorflow::strings;
-
 struct ReduceLayout {
   std::array<int64, 4> input_minor_to_major;
   std::array<int64, 3> output_minor_to_major;
 
   string ToString() const {
-    return strings::StrCat(str_util::Join(input_minor_to_major, "x"), "_",
-                           str_util::Join(output_minor_to_major, "x"));
+    return absl::StrCat(absl::StrJoin(input_minor_to_major, "x"), "_",
+                        absl::StrJoin(output_minor_to_major, "x"));
   }
 };
 

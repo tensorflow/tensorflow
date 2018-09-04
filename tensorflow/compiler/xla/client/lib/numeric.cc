@@ -65,9 +65,8 @@ XlaOp Iota(XlaBuilder* builder, PrimitiveType type, int64 size) {
     case C64:
       return MakeIota<complex64>(builder, size);
     default:
-      return builder->ReportError(
-          InvalidArgument("Unimplemented type for Iota: %s.",
-                          PrimitiveType_Name(type).c_str()));
+      return builder->ReportError(InvalidArgument(
+          "Unimplemented type for Iota: %s.", PrimitiveType_Name(type)));
   }
 }
 

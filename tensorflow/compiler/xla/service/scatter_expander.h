@@ -22,7 +22,7 @@ namespace xla {
 
 class ScatterExpander : public HloPassInterface {
  public:
-  tensorflow::StringPiece name() const override { return "scatter_expander"; }
+  absl::string_view name() const override { return "scatter_expander"; }
   StatusOr<bool> Run(HloModule* module) override;
 
  private:

@@ -21,18 +21,19 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 
 using xla::StatusOr;
 
@@ -52,11 +53,10 @@ string DebugString(CondStateMap::CondId cond_state) {
   if (cond_state == nullptr || cond_state->empty()) return "[]";
   return strings::StrCat(
       "[",
-      tensorflow::str_util::Join(
-          *cond_state, ", ",
-          [](string* output, const CondStateMap::CondNode& node) {
-            strings::StrAppend(output, node.ToString());
-          }),
+      absl::StrJoin(*cond_state, ", ",
+                    [](string* output, const CondStateMap::CondNode& node) {
+                      strings::StrAppend(output, node.ToString());
+                    }),
       "]");
 }
 
@@ -169,10 +169,10 @@ using CondArgNodes = std::vector<CondArgNode>;
 string DebugString(const CondArgNodes& nodes) {
   return strings::StrCat(
       "[",
-      tensorflow::str_util::Join(nodes, ", ",
-                                 [](string* output, const CondArgNode& node) {
-                                   strings::StrAppend(output, node.ToString());
-                                 }),
+      absl::StrJoin(nodes, ", ",
+                    [](string* output, const CondArgNode& node) {
+                      strings::StrAppend(output, node.ToString());
+                    }),
       "]");
 }
 
@@ -387,8 +387,9 @@ Status Conditional::BuildArgumentNodes() {
       }
       if (!has_input) {
         return errors::Internal(
-            "Failed to functionalize control flow with merge '", m->name(),
-            "' that doesn't have input on ", Branch_Name(branch), " branch.");
+            "Failed to functionalize control flow with merge ",
+            FormatNodeForError(*m), " that doesn't have input on ",
+            Branch_Name(branch), " branch.");
       }
     }
   }
@@ -399,7 +400,8 @@ Status Conditional::BuildArgumentNodes() {
 Status Conditional::ExtractBodies(Graph* graph) {
   VLOG(2) << "Extracting bodies for " << name();
   for (auto b : {BranchType::kElseBranch, BranchType::kThenBranch}) {
-    bodies_[static_cast<int>(b)] = xla::MakeUnique<Graph>(graph->op_registry());
+    bodies_[static_cast<int>(b)] =
+        absl::make_unique<Graph>(graph->op_registry());
   }
 
   auto find_branch = [&](const Edge* e) {
@@ -463,9 +465,13 @@ Status Conditional::ExtractBodies(Graph* graph) {
             // Constants are treated specially to workaround the case of
             // non-dominated constant nodes.
             if (!IsConstant(src)) {
-              return errors::InvalidArgument(
-                  "Graph contains node ", src->name(), " that feeds into node ",
-                  dst->name(),
+              // TODO(b/78882471): A node that feeds into two different
+              // CondState is not necessarily an error so log a warning for now
+              // but revisit to improve the testing to enable making this an
+              // error.
+              LOG(WARNING) << errors::InvalidArgument(
+                  "Graph contains node ", FormatNodeForError(*src),
+                  " that feeds into node ", FormatNodeForError(*dst),
                   " but these nodes are in different control contexts (",
                   DebugString(src_id), " vs ", DebugString(dst_id),
                   " (detected during out edge testing)");
@@ -507,8 +513,8 @@ Status Conditional::ExtractBodies(Graph* graph) {
             node_map.at(src->id()) = output->CopyNode(src);
           } else {
             return errors::InvalidArgument(
-                "Graph contains node ", src->name(), " that feeds into node ",
-                dst->name(),
+                "Graph contains node ", FormatNodeForError(*src),
+                " that feeds into node ", FormatNodeForError(*dst),
                 " but these nodes are in different control contexts (",
                 DebugString(src_id), " vs ", DebugString(dst_id),
                 " (detected during in edge testing)");
@@ -670,7 +676,8 @@ Status Conditional::AddOutputEdges(Graph* graph) {
       int dst_input = edge->dst_input();
       if (edge->src_output() > 0) {
         return errors::Unimplemented("Output of index (", edge->src_output(),
-                                     ") of merge node ", node->name());
+                                     ") of merge node ",
+                                     FormatNodeForError(*node));
       }
 
       bool control_edge = edge->IsControlEdge();
@@ -858,7 +865,7 @@ CondStateMap::ContainsResult CondStateMap::LhsHoldsWhereverRhsHolds(
 
 BranchType CondStateMap::FindBranchOf(CondId id, OutputTensor predicate) const {
   if (IsEmpty(id)) return BranchType::kNeither;
-  gtl::optional<BranchType> b;
+  absl::optional<BranchType> b;
   const CondState& nodes = *id;
   for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
     if (it->type == CondStateMap::CondNode::Type::kSwitch &&
@@ -1055,7 +1062,8 @@ Status FunctionalizeCond::DetermineCondStateMerge(Node* dst) {
 
     CondStateMap::CondId prop = StateAlongEdge(e);
     auto id_or = JoinCondStatesMerge(prop, cond_state_map_.LookupId(dst));
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(id_or.status(), "for node ", dst->name());
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(id_or.status(), "for node ",
+                                    FormatNodeForError(*dst));
     cond_state_map_.ResetId(dst, id_or.ValueOrDie());
   }
 
@@ -1085,7 +1093,8 @@ Status FunctionalizeCond::DetermineCondState(Node* dst) {
       // Joining the state between the current and propagated state.
       CondStateMap::CondId prop = StateAlongEdge(e);
       auto id_or = JoinCondStatesNonMerge(prop, cond_state_map_.LookupId(dst));
-      TF_RETURN_WITH_CONTEXT_IF_ERROR(id_or.status(), "for node ", dst->name());
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(id_or.status(), "for node ",
+                                      FormatNodeForError(*dst));
       cond_state_map_.ResetId(dst, id_or.ValueOrDie());
     }
   }
@@ -1112,7 +1121,7 @@ Status FunctionalizeCond::RemoveRedundantMerge(Node* node) {
   }
 
   if (non_dead_edge == nullptr) {
-    return errors::InvalidArgument("Merge node ", node->name(),
+    return errors::InvalidArgument("Merge node ", FormatNodeForError(*node),
                                    " has no non-dead inputs.");
   }
   cond_state_map_.MarkDead(node);
@@ -1164,7 +1173,8 @@ Status FunctionalizeCond::RemoveRedundantSwitch(Node* node) {
       if (IsMerge(dst_node)) {
         auto id_or =
             JoinCondStatesMerge(dst_id, cond_state_map_.LookupId(dst_node));
-        TF_RETURN_IF_ERROR(id_or.status());
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(id_or.status(), "for node ",
+                                        FormatNodeForError(*dst_node));
         cond_state_map_.ResetId(dst_node, id_or.ValueOrDie());
       } else {
         auto id_or =

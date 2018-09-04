@@ -115,10 +115,10 @@ pip2 install --upgrade setuptools==39.1.0
 pip3 install --upgrade setuptools==39.1.0
 
 # Keras
-pip2 install keras_applications==1.0.4 --no-deps
-pip3 install keras_applications==1.0.4 --no-deps
-pip2 install keras_preprocessing==1.0.2 --no-deps
-pip3 install keras_preprocessing==1.0.2 --no-deps
+pip2 install keras_applications==1.0.5 --no-deps
+pip3 install keras_applications==1.0.5 --no-deps
+pip2 install keras_preprocessing==1.0.3 --no-deps
+pip3 install keras_preprocessing==1.0.3 --no-deps
 
 # Install last working version of setuptools.
 pip2 install --upgrade setuptools==39.1.0

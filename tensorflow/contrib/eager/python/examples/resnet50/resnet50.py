@@ -272,8 +272,8 @@ class ResNet50(tf.keras.Model):
       else:
         self.global_pooling = None
 
-  def call(self, input_tensor, training):
-    x = self.conv1(input_tensor)
+  def call(self, inputs, training=True):
+    x = self.conv1(inputs)
     x = self.bn_conv1(x, training=training)
     x = tf.nn.relu(x)
     x = self.max_pool(x)

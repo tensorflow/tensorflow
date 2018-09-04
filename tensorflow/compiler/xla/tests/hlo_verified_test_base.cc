@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -24,8 +25,11 @@ limitations under the License.
 
 namespace xla {
 
-HloVerifiedTestBase::HloVerifiedTestBase()
-    : shape_verifier_(MakeUnique<ShapeVerifier>()) {}
+HloVerifiedTestBase::HloVerifiedTestBase(bool layout_sensitive,
+                                         bool allow_mixed_precision)
+    : HloTestBase(
+          /*verifier_layout_sensitive=*/layout_sensitive,
+          /*allow_mixed_precision_in_hlo_verifier=*/allow_mixed_precision) {}
 
 HloVerifiedTestBase::~HloVerifiedTestBase() {
   // We can't call the ASSERT or EXPECT test macros in destructors, so we
@@ -50,8 +54,7 @@ void HloVerifiedTestBase::TearDown() {
 }
 
 void HloVerifiedTestBase::VerifyModule(HloModule* module) {
-  HloVerifier verifier(/*allow_mixed_precision=*/true);
-  xla::StatusOr<bool> mutated = verifier.Run(module);
+  xla::StatusOr<bool> mutated = verifier().Run(module);
   if (!mutated.ok()) {
     ADD_FAILURE() << "HloVerifier failed: " << mutated.status();
   } else {
@@ -72,7 +75,7 @@ HloModule* HloVerifiedTestBase::CreateNewModule(const string& name) {
   return modules_.back().get();
 }
 
-void HloVerifiedTestBase::ParseAndVerifyModule(tensorflow::StringPiece hlo_text,
+void HloVerifiedTestBase::ParseAndVerifyModule(absl::string_view hlo_text,
                                                const HloModuleConfig& config) {
   CHECK(!module_) << "Called ParseModule when test already has a module.";
   TF_ASSERT_OK_AND_ASSIGN(module_, ParseHloString(hlo_text, config));

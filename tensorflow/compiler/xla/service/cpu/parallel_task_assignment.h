@@ -73,7 +73,7 @@ class ParallelTaskAssigner : public HloPassInterface {
         target_machine_features_(*target_machine_features) {}
   ~ParallelTaskAssigner() override {}
 
-  tensorflow::StringPiece name() const override {
+  absl::string_view name() const override {
     return "cpu-parallel-task-assigner";
   }
 

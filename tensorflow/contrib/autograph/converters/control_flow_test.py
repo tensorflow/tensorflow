@@ -33,7 +33,7 @@ class ControlFlowTest(converter_testing.TestCase):
       inputs = (inputs,)
     with self.converted(test_fn, control_flow, {},
                         constant_op.constant) as result:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         self.assertEqual(sess.run(result.test_fn(*inputs)), expected)
 
   def test_while_basic(self):
@@ -56,6 +56,17 @@ class ControlFlowTest(converter_testing.TestCase):
       return n
 
     self.assertTransformedResult(test_fn, constant_op.constant(5), 0)
+
+  def test_while_variable_defined_in_body(self):
+    def bad_while_loop(n):
+      while n > 0:
+        n -= 1
+        s = n
+      return s
+
+    node, ctx = self.prepare(bad_while_loop, {})
+    with self.assertRaises(transformer.AutographParseError):
+      control_flow.transform(node, ctx)
 
   def test_if_basic(self):
 
@@ -89,7 +100,7 @@ class ControlFlowTest(converter_testing.TestCase):
       return obj
 
     with self.converted(test_fn, control_flow, {}) as result:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         res_obj = result.test_fn(constant_op.constant(1), TestClass(0, 0))
         self.assertEqual(sess.run((res_obj.a, res_obj.b)), (-1, 0))
         res_obj = result.test_fn(constant_op.constant(-1), TestClass(0, 0))
@@ -196,6 +207,23 @@ class ControlFlowTest(converter_testing.TestCase):
       self.assertEqual(result.test_fn(5), 10)
       self.assertEqual(eval_count[0], 1)
 
+  def test_for_variable_defined_in_body(self):
+    def bad_for_loop(n):
+      for i in range(n):
+        s = i
+      return s
 
+    node, ctx = self.prepare(bad_for_loop, {})
+    with self.assertRaises(transformer.AutographParseError):
+      control_flow.transform(node, ctx)
+
+  def test_for_tuple_unpacking(self):
+    def test_fn(x_list):
+      z = tf.constant(0)  # pylint:disable=undefined-variable
+      for i, x in enumerate(x_list):
+        z = z + x + i
+      return z
+
+    self.assertTransformedResult(test_fn, [3, 3], 7)
 if __name__ == '__main__':
   test.main()

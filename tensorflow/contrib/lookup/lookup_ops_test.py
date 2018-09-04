@@ -38,6 +38,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
+from tensorflow.python.training.checkpointable import util as checkpointable
 
 
 class HashTableOpTest(test.TestCase):
@@ -332,7 +333,7 @@ class MutableHashTableOpTest(test.TestCase):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       v0 = variables.Variable(10.0, name="v0")
       v1 = variables.Variable(20.0, name="v1")
 
@@ -357,7 +358,7 @@ class MutableHashTableOpTest(test.TestCase):
       self.assertTrue(isinstance(val, six.string_types))
       self.assertEqual(save_path, val)
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       v0 = variables.Variable(-1.0, name="v0")
       v1 = variables.Variable(-1.0, name="v1")
       default_val = -1
@@ -382,6 +383,59 @@ class MutableHashTableOpTest(test.TestCase):
                                           dtypes.string)
       output = table.lookup(input_string)
       self.assertAllEqual([-1, 0, 1, 2, -1], output.eval())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testObjectSaveRestore(self):
+    save_dir = os.path.join(self.get_temp_dir(), "save_restore")
+    save_prefix = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
+
+    v0 = variables.Variable(10.0, name="v0")
+    v1 = variables.Variable(20.0, name="v1")
+
+    default_val = -1
+    keys = constant_op.constant(["b", "c", "d"], dtypes.string)
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    table = lookup.MutableHashTable(
+        dtypes.string, dtypes.int64, default_val, name="t1", checkpoint=True)
+
+    checkpoint = checkpointable.Checkpoint(table=table, v0=v0, v1=v1)
+    self.evaluate([v0.initializer, v1.initializer])
+
+    # Check that the parameter nodes have been initialized.
+    self.assertEqual(10.0, self.evaluate(v0))
+    self.assertEqual(20.0, self.evaluate(v1))
+
+    self.assertAllEqual(0, self.evaluate(table.size()))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table.size()))
+
+    save_path = checkpoint.save(save_prefix)
+    del table, checkpoint, v0, v1
+
+    v0 = variables.Variable(-1.0, name="v0")
+    v1 = variables.Variable(-1.0, name="v1")
+    default_val = -1
+    table = lookup.MutableHashTable(
+        dtypes.string, dtypes.int64, default_val, name="t1", checkpoint=True)
+    self.evaluate(table.insert(
+        constant_op.constant(["a", "c"], dtypes.string),
+        constant_op.constant([12, 24], dtypes.int64)))
+    self.assertAllEqual(2, self.evaluate(table.size()))
+
+    checkpoint = checkpointable.Checkpoint(table=table, v0=v0, v1=v1)
+
+    # Restore the saved values in the parameter nodes.
+    checkpoint.restore(save_path).run_restore_ops()
+    # Check that the parameter nodes have been restored.
+    self.assertEqual(10.0, self.evaluate(v0))
+    self.assertEqual(20.0, self.evaluate(v1))
+
+    self.assertAllEqual(3, self.evaluate(table.size()))
+
+    input_string = constant_op.constant(["a", "b", "c", "d", "e"],
+                                        dtypes.string)
+    output = table.lookup(input_string)
+    self.assertAllEqual([-1, 0, 1, 2, -1], self.evaluate(output))
 
   def testSharing(self):
     # Start a server to store the table state
@@ -958,7 +1012,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       default_value = -1
       empty_key = 0
       keys = constant_op.constant([11, 12, 13], dtypes.int64)
@@ -983,7 +1037,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
       self.assertTrue(isinstance(val, six.string_types))
       self.assertEqual(save_path, val)
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       table = lookup.MutableDenseHashTable(
           dtypes.int64,
           dtypes.int64,
@@ -1010,11 +1064,65 @@ class MutableDenseHashTableOpTest(test.TestCase):
       output = table.lookup(input_string)
       self.assertAllEqual([-1, 0, 1, 2, -1], output.eval())
 
+  @test_util.run_in_graph_and_eager_modes
+  def testObjectSaveRestore(self):
+    save_dir = os.path.join(self.get_temp_dir(), "save_restore")
+    save_prefix = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
+
+    default_value = -1
+    empty_key = 0
+    keys = constant_op.constant([11, 12, 13], dtypes.int64)
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    save_table = lookup.MutableDenseHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=default_value,
+        empty_key=empty_key,
+        name="t1",
+        checkpoint=True,
+        initial_num_buckets=32)
+
+    save_checkpoint = checkpointable.Checkpoint(table=save_table)
+
+    self.assertAllEqual(0, self.evaluate(save_table.size()))
+    self.evaluate(save_table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(save_table.size()))
+    self.assertAllEqual(32, len(self.evaluate(save_table.export()[0])))
+
+    save_path = save_checkpoint.save(save_prefix)
+    del save_table, save_checkpoint
+
+    load_table = lookup.MutableDenseHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=default_value,
+        empty_key=empty_key,
+        name="t1",
+        checkpoint=True,
+        initial_num_buckets=64)
+    self.evaluate(load_table.insert(
+        constant_op.constant([11, 14], dtypes.int64),
+        constant_op.constant([12, 24], dtypes.int64)))
+    self.assertAllEqual(2, self.evaluate(load_table.size()))
+    self.assertAllEqual(64, len(self.evaluate(load_table.export()[0])))
+
+    restore_checkpoint = checkpointable.Checkpoint(table=load_table)
+
+    # Restore the saved values in the parameter nodes.
+    restore_checkpoint.restore(save_path).run_restore_ops()
+
+    self.assertAllEqual(3, self.evaluate(load_table.size()))
+    self.assertAllEqual(32, len(self.evaluate(load_table.export()[0])))
+
+    input_string = constant_op.constant([10, 11, 12, 13, 14], dtypes.int64)
+    output = load_table.lookup(input_string)
+    self.assertAllEqual([-1, 0, 1, 2, -1], self.evaluate(output))
+
   def testVectorSaveRestore(self):
     save_dir = os.path.join(self.get_temp_dir(), "vector_save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       empty_key = constant_op.constant([11, 13], dtypes.int64)
       default_value = constant_op.constant([-1, -2], dtypes.int64)
       keys = constant_op.constant([[11, 12], [11, 14], [13, 14]], dtypes.int64)
@@ -1039,7 +1147,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
       self.assertTrue(isinstance(val, six.string_types))
       self.assertEqual(save_path, val)
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       empty_key = constant_op.constant([11, 13], dtypes.int64)
       default_value = constant_op.constant([-1, -2], dtypes.int64)
       table = lookup.MutableDenseHashTable(
@@ -1074,7 +1182,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
     save_dir = os.path.join(self.get_temp_dir(), "vector_scalar_save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       empty_key = constant_op.constant([11, 13], dtypes.int64)
       default_value = constant_op.constant(-1, dtypes.int64)
       keys = constant_op.constant([[11, 12], [11, 14], [13, 14]], dtypes.int64)
@@ -1099,7 +1207,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
       self.assertTrue(isinstance(val, six.string_types))
       self.assertEqual(save_path, val)
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       empty_key = constant_op.constant([11, 13], dtypes.int64)
       default_value = constant_op.constant(-1, dtypes.int64)
       table = lookup.MutableDenseHashTable(

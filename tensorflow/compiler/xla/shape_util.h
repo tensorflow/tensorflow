@@ -22,6 +22,8 @@ limitations under the License.
 #include <initializer_list>
 #include <string>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -31,8 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
@@ -74,7 +74,7 @@ class ShapeIndex {
   // push_front is O(n^2), but shapes don't usually have a ton of dimensions.
   void push_front(int64 value) { indices_.insert(indices_.begin(), value); }
 
-  using container_type = tensorflow::gtl::InlinedVector<int64, 2>;
+  using container_type = absl::InlinedVector<int64, 2>;
 
   container_type::const_iterator begin() const { return indices_.begin(); }
   container_type::const_iterator end() const { return indices_.end(); }
@@ -131,12 +131,12 @@ class ShapeIndexView {
   }
   ShapeIndexView ConsumeFront() const {
     ShapeIndexView result = *this;
-    result.indices_.pop_front();
+    result.indices_.remove_prefix(1);
     return result;
   }
   ShapeIndexView ConsumeBack() const {
     ShapeIndexView result = *this;
-    result.indices_.pop_back();
+    result.indices_.remove_suffix(1);
     return result;
   }
   ShapeIndex ToShapeIndex() const { return ShapeIndex(begin(), end()); }
@@ -228,7 +228,7 @@ class ShapeUtil {
 
   // Parses a ShapeUtil::HumanString-format shape string back into a shape
   // object.
-  static StatusOr<Shape> ParseShapeString(tensorflow::StringPiece s);
+  static StatusOr<Shape> ParseShapeString(absl::string_view s);
 
   // Returns whether the LHS and RHS shapes have the same dimensions; note: does
   // not check element type.
@@ -597,8 +597,8 @@ class ShapeUtil {
   // layout). The layout of 'input_shape' is kept fixed. Returns
   // 'output_shape_with_layout' if such a layout can be found, and an error
   // otherwise.
-  static tensorflow::gtl::optional<Shape> AlignLayouts(
-      const Shape& input_shape, const Shape& output_shape);
+  static absl::optional<Shape> AlignLayouts(const Shape& input_shape,
+                                            const Shape& output_shape);
 
   // Returns a shape with the given dimension deleted.
   // For example:
@@ -737,13 +737,13 @@ class ShapeUtil {
     int64 n = -1;
     std::vector<int64> indexes(base.begin(), base.end());
     const int kNumThreads = tensorflow::port::NumSchedulableCPUs();
-    tensorflow::gtl::optional<tensorflow::thread::ThreadPool> pool;
+    absl::optional<tensorflow::thread::ThreadPool> pool;
     if (parallel) {
       pool.emplace(tensorflow::Env::Default(), "foreach", kNumThreads);
     }
 
     while (n < rank) {
-      if (pool != tensorflow::gtl::nullopt) {
+      if (pool != absl::nullopt) {
         pool->Schedule(
             [indexes, &visitor_function] { visitor_function(indexes); });
       } else {

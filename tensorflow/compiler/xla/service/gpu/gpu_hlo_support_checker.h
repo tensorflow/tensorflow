@@ -28,9 +28,7 @@ class GpuHloSupportChecker : public HloPassInterface {
   GpuHloSupportChecker() = default;
   ~GpuHloSupportChecker() override = default;
 
-  tensorflow::StringPiece name() const override {
-    return "gpu_hlo_support_checker";
-  }
+  absl::string_view name() const override { return "gpu_hlo_support_checker"; }
 
   // Note: always returns false (no instructions are ever modified by this
   // pass).

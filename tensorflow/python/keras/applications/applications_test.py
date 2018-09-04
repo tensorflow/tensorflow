@@ -32,7 +32,8 @@ MODEL_LIST = [
     (applications.InceptionV3, 2048),
     (applications.InceptionResNetV2, 1536),
     (applications.MobileNet, 1024),
-    # TODO(fchollet): enable MobileNetV2 in next version.
+    # TODO(fchollet): enable MobileNetV2 tests when a new TensorFlow test image
+    # is released with keras_applications upgraded to 1.0.5 or above.
     (applications.DenseNet121, 1024),
     (applications.DenseNet169, 1664),
     (applications.DenseNet201, 1920),
@@ -42,11 +43,6 @@ MODEL_LIST = [
 
 
 class ApplicationsTest(test.TestCase, parameterized.TestCase):
-
-  @parameterized.parameters(*MODEL_LIST)
-  def test_classification_model(self, model_fn, _):
-    model = model_fn(classes=1000, weights=None)
-    self.assertEqual(model.output_shape[-1], 1000)
 
   @parameterized.parameters(*MODEL_LIST)
   def test_feature_extration_model(self, model_fn, output_dim):

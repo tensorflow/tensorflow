@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/parallel_loop_emitter.h"
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
 namespace cpu {
@@ -30,8 +30,8 @@ ParallelLoopEmitter::ParallelLoopEmitter(
       dynamic_loop_bounds_(dynamic_loop_bounds) {}
 
 std::vector<llvm_ir::IrArray::Index>
-ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
-    tensorflow::StringPiece loop_name, llvm::Type* index_type) {
+ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
+                                                   llvm::Type* index_type) {
   CHECK_NE(index_type, nullptr);
 
   CHECK(!ShapeUtil::IsTuple(shape_));
@@ -52,15 +52,15 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
       llvm::Value* end_index = (*dynamic_loop_bounds_)[bounds_index].second;
 
       std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
-          /*suffix=*/tensorflow::strings::Printf("dim.%lld", dimension),
-          start_index, end_index);
+          /*suffix=*/absl::StrFormat("dim.%d", dimension), start_index,
+          end_index);
       array_index[dimension] = loop->GetIndVarValue();
     } else {
       // Emit static loop bounds for this dimension.
       std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
           /*start_index=*/0,
           /*end_index=*/shape_.dimensions(dimension),
-          /*suffix=*/tensorflow::strings::Printf("dim.%lld", dimension));
+          /*suffix=*/absl::StrFormat("dim.%d", dimension));
       array_index[dimension] = loop->GetIndVarValue();
     }
   }
