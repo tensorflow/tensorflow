@@ -27,10 +27,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-KernelThunk::KernelThunk(
-    tensorflow::gtl::ArraySlice<const BufferAllocation*> args,
-    const string& kernel_name, const HloInstruction* hlo_instruction,
-    int unroll_factor)
+KernelThunk::KernelThunk(absl::Span<const BufferAllocation* const> args,
+                         const string& kernel_name,
+                         const HloInstruction* hlo_instruction,
+                         int unroll_factor)
     : Thunk(Kind::kKernel, hlo_instruction),
       args_(args.begin(), args.end()),
       kernel_name_(kernel_name),
@@ -41,11 +41,7 @@ Status KernelThunk::Initialize(const GpuExecutable& executable,
   tensorflow::mutex_lock lock(mutex_);
   if (!loader_spec_) {
     loader_spec_.reset(new se::MultiKernelLoaderSpec(args_.size()));
-    absl::string_view text = executable.text();
-    // Convert absl::string_view to se::port::StringPiece because
-    // StreamExecutor uses the latter.
-    loader_spec_->AddCudaPtxInMemory(
-        se::port::StringPiece(text.data(), text.size()), kernel_name_);
+    loader_spec_->AddCudaPtxInMemory(executable.ptx(), kernel_name_);
 
   // XXX figure out how to cope with both CUDA and ROCm platforms
 #if GOOGLE_CUDA

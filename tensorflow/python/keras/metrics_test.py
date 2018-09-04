@@ -50,9 +50,32 @@ class KerasMetricsTest(test.TestCase):
   def test_sparse_categorical_accuracy(self):
     with self.cached_session():
       metric = metrics.sparse_categorical_accuracy
-      y_a = K.variable(np.random.randint(0, 7, (6,)))
-      y_b = K.variable(np.random.random((6, 7)))
-      self.assertEqual(K.eval(metric(y_a, y_b)).shape, (6,))
+      y_true = K.variable(np.random.randint(0, 7, (6,)))
+      y_pred = K.variable(np.random.random((6, 7)))
+      self.assertEqual(K.eval(metric(y_true, y_pred)).shape, (6,))
+
+  def test_sparse_categorical_accuracy_float(self):
+    with self.cached_session():
+      metric = metrics.sparse_categorical_accuracy
+      y_true = K.variable(np.random.random((6,)))
+      y_pred = K.variable(np.random.random((6, 7)))
+      self.assertEqual(K.eval(metric(y_true, y_pred)).shape, (6,))
+
+  def test_sparse_categorical_accuracy_eager(self):
+    """Tests that ints passed in via Eager return results. See b/113504761."""
+    with context.eager_mode():
+      metric = metrics.sparse_categorical_accuracy
+      y_true = np.arange(6).reshape([6, 1])
+      y_pred = np.arange(36).reshape([6, 6])
+      self.assertAllEqual(metric(y_true, y_pred), [0., 0., 0., 0., 0., 1.])
+
+  def test_sparse_categorical_accuracy_float_eager(self):
+    """Tests that floats passed in via Eager return results. See b/113504761."""
+    with context.eager_mode():
+      metric = metrics.sparse_categorical_accuracy
+      y_true = np.arange(6, dtype=np.float32).reshape([6, 1])
+      y_pred = np.arange(36).reshape([6, 6])
+      self.assertAllEqual(metric(y_true, y_pred), [0., 0., 0., 0., 0., 1.])
 
   def test_sparse_top_k_categorical_accuracy(self):
     with self.cached_session():

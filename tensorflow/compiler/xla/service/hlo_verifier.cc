@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 
@@ -114,6 +115,11 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
   }
   return CheckShape(hlo,
                     ShapeInference::InferAllToAllTupleShape(operand_shapes));
+}
+
+Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
+  return CheckShape(hlo, ShapeInference::InferCollectivePermuteShape(
+                             hlo->operand(0)->shape()));
 }
 
 Status ShapeVerifier::HandleReducePrecision(HloInstruction* reduce_precision) {
@@ -260,10 +266,18 @@ Status ShapeVerifier::HandleConstant(HloInstruction* constant) {
   return CheckShape(constant, constant->literal().shape());
 }
 
-Status ShapeVerifier::HandleIota(HloInstruction* iota) {
-  return ShapeUtil::Rank(iota->shape()) == 1
-             ? Status::OK()
-             : InternalError("Iota only supports arrays of rank 1.");
+Status ShapeVerifier::HandleIota(HloInstruction* instruction) {
+  auto* iota = Cast<HloIotaInstruction>(instruction);
+  const int64 rank = ShapeUtil::Rank(iota->shape());
+  if (rank == 0) {
+    return InternalError("Iota does not support scalars.");
+  }
+  int64 iota_dimension = iota->iota_dimension();
+  if (iota_dimension >= rank) {
+    return InternalError(
+        "The iota dimension cannot go beyond the operation rank.");
+  }
+  return Status::OK();
 }
 
 Status ShapeVerifier::HandleGetTupleElement(HloInstruction* get_tuple_element) {
@@ -274,14 +288,13 @@ Status ShapeVerifier::HandleGetTupleElement(HloInstruction* get_tuple_element) {
 }
 
 Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
-  if (!ShapeUtil::IsArray(reduce->shape())) {
-    return InvalidArgument("Variadic reduce is not supported.");
+  std::vector<const Shape*> operand_shapes;
+  for (const HloInstruction* operand : reduce->operands()) {
+    operand_shapes.push_back(&operand->shape());
   }
-  return CheckShape(
-      reduce,
-      ShapeInference::InferReduceShape(
-          {&reduce->operand(0)->shape(), &reduce->operand(1)->shape()},
-          reduce->dimensions(), reduce->to_apply()->ComputeProgramShape()));
+  return CheckShape(reduce, ShapeInference::InferReduceShape(
+                                operand_shapes, reduce->dimensions(),
+                                reduce->to_apply()->ComputeProgramShape()));
 }
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
@@ -686,8 +699,7 @@ Status ShapeVerifier::CheckVariadicShape(const HloInstruction* instruction) {
                         instruction->opcode(), instruction->operands()));
 }
 
-string ComputationsToString(
-    tensorflow::gtl::ArraySlice<HloComputation*> computations) {
+string ComputationsToString(absl::Span<HloComputation* const> computations) {
   return absl::StrJoin(computations, ",",
                        [](string* s, const HloComputation* computation) {
                          s->append(computation->name());
@@ -1055,9 +1067,9 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
       TF_RET_CHECK(instruction->parent() == computation);
       if (instruction->opcode() == HloOpcode::kFusion) {
         TF_RETURN_IF_ERROR(CheckFusionInstruction(instruction));
-        TF_RET_CHECK(
-            ContainersEqual(instruction->called_computations(),
-                            {instruction->fused_instructions_computation()}))
+        TF_RET_CHECK(instruction->called_computations() ==
+                     absl::Span<HloComputation* const>(
+                         {instruction->fused_instructions_computation()}))
             << "Fusion HLO calls computations other than the "
                "fused_instructions_computation: "
             << instruction->ToString()

@@ -889,6 +889,9 @@ def sparse_reduce_max(sp_input, axis=None, keepdims=None,
   `tf.reduce_max()`.  In particular, this Op also returns a dense `Tensor`
   instead of a sparse one.
 
+  Note: A gradient is not defined for this function, so it can't be used
+  in training models that need gradient descent.
+
   Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
   `keepdims` is true, the rank of the tensor is reduced by 1 for each entry in
   `reduction_axes`. If `keepdims` is true, the reduced dimensions are retained
@@ -955,6 +958,9 @@ def sparse_reduce_max_sparse(sp_input,
   This Op takes a SparseTensor and is the sparse counterpart to
   `tf.reduce_max()`.  In contrast to SparseReduceSum, this Op returns a
   SparseTensor.
+
+  Note: A gradient is not defined for this function, so it can't be used
+  in training models that need gradient descent.
 
   Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
   `keepdims` is true, the rank of the tensor is reduced by 1 for each entry in
@@ -1056,6 +1062,9 @@ def sparse_reduce_sum_sparse(sp_input,
   This Op takes a SparseTensor and is the sparse counterpart to
   `tf.reduce_sum()`.  In contrast to SparseReduceSum, this Op returns a
   SparseTensor.
+
+  Note: A gradient is not defined for this function, so it can't be used
+  in training models that need gradient descent.
 
   Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
   `keepdims` is true, the rank of the tensor is reduced by 1 for each entry in
@@ -1342,7 +1351,11 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
     new_shape = array_ops.concat([sp_ids[0].dense_shape[:-1], vocab_size], 0)
 
     result = sparse_tensor.SparseTensor(new_indices, new_values, new_shape)
-    return result if already_sorted else sparse_reorder(result)
+    if already_sorted:
+      return result
+    sorted_result = sparse_reorder(result)
+    return sparse_tensor.SparseTensor(
+        sorted_result.indices, sorted_result.values, new_shape)
 
 
 @tf_export("sparse_retain")

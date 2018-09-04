@@ -48,29 +48,67 @@ class QuantizeWeightsTest : public ::testing::Test {
     return nullptr;
   }
 
-  void CheckWeights(const Model* model_packed) {
-    std::unique_ptr<ModelT> model;
-    model.reset(model_packed->UnPack());
+  void SymmetricDequantizeAndCompare(const BufferT* input_buffer,
+                                     const BufferT* output_buffer,
+                                     float scale) {
+    const float* input_buffer_data =
+        reinterpret_cast<const float*>(input_buffer->data.data());
+    const int8_t* output_buffer_data =
+        reinterpret_cast<const int8_t*>(output_buffer->data.data());
+    for (int i = 0; i < output_buffer->data.size(); i++) {
+      float diff = input_buffer_data[i] - (output_buffer_data[i] * scale);
+      ASSERT_TRUE(std::abs(diff) <= scale);
+    }
+  }
 
-    SubGraphT* subgraph = model->subgraphs.at(0).get();
+  void AsymmetricDequantizeAndCompare(const BufferT* input_buffer,
+                                      const BufferT* output_buffer, float scale,
+                                      int64_t zero_point) {
+    const float* input_buffer_data =
+        reinterpret_cast<const float*>(input_buffer->data.data());
+    const uint8_t* output_buffer_data = output_buffer->data.data();
+    for (int i = 0; i < output_buffer->data.size(); i++) {
+      float diff =
+          input_buffer_data[i] - ((output_buffer_data[i] - zero_point) * scale);
+      ASSERT_TRUE(std::abs(diff) <= scale);
+    }
+  }
+
+  void CheckWeights(const Model* input_model_packed,
+                    const Model* output_model_packed,
+                    bool use_hybrid_evaluation) {
+    std::unique_ptr<ModelT> input_model;
+    input_model.reset(input_model_packed->UnPack());
+
+    std::unique_ptr<ModelT> output_model;
+    output_model.reset(output_model_packed->UnPack());
+
+    SubGraphT* subgraph = output_model->subgraphs.at(0).get();
 
     for (int i = 0; i < subgraph->operators.size(); ++i) {
       OperatorT* op = subgraph->operators[i].get();
       const BuiltinOperator op_code =
-          model->operator_codes[op->opcode_index]->builtin_code;
+          output_model->operator_codes[op->opcode_index]->builtin_code;
 
       // These are the operations that should be quantized.
+      // TODO(suharshs): Right now this test only checks the relevant operations
+      // for the mobilenet v1 model used in the tests below.
       int32_t tensor_idx;
       if (op_code == BuiltinOperator_CONV_2D ||
           op_code == BuiltinOperator_DEPTHWISE_CONV_2D ||
           op_code == BuiltinOperator_FULLY_CONNECTED) {
         tensor_idx = op->inputs[1];
-      } else if (op_code == BuiltinOperator_LSTM) {
-        // TODO(suharshs): Add tests for LSTMs.
-        tensor_idx = op->inputs[1];
       } else {
         continue;
       }
+
+      bool eval_hybrid = false;
+      // These are the ops that support hybrid evaluation.
+      if (op_code == BuiltinOperator_FULLY_CONNECTED ||
+          op_code == BuiltinOperator_CONV_2D) {
+        eval_hybrid = true;
+      }
+
       const TensorT* tensor = subgraph->tensors[tensor_idx].get();
       int tensor_size = GetElementsNum(tensor);
       // If the tensor_size is less than 1024 we expect the tensor to remain
@@ -80,27 +118,45 @@ class QuantizeWeightsTest : public ::testing::Test {
         const OperatorT* preceding_op = GetOpWithOutput(subgraph, tensor_idx);
         // The weight tensor should not come from a dequantize op.
         ASSERT_TRUE(preceding_op == nullptr);
+      } else if (use_hybrid_evaluation && eval_hybrid) {
+        // The input to the op should still be uint8.
+        ASSERT_TRUE(tensor->type == TensorType_UINT8) << tensor->name;
+        // The weight tensor should not come from a dequantize op.
+        const OperatorT* preceding_op = GetOpWithOutput(subgraph, tensor_idx);
+        ASSERT_TRUE(preceding_op == nullptr);
+
+        // Test symmetric quantization.
+        SymmetricDequantizeAndCompare(
+            input_model->buffers[tensor->buffer].get(),
+            output_model->buffers[tensor->buffer].get(),
+            tensor->quantization->scale[0]);
+
       } else {
         // The input to the op should still be float.
         ASSERT_TRUE(tensor->type == TensorType_FLOAT32) << tensor->name;
         const OperatorT* preceding_op = GetOpWithOutput(subgraph, tensor_idx);
         ASSERT_TRUE(preceding_op != nullptr);
         // The float input should be the dequantize output.
-        ASSERT_TRUE(
-            model->operator_codes[preceding_op->opcode_index]->builtin_code ==
-            BuiltinOperator_DEQUANTIZE);
+        ASSERT_TRUE(output_model->operator_codes[preceding_op->opcode_index]
+                        ->builtin_code == BuiltinOperator_DEQUANTIZE);
         // Finally, ensure that the input to the dequantize operation is
         // quantized.
-        ASSERT_TRUE(subgraph->tensors[preceding_op->inputs[0]]->type ==
-                    TensorType_UINT8);
-        // TODO(suharshs): Add more rigorous testing for the numerical values in
-        // the tensors.
+        const TensorT* quantized_tensor =
+            subgraph->tensors[preceding_op->inputs[0]].get();
+        ASSERT_TRUE(quantized_tensor->type == TensorType_UINT8);
+
+        // Test the assymetric quantization.
+        AsymmetricDequantizeAndCompare(
+            input_model->buffers[quantized_tensor->buffer].get(),
+            output_model->buffers[quantized_tensor->buffer].get(),
+            quantized_tensor->quantization->scale[0],
+            quantized_tensor->quantization->zero_point[0]);
       }
     }
   }
 };
 
-TEST_F(QuantizeWeightsTest, SimpleTest) {
+TEST_F(QuantizeWeightsTest, SimpleTestWithHybrid) {
   string model_path =
       "third_party/tensorflow/contrib/lite/tools/optimize/testdata/"
       "mobilenet_v1_0.25_128.tflite";
@@ -114,7 +170,25 @@ TEST_F(QuantizeWeightsTest, SimpleTest) {
   const uint8_t* buffer = builder.GetBufferPointer();
   const Model* output_model = GetModel(buffer);
 
-  CheckWeights(output_model);
+  CheckWeights(input_model, output_model, true);
+}
+
+TEST_F(QuantizeWeightsTest, SimpleTestWithoutHybrid) {
+  string model_path =
+      "third_party/tensorflow/contrib/lite/tools/optimize/testdata/"
+      "mobilenet_v1_0.25_128.tflite";
+  std::unique_ptr<FlatBufferModel> input_fb =
+      FlatBufferModel::BuildFromFile(model_path.data());
+  const Model* input_model = input_fb->GetModel();
+
+  flatbuffers::FlatBufferBuilder builder;
+  // Disable hybrid evaluation.
+  EXPECT_EQ(QuantizeWeights(&builder, input_model, false), kTfLiteOk);
+
+  const uint8_t* buffer = builder.GetBufferPointer();
+  const Model* output_model = GetModel(buffer);
+
+  CheckWeights(input_model, output_model, false);
 }
 
 // TODO(suharshs): Add tests that run the resulting model.

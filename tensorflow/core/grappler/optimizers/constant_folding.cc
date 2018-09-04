@@ -136,6 +136,27 @@ bool MaybeRemoveControlInput(const string& old_input, NodeDef* node,
   return removed_input;
 }
 
+bool GetConcatAxis(const GraphProperties& properties, NodeDef* node,
+                   int* axis) {
+  if (node->op() != "ConcatV2" ||
+      properties.GetInputProperties(node->name()).empty()) {
+    return false;
+  }
+  const auto& axis_input = properties.GetInputProperties(node->name()).back();
+  if (!TensorShape::IsValid(axis_input.shape()) || !axis_input.has_value()) {
+    return false;
+  }
+
+  Tensor axis_tensor(axis_input.dtype(), axis_input.shape());
+  if (!axis_tensor.FromProto(axis_input.value())) {
+    return false;
+  }
+  *axis = axis_input.dtype() == DT_INT64
+              ? static_cast<int>(axis_tensor.scalar<int64>()())
+              : axis_tensor.scalar<int32>()();
+  return true;
+}
+
 }  // namespace
 
 ConstantFolding::ConstantFolding(RewriterConfig::Toggle opt_level,
@@ -852,19 +873,7 @@ DataType GetDataTypeFromNodeOrProps(const NodeDef& node,
   }
   return dtype;
 }
-bool IsValidConstShapeForNCHW(const TensorShapeProto& shape) {
-  if (shape.dim_size() != 4) {
-    return false;
-  }
-  int num_dim_larger_than_one = 0;
-  for (const auto& dim : shape.dim()) {
-    if (dim.size() > 1) ++num_dim_larger_than_one;
-  }
-  return num_dim_larger_than_one <= 1;
-}
-const string& GetShape(const NodeDef& node) {
-  return node.attr().at("data_format").s();
-}
+
 }  // namespace
 
 // static
@@ -1711,7 +1720,7 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
     return Status::OK();
   }
 
-  if (MulConvPushDown(*properties, optimized_graph, node)) {
+  if (MulConvPushDown(node, *properties)) {
     graph_modified_ = true;
     return Status::OK();
   }
@@ -1727,6 +1736,11 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
   }
 
   if (PartialConcatConstFolding(optimized_graph, properties, node)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  if (MergeConcat(*properties, use_shape_info, optimized_graph, node)) {
     graph_modified_ = true;
     return Status::OK();
   }
@@ -2553,9 +2567,8 @@ bool ConstantFolding::ConstantPushDown(NodeDef* node) {
   return false;
 }
 
-bool ConstantFolding::MulConvPushDown(const GraphProperties& properties,
-                                      GraphDef* optimized_graph,
-                                      NodeDef* node) {
+bool ConstantFolding::MulConvPushDown(NodeDef* node,
+                                      const GraphProperties& properties) {
   // Push down multiplication on ConvND.
   //                       *                  ConvND
   //                     /   \                /    \
@@ -2631,14 +2644,12 @@ bool ConstantFolding::MulConvPushDown(const GraphProperties& properties,
     }
     const auto& const_shape = const_props[0].shape();
 
-    if (GetShape(*conv_node) == "NHWC") {
-      TensorShapeProto new_filter_shape;
-      if (!ShapeAfterBroadcast(filter_shape, const_shape, &new_filter_shape)) {
-        return false;
-      }
-      if (!ShapesSymbolicallyEqual(filter_shape, new_filter_shape)) {
-        return false;
-      }
+    TensorShapeProto new_filter_shape;
+    if (!ShapeAfterBroadcast(filter_shape, const_shape, &new_filter_shape)) {
+      return false;
+    }
+    if (!ShapesSymbolicallyEqual(filter_shape, new_filter_shape)) {
+      return false;
     }
 
     string mul_new_name =
@@ -2671,69 +2682,6 @@ bool ConstantFolding::MulConvPushDown(const GraphProperties& properties,
       node->set_input(0, conv_const_node->name());
     }
     node_map_->AddNode(mul_new_name, node);
-
-    if (GetShape(*conv_node) == "NCHW") {
-      if (const_node->attr().at("value").tensor().tensor_shape().dim_size() <=
-          1) {
-        // Broadcast should work for scalar or 1D. No need to reshape.
-        return true;
-      }
-      if (!IsValidConstShapeForNCHW(
-              const_node->attr().at("value").tensor().tensor_shape())) {
-        return false;
-      }
-      // Adds Const node for Reshape.
-      auto* shape_const_node = optimized_graph->add_node();
-      const string shape_const_node_name =
-          OptimizedNodeName(*const_node, "_new_shape");
-      shape_const_node->set_name(shape_const_node_name);
-      shape_const_node->set_op("Const");
-      shape_const_node->set_device(const_node->device());
-      (*shape_const_node->mutable_attr())["dtype"].set_type(DT_INT32);
-      Tensor t(DT_INT32, {4});
-      t.flat<int32>()(0) = 1;
-      t.flat<int32>()(1) = 1;
-      t.flat<int32>()(2) = 1;
-      t.flat<int32>()(3) = const_node->attr()
-                               .at("value")
-                               .tensor()
-                               .tensor_shape()
-                               .dim(1)  // IsValidConstShapeForNCHW guarantees
-                                        // dim 1 is the dim to reshape
-                               .size();
-      t.AsProtoTensorContent(
-          (*shape_const_node->mutable_attr())["value"].mutable_tensor());
-      node_map_->AddNode(shape_const_node_name, shape_const_node);
-
-      // Adds Reshape node.
-      auto* reshape_node = optimized_graph->add_node();
-      const string reshape_node_name =
-          OptimizedNodeName(*const_node, "_reshape");
-      reshape_node->set_op("Reshape");
-      reshape_node->set_name(reshape_node_name);
-      reshape_node->set_device(const_node->device());
-      (*reshape_node->mutable_attr())["T"].set_type(
-          const_node->attr().at("dtype").type());
-      (*reshape_node->mutable_attr())["Tshape"].set_type(DT_INT32);
-      node_map_->AddNode(reshape_node_name, reshape_node);
-
-      // const_node -> reshape_node
-      node_map_->RemoveOutput(const_node->name(), node->name());
-      *reshape_node->add_input() = const_node->name();
-      node_map_->AddOutput(const_node->name(), reshape_node_name);
-
-      // shape_const_node -> reshape_node
-      *reshape_node->add_input() = shape_const_node_name;
-      node_map_->AddOutput(shape_const_node_name, reshape_node_name);
-
-      // reshape_node -> node (Mul)
-      node_map_->AddOutput(reshape_node_name, node->name());
-      if (left_child_is_constant) {
-        node->set_input(0, reshape_node_name);
-      } else {
-        node->set_input(1, reshape_node_name);
-      }
-    }
 
     return true;
   }
@@ -2986,6 +2934,55 @@ bool ConstantFolding::PartialConcatConstFolding(GraphDef* optimized_graph,
     }
   }
   return false;
+}
+
+bool ConstantFolding::MergeConcat(const GraphProperties& properties,
+                                  bool use_shape_info,
+                                  GraphDef* optimized_graph, NodeDef* node) {
+  // We only optimize for ConcatV2.
+  int axis;
+  if (!use_shape_info || !GetConcatAxis(properties, node, &axis) ||
+      nodes_to_preserve_.find(node->name()) != nodes_to_preserve_.end() ||
+      node_map_->GetOutputs(node->name()).size() != 1) {
+    return false;
+  }
+
+  NodeDef* parent = *node_map_->GetOutputs(node->name()).begin();
+  int parent_axis;
+  if (!GetConcatAxis(properties, parent, &parent_axis) || axis != parent_axis) {
+    return false;
+  }
+
+  const int index = NumNonControlInputs(*node) - 1;
+  auto inputs = parent->input();
+  parent->clear_input();
+  for (int i = 0; i < inputs.size(); ++i) {
+    if (IsSameInput(inputs.Get(i), node->name())) {
+      for (int j = 0; j < node->input_size(); ++j) {
+        if (j < index) {
+          // Input tensors (non axis), add to input list of parent.
+          parent->add_input(node->input(j));
+          node_map_->RemoveOutput(node->input(j), node->name());
+          node_map_->AddOutput(node->input(j), parent->name());
+        }
+        // Skip j == index, which means axis tensor.
+        if (j > index) {
+          // Control Dependencies, push back to inputs so they can be forwarded
+          // to parent.
+          *inputs.Add() = node->input(j);
+        }
+      }
+    } else {
+      parent->add_input(inputs.Get(i));
+    }
+  }
+  node->clear_input();
+  node->set_op("NoOp");
+  node->clear_attr();
+  node_map_->RemoveNode(node->name());
+  (*parent->mutable_attr())["N"].set_i(NumNonControlInputs(*parent) - 1);
+
+  return true;
 }
 
 Status ConstantFolding::RunOptimizationPass(Cluster* cluster,

@@ -479,7 +479,7 @@ class CopyRemover {
     // 'values' an entry is created in value_to_node which indicates the
     // respective ValueNode representing that value.
     void AddValueList(
-        tensorflow::gtl::ArraySlice<const HloValue*> values,
+        absl::Span<const HloValue* const> values,
         tensorflow::gtl::FlatMap<const HloValue*, ValueNode*>* value_to_node) {
       ValueNode* tail = nullptr;
       ValueNode* head = nullptr;

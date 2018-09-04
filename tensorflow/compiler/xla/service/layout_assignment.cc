@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -980,16 +980,17 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
   CHECK(ShapeUtil::IsArray(instruction->shape()));
   CHECK(ShapeUtil::IsArray(operand->shape()));
 
-  if (instruction->IsElementwiseOnOperand(operand_no) &&
-      !ShapeUtil::IsScalar(operand->shape()) &&
+  if (!ShapeUtil::IsScalar(operand->shape()) &&
       ShapeUtil::Rank(operand->shape()) ==
-          ShapeUtil::Rank(instruction->shape())) {
-    // Assign operands the same layout as the instruction, so that
+          ShapeUtil::Rank(instruction->shape()) &&
+      InstructionRequiresInputLayoutEqualToOutputLayout(instruction)) {
+    // Propagate the result layout to the operand layout if the instruction
+    // requires the same layout out for the result and the operand.
+    //
+    // For elementwise operations, using the same layout for the operands and
+    // the result also has the following benefits:
     // 1) the elementwise operation can reuse its operand's buffer, and
     // 2) the input and output elements can reuse the same linear index.
-    //
-    // TODO(jingyue): Other operations, such as kSlice and kConcat, can benefit
-    // from assigning the same layout to input and output.
     return absl::make_unique<Layout>(output_layout);
   }
 
@@ -1058,9 +1059,9 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
   CHECK(ShapeUtil::IsArray(user->shape()) &&
         ShapeUtil::IsArray(operand->shape()));
 
-  if (user->IsElementwiseOnOperand(operand_no) &&
-      !ShapeUtil::IsScalar(operand->shape()) &&
-      ShapeUtil::Rank(operand->shape()) == ShapeUtil::Rank(user->shape())) {
+  if (!ShapeUtil::IsScalar(operand->shape()) &&
+      ShapeUtil::Rank(operand->shape()) == ShapeUtil::Rank(user->shape()) &&
+      InstructionRequiresInputLayoutEqualToOutputLayout(user)) {
     // Assign users the same layout as the operand.
     return absl::make_unique<Layout>(operand_layout);
   }
@@ -1801,6 +1802,107 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
   }
   // All layouts are reset then reassigned by this pass.
   return true;
+}
+
+bool LayoutAssignment::InstructionRequiresInputLayoutEqualToOutputLayout(
+    const HloInstruction* instruction) {
+  switch (instruction->opcode()) {
+    case HloOpcode::kAbs:
+    case HloOpcode::kAdd:
+    case HloOpcode::kAnd:
+    case HloOpcode::kAtan2:
+    case HloOpcode::kBitcastConvert:
+    case HloOpcode::kCeil:
+    case HloOpcode::kClamp:
+    case HloOpcode::kClz:
+    case HloOpcode::kComplex:
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kConditional:
+    case HloOpcode::kConvert:
+    case HloOpcode::kCos:
+    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCustomCall:
+    case HloOpcode::kDivide:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kEq:
+    case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
+    case HloOpcode::kFft:
+    case HloOpcode::kFloor:
+    case HloOpcode::kGe:
+    case HloOpcode::kGt:
+    case HloOpcode::kImag:
+    case HloOpcode::kIsFinite:
+    case HloOpcode::kLe:
+    case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
+    case HloOpcode::kLt:
+    case HloOpcode::kMap:
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+    case HloOpcode::kMultiply:
+    case HloOpcode::kNe:
+    case HloOpcode::kNegate:
+    case HloOpcode::kNot:
+    case HloOpcode::kOr:
+    case HloOpcode::kXor:
+    case HloOpcode::kPad:
+    case HloOpcode::kPower:
+    case HloOpcode::kReal:
+    case HloOpcode::kReducePrecision:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kRemainder:
+    case HloOpcode::kReverse:
+    case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kSelect:
+    case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kSign:
+    case HloOpcode::kSin:
+    case HloOpcode::kSlice:
+    case HloOpcode::kSort:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kTanh:
+    case HloOpcode::kTupleSelect:
+    case HloOpcode::kWhile:
+      return true;
+    case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kBitcast:
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kCall:
+    case HloOpcode::kConstant:
+    case HloOpcode::kConvolution:
+    case HloOpcode::kCopy:
+    case HloOpcode::kDomain:
+    case HloOpcode::kDot:
+    case HloOpcode::kFusion:
+    case HloOpcode::kGather:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kInfeed:
+    case HloOpcode::kIota:
+    case HloOpcode::kOutfeed:
+    case HloOpcode::kParameter:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReshape:
+    case HloOpcode::kRng:
+    case HloOpcode::kScatter:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
+    case HloOpcode::kAfterAll:
+    case HloOpcode::kTrace:
+    case HloOpcode::kTranspose:
+    case HloOpcode::kTuple:
+      return false;
+  }
 }
 
 Status LayoutAssignment::Init() {

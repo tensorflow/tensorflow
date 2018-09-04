@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #define EIGEN_USE_THREADS
-
 #include "tensorflow/core/lib/bfloat16/bfloat16.h"
 
 #include <algorithm>
@@ -201,7 +200,7 @@ struct ApplyFtrlV2<CPUDevice, T> {
                   typename TTypes<T>::ConstScalar l2_shrinkage,
                   typename TTypes<T>::ConstScalar lr_power) {
     auto grad_with_shrinkage = grad + static_cast<T>(2) * l2_shrinkage() * var;
-    auto new_accum = accum + grad_with_shrinkage.square();
+    auto new_accum = accum + grad * grad;
     // special case for which lr_power=-0.5.
     if (lr_power() == static_cast<T>(-0.5)) {
       linear.device(d) +=
@@ -226,7 +225,7 @@ struct ApplyFtrlV2<CPUDevice, T> {
       var.device(d) = (linear.abs() > linear.constant(l1()))
                           .select(pre_shrink, var.constant(static_cast<T>(0)));
     }
-    accum.device(d) += grad_with_shrinkage.square();
+    accum.device(d) += grad * grad;
   }
 };
 
@@ -2167,15 +2166,15 @@ class SparseApplyFtrlOp : public OpKernel {
 
 // Use a macro to implement the computation here due to the templating of the
 // eigen tensor library.
-#define COMPUTE_FTRL(grad_to_use)                                              \
-  auto new_accum = accum + grad_to_use.square();                               \
+#define COMPUTE_FTRL(grad, grad_maybe_with_shrinkage)                          \
+  auto new_accum = accum + grad.square();                                      \
   if (lr_power_scalar == static_cast<T>(-0.5)) {                               \
-    linear +=                                                                  \
-        grad_to_use - (new_accum.sqrt() - accum.sqrt()) / lr_scalar * var;     \
+    linear += grad_maybe_with_shrinkage -                                      \
+              (new_accum.sqrt() - accum.sqrt()) / lr_scalar * var;             \
   } else {                                                                     \
-    linear += grad_to_use - (new_accum.pow(-lr_power_scalar) -                 \
-                             accum.pow(-lr_power_scalar)) /                    \
-                                lr_scalar * var;                               \
+    linear += grad_maybe_with_shrinkage - (new_accum.pow(-lr_power_scalar) -   \
+                                           accum.pow(-lr_power_scalar)) /      \
+                                              lr_scalar * var;                 \
   }                                                                            \
   auto l1_reg_adjust = linear.cwiseMin(l1_scalar).cwiseMax(-l1_scalar);        \
   auto x = l1_reg_adjust - linear;                                             \
@@ -2188,14 +2187,14 @@ class SparseApplyFtrlOp : public OpKernel {
              linear.constant(static_cast<T>(2) * l2_scalar);                   \
     var = x / y;                                                               \
   }                                                                            \
-  accum += grad_to_use.square();
+  accum += grad.square();
 
           if (has_l2_shrinkage) {
             auto grad_with_shrinkage =
                 grad + static_cast<T>(2) * l2_shrinkage_scalar * var;
-            COMPUTE_FTRL(grad_with_shrinkage);
+            COMPUTE_FTRL(grad, grad_with_shrinkage);
           } else {
-            COMPUTE_FTRL(grad);
+            COMPUTE_FTRL(grad, grad);
           }
         }
 #undef COMPUTE_FTRL
@@ -2228,12 +2227,12 @@ class SparseApplyFtrlOp : public OpKernel {
           T g;
           if (has_l2_shrinkage) {
             g = grad_flat(i) +
-                (static_cast<T>(2) * l2_shrinkage_scalar * var_flat(i));
+                (static_cast<T>(2) * l2_shrinkage_scalar * var_flat(index));
           } else {
             g = grad_flat(i);
           }
 
-          T updated_a = a + g * g;
+          T updated_a = a + grad_flat(i) * grad_flat(i);
           using Eigen::numext::pow;
           T sigma = pow(updated_a, -lr_power_scalar) - pow(a, -lr_power_scalar);
           sigma /= lr_scalar;
@@ -2856,9 +2855,8 @@ class ApplyAdaMaxOp : public OpKernel {
     const Device& device = ctx->template eigen_device<Device>();
     functor::ApplyAdaMax<Device, T>()(
         device, var.flat<T>(), m.flat<T>(), v.flat<T>(),
-        beta1_power.scalar<T>(), lr.scalar<T>(),
-        beta1.scalar<T>(), beta2.scalar<T>(), epsilon.scalar<T>(),
-        grad.flat<T>());
+        beta1_power.scalar<T>(), lr.scalar<T>(), beta1.scalar<T>(),
+        beta2.scalar<T>(), epsilon.scalar<T>(), grad.flat<T>());
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
@@ -2867,16 +2865,16 @@ class ApplyAdaMaxOp : public OpKernel {
   bool use_exclusive_lock_;
 };
 
-#define REGISTER_KERNELS(D, T)                                     \
-  REGISTER_KERNEL_BUILDER(                                         \
+#define REGISTER_KERNELS(D, T)                                       \
+  REGISTER_KERNEL_BUILDER(                                           \
       Name("ApplyAdaMax").Device(DEVICE_##D).TypeConstraint<T>("T"), \
       ApplyAdaMaxOp<D##Device, T>);                                  \
   REGISTER_KERNEL_BUILDER(Name("ResourceApplyAdaMax")                \
-                              .HostMemory("var")                   \
-                              .HostMemory("m")                     \
-                              .HostMemory("v")                     \
-                              .Device(DEVICE_##D)                  \
-                              .TypeConstraint<T>("T"),             \
+                              .HostMemory("var")                     \
+                              .HostMemory("m")                       \
+                              .HostMemory("v")                       \
+                              .Device(DEVICE_##D)                    \
+                              .TypeConstraint<T>("T"),               \
                           ApplyAdaMaxOp<D##Device, T>);
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
@@ -2889,7 +2887,7 @@ TF_CALL_double(REGISTER_CPU_KERNELS);
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                   \
   template <>                                                 \
-  void ApplyAdaMax<GPUDevice, T>::operator()(                   \
+  void ApplyAdaMax<GPUDevice, T>::operator()(                 \
       const GPUDevice& d, typename TTypes<T>::Flat var,       \
       typename TTypes<T>::Flat m, typename TTypes<T>::Flat v, \
       typename TTypes<T>::ConstScalar beta1_power,            \
@@ -2897,7 +2895,7 @@ namespace functor {
       typename TTypes<T>::ConstScalar beta1,                  \
       typename TTypes<T>::ConstScalar beta2,                  \
       typename TTypes<T>::ConstScalar epsilon,                \
-      typename TTypes<T>::ConstFlat grad); \
+      typename TTypes<T>::ConstFlat grad);                    \
   extern template struct ApplyAdaMax<GPUDevice, T>;
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);

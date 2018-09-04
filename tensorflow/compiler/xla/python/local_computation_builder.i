@@ -22,15 +22,15 @@ limitations under the License.
 //
 //    C++                                  Python
 // -------------------------------------+---------------------------------------
-//  ArraySlice<int64>                  <-  sequence of int
-//  ArraySlice<LocalOp>                <-  sequence of LocalOp
+//  Span<int64>                        <-  sequence of int
+//  Span<LocalOp>                      <-  sequence of LocalOp
 //  Literal                            <-> (nested tuple of) numpy ndarray
 //  std::vector<Literal>               <-  sequence of (nested tuple of) ndarray
 //  Shape                               -> pair holding (dtype, dimensions)
 //                                     <-  object duck-typed as xla_client.Shape
 //  std::vector<Shape>                 <-  sequence of xla_client.Shape objects
 //  PrimitiveType                      <-  int
-//  ArraySlice<pair<int64, in64>>      <-  sequence of int pairs
+//  Span<pair<int64, in64>>            <-  sequence of int pairs
 //  PaddingConfig proto                <-  corresponding Python proto
 //  ConvolutionDimensionNumbers proto  <-  corresponding Python proto
 //  DotDimensionNumbers proto          <-  corresponding Python proto
@@ -114,7 +114,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "third_party/absl/types/span.h"
 #include "tensorflow/compiler/xla/python/numpy_bridge.h"
 #include "tensorflow/compiler/xla/python/local_computation_builder.h"
 
@@ -267,9 +267,9 @@ tensorflow::ImportNumpy();
   $result = Py_None;
 }
 
-// ArraySlice<int64>
+// Span<int64>
 
-%typemap(in) tensorflow::gtl::ArraySlice<int64>
+%typemap(in) absl::Span<const int64>
     (std::vector<int64> temps) {
   if (!PySequence_Check($input)) {
     PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
@@ -299,9 +299,9 @@ tensorflow::ImportNumpy();
   $1 = temps;
 }
 
-// ArraySlice<LocalOp>
+// Span<LocalOp>
 
-%typemap(in) tensorflow::gtl::ArraySlice<xla::swig::LocalOp>(
+%typemap(in) absl::Span<const xla::swig::LocalOp>(
       std::vector<LocalOp> temps) {
   if (!PySequence_Check($input)) {
     PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
@@ -323,7 +323,7 @@ tensorflow::ImportNumpy();
 
 // LocalShapedBuffer*
 
-%typemap(in) tensorflow::gtl::ArraySlice<xla::swig::LocalShapedBuffer*>
+%typemap(in) absl::Span<xla::swig::LocalShapedBuffer* const>
     (std::vector<LocalShapedBuffer*> temps) {
   if (!PySequence_Check($input)) {
     PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
@@ -496,9 +496,9 @@ tensorflow::ImportNumpy();
   $1 = static_cast<PrimitiveType>(value);
 }
 
-// ArraySlice<pair<int64, in64>>
+// Span<pair<int64, in64>>
 
-%typemap(in) tensorflow::gtl::ArraySlice<std::pair<int64, int64> >
+%typemap(in) absl::Span<const std::pair<int64, int64> >
     (std::vector<std::pair<int64, int64> > temps) {
   if (!PySequence_Check($input)) {
     PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");

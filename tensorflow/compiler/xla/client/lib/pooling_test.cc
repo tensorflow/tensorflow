@@ -32,8 +32,8 @@ TensorFormat MakeNCHWFormat(int num_spatial_dims) {
 }
 
 std::vector<std::pair<int64, int64>> MakeGeneralPadding(
-    XlaOp input, tensorflow::gtl::ArraySlice<int64> kernel_size,
-    tensorflow::gtl::ArraySlice<int64> stride, Padding padding,
+    XlaOp input, absl::Span<const int64> kernel_size,
+    absl::Span<const int64> stride, Padding padding,
     const xla::TensorFormat& data_format) {
   XlaBuilder* b = input.builder();
   Shape operand_shape = b->GetShape(input).ValueOrDie();
@@ -46,7 +46,7 @@ std::vector<std::pair<int64, int64>> MakeGeneralPadding(
 // Add singleton batch and feature dimensions to spatial dimensions, according
 // to 'data_format' specification.
 std::vector<int64> ExpandWithBatchAndFeatureDimensions(
-    tensorflow::gtl::ArraySlice<int64> spatial_dim_sizes,
+    absl::Span<const int64> spatial_dim_sizes,
     const xla::TensorFormat& data_format) {
   const int num_spatial_dims = spatial_dim_sizes.size();
   std::vector<int64> tensor_sizes(num_spatial_dims + 2, 1);

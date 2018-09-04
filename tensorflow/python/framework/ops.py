@@ -515,6 +515,11 @@ class Tensor(_TensorLike):
     ==> TensorShape([Dimension(28), Dimension(28), Dimension(3)])
     ```
 
+    NOTE: This shape is not enforced at runtime. Setting incorrect shapes can
+    result in inconsistencies between the statically-known graph and the runtime
+    value of tensors. For runtime validation of the shape, use `tf.ensure_shape`
+    instead.
+
     Args:
       shape: A `TensorShape` representing the shape of this tensor, a
       `TensorShapeProto`, a list, a tuple, or None.
@@ -794,6 +799,19 @@ class _EagerTensorBase(Tensor):
 
     Returns:
       Integer rank
+    """
+    raise NotImplementedError()
+
+  def _num_elements(self):
+    """Number of elements of this Tensor.
+
+    Unlike regular Tensors, the number of elements is always known for
+    EagerTensors.
+
+    This is more performant than tensor.shape.num_elements
+
+    Returns:
+      Long - num elements in the tensor
     """
     raise NotImplementedError()
 
@@ -5217,6 +5235,7 @@ _default_graph_stack = _DefaultGraphStack()
 
 
 # pylint: disable=g-doc-return-or-yield,line-too-long
+@tf_export("init_scope")
 @tf_contextlib.contextmanager
 def init_scope():
   """A context manager that lifts ops out of control-flow scopes and function-building graphs.
@@ -5245,6 +5264,23 @@ def init_scope():
         `init_scope` will simply install a fresh graph as the default one.
 
     (3) The gradient tape is paused while the scope is active.
+
+  When eager execution is enabled, code inside an init_scope block runs with
+  eager execution enabled even when defining graph functions via
+  tf.contrib.eager.defun. For example:
+
+  ```python
+  tf.enable_eager_execution()
+
+  @tf.contrib.eager.defun
+  def func():
+    # A defun-decorated function constructs TensorFlow graphs,
+    # it does not execute eagerly.
+    assert not tf.executing_eagerly()
+    with tf.init_scope():
+      # Initialization runs with eager execution enabled
+      assert tf.executing_eagerly()
+  ```
 
   Raises:
     RuntimeError: if graph state is incompatible with this initialization.
@@ -5376,7 +5412,7 @@ def enable_eager_execution(config=None,
      TensorFlow graph, or if options provided conflict with a previous call
      to this function.
   """
-  if context._default_mode != context.EAGER_MODE:  # pylint: disable=protected-access
+  if context.default_execution_mode != context.EAGER_MODE:
     return enable_eager_execution_internal(
         config=config,
         device_policy=device_policy,
@@ -5419,15 +5455,15 @@ def enable_eager_execution_internal(config=None,
     raise ValueError(
         "execution_mode must be one of None, tf.contrib.eager.SYNC, "
         "tf.contrib.eager.ASYNC")
-  # pylint: disable=protected-access
-  if context._default_mode == context.GRAPH_MODE:
+  if context.default_execution_mode == context.GRAPH_MODE:
     graph_mode_has_been_used = (
         _default_session_stack.stack
         or len(get_default_graph().get_operations()) > 0)  # pylint: disable=g-explicit-length-test
     if graph_mode_has_been_used:
       raise ValueError(
           "tf.enable_eager_execution must be called at program startup.")
-  context._default_mode = context.EAGER_MODE
+  context.default_execution_mode = context.EAGER_MODE
+  # pylint: disable=protected-access
   if context._context is None:
     context._context = context.Context(
         config=config,

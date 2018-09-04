@@ -337,11 +337,16 @@ def tf_binary_additional_srcs():
         ],
     )
 
+def _linux_kernel_dso_name(kernel_build_target):
+    """Given a build target, construct the dso name for linux."""
+    parts = kernel_build_target.split(":")
+    return "%s:libtfkernel_%s.so" % (parts[0], parts[1])
+
 # Helper functions to add kernel dependencies to tf binaries when using dynamic
 # kernel linking.
 def tf_binary_dynamic_kernel_dsos(kernels):
     return if_dynamic_kernels(
-        extra_deps = ["libtfkernel_%s.so" % clean_dep(k) for k in kernels],
+        extra_deps = [_linux_kernel_dso_name(k) for k in kernels],
         otherwise = [],
     )
 
@@ -404,7 +409,7 @@ def tf_cc_binary(
         srcs = srcs + tf_binary_additional_srcs(),
         deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
             [
-                "//third_party/mkl:intel_binary_blob",
+                clean_dep("//third_party/mkl:intel_binary_blob"),
             ],
         ),
         data = data + tf_binary_dynamic_kernel_dsos(kernels),
@@ -742,7 +747,7 @@ def tf_cc_test(
         }) + linkopts + _rpath_linkopts(name),
         deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
             [
-                "//third_party/mkl:intel_binary_blob",
+                clean_dep("//third_party/mkl:intel_binary_blob"),
             ],
         ),
         data = data + tf_binary_dynamic_kernel_dsos(kernels),
@@ -804,6 +809,7 @@ def tf_gpu_cc_test(
         extra_copts = [],
         linkstatic = 0,
         args = [],
+        kernels = [],
         linkopts = []):
     tf_cc_test(
         name = name,
@@ -816,6 +822,7 @@ def tf_gpu_cc_test(
         linkstatic = linkstatic,
         linkopts = linkopts,
         args = args,
+        kernels = kernels,
     )
     tf_cc_test(
         name = name,
@@ -837,6 +844,7 @@ def tf_gpu_cc_test(
         extra_copts = extra_copts,
         linkopts = linkopts,
         args = args,
+        kernels = kernels,
     )
 
 register_extension_info(
@@ -896,6 +904,7 @@ def tf_cc_tests(
         size = "medium",
         args = None,
         linkopts = [],
+        kernels = [],
         nocopts = None):
     for src in srcs:
         tf_cc_test(
@@ -908,6 +917,7 @@ def tf_cc_tests(
             args = args,
             linkopts = linkopts,
             nocopts = nocopts,
+            kernels = kernels,
         )
 
 def tf_cc_test_mkl(
@@ -955,8 +965,9 @@ def tf_cc_tests_gpu(
         linkstatic = 0,
         tags = [],
         size = "medium",
+        kernels = [],
         args = None):
-    tf_cc_tests(srcs, deps, linkstatic, tags = tags, size = size, args = args)
+    tf_cc_tests(srcs, deps, linkstatic, tags = tags, size = size, kernels = kernels, args = args)
 
 def tf_gpu_cc_tests(
         srcs,
@@ -966,6 +977,7 @@ def tf_gpu_cc_tests(
         size = "medium",
         linkstatic = 0,
         args = None,
+        kernels = [],
         linkopts = []):
     for src in srcs:
         tf_gpu_cc_test(
@@ -976,6 +988,7 @@ def tf_gpu_cc_tests(
             size = size,
             linkstatic = linkstatic,
             args = args,
+            kernels = kernels,
             linkopts = linkopts,
         )
 
@@ -1381,12 +1394,13 @@ def transitive_hdrs(name, deps = [], **kwargs):
 
 # Create a header only library that includes all the headers exported by
 # the libraries in deps.
-def cc_header_only_library(name, deps = [], includes = [], **kwargs):
+def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], **kwargs):
     _transitive_hdrs(name = name + "_gather", deps = deps)
     native.cc_library(
         name = name,
         hdrs = [":" + name + "_gather"],
         includes = includes,
+        deps = extra_deps,
         **kwargs
     )
 
@@ -1684,17 +1698,17 @@ def tf_py_wrap_cc(
 #    Note that this only works on Windows. See the definition of
 #    //third_party/tensorflow/tools/pip_package:win_pip_package_marker for specific reasons.
 # 2. When --define=no_tensorflow_py_deps=false (by default), it's a normal py_test.
-def py_test(deps = [], data = [], **kwargs):
+def py_test(deps = [], data = [], kernels = [], **kwargs):
     native.py_test(
         # TODO(jlebar): Ideally we'd use tcmalloc here.,
         deps = select({
             "//conditions:default": deps,
             clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
-        }),
+        }) + tf_binary_dynamic_kernel_deps(kernels),
         data = data + select({
             "//conditions:default": [],
             clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],
-        }),
+        }) + tf_binary_dynamic_kernel_dsos(kernels),
         **kwargs
     )
 
@@ -1713,6 +1727,7 @@ def tf_py_test(
         tags = [],
         shard_count = 1,
         additional_deps = [],
+        kernels = [],
         flaky = 0,
         xla_enabled = False,
         grpc_enabled = False):
@@ -1729,6 +1744,7 @@ def tf_py_test(
         tags = tags,
         visibility = [clean_dep("//tensorflow:internal")],
         shard_count = shard_count,
+        kernels = kernels,
         data = data,
         deps = [
             clean_dep("//tensorflow/python:extra_py_tests_deps"),
@@ -1752,6 +1768,7 @@ def gpu_py_test(
         args = [],
         shard_count = 1,
         additional_deps = [],
+        kernels = [],
         tags = [],
         flaky = 0,
         xla_enabled = False,
@@ -1767,6 +1784,7 @@ def gpu_py_test(
         tags = test_tags,
         shard_count = shard_count,
         additional_deps = additional_deps,
+        kernels = kernels,
         flaky = flaky,
         xla_enabled = xla_enabled,
         grpc_enabled = grpc_enabled,
@@ -1786,6 +1804,7 @@ def sycl_py_test(
         args = [],
         shard_count = 1,
         additional_deps = [],
+        kernels = [],
         tags = [],
         flaky = 0,
         xla_enabled = False,
@@ -1801,6 +1820,7 @@ def sycl_py_test(
         tags = test_tags,
         shard_count = shard_count,
         additional_deps = additional_deps,
+        kernels = kernels,
         flaky = flaky,
         xla_enabled = xla_enabled,
         grpc_enabled = grpc_enabled,
@@ -1816,6 +1836,7 @@ def py_tests(
         srcs,
         size = "medium",
         additional_deps = [],
+        kernels = [],
         data = [],
         tags = [],
         shard_count = 1,
@@ -1835,6 +1856,7 @@ def py_tests(
             shard_count = shard_count,
             data = data,
             additional_deps = additional_deps,
+            kernels = kernels,
             xla_enabled = xla_enabled,
             grpc_enabled = grpc_enabled,
         )
@@ -1844,6 +1866,7 @@ def gpu_py_tests(
         srcs,
         size = "medium",
         additional_deps = [],
+        kernels = [],
         data = [],
         shard_count = 1,
         tags = [],
@@ -1860,6 +1883,7 @@ def gpu_py_tests(
         tags = test_tags,
         shard_count = shard_count,
         prefix = prefix,
+        kernels = kernels,
         xla_enabled = xla_enabled,
         grpc_enabled = grpc_enabled,
     )

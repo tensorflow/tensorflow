@@ -110,12 +110,13 @@ cc_library(
     ],
 )
 
-tf_gpu_cc_test(
+tf_cc_test(
     name = "constant_folding_test",
     srcs = ["constant_folding_test.cc"],
-    tags = ["requires-gpu-sm35"],
+    shard_count = 5,
     deps = [
         ":constant_folding",
+        ":dependency_optimizer",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core:all_kernels",

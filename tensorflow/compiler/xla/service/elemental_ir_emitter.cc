@@ -28,6 +28,8 @@ limitations under the License.
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -854,7 +856,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfInv(PrimitiveType prim_type,
   auto getFloat = [&](const float f) {
     return llvm::ConstantFP::get(b_->getFloatTy(), f);
   };
-  auto multiply_add = [&](tensorflow::gtl::ArraySlice<float> coefficients,
+  auto multiply_add = [&](absl::Span<const float> coefficients,
                           llvm::Value* w) {
     llvm::Value* p = getFloat(coefficients.front());
     coefficients.remove_prefix(1);
@@ -891,7 +893,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfInv(PrimitiveType prim_type,
   SetToFirstInsertPoint(if_data.true_block, b_);
   {
     llvm::Value* lw = FSub(w, getFloat(2.5f));
-    tensorflow::gtl::ArraySlice<float> lq{
+    absl::Span<const float> lq{
         2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
         -4.39150654e-06f, 0.00021858087f,  -0.00125372503f,
         -0.00417768164f,  0.246640727f,    1.50140941f};
@@ -906,7 +908,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfInv(PrimitiveType prim_type,
         module_, llvm::Intrinsic::sqrt, {b_->getFloatTy()});
 
     llvm::Value* gw = FSub(Call(sqrtf_fn, w), getFloat(3.0f));
-    tensorflow::gtl::ArraySlice<float> gq{
+    absl::Span<const float> gq{
         -0.000200214257f, 0.000100950558f, 0.00134934322f,
         -0.00367342844f,  0.00573950773f,  -0.0076224613f,
         0.00943887047f,   1.00167406f,     2.83297682f};
@@ -2094,6 +2096,61 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         return operand_to_generator.at(operand)(
             target_index.SourceIndexOfBroadcast(hlo->shape(), operand->shape(),
                                                 hlo->dimensions(), b_));
+      };
+    case HloOpcode::kIota:
+      return [this, hlo](
+                 const IrArray::Index& target_index) -> StatusOr<llvm::Value*> {
+        auto* iota = Cast<HloIotaInstruction>(hlo);
+        PrimitiveType element_type = iota->shape().element_type();
+        IrArray::Index elem_index =
+            ShapeUtil::Rank(iota->shape()) > 1
+                ? target_index.SourceIndexOfBroadcast(
+                      iota->shape(),
+                      ShapeUtil::MakeShapeWithDescendingLayout(
+                          element_type,
+                          {iota->shape().dimensions(iota->iota_dimension())}),
+                      {iota->iota_dimension()}, b_)
+                : target_index;
+        llvm::Value* elem_index_linear = elem_index.linear();
+        if (elem_index_linear == nullptr) {
+          std::vector<int64> iota_bound = {
+              iota->shape().dimensions(iota->iota_dimension())};
+          elem_index_linear = elem_index.Linearize(iota_bound, b_);
+        }
+        Shape component_shape =
+            ShapeUtil::ElementIsComplex(iota->shape())
+                ? ShapeUtil::ComplexComponentShape(iota->shape())
+                : iota->shape();
+        PrimitiveType component_element_type = component_shape.element_type();
+        llvm::Value* iota_result;
+        if (ShapeUtil::ElementIsIntegral(component_shape)) {
+          iota_result = b_->CreateIntCast(
+              elem_index_linear,
+              llvm_ir::PrimitiveTypeToIrType(component_element_type, module_),
+              /*isSigned=*/false);
+        } else {
+          TF_RET_CHECK(ShapeUtil::ElementIsFloating(component_shape))
+              << component_element_type;
+          llvm::Type* float_ir_type;
+          if (component_element_type == BF16) {
+            float_ir_type = llvm_ir::PrimitiveTypeToIrType(F32, module_);
+          } else {
+            float_ir_type =
+                llvm_ir::PrimitiveTypeToIrType(component_element_type, module_);
+          }
+          llvm::Value* float_val =
+              b_->CreateUIToFP(elem_index_linear, float_ir_type);
+          if (component_element_type == BF16) {
+            iota_result = EmitF32ToBF16(float_val, b_);
+          } else {
+            iota_result = float_val;
+          }
+        }
+        if (ShapeUtil::ElementIsComplex(iota->shape())) {
+          return EmitComposeComplex(iota, iota_result, nullptr);
+        } else {
+          return iota_result;
+        }
       };
     case HloOpcode::kSlice:
       return [this, hlo, &operand_to_generator](

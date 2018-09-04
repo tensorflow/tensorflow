@@ -118,7 +118,8 @@ Status FastParseSequenceExample(
     const example::FastParseExampleConfig& feature_list_config,
     gtl::ArraySlice<string> serialized, gtl::ArraySlice<string> example_names,
     thread::ThreadPool* thread_pool, example::Result* context_result,
-    example::Result* feature_list_result);
+    example::Result* feature_list_result,
+    std::vector<Tensor>* dense_feature_lengths);
 
 // This function parses serialized Example and populates given example.
 // It uses the same specialized parser as FastParseExample which is efficient.

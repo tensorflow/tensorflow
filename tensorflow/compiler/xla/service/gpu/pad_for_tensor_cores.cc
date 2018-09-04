@@ -23,7 +23,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using tensorflow::gtl::ArraySlice;
 
 // We want the input/output feature counts of an f16 conv to be factors of 8,
 // because without this cudnn can't use tensor cores on the conv.
@@ -42,7 +41,7 @@ static constexpr double kMaxBytesTouchedIncrease = 1.2;
 
 // Pads the given dimensions in the given shape up to a multiple of
 // kDesiredNumFeaturesFactor.
-static Shape PadShape(Shape s, ArraySlice<int64> dims) {
+static Shape PadShape(Shape s, absl::Span<const int64> dims) {
   for (int64 dim : dims) {
     int64 dim_to_pad_size = s.dimensions(dim);
     int64 new_dim_to_pad_size =

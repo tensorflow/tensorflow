@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_BUFFER_INFO_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_BUFFER_INFO_UTIL_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 namespace cpu {
@@ -34,7 +34,7 @@ CreateBufferInfosFromBufferAssignment(
 // If this function returns V then entry parameter i has buffer allocation index
 // V[i].
 std::vector<int32> CreateArgIndexTableFromBufferInfos(
-    tensorflow::gtl::ArraySlice<::tensorflow::cpu_function_runtime::BufferInfo>
+    absl::Span<const ::tensorflow::cpu_function_runtime::BufferInfo>
         buffer_infos);
 }  // namespace cpu
 }  // namespace xla

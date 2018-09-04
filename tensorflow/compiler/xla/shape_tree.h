@@ -23,13 +23,13 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -262,6 +262,25 @@ class ShapeTree {
   template <typename Fn>
   Status ForEachMutableElementWithStatus(const Fn& func);
 
+  // Maps each element to generate a new tree with the same shape.
+  template <typename U>
+  ShapeTree<U> Map(const std::function<U(const T&)>& func) {
+    ShapeTree<U> result(shape_storage_);
+    ForEachElement([&](const ShapeIndex& index, const T& t) {
+      *result.mutable_element(index) = func(t);
+    });
+    return result;
+  }
+
+  template <typename U>
+  ShapeTree<U> Map(const std::function<U(T*)>& func) {
+    ShapeTree<U> result(shape_storage_);
+    ForEachMutableElement([&](const ShapeIndex& index, T* t) {
+      *result.mutable_element(index) = func(t);
+    });
+    return result;
+  }
+
   // Copy the subtree of values from 'other' rooted at ShapeIndex
   // 'source_base_index' into the subtree of value in this ShapeTree rooted at
   // 'target_base_index'.
@@ -463,9 +482,6 @@ template <typename T>
 ShapeTree<T>::ShapeTree(Shape shape)
     : shape_storage_(std::make_shared<Shape>(std::move(shape))),
       shape_(shape_storage_.get()) {
-  // The shape_ field is just used to hold the structure of the shape.
-  // It should not be relied upon to store layout information.
-  LayoutUtil::ClearLayout(shape_storage_.get());
   const int64 count = CountSubshapes(*shape_);
   nodes_.reserve(count);
   nodes_.emplace_back(ShapeIndex{});
@@ -502,9 +518,6 @@ template <typename T>
 ShapeTree<T>::ShapeTree(Shape shape, const T& init_value)
     : shape_storage_(std::make_shared<Shape>(std::move(shape))),
       shape_(shape_storage_.get()) {
-  // The shape_ field is just used to hold the structure of the shape.
-  // It should not be relied upon to store layout information.
-  LayoutUtil::ClearLayout(shape_storage_.get());
   const int64 count = CountSubshapes(*shape_);
   nodes_.reserve(count);
   nodes_.emplace_back(ShapeIndex{}, init_value);

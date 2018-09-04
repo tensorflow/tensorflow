@@ -78,10 +78,10 @@ def initialize_system(embedding_config=None, job=None):
     embedding_config: If not None, an `EmbeddingLayerConfiguration` proto
       describing the desired configuration of the hardware embedding lookup
       tables. If embedding_config is None, no hardware embeddings can be used.
-    job: The job (the XXX in TensorFlow device specification /job:XXX)
-      that contains the TPU devices that will be initialized. If job=None
-      it is assumed there is only one job in the TensorFlow flock, and an
-      error will be returned if this assumption does not hold.
+    job: The job (the XXX in TensorFlow device specification /job:XXX) that
+      contains the TPU devices that will be initialized. If job=None it is
+      assumed there is only one job in the TensorFlow flock, and an error will
+      be returned if this assumption does not hold.
   Returns:
     A serialized `TopologyProto` that describes the TPU system. Note:
       the topology must be evaluated using `Session.run` before it can be used.
@@ -118,9 +118,9 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   tpu.replicate() computation with the attribute "_tpu_replicate=XYZ", where XYZ
   is a unique name.
 
-  We use a `ControlFlowContext` to perform the annotation since it
-  integrates with Tensorflow constructs like ResourceVariables. For example,
-  if a `ResourceVariable` is constructed inside a tpu.replicate() block, the
+  We use a `ControlFlowContext` to perform the annotation since it integrates
+  with Tensorflow constructs like ResourceVariables. For example, if a
+  `ResourceVariable` is constructed inside a tpu.replicate() block, the
   `ResourceVariable` implementation can use
   `with ops.control_dependencies(None)` to build the variable's definition
   outside the replicated computation.
@@ -157,8 +157,8 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   def get_replicated_var_handle(self, var):
     """Returns a variable handle for replicated TPU variable 'var'.
 
-    This is an method used by an experimental replicated variable
-    implementation and is not intended as a public API.
+    This is a method used by an experimental replicated variable implementation
+    and is not intended as a public API.
 
     Args:
       var: The replicated TPU variable.
@@ -211,28 +211,24 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
           if gradient_uid == "__unsupported__":
             raise NotImplementedError(
                 "No gradient_uid calling gradient within outside_compilation")
-          # When we take the gradient of an op X in an
-          # outside_compilation cluster C in a forward computation we
-          # would like to put the ops corresponding to the gradient of
-          # X into a new outside_compilation cluster C'. However, if
-          # we take the gradient of X twice, the second one should get
-          # yet another new outside_compilation cluster C''.
+          # When we take the gradient of an op X in an outside_compilation
+          # cluster C in a forward computation we would like to put the ops
+          # corresponding to the gradient of X into a new outside_compilation
+          # cluster C'. However, if we take the gradient of X twice, the second
+          # one should get yet another new outside_compilation cluster C''.
           #
-          # The mechanism we adopt is to use a 'root_cluster' which is
-          # the cluster that X was in before we took gradients, and a
-          # 'gradient_uid' which is different for every invocation of
-          # gradients, and put the gradient of X in cluster
-          # 'root_cluster.gradient_uid'.
+          # The mechanism we adopt is to use a 'root_cluster' which is the
+          # cluster that X was in before we took gradients, and a 'gradient_uid'
+          # which is different for every invocation of gradients, and put the
+          # gradient of X in cluster 'root_cluster.gradient_uid'.
           #
-          # When taking a gradient of a gradient, some ops will be
-          # colocated with Op in the forward pass (e.g., cluster
-          # root_cluster) and some in the backward pass (e.g., cluster
-          # root_cluster.initial_gradient_uid). We need all of the
-          # grad-of-grad ops to be in the same cluster to avoid cyclic
-          # dependencies between clusters. We adopt a heuristic that
-          # puts any op clustered with root_cluster.<xxx> in
-          # root_cluster.gradient_uid, even if xxx was
-          # initial_gradient_uid.
+          # When taking a gradient of a gradient, some ops will be colocated
+          # with Op in the forward pass (e.g., cluster root_cluster) and some in
+          # the backward pass (e.g., cluster root_cluster.initial_gradient_uid).
+          # We need all of the grad-of-grad ops to be in the same cluster to
+          # avoid cyclic dependencies between clusters. We adopt a heuristic
+          # that puts any op clustered with root_cluster.<xxx> in
+          # root_cluster.gradient_uid, even if xxx was initial_gradient_uid.
           self._in_gradient_colocation = op
           parts = outside_attr.split(".")
           cluster = parts[0] + "." + gradient_uid
@@ -765,11 +761,10 @@ def shard(computation,
           name=None):
   """Shards `computation` for parallel execution.
 
-  `inputs` must be a list of Tensors or None (equivalent to an empty
-  list), each of which has a corresponding split axis (from
-  `input_shard_axes`). Each input is split into `num_shards` pieces
-  along the corresponding axis, and computation is applied to each
-  shard in parallel.
+  `inputs` must be a list of Tensors or None (equivalent to an empty list), each
+  of which has a corresponding split axis (from `input_shard_axes`). Each input
+  is split into `num_shards` pieces along the corresponding axis, and
+  computation is applied to each shard in parallel.
 
   Tensors are broadcast to all shards if they are lexically captured by
   `computation`. e.g.,
@@ -791,10 +786,9 @@ def shard(computation,
   Args:
     computation: A Python function that builds a computation to apply to each
       shard of the input.
-    inputs: A list of input tensors or None (equivalent to an empty
-      list). Each input tensor has a corresponding shard axes, given
-      by `input_shard_axes`, which must have size divisible by
-      `num_shards`.
+    inputs: A list of input tensors or None (equivalent to an empty list). Each
+      input tensor has a corresponding shard axes, given by `input_shard_axes`,
+      which must have size divisible by `num_shards`.
     num_shards: The number of shards.
     input_shard_axes: A list of dimensions along which to shard `inputs`, or
       `None`. `None` means "shard all inputs along dimension 0". If not `None`,
@@ -913,9 +907,9 @@ def batch_parallel(computation,
 
   Convenience wrapper around shard().
 
-  `inputs` must be a list of Tensors or None (equivalent to an empty
-  list). Each input is split into `num_shards` pieces along the 0-th
-  dimension, and computation is applied to each shard in parallel.
+  `inputs` must be a list of Tensors or None (equivalent to an empty list).
+  Each input is split into `num_shards` pieces along the 0-th dimension, and
+  computation is applied to each shard in parallel.
 
   Tensors are broadcast to all shards if they are lexically captured by
   `computation`. e.g.,
@@ -933,9 +927,8 @@ def batch_parallel(computation,
   Args:
     computation: A Python function that builds a computation to apply to each
       shard of the input.
-    inputs: A list of input tensors or None (equivalent to an empty
-      list). The 0-th dimension of each Tensor must have size
-      divisible by `num_shards`.
+    inputs: A list of input tensors or None (equivalent to an empty list). The
+      0-th dimension of each Tensor must have size divisible by `num_shards`.
     num_shards: The number of shards.
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
       of arguments as inputs to `computation`.
@@ -968,14 +961,14 @@ def rewrite(computation,
   """Rewrites `computation` for execution on a TPU system.
 
   Args:
-    computation: A Python function that builds a computation to apply
-      to the input. If the function takes n inputs, 'inputs' should be
-      a list of n tensors.
+    computation: A Python function that builds a computation to apply to the
+      input. If the function takes n inputs, 'inputs' should be a list of n
+      tensors.
 
-      `computation` may return a list of operations and tensors.  Tensors must
+      `computation` may return a list of operations and tensors. Tensors must
       come before operations in the returned list.  The return value of
       `rewrite` is a list of tensors corresponding to the tensors from the
-      from `computation`.
+      output of `computation`.
 
       All `Operation`s returned from `computation` will be executed when
       evaluating any of the returned output tensors.
@@ -1070,12 +1063,12 @@ class _TPUInferenceContext(control_flow_ops.XLAControlFlowContext):
 def validate_inference_rewrite_for_variables(graph):
   """Validates whether rewrite_for_inference() 'worked' for variables.
 
-     The rewrite_for_inference() method is supposed to append
-     GuaranteeConstOps after ReadVariableOps, but this mechanism works only
-     if you are using tf.get_variable() to create and access variables in your
-     tpu computation. This validation method can be called immediately after
-     calling tpu.rewrite_for_inference() to check whether GuaranteeConstOps
-     where added to the graph.
+     The rewrite_for_inference() method is supposed to append GuaranteeConstOps
+     after ReadVariableOps, but this mechanism works only if you are using
+     tf.get_variable() to create and access variables in your tpu computation.
+     This validation method can be called immediately after calling
+     tpu.rewrite_for_inference() to check whether GuaranteeConstOps where added
+     to the graph.
 
      Typical usages:
        tpu.validate_inference_rewrite_for_variables(tf.get_default_graph())
@@ -1089,10 +1082,9 @@ def validate_inference_rewrite_for_variables(graph):
   """
   if not any([x.type == "GuaranteeConst" for x in graph.get_operations()]):
     raise RuntimeError(
-        "No GuaranteeConst ops found in the graph after "
-        "running tpu.rewrite_for_inference(...). Please "
-        "check that you are using tf.get_variable() to "
-        "create and access variables in your tpu "
+        "No GuaranteeConst ops found in the graph after running "
+        "tpu.rewrite_for_inference(...). Please check that you are using "
+        "tf.get_variable() to create and access variables in your tpu "
         "computation.")
 
 
@@ -1108,16 +1100,16 @@ def rewrite_for_inference(computation,
      in your computation, it moves the ReadVariableOps outside the TPU
      computation, and adds GuaranteeConst ops just after the ReadVariableOps.
      This mechanism works only if you are using tf.get_variable() to create and
-     access variables in your tpu computation. You can validate whether
-     this worked, by calling validate_inference_rewrite_for_variables() method
+     access variables in your tpu computation. You can validate whether this
+     worked, by calling validate_inference_rewrite_for_variables() method
      immediately after this method to check whether GuaranteeConstOps where
      added to the graph.
 
   Args:
-    computation: A Python function that builds a computation to apply
-      to the input. If the function takes n inputs, 'inputs' should be
-      a list of n tensors. If the function returns m outputs, rewrite
-      will return a list of m tensors.
+    computation: A Python function that builds a computation to apply to the
+      input. If the function takes n inputs, 'inputs' should be a list of n
+      tensors. If the function returns m outputs, rewrite will return a list of
+      m tensors.
     inputs: A list of input tensors or `None` (equivalent to an empty list).
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
       of arguments as inputs to `computation`.

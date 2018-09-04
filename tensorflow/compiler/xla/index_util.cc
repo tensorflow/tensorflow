@@ -27,7 +27,7 @@ limitations under the License.
 namespace xla {
 
 /* static */ int64 IndexUtil::MultidimensionalIndexToLinearIndex(
-    const Shape& shape, tensorflow::gtl::ArraySlice<int64> multi_index) {
+    const Shape& shape, absl::Span<const int64> multi_index) {
   DCHECK_EQ(shape.dimensions_size(), multi_index.size());
   // Padding and nested layouts not supported yet.
   DCHECK_EQ(0, shape.layout().padded_dimensions_size());
@@ -118,8 +118,8 @@ namespace xla {
   return multi_index;
 }
 
-/* static */ bool IndexUtil::BumpIndices(
-    const Shape& shape, tensorflow::gtl::MutableArraySlice<int64> indices) {
+/* static */ bool IndexUtil::BumpIndices(const Shape& shape,
+                                         absl::Span<int64> indices) {
   for (int64 dimno = indices.size() - 1; dimno >= 0; --dimno) {
     int64 limit = shape.dimensions(dimno);
     if (indices[dimno] + 1 < limit) {
@@ -149,8 +149,8 @@ namespace xla {
   return stride;
 }
 
-/* static */ bool IndexUtil::IndexInBounds(
-    const Shape& shape, tensorflow::gtl::ArraySlice<int64> index) {
+/* static */ bool IndexUtil::IndexInBounds(const Shape& shape,
+                                           absl::Span<const int64> index) {
   int64 rank = ShapeUtil::Rank(shape);
   if (rank != index.size()) {
     return false;
@@ -163,9 +163,8 @@ namespace xla {
   return true;
 }
 
-/* static */ int IndexUtil::CompareIndices(
-    tensorflow::gtl::ArraySlice<int64> lhs,
-    tensorflow::gtl::ArraySlice<int64> rhs) {
+/* static */ int IndexUtil::CompareIndices(absl::Span<const int64> lhs,
+                                           absl::Span<const int64> rhs) {
   int64 rank = lhs.size();
   CHECK_EQ(rhs.size(), rank);
   for (int64 dim = 0; dim < rank; ++dim) {

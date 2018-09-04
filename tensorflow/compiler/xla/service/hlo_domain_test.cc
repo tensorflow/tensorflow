@@ -29,11 +29,6 @@ namespace xla {
 namespace {
 
 class HloDomainTest : public HloVerifiedTestBase {
- public:
-  HloDomainTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false) {}
-
  protected:
   bool FindUserViaDomainPath(HloInstruction* instruction,
                              HloInstruction* operand) const {
@@ -350,7 +345,8 @@ ENTRY entry {
   token = token[] after-all()
   infeed = ((f32[4], f32[4]), token[]) infeed(token),
     sharding={{maximal device=1}, {maximal device=0}, {maximal device=0}}
-  infeed.data = (f32[4], f32[4]) get-tuple-element(infeed), index=0
+  infeed.data = (f32[4], f32[4]) get-tuple-element(infeed), index=0,
+    sharding={{maximal device=1}, {maximal device=0}}
   gte0 = f32[4] get-tuple-element(infeed.data), index=0
   gte1 = f32[4] get-tuple-element(infeed.data), index=1
   copy0 = f32[4] copy(gte0)
@@ -384,11 +380,8 @@ ENTRY entry {
   //           \       /
   //             TUPLE
   //               |
-  HloInstruction* infeed = FindInstruction(module, "infeed");
-  ASSERT_NE(infeed, nullptr);
-  HloInstruction* infeed_data =
-      infeed->parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
-          ShapeUtil::GetTupleElementShape(infeed->shape(), 0), infeed, 0));
+  HloInstruction* infeed_data = FindInstruction(module, "infeed.data");
+  ASSERT_NE(infeed_data, nullptr);
 
   auto infeed_data_users = infeed_data->users();
   HloInstruction* new_gte0 = infeed_data->parent()->AddInstruction(
@@ -496,6 +489,7 @@ TEST_F(HloDomainTest, DumpParseNullSharding) {
   ASSERT_TRUE(ParseModule(hlo_string).status().ok());
 }
 
+// Tuple inputs are domain instructions.
 TEST_F(HloDomainTest, DomainTuple) {
   const char* const hlo_string = R"(
 HloModule Module
@@ -503,7 +497,8 @@ HloModule Module
 ENTRY entry {
   p0 = f32[4] parameter(0), sharding={maximal device=0}
   cst = u32[] constant(0), sharding={maximal device=1}
-  tpl = (u32[], f32[4]) tuple(cst, p0), sharding={{maximal device=1}, {maximal device=0}}
+  tpl = (u32[], f32[4]) tuple(cst, p0),
+    sharding={{maximal device=1}, {maximal device=0}}
   ROOT gte = f32[4] get-tuple-element(tpl), index=1, sharding={maximal device=0}
 }
 )";
@@ -586,6 +581,110 @@ ENTRY %entry (p0: (f32[4], f32[4])) -> (f32[4], f32[4], f32[4]) {
   EXPECT_FALSE(HasDomainEdge(module, "c", "b"));
   EXPECT_FALSE(HasDomainEdge(module, "d", "a"));
   EXPECT_FALSE(HasDomainEdge(module, "d", "c"));
+}
+
+// Emulate instructions inserted at top and bottom within nested tuple domain.
+TEST_F(HloDomainTest, DomainTupleTopBottomInsert) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+ENTRY entry {
+  p0 = f32[4] parameter(0), sharding={maximal device=1}
+  p1 = (f32[5], f32[6]) parameter(1),
+    sharding={{maximal device=1}, {maximal device=0}}
+  tuple.0 = (f32[4], (f32[5], f32[6])) tuple(p0, p1),
+    sharding={{maximal device=1}, {maximal device=1}, {maximal device=0}}
+  ROOT res = (f32[5], f32[6]) get-tuple-element(tuple.0), index=1,
+    sharding={{maximal device=1}, {maximal device=0}}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
+
+  HloDomainIsolator isolator(ShardingDomainCreator{});
+  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module));
+  EXPECT_TRUE(isolator_changed);
+
+  // Clear sharding of tuple.0 instruction, in order to test domain sharding
+  // application.
+  auto tuple0 = FindInstruction(module, "tuple.0");
+  tuple0->clear_sharding();
+
+  // Insert the following instructons above and below tuple.0, to emulate other
+  // passes effects:
+  //                 COPY.0
+  //             \    /
+  //            TUPLE.0
+  //              /    \
+  //           COPY.1   \
+  //            /        \
+  //         GTE.0      GTE.1
+  //           |          |
+  //           |        COPY.2
+  //            \       /
+  //             \     /
+  //             TUPLE.1
+  //                |
+  auto tuple0_users = tuple0->users();
+  auto computation = tuple0->parent();
+  HloInstruction* copy0 = computation->AddInstruction(
+      HloInstruction::CreateUnary(tuple0->operand(1)->shape(), HloOpcode::kCopy,
+                                  tuple0->mutable_operand(1)));
+  TF_EXPECT_OK(tuple0->ReplaceOperandWith(1, copy0));
+
+  HloInstruction* copy1 = computation->AddInstruction(
+      HloInstruction::CreateUnary(tuple0->shape(), HloOpcode::kCopy, tuple0));
+  HloInstruction* gte0 =
+      computation->AddInstruction(HloInstruction::CreateGetTupleElement(
+          ShapeUtil::GetTupleElementShape(copy1->shape(), 0), copy1, 0));
+  HloInstruction* gte1 =
+      computation->AddInstruction(HloInstruction::CreateGetTupleElement(
+          ShapeUtil::GetTupleElementShape(tuple0->shape(), 1), tuple0, 1));
+  HloInstruction* copy2 = computation->AddInstruction(
+      HloInstruction::CreateUnary(gte1->shape(), HloOpcode::kCopy, gte1));
+  HloInstruction* tuple1 =
+      computation->AddInstruction(HloInstruction::CreateTuple({gte0, copy2}));
+
+  for (HloInstruction* user : tuple0_users) {
+    TF_EXPECT_OK(tuple0->ReplaceUseWith(user, tuple1));
+  }
+
+  HloDomainRemover remover(ShardingMetadata::KindName(),
+                           ShardingMetadata::NormalizeShardingDomain);
+  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module));
+  EXPECT_TRUE(remover_changed);
+
+  EXPECT_TRUE(tuple0->has_sharding());
+  EXPECT_EQ(HloSharding::Tuple(tuple0->shape(), {HloSharding::AssignDevice(1),
+                                                 HloSharding::AssignDevice(1),
+                                                 HloSharding::AssignDevice(0)}),
+            tuple0->sharding());
+
+  EXPECT_TRUE(copy0->has_sharding());
+  EXPECT_EQ(HloSharding::Tuple(copy0->shape(), {HloSharding::AssignDevice(1),
+                                                HloSharding::AssignDevice(0)}),
+            copy0->sharding());
+
+  // copy1 has partial information only from gte.0, so in the end it gets no
+  // sharding at all. During propagation it does propagate the information from
+  // gte.0 though, enabling Tuple.0 to be fully sharded.
+  EXPECT_FALSE(copy1->has_sharding());
+
+  EXPECT_TRUE(gte0->has_sharding());
+  EXPECT_EQ(HloSharding::AssignDevice(1), gte0->sharding());
+
+  EXPECT_TRUE(gte1->has_sharding());
+  EXPECT_EQ(HloSharding::Tuple(gte1->shape(), {HloSharding::AssignDevice(1),
+                                               HloSharding::AssignDevice(0)}),
+            gte1->sharding());
+
+  EXPECT_TRUE(copy2->has_sharding());
+  EXPECT_EQ(HloSharding::Tuple(copy2->shape(), {HloSharding::AssignDevice(1),
+                                                HloSharding::AssignDevice(0)}),
+            copy2->sharding());
+
+  EXPECT_TRUE(tuple1->has_sharding());
+  EXPECT_EQ(tuple0->sharding(), tuple1->sharding());
 }
 
 }  // namespace

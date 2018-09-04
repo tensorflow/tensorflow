@@ -551,7 +551,7 @@ def assert_no_new_tensors(f):
         f(self, **kwargs)
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
-    context.get_default_context()._clear_caches()  # pylint: disable=protected-access
+    context.context()._clear_caches()  # pylint: disable=protected-access
     gc.collect()
     tensors_after = [
         obj for obj in gc.get_objects()
@@ -883,6 +883,18 @@ def device(use_gpu):
     dev = "/device:CPU:0"
   with ops.device(dev):
     yield
+
+
+class ErrorLoggingSession(session.Session):
+  """Wrapper around a Session that logs errors in run().
+  """
+
+  def run(self, *args, **kwargs):
+    try:
+      return super(ErrorLoggingSession, self).run(*args, **kwargs)
+    except Exception as e:  # pylint: disable=broad-except
+      logging.error(str(e))
+      raise
 
 
 @tf_export("test.TestCase")
@@ -1872,7 +1884,7 @@ class TensorFlowTestCase(googletest.TestCase):
             rewriter_config_pb2.RewriterConfig.OFF)
         return config
 
-      return session.Session(graph=graph, config=prepare_config(config))
+      return ErrorLoggingSession(graph=graph, config=prepare_config(config))
 
   @contextlib.contextmanager
   def _get_cached_session(self,

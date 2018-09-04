@@ -445,7 +445,7 @@ gpu_py_test(
 
 gpu_py_test(
     name = "sinh_arcsinh_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/sinh_arcsinh_test.py"],
     additional_deps = [
         ":distributions_py",

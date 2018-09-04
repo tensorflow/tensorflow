@@ -39,12 +39,12 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import linalg_ops_impl
 from tensorflow.python.ops import gen_linalg_ops
+from tensorflow.python.ops import linalg_ops_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.util.deprecation import (
-    deprecated, deprecated_arg_values)
+from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.deprecation import  deprecated_arg_values
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -226,9 +226,7 @@ class Constant(Initializer):
     return {"value": self.value, "dtype": self.dtype.name}
 
 
-@tf_export("keras.initializers.RandomUniform", "initializers.random_uniform",
-           "random_uniform_initializer", "keras.initializers.uniform",
-           "keras.initializers.random_uniform")
+@tf_export("initializers.random_uniform", "random_uniform_initializer")
 class RandomUniform(Initializer):
   """Initializer that generates tensors with a uniform distribution.
 
@@ -264,9 +262,7 @@ class RandomUniform(Initializer):
     }
 
 
-@tf_export("keras.initializers.RandomNormal", "initializers.random_normal",
-           "random_normal_initializer", "keras.initializers.normal",
-           "keras.initializers.random_normal")
+@tf_export("initializers.random_normal", "random_normal_initializer")
 class RandomNormal(Initializer):
   """Initializer that generates tensors with a normal distribution.
 
@@ -302,9 +298,7 @@ class RandomNormal(Initializer):
     }
 
 
-@tf_export("keras.initializers.TruncatedNormal",
-           "initializers.truncated_normal", "truncated_normal_initializer",
-           "keras.initializers.truncated_normal")
+@tf_export("initializers.truncated_normal", "truncated_normal_initializer")
 class TruncatedNormal(Initializer):
   """Initializer that generates a truncated normal distribution.
 
@@ -1116,29 +1110,10 @@ class Identity(Initializer):
   def get_config(self):
     return {"gain": self.gain, "dtype": self.dtype.name}
 
-# Aliases.
-
-# pylint: disable=invalid-name
-zeros_initializer = Zeros
-ones_initializer = Ones
-constant_initializer = Constant
-random_uniform_initializer = RandomUniform
-random_normal_initializer = RandomNormal
-truncated_normal_initializer = TruncatedNormal
-uniform_unit_scaling_initializer = UniformUnitScaling
-variance_scaling_initializer = VarianceScaling
-orthogonal_initializer = Orthogonal
-identity_initializer = Identity
-convolutional_delta_orthogonal = ConvolutionDeltaOrthogonal
-convolutional_orthogonal_1d = ConvolutionOrthogonal1D
-convolutional_orthogonal_2d = ConvolutionOrthogonal2D
-convolutional_orthogonal_3d = ConvolutionOrthogonal3D
-# pylint: enable=invalid-name
-
 
 @tf_export("glorot_uniform_initializer", "keras.initializers.glorot_uniform",
            "initializers.glorot_uniform")
-def glorot_uniform_initializer(seed=None, dtype=dtypes.float32):
+class GlorotUniform(VarianceScaling):
   """The Glorot uniform initializer, also called Xavier uniform initializer.
 
   It draws samples from a uniform distribution within [-limit, limit]
@@ -1153,17 +1128,28 @@ def glorot_uniform_initializer(seed=None, dtype=dtypes.float32):
       `tf.set_random_seed`
       for behavior.
     dtype: The data type. Only floating point types are supported.
-
-  Returns:
-    An initializer.
   """
-  return variance_scaling_initializer(
-      scale=1.0, mode="fan_avg", distribution="uniform", seed=seed, dtype=dtype)
+
+  def __init__(self,
+               seed=None,
+               dtype=dtypes.float32):
+    super(GlorotUniform, self).__init__(
+        scale=1.0,
+        mode="fan_avg",
+        distribution="uniform",
+        seed=seed,
+        dtype=dtype)
+
+  def get_config(self):
+    return {
+        "seed": self.seed,
+        "dtype": self.dtype.name
+    }
 
 
 @tf_export("glorot_normal_initializer", "keras.initializers.glorot_normal",
            "initializers.glorot_normal")
-def glorot_normal_initializer(seed=None, dtype=dtypes.float32):
+class GlorotNormal(VarianceScaling):
   """The Glorot normal initializer, also called Xavier normal initializer.
 
   It draws samples from a truncated normal distribution centered on 0
@@ -1178,16 +1164,45 @@ def glorot_normal_initializer(seed=None, dtype=dtypes.float32):
       `tf.set_random_seed`
       for behavior.
     dtype: The data type. Only floating point types are supported.
-
-  Returns:
-    An initializer.
   """
-  return variance_scaling_initializer(
-      scale=1.0,
-      mode="fan_avg",
-      distribution="truncated_normal",
-      seed=seed,
-      dtype=dtype)
+
+  def __init__(self,
+               seed=None,
+               dtype=dtypes.float32):
+    super(GlorotNormal, self).__init__(
+        scale=1.0,
+        mode="fan_avg",
+        distribution="truncated_normal",
+        seed=seed,
+        dtype=dtype)
+
+  def get_config(self):
+    return {
+        "seed": self.seed,
+        "dtype": self.dtype.name
+    }
+
+
+# Aliases.
+
+# pylint: disable=invalid-name
+zeros_initializer = Zeros
+ones_initializer = Ones
+constant_initializer = Constant
+random_uniform_initializer = RandomUniform
+random_normal_initializer = RandomNormal
+truncated_normal_initializer = TruncatedNormal
+uniform_unit_scaling_initializer = UniformUnitScaling
+variance_scaling_initializer = VarianceScaling
+glorot_uniform_initializer = GlorotUniform
+glorot_normal_initializer = GlorotNormal
+orthogonal_initializer = Orthogonal
+identity_initializer = Identity
+convolutional_delta_orthogonal = ConvolutionDeltaOrthogonal
+convolutional_orthogonal_1d = ConvolutionOrthogonal1D
+convolutional_orthogonal_2d = ConvolutionOrthogonal2D
+convolutional_orthogonal_3d = ConvolutionOrthogonal3D
+# pylint: enable=invalid-name
 
 
 @tf_export("keras.initializers.lecun_normal", "initializers.lecun_normal")

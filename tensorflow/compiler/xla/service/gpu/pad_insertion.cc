@@ -166,9 +166,9 @@ bool PadInsertion::CanonicalizeForwardConvolution(HloInstruction* conv) {
   Shape old_conv_shape = conv->shape().tuple_shapes(0);
 
   VLOG(1) << "Canonicalizing forward conv";
-  auto new_conv = CreateCudnnConvForward(old_conv_shape, new_input, new_kernel,
-                                         new_conv_window,
-                                         conv->convolution_dimension_numbers());
+  auto new_conv = CreateCudnnConvForward(
+      old_conv_shape, new_input, new_kernel, new_conv_window,
+      conv->convolution_dimension_numbers(), conv->feature_group_count());
   VLOG(1) << "Replacing:\n  " << conv->ToString() << "\nwith:\n  "
           << new_conv->ToString();
   TF_CHECK_OK(conv->parent()->ReplaceInstruction(conv, new_conv));
@@ -247,7 +247,7 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
   Shape backward_conv_shape = backward_conv->shape().tuple_shapes(0);
   HloInstruction* new_backward_conv = CreateCudnnConvBackwardFilter(
       backward_conv_shape, padded_input, output, new_backward_conv_window,
-      backward_conv_dnums);
+      backward_conv_dnums, backward_conv->feature_group_count());
 
   VLOG(1) << "Canonicalizing backward filter conv";
   VLOG(1) << "Replacing:\n  " << backward_conv->ToString() << "\nwith:\n  "
@@ -312,7 +312,7 @@ bool PadInsertion::CanonicalizeBackwardInputConvolution(
 
   HloInstruction* new_backward_conv_call = CreateCudnnConvBackwardInput(
       new_backward_conv_shape, output, filter, new_backward_conv_window,
-      backward_conv_dnums);
+      backward_conv_dnums, backward_conv->feature_group_count());
 
   // The CustomCall created above returns a tuple (conv_result, scratch_memory).
   // Extract out the two elements.

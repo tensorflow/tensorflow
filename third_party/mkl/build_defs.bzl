@@ -11,9 +11,7 @@ mkl_repository depends on the following environment variables:
   * `TF_MKL_ROOT`: The root folder where a copy of libmkl is located.
 """
 
-
 _TF_MKL_ROOT = "TF_MKL_ROOT"
-
 
 def if_mkl(if_true, if_false = []):
     """Shorthand for select()'ing on whether we're building with MKL.
@@ -26,7 +24,7 @@ def if_mkl(if_true, if_false = []):
       a select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        "//third_party/mkl:using_mkl": if_true,
+        str(Label("//third_party/mkl:using_mkl")): if_true,
         "//conditions:default": if_false,
     })
 
@@ -42,11 +40,10 @@ def if_mkl_ml(if_true, if_false = []):
       a select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        "//third_party/mkl_dnn:using_mkl_dnn_only":
-        if_false,
-        "//third_party/mkl:using_mkl": if_true,
+        str(Label("//third_party/mkl_dnn:using_mkl_dnn_only")): if_false,
+        str(Label("//third_party/mkl:using_mkl")): if_true,
         "//conditions:default": if_false,
-        })
+    })
 
 def if_mkl_ml_only(if_true, if_false = []):
     """Shorthand for select()'ing on whether we're building with MKL-ML only.
@@ -59,7 +56,7 @@ def if_mkl_ml_only(if_true, if_false = []):
       a select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        "//third_party/mkl:using_mkl_ml_only": if_true,
+        str(Label("//third_party/mkl:using_mkl_ml_only")): if_true,
         "//conditions:default": if_false,
     })
 
@@ -76,7 +73,7 @@ def if_mkl_lnx_x64(if_true, if_false = []):
       a select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        "//third_party/mkl:using_mkl_lnx_x64": if_true,
+        str(Label("//third_party/mkl:using_mkl_lnx_x64")): if_true,
         "//conditions:default": if_false,
     })
 
@@ -90,45 +87,40 @@ def mkl_deps():
       inclusion in the deps attribute of rules.
     """
     return select({
-        "//third_party/mkl_dnn:using_mkl_dnn_only":
-        ["@mkl_dnn"],
-        "//third_party/mkl:using_mkl_ml_only":
-        ["//third_party/mkl:intel_binary_blob"],
-        "//third_party/mkl:using_mkl":
-        [
+        str(Label("//third_party/mkl_dnn:using_mkl_dnn_only")): ["@mkl_dnn"],
+        str(Label("//third_party/mkl:using_mkl_ml_only")): ["//third_party/mkl:intel_binary_blob"],
+        str(Label("//third_party/mkl:using_mkl")): [
             "//third_party/mkl:intel_binary_blob",
-            "@mkl_dnn"
+            "@mkl_dnn",
         ],
-        "//conditions:default": []
-        })
+        "//conditions:default": [],
+    })
 
 def _enable_local_mkl(repository_ctx):
-  return _TF_MKL_ROOT in repository_ctx.os.environ
-
+    return _TF_MKL_ROOT in repository_ctx.os.environ
 
 def _mkl_autoconf_impl(repository_ctx):
-  """Implementation of the local_mkl_autoconf repository rule."""
+    """Implementation of the local_mkl_autoconf repository rule."""
 
-  if _enable_local_mkl(repository_ctx):
-    # Symlink lib and include local folders.
-    mkl_root = repository_ctx.os.environ[_TF_MKL_ROOT]
-    mkl_lib_path = "%s/lib" % mkl_root
-    repository_ctx.symlink(mkl_lib_path, "lib")
-    mkl_include_path = "%s/include" % mkl_root
-    repository_ctx.symlink(mkl_include_path, "include")
-    mkl_license_path = "%s/license.txt" % mkl_root
-    repository_ctx.symlink(mkl_license_path, "license.txt")
-  else:
-    # setup remote mkl repository.
-    repository_ctx.download_and_extract(
-        repository_ctx.attr.urls,
-        sha256=repository_ctx.attr.sha256,
-        stripPrefix=repository_ctx.attr.strip_prefix,
-    )
+    if _enable_local_mkl(repository_ctx):
+        # Symlink lib and include local folders.
+        mkl_root = repository_ctx.os.environ[_TF_MKL_ROOT]
+        mkl_lib_path = "%s/lib" % mkl_root
+        repository_ctx.symlink(mkl_lib_path, "lib")
+        mkl_include_path = "%s/include" % mkl_root
+        repository_ctx.symlink(mkl_include_path, "include")
+        mkl_license_path = "%s/license.txt" % mkl_root
+        repository_ctx.symlink(mkl_license_path, "license.txt")
+    else:
+        # setup remote mkl repository.
+        repository_ctx.download_and_extract(
+            repository_ctx.attr.urls,
+            sha256 = repository_ctx.attr.sha256,
+            stripPrefix = repository_ctx.attr.strip_prefix,
+        )
 
-  # Also setup BUILD file.
-  repository_ctx.symlink(repository_ctx.attr.build_file, "BUILD")
-
+    # Also setup BUILD file.
+    repository_ctx.symlink(repository_ctx.attr.build_file, "BUILD")
 
 mkl_repository = repository_rule(
     implementation = _mkl_autoconf_impl,

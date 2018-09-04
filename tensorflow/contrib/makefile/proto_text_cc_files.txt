@@ -56,7 +56,6 @@ tensorflow/core/lib/hash/hash.cc
 tensorflow/core/lib/hash/crc32c.cc
 tensorflow/core/lib/hash/crc32c_accelerate.cc
 tensorflow/core/lib/core/threadpool.cc
-tensorflow/core/lib/core/stringpiece.cc
 tensorflow/core/lib/core/status.cc
 tensorflow/core/lib/core/coding.cc
 tensorflow/core/lib/core/arena.cc

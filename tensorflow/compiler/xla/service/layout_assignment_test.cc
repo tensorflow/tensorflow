@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -859,6 +859,116 @@ TEST_F(LayoutAssignmentTest, ChannelLayoutMismatch) {
       ShapeUtil::Equal(ShapeUtil::GetSubshape(
                            FindInstruction(module.get(), "send")->shape(), {0}),
                        ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0})));
+}
+
+TEST_F(LayoutAssignmentTest, CopySliceOperandToAvoidImplicitLayoutChange) {
+  const char* module_str = R"(
+    HloModule CopySliceOperandToAvoidImplicitLayoutChange
+
+    ENTRY CopySliceOperandToAvoidImplicitLayoutChange {
+      par0 = f32[3,4]{1,0} parameter(0)
+      par1 = f32[4,5]{0,1} parameter(1)
+      slice0 = f32[3,4] slice(par1), slice={[1:4],[1:5]}
+      ROOT add0 = f32[3,4]{1,0} add(par0,slice0)
+    }
+  )";
+
+  auto module = ParseHloString(module_str).ValueOrDie();
+  module =
+      backend()
+          .compiler()
+          ->RunHloPasses(std::move(module), backend().default_stream_executor(),
+                         /*device_allocator=*/nullptr)
+          .ConsumeValueOrDie();
+
+  auto copy = FindInstruction(module.get(), "copy.1");
+  auto slice = FindInstruction(module.get(), "slice0");
+  EXPECT_EQ(slice->operand(0), copy);
+  EXPECT_TRUE(
+      LayoutUtil::Equal(slice->shape().layout(), copy->shape().layout()));
+}
+
+TEST_F(LayoutAssignmentTest, CopyDSliceOperandToAvoidImplicitLayoutChange) {
+  const char* module_str = R"(
+    HloModule CopyDSliceOperandToAvoidImplicitLayoutChange
+
+    ENTRY CopyDSliceOperandToAvoidImplicitLayoutChange {
+      par0 = f32[3,4]{1,0} parameter(0)
+      par1 = f32[4,5]{0,1} parameter(1)
+      par2 = s32[2] parameter(2)
+      dslice0 = f32[3,4] dynamic-slice(par1, par2), dynamic_slice_sizes={3,4}
+      ROOT add0 = f32[3,4]{1,0} add(par0,dslice0)
+    }
+  )";
+
+  auto module = ParseHloString(module_str).ValueOrDie();
+  module =
+      backend()
+          .compiler()
+          ->RunHloPasses(std::move(module), backend().default_stream_executor(),
+                         /*device_allocator=*/nullptr)
+          .ConsumeValueOrDie();
+
+  auto copy = FindInstruction(module.get(), "copy.1");
+  auto dslice = FindInstruction(module.get(), "dslice0");
+  EXPECT_EQ(dslice->operand(0), copy);
+  EXPECT_TRUE(
+      LayoutUtil::Equal(dslice->shape().layout(), copy->shape().layout()));
+}
+
+TEST_F(LayoutAssignmentTest, CopyConcatOperandToAvoidImplicitLayoutChange) {
+  const char* module_str = R"(
+    HloModule CopyConcatOperandToAvoidImplicitLayoutChange
+
+    ENTRY CopyConcatOperandToAvoidImplicitLayoutChange {
+      par0 = f32[3,8]{1,0} parameter(0)
+      par1 = f32[3,5]{0,1} parameter(1)
+      par2 = f32[3,3]{1,0} parameter(2)
+      concat0 = f32[3,8] concatenate(f32[3,5] par1, f32[3,3] par2),
+        dimensions={1}
+      ROOT add0 = f32[3,8]{1,0} add(par0,concat0)
+    }
+  )";
+
+  auto module = ParseHloString(module_str).ValueOrDie();
+  module =
+      backend()
+          .compiler()
+          ->RunHloPasses(std::move(module), backend().default_stream_executor(),
+                         /*device_allocator=*/nullptr)
+          .ConsumeValueOrDie();
+
+  auto copy = FindInstruction(module.get(), "copy.1");
+  auto concat = FindInstruction(module.get(), "concat0");
+  EXPECT_EQ(concat->operand(0), copy);
+  EXPECT_TRUE(
+      LayoutUtil::Equal(concat->shape().layout(), copy->shape().layout()));
+}
+
+TEST_F(LayoutAssignmentTest,
+       ConvolutionOperandWithImplicitLayoutChangeNotCopied) {
+  const char* module_str = R"(
+    HloModule ConvolutionOperandWithImplicitLayoutChangeNotCopied
+
+    ENTRY ConvolutionOperandWithImplicitLayoutChangeNotCopied {
+      par0 = f32[128,3,230,230]{2,3,1,0} parameter(0)
+      par1 = f32[7,7,3,64]{3,2,0,1} parameter(1)
+      ROOT convolution0 = f32[128,64,112,112]{3,2,1,0} convolution(par0, par1),
+        window={size=7x7 stride=2x2}, dim_labels=bf01_01io->bf01,
+        feature_group_count=1
+    }
+  )";
+
+  auto module = ParseHloString(module_str).ValueOrDie();
+  module =
+      backend()
+          .compiler()
+          ->RunHloPasses(std::move(module), backend().default_stream_executor(),
+                         /*device_allocator=*/nullptr)
+          .ConsumeValueOrDie();
+
+  auto copy = FindInstruction(module.get(), "copy.1");
+  EXPECT_EQ(copy, nullptr);
 }
 
 }  // namespace
