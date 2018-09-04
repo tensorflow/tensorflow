@@ -240,8 +240,8 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
       CHECK_EQ(0, left_over_bytes % 2);
 
       constexpr float kBroadcastedConstant = 0.1f;
-      Eigen::half halfs[2] = {Eigen::half(kBroadcastedConstant),
-                              Eigen::half(kBroadcastedConstant)};
+      static const Eigen::half halfs[2] = {Eigen::half(kBroadcastedConstant),
+                                           Eigen::half(kBroadcastedConstant)};
       uint32 bits;
       static_assert(sizeof(bits) == sizeof(halfs), "");
       memcpy(&bits, halfs, sizeof(bits));
@@ -265,7 +265,6 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
         .ThenMemZero(&filter_buf, filter_buf.size())
         .ThenMemZero(&output_buf, output_buf.size());
   }
-  TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
 
   DeviceMemoryBase* result_buf = [&] {
     switch (kind) {
