@@ -1288,7 +1288,7 @@ class ConvolutionInPlaneTest(test.TestCase):
       result = sess.run(vert_gradients)
       expected = np.zeros((1, 9, 10, 1))
 
-      self.assertAllEqual(result, expected)
+      self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
   def testVertConvWithVaryingImage(self):
     image = np.asmatrix(('1.0 2.0 3.0;' '1.1 2.0 4.0;' '-4.3 0.0 8.9'))
