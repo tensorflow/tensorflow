@@ -19,6 +19,10 @@ HARD_FP_FLAGS_IF_APPLICABLE = select({
 })
 
 NEON_FLAGS_IF_APPLICABLE = select({
+    ":arm": [
+        "-O3",
+        "-mfpu=neon",
+    ],
     ":armeabi-v7a": [
         "-O3",
         "-mfpu=neon",
