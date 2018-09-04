@@ -24,12 +24,7 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class BatchDotSimplificationTest : public HloVerifiedTestBase {
- public:
-  BatchDotSimplificationTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false) {}
-};
+class BatchDotSimplificationTest : public HloVerifiedTestBase {};
 
 TEST_F(BatchDotSimplificationTest,
        ElideSingleDegenerateBatchDotDim_VectorVector) {

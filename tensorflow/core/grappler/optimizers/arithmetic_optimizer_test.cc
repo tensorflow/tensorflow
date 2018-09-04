@@ -3224,6 +3224,30 @@ TEST_F(ArithmeticOptimizerTest, OptimizeMaxOrMinOfMonotonicElementWise) {
   EXPECT_EQ(2, required_node_count);
 }
 
+TEST_F(ArithmeticOptimizerTest,
+       OptimizeMaxOrMinOfMonotonicElementWise_DoNotChangeFetchNode) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+  Output sqrt = ops::Sqrt(s.WithOpName("sqrt"), x);
+  Output reduce_max = ops::Max(s.WithOpName("reduce_max"), sqrt, {0});
+  Output final_out = ops::Identity(s.WithOpName("final_out"), reduce_max);
+
+  GrapplerItem item;
+  item.fetch = {"sqrt", "final_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(2, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  OptimizeTwice(&optimizer, &item, &output);
+
+  // Should be a NoOp since we are not allowed to change the output of fetch
+  // nodes.
+  VerifyGraphsMatch(item.graph, output, __LINE__);
+}
+
 TEST_F(ArithmeticOptimizerTest, UnaryOpsComposition) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 

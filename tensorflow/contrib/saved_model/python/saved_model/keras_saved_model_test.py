@@ -20,17 +20,34 @@ from __future__ import print_function
 
 import os
 import shutil
+
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.contrib.saved_model.python.saved_model import keras_saved_model
 from tensorflow.python import keras
+from tensorflow.python.client import session
+from tensorflow.python.eager import context
+from tensorflow.python.estimator import model_fn as model_fn_lib
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import loader_impl
+from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import training as training_module
 
 
 class TestModelSavingandLoading(test.TestCase):
+
+  def _save_model_dir(self, dirname='saved_model'):
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
+    return os.path.join(temp_dir, dirname)
 
   def test_saving_sequential_model(self):
     with self.test_session():
@@ -48,13 +65,11 @@ class TestModelSavingandLoading(test.TestCase):
       model.train_on_batch(x, y)
 
       ref_y = model.predict(x)
-      temp_dir = self.get_temp_dir()
-      self.addCleanup(shutil.rmtree, temp_dir)
 
-      temp_saved_model = os.path.join(temp_dir, 'saved_model')
-      keras_saved_model.save_model(model, temp_saved_model)
+      temp_saved_model = self._save_model_dir()
+      output_path = keras_saved_model.save_keras_model(model, temp_saved_model)
 
-      loaded_model = keras_saved_model.load_model(temp_saved_model)
+      loaded_model = keras_saved_model.load_keras_model(output_path)
       y = loaded_model.predict(x)
       self.assertAllClose(ref_y, y, atol=1e-05)
 
@@ -69,12 +84,9 @@ class TestModelSavingandLoading(test.TestCase):
       x = np.random.random((1, 3))
       ref_y = model.predict(x)
 
-      temp_dir = self.get_temp_dir()
-      self.addCleanup(shutil.rmtree, temp_dir)
-
-      temp_saved_model = os.path.join(temp_dir, 'saved_model')
-      keras_saved_model.save_model(model, temp_saved_model)
-      loaded_model = keras_saved_model.load_model(temp_saved_model)
+      temp_saved_model = self._save_model_dir()
+      output_path = keras_saved_model.save_keras_model(model, temp_saved_model)
+      loaded_model = keras_saved_model.load_keras_model(output_path)
 
       y = loaded_model.predict(x)
       self.assertAllClose(ref_y, y, atol=1e-05)
@@ -95,12 +107,10 @@ class TestModelSavingandLoading(test.TestCase):
       model.train_on_batch(x, y)
 
       ref_y = model.predict(x)
-      temp_dir = self.get_temp_dir()
-      self.addCleanup(shutil.rmtree, temp_dir)
 
-      temp_saved_model = os.path.join(temp_dir, 'saved_model')
-      keras_saved_model.save_model(model, temp_saved_model)
-      loaded_model = keras_saved_model.load_model(temp_saved_model)
+      temp_saved_model = self._save_model_dir()
+      output_path = keras_saved_model.save_keras_model(model, temp_saved_model)
+      loaded_model = keras_saved_model.load_keras_model(output_path)
 
       y = loaded_model.predict(x)
       self.assertAllClose(ref_y, y, atol=1e-05)
@@ -118,12 +128,10 @@ class TestModelSavingandLoading(test.TestCase):
       y = np.random.random((1, 3))
 
       ref_y = model.predict(x)
-      temp_dir = self.get_temp_dir()
-      self.addCleanup(shutil.rmtree, temp_dir)
 
-      temp_saved_model = os.path.join(temp_dir, 'saved_model')
-      keras_saved_model.save_model(model, temp_saved_model)
-      loaded_model = keras_saved_model.load_model(temp_saved_model)
+      temp_saved_model = self._save_model_dir()
+      output_path = keras_saved_model.save_keras_model(model, temp_saved_model)
+      loaded_model = keras_saved_model.load_keras_model(output_path)
 
       y = loaded_model.predict(x)
       self.assertAllClose(ref_y, y, atol=1e-05)
@@ -142,14 +150,13 @@ class TestModelSavingandLoading(test.TestCase):
       x = np.random.random((1, 3))
       y = np.random.random((1, 3))
       model.train_on_batch(x, y)
+      model.train_on_batch(x, y)
 
       ref_y = model.predict(x)
-      temp_dir = self.get_temp_dir()
-      self.addCleanup(shutil.rmtree, temp_dir)
 
-      temp_saved_model = os.path.join(temp_dir, 'saved_model')
-      keras_saved_model.save_model(model, temp_saved_model)
-      loaded_model = keras_saved_model.load_model(temp_saved_model)
+      temp_saved_model = self._save_model_dir()
+      output_path = keras_saved_model.save_keras_model(model, temp_saved_model)
+      loaded_model = keras_saved_model.load_keras_model(output_path)
       loaded_model.compile(
           loss='mse',
           optimizer=training_module.RMSPropOptimizer(0.1),
@@ -170,8 +177,10 @@ class TestModelSavingandLoading(test.TestCase):
       self.assertAllClose(ref_y, y, atol=1e-05)
 
       # test saving/loading again
-      keras_saved_model.save_model(loaded_model, temp_saved_model)
-      loaded_model = keras_saved_model.load_model(temp_saved_model)
+      temp_saved_model2 = self._save_model_dir('saved_model_2')
+      output_path2 = keras_saved_model.save_keras_model(
+          loaded_model, temp_saved_model2)
+      loaded_model = keras_saved_model.load_keras_model(output_path2)
       y = loaded_model.predict(x)
       self.assertAllClose(ref_y, y, atol=1e-05)
 
@@ -190,11 +199,231 @@ class TestModelSavingandLoading(test.TestCase):
         return self.layer2(self.layer1(inp))
 
     model = SubclassedModel()
-    temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir)
-    temp_saved_model = os.path.join(temp_dir, 'saved_model')
+
+    temp_saved_model = self._save_model_dir()
     with self.assertRaises(NotImplementedError):
-      keras_saved_model.save_model(model, temp_saved_model)
+      keras_saved_model.save_keras_model(model, temp_saved_model)
+
+
+class LayerWithLearningPhase(keras.engine.base_layer.Layer):
+
+  def call(self, x):
+    phase = keras.backend.learning_phase()
+    output = tf_utils.smart_cond(
+        phase, lambda: x * 0, lambda: array_ops.identity(x))
+    if not context.executing_eagerly():
+      output._uses_learning_phase = True  # pylint: disable=protected-access
+    return output
+
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
+
+def functional_model(uses_learning_phase):
+  inputs = keras.layers.Input(shape=(3,))
+  x = keras.layers.Dense(2)(inputs)
+  x = keras.layers.Dense(3)(x)
+  if uses_learning_phase:
+    x = LayerWithLearningPhase()(x)
+  return keras.models.Model(inputs, x)
+
+
+def sequential_model(uses_learning_phase):
+  model = keras.models.Sequential()
+  model.add(keras.layers.Dense(2, input_shape=(3,)))
+  model.add(keras.layers.Dense(3))
+  if uses_learning_phase:
+    model.add(LayerWithLearningPhase())
+  return model
+
+
+def load_model(sess, path, mode):
+  tags = model_fn_lib.EXPORT_TAG_MAP[mode]
+  sig_def_key = (signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+                 if mode == model_fn_lib.ModeKeys.PREDICT else mode)
+  meta_graph_def = loader_impl.load(sess, tags, path)
+  inputs = {
+      k: sess.graph.get_tensor_by_name(v.name)
+      for k, v in meta_graph_def.signature_def[sig_def_key].inputs.items()}
+  outputs = {
+      k: sess.graph.get_tensor_by_name(v.name)
+      for k, v in meta_graph_def.signature_def[sig_def_key].outputs.items()}
+  return inputs, outputs
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
+
+  def _save_model_dir(self, dirname='saved_model'):
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
+    return os.path.join(temp_dir, dirname)
+
+  @parameterized.parameters(
+      (functional_model, True, training_module.AdadeltaOptimizer(), True),
+      (functional_model, True, training_module.AdadeltaOptimizer(), False),
+      (functional_model, False, None, False),
+      (sequential_model, True, training_module.AdadeltaOptimizer(), True),
+      (sequential_model, True, training_module.AdadeltaOptimizer(), False),
+      (sequential_model, False, None, False))
+  def testSaveAndLoadSavedModelExport(
+      self, model_builder, uses_learning_phase, optimizer, train_before_export):
+    saved_model_path = self._save_model_dir()
+    with self.test_session(graph=ops.Graph()):
+      input_arr = np.random.random((1, 3))
+      target_arr = np.random.random((1, 3))
+
+      model = model_builder(uses_learning_phase)
+      if optimizer is not None:
+        model.compile(
+            loss='mse',
+            optimizer=optimizer,
+            metrics=['mae'])
+        if train_before_export:
+          model.train_on_batch(input_arr, target_arr)
+
+        ref_loss, ref_mae = model.evaluate(input_arr, target_arr)
+
+      ref_predict = model.predict(input_arr)
+
+      # Export SavedModel
+      output_path = keras_saved_model.save_keras_model(model, saved_model_path)
+
+    input_name = model.input_names[0]
+    output_name = model.output_names[0]
+    target_name = output_name + '_target'
+
+    # Load predict graph, and test predictions
+    with session.Session(graph=ops.Graph()) as sess:
+      inputs, outputs = load_model(sess, output_path,
+                                   model_fn_lib.ModeKeys.PREDICT)
+
+      predictions = sess.run(outputs[output_name],
+                             {inputs[input_name]: input_arr})
+      self.assertAllClose(ref_predict, predictions, atol=1e-05)
+
+    if optimizer:
+      # Load eval graph, and test predictions, loss and metric values
+      with session.Session(graph=ops.Graph()) as sess:
+        inputs, outputs = load_model(sess, output_path,
+                                     model_fn_lib.ModeKeys.EVAL)
+
+        eval_results = sess.run(outputs, {inputs[input_name]: input_arr,
+                                          inputs[target_name]: target_arr})
+
+        self.assertEqual(int(train_before_export),
+                         sess.run(training_module.get_global_step()))
+        self.assertAllClose(ref_loss, eval_results['loss'], atol=1e-05)
+        self.assertAllClose(
+            ref_mae, eval_results['metrics/mae/update_op'], atol=1e-05)
+        self.assertAllClose(
+            ref_predict, eval_results['predictions/' + output_name], atol=1e-05)
+
+      # Load train graph, and check for the train op, and prediction values
+      with session.Session(graph=ops.Graph()) as sess:
+        inputs, outputs = load_model(sess, output_path,
+                                     model_fn_lib.ModeKeys.TRAIN)
+        self.assertEqual(int(train_before_export),
+                         sess.run(training_module.get_global_step()))
+        self.assertIn('loss', outputs)
+        self.assertIn('metrics/mae/update_op', outputs)
+        self.assertIn('metrics/mae/value', outputs)
+        self.assertIn('predictions/' + output_name, outputs)
+
+        # Train for a step
+        train_op = ops.get_collection(constants.TRAIN_OP_KEY)
+        train_outputs, _ = sess.run(
+            [outputs, train_op], {inputs[input_name]: input_arr,
+                                  inputs[target_name]: target_arr})
+        self.assertEqual(int(train_before_export) + 1,
+                         sess.run(training_module.get_global_step()))
+
+        if uses_learning_phase:
+          self.assertAllClose(
+              [[0, 0, 0]], train_outputs['predictions/' + output_name],
+              atol=1e-05)
+        else:
+          self.assertNotAllClose(
+              [[0, 0, 0]], train_outputs['predictions/' + output_name],
+              atol=1e-05)
+
+  def testSaveAndLoadSavedModelWithCustomObject(self):
+    saved_model_path = self._save_model_dir()
+    with session.Session(graph=ops.Graph()) as sess:
+      def relu6(x):
+        return keras.backend.relu(x, max_value=6)
+      inputs = keras.layers.Input(shape=(1,))
+      outputs = keras.layers.Activation(relu6)(inputs)
+      model = keras.models.Model(inputs, outputs)
+      output_path = keras_saved_model.save_keras_model(
+          model, saved_model_path, custom_objects={'relu6': relu6})
+    with session.Session(graph=ops.Graph()) as sess:
+      inputs, outputs = load_model(sess, output_path,
+                                   model_fn_lib.ModeKeys.PREDICT)
+      input_name = model.input_names[0]
+      output_name = model.output_names[0]
+      predictions = sess.run(
+          outputs[output_name], {inputs[input_name]: [[7], [-3], [4]]})
+      self.assertAllEqual([[6], [0], [4]], predictions)
+
+  def testAssertModelCloneSameObjectsIgnoreOptimizer(self):
+    input_arr = np.random.random((1, 3))
+    target_arr = np.random.random((1, 3))
+
+    model_graph = ops.Graph()
+    clone_graph = ops.Graph()
+
+    # Create two models with the same layers but different optimizers.
+    with session.Session(graph=model_graph):
+      inputs = keras.layers.Input(shape=(3,))
+      x = keras.layers.Dense(2)(inputs)
+      x = keras.layers.Dense(3)(x)
+      model = keras.models.Model(inputs, x)
+
+      model.compile(loss='mse', optimizer=training_module.AdadeltaOptimizer())
+      model.train_on_batch(input_arr, target_arr)
+
+    with session.Session(graph=clone_graph):
+      inputs = keras.layers.Input(shape=(3,))
+      x = keras.layers.Dense(2)(inputs)
+      x = keras.layers.Dense(3)(x)
+      clone = keras.models.Model(inputs, x)
+      clone.compile(loss='mse', optimizer=keras.optimizers.RMSprop(lr=0.0001))
+      clone.train_on_batch(input_arr, target_arr)
+
+    keras_saved_model._assert_same_non_optimizer_objects(
+        model, model_graph, clone, clone_graph)
+
+  def testAssertModelCloneSameObjectsThrowError(self):
+    input_arr = np.random.random((1, 3))
+    target_arr = np.random.random((1, 3))
+
+    model_graph = ops.Graph()
+    clone_graph = ops.Graph()
+
+    # Create two models with the same layers but different optimizers.
+    with session.Session(graph=model_graph):
+      inputs = keras.layers.Input(shape=(3,))
+      x = keras.layers.Dense(2)(inputs)
+      x = keras.layers.Dense(3)(x)
+      model = keras.models.Model(inputs, x)
+
+      model.compile(loss='mse', optimizer=training_module.AdadeltaOptimizer())
+      model.train_on_batch(input_arr, target_arr)
+
+    with session.Session(graph=clone_graph):
+      inputs = keras.layers.Input(shape=(3,))
+      x = keras.layers.Dense(2)(inputs)
+      x = keras.layers.Dense(4)(x)
+      x = keras.layers.Dense(3)(x)
+      clone = keras.models.Model(inputs, x)
+      clone.compile(loss='mse', optimizer=keras.optimizers.RMSprop(lr=0.0001))
+      clone.train_on_batch(input_arr, target_arr)
+
+    with self.assertRaisesRegexp(
+        errors.InternalError, 'Model and clone must use the same variables.'):
+      keras_saved_model._assert_same_non_optimizer_objects(
+          model, model_graph, clone, clone_graph)
 
 
 if __name__ == '__main__':

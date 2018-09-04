@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_clone_context.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -192,7 +192,7 @@ class HloModule {
   // order (root of outlined instructions last). TODO(jingyue): takes a set of
   // instructions and topologically sorts them.
   HloInstruction* OutlineExpressionFromComputation(
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_outline,
+      absl::Span<HloInstruction* const> instructions_to_outline,
       const string& outlined_computation_name, HloComputation* computation);
 
   // Returns a randomly generated uint64.

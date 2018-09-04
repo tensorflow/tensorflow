@@ -105,13 +105,14 @@ enum PaddingValue {
 message PaddingConfig {
   // Describes the padding configuration for a dimension.
   message PaddingConfigDimension {
-    // Padding amount on the low-end (next to the index 0).
+    // Padding amount on the low-end (next to the index 0). May be negative.
     int64 edge_padding_low = 1;
 
-    // Padding amount on the high-end (next to the highest index).
+    // Padding amount on the high-end (next to the highest index). May be
+    // negative.
     int64 edge_padding_high = 2;
 
-    // Padding amount between the elements.
+    // Padding amount between the elements. May not be negative.
     int64 interior_padding = 3;
   }
 
@@ -393,13 +394,14 @@ message WindowDimension {
 
   // Dilation factor of the sliding window in this dimension. A dilation factor
   // of 1 means no dilation. window_dilation - 1 no-op entries ("holes") are
-  // implicitly placed between each kernel element. See documentation for
-  // convolution.
+  // implicitly placed between each kernel element. This value may not be less
+  // than 1. See documentation for convolution.
   int64 window_dilation = 5;
 
   // Dilation factor of the base area in this dimension. A dilation factor of 1
   // means no dilation. base_dilation - 1 no-op entries ("holes") are implicitly
-  // placed between each base area element. See documentation for convolution.
+  // placed between each base area element. This value may not be less than 1.
+  // See documentation for convolution.
   int64 base_dilation = 6;
 
   // Window reversal means that this dimension was logically reversed before the

@@ -111,6 +111,18 @@ int DecisionTree::Traverse(const DecisionTreeConfig& config,
         node_id++;
         break;
       }
+      case TreeNode::kObliviousCategoricalIdBinarySplit: {
+        const auto& split =
+            current_node.oblivious_categorical_id_binary_split();
+        oblivious_leaf_idx <<= 1;
+        const auto& features =
+            example.sparse_int_features[split.feature_column()];
+        if (features.find(split.feature_id()) == features.end()) {
+          oblivious_leaf_idx++;
+        }
+        node_id++;
+        break;
+      }
       case TreeNode::NODE_NOT_SET: {
         LOG(QFATAL) << "Invalid node in tree: " << current_node.DebugString();
         break;
@@ -181,6 +193,11 @@ void DecisionTree::LinkChildren(const std::vector<int32>& children,
           << "Not implemented for the ObliviousDenseFloatBinarySplit case.";
       break;
     }
+    case TreeNode::kObliviousCategoricalIdBinarySplit: {
+      LOG(QFATAL)
+          << "Not implemented for the ObliviousCategoricalIdBinarySplit case.";
+      break;
+    }
     case TreeNode::NODE_NOT_SET: {
       LOG(QFATAL) << "A non-set node cannot have children.";
       break;
@@ -219,6 +236,11 @@ std::vector<int32> DecisionTree::GetChildren(const TreeNode& node) {
       LOG(QFATAL)
           << "Not implemented for the ObliviousDenseFloatBinarySplit case.";
       return {};
+    }
+    case TreeNode::kObliviousCategoricalIdBinarySplit: {
+      LOG(QFATAL)
+          << "Not implemented for the ObliviousCategoricalIdBinarySplit case.";
+      break;
     }
     case TreeNode::NODE_NOT_SET: {
       return {};

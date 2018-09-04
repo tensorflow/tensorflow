@@ -29,6 +29,7 @@ limitations under the License.
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/BasicBlock.h"
@@ -66,7 +67,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 
@@ -100,6 +100,11 @@ IrEmitter::IrEmitter(
   b_.setFastMathFlags(llvm_ir::GetFastMathFlags(
       /*fast_math_enabled=*/hlo_module_config_.debug_options()
           .xla_cpu_enable_fast_math()));
+  Status s = GatherComputationsByAllocationType(
+      &hlo_module, &thread_local_computations_, &global_computations_);
+  absl::c_sort(thread_local_computations_);
+  absl::c_sort(global_computations_);
+  TF_CHECK_OK(s) << "Should have failed buffer assignment.";
 }
 
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
@@ -337,10 +342,10 @@ Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
   // Write the tuple index table.
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data_slice,
                       assignment_.GetUniqueSlice(infeed, {0}));
-  llvm::Value* data_address = EmitTempBufferPointer(data_slice, data_shape);
+  llvm::Value* data_address = EmitBufferPointer(data_slice, data_shape);
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice token_slice,
                       assignment_.GetUniqueSlice(infeed, {1}));
-  llvm::Value* token_address = EmitTempBufferPointer(
+  llvm::Value* token_address = EmitBufferPointer(
       token_slice, ShapeUtil::GetTupleElementShape(infeed->shape(), 1));
   llvm_ir::EmitTuple(GetIrArrayFor(infeed), {data_address, token_address}, &b_,
                      module_);
@@ -363,9 +368,9 @@ Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
       // Only the outer tuple buffer's target address is obtained from
       // GetEmittedValueFor, to handle the case when Infeed is the root
       // instruction. Target addresses for internal elements can be obtained
-      // from EmitTempBufferPointer.
+      // from EmitBufferPointer.
       llvm::Value* tuple_element_address =
-          EmitTempBufferPointer(buffer, tuple_element_shape);
+          EmitBufferPointer(buffer, tuple_element_shape);
 
       TF_RETURN_IF_ERROR(EmitXfeedTransfer(
           XfeedKind::kInfeed, tuple_element_shape, tuple_element_address));
@@ -460,6 +465,12 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
 }
 
 Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
+  // Outfeed produces no useful result, but it does return a token[] that can be
+  // threaded through to other side effecting operations to ensure ordering.  In
+  // the IR emitter we treat this token as a normal u8[] and thus need to insert
+  // an entry for it in emitted_value_.
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(outfeed));
+
   HloInstruction* operand = outfeed->operands()[0];
   const Shape& operand_shape = operand->shape();
 
@@ -500,8 +511,7 @@ Status IrEmitter::HandleTuple(HloInstruction* tuple) {
 
 llvm::Value* IrEmitter::EmitElementalMap(
     const HloMapInstruction& map_instr,
-    tensorflow::gtl::ArraySlice<llvm::Value*> elemental_operands,
-    absl::string_view name) {
+    absl::Span<llvm::Value* const> elemental_operands, absl::string_view name) {
   return EmitThreadLocalCall(*map_instr.to_apply(), elemental_operands, name);
 }
 
@@ -1195,7 +1205,7 @@ Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
     const Shape& operand_shape = crs->operand(i)->shape();
     CHECK(ShapeUtil::IsArray(operand_shape))
         << "Operands to cross-replica-sum must be arrays: " << crs->ToString();
-    operand_ptrs.push_back(EmitTempBufferPointer(out_slice, operand_shape));
+    operand_ptrs.push_back(EmitBufferPointer(out_slice, operand_shape));
 
     // TODO(b/63762267): Be more aggressive about specifying alignment.
     MemCpy(operand_ptrs.back(), /*DstAlign=*/1, in_ptr,
@@ -1449,7 +1459,7 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
     const ReductionGenerator& reduction_generator,
     const llvm_ir::IrArray::Index& output_index,
     const ShardedVectorType& accumulator_type, HloInstruction* init_value,
-    HloInstruction* arg, gtl::ArraySlice<int64> dimensions,
+    HloInstruction* arg, absl::Span<const int64> dimensions,
     unsigned element_alignment) {
   ShardedVector accumulator;
   accumulator.reserve(accumulator_type.size());
@@ -1545,7 +1555,7 @@ void IrEmitter::EmitShardedVectorStore(
 
 StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
-    gtl::ArraySlice<int64> dimensions, HloComputation* function,
+    absl::Span<const int64> dimensions, HloComputation* function,
     string* failure_reason) {
   if (!ReductionPreservesLayout(*reduce)) {
     return false;
@@ -1695,7 +1705,7 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduce(
     HloReduceInstruction* reduce, const llvm_ir::IrArray::Index& index) {
   const HloInstruction* arg = reduce->mutable_operand(0);
   const HloInstruction* init_value = reduce->mutable_operand(1);
-  gtl::ArraySlice<int64> dimensions(reduce->dimensions());
+  absl::Span<const int64> dimensions(reduce->dimensions());
 
   // Initialize an accumulator with init_value.
   PrimitiveType accumulator_type = reduce->shape().element_type();
@@ -1752,7 +1762,7 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce) {
   }
   auto arg = reduce->mutable_operand(0);
   auto init_value = reduce->mutable_operand(1);
-  gtl::ArraySlice<int64> dimensions(reduce->dimensions());
+  absl::Span<const int64> dimensions(reduce->dimensions());
   HloComputation* function = reduce->to_apply();
   if (!options::VectorizedReduceDisabled(hlo_module_config_)) {
     string vectorization_failure_reason;
@@ -2092,7 +2102,7 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
         {}, &b_, computation->name(),
         /*return_value_buffer=*/emitted_value_[call],
         /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
-        /*temp_buffers_arg=*/GetTempBuffersArgument(),
+        /*buffer_table_arg=*/GetBufferTableArgument(),
         /*profile_counters_arg=*/GetProfileCountersArgument());
 
     HloInstruction* root = computation->root_instruction();
@@ -2107,7 +2117,7 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
 }
 
 Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
-  gtl::ArraySlice<HloInstruction*> operands(custom_call->operands());
+  absl::Span<HloInstruction* const> operands(custom_call->operands());
   absl::string_view custom_call_target(custom_call->custom_call_target());
   llvm::Type* i8_ptr_type = b_.getInt8PtrTy();
   llvm::AllocaInst* operands_alloca =
@@ -2227,7 +2237,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
 }
 
 StatusOr<bool> IrEmitter::EmitFastConcatenate(
-    HloInstruction* concatenate, gtl::ArraySlice<HloInstruction*> operands,
+    HloInstruction* concatenate, absl::Span<HloInstruction* const> operands,
     string* failure_reason) {
   if (ShouldEmitParallelLoopFor(*concatenate)) {
     *failure_reason =
@@ -2363,7 +2373,7 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
 }
 
 Status IrEmitter::HandleConcatenate(HloInstruction* concatenate) {
-  gtl::ArraySlice<HloInstruction*> operands(concatenate->operands());
+  absl::Span<HloInstruction* const> operands(concatenate->operands());
   string failure_reason;
   TF_ASSIGN_OR_RETURN(
       bool successful,
@@ -2612,15 +2622,15 @@ llvm::Value* IrEmitter::GetProfileCountersArgument() {
   return compute_function_->profile_counters_arg();
 }
 
-llvm::Value* IrEmitter::GetTempBuffersArgument() {
-  return compute_function_->temp_buffers_arg();
+llvm::Value* IrEmitter::GetBufferTableArgument() {
+  return compute_function_->buffer_table_arg();
 }
 
 llvm::Value* IrEmitter::GetExecutableRunOptionsArgument() {
   return compute_function_->exec_run_options_arg();
 }
 
-llvm::Value* IrEmitter::EmitThreadLocalTempBufferPointer(
+llvm::Value* IrEmitter::EmitThreadLocalBufferPointer(
     const BufferAllocation::Slice& slice, const Shape& target_shape) {
   const BufferAllocation& allocation = *slice.allocation();
   llvm::Value* tempbuf_address = [&]() -> llvm::Value* {
@@ -2679,11 +2689,11 @@ llvm::Value* IrEmitter::EmitThreadLocalTempBufferPointer(
   return BitCast(tempbuf_address, IrShapeType(target_shape)->getPointerTo());
 }
 
-llvm::Value* IrEmitter::EmitGlobalTempBufferPointer(
+llvm::Value* IrEmitter::EmitGlobalBufferPointer(
     const BufferAllocation::Slice& slice, const Shape& target_shape) {
   const BufferAllocation& allocation = *slice.allocation();
   llvm::Value* tempbuf_address_ptr = llvm_ir::EmitBufferIndexingGEP(
-      GetTempBuffersArgument(), slice.index(), &b_);
+      GetBufferTableArgument(), slice.index(), &b_);
   llvm::LoadInst* tempbuf_address_base = Load(tempbuf_address_ptr);
   if (hlo_module_config_.debug_options()
           .xla_llvm_enable_invariant_load_metadata()) {
@@ -2704,14 +2714,14 @@ llvm::Value* IrEmitter::EmitGlobalTempBufferPointer(
                  IrShapeType(target_shape)->getPointerTo());
 }
 
-llvm::Value* IrEmitter::EmitTempBufferPointer(
-    const BufferAllocation::Slice& slice, const Shape& target_shape) {
+llvm::Value* IrEmitter::EmitBufferPointer(const BufferAllocation::Slice& slice,
+                                          const Shape& target_shape) {
   if (slice.allocation()->is_thread_local()) {
-    return EmitThreadLocalTempBufferPointer(slice, target_shape);
+    return EmitThreadLocalBufferPointer(slice, target_shape);
   } else if (slice.allocation()->is_constant()) {
     return FindOrDie(constant_buffer_to_global_, slice.allocation()->index());
   } else {
-    return EmitGlobalTempBufferPointer(slice, target_shape);
+    return EmitGlobalBufferPointer(slice, target_shape);
   }
 }
 
@@ -2719,7 +2729,7 @@ Status IrEmitter::EmitTargetAddressForOp(const HloInstruction* op) {
   const Shape& target_shape = op->shape();
   TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
                       assignment_.GetUniqueTopLevelSlice(op));
-  llvm::Value* addr = EmitTempBufferPointer(slice, target_shape);
+  llvm::Value* addr = EmitBufferPointer(slice, target_shape);
   addr->setName(AsStringRef(IrName(op)));
   emitted_value_[op] = addr;
   return Status::OK();
@@ -2748,8 +2758,7 @@ Status IrEmitter::EmitTargetElementLoop(
       TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                           assignment_.GetUniqueSlice(target_op, {i}));
       const Shape& element_shape = ShapeUtil::GetSubshape(target_shape, {i});
-      llvm::Value* op_target_address =
-          EmitTempBufferPointer(slice, element_shape);
+      llvm::Value* op_target_address = EmitBufferPointer(slice, element_shape);
       output_arrays.push_back(
           llvm_ir::IrArray(op_target_address, element_shape));
     }
@@ -2794,8 +2803,8 @@ Status IrEmitter::EmitMemcpy(const HloInstruction& source,
 
 Status IrEmitter::ElementTypesSameAndSupported(
     const HloInstruction& instruction,
-    gtl::ArraySlice<const HloInstruction*> operands,
-    gtl::ArraySlice<PrimitiveType> supported_types) {
+    absl::Span<const HloInstruction* const> operands,
+    absl::Span<const PrimitiveType> supported_types) {
   for (auto operand : operands) {
     TF_RET_CHECK(
         ShapeUtil::SameElementType(operands[0]->shape(), operand->shape()));
@@ -2825,9 +2834,10 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
 }
 
 llvm::Value* IrEmitter::EmitThreadLocalCall(
-    const HloComputation& callee,
-    tensorflow::gtl::ArraySlice<llvm::Value*> parameters,
+    const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
     absl::string_view name) {
+  CHECK(absl::c_binary_search(thread_local_computations_, &callee));
+
   const Shape& return_shape = callee.root_instruction()->shape();
 
   // Lifting this restriction to allow "small" arrays should be easy.  Allowing
@@ -2856,7 +2866,7 @@ llvm::Value* IrEmitter::EmitThreadLocalCall(
            parameter_addrs, &b_, name,
            /*return_value_buffer=*/return_value_buffer,
            /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
-           /*temp_buffers_arg=*/
+           /*buffer_table_arg=*/
            llvm::Constant::getNullValue(b_.getInt8PtrTy()->getPointerTo()),
            /*profile_counters_arg=*/GetProfileCountersArgument()));
 
@@ -2865,13 +2875,15 @@ llvm::Value* IrEmitter::EmitThreadLocalCall(
 
 void IrEmitter::EmitGlobalCall(const HloComputation& callee,
                                absl::string_view name) {
+  CHECK(absl::c_binary_search(global_computations_, &callee));
+
   Call(FindOrDie(emitted_functions_, &callee),
        GetArrayFunctionCallArguments(
            /*parameter_addresses=*/{}, &b_, name,
            /*return_value_buffer=*/
            llvm::Constant::getNullValue(b_.getInt8PtrTy()),
            /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
-           /*temp_buffers_arg=*/GetTempBuffersArgument(),
+           /*buffer_table_arg=*/GetBufferTableArgument(),
            /*profile_counters_arg=*/GetProfileCountersArgument()));
 }
 
@@ -2884,7 +2896,7 @@ llvm::Value* IrEmitter::GetBufferForGlobalCallReturnValue(
 
   const BufferAllocation::Slice root_buffer =
       assignment_.GetUniqueTopLevelSlice(root_inst).ValueOrDie();
-  return EmitTempBufferPointer(root_buffer, root_inst->shape());
+  return EmitBufferPointer(root_buffer, root_inst->shape());
 }
 
 }  // namespace cpu

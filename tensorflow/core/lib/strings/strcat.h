@@ -59,29 +59,29 @@ namespace tensorflow {
 namespace strings {
 
 enum PadSpec {
-  NO_PAD = 1,
-  ZERO_PAD_2,
-  ZERO_PAD_3,
-  ZERO_PAD_4,
-  ZERO_PAD_5,
-  ZERO_PAD_6,
-  ZERO_PAD_7,
-  ZERO_PAD_8,
-  ZERO_PAD_9,
-  ZERO_PAD_10,
-  ZERO_PAD_11,
-  ZERO_PAD_12,
-  ZERO_PAD_13,
-  ZERO_PAD_14,
-  ZERO_PAD_15,
-  ZERO_PAD_16,
+  kNoPad = 1,
+  kZeroPad2,
+  kZeroPad3,
+  kZeroPad4,
+  kZeroPad5,
+  kZeroPad6,
+  kZeroPad7,
+  kZeroPad8,
+  kZeroPad9,
+  kZeroPad10,
+  kZeroPad11,
+  kZeroPad12,
+  kZeroPad13,
+  kZeroPad14,
+  kZeroPad15,
+  kZeroPad16
 };
 
 struct Hex {
   uint64 value;
   enum PadSpec spec;
   template <class Int>
-  explicit Hex(Int v, PadSpec s = NO_PAD) : spec(s) {
+  explicit Hex(Int v, PadSpec s = kNoPad) : spec(s) {
     // Prevent sign-extension by casting integers to
     // their unsigned counterparts.
     static_assert(
@@ -124,6 +124,9 @@ class AlphaNum {
   AlphaNum(const StringPiece &pc) : piece_(pc) {}  // NOLINT(runtime/explicit)
   AlphaNum(const tensorflow::string &str)          // NOLINT(runtime/explicit)
       : piece_(str) {}
+  template <typename A>
+  AlphaNum(const std::basic_string<char, std::char_traits<char>, A> &str)
+      : piece_(str) {}  // NOLINT(runtime/explicit)
 
   StringPiece::size_type size() const { return piece_.size(); }
   const char *data() const { return piece_.data(); }

@@ -32,6 +32,12 @@ namespace optimize {
 TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const Model* input_model);
 
+// Same as above, but if use_hybrid_evaluation is false, will disable using
+// hybrid eval for operations that support it.
+TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
+                             const Model* input_model,
+                             bool use_hybrid_evaluation);
+
 }  // namespace optimize
 }  // namespace tflite
 

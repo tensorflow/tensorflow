@@ -19,6 +19,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -35,13 +36,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/casts.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
 
-using tensorflow::gtl::ArraySlice;
 
 class ArrayElementwiseOpTest : public ClientLibraryTestBase {
  public:
@@ -433,8 +432,9 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantZeroElementF32s) {
 class IntegerDivideOpTest : public ArrayElementwiseOpTest {
  protected:
   template <typename T>
-  void TestDivRem(ArraySlice<T> dividends, ArraySlice<T> divisors,
-                  ArraySlice<T> quotients, ArraySlice<T> remainders) {
+  void TestDivRem(absl::Span<const T> dividends, absl::Span<const T> divisors,
+                  absl::Span<const T> quotients,
+                  absl::Span<const T> remainders) {
     {
       XlaBuilder builder(TestName());
       XlaOp dividend;

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
 
@@ -119,7 +119,7 @@ xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
 }
 
 /* static */ Status XlaHelpers::ReshapeLiteral(
-    const xla::Literal& input, gtl::ArraySlice<int64> dimensions,
+    const xla::Literal& input, absl::Span<const int64> dimensions,
     xla::Literal* output) {
   if (xla::ShapeUtil::IsTuple(input.shape())) {
     return errors::InvalidArgument("ReshapeLiteral does not support tuples.");

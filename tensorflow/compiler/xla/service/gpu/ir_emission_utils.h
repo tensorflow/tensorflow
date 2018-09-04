@@ -109,15 +109,20 @@ bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
 //
 // The created cudnn call will use the default cudnn algorithm and no scratch
 // space.
-HloInstruction* CreateCudnnConvForward(
-    const Shape& shape, HloInstruction* input, HloInstruction* kernel,
-    const Window& window, const ConvolutionDimensionNumbers& dnums);
+HloInstruction* CreateCudnnConvForward(const Shape& shape,
+                                       HloInstruction* input,
+                                       HloInstruction* kernel,
+                                       const Window& window,
+                                       const ConvolutionDimensionNumbers& dnums,
+                                       int64 feature_group_count);
 HloInstruction* CreateCudnnConvBackwardInput(
     const Shape& shape, HloInstruction* output, HloInstruction* reverse_filter,
-    const Window& window, const ConvolutionDimensionNumbers& dnums);
+    const Window& window, const ConvolutionDimensionNumbers& dnums,
+    int64 feature_group_count);
 HloInstruction* CreateCudnnConvBackwardFilter(
     const Shape& shape, HloInstruction* input, HloInstruction* output,
-    const Window& window, const ConvolutionDimensionNumbers& dnums);
+    const Window& window, const ConvolutionDimensionNumbers& dnums,
+    int64 feature_group_count);
 
 // Returns true if `hlo` will be implemented as a library call, e.g. cuBLAS gemm
 // or cuDNN convolution.
@@ -127,7 +132,7 @@ bool IsReductionToVector(const HloInstruction& reduce);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,
-                        tensorflow::gtl::ArraySlice<llvm::Value*> arguments,
+                        absl::Span<llvm::Value* const> arguments,
                         llvm::IRBuilder<>* builder);
 
 // Emits code to shuffle data between threads of a warp. This has the same

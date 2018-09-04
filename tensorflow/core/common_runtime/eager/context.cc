@@ -26,7 +26,7 @@ namespace {
 
 bool ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val) {
   bool val;
-  if (ReadBoolFromEnvVar(env_var_name, default_val, &val).ok()) {
+  if (tensorflow::ReadBoolFromEnvVar(env_var_name, default_val, &val).ok()) {
     return val;
   }
   return default_val;

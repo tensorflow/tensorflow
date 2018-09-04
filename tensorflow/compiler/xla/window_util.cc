@@ -20,11 +20,12 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 namespace window_util {
 
-Window MakeWindow(tensorflow::gtl::ArraySlice<int64> sizes) {
+Window MakeWindow(absl::Span<const int64> sizes) {
   Window window;
   for (int64 size : sizes) {
     auto* dimension = window.add_dimensions();
@@ -36,7 +37,7 @@ Window MakeWindow(tensorflow::gtl::ArraySlice<int64> sizes) {
   return window;
 }
 
-PaddingConfig MakeSymmetricPadding(tensorflow::gtl::ArraySlice<int64> sizes) {
+PaddingConfig MakeSymmetricPadding(absl::Span<const int64> sizes) {
   PaddingConfig config;
   for (int64 size : sizes) {
     auto* dimension = config.add_dimensions();

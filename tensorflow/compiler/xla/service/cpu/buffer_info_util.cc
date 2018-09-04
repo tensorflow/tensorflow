@@ -40,7 +40,7 @@ std::vector<BufferInfo> CreateBufferInfosFromBufferAssignment(
 }
 
 std::vector<int32> CreateArgIndexTableFromBufferInfos(
-    tensorflow::gtl::ArraySlice<BufferInfo> buffer_infos) {
+    absl::Span<const BufferInfo> buffer_infos) {
   std::vector<int32> result;
   for (int64 i = 0; i < buffer_infos.size(); i++) {
     if (buffer_infos[i].is_entry_parameter()) {

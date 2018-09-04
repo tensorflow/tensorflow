@@ -41,6 +41,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
+from tensorflow.python.util import tf_inspect
 
 
 class VariableScopeTest(test.TestCase):
@@ -994,6 +995,13 @@ class VariableScopeTest(test.TestCase):
       with variable_scope.variable_scope(outer, "default", reuse=True):
         self.assertEqual(
             variable_scope.get_local_variable("w", []).name, "outer/w:0")
+
+  def testSignatureGetVarVsGetLocalVar(self):
+    """get_{local,}variable() must take the same list of args."""
+    arg_names = tf_inspect.getargspec(variable_scope.get_variable)[0]
+    local_arg_names = tf_inspect.getargspec(
+        variable_scope.get_local_variable)[0]
+    self.assertEqual(arg_names, local_arg_names)
 
   def testGetVarWithDevice(self):
     g = ops.Graph()

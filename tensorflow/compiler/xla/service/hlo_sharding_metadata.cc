@@ -372,7 +372,7 @@ Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
 }
 
 StatusOr<std::shared_ptr<const HloSharding>> ExtractOriginalCommonSharding(
-    tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
+    absl::Span<HloInstruction* const> instructions) {
   // If we are here, all the instructions being passed had the same sharding
   // (or no sharding), by the means of the ShardingMatches() API.
   // As such, no kDomain was inserted, and here we are asked to extract the

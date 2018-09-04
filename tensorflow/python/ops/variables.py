@@ -55,33 +55,47 @@ def _make_getter(captured_getter, captured_previous):
 
 @tf_export("VariableSynchronization")
 class VariableSynchronization(enum.Enum):
-  """Indicates when a distributed variable will be synced."""
+  """Indicates when a distributed variable will be synced.
 
-  # Indicates that the synchronization will be determined by the current
-  # `DistributionStrategy` (eg. With `MirroredStrategy` this would be
-  # `ON_WRITE`).
+  * `AUTO`: Indicates that the synchronization will be determined by the current
+    `DistributionStrategy` (eg. With `MirroredStrategy` this would be
+    `ON_WRITE`).
+  * `NONE`: Indicates that there will only be one copy of the variable, so
+    there is no need to sync.
+  * `ON_WRITE`: Indicates that the variable will be updated across devices
+    every time it is written.
+  * `ON_READ`: Indicates that the variable will be aggregated across devices
+    when it is read (eg. when checkpointing or when evaluating an op that uses
+    the variable).
+  """
   AUTO = 0
-
-  # Indicates that there will only be one copy of the variable, so there is no
-  # need to sync.
   NONE = 1
-
-  # Indicates that the variable will be aggregated across devices
-  # every time it is updated.
   ON_WRITE = 2
-
-  # Indicates that the variable will be aggregated across devices
-  # when it is read (eg. when checkpointing or when evaluating an op that uses
-  # the variable).
   ON_READ = 3
 
 
 @tf_export("VariableAggregation")
 class VariableAggregation(enum.Enum):
-  """Indicates how a distributed variable will be aggregated."""
+  """Indicates how a distributed variable will be aggregated.
+
+  `tf.contrib.distribute.DistributionStrategy` distributes a model by making
+  multiple copies (called "towers") acting data-parallel on different elements
+  of the input batch. When performing some variable-update operation, say
+  `var.assign_add(x)`, in a model, we need to resolve how to combine the
+  different values for `x` computed in the different towers.
+
+  * `NONE`: This is the default, giving an error if you use a
+    variable-update operation with multiple towers.
+  * `SUM`: Add the updates across towers.
+  * `MEAN`: Take the arithmetic mean ("average") of the updates across towers.
+  * `ONLY_FIRST_TOWER`: This is for when every tower is performing the same
+    update, but we only want to perform the update once. Used, e.g., for the
+    global step counter.
+  """
   NONE = 0
   SUM = 1
   MEAN = 2
+  ONLY_FIRST_TOWER = 3
 
 
 class VariableMetaclass(type):

@@ -172,7 +172,8 @@ bool InstructionFusion::EffectivelyAtMostUnary(HloInstruction* hlo) {
       });
   return std::count_if(hlo->operands().begin(), hlo->operands().end(),
                        [output_rank](HloInstruction* operand) {
-                         if (operand->opcode() == HloOpcode::kBroadcast) {
+                         if (operand->opcode() == HloOpcode::kBroadcast ||
+                             operand->opcode() == HloOpcode::kIota) {
                            return false;
                          }
                          if (operand->opcode() == HloOpcode::kConstant &&
@@ -218,7 +219,7 @@ bool InstructionFusion::CanFuseOnAllPaths(
 
 InstructionFusion::HloInstructionSet
 InstructionFusion::ComputeGloballyUnfusible(
-    tensorflow::gtl::ArraySlice<HloInstruction*> post_order) {
+    absl::Span<HloInstruction* const> post_order) {
   // Forbid fusion of producers that:
   // a) Need to be duplicated, unless they can be fused into all consumers
   //    via all paths.

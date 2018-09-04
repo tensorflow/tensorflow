@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stacktrace.h"
@@ -294,7 +294,7 @@ class XlaBuilder {
   template <typename NativeT>
   XlaOp ConstantR0(NativeT value);
   template <typename NativeT>
-  XlaOp ConstantR1(tensorflow::gtl::ArraySlice<NativeT> values);
+  XlaOp ConstantR1(absl::Span<const NativeT> values);
   XlaOp ConstantR1(const tensorflow::core::Bitmap& values);
   template <typename NativeT>
   XlaOp ConstantR2(
@@ -336,7 +336,7 @@ class XlaBuilder {
   //
   //   output[i0, ..., iN, j0, ..., jM] = operand[j0, ..., jM]
   XlaOp Broadcast(const XlaOp& operand,
-                  tensorflow::gtl::ArraySlice<int64> broadcast_sizes);
+                  absl::Span<const int64> broadcast_sizes);
 
   // Performs in-dimension-style broadcast.
   //
@@ -355,9 +355,8 @@ class XlaBuilder {
   // will generate output
   // [1 , 1]
   // [2 , 2]
-  XlaOp BroadcastInDim(
-      const XlaOp& operand, const Shape& shape,
-      const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+  XlaOp BroadcastInDim(const XlaOp& operand, const Shape& shape,
+                       const absl::Span<const int64> broadcast_dimensions);
 
   // Enqueues a pad operation onto the computation that pads the given value on
   // the edges as well as between the elements of the input. padding_config
@@ -370,15 +369,13 @@ class XlaBuilder {
   // given, followed by reshaping it into the shape with the given dimension
   // sizes (also major to minor). Conceptually, this is a limited form of
   // "shape casting".
-  XlaOp Reshape(const XlaOp& operand,
-                tensorflow::gtl::ArraySlice<int64> dimensions,
-                tensorflow::gtl::ArraySlice<int64> new_sizes);
+  XlaOp Reshape(const XlaOp& operand, absl::Span<const int64> dimensions,
+                absl::Span<const int64> new_sizes);
 
   // Enqueues an operation onto the computation that collapses the operand, from
   // first to last dimension (C order), then reshapes it to the given dimension
   // sizes. Conceptually, this is a limited form of "shape casting".
-  XlaOp Reshape(const XlaOp& operand,
-                tensorflow::gtl::ArraySlice<int64> new_sizes);
+  XlaOp Reshape(const XlaOp& operand, absl::Span<const int64> new_sizes);
 
   // Wrapper for Reshape.
   // Enqueues an operation to collapse the provided dimensions; e.g. an
@@ -398,8 +395,7 @@ class XlaBuilder {
   //
   // This could potentially cause data to be moved -- it provides a more
   // structured form of reshaping than an arbitrary Reshape operation.
-  XlaOp Collapse(const XlaOp& operand,
-                 tensorflow::gtl::ArraySlice<int64> dimensions);
+  XlaOp Collapse(const XlaOp& operand, absl::Span<const int64> dimensions);
 
   // Enqueues a slice operation onto the computation that slices the operand
   // from the start indices to the limit indices; e.g.
@@ -412,10 +408,9 @@ class XlaBuilder {
   // Note that "limit" means up-to-but-not-including; i.e. [start, limit) in 1D
   // range notation.
   // The strides parameter determines the stride over the slice
-  XlaOp Slice(const XlaOp& operand,
-              tensorflow::gtl::ArraySlice<int64> start_indices,
-              tensorflow::gtl::ArraySlice<int64> limit_indices,
-              tensorflow::gtl::ArraySlice<int64> strides);
+  XlaOp Slice(const XlaOp& operand, absl::Span<const int64> start_indices,
+              absl::Span<const int64> limit_indices,
+              absl::Span<const int64> strides);
 
   // Enqueues a slice operation in a given dimension, taking all other
   // dimensions as they are; e.g. if dimno is 1 from start_index 2 to
@@ -436,7 +431,7 @@ class XlaBuilder {
   // Slice index calculations are computed modulo input dimension sizes to
   // prevent dynamic start indices from generating out-of-bound array accesses.
   XlaOp DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
-                     tensorflow::gtl::ArraySlice<int64> slice_sizes);
+                     absl::Span<const int64> slice_sizes);
 
   // Enqueues a dynamic update slice operation onto the computation, which
   // updates a slice of 'operand' with 'update' at dynamic 'start_indices'.
@@ -459,8 +454,7 @@ class XlaBuilder {
 
   // Enqueues a concatenate instruction onto the computation. 'operands' must
   // have >= 1 entry.
-  XlaOp ConcatInDim(tensorflow::gtl::ArraySlice<XlaOp> operands,
-                    int64 dimension);
+  XlaOp ConcatInDim(absl::Span<const XlaOp> operands, int64 dimension);
 
   // Enqueue a tracing operation onto the computation; the computation will emit
   // a logging message with the operand.
@@ -471,34 +465,34 @@ class XlaBuilder {
   XlaOp Select(const XlaOp& pred, const XlaOp& on_true, const XlaOp& on_false);
 
   // Enqueues a tuple-creation instruction onto the computation.
-  XlaOp Tuple(tensorflow::gtl::ArraySlice<XlaOp> elements);
+  XlaOp Tuple(absl::Span<const XlaOp> elements);
 
   // Enqueues a tuple-element-get instruction onto the computation.
   XlaOp GetTupleElement(const XlaOp& tuple_data, int64 index);
 
   // Enqueues an equal-to comparison instruction onto the computation.
   XlaOp Eq(const XlaOp& lhs, const XlaOp& rhs,
-           tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+           absl::Span<const int64> broadcast_dimensions = {});
 
   // Enqueues a not-equal comparison instruction onto the computation.
   XlaOp Ne(const XlaOp& lhs, const XlaOp& rhs,
-           tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+           absl::Span<const int64> broadcast_dimensions = {});
 
   // Enqueues a greater-or-equal comparison instruction onto the computation.
   XlaOp Ge(const XlaOp& lhs, const XlaOp& rhs,
-           tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+           absl::Span<const int64> broadcast_dimensions = {});
 
   // Enqueues a greater-than comparison instruction onto the computation.
   XlaOp Gt(const XlaOp& lhs, const XlaOp& rhs,
-           tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+           absl::Span<const int64> broadcast_dimensions = {});
 
   // Enqueues a less-than comparison instruction onto the computation.
   XlaOp Lt(const XlaOp& lhs, const XlaOp& rhs,
-           tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+           absl::Span<const int64> broadcast_dimensions = {});
 
   // Enqueues a less-or-equal comparison instruction onto the computation.
   XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
-           tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+           absl::Span<const int64> broadcast_dimensions = {});
 
   // Enqueues a dot instruction onto the computation.
   XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,
@@ -513,7 +507,7 @@ class XlaBuilder {
   // Enqueues a convolution instruction onto the computation, which uses the
   // default convolution dimension numbers.
   XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
-             tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
+             absl::Span<const int64> window_strides, Padding padding,
              int64 feature_group_count = 1,
              const PrecisionConfigProto* precision_config_proto = nullptr);
 
@@ -521,8 +515,8 @@ class XlaBuilder {
   // provided padding configuration in the format returned by MakePadding().
   XlaOp ConvWithGeneralPadding(
       const XlaOp& lhs, const XlaOp& rhs,
-      tensorflow::gtl::ArraySlice<int64> window_strides,
-      tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding,
       int64 feature_group_count = 1,
       const PrecisionConfigProto* precision_config_proto = nullptr);
 
@@ -530,7 +524,7 @@ class XlaBuilder {
   // provided dimension numbers configuration.
   XlaOp ConvWithGeneralDimensions(
       const XlaOp& lhs, const XlaOp& rhs,
-      tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
+      absl::Span<const int64> window_strides, Padding padding,
       const ConvolutionDimensionNumbers& dimension_numbers,
       int64 feature_group_count = 1,
       const PrecisionConfigProto* precision_config_proto = nullptr);
@@ -539,8 +533,8 @@ class XlaBuilder {
   // provided padding configuration as well as the dimension numbers.
   XlaOp ConvGeneral(
       const XlaOp& lhs, const XlaOp& rhs,
-      tensorflow::gtl::ArraySlice<int64> window_strides,
-      tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding,
       const ConvolutionDimensionNumbers& dimension_numbers,
       int64 feature_group_count = 1,
       const PrecisionConfigProto* precision_config_proto = nullptr);
@@ -549,10 +543,10 @@ class XlaBuilder {
   // provided padding configuration, dilation factors and dimension numbers.
   XlaOp ConvGeneralDilated(
       const XlaOp& lhs, const XlaOp& rhs,
-      tensorflow::gtl::ArraySlice<int64> window_strides,
-      tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-      tensorflow::gtl::ArraySlice<int64> lhs_dilation,
-      tensorflow::gtl::ArraySlice<int64> rhs_dilation,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding,
+      absl::Span<const int64> lhs_dilation,
+      absl::Span<const int64> rhs_dilation,
       const ConvolutionDimensionNumbers& dimension_numbers,
       int64 feature_group_count = 1,
       const PrecisionConfigProto* precision_config_proto = nullptr);
@@ -560,7 +554,7 @@ class XlaBuilder {
   // Enqueues an FFT instruction onto the computation, of the given type and
   // with the given FFT length.
   XlaOp Fft(const XlaOp& operand, FftType fft_type,
-            tensorflow::gtl::ArraySlice<int64> fft_length);
+            absl::Span<const int64> fft_length);
 
   // Enqueues an infeed instruction onto the computation, which writes data of
   // the given shape to the infeed buffer of the device.
@@ -582,15 +576,14 @@ class XlaBuilder {
 
   // Enqueues a call instruction onto the computation.
   XlaOp Call(const XlaComputation& computation,
-             tensorflow::gtl::ArraySlice<XlaOp> operands);
+             absl::Span<const XlaOp> operands);
 
   // Enqueues a custom call instruction onto the computation.
   // During code generation, a call instruction is emitted which targets a
   // symbol with the name |call_target_name|.  The |operands| are passed to the
   // call instruction.  |shape| is the resultant shape.
   XlaOp CustomCall(const string& call_target_name,
-                   tensorflow::gtl::ArraySlice<XlaOp> operands,
-                   const Shape& shape);
+                   absl::Span<const XlaOp> operands, const Shape& shape);
 
   // The following methods enqueue element-wise binary arithmetic operations
   // onto the computation. The shapes of the operands have to match unless one
@@ -599,65 +592,70 @@ class XlaBuilder {
 
   // Enqueues a complex compose instruction onto the computation.
   XlaOp Complex(const XlaOp& real, const XlaOp& imag,
-                tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+                absl::Span<const int64> broadcast_dimensions = {});
 
   // Enqueues a complex conjugate instruction onto the computation.
   XlaOp Conj(const XlaOp& operand);
 
   // Enqueues an add instruction onto the computation.
   XlaOp Add(const XlaOp& lhs, const XlaOp& rhs,
-            tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+            absl::Span<const int64> broadcast_dimensions = {});
 
   // Enqueues a subtract instruction onto the computation.
   XlaOp Sub(const XlaOp& lhs, const XlaOp& rhs,
-            tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+            absl::Span<const int64> broadcast_dimensions = {});
 
   // Enqueues a multiply instruction onto the computation.
   XlaOp Mul(const XlaOp& lhs, const XlaOp& rhs,
-            tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+            absl::Span<const int64> broadcast_dimensions = {});
 
   // Enqueues a divide instruction onto the computation.
   XlaOp Div(const XlaOp& lhs, const XlaOp& rhs,
-            tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+            absl::Span<const int64> broadcast_dimensions = {});
 
   // Enqueues a remainder instruction onto the computation.
   XlaOp Rem(const XlaOp& lhs, const XlaOp& rhs,
-            tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+            absl::Span<const int64> broadcast_dimensions = {});
 
   // Enqueues a max instruction onto the computation.
   XlaOp Max(const XlaOp& lhs, const XlaOp& rhs,
-            tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+            absl::Span<const int64> broadcast_dimensions = {});
 
   // Enqueues a min instruction onto the computation.
   XlaOp Min(const XlaOp& lhs, const XlaOp& rhs,
-            tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+            absl::Span<const int64> broadcast_dimensions = {});
 
   // Element-wise logical operators
   XlaOp And(const XlaOp& lhs, const XlaOp& rhs,
-            tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+            absl::Span<const int64> broadcast_dimensions = {});
 
   XlaOp Or(const XlaOp& lhs, const XlaOp& rhs,
-           tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+           absl::Span<const int64> broadcast_dimensions = {});
 
   XlaOp Xor(const XlaOp& lhs, const XlaOp& rhs,
-            tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+            absl::Span<const int64> broadcast_dimensions = {});
 
   XlaOp Not(const XlaOp& operand);
 
   XlaOp ShiftLeft(const XlaOp& lhs, const XlaOp& rhs,
-                  tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
-  XlaOp ShiftRightArithmetic(
-      const XlaOp& lhs, const XlaOp& rhs,
-      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
-  XlaOp ShiftRightLogical(
-      const XlaOp& lhs, const XlaOp& rhs,
-      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+                  absl::Span<const int64> broadcast_dimensions = {});
+  XlaOp ShiftRightArithmetic(const XlaOp& lhs, const XlaOp& rhs,
+                             absl::Span<const int64> broadcast_dimensions = {});
+  XlaOp ShiftRightLogical(const XlaOp& lhs, const XlaOp& rhs,
+                          absl::Span<const int64> broadcast_dimensions = {});
 
   // Reduces an array among the provided dimensions, given "computation" as a
   // reduction operator.
   XlaOp Reduce(const XlaOp& operand, const XlaOp& init_value,
                const XlaComputation& computation,
-               tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce);
+               absl::Span<const int64> dimensions_to_reduce);
+
+  // Reduces several arrays simultaneously among the provided dimensions, given
+  // "computation" as a reduction operator.
+  XlaOp Reduce(absl::Span<const XlaOp> operands,
+               absl::Span<const XlaOp> init_values,
+               const XlaComputation& computation,
+               absl::Span<const int64> dimensions_to_reduce);
 
   // Convenience wrapper around the above that reduces all the dimensions in the
   // operand shape.
@@ -667,25 +665,23 @@ class XlaBuilder {
   // Enqueues a windowed reduce instruction onto the computation.
   XlaOp ReduceWindow(const XlaOp& operand, const XlaOp& init_value,
                      const XlaComputation& computation,
-                     tensorflow::gtl::ArraySlice<int64> window_dimensions,
-                     tensorflow::gtl::ArraySlice<int64> window_strides,
-                     Padding padding);
+                     absl::Span<const int64> window_dimensions,
+                     absl::Span<const int64> window_strides, Padding padding);
 
   // As ReduceWindow(), but the padding is given in the format
   // returned by MakePadding().
   XlaOp ReduceWindowWithGeneralPadding(
       const XlaOp& operand, const XlaOp& init_value,
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<int64> window_dimensions,
-      tensorflow::gtl::ArraySlice<int64> window_strides,
-      tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding);
+      absl::Span<const int64> window_dimensions,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding);
 
   // Returns the sum of the operand value within each subgroup of replicas. All
   // replicas supply one input to the sum and all replicas receive the resulting
   // sum for each subgroup.
-  XlaOp CrossReplicaSum(
-      const XlaOp& operand,
-      tensorflow::gtl::ArraySlice<ReplicaGroup> replica_groups = {});
+  XlaOp CrossReplicaSum(const XlaOp& operand,
+                        absl::Span<const ReplicaGroup> replica_groups = {});
 
   // Enqueues an operation that do an AllReduce of the operand cross cores. Here
   // AllReduce means doing a reduction on the input operand cross cores and then
@@ -707,7 +703,7 @@ class XlaBuilder {
   // TODO(b/79737069): Rename this to AllReduce when it's ready to use.
   XlaOp CrossReplicaSum(
       const XlaOp& operand, const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<ReplicaGroup> replica_groups = {},
+      absl::Span<const ReplicaGroup> replica_groups = {},
       const absl::optional<ChannelHandle>& channel_id = absl::nullopt);
 
   // Enqueues an operation that do an Alltoall of the operand cross cores.
@@ -724,8 +720,8 @@ class XlaBuilder {
   // Enqueues an operation that scatters the `source` array to the selected
   // indices of each window.
   XlaOp SelectAndScatter(const XlaOp& operand, const XlaComputation& select,
-                         tensorflow::gtl::ArraySlice<int64> window_dimensions,
-                         tensorflow::gtl::ArraySlice<int64> window_strides,
+                         absl::Span<const int64> window_dimensions,
+                         absl::Span<const int64> window_strides,
                          Padding padding, const XlaOp& source,
                          const XlaOp& init_value,
                          const XlaComputation& scatter);
@@ -734,18 +730,17 @@ class XlaBuilder {
   // returned by MakePadding().
   XlaOp SelectAndScatterWithGeneralPadding(
       const XlaOp& operand, const XlaComputation& select,
-      tensorflow::gtl::ArraySlice<int64> window_dimensions,
-      tensorflow::gtl::ArraySlice<int64> window_strides,
-      tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-      const XlaOp& source, const XlaOp& init_value,
-      const XlaComputation& scatter);
+      absl::Span<const int64> window_dimensions,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding, const XlaOp& source,
+      const XlaOp& init_value, const XlaComputation& scatter);
 
   // Enqueues an abs instruction onto the computation.
   XlaOp Abs(const XlaOp& operand);
 
   // Enqueues a atan2 instruction onto the computation.
   XlaOp Atan2(const XlaOp& y, const XlaOp& x,
-              tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+              absl::Span<const int64> broadcast_dimensions = {});
 
   // Enqueues an exp instruction onto the computation.
   XlaOp Exp(const XlaOp& operand);
@@ -792,7 +787,7 @@ class XlaBuilder {
 
   // Enqueues a lhs^rhs computation onto the computation.
   XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
-            tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+            absl::Span<const int64> broadcast_dimensions = {});
 
   // Enqueues an operator that tests if the operand's values are finite, i.e.,
   // not Inf or NaN. Defined only for floating-point types. Returns an array of
@@ -801,10 +796,10 @@ class XlaBuilder {
   XlaOp IsFinite(const XlaOp& operand);
 
   // Enqueues an iota operation onto the computation.
-  XlaOp IotaGen(const Shape& shape, int64 iota_dimension);
+  XlaOp Iota(const Shape& shape, int64 iota_dimension);
 
   // Enqueues a rank-1 iota operation onto the computation.
-  XlaOp IotaGen(PrimitiveType type, int64 size);
+  XlaOp Iota(PrimitiveType type, int64 size);
 
   // Enqueues a convert instruction onto the computation that changes the
   // element type of the operand array to primitive_type.
@@ -822,14 +817,12 @@ class XlaBuilder {
   XlaOp Neg(const XlaOp& operand);
 
   // Enqueues a transpose instruction onto the computation.
-  XlaOp Transpose(const XlaOp& operand,
-                  tensorflow::gtl::ArraySlice<int64> permutation);
+  XlaOp Transpose(const XlaOp& operand, absl::Span<const int64> permutation);
 
   // Enqueues a reverse instruction onto the computation. The order of the
   // elements in the given dimensions is reversed (i.e., the element at index i
   // is moved to index dimension_size - 1 - i).
-  XlaOp Rev(const XlaOp& operand,
-            tensorflow::gtl::ArraySlice<int64> dimensions);
+  XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
 
   // Enqueues a sort (as increasing order) instruction onto the computation.
   // If only keys are provided:
@@ -854,10 +847,9 @@ class XlaBuilder {
   XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);
 
   // Enqueues a map instruction onto the computation.
-  XlaOp Map(tensorflow::gtl::ArraySlice<XlaOp> operands,
-            const XlaComputation& computation,
-            tensorflow::gtl::ArraySlice<int64> dimensions,
-            tensorflow::gtl::ArraySlice<XlaOp> static_operands = {});
+  XlaOp Map(absl::Span<const XlaOp> operands, const XlaComputation& computation,
+            absl::Span<const int64> dimensions,
+            absl::Span<const XlaOp> static_operands = {});
 
   // Enqueues a N(mu, sigma) random number generation instruction onto the
   // computation.
@@ -884,7 +876,7 @@ class XlaBuilder {
   // Enqueues a Gather node onto the computation.
   XlaOp Gather(const XlaOp& input, const XlaOp& start_indices,
                const GatherDimensionNumbers& dimension_numbers,
-               tensorflow::gtl::ArraySlice<int64> slice_sizes);
+               absl::Span<const int64> slice_sizes);
 
   // Enqueues a Scatter node onto the computation.
   XlaOp Scatter(const XlaOp& input, const XlaOp& scatter_indices,
@@ -912,7 +904,7 @@ class XlaBuilder {
 
   // Enqueues an AfterAll operation with no operands producing a token-shaped
   // value.
-  XlaOp AfterAll(tensorflow::gtl::ArraySlice<XlaOp> tokens);
+  XlaOp AfterAll(absl::Span<const XlaOp> tokens);
 
   // Enqueues a Recv node onto the computation. The data comes from a Send
   // instruction that shares the same channel handle and its shape must
@@ -959,9 +951,8 @@ class XlaBuilder {
                       const XlaOp& grad_output, float epsilon,
                       int64 feature_index);
 
-  StatusOr<XlaOp> AddInstruction(
-      HloInstructionProto&& instr, HloOpcode opcode,
-      tensorflow::gtl::ArraySlice<XlaOp> operands = {});
+  StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr, HloOpcode opcode,
+                                 absl::Span<const XlaOp> operands = {});
 
   void AddCalledComputation(const XlaComputation& computation,
                             HloInstructionProto* instr);
@@ -975,19 +966,17 @@ class XlaBuilder {
   // broadcast_dimensions specifies which dimensions to use for broadcasting
   // when the operation is between tensors of different ranks.
   XlaOp BinaryOp(HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
-                 tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                 absl::Span<const int64> broadcast_dimensions);
 
   // Internal helper method that does the building for an arbitrary ternary op.
   XlaOp TernaryOp(HloOpcode triop, const XlaOp& lhs, const XlaOp& rhs,
                   const XlaOp& ehs);
 
   XlaOp RngOp(RandomDistribution distribution,
-              tensorflow::gtl::ArraySlice<XlaOp> parameters,
-              const Shape& shape);
+              absl::Span<const XlaOp> parameters, const Shape& shape);
 
-  StatusOr<XlaOp> InDimBroadcast(
-      const Shape& shape, const XlaOp& operand,
-      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+  StatusOr<XlaOp> InDimBroadcast(const Shape& shape, const XlaOp& operand,
+                                 absl::Span<const int64> broadcast_dimensions);
 
   // Internal helper method that creates a sequence of instructions that
   // performs an explicit broadcast of the operand to the target shape.
@@ -1003,7 +992,7 @@ class XlaBuilder {
 
   // Returns shapes for the operands.
   StatusOr<std::vector<Shape>> GetOperandShapes(
-      tensorflow::gtl::ArraySlice<XlaOp> operands) const;
+      absl::Span<const XlaOp> operands) const;
 
   // A visitor which checks whether an operation is a compile-time constant,
   // meaning that it doesn't depend on any parameters, or on any stateful
@@ -1020,12 +1009,11 @@ class XlaBuilder {
 
   // Helper function for creating a Window proto from user-supplied data.
   // Returns error if the user-supplied data was invalid.
-  StatusOr<Window> MakeWindow(
-      tensorflow::gtl::ArraySlice<int64> window_dimensions,
-      tensorflow::gtl::ArraySlice<int64> window_strides,
-      tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-      tensorflow::gtl::ArraySlice<int64> lhs_dilation,
-      tensorflow::gtl::ArraySlice<int64> rhs_dilation) const;
+  StatusOr<Window> MakeWindow(absl::Span<const int64> window_dimensions,
+                              absl::Span<const int64> window_strides,
+                              absl::Span<const std::pair<int64, int64>> padding,
+                              absl::Span<const int64> lhs_dilation,
+                              absl::Span<const int64> rhs_dilation) const;
 
   string name_;  // Name to use for the built computation.
 
@@ -1069,7 +1057,7 @@ class XlaBuilder {
   friend XlaOp ConstantR0(XlaBuilder* builder, NativeT value);
   template <typename NativeT>
   friend XlaOp ConstantR1(XlaBuilder* builder,
-                          tensorflow::gtl::ArraySlice<NativeT> values);
+                          absl::Span<const NativeT> values);
   friend XlaOp ConstantR1(XlaBuilder* builder,
                           const tensorflow::core::Bitmap& values);
   template <typename NativeT>
@@ -1109,188 +1097,183 @@ class XlaBuilder {
   friend XlaOp ConstantR1(XlaBuilder* builder, int64 length, NativeT value);
 
   friend XlaOp Broadcast(const XlaOp& operand,
-                         tensorflow::gtl::ArraySlice<int64> broadcast_sizes);
+                         absl::Span<const int64> broadcast_sizes);
 
   friend XlaOp BroadcastInDim(
       const XlaOp& operand, const Shape& shape,
-      const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+      const absl::Span<const int64> broadcast_dimensions);
 
   friend XlaOp Pad(const XlaOp& operand, const XlaOp& padding_value,
                    const PaddingConfig& padding_config);
 
-  friend XlaOp Reshape(const XlaOp& operand,
-                       tensorflow::gtl::ArraySlice<int64> dimensions,
-                       tensorflow::gtl::ArraySlice<int64> new_sizes);
+  friend XlaOp Reshape(const XlaOp& operand, absl::Span<const int64> dimensions,
+                       absl::Span<const int64> new_sizes);
 
-  friend XlaOp Reshape(const XlaOp& operand,
-                       tensorflow::gtl::ArraySlice<int64> new_sizes);
+  friend XlaOp Reshape(const XlaOp& operand, absl::Span<const int64> new_sizes);
 
   friend XlaOp Collapse(const XlaOp& operand,
-                        tensorflow::gtl::ArraySlice<int64> dimensions);
+                        absl::Span<const int64> dimensions);
 
   friend XlaOp Slice(const XlaOp& operand,
-                     tensorflow::gtl::ArraySlice<int64> start_indices,
-                     tensorflow::gtl::ArraySlice<int64> limit_indices,
-                     tensorflow::gtl::ArraySlice<int64> strides);
+                     absl::Span<const int64> start_indices,
+                     absl::Span<const int64> limit_indices,
+                     absl::Span<const int64> strides);
 
   friend XlaOp SliceInDim(const XlaOp& operand, int64 start_index,
                           int64 limit_index, int64 stride, int64 dimno);
 
   friend XlaOp DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
-                            tensorflow::gtl::ArraySlice<int64> slice_sizes);
+                            absl::Span<const int64> slice_sizes);
 
   friend XlaOp DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
                                   const XlaOp& start_indices);
 
   friend XlaOp ConcatInDim(XlaBuilder* builder,
-                           tensorflow::gtl::ArraySlice<XlaOp> operands,
-                           int64 dimension);
+                           absl::Span<const XlaOp> operands, int64 dimension);
 
   friend void Trace(const string& tag, const XlaOp& operand);
 
   friend XlaOp Select(const XlaOp& pred, const XlaOp& on_true,
                       const XlaOp& on_false);
-  friend XlaOp Tuple(XlaBuilder* builder,
-                     tensorflow::gtl::ArraySlice<XlaOp> elements);
+  friend XlaOp Tuple(XlaBuilder* builder, absl::Span<const XlaOp> elements);
   friend XlaOp GetTupleElement(const XlaOp& tuple_data, int64 index);
   friend XlaOp Eq(const XlaOp& lhs, const XlaOp& rhs,
-                  tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                  absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Ne(const XlaOp& lhs, const XlaOp& rhs,
-                  tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                  absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Ge(const XlaOp& lhs, const XlaOp& rhs,
-                  tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                  absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Gt(const XlaOp& lhs, const XlaOp& rhs,
-                  tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                  absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Lt(const XlaOp& lhs, const XlaOp& rhs,
-                  tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                  absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
-                  tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                  absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,
                    const PrecisionConfigProto* precision_config_proto);
   friend XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
                           const DotDimensionNumbers& dimension_number,
                           const PrecisionConfigProto* precision_config_proto);
   friend XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
-                    tensorflow::gtl::ArraySlice<int64> window_strides,
-                    Padding padding, int64 feature_group_count,
+                    absl::Span<const int64> window_strides, Padding padding,
+                    int64 feature_group_count,
                     const PrecisionConfigProto* precision_config_proto);
   friend XlaOp ConvWithGeneralPadding(
       const XlaOp& lhs, const XlaOp& rhs,
-      tensorflow::gtl::ArraySlice<int64> window_strides,
-      tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding,
       int64 feature_group_count,
       const PrecisionConfigProto* precision_config_proto);
   friend XlaOp ConvWithGeneralDimensions(
       const XlaOp& lhs, const XlaOp& rhs,
-      tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
+      absl::Span<const int64> window_strides, Padding padding,
       const ConvolutionDimensionNumbers& dimension_numbers,
       int64 feature_group_count,
       const PrecisionConfigProto* precision_config_proto);
-  friend XlaOp ConvGeneral(
-      const XlaOp& lhs, const XlaOp& rhs,
-      tensorflow::gtl::ArraySlice<int64> window_strides,
-      tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-      const ConvolutionDimensionNumbers& dimension_numbers,
-      int64 feature_group_count,
-      const PrecisionConfigProto* precision_config_proto);
+  friend XlaOp ConvGeneral(const XlaOp& lhs, const XlaOp& rhs,
+                           absl::Span<const int64> window_strides,
+                           absl::Span<const std::pair<int64, int64>> padding,
+                           const ConvolutionDimensionNumbers& dimension_numbers,
+                           int64 feature_group_count,
+                           const PrecisionConfigProto* precision_config_proto);
   friend XlaOp ConvGeneralDilated(
       const XlaOp& lhs, const XlaOp& rhs,
-      tensorflow::gtl::ArraySlice<int64> window_strides,
-      tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-      tensorflow::gtl::ArraySlice<int64> lhs_dilation,
-      tensorflow::gtl::ArraySlice<int64> rhs_dilation,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding,
+      absl::Span<const int64> lhs_dilation,
+      absl::Span<const int64> rhs_dilation,
       const ConvolutionDimensionNumbers& dimension_numbers,
       int64 feature_group_count,
       const PrecisionConfigProto* precision_config_proto);
   friend XlaOp Fft(const XlaOp& operand, FftType fft_type,
-                   tensorflow::gtl::ArraySlice<int64> fft_length);
+                   absl::Span<const int64> fft_length);
   friend XlaOp Infeed(XlaBuilder* builder, const Shape& shape,
                       const string& config);
   friend void Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
                       const string& outfeed_config);
   friend XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
-                    tensorflow::gtl::ArraySlice<XlaOp> operands);
+                    absl::Span<const XlaOp> operands);
   friend XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
-                          tensorflow::gtl::ArraySlice<XlaOp> operands,
-                          const Shape& shape);
+                          absl::Span<const XlaOp> operands, const Shape& shape);
   friend XlaOp Complex(const XlaOp& real, const XlaOp& imag,
-                       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                       absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Conj(const XlaOp& operand);
   friend XlaOp Add(const XlaOp& lhs, const XlaOp& rhs,
-                   tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                   absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Sub(const XlaOp& lhs, const XlaOp& rhs,
-                   tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                   absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Mul(const XlaOp& lhs, const XlaOp& rhs,
-                   tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                   absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Div(const XlaOp& lhs, const XlaOp& rhs,
-                   tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                   absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Rem(const XlaOp& lhs, const XlaOp& rhs,
-                   tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                   absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Max(const XlaOp& lhs, const XlaOp& rhs,
-                   tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                   absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Min(const XlaOp& lhs, const XlaOp& rhs,
-                   tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                   absl::Span<const int64> broadcast_dimensions);
   friend XlaOp And(const XlaOp& lhs, const XlaOp& rhs,
-                   tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                   absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Or(const XlaOp& lhs, const XlaOp& rhs,
-                  tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                  absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Xor(const XlaOp& lhs, const XlaOp& rhs,
-                   tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                   absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Not(const XlaOp& operand);
-  friend XlaOp ShiftLeft(
-      const XlaOp& lhs, const XlaOp& rhs,
-      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+  friend XlaOp ShiftLeft(const XlaOp& lhs, const XlaOp& rhs,
+                         absl::Span<const int64> broadcast_dimensions);
   friend XlaOp ShiftRightArithmetic(
       const XlaOp& lhs, const XlaOp& rhs,
-      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
-  friend XlaOp ShiftRightLogical(
-      const XlaOp& lhs, const XlaOp& rhs,
-      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+      absl::Span<const int64> broadcast_dimensions);
+  friend XlaOp ShiftRightLogical(const XlaOp& lhs, const XlaOp& rhs,
+                                 absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Reduce(const XlaOp& operand, const XlaOp& init_value,
                       const XlaComputation& computation,
-                      tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce);
+                      absl::Span<const int64> dimensions_to_reduce);
+  friend XlaOp Reduce(XlaBuilder* builder, absl::Span<const XlaOp> operands,
+                      absl::Span<const XlaOp> init_values,
+                      const XlaComputation& computation,
+                      absl::Span<const int64> dimensions_to_reduce);
   friend XlaOp ReduceAll(const XlaOp& operand, const XlaOp& init_value,
                          const XlaComputation& computation);
-  friend XlaOp ReduceWindow(
-      const XlaOp& operand, const XlaOp& init_value,
-      const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<int64> window_dimensions,
-      tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding);
+  friend XlaOp ReduceWindow(const XlaOp& operand, const XlaOp& init_value,
+                            const XlaComputation& computation,
+                            absl::Span<const int64> window_dimensions,
+                            absl::Span<const int64> window_strides,
+                            Padding padding);
   friend XlaOp ReduceWindowWithGeneralPadding(
       const XlaOp& operand, const XlaOp& init_value,
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<int64> window_dimensions,
-      tensorflow::gtl::ArraySlice<int64> window_strides,
-      tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding);
-  friend XlaOp CrossReplicaSum(
-      const XlaOp& operand,
-      tensorflow::gtl::ArraySlice<ReplicaGroup> replica_groups);
-  friend XlaOp CrossReplicaSum(
-      const XlaOp& operand, const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<ReplicaGroup> replica_groups,
-      const absl::optional<ChannelHandle>& channel_id);
+      absl::Span<const int64> window_dimensions,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding);
+  friend XlaOp CrossReplicaSum(const XlaOp& operand,
+                               absl::Span<const ReplicaGroup> replica_groups);
+  friend XlaOp CrossReplicaSum(const XlaOp& operand,
+                               const XlaComputation& computation,
+                               absl::Span<const ReplicaGroup> replica_groups,
+                               const absl::optional<ChannelHandle>& channel_id);
   friend XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,
                         int64 concat_dimension, int64 split_count,
                         const std::vector<ReplicaGroup>& replica_groups);
   friend XlaOp CollectivePermute(
       const XlaOp& operand,
       const std::vector<std::pair<int64, int64>>& source_target_pairs);
-  friend XlaOp SelectAndScatter(
-      const XlaOp& operand, const XlaComputation& select,
-      tensorflow::gtl::ArraySlice<int64> window_dimensions,
-      tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
-      const XlaOp& source, const XlaOp& init_value,
-      const XlaComputation& scatter);
+  friend XlaOp SelectAndScatter(const XlaOp& operand,
+                                const XlaComputation& select,
+                                absl::Span<const int64> window_dimensions,
+                                absl::Span<const int64> window_strides,
+                                Padding padding, const XlaOp& source,
+                                const XlaOp& init_value,
+                                const XlaComputation& scatter);
   friend XlaOp SelectAndScatterWithGeneralPadding(
       const XlaOp& operand, const XlaComputation& select,
-      tensorflow::gtl::ArraySlice<int64> window_dimensions,
-      tensorflow::gtl::ArraySlice<int64> window_strides,
-      tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-      const XlaOp& source, const XlaOp& init_value,
-      const XlaComputation& scatter);
+      absl::Span<const int64> window_dimensions,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding, const XlaOp& source,
+      const XlaOp& init_value, const XlaComputation& scatter);
   friend XlaOp Abs(const XlaOp& operand);
   friend XlaOp Atan2(const XlaOp& y, const XlaOp& x,
-                     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                     absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Exp(const XlaOp& operand);
   friend XlaOp Expm1(const XlaOp& operand);
   friend XlaOp Floor(const XlaOp& operand);
@@ -1306,29 +1289,25 @@ class XlaBuilder {
   friend XlaOp Real(const XlaOp& operand);
   friend XlaOp Imag(const XlaOp& operand);
   friend XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
-                   tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+                   absl::Span<const int64> broadcast_dimensions);
   friend XlaOp IsFinite(const XlaOp& operand);
-  // TODO(b/64798317): Finish CPU & GPU implementation, then replace xla::Iota
-  // in xla/client/lib/numeric.h with this (renamed to xla::Iota).
-  friend XlaOp IotaGen(XlaBuilder* builder, const Shape& shape,
-                       int64 iota_dimension);
-  friend XlaOp IotaGen(XlaBuilder* builder, PrimitiveType type, int64 size);
+  friend XlaOp Iota(XlaBuilder* builder, const Shape& shape,
+                    int64 iota_dimension);
+  friend XlaOp Iota(XlaBuilder* builder, PrimitiveType type, int64 size);
   friend XlaOp ConvertElementType(const XlaOp& operand,
                                   PrimitiveType new_element_type);
   friend XlaOp BitcastConvertType(const XlaOp& operand,
                                   PrimitiveType new_element_type);
   friend XlaOp Neg(const XlaOp& operand);
   friend XlaOp Transpose(const XlaOp& operand,
-                         tensorflow::gtl::ArraySlice<int64> permutation);
-  friend XlaOp Rev(const XlaOp& operand,
-                   tensorflow::gtl::ArraySlice<int64> dimensions);
+                         absl::Span<const int64> permutation);
+  friend XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
   friend XlaOp Sort(XlaOp keys, absl::optional<XlaOp> values, int64 dimension);
   friend XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);
-  friend XlaOp Map(XlaBuilder* builder,
-                   tensorflow::gtl::ArraySlice<XlaOp> operands,
+  friend XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                    const XlaComputation& computation,
-                   tensorflow::gtl::ArraySlice<int64> dimensions,
-                   tensorflow::gtl::ArraySlice<XlaOp> static_operands);
+                   absl::Span<const int64> dimensions,
+                   absl::Span<const XlaOp> static_operands);
   friend XlaOp RngNormal(const XlaOp& mu, const XlaOp& sigma,
                          const Shape& shape);
   friend XlaOp RngUniform(const XlaOp& a, const XlaOp& b, const Shape& shape);
@@ -1342,7 +1321,7 @@ class XlaBuilder {
                                const int mantissa_bits);
   friend XlaOp Gather(const XlaOp& input, const XlaOp& start_indices,
                       const GatherDimensionNumbers& dimension_numbers,
-                      tensorflow::gtl::ArraySlice<int64> slice_sizes);
+                      absl::Span<const int64> slice_sizes);
   friend XlaOp Scatter(const XlaOp& input, const XlaOp& scatter_indices,
                        const XlaOp& updates,
                        const XlaComputation& update_computation,
@@ -1376,8 +1355,7 @@ class XlaBuilder {
                                 const Shape& shape_with_layout,
                                 const string& outfeed_config);
   friend XlaOp CreateToken(XlaBuilder* builder);
-  friend XlaOp AfterAll(XlaBuilder* builder,
-                        tensorflow::gtl::ArraySlice<XlaOp> tokens);
+  friend XlaOp AfterAll(XlaBuilder* builder, absl::Span<const XlaOp> tokens);
 };
 
 // RAII-style object: sets the current sharding assignment in builder on
@@ -1441,8 +1419,7 @@ XlaOp ConstantLiteral(XlaBuilder* builder, const LiteralSlice& literal);
 template <typename NativeT>
 XlaOp ConstantR0(XlaBuilder* builder, NativeT value);
 template <typename NativeT>
-XlaOp ConstantR1(XlaBuilder* builder,
-                 tensorflow::gtl::ArraySlice<NativeT> values);
+XlaOp ConstantR1(XlaBuilder* builder, absl::Span<const NativeT> values);
 XlaOp ConstantR1(XlaBuilder* builder, const tensorflow::core::Bitmap& values);
 template <typename NativeT>
 XlaOp ConstantR2(XlaBuilder* builder,
@@ -1491,8 +1468,7 @@ XlaOp ConstantR1(XlaBuilder* builder, int64 length, NativeT value);
 // The new dimensions index into copies of the operand, i.e.
 //
 //   output[i0, ..., iN, j0, ..., jM] = operand[j0, ..., jM]
-XlaOp Broadcast(const XlaOp& operand,
-                tensorflow::gtl::ArraySlice<int64> broadcast_sizes);
+XlaOp Broadcast(const XlaOp& operand, absl::Span<const int64> broadcast_sizes);
 
 // Performs in-dimension-style broadcast.
 //
@@ -1511,9 +1487,8 @@ XlaOp Broadcast(const XlaOp& operand,
 // will generate output
 // [1 , 1]
 // [2 , 2]
-XlaOp BroadcastInDim(
-    const XlaOp& operand, const Shape& shape,
-    const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+XlaOp BroadcastInDim(const XlaOp& operand, const Shape& shape,
+                     const absl::Span<const int64> broadcast_dimensions);
 
 // Enqueues a pad operation onto the computation that pads the given value on
 // the edges as well as between the elements of the input. padding_config
@@ -1526,15 +1501,13 @@ XlaOp Pad(const XlaOp& operand, const XlaOp& padding_value,
 // given, followed by reshaping it into the shape with the given dimension
 // sizes (also major to minor). Conceptually, this is a limited form of
 // "shape casting".
-XlaOp Reshape(const XlaOp& operand,
-              tensorflow::gtl::ArraySlice<int64> dimensions,
-              tensorflow::gtl::ArraySlice<int64> new_sizes);
+XlaOp Reshape(const XlaOp& operand, absl::Span<const int64> dimensions,
+              absl::Span<const int64> new_sizes);
 
 // Enqueues an operation onto the computation that collapses the operand, from
 // first to last dimension (C order), then reshapes it to the given dimension
 // sizes. Conceptually, this is a limited form of "shape casting".
-XlaOp Reshape(const XlaOp& operand,
-              tensorflow::gtl::ArraySlice<int64> new_sizes);
+XlaOp Reshape(const XlaOp& operand, absl::Span<const int64> new_sizes);
 
 // Wrapper for Reshape.
 // Enqueues an operation to collapse the provided dimensions; e.g. an
@@ -1554,8 +1527,7 @@ XlaOp Reshape(const XlaOp& operand,
 //
 // This could potentially cause data to be moved -- it provides a more
 // structured form of reshaping than an arbitrary Reshape operation.
-XlaOp Collapse(const XlaOp& operand,
-               tensorflow::gtl::ArraySlice<int64> dimensions);
+XlaOp Collapse(const XlaOp& operand, absl::Span<const int64> dimensions);
 
 // Enqueues a slice operation onto the computation that slices the operand
 // from the start indices to the limit indices; e.g.
@@ -1568,10 +1540,9 @@ XlaOp Collapse(const XlaOp& operand,
 // Note that "limit" means up-to-but-not-including; i.e. [start, limit) in 1D
 // range notation.
 // The strides parameter determines the stride over the slice
-XlaOp Slice(const XlaOp& operand,
-            tensorflow::gtl::ArraySlice<int64> start_indices,
-            tensorflow::gtl::ArraySlice<int64> limit_indices,
-            tensorflow::gtl::ArraySlice<int64> strides);
+XlaOp Slice(const XlaOp& operand, absl::Span<const int64> start_indices,
+            absl::Span<const int64> limit_indices,
+            absl::Span<const int64> strides);
 
 // Enqueues a slice operation in a given dimension, taking all other
 // dimensions as they are; e.g. if dimno is 1 from start_index 2 to
@@ -1592,7 +1563,7 @@ XlaOp SliceInDim(const XlaOp& operand, int64 start_index, int64 limit_index,
 // Slice index calculations are computed modulo input dimension sizes to
 // prevent dynamic start indices from generating out-of-bound array accesses.
 XlaOp DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
-                   tensorflow::gtl::ArraySlice<int64> slice_sizes);
+                   absl::Span<const int64> slice_sizes);
 
 // Enqueues a dynamic update slice operation onto the computation, which
 // updates a slice of 'operand' with 'update' at dynamic 'start_indices'.
@@ -1615,8 +1586,8 @@ XlaOp DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
 
 // Enqueues a concatenate instruction onto the computation. 'operands' must
 // have >= 1 entry.
-XlaOp ConcatInDim(XlaBuilder* builder,
-                  tensorflow::gtl::ArraySlice<XlaOp> operands, int64 dimension);
+XlaOp ConcatInDim(XlaBuilder* builder, absl::Span<const XlaOp> operands,
+                  int64 dimension);
 
 // Enqueue a tracing operation onto the computation; the computation will emit
 // a logging message with the operand.
@@ -1627,34 +1598,34 @@ void Trace(const string& tag, const XlaOp& operand);
 XlaOp Select(const XlaOp& pred, const XlaOp& on_true, const XlaOp& on_false);
 
 // Enqueues a tuple-creation instruction onto the computation.
-XlaOp Tuple(XlaBuilder* builder, tensorflow::gtl::ArraySlice<XlaOp> elements);
+XlaOp Tuple(XlaBuilder* builder, absl::Span<const XlaOp> elements);
 
 // Enqueues a tuple-element-get instruction onto the computation.
 XlaOp GetTupleElement(const XlaOp& tuple_data, int64 index);
 
 // Enqueues an equal-to comparison instruction onto the computation.
 XlaOp Eq(const XlaOp& lhs, const XlaOp& rhs,
-         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+         absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a not-equal comparison instruction onto the computation.
 XlaOp Ne(const XlaOp& lhs, const XlaOp& rhs,
-         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+         absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a greater-or-equal comparison instruction onto the computation.
 XlaOp Ge(const XlaOp& lhs, const XlaOp& rhs,
-         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+         absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a greater-than comparison instruction onto the computation.
 XlaOp Gt(const XlaOp& lhs, const XlaOp& rhs,
-         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+         absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a less-than comparison instruction onto the computation.
 XlaOp Lt(const XlaOp& lhs, const XlaOp& rhs,
-         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+         absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a less-or-equal comparison instruction onto the computation.
 XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
-         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+         absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a dot instruction onto the computation.
 XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,
@@ -1668,33 +1639,31 @@ XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
 // Enqueues a convolution instruction onto the computation, which uses the
 // default convolution dimension numbers.
 XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
-           tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
+           absl::Span<const int64> window_strides, Padding padding,
            int64 feature_group_count = 1,
            const PrecisionConfigProto* precision_config_proto = nullptr);
 
 // Enqueues a convolution instruction onto the computation, with the caller
 // provided padding configuration in the format returned by MakePadding().
 XlaOp ConvWithGeneralPadding(
-    const XlaOp& lhs, const XlaOp& rhs,
-    tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+    const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding,
     int64 feature_group_count = 1,
     const PrecisionConfigProto* precision_config_proto = nullptr);
 
 // Enqueues a convolution instruction onto the computation, with the caller
 // provided dimension numbers configuration.
 XlaOp ConvWithGeneralDimensions(
-    const XlaOp& lhs, const XlaOp& rhs,
-    tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
-    const ConvolutionDimensionNumbers& dimension_numbers,
+    const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
+    Padding padding, const ConvolutionDimensionNumbers& dimension_numbers,
     int64 feature_group_count = 1,
     const PrecisionConfigProto* precision_config_proto = nullptr);
 
 // Enqueues a convolution instruction onto the computation, with the caller
 // provided padding configuration as well as the dimension numbers.
 XlaOp ConvGeneral(const XlaOp& lhs, const XlaOp& rhs,
-                  tensorflow::gtl::ArraySlice<int64> window_strides,
-                  tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+                  absl::Span<const int64> window_strides,
+                  absl::Span<const std::pair<int64, int64>> padding,
                   const ConvolutionDimensionNumbers& dimension_numbers,
                   int64 feature_group_count = 1,
                   const PrecisionConfigProto* precision_config_proto = nullptr);
@@ -1702,11 +1671,9 @@ XlaOp ConvGeneral(const XlaOp& lhs, const XlaOp& rhs,
 // Enqueues a convolution instruction onto the computation, with the caller
 // provided padding configuration, dilation factors and dimension numbers.
 XlaOp ConvGeneralDilated(
-    const XlaOp& lhs, const XlaOp& rhs,
-    tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-    tensorflow::gtl::ArraySlice<int64> lhs_dilation,
-    tensorflow::gtl::ArraySlice<int64> rhs_dilation,
+    const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding,
+    absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
     const ConvolutionDimensionNumbers& dimension_numbers,
     int64 feature_group_count = 1,
     const PrecisionConfigProto* precision_config_proto = nullptr);
@@ -1714,7 +1681,7 @@ XlaOp ConvGeneralDilated(
 // Enqueues an FFT instruction onto the computation, of the given type and
 // with the given FFT length.
 XlaOp Fft(const XlaOp& operand, FftType fft_type,
-          tensorflow::gtl::ArraySlice<int64> fft_length);
+          absl::Span<const int64> fft_length);
 
 // Enqueues an infeed instruction onto the computation, which writes data of
 // the given shape to the infeed buffer of the device.
@@ -1746,15 +1713,14 @@ XlaOp OutfeedWithToken(const XlaOp& operand, const XlaOp& token,
 
 // Enqueues a call instruction onto the computation.
 XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
-           tensorflow::gtl::ArraySlice<XlaOp> operands);
+           absl::Span<const XlaOp> operands);
 
 // Enqueues a custom call instruction onto the computation.
 // During code generation, a call instruction is emitted which targets a
 // symbol with the name |call_target_name|.  The |operands| are passed to the
 // call instruction.  |shape| is the resultant shape.
 XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
-                 tensorflow::gtl::ArraySlice<XlaOp> operands,
-                 const Shape& shape);
+                 absl::Span<const XlaOp> operands, const Shape& shape);
 
 // The following methods enqueue element-wise binary arithmetic operations
 // onto the computation. The shapes of the operands have to match unless one
@@ -1763,65 +1729,70 @@ XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
 
 // Enqueues a complex compose instruction onto the computation.
 XlaOp Complex(const XlaOp& real, const XlaOp& imag,
-              tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+              absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a complex conjugate instruction onto the computation.
 XlaOp Conj(const XlaOp& operand);
 
 // Enqueues an add instruction onto the computation.
 XlaOp Add(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+          absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a subtract instruction onto the computation.
 XlaOp Sub(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+          absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a multiply instruction onto the computation.
 XlaOp Mul(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+          absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a divide instruction onto the computation.
 XlaOp Div(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+          absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a remainder instruction onto the computation.
 XlaOp Rem(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+          absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a max instruction onto the computation.
 XlaOp Max(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+          absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a min instruction onto the computation.
 XlaOp Min(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+          absl::Span<const int64> broadcast_dimensions = {});
 
 // Element-wise logical operators
 XlaOp And(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+          absl::Span<const int64> broadcast_dimensions = {});
 
 XlaOp Or(const XlaOp& lhs, const XlaOp& rhs,
-         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+         absl::Span<const int64> broadcast_dimensions = {});
 
 XlaOp Xor(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+          absl::Span<const int64> broadcast_dimensions = {});
 
 XlaOp Not(const XlaOp& operand);
 
 XlaOp ShiftLeft(const XlaOp& lhs, const XlaOp& rhs,
-                tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
-XlaOp ShiftRightArithmetic(
-    const XlaOp& lhs, const XlaOp& rhs,
-    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
-XlaOp ShiftRightLogical(
-    const XlaOp& lhs, const XlaOp& rhs,
-    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+                absl::Span<const int64> broadcast_dimensions = {});
+XlaOp ShiftRightArithmetic(const XlaOp& lhs, const XlaOp& rhs,
+                           absl::Span<const int64> broadcast_dimensions = {});
+XlaOp ShiftRightLogical(const XlaOp& lhs, const XlaOp& rhs,
+                        absl::Span<const int64> broadcast_dimensions = {});
 
 // Reduces an array among the provided dimensions, given "computation" as a
 // reduction operator.
 XlaOp Reduce(const XlaOp& operand, const XlaOp& init_value,
              const XlaComputation& computation,
-             tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce);
+             absl::Span<const int64> dimensions_to_reduce);
+
+// Reduces several arrays simultaneously among the provided dimensions, given
+// "computation" as a reduction operator.
+XlaOp Reduce(XlaBuilder* builder, absl::Span<const XlaOp> operands,
+             absl::Span<const XlaOp> init_values,
+             const XlaComputation& computation,
+             absl::Span<const int64> dimensions_to_reduce);
 
 // Convenience wrapper around the above that reduces all the dimensions in the
 // operand shape.
@@ -1831,25 +1802,23 @@ XlaOp ReduceAll(const XlaOp& operand, const XlaOp& init_value,
 // Enqueues a windowed reduce instruction onto the computation.
 XlaOp ReduceWindow(const XlaOp& operand, const XlaOp& init_value,
                    const XlaComputation& computation,
-                   tensorflow::gtl::ArraySlice<int64> window_dimensions,
-                   tensorflow::gtl::ArraySlice<int64> window_strides,
-                   Padding padding);
+                   absl::Span<const int64> window_dimensions,
+                   absl::Span<const int64> window_strides, Padding padding);
 
 // As ReduceWindow(), but the padding is given in the format
 // returned by MakePadding().
 XlaOp ReduceWindowWithGeneralPadding(
     const XlaOp& operand, const XlaOp& init_value,
     const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<int64> window_dimensions,
-    tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding);
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding);
 
 // Returns the sum of the operand value within each subgroup of replicas. All
 // replicas supply one input to the sum and all replicas receive the resulting
 // sum for each subgroup.
-XlaOp CrossReplicaSum(
-    const XlaOp& operand,
-    tensorflow::gtl::ArraySlice<ReplicaGroup> replica_groups = {});
+XlaOp CrossReplicaSum(const XlaOp& operand,
+                      absl::Span<const ReplicaGroup> replica_groups = {});
 
 // Enqueues an operation that do an AllReduce of the operand cross cores. Here
 // AllReduce means doing a reduction on the input operand cross cores and then
@@ -1870,7 +1839,7 @@ XlaOp CrossReplicaSum(
 // TODO(b/79737069): Rename this to AllReduce when it's ready to use.
 XlaOp CrossReplicaSum(
     const XlaOp& operand, const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<ReplicaGroup> replica_groups = {},
+    absl::Span<const ReplicaGroup> replica_groups = {},
     const absl::optional<ChannelHandle>& channel_id = absl::nullopt);
 
 // Enqueues an operation that do an Alltoall of the operand cross cores.
@@ -1893,27 +1862,26 @@ XlaOp CollectivePermute(
 // Enqueues an operation that scatters the `source` array to the selected
 // indices of each window.
 XlaOp SelectAndScatter(const XlaOp& operand, const XlaComputation& select,
-                       tensorflow::gtl::ArraySlice<int64> window_dimensions,
-                       tensorflow::gtl::ArraySlice<int64> window_strides,
-                       Padding padding, const XlaOp& source,
-                       const XlaOp& init_value, const XlaComputation& scatter);
+                       absl::Span<const int64> window_dimensions,
+                       absl::Span<const int64> window_strides, Padding padding,
+                       const XlaOp& source, const XlaOp& init_value,
+                       const XlaComputation& scatter);
 
 // As SelectAndScatter(), but the padding is given in the format
 // returned by MakePadding().
 XlaOp SelectAndScatterWithGeneralPadding(
     const XlaOp& operand, const XlaComputation& select,
-    tensorflow::gtl::ArraySlice<int64> window_dimensions,
-    tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-    const XlaOp& source, const XlaOp& init_value,
-    const XlaComputation& scatter);
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding, const XlaOp& source,
+    const XlaOp& init_value, const XlaComputation& scatter);
 
 // Enqueues an abs instruction onto the computation.
 XlaOp Abs(const XlaOp& operand);
 
 // Enqueues a atan2 instruction onto the computation.
 XlaOp Atan2(const XlaOp& y, const XlaOp& x,
-            tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+            absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues an exp instruction onto the computation.
 XlaOp Exp(const XlaOp& operand);
@@ -1960,7 +1928,7 @@ XlaOp Imag(const XlaOp& operand);
 
 // Enqueues a lhs^rhs computation onto the computation.
 XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+          absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues an operator that tests if the operand's values are finite, i.e.,
 // not Inf or NaN. Defined only for floating-point types. Returns an array of
@@ -1969,10 +1937,10 @@ XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
 XlaOp IsFinite(const XlaOp& operand);
 
 // Enqueues an iota operation onto the computation.
-XlaOp IotaGen(XlaBuilder* builder, const Shape& shape, int64 iota_dimension);
+XlaOp Iota(XlaBuilder* builder, const Shape& shape, int64 iota_dimension);
 
 // Enqueues a rank-1 iota operation onto the computation.
-XlaOp IotaGen(XlaBuilder* builder, PrimitiveType type, int64 size);
+XlaOp Iota(XlaBuilder* builder, PrimitiveType type, int64 size);
 
 // Enqueues a convert instruction onto the computation that changes the
 // element type of the operand array to primitive_type.
@@ -1988,13 +1956,12 @@ XlaOp BitcastConvertType(const XlaOp& operand, PrimitiveType new_element_type);
 XlaOp Neg(const XlaOp& operand);
 
 // Enqueues a transpose instruction onto the computation.
-XlaOp Transpose(const XlaOp& operand,
-                tensorflow::gtl::ArraySlice<int64> permutation);
+XlaOp Transpose(const XlaOp& operand, absl::Span<const int64> permutation);
 
 // Enqueues a reverse instruction onto the computation. The order of the
 // elements in the given dimensions is reversed (i.e., the element at index i
 // is moved to index dimension_size - 1 - i).
-XlaOp Rev(const XlaOp& operand, tensorflow::gtl::ArraySlice<int64> dimensions);
+XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
 
 // Enqueues a sort (as increasing order) instruction onto the computation.
 // If only keys are provided:
@@ -2019,10 +1986,9 @@ XlaOp Sort(XlaOp keys, absl::optional<XlaOp> values = absl::nullopt,
 XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);
 
 // Enqueues a map instruction onto the computation.
-XlaOp Map(XlaBuilder* builder, tensorflow::gtl::ArraySlice<XlaOp> operands,
-          const XlaComputation& computation,
-          tensorflow::gtl::ArraySlice<int64> dimensions,
-          tensorflow::gtl::ArraySlice<XlaOp> static_operands = {});
+XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,
+          const XlaComputation& computation, absl::Span<const int64> dimensions,
+          absl::Span<const XlaOp> static_operands = {});
 
 // Enqueues a N(mu, sigma) random number generation instruction onto the
 // computation.
@@ -2049,7 +2015,7 @@ XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,
 // Enqueues a Gather node onto the computation.
 XlaOp Gather(const XlaOp& input, const XlaOp& start_indices,
              const GatherDimensionNumbers& dimension_numbers,
-             tensorflow::gtl::ArraySlice<int64> slice_sizes);
+             absl::Span<const int64> slice_sizes);
 
 // Enqueues a Scatter node onto the computation.
 XlaOp Scatter(const XlaOp& input, const XlaOp& scatter_indices,
@@ -2107,7 +2073,7 @@ XlaOp CreateToken(XlaBuilder* builder);
 // Enqueues an AfterAll instruction which produces a token-shaped value and
 // takes a variadic number of token-shaped operands. The number of operands must
 // be greater than zero. Used for joining tokens.
-XlaOp AfterAll(XlaBuilder* builder, tensorflow::gtl::ArraySlice<XlaOp> tokens);
+XlaOp AfterAll(XlaBuilder* builder, absl::Span<const XlaOp> tokens);
 
 // Normalizes operand across spatial and batch dimensions for each feature.
 //
@@ -2155,7 +2121,7 @@ XlaOp XlaBuilder::ConstantR0(NativeT value) {
 }
 
 template <typename NativeT>
-XlaOp XlaBuilder::ConstantR1(tensorflow::gtl::ArraySlice<NativeT> values) {
+XlaOp XlaBuilder::ConstantR1(absl::Span<const NativeT> values) {
   return ConstantLiteral(*LiteralUtil::CreateR1<NativeT>(values));
 }
 
@@ -2232,8 +2198,7 @@ XlaOp ConstantR0(XlaBuilder* builder, NativeT value) {
 }
 
 template <typename NativeT>
-XlaOp ConstantR1(XlaBuilder* builder,
-                 tensorflow::gtl::ArraySlice<NativeT> values) {
+XlaOp ConstantR1(XlaBuilder* builder, absl::Span<const NativeT> values) {
   return ConstantLiteral(builder, *LiteralUtil::CreateR1<NativeT>(values));
 }
 

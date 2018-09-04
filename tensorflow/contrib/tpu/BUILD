@@ -16,6 +16,7 @@ package(
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
         "//learning/brain:__subpackages__",
         "//learning/deepmind:__subpackages__",
+        "//medical/pathology:__subpackages__",
         "//tensorflow:__subpackages__",
     ],
 )
@@ -166,6 +167,7 @@ py_library(
     name = "keras_support",
     srcs = [
         "python/tpu/keras_support.py",
+        "python/tpu/keras_tpu_variables.py",
     ],
     srcs_version = "PY2AND3",
     visibility = [

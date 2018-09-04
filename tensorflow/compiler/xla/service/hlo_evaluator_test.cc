@@ -60,7 +60,7 @@ class HloEvaluatorTest : public ::testing::WithParamInterface<bool>,
   }
 
   std::unique_ptr<Literal> Evaluate(
-      tensorflow::gtl::ArraySlice<const Literal*> arg_literals = {}) {
+      absl::Span<const Literal* const> arg_literals = {}) {
     if (use_bfloat16_) {
       // In BF16 mode, we convert all F32 type to BF16 and evaluate the module.
       auto type_converter = HloElementTypeConverter(F32, BF16);
@@ -344,7 +344,7 @@ TEST_P(HloEvaluatorTest, DoesReshape) {
 
   using NativeT = typename primitive_util::PrimitiveTypeToNative<F32>::type;
   result->EachCell<NativeT>(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, NativeT value) {
+      [&](absl::Span<const int64> indices, NativeT value) {
         std::vector<int64> rindexes = Permute(permutation, indices);
         EXPECT_NEAR(value, literal_clone->Get<NativeT>(rindexes), 0.031250);
       });
@@ -935,7 +935,7 @@ TEST_P(HloEvaluatorTest, Conv2DGeneralDimensionsReversed) {
   // clang-format off
   // Result dimensions: [feature=1, height=1, batch=1, width=2]
   Array4D<float> expected_array({{{{2514, 2685}}}});
-  Array4D<float> expected_array_bf16({{{{2512, 2672}}}});
+  Array4D<float> expected_array_bf16({{{{2512, 2688}}}});
   // clang-format on
   auto expected = LiteralUtil::CreateR4FromArray4D<float>(
       use_bfloat16_ ? expected_array_bf16 : expected_array);
@@ -1012,7 +1012,7 @@ TEST_P(HloEvaluatorTest, Conv2DGeneralDimensions) {
   // clang-format off
   // Result dimensions: [feature=1, height=1, batch=1, width=2]
   Array4D<float> expected_array({{{{2514, 2685}}}});
-  Array4D<float> expected_array_bf16({{{{2512, 2672}}}});
+  Array4D<float> expected_array_bf16({{{{2512, 2688}}}});
   // clang-format on
   auto expected = LiteralUtil::CreateR4FromArray4D<float>(
       use_bfloat16_ ? expected_array_bf16 : expected_array);
@@ -1219,12 +1219,7 @@ TEST_P(HloEvaluatorTest,
   EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
 }
 
-class HloEvaluatorPreciseReduceTest : public HloVerifiedTestBase {
- public:
-  HloEvaluatorPreciseReduceTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false) {}
-};
+class HloEvaluatorPreciseReduceTest : public HloVerifiedTestBase {};
 
 // Tests that Reduce doesn't lose precision when adding many numbers (because
 // it accumulates its result in a double).

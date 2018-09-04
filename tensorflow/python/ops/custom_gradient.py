@@ -82,11 +82,10 @@ def custom_gradient(f):
   scope must be using `ResourceVariable`s.
 
   Args:
-    f: function `f(x)` that returns a tuple `(y, grad_fn)` where:
-       - `x` is a `Tensor` or sequence of `Tensor` inputs to the function.
+    f: function `f(*x)` that returns a tuple `(y, grad_fn)` where:
+       - `x` is a sequence of `Tensor` inputs to the function.
        - `y` is a `Tensor` or sequence of `Tensor` outputs of applying
-         TensorFlow
-         operations in `f` to `x`.
+         TensorFlow operations in `f` to `x`.
        - `grad_fn` is a function with the signature `g(*grad_ys)` which returns
          a list of `Tensor`s - the derivatives of `Tensor`s in `y` with respect
          to the `Tensor`s in `x`.  `grad_ys` is a `Tensor` or sequence of
@@ -96,7 +95,8 @@ def custom_gradient(f):
          signature `g(*grad_ys, variables=None)`, where `variables` is a list of
          the `Variable`s, and return a 2-tuple `(grad_xs, grad_vars)`, where
          `grad_xs` is the same as above, and `grad_vars` is a `list<Tensor>`
-         with the derivatives of `Tensor`s in `y` with respect to the variables.
+         with the derivatives of `Tensor`s in `y` with respect to the variables
+         (that is, grad_vars has one Tensor per variable in variables).
 
   Returns:
     A function `h(x)` which returns the same value as `f(x)[0]` and whose

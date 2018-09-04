@@ -69,7 +69,7 @@ static LoopEmitter::BodyEmitter MakeBodyEmitterForMultiOutputFusion(
 }
 
 LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
-                         tensorflow::gtl::ArraySlice<IrArray> target_arrays,
+                         absl::Span<const IrArray> target_arrays,
                          llvm::IRBuilder<>* b)
     : body_emitter_(MakeBodyEmitterForMultiOutputFusion(
           target_element_generator,

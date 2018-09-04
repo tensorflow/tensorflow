@@ -382,7 +382,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
   %input = f32[1,2,1]{2,1,0} parameter(0)
   %copy = f32[1,2,1]{2,0,1} copy(f32[1,2,1]{2,1,0} %input)
   %filter = f32[1,1,1]{2,1,0} parameter(1)
-  ROOT %convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), window={size=1}, dim_labels=b0f_0io->b0f, feature_group_count=1
+  ROOT %convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), window={size=1}, dim_labels=b0f_0io->b0f, feature_group_count=1, operand_precision={high,default}
 }
 
 )"
@@ -1723,6 +1723,25 @@ TEST_F(HloParserTest, ParseConvolutionDimensionNumbers) {
   TF_ASSERT_OK_AND_ASSIGN(ConvolutionDimensionNumbers dnums,
                           ParseConvolutionDimensionNumbers(original));
   EXPECT_EQ(original, ConvolutionDimensionNumbersToString(dnums));
+}
+
+TEST_F(HloParserTest, ParsePaddingConfigNoInteriorPadding) {
+  const string original = "0_1x2_3";
+  TF_ASSERT_OK_AND_ASSIGN(PaddingConfig dnums, ParsePaddingConfig(original));
+  EXPECT_EQ(original, PaddingConfigToString(dnums));
+}
+
+TEST_F(HloParserTest, ParsePaddingConfigInteriorPadding) {
+  const string original = "0_1_0x2_3_4";
+  TF_ASSERT_OK_AND_ASSIGN(PaddingConfig dnums, ParsePaddingConfig(original));
+  EXPECT_EQ(original, PaddingConfigToString(dnums));
+}
+
+TEST_F(HloParserTest, ParsePaddingConfigInteriorPaddingImplicitZeroDim) {
+  TF_ASSERT_OK_AND_ASSIGN(PaddingConfig dnums, ParsePaddingConfig("0_1x2_3_4"));
+  // The extra "_0" gets added to the canonical string because the other dim has
+  // interior padding.
+  EXPECT_EQ("0_1_0x2_3_4", PaddingConfigToString(dnums));
 }
 
 TEST_F(HloParserTest, NontupleInfeed) {

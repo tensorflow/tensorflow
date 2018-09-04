@@ -585,11 +585,15 @@ def categorical_accuracy(y_true, y_pred):
 
 
 def sparse_categorical_accuracy(y_true, y_pred):
-  return math_ops.cast(
-      math_ops.equal(
-          math_ops.reduce_max(y_true, axis=-1),
-          math_ops.cast(math_ops.argmax(y_pred, axis=-1), K.floatx())),
-      K.floatx())
+  y_true = math_ops.reduce_max(y_true, axis=-1)
+  y_pred = math_ops.argmax(y_pred, axis=-1)
+
+  # If the expected labels are float, we need to cast the int returned by
+  # argmax to compare.
+  if K.dtype(y_true) == K.floatx():
+    y_pred = math_ops.cast(y_pred, K.floatx())
+
+  return math_ops.cast(math_ops.equal(y_true, y_pred), K.floatx())
 
 
 @tf_export('keras.metrics.top_k_categorical_accuracy')

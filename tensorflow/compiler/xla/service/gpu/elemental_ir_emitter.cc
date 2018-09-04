@@ -74,10 +74,8 @@ GpuElementalIrEmitter::GpuElementalIrEmitter(
       compute_nested_(std::move(compute_nested)) {}
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLibdeviceMathCall(
-    const string& callee_name,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-    PrimitiveType output_type) {
+    const string& callee_name, absl::Span<llvm::Value* const> operands,
+    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type) {
   // The libdevice math functions differentiate between "double" and "float" by
   // appending an 'f' to the function's name. libdevice doesn't have f16 math
   // functions, so we convert the operands to f32 before calling the function
@@ -119,10 +117,8 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLibdeviceMathCall(
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLlvmIntrinsicMathCall(
-    const string& callee_name,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-    PrimitiveType output_type) {
+    const string& callee_name, absl::Span<llvm::Value* const> operands,
+    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type) {
   // llvm intrinsics differentiate between half/float/double functions via
   // the suffixes ".f16", ".f32" and ".f64".
   string munged_callee = callee_name;
@@ -144,10 +140,8 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLlvmIntrinsicMathCall(
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
-    const string& callee_name,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-    PrimitiveType output_type) {
+    const string& callee_name, absl::Span<llvm::Value* const> operands,
+    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type) {
   // Binary math functions transform are of type [T] -> T.
   for (PrimitiveType input_type : input_types) {
     if (output_type != input_type) {
@@ -290,11 +284,9 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
 }
 
 llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
-    const string& callee_name,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-    PrimitiveType output_type,
-    tensorflow::gtl::ArraySlice<llvm::Attribute::AttrKind> attributes) {
+    const string& callee_name, absl::Span<llvm::Value* const> operands,
+    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
+    absl::Span<const llvm::Attribute::AttrKind> attributes) {
   std::vector<llvm::Type*> ir_input_types;
   for (PrimitiveType input_type : input_types) {
     ir_input_types.push_back(
