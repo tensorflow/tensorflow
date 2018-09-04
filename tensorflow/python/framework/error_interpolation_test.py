@@ -167,20 +167,20 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
     self.assertEqual(interpolated_string, normal_string)
 
   def testOneTagWithAFakeNameResultsInPlaceholders(self):
-    one_tag_string = "^^node:MinusOne^^"
+    one_tag_string = "{{node MinusOne}}"
     interpolated_string = error_interpolation.interpolate(
         one_tag_string, self.graph)
     self.assertEqual(one_tag_string, interpolated_string)
 
   def testTwoTagsNoSeps(self):
-    two_tags_no_seps = "^^node:One^^^^node:Three^^"
+    two_tags_no_seps = "{{node One}}{{node Three}}"
     interpolated_string = error_interpolation.interpolate(
         two_tags_no_seps, self.graph)
     self.assertRegexpMatches(interpolated_string,
                              "constant_op.py:[0-9]+.*constant_op.py:[0-9]+")
 
   def testTwoTagsWithSeps(self):
-    two_tags_with_seps = ";;;^^node:Two^^,,,^^node:Three^^;;;"
+    two_tags_with_seps = ";;;{{node Two}},,,{{node Three}};;;"
     interpolated_string = error_interpolation.interpolate(
         two_tags_with_seps, self.graph)
     expected_regex = (
@@ -206,23 +206,23 @@ class InterpolateDeviceSummaryTest(test.TestCase):
     self.graph = self.three.graph
 
   def testNodeZeroHasNoDeviceSummaryInfo(self):
-    message = "^^colocation_node:zero^^"
+    message = "{{colocation_node zero}}"
     result = error_interpolation.interpolate(message, self.graph)
     self.assertIn("No device assignments were active", result)
 
   def testNodeOneHasExactlyOneInterpolatedDevice(self):
-    message = "^^colocation_node:one^^"
+    message = "{{colocation_node one}}"
     result = error_interpolation.interpolate(message, self.graph)
     self.assertEqual(2, result.count("tf.device(/cpu)"))
 
   def testNodeTwoHasTwoInterpolatedDevice(self):
-    message = "^^colocation_node:two^^"
+    message = "{{colocation_node two}}"
     result = error_interpolation.interpolate(message, self.graph)
     self.assertEqual(2, result.count("tf.device(/cpu)"))
     self.assertEqual(2, result.count("tf.device(/cpu:0)"))
 
   def testNodeThreeHasFancyFunctionDisplayNameForInterpolatedDevice(self):
-    message = "^^colocation_node:three^^"
+    message = "{{colocation_node three}}"
     result = error_interpolation.interpolate(message, self.graph)
     num_devices = result.count("tf.device")
     self.assertEqual(2, num_devices)
@@ -256,12 +256,12 @@ class InterpolateColocationSummaryTest(test.TestCase):
     self.graph = node_three.graph
 
   def testNodeThreeHasColocationInterpolation(self):
-    message = "^^colocation_node:Three_with_one^^"
+    message = "{{colocation_node Three_with_one}}"
     result = error_interpolation.interpolate(message, self.graph)
     self.assertIn("colocate_with(One)", result)
 
   def testNodeFourHasColocationInterpolationForNodeThreeOnly(self):
-    message = "^^colocation_node:Four_with_three^^"
+    message = "{{colocation_node Four_with_three}}"
     result = error_interpolation.interpolate(message, self.graph)
     self.assertIn("colocate_with(Three_with_one)", result)
     self.assertNotIn(
@@ -269,13 +269,13 @@ class InterpolateColocationSummaryTest(test.TestCase):
         "Node One should not appear in Four_with_three's summary:\n%s" % result)
 
   def testNodeFiveHasColocationInterpolationForNodeOneAndTwo(self):
-    message = "^^colocation_node:Five_with_one_with_two^^"
+    message = "{{colocation_node Five_with_one_with_two}}"
     result = error_interpolation.interpolate(message, self.graph)
     self.assertIn("colocate_with(One)", result)
     self.assertIn("colocate_with(Two)", result)
 
   def testColocationInterpolationForNodeLackingColocation(self):
-    message = "^^colocation_node:One^^"
+    message = "{{colocation_node One}}"
     result = error_interpolation.interpolate(message, self.graph)
     self.assertIn("No node-device colocations", result)
     self.assertNotIn("Two", result)
