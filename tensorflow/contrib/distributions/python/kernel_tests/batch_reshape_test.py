@@ -76,7 +76,7 @@ class _BatchReshapeTest(object):
         wishart.log_prob(x), expected_log_prob_shape)
     actual_log_prob = reshape_wishart.log_prob(expected_sample)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       [
           batch_shape_,
           event_shape_,
@@ -132,7 +132,7 @@ class _BatchReshapeTest(object):
         wishart.variance(), expected_matrix_stat_shape)
     actual_variance = reshape_wishart.variance()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       [
           expected_entropy_, actual_entropy_,
           expected_mean_, actual_mean_,
@@ -202,7 +202,7 @@ class _BatchReshapeTest(object):
         normal.log_prob(x), expected_log_prob_shape)
     actual_log_prob = reshape_normal.log_prob(expected_sample)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       [
           batch_shape_,
           event_shape_,
@@ -255,7 +255,7 @@ class _BatchReshapeTest(object):
         normal.variance(), expected_scalar_stat_shape)
     actual_variance = reshape_normal.variance()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       [
           expected_entropy_, actual_entropy_,
           expected_mean_, actual_mean_,
@@ -323,7 +323,7 @@ class _BatchReshapeTest(object):
         mvn.log_prob(x), expected_log_prob_shape)
     actual_log_prob = reshape_mvn.log_prob(expected_sample)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       [
           batch_shape_,
           event_shape_,
@@ -385,7 +385,7 @@ class _BatchReshapeTest(object):
         mvn.covariance(), expected_matrix_stat_shape)
     actual_covariance = reshape_mvn.covariance()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       [
           expected_entropy_, actual_entropy_,
           expected_mean_, actual_mean_,
@@ -447,7 +447,7 @@ class _BatchReshapeTest(object):
             validate_args=True)
 
     else:
-      with self.test_session():
+      with self.cached_session():
         with self.assertRaisesOpError(r"Shape sizes do not match."):
           batch_reshape_lib.BatchReshape(
               distribution=mvn,
@@ -482,7 +482,7 @@ class _BatchReshapeTest(object):
             validate_args=True)
 
     else:
-      with self.test_session():
+      with self.cached_session():
         with self.assertRaisesOpError(r".*must be >=-1.*"):
           batch_reshape_lib.BatchReshape(
               distribution=mvn,
@@ -512,7 +512,7 @@ class _BatchReshapeTest(object):
             validate_args=True)
 
     else:
-      with self.test_session():
+      with self.cached_session():
         with self.assertRaisesOpError(r".*must be a vector.*"):
           batch_reshape_lib.BatchReshape(
               distribution=mvn,
@@ -548,11 +548,11 @@ class _BatchReshapeTest(object):
       return
 
     with self.assertRaisesOpError("too few batch and event dims"):
-      with self.test_session():
+      with self.cached_session():
         poisson_141_reshaped.log_prob(x_4).eval()
 
     with self.assertRaisesOpError("unexpected batch and event shape"):
-      with self.test_session():
+      with self.cached_session():
         poisson_141_reshaped.log_prob(x_114).eval()
 
 

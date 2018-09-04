@@ -186,7 +186,7 @@ static bool FindMultiline(StringPiece line, size_t colon, string* end) {
   while (str_util::ConsumePrefix(&line, " ")) {
   }
   if (str_util::ConsumePrefix(&line, "<<")) {
-    *end = std::string(line);
+    *end = string(line);
     return true;
   }
   return false;

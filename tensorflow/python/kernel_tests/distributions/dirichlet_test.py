@@ -20,6 +20,7 @@ import importlib
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -190,10 +191,10 @@ class DirichletTest(test.TestCase):
         dist.stddev(),
     ])
 
-    self.assertAllClose(sample_mean_, analytic_mean, atol=0., rtol=0.04)
-    self.assertAllClose(sample_cov_, analytic_cov, atol=0., rtol=0.06)
-    self.assertAllClose(sample_var_, analytic_var, atol=0., rtol=0.03)
-    self.assertAllClose(sample_stddev_, analytic_stddev, atol=0., rtol=0.02)
+    self.assertAllClose(sample_mean_, analytic_mean, atol=0.04, rtol=0.)
+    self.assertAllClose(sample_cov_, analytic_cov, atol=0.06, rtol=0.)
+    self.assertAllClose(sample_var_, analytic_var, atol=0.03, rtol=0.)
+    self.assertAllClose(sample_stddev_, analytic_stddev, atol=0.02, rtol=0.)
 
   def testVariance(self):
     with self.test_session():
@@ -263,6 +264,15 @@ class DirichletTest(test.TestCase):
               stats.beta(
                   a=1., b=2.).cdf)[0],
           0.01)
+
+  def testDirichletFullyReparameterized(self):
+    alpha = constant_op.constant([1.0, 2.0, 3.0])
+    with backprop.GradientTape() as tape:
+      tape.watch(alpha)
+      dirichlet = dirichlet_lib.Dirichlet(alpha)
+      samples = dirichlet.sample(100)
+    grad_alpha = tape.gradient(samples, alpha)
+    self.assertIsNotNone(grad_alpha)
 
   def testDirichletDirichletKL(self):
     conc1 = np.array([[1., 2., 3., 1.5, 2.5, 3.5],

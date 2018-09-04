@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_VARIANT_H_
-#define TENSORFLOW_FRAMEWORK_VARIANT_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_VARIANT_H_
+#define TENSORFLOW_CORE_FRAMEWORK_VARIANT_H_
 
 #include <functional>
 #include <iostream>
@@ -351,4 +351,4 @@ const void* Variant::get() const;
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_VARIANT_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_VARIANT_H_

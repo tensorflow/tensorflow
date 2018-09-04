@@ -26,6 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -117,6 +118,14 @@ class AbsoluteDifferenceLossTest(test.TestCase):
     loss = losses.absolute_difference(self._labels, self._predictions, weights)
     with self.test_session():
       self.assertAlmostEqual(0.0, loss.eval(), 3)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testEagerNoMemoryLeaked(self):
+    # This is a somewhat convoluted way of testing that nothing gets added to
+    # a global collection.
+    predictions = constant_op.constant([4, 8, 12, 8, 1, 3], shape=(2, 3))
+    labels = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    losses.absolute_difference(labels, predictions)
 
 
 class SoftmaxCrossEntropyLossTest(test.TestCase):
@@ -245,6 +254,13 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
       loss = losses.sparse_softmax_cross_entropy(labels, logits)
       self.assertEquals(loss.op.name, 'sparse_softmax_cross_entropy_loss/value')
       self.assertAlmostEqual(loss.eval(), 0.0, 3)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testEagerNoMemoryLeaked(self):
+    logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
+                                   [0.0, 0.0, 10.0]])
+    labels = constant_op.constant([[0], [1], [2]], dtype=dtypes.int32)
+    losses.sparse_softmax_cross_entropy(labels, logits)
 
   def testAllCorrectInt64Labels(self):
     with self.test_session():

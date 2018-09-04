@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/channel_tracker.h"
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -31,16 +31,23 @@ namespace xla {
 
 ChannelTracker::ChannelTracker() : next_channel_(1) {}
 
-ChannelHandle ChannelTracker::NewChannel() {
+StatusOr<ChannelHandle> ChannelTracker::NewChannel(
+    ChannelHandle::ChannelType type) {
+  if (type != ChannelHandle::DEVICE_TO_DEVICE &&
+      type != ChannelHandle::HOST_TO_DEVICE &&
+      type != ChannelHandle::DEVICE_TO_HOST) {
+    return InvalidArgument("Invalid channel type: %d", type);
+  }
   tensorflow::mutex_lock lock(channel_mutex_);
 
   // Create a new channel handle with a unique value.
-  const ChannelHandle new_handle = AllocateHandle();
+  ChannelHandle new_handle = AllocateHandle(type);
 
   // Register a channel object associated with the handle.
   Channel channel;
   channel.has_sender = false;
   channel.receiver_count = 0;
+  channel.type = type;
   opaque_to_channel_[new_handle.handle()] = channel;
 
   return new_handle;
@@ -56,22 +63,30 @@ Status ChannelTracker::RegisterRecv(const ChannelHandle& handle) {
   return RegisterRecvInternal(handle);
 }
 
-ChannelHandle ChannelTracker::AllocateHandle() {
+ChannelHandle ChannelTracker::AllocateHandle(ChannelHandle::ChannelType type) {
   int64 handle_value = next_channel_++;
   ChannelHandle result;
   result.set_handle(handle_value);
+  result.set_type(type);
   return result;
 }
 
 Status ChannelTracker::RegisterSendInternal(const ChannelHandle& handle) {
   if (opaque_to_channel_.count(handle.handle()) == 0) {
-    return NotFound("channel handle not found: %lld", handle.handle());
+    return NotFound("channel handle not found: %d", handle.handle());
   }
   Channel& channel = opaque_to_channel_[handle.handle()];
+  if (channel.type == ChannelHandle::HOST_TO_DEVICE) {
+    return FailedPrecondition(
+        "host-to-device channels cannot be used with a Send operation; "
+        "channel handle: %d",
+        handle.handle());
+  }
+
   if (channel.has_sender) {
     return FailedPrecondition(
         "when registering send, passed a channel handle that is already used "
-        "by a sender: %lld",
+        "by a sender: %d",
         handle.handle());
   }
   channel.has_sender = true;
@@ -80,14 +95,21 @@ Status ChannelTracker::RegisterSendInternal(const ChannelHandle& handle) {
 
 Status ChannelTracker::RegisterRecvInternal(const ChannelHandle& handle) {
   if (opaque_to_channel_.count(handle.handle()) == 0) {
-    return NotFound("channel handle not found: %lld", handle.handle());
+    return NotFound("channel handle not found: %d", handle.handle());
   }
   Channel& channel = opaque_to_channel_[handle.handle()];
+  if (channel.type == ChannelHandle::DEVICE_TO_HOST) {
+    return FailedPrecondition(
+        "device-to-host channels cannot be used with a Recv operation; "
+        "channel handle: %d",
+        handle.handle());
+  }
+
   // TODO(b/33942691): Allow more than 1 receivers for broadcast.
   if (channel.receiver_count >= 1) {
     return FailedPrecondition(
         "when registering recv, passed a channel handle that is already used "
-        "by a receiver: %lld",
+        "by a receiver: %d",
         handle.handle());
   }
   channel.receiver_count += 1;

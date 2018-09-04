@@ -138,8 +138,8 @@ void RunInference(Settings* s) {
   int image_width = 224;
   int image_height = 224;
   int image_channels = 3;
-  uint8_t* in = read_bmp(s->input_bmp_name, &image_width, &image_height,
-                         &image_channels, s);
+  std::vector<uint8_t> in = read_bmp(s->input_bmp_name, &image_width,
+                                     &image_height, &image_channels, s);
 
   int input = interpreter->inputs()[0];
   if (s->verbose) LOG(INFO) << "input: " << input << "\n";
@@ -168,12 +168,12 @@ void RunInference(Settings* s) {
   switch (interpreter->tensor(input)->type) {
     case kTfLiteFloat32:
       s->input_floating = true;
-      resize<float>(interpreter->typed_tensor<float>(input), in, image_height,
-                    image_width, image_channels, wanted_height, wanted_width,
-                    wanted_channels, s);
+      resize<float>(interpreter->typed_tensor<float>(input), in.data(),
+                    image_height, image_width, image_channels, wanted_height,
+                    wanted_width, wanted_channels, s);
       break;
     case kTfLiteUInt8:
-      resize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), in,
+      resize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), in.data(),
                       image_height, image_width, image_channels, wanted_height,
                       wanted_width, wanted_channels, s);
       break;
@@ -213,22 +213,23 @@ void RunInference(Settings* s) {
     }
   }
 
-  const int output_size = 1000;
-  const size_t num_results = 5;
   const float threshold = 0.001f;
 
   std::vector<std::pair<float, int>> top_results;
 
   int output = interpreter->outputs()[0];
+  TfLiteIntArray* output_dims = interpreter->tensor(output)->dims;
+  // assume output dims to be something like (1, 1, ... ,size)
+  auto output_size = output_dims->data[output_dims->size - 1];
   switch (interpreter->tensor(output)->type) {
     case kTfLiteFloat32:
       get_top_n<float>(interpreter->typed_output_tensor<float>(0), output_size,
-                       num_results, threshold, &top_results, true);
+                       s->number_of_results, threshold, &top_results, true);
       break;
     case kTfLiteUInt8:
       get_top_n<uint8_t>(interpreter->typed_output_tensor<uint8_t>(0),
-                         output_size, num_results, threshold, &top_results,
-                         false);
+                         output_size, s->number_of_results, threshold,
+                         &top_results, false);
       break;
     default:
       LOG(FATAL) << "cannot handle output type "
@@ -259,6 +260,7 @@ void display_usage() {
             << "--labels, -l: labels for the model\n"
             << "--tflite_model, -m: model_name.tflite\n"
             << "--profiling, -p: [0|1], profiling or not\n"
+            << "--num_results, -r: number of results to show\n"
             << "--threads, -t: number of threads\n"
             << "--verbose, -v: [0|1] print more information\n"
             << "\n";
@@ -280,12 +282,13 @@ int Main(int argc, char** argv) {
         {"threads", required_argument, nullptr, 't'},
         {"input_mean", required_argument, nullptr, 'b'},
         {"input_std", required_argument, nullptr, 's'},
+        {"num_results", required_argument, nullptr, 'r'},
         {nullptr, 0, nullptr, 0}};
 
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
-    c = getopt_long(argc, argv, "a:b:c:f:i:l:m:p:s:t:v:", long_options,
+    c = getopt_long(argc, argv, "a:b:c:f:i:l:m:p:r:s:t:v:", long_options,
                     &option_index);
 
     /* Detect the end of the options. */
@@ -313,6 +316,10 @@ int Main(int argc, char** argv) {
         break;
       case 'p':
         s.profiling =
+            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
+        break;
+      case 'r':
+        s.number_of_results =
             strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 's':

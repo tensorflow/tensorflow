@@ -420,8 +420,9 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     const int output_image_size =
         dims.spatial_dims[0].output_size * dims.spatial_dims[1].output_size;
 
-    const size_t l2_cache_size = Eigen::l2CacheSize();
-    const size_t l3_cache_size = Eigen::l3CacheSize();
+    // TODO(andydavis) Get L2/L3 cache sizes from device.
+    const size_t l2_cache_size = 256LL << 10;
+    const size_t l3_cache_size = 30LL << 20;
 
     // Use L3 cache size as target working set size.
     const size_t target_working_set_size = l3_cache_size / sizeof(T);
@@ -956,6 +957,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       dims.in_depth,                       // in_depths
       {{input_desc.height(),               // in_rows
         input_desc.width()}},              // in_cols
+      FORMAT_NCHW,                         // compute_data_format
       dims.out_depth,                      // out_depths
       {{dims.spatial_dims[0].filter_size,  // filter_rows
         dims.spatial_dims[1].filter_size,  // filter_cols

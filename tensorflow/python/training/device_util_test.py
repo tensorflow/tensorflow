@@ -52,7 +52,7 @@ class DeviceUtilTest(test.TestCase):
   def testCanonicalizeWithoutDefaultDevice(self):
     self.assertEqual(
         device_util.canonicalize("/cpu:0"),
-        "/job:localhost/replica:0/task:0/device:CPU:0")
+        "/replica:0/task:0/device:CPU:0")
     self.assertEqual(
         device_util.canonicalize("/job:worker/cpu:0"),
         "/job:worker/replica:0/task:0/device:CPU:0")

@@ -60,7 +60,7 @@ MaybeFind(const Collection& collection,
   if (it == collection.end()) {
     std::ostringstream os;
     os << key;
-    return NotFound("key not found: %s", os.str().c_str());
+    return NotFound("key not found: %s", os.str());
   }
   return {it->second};
 }

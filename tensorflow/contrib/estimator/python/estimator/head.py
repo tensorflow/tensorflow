@@ -529,11 +529,13 @@ def multi_label_head(n_classes,
   applications, the shape is `[batch_size, n_classes]`.
 
   Labels can be:
+
   * A multi-hot tensor of shape `[D0, D1, ... DN, n_classes]`
   * An integer `SparseTensor` of class indices. The `dense_shape` must be
     `[D0, D1, ... DN, ?]` and the values within `[0, n_classes)`.
   * If `label_vocabulary` is given, a string `SparseTensor`. The `dense_shape`
-    must be `[D0, D1, ... DN, ?]` and the values within `label_vocabulary`.
+    must be `[D0, D1, ... DN, ?]` and the values within `label_vocabulary` or a
+    multi-hot tensor of shape `[D0, D1, ... DN, n_classes]`.
 
   If `weight_column` is specified, weights must be of shape
   `[D0, D1, ... DN]`, or `[D0, D1, ... DN, 1]`.
@@ -845,6 +847,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         train_op = train_op_fn(regularized_training_loss)
       else:
         raise ValueError('train_op_fn and optimizer cannot both be None.')
+      train_op = head_lib._append_update_ops(train_op)  # pylint:disable=protected-access
       # Only summarize mean_loss for SUM reduction to preserve backwards
       # compatibility. Otherwise skip it to avoid unnecessary computation.
       if self._loss_reduction == losses.Reduction.SUM:
@@ -940,20 +943,30 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         class_probabilities = array_ops.slice(
             probabilities, begin=begin, size=size)
         class_labels = array_ops.slice(labels, begin=begin, size=size)
-        prob_key = keys.PROBABILITY_MEAN_AT_CLASS % class_id
+        if self._label_vocabulary is None:
+          prob_key = keys.PROBABILITY_MEAN_AT_CLASS % class_id
+        else:
+          prob_key = (
+              keys.PROBABILITY_MEAN_AT_NAME % self._label_vocabulary[class_id])
         metric_ops[head_lib._summary_key(self._name, prob_key)] = (  # pylint:disable=protected-access
             head_lib._predictions_mean(  # pylint:disable=protected-access
                 predictions=class_probabilities,
                 weights=weights,
                 name=prob_key))
-        auc_key = keys.AUC_AT_CLASS % class_id
+        if self._label_vocabulary is None:
+          auc_key = keys.AUC_AT_CLASS % class_id
+        else:
+          auc_key = keys.AUC_AT_NAME % self._label_vocabulary[class_id]
         metric_ops[head_lib._summary_key(self._name, auc_key)] = (  # pylint:disable=protected-access
             head_lib._auc(  # pylint:disable=protected-access
                 labels=class_labels,
                 predictions=class_probabilities,
                 weights=weights,
                 name=auc_key))
-        auc_pr_key = keys.AUC_PR_AT_CLASS % class_id
+        if self._label_vocabulary is None:
+          auc_pr_key = keys.AUC_PR_AT_CLASS % class_id
+        else:
+          auc_pr_key = keys.AUC_PR_AT_NAME % self._label_vocabulary[class_id]
         metric_ops[head_lib._summary_key(self._name, auc_pr_key)] = (  # pylint:disable=protected-access
             head_lib._auc(  # pylint:disable=protected-access
                 labels=class_labels,

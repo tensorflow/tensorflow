@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "IsNan"
+  endpoint {
+    name: "debugging.is_nan"
+  }
+  endpoint {
+    name: "is_nan"
+    deprecated: true
+  }
+}

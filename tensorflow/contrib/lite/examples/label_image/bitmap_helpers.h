@@ -22,8 +22,8 @@ limitations under the License.
 namespace tflite {
 namespace label_image {
 
-uint8_t* read_bmp(const std::string& input_bmp_name, int* width, int* height,
-                  int* channels, Settings* s);
+std::vector<uint8_t> read_bmp(const std::string& input_bmp_name, int* width,
+                              int* height, int* channels, Settings* s);
 
 template <class T>
 void resize(T* out, uint8_t* in, int image_height, int image_width,
@@ -39,4 +39,4 @@ template void resize<float>(float*, unsigned char*, int, int, int, int, int,
 }  // namespace label_image
 }  // namespace tflite
 
-#endif  // TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_H
+#endif  // TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_H_

@@ -129,7 +129,7 @@ def transform_op_if_inside_handler(info, op, keep_if_possible=True):
       return None
 
 
-def copy_op_handler(info, op, new_inputs, copy_shape=True, nodedef_fn=None):
+def copy_op_handler(info, op, new_inputs, copy_shape=False, nodedef_fn=None):
   """Copy a `tf.Operation`.
 
   Args:
@@ -188,9 +188,6 @@ def copy_op_handler(info, op, new_inputs, copy_shape=True, nodedef_fn=None):
   # TODO(fkp): Stop worrying about _original_op and remove this code?
   if op._original_op:
     op_._original_op = op._original_op
-
-  # Add op to the graph
-  info.graph_._add_op(op_)
 
   return op_, op_.outputs
 
@@ -492,7 +489,7 @@ class Transformer(object):
       t_ = info.transformed_ts[t]
       consumer_op_ = info.transformed_ops[consumer_op]
       t_index_ = list(consumer_op_.inputs).index(tmp_t_)
-      consumer_op_._update_input(t_index_, t_, update_dtype=False)  # pylint: disable=protected-access
+      consumer_op_._update_input(t_index_, t_)  # pylint: disable=protected-access
 
   def _connect_control_inputs(self, info):
     """Connect the previously copied ops."""

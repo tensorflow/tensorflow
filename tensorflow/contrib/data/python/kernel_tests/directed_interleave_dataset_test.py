@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import interleave_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
@@ -34,8 +33,8 @@ class DirectedInterleaveDatasetTest(test.TestCase):
     input_datasets = [
         dataset_ops.Dataset.from_tensors(i).repeat(100) for i in range(10)
     ]
-    dataset = interleave_ops.DirectedInterleaveDataset(selector_dataset,
-                                                       input_datasets)
+    dataset = interleave_ops._DirectedInterleaveDataset(selector_dataset,
+                                                        input_datasets)
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
 
@@ -85,7 +84,7 @@ class DirectedInterleaveDatasetTest(test.TestCase):
     # Use chi-squared test to assert that the observed distribution matches the
     # expected distribution. Based on the implementation in
     # "tensorflow/python/kernel_tests/multinomial_op_test.py".
-    for probs in [[.85, .05, .1], rand_probs]:
+    for probs in [[.85, .05, .1], rand_probs, [1.]]:
       probs = np.asarray(probs)
       classes = len(probs)
       freqs = self._testSampleFromDatasetsHelper(probs, classes, num_samples)
@@ -142,25 +141,6 @@ class DirectedInterleaveDatasetTest(test.TestCase):
           dataset_ops.Dataset.from_tensors(0),
           dataset_ops.Dataset.from_tensors(1)
       ], choice_dataset=dataset_ops.Dataset.from_tensors([1.0]))
-
-
-class SampleFromDatasetsSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
-
-  def _build_dataset(self, probs, num_samples):
-    dataset = interleave_ops.sample_from_datasets(
-        [
-            dataset_ops.Dataset.from_tensors(i).repeat(None)
-            for i in range(len(probs))
-        ],
-        probs,
-        seed=1813)
-    return dataset.take(num_samples)
-
-  def testSerializationCore(self):
-    self.run_core_tests(
-        lambda: self._build_dataset([0.5, 0.5], 100),
-        lambda: self._build_dataset([0.25, 0.25, 0.25, 0.25], 1000), 100)
 
 
 if __name__ == "__main__":

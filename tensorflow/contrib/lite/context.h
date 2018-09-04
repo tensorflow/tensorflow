@@ -39,6 +39,27 @@ extern "C" {
 
 typedef enum { kTfLiteOk = 0, kTfLiteError = 1 } TfLiteStatus;
 
+// The list of external context types known to TF Lite. This list exists solely
+// to avoid conflicts and to ensure ops can share the external contexts they
+// need. Access to the external contexts is controled by one of the
+// corresponding support files.
+typedef enum {
+  kTfLiteEigenContext = 0,     // include eigen_support.h to use.
+  kTfLiteGemmLowpContext = 1,  // include gemm_support.h to use.
+  kTfLiteEdgeTpuContext = 2,   // Placeholder for Edge TPU support.
+  kTfLiteMaxExternalContexts = 3
+} TfLiteExternalContextType;
+
+// An external context is a collection of information unrelated to the TF Lite
+// framework, but useful to a subset of the ops. TF Lite knows very little
+// about about the actual contexts, but it keeps a list of them, and is able to
+// refresh them if configurations like the number of recommended threads
+// change.
+typedef struct {
+  TfLiteExternalContextType type;
+  TfLiteStatus (*Refresh)(struct TfLiteContext* context);
+} TfLiteExternalContext;
+
 // Forward declare so GetNode can use this is in Context.
 typedef struct _TfLiteRegistration TfLiteRegistration;
 typedef struct _TfLiteDelegate TfLiteDelegate;
@@ -129,6 +150,11 @@ void TfLiteIntArrayFree(TfLiteIntArray* v);
     }                                      \
   } while (0)
 
+// Single-precision complex data type compatible with the C99 definition.
+typedef struct {
+  float re, im;  // real and imaginary parts, respectively.
+} TfLiteComplex64;
+
 // Types supported by tensor
 typedef enum {
   kTfLiteNoType = 0,
@@ -138,6 +164,8 @@ typedef enum {
   kTfLiteInt64 = 4,
   kTfLiteString = 5,
   kTfLiteBool = 6,
+  kTfLiteInt16 = 7,
+  kTfLiteComplex64 = 8,
 } TfLiteType;
 
 // Parameters for asymmetric quantization. Quantized values can be converted
@@ -148,7 +176,7 @@ typedef struct {
   int32_t zero_point;
 } TfLiteQuantizationParams;
 
-// A union of points that points to memory for a given tensor.
+// A union of pointers that points to memory for a given tensor.
 typedef union {
   int* i32;
   int64_t* i64;
@@ -157,6 +185,8 @@ typedef union {
   const char* raw_const;
   uint8_t* uint8;
   bool* b;
+  int16_t* i16;
+  TfLiteComplex64* c64;
 } TfLitePtrUnion;
 
 // Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped
@@ -223,6 +253,9 @@ typedef struct {
   // delegate buffer.
   // WARNING: This is an // experimental interface that is subject to change.
   bool data_is_stale;
+
+  // True if the tensor is a variable.
+  bool is_variable;
 } TfLiteTensor;
 
 // Free data memory of tensor `t`;
@@ -235,9 +268,11 @@ void TfLiteTensorFree(TfLiteTensor* t);
 void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
                        TfLiteQuantizationParams quantization, char* buffer,
                        size_t size, TfLiteAllocationType allocation_type,
-                       const void* allocation, TfLiteTensor* tensor);
+                       const void* allocation, bool is_variable,
+                       TfLiteTensor* tensor);
 
-// Resize the allocated data of a (dynamic) tensor.
+// Resize the allocated data of a (dynamic) tensor. Tensors with allocation
+// types other than kTfLiteDynamic will be ignored.
 void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
 
 // A structure representing an instance of a node.
@@ -330,10 +365,15 @@ typedef struct TfLiteContext {
   // eigen.
   int recommended_num_threads;
 
-  // TODO(ahentz): we should create a more general mechanism for this sort of
-  // library-global objects.
-  void* gemm_context;
-  void* eigen_context;
+  // Access external contexts by type.
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteExternalContext* (*GetExternalContext)(struct TfLiteContext*,
+                                               TfLiteExternalContextType);
+  // Set the value of a external context. Does not take ownership of the
+  // pointer.
+  // WARNING: This is an experimental interface that is subject to change.
+  void (*SetExternalContext)(struct TfLiteContext*, TfLiteExternalContextType,
+                             TfLiteExternalContext*);
 } TfLiteContext;
 
 typedef struct _TfLiteRegistration {
@@ -367,6 +407,14 @@ typedef struct _TfLiteRegistration {
   // Execute the node (should read node->inputs and output to node->outputs).
   // Returns kTfLiteOk on success.
   TfLiteStatus (*invoke)(TfLiteContext* context, TfLiteNode* node);
+
+  // profiling_string is called during summarization of profiling information
+  // in order to group executions together. Providing a value here will cause a
+  // given op to appear multiple times is the profiling report. This is
+  // particularly useful for custom ops that can perform significantly
+  // different calculations depending on their `user-data`.
+  const char* (*profiling_string)(const TfLiteContext* context,
+                                  const TfLiteNode* node);
 
   // Builtin codes. If this kernel refers to a builtin this is the code
   // of the builtin. This is so we can do marshaling to other frameworks like
@@ -403,13 +451,15 @@ typedef struct _TfLiteDelegate {
 
   // Copy the data from delegate buffer handle to raw memory.
   // This can be null if the delegate doesn't use its own buffer.
-  TfLiteStatus (*CopyFromBufferHandle)(TfLiteDelegate* delegate,
+  TfLiteStatus (*CopyFromBufferHandle)(TfLiteContext* context,
+                                       TfLiteDelegate* delegate,
                                        TfLiteBufferHandle buffer_handle,
                                        void* data, size_t size);
 
   // Copy the data from raw memory to delegate buffer handle.
   // This can be null if the delegate doesn't use its own buffer.
-  TfLiteStatus (*CopyToBufferHandle)(TfLiteDelegate* delegate,
+  TfLiteStatus (*CopyToBufferHandle)(TfLiteContext* context,
+                                     TfLiteDelegate* delegate,
                                      TfLiteBufferHandle buffer_handle,
                                      void* data, size_t size);
 
@@ -417,11 +467,17 @@ typedef struct _TfLiteDelegate {
   // this doesn't release the underlying resource (e.g. textures). The
   // resources are either owned by application layer or the delegate.
   // This can be null if the delegate doesn't use its own buffer.
-  void (*FreeBufferHandle)(TfLiteDelegate* delegate,
+  void (*FreeBufferHandle)(TfLiteContext* context, TfLiteDelegate* delegate,
                            TfLiteBufferHandle* handle);
 } TfLiteDelegate;
 
 // WARNING: This is an experimental interface that is subject to change.
+//
+// Currently, TfLiteDelegateParams has to be allocated in a way that it's
+// trivially destructable. It will be stored as `builtin_data` field in
+// `TfLiteNode` of the delegate node.
+//
+// See also the `CreateDelegateParams` function in `interpreter.cc` details.
 typedef struct {
   TfLiteDelegate* delegate;
   TfLiteIntArray* nodes_to_replace;

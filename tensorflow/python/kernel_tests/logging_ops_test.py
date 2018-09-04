@@ -59,7 +59,7 @@ class LoggingOpsTest(test.TestCase):
 
 class PrintGradientTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testPrintShape(self):
     inp = constant_op.constant(2.0, shape=[100, 32])
     inp_printed = logging_ops.Print(inp, [inp])

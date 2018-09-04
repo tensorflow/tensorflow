@@ -128,18 +128,28 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // TODO(nupurgarg): Change kernel implementation to use padding arrays in
   // forward order (depth, width, height, batch).
   // Build paddings in order of int[] = {batch, height, width, depth} to match
-  // kernel implementation of Pad in referenced_ops.h and optimized_ops.h.
+  // kernel implementation of Pad in reference_ops.h and optimized_ops.h.
   for (int idx = op_context.dims - 1; idx >= 0; --idx) {
     before_padding.push_back(paddings_data[idx * 2]);
     after_padding.push_back(paddings_data[idx * 2 + 1]);
   }
 
-#define TF_LITE_PAD(type, scalar, pad_value)                                  \
-  type::PadV2(GetTensorData<scalar>(op_context.input),                        \
-              GetTensorDims(op_context.input), before_padding, after_padding, \
-              GetTensorData<scalar>(op_context.output),                       \
-              GetTensorDims(op_context.output), pad_value)
-
+#define TF_LITE_PAD(type, scalar, pad_value)                          \
+  TF_LITE_ENSURE_EQ(context, before_padding.size(), 4);               \
+  TF_LITE_ENSURE_EQ(context, after_padding.size(), 4);                \
+  tflite::PadParams op_params;                                        \
+  op_params.left_padding_count = 4;                                   \
+  op_params.right_padding_count = 4;                                  \
+  for (int i = 0; i < 4; ++i) {                                       \
+    op_params.left_padding[i] = before_padding[3 - i];                \
+    op_params.right_padding[i] = after_padding[3 - i];                \
+  }                                                                   \
+  const scalar pad_value_copy = pad_value;                            \
+                                                                      \
+  type::Pad(op_params, GetTensorShape(op_context.input),              \
+            GetTensorData<scalar>(op_context.input), &pad_value_copy, \
+            GetTensorShape(op_context.output),                        \
+            GetTensorData<scalar>(op_context.output))
   switch (op_context.input->type) {
     case kTfLiteFloat32: {
       float pad_value = op_context.constant_values == nullptr

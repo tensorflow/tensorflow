@@ -16,6 +16,7 @@ cc_library(
         "//tensorflow/compiler/jit:xla_device",
         "//tensorflow/compiler/jit:xla_launch_util",
         "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
@@ -25,19 +26,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/kernels:variable_ops",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "parallel_check_op",
-    srcs = ["parallel_check_op.cc"],
-    visibility = ["//tensorflow/compiler/jit:friends"],
-    deps = [
-        "//tensorflow/compiler/jit/legacy_flags:parallel_check_op_flags",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
     ],
     alwayslink = 1,
 )

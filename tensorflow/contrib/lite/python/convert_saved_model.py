@@ -18,31 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.saved_model.python.saved_model import reader
-from tensorflow.contrib.saved_model.python.saved_model import signature_def_utils
+from tensorflow.contrib.lite.python.convert import tensor_name
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import graph_util as tf_graph_util
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import loader
-from tensorflow.python.saved_model import signature_constants
-from tensorflow.python.saved_model import tag_constants
-
-
-def _write_and_flush_file(file_path, data_str):
-  """Writes data to file path.
-
-  Args:
-    file_path: Full path of the file to store data in.
-    data_str: Data represented as a string.
-
-  Returns: None.
-  """
-  with gfile.Open(file_path, "wb") as data_file:
-    data_file.write(data_str)
-    data_file.flush()
 
 
 def _log_tensor_details(tensor_info):
@@ -74,21 +57,8 @@ def _get_meta_graph_def(saved_model_dir, tag_set):
   Raises:
     ValueError: No valid MetaGraphDef for given tag_set.
   """
-  saved_model = reader.read_saved_model(saved_model_dir)
-  tag_sets = []
-  result_meta_graph_def = None
-  for meta_graph_def in saved_model.meta_graphs:
-    meta_graph_tag_set = set(meta_graph_def.meta_info_def.tags)
-    tag_sets.append(meta_graph_tag_set)
-    if meta_graph_tag_set == tag_set:
-      result_meta_graph_def = meta_graph_def
-  logging.info("The given saved_model contains the following tags: %s",
-               tag_sets)
-  if result_meta_graph_def is not None:
-    return result_meta_graph_def
-  else:
-    raise ValueError("No valid MetaGraphDef for this tag_set '{}'. Possible "
-                     "values are '{}'. ".format(tag_set, tag_sets))
+  with session.Session(graph=ops.Graph()) as sess:
+    return loader.load(sess, tag_set, saved_model_dir)
 
 
 def _get_signature_def(meta_graph, signature_key):
@@ -113,9 +83,7 @@ def _get_signature_def(meta_graph, signature_key):
     raise ValueError("No '{}' in the SavedModel\'s SignatureDefs. Possible "
                      "values are '{}'.".format(signature_key,
                                                ",".join(signature_def_keys)))
-  signature_def = signature_def_utils.get_signature_def_by_key(
-      meta_graph, signature_key)
-  return signature_def
+  return signature_def_map[signature_key]
 
 
 def _get_inputs_outputs(signature_def):
@@ -167,29 +135,10 @@ def _get_tensors(graph, signature_def_tensor_names=None,
   """
   tensors = []
   if user_tensor_names:
-    # Get the list of all of the tensors with and without the tensor index.
-    all_tensor_names = [
-        tensor.name for op in graph.get_operations() for tensor in op.outputs
-    ]
-    all_tensor_names_only = [name.split(":")[0] for name in all_tensor_names]
-
     # Sort the tensor names.
     user_tensor_names = sorted(user_tensor_names)
 
-    # Get the tensors associated with the tensor names.
-    tensors = []
-    invalid_tensors = []
-    for name in user_tensor_names:
-      if name not in all_tensor_names_only:
-        invalid_tensors.append(name)
-      else:
-        idx = all_tensor_names_only.index(name)
-        tensors.append(graph.get_tensor_by_name(all_tensor_names[idx]))
-
-    # Throw ValueError if any user input names are not valid tensors.
-    if invalid_tensors:
-      raise ValueError("Invalid tensors '{}' were found.".format(
-          ",".join(invalid_tensors)))
+    tensors = get_tensors_from_tensor_names(graph, user_tensor_names)
   elif signature_def_tensor_names:
     tensors = [
         graph.get_tensor_by_name(name)
@@ -204,6 +153,58 @@ def _get_tensors(graph, signature_def_tensor_names=None,
   return tensors
 
 
+def get_tensors_from_tensor_names(graph, tensor_names):
+  """Gets the Tensors associated with the `tensor_names` in the provided graph.
+
+  Args:
+    graph: TensorFlow Graph.
+    tensor_names: List of strings that represent names of tensors in the graph.
+
+  Returns:
+    A list of Tensor objects in the same order the names are provided.
+
+  Raises:
+    ValueError:
+      tensor_names contains an invalid tensor name.
+  """
+  # Get the list of all of the tensors.
+  tensor_name_to_tensor = {
+      tensor_name(tensor): tensor for op in graph.get_operations()
+      for tensor in op.values()
+  }
+
+  # Get the tensors associated with tensor_names.
+  tensors = []
+  invalid_tensors = []
+  for name in tensor_names:
+    tensor = tensor_name_to_tensor.get(name)
+    if tensor is None:
+      invalid_tensors.append(name)
+    else:
+      tensors.append(tensor)
+
+  # Throw ValueError if any user input names are not valid tensors.
+  if invalid_tensors:
+    raise ValueError("Invalid tensors '{}' were found.".format(
+        ",".join(invalid_tensors)))
+  return tensors
+
+
+def set_tensor_shapes(tensors, shapes):
+  """Sets Tensor shape for each tensor if the shape is defined.
+
+  Args:
+    tensors: TensorFlow ops.Tensor.
+    shapes: Dict of strings representing input tensor names to list of
+      integers representing input shapes (e.g., {"foo": : [1, 16, 16, 3]}).
+  """
+  if shapes:
+    for tensor in tensors:
+      shape = shapes.get(tensor_name(tensor))
+      if shape is not None:
+        tensor.set_shape(shape)
+
+
 def freeze_saved_model(saved_model_dir, input_arrays, input_shapes,
                        output_arrays, tag_set, signature_key):
   """Converts a SavedModel to a frozen graph.
@@ -211,15 +212,14 @@ def freeze_saved_model(saved_model_dir, input_arrays, input_shapes,
   Args:
     saved_model_dir: SavedModel directory to convert.
     input_arrays: List of input tensors to freeze graph with. Uses input arrays
-      from SignatureDef when none are provided. (default None)
-    input_shapes: Map of strings representing input tensor names to list of
+      from SignatureDef when none are provided.
+    input_shapes: Dict of strings representing input tensor names to list of
       integers representing input shapes (e.g., {"foo": : [1, 16, 16, 3]}).
       Automatically determined when input shapes is None (e.g., {"foo" : None}).
-      (default None)
     output_arrays: List of output tensors to freeze graph with. Uses output
-      arrays from SignatureDef when none are provided. (default None)
+      arrays from SignatureDef when none are provided.
     tag_set: Set of tags identifying the MetaGraphDef within the SavedModel to
-      analyze. All tags in the tag set must be present. (default "serve")
+      analyze. All tags in the tag set must be present.
     signature_key: Key identifying SignatureDef containing inputs and outputs.
 
   Returns:
@@ -231,43 +231,32 @@ def freeze_saved_model(saved_model_dir, input_arrays, input_shapes,
     ValueError:
       SavedModel doesn't contain a MetaGraphDef identified by tag_set.
       signature_key is not in the MetaGraphDef.
+      assets/ directory is in the MetaGraphDef.
       input_shapes does not match the length of input_arrays.
       input_arrays or output_arrays are not valid.
-      Unable to load Session.
   """
-  # Set default values for inputs if they are set to None.
-  if signature_key is None:
-    signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-  if tag_set is None:
-    tag_set = set([tag_constants.SERVING])
-
   # Read SignatureDef.
   meta_graph = _get_meta_graph_def(saved_model_dir, tag_set)
   signature_def = _get_signature_def(meta_graph, signature_key)
   inputs, outputs = _get_inputs_outputs(signature_def)
 
+  # Check SavedModel for assets directory.
+  collection_def = meta_graph.collection_def
+  if constants.ASSETS_KEY in collection_def:
+    raise ValueError("SavedModels with assets/ directory are not supported.")
+
   graph = ops.Graph()
   with session.Session(graph=graph) as sess:
-    # TODO(nupurgarg): Throw ValueError if SavedModel has assets/ directory.
     loader.load(sess, meta_graph.meta_info_def.tags, saved_model_dir)
 
     # Gets input and output tensors.
     # TODO(zhixianyan): Use TFLite supported Op list to filter outputs.
     in_tensors = _get_tensors(graph, inputs, input_arrays)
     out_tensors = _get_tensors(graph, outputs, output_arrays)
-
-    # Gets fully defined tensor shape.
-    for tensor in in_tensors:
-      if (input_shapes and tensor.name in input_shapes and
-          input_shapes[tensor.name] is not None):
-        shape = input_shapes[tensor.name]
-      else:
-        shape = tensor.get_shape().as_list()
-      tensor.set_shape(shape)
+    set_tensor_shapes(in_tensors, input_shapes)
 
     output_names = [node.split(":")[0] for node in outputs]
     frozen_graph_def = tf_graph_util.convert_variables_to_constants(
         sess, graph.as_graph_def(), output_names)
 
     return frozen_graph_def, in_tensors, out_tensors
-  raise ValueError("Unable to load Session.")

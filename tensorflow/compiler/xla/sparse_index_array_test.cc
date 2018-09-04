@@ -33,7 +33,7 @@ TEST(SparseIndexArrayTest, Sort) {
   std::vector<double> values = {
       12.0, 13.0, 11.0, 15.0, 14.0, 16.0,
   };
-  a.SortWithValues<double>(&values);
+  a.SortWithValues<double>(absl::MakeSpan(values));
   ASSERT_EQ(a.data(), std::vector<int64>({1, 2, 3, 2, 3, 4, 3, 4, 5, 4, 5, 6, 5,
                                           6, 7, 6, 7, 8}));
   ASSERT_EQ(values, std::vector<double>({11.0, 12.0, 13.0, 14.0, 15.0, 16.0}));

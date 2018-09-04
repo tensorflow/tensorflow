@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 
 namespace xla {
 namespace cpu {
@@ -32,16 +32,18 @@ ENTRY main {
     {{{1, 2}, {1001, 1002}, {2001, 2002}},
      {{2, 1}, {2001, 3002}, {2001, 2002}}})
 
-  ROOT out = () outfeed(f32[2,3,2] const_a)
+  token = token[] after-all()
+  outfeed = token[] outfeed(f32[2,3,2] const_a, token)
+  ROOT root = () tuple()
 }
 )";
 
   string filecheck_pattern = R"(
-CHECK: private constant [2 x [3 x [2 x float]]]
+CHECK: private constant [48 x i8]
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_text));
+                          ParseHloString(hlo_text));
 
   CpuAotCompilationOptions options{
       /*triple=*/"x86_64-pc-linux", /*cpu_name=*/"", /*features=*/"",
@@ -52,6 +54,33 @@ CHECK: private constant [2 x [3 x [2 x float]]]
                                 /*match_optimized_ir=*/false);
 }
 
+TEST_F(CpuOutfeedTest, OutfeedTokenInTuple) {
+  const string hlo_text = R"(
+HloModule OutfeedTokenInTuple
+
+ENTRY main {
+  const = f32[] constant(42)
+  epoch = token[] after-all()
+  outfeed.tok = token[] outfeed(const, epoch)
+  ROOT root = (token[], f32[]) tuple(outfeed.tok, const)
+}
+)";
+
+  string filecheck_pattern = R"(
+CHECK: Outfeed
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_text));
+
+  CpuAotCompilationOptions options{
+      /*triple=*/"x86_64-pc-linux", /*cpu_name=*/"", /*features=*/"",
+      /*entry_point_name=*/"entry",
+      /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
+
+  CompileAheadOfTimeAndVerifyIr(std::move(module), options, filecheck_pattern,
+                                /*match_optimized_ir=*/false);
+}
 }  // namespace
 }  // namespace cpu
 }  // namespace xla

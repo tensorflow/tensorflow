@@ -20,8 +20,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras.engine import Input
-from tensorflow.python.keras.engine import InputLayer
+from tensorflow.python.keras.engine.input_layer import Input
+from tensorflow.python.keras.engine.input_layer import InputLayer
 from tensorflow.python.keras.layers.advanced_activations import *
 from tensorflow.python.keras.layers.convolutional import *
 from tensorflow.python.keras.layers.convolutional_recurrent import *

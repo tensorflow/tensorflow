@@ -56,6 +56,10 @@ java_library(
     srcs = glob(["src/gen/java/org/tensorflow/processor/**/*.java"]),
     javacopts = JAVACOPTS,
     resources = glob(["src/gen/resources/META-INF/services/javax.annotation.processing.Processor"]),
+    deps = [
+        "@com_google_guava",
+        "@com_squareup_javapoet",
+    ],
 )
 
 filegroup(
@@ -70,6 +74,7 @@ tf_java_op_gen_srcjar(
     name = "java_op_gen_sources",
     api_def_srcs = [
         "//tensorflow/core/api_def:base_api_def",
+        "//tensorflow/core/api_def:java_api_def",
     ],
     base_package = "org.tensorflow.op",
     gen_tool = ":java_op_gen_tool",
@@ -81,7 +86,10 @@ tf_cc_binary(
         "src/gen/cc/op_gen_main.cc",
     ],
     copts = tf_copts(),
-    linkopts = ["-lm"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     linkstatic = 1,
     deps = [
         ":java_op_gen_lib",
@@ -287,6 +295,32 @@ tf_java_test(
     ],
 )
 
+tf_java_test(
+    name = "GradientsTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/op/core/GradientsTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.op.core.GradientsTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+tf_java_test(
+    name = "ZerosTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/op/core/ZerosTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.op.core.ZerosTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
 filegroup(
     name = "processor_test_resources",
     srcs = glob([
@@ -337,7 +371,6 @@ tf_cc_binary(
             "$(location {})".format(LINKER_EXPORTED_SYMBOLS),
         ],
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-z defs",
             "-s",

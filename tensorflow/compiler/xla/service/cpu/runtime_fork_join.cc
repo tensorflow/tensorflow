@@ -20,6 +20,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -58,13 +59,14 @@ using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
 //   [partition1_dim2_start]
 //   [partition1_dim2_limit]
 //
-void __xla_cpu_runtime_ParallelForkJoin(
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ParallelForkJoin(
     void* result_ptr, const void* run_options_ptr, const void** params,
-    void** temps, uint64* prof_counters, int32 num_partitions,
+    void** buffer_table, uint64* prof_counters, int32 num_partitions,
     int64* partitions, int32 num_partitioned_dims, void* function_ptr) {
   VLOG(2) << "ParallelForkJoin ENTRY"
           << " num_partitions: " << num_partitions
           << " num_partitioned_dims: " << num_partitioned_dims;
+  CHECK_EQ(params, nullptr);
   CHECK_GT(num_partitions, 1);
   CHECK_GT(num_partitioned_dims, 0);
   const xla::ExecutableRunOptions* run_options =
@@ -79,9 +81,9 @@ void __xla_cpu_runtime_ParallelForkJoin(
   for (int32 i = 1; i < num_partitions; ++i) {
     const int64 offset = i * stride;
     run_options->intra_op_thread_pool()->enqueueNoNotification(
-        [i, function, result_ptr, run_options_ptr, params, temps, prof_counters,
+        [i, function, result_ptr, run_options_ptr, buffer_table, prof_counters,
          partitions, offset, &bc]() {
-          function(result_ptr, run_options_ptr, params, temps,
+          function(result_ptr, run_options_ptr, nullptr, buffer_table,
                    &partitions[offset], prof_counters);
           bc.DecrementCount();
           VLOG(3) << "ParallelForkJoin partition " << i << " done.";
@@ -89,7 +91,7 @@ void __xla_cpu_runtime_ParallelForkJoin(
   }
 
   // Call first compute function inline.
-  function(result_ptr, run_options_ptr, params, temps, &partitions[0],
+  function(result_ptr, run_options_ptr, params, buffer_table, &partitions[0],
            prof_counters);
   VLOG(3) << "ParallelForkJoin partition 0 done.";
   bc.Wait();

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/cloud/gcs_file_system.h"
 #include "tensorflow/core/platform/cloud/oauth_client.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
@@ -96,7 +97,8 @@ class GcsCredentialsOpKernel : public OpKernel {
         errors::InvalidArgument("JSON format incompatible; did not find fields "
                                 "`refresh_token` or `private_key`."));
 
-    auto provider = absl::make_unique<ConstantAuthProvider>(json, ctx->env());
+    auto provider =
+        tensorflow::MakeUnique<ConstantAuthProvider>(json, ctx->env());
 
     // Test getting a token
     string dummy_token;
@@ -121,7 +123,7 @@ class GcsCredentialsOpKernel : public OpKernel {
           initial_retry_delay_usec_(initial_retry_delay_usec) {}
 
     ConstantAuthProvider(const Json::Value& json, Env* env)
-        : ConstantAuthProvider(json, absl::make_unique<OAuthClient>(), env,
+        : ConstantAuthProvider(json, tensorflow::MakeUnique<OAuthClient>(), env,
                                kInitialRetryDelayUsec) {}
 
     ~ConstantAuthProvider() override {}

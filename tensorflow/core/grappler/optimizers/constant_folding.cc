@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/grappler/optimizers/evaluation_utils.h"
 #include "tensorflow/core/grappler/optimizers/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -71,44 +72,6 @@ class EigenThreadPoolWrapper : public Eigen::ThreadPoolInterface {
 
  private:
   thread::ThreadPool* pool_ = nullptr;
-};
-
-class DeviceSimple : public DeviceBase {
- public:
-  DeviceSimple() : DeviceBase(Env::Default()) {
-    eigen_worker_threads_.num_threads = port::NumSchedulableCPUs();
-    eigen_worker_threads_.workers = new thread::ThreadPool(
-        Env::Default(), "constant_folding", eigen_worker_threads_.num_threads);
-    eigen_threadpool_wrapper_.reset(
-        new EigenThreadPoolWrapper(eigen_worker_threads_.workers));
-    eigen_device_.reset(new Eigen::ThreadPoolDevice(
-        eigen_threadpool_wrapper_.get(), eigen_worker_threads_.num_threads));
-    set_tensorflow_cpu_worker_threads(&eigen_worker_threads_);
-    set_eigen_cpu_device(eigen_device_.get());
-  }
-  ~DeviceSimple() override {
-    eigen_threadpool_wrapper_.reset();
-    eigen_device_.reset();
-    delete eigen_worker_threads_.workers;
-  }
-  Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
-                             Tensor* tensor) override {
-    Tensor parsed(tensor_proto.dtype());
-    if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
-      return errors::InvalidArgument("Cannot parse tensor from tensor_proto.");
-    }
-    *tensor = parsed;
-    return Status::OK();
-  }
-  Allocator* GetAllocator(AllocatorAttributes attr) override {
-    return cpu_allocator();
-  }
-
- private:
-  DeviceBase::CpuWorkerThreads eigen_worker_threads_;
-  std::unique_ptr<Eigen::ThreadPoolInterface> eigen_threadpool_wrapper_;
-  std::unique_ptr<Eigen::ThreadPoolDevice> eigen_device_;
 };
 
 template <typename T>
@@ -171,6 +134,27 @@ bool MaybeRemoveControlInput(const string& old_input, NodeDef* node,
     node_map->RemoveOutput(NodeName(old_input), node->name());
   }
   return removed_input;
+}
+
+bool GetConcatAxis(const GraphProperties& properties, NodeDef* node,
+                   int* axis) {
+  if (node->op() != "ConcatV2" ||
+      properties.GetInputProperties(node->name()).empty()) {
+    return false;
+  }
+  const auto& axis_input = properties.GetInputProperties(node->name()).back();
+  if (!TensorShape::IsValid(axis_input.shape()) || !axis_input.has_value()) {
+    return false;
+  }
+
+  Tensor axis_tensor(axis_input.dtype(), axis_input.shape());
+  if (!axis_tensor.FromProto(axis_input.value())) {
+    return false;
+  }
+  *axis = axis_input.dtype() == DT_INT64
+              ? static_cast<int>(axis_tensor.scalar<int64>()())
+              : axis_tensor.scalar<int32>()();
+  return true;
 }
 
 }  // namespace
@@ -354,12 +338,14 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
     }
 
     if (op == "TensorArraySizeV3") {
-      const NodeDef* array = node_map_->GetNode(node->input(0));
-      if (array->attr().count("dynamic_size") != 0 &&
-          array->attr().at("dynamic_size").b()) {
+      const NodeDef* array = CHECK_NOTNULL(node_map_->GetNode(node->input(0)));
+      if (array->input_size() == 0 ||
+          (array->attr().count("dynamic_size") != 0 &&
+           array->attr().at("dynamic_size").b())) {
         continue;
       }
-      const NodeDef* array_size = node_map_->GetNode(array->input(0));
+      const NodeDef* array_size =
+          CHECK_NOTNULL(node_map_->GetNode(array->input(0)));
       if (IsReallyConstant(*array_size)) {
         // Don't materialize 0 sizes to avoid triggering incorrect static
         // checks. A 0 sized array that can't grow isn't useful anyway.
@@ -374,6 +360,7 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
         if (value.flat<int32>()(0) == 0) {
           continue;
         }
+
         node->set_op("Const");
         *node->mutable_attr() = array_size->attr();
         node->set_input(0, AsControlDependency(NodeName(node->input(0))));
@@ -980,33 +967,8 @@ Status ConstantFolding::CreateNodeDef(const string& name,
 Status ConstantFolding::EvaluateNode(const NodeDef& node,
                                      const TensorVector& inputs,
                                      TensorVector* output) const {
-  Status status;
-  auto op_kernel =
-      CreateOpKernel("CPU", cpu_device_, cpu_device_->GetAllocator({}), node,
-                     TF_GRAPH_DEF_VERSION, &status);
-  TF_RETURN_IF_ERROR(status);
-  OpKernelContext::Params params;
-  params.device = cpu_device_;
-  params.frame_iter = FrameAndIter(0, 0);
-  params.inputs = &inputs;
-  params.op_kernel = op_kernel.get();
-  params.resource_manager = resource_mgr_.get();
-
-  gtl::InlinedVector<AllocatorAttributes, 4> output_attrs;
-  const int num_outputs = op_kernel->num_outputs();
-  for (int i = 0; i < num_outputs; i++) {
-    AllocatorAttributes attr;
-    attr.set_on_host(true);
-    output_attrs.push_back(attr);
-  }
-  params.output_attr_array = output_attrs.data();
-
-  OpKernelContext op_context(&params);
-  op_kernel->Compute(&op_context);
-  for (int i = 0; i < num_outputs; i++) {
-    output->push_back(op_context.release_output(i));
-  }
-  return op_context.status();
+  return ::tensorflow::grappler::EvaluateNode(node, inputs, cpu_device_,
+                                              resource_mgr_.get(), output);
 }
 
 Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
@@ -1302,17 +1264,12 @@ Status ConstantFolding::FoldGraph(GraphDef* output) {
   }
 
   // Delete the newly created nodes that don't feed anything.
-  int last = output->node_size() - 1;
-  for (int i = output->node_size() - 1; i >= 0; --i) {
-    const NodeDef& node = output->node(i);
-    auto fanout = node_map_->GetOutputs(node.name());
-    if (fanout.empty()) {
-      output->mutable_node()->SwapElements(i, last);
-      last--;
-    }
+  std::vector<int> nodes_to_delete;
+  for (int i = 0; i < output->node_size(); i++) {
+    auto fanout = node_map_->GetOutputs(output->node(i).name());
+    if (fanout.empty()) nodes_to_delete.push_back(i);
   }
-  output->mutable_node()->DeleteSubrange(last + 1,
-                                         output->node_size() - last - 1);
+  EraseNodesFromGraph(std::move(nodes_to_delete), output);
 
   for (const auto& node : graph_->node()) {
     // If no fetch nodes is provided, we conservatively
@@ -1783,6 +1740,11 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
     return Status::OK();
   }
 
+  if (MergeConcat(*properties, use_shape_info, optimized_graph, node)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
   return Status::OK();
 }
 
@@ -2185,8 +2147,8 @@ bool ConstantFolding::SimplifyPack(GraphDef* optimized_graph, NodeDef* node) {
     node->add_input(axis_node->name());
     if (node->input_size() > 2) {
       node->mutable_input()->SwapElements(1, node->input_size() - 1);
-      return true;
     }
+    return true;
   }
   return false;
 }
@@ -2972,6 +2934,55 @@ bool ConstantFolding::PartialConcatConstFolding(GraphDef* optimized_graph,
     }
   }
   return false;
+}
+
+bool ConstantFolding::MergeConcat(const GraphProperties& properties,
+                                  bool use_shape_info,
+                                  GraphDef* optimized_graph, NodeDef* node) {
+  // We only optimize for ConcatV2.
+  int axis;
+  if (!use_shape_info || !GetConcatAxis(properties, node, &axis) ||
+      nodes_to_preserve_.find(node->name()) != nodes_to_preserve_.end() ||
+      node_map_->GetOutputs(node->name()).size() != 1) {
+    return false;
+  }
+
+  NodeDef* parent = *node_map_->GetOutputs(node->name()).begin();
+  int parent_axis;
+  if (!GetConcatAxis(properties, parent, &parent_axis) || axis != parent_axis) {
+    return false;
+  }
+
+  const int index = NumNonControlInputs(*node) - 1;
+  auto inputs = parent->input();
+  parent->clear_input();
+  for (int i = 0; i < inputs.size(); ++i) {
+    if (IsSameInput(inputs.Get(i), node->name())) {
+      for (int j = 0; j < node->input_size(); ++j) {
+        if (j < index) {
+          // Input tensors (non axis), add to input list of parent.
+          parent->add_input(node->input(j));
+          node_map_->RemoveOutput(node->input(j), node->name());
+          node_map_->AddOutput(node->input(j), parent->name());
+        }
+        // Skip j == index, which means axis tensor.
+        if (j > index) {
+          // Control Dependencies, push back to inputs so they can be forwarded
+          // to parent.
+          *inputs.Add() = node->input(j);
+        }
+      }
+    } else {
+      parent->add_input(inputs.Get(i));
+    }
+  }
+  node->clear_input();
+  node->set_op("NoOp");
+  node->clear_attr();
+  node_map_->RemoveNode(node->name());
+  (*parent->mutable_attr())["N"].set_i(NumNonControlInputs(*parent) - 1);
+
+  return true;
 }
 
 Status ConstantFolding::RunOptimizationPass(Cluster* cluster,

@@ -19,11 +19,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/types.h"
@@ -73,7 +73,7 @@ class HloModuleDceTest : public HloTestBase {
 
 // Tests that a while with all outputs live is unmodified.
 TEST_F(HloModuleDceTest, WhileWithLiveOutputs) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule SimpleLoop
   SimpleLoop.body {
     loop_var.1 = (s32[], s32[3]{0}) parameter(0)
@@ -110,7 +110,7 @@ TEST_F(HloModuleDceTest, WhileWithLiveOutputs) {
 // Tests a while loop with one unused output (which is used in the while loop
 // body by an instruction with side-effects: rng) is unmodified.
 TEST_F(HloModuleDceTest, WhileWithUnusedSideEffectingTupleElement) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule SimpleLoop
   SimpleLoop.body {
     loop_var.1 = (s32[], f32[]) parameter(0)
@@ -150,7 +150,7 @@ TEST_F(HloModuleDceTest, WhileWithUnusedSideEffectingTupleElement) {
 // Tests that a while loop with one dead tuple element at {1} has its while
 // loop body modified to make that tuple element pass-through the while body.
 TEST_F(HloModuleDceTest, OneWhileWithDeadTupleElement) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule SimpleLoop
   SimpleLoop.body {
     loop_var.1 = (s32[], s32[3]{0}) parameter(0)
@@ -193,7 +193,7 @@ TEST_F(HloModuleDceTest, OneWhileWithDeadTupleElement) {
 // dead in while.body{1} and at while.result{1}) propgates liveness of this
 // tuple element to while.body{1} and at while.result{1}.
 TEST_F(HloModuleDceTest, OneWhileWithTupleElementUsedByCond) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule SimpleLoop
   SimpleLoop.body {
     loop_var.1 = (s32[], s32[]) parameter(0)
@@ -235,7 +235,7 @@ TEST_F(HloModuleDceTest, OneWhileWithTupleElementUsedByCond) {
 // Tests that HloModuleDCE can remove a dead tuple element at index {1} between
 // two dependent while loops.
 TEST_F(HloModuleDceTest, TwoWhilesWithDeadTupleElement) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule SimpleLoop
   SimpleLoop.body0 {
     loop_var.1 = (s32[], s32[3]{0}) parameter(0)
@@ -303,7 +303,7 @@ TEST_F(HloModuleDceTest, TwoWhilesWithDeadTupleElement) {
 // Tests that HloModuleDCE can remove a dead tuple element at while.1{0} and
 // while.2{1}, between two dependent while loops.
 TEST_F(HloModuleDceTest, TwoWhilesWithDeadTupleElementSwizzled) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule SimpleLoop
   SimpleLoop.body0 {
     loop_var.1 = (s32[3]{0}, s32[]) parameter(0)

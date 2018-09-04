@@ -7,6 +7,10 @@ package(
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
+# We disable some tfcompile tests in the open source build with the
+# "manual" tag to avoid making our OSS users build LLVM twice
+# (once for host and once for target).
+
 test_suite(
     name = "all_tests",
     tags = ["manual"],
@@ -183,6 +187,9 @@ tf_library(
     cpp_class = "MatMulAndAddCompWithProfiling",
     enable_xla_hlo_profiling = True,
     graph = "test_graph_tfmatmulandadd.pb",
+    tags = [
+        "manual",
+    ],
 )
 
 tf_library(
@@ -222,5 +229,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
     ],
 )

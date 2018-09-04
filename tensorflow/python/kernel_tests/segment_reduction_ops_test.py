@@ -264,7 +264,9 @@ class UnsortedSegmentTest(SegmentReductionHelper):
 
     # A subset of ops has been enabled for complex numbers
     self.complex_ops_list = [(np.add, None,
-                              math_ops.unsorted_segment_sum, lambda t: 0)]
+                              math_ops.unsorted_segment_sum, lambda t: 0),
+                             (np.ndarray.__mul__, None,
+                              math_ops.unsorted_segment_prod, lambda t: 1)]
     self.differentiable_dtypes = [dtypes_lib.float16, dtypes_lib.float32,
                                   dtypes_lib.float64]
     self.all_dtypes = (self.differentiable_dtypes +

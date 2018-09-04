@@ -24,29 +24,80 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
-class SinOpModel : public SingleOpModel {
+class ElementWiseOpBaseModel : public SingleOpModel {
  public:
-  SinOpModel(std::initializer_list<int> input_shape) {
-    input_ = AddInput(TensorType_FLOAT32);
-    output_ = AddOutput(TensorType_FLOAT32);
-    SetBuiltinOp(BuiltinOperator_SIN, BuiltinOptions_NONE, 0);
-    BuildInterpreter({input_shape});
-  }
-
   int input() const { return input_; }
   int output() const { return output_; }
 
- private:
+ protected:
   int input_;
   int output_;
 };
 
+class ElementWiseOpFloatModel : public ElementWiseOpBaseModel {
+ public:
+  ElementWiseOpFloatModel(BuiltinOperator op,
+                          std::initializer_list<int> input_shape) {
+    input_ = AddInput(TensorType_FLOAT32);
+    output_ = AddOutput(TensorType_FLOAT32);
+    SetBuiltinOp(op, BuiltinOptions_NONE, 0);
+    BuildInterpreter({input_shape});
+  }
+};
+
+class ElementWiseOpBoolModel : public ElementWiseOpBaseModel {
+ public:
+  ElementWiseOpBoolModel(BuiltinOperator op,
+                         std::initializer_list<int> input_shape) {
+    input_ = AddInput(TensorType_BOOL);
+    output_ = AddOutput(TensorType_BOOL);
+    SetBuiltinOp(op, BuiltinOptions_NONE, 0);
+    BuildInterpreter({input_shape});
+  }
+};
+
 TEST(ElementWise, Sin) {
-  SinOpModel m({1, 1, 4, 1});
+  ElementWiseOpFloatModel m(BuiltinOperator_SIN, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {0, 3.1415926, -3.1415926, 1});
   m.Invoke();
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
               ElementsAreArray(ArrayFloatNear({0, 0, 0, 0.84147})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
+TEST(ElementWise, Log) {
+  ElementWiseOpFloatModel m(BuiltinOperator_LOG, {1, 1, 4, 1});
+  m.PopulateTensor<float>(m.input(), {1, 3.1415926, 1, 1});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray(ArrayFloatNear({0, 1.14473, 0, 0})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
+TEST(ElementWise, Sqrt) {
+  ElementWiseOpFloatModel m(BuiltinOperator_SQRT, {1, 1, 4, 1});
+  m.PopulateTensor<float>(m.input(), {0, 1, 2, 4});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray(ArrayFloatNear({0, 1, 1.41421, 2})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
+TEST(ElementWise, Rsqrt) {
+  ElementWiseOpFloatModel m(BuiltinOperator_RSQRT, {1, 1, 4, 1});
+  m.PopulateTensor<float>(m.input(), {1, 2, 4, 9});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray(ArrayFloatNear({1, 0.7071, 0.5, 0.33333})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
+TEST(ElementWise, LogicalNot) {
+  ElementWiseOpBoolModel m(BuiltinOperator_LOGICAL_NOT, {1, 1, 4, 1});
+  m.PopulateTensor<bool>(m.input(), {true, false, true, false});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<bool>(m.output()),
+              ElementsAreArray({false, true, false, true}));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 

@@ -32,7 +32,7 @@ def softmax(x, axis=-1):
   """Softmax activation function.
 
   Arguments:
-      x : Tensor.
+      x : Input tensor.
       axis: Integer, axis along which the softmax normalization is applied.
 
   Returns:
@@ -49,28 +49,52 @@ def softmax(x, axis=-1):
     s = math_ops.reduce_sum(e, axis=axis, keepdims=True)
     return e / s
   else:
-    raise ValueError('Cannot apply softmax to a tensor that is 1D')
+    raise ValueError('Cannot apply softmax to a tensor that is 1D. '
+                     'Received input: %s' % (x,))
 
 
 @tf_export('keras.activations.elu')
 def elu(x, alpha=1.0):
+  """Exponential linear unit.
+
+  Arguments:
+      x: Input tensor.
+      alpha: A scalar, slope of negative section.
+
+  Returns:
+      The exponential linear activation: `x` if `x > 0` and
+        `alpha * (exp(x)-1)` if `x < 0`.
+
+  Reference:
+      - [Fast and Accurate Deep Network Learning by Exponential
+        Linear Units (ELUs)](https://arxiv.org/abs/1511.07289)
+  """
   return K.elu(x, alpha)
 
 
 @tf_export('keras.activations.selu')
 def selu(x):
-  """Scaled Exponential Linear Unit. (Klambauer et al., 2017).
+  """Scaled Exponential Linear Unit (SELU).
+
+  SELU is equal to: `scale * elu(x, alpha)`, where alpha and scale
+  are pre-defined constants. The values of `alpha` and `scale` are
+  chosen so that the mean and variance of the inputs are preserved
+  between two consecutive layers as long as the weights are initialized
+  correctly (see `lecun_normal` initialization) and the number of inputs
+  is "large enough" (see references for more information).
 
   Arguments:
       x: A tensor or variable to compute the activation function for.
 
   Returns:
-      Tensor with the same shape and dtype as `x`.
+      The scaled exponential unit activation: `scale * elu(x, alpha)`.
 
   # Note
       - To be used together with the initialization "lecun_normal".
       - To be used together with the dropout variant "AlphaDropout".
 
+  References:
+      - [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
   """
   alpha = 1.6732632423543772848170429916717
   scale = 1.0507009873554804934193349852946
@@ -79,17 +103,51 @@ def selu(x):
 
 @tf_export('keras.activations.softplus')
 def softplus(x):
+  """Softplus activation function.
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      The softplus activation: `log(exp(x) + 1)`.
+  """
   return nn.softplus(x)
 
 
 @tf_export('keras.activations.softsign')
 def softsign(x):
+  """Softsign activation function.
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      The softplus activation: `x / (abs(x) + 1)`.
+  """
   return nn.softsign(x)
 
 
 @tf_export('keras.activations.relu')
-def relu(x, alpha=0., max_value=None):
-  return K.relu(x, alpha=alpha, max_value=max_value)
+def relu(x, alpha=0., max_value=None, threshold=0):
+  """Rectified Linear Unit.
+
+  With default values, it returns element-wise `max(x, 0)`.
+
+  Otherwise, it follows:
+  `f(x) = max_value` for `x >= max_value`,
+  `f(x) = x` for `threshold <= x < max_value`,
+  `f(x) = alpha * (x - threshold)` otherwise.
+
+  Arguments:
+      x: A tensor or variable.
+      alpha: A scalar, slope of negative section (default=`0.`).
+      max_value: float. Saturation threshold.
+      threshold: float. Threshold value for thresholded activation.
+
+  Returns:
+      A tensor.
+  """
+  return K.relu(x, alpha=alpha, max_value=max_value, threshold=threshold)
 
 
 @tf_export('keras.activations.tanh')
@@ -104,6 +162,19 @@ def sigmoid(x):
 
 @tf_export('keras.activations.hard_sigmoid')
 def hard_sigmoid(x):
+  """Hard sigmoid activation function.
+
+  Faster to compute than sigmoid activation.
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      Hard sigmoid activation:
+      - `0` if `x < -2.5`
+      - `1` if `x > 2.5`
+      - `0.2 * x + 0.5` if `-2.5 <= x <= 2.5`.
+  """
   return K.hard_sigmoid(x)
 
 

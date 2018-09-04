@@ -25,13 +25,14 @@ import itertools
 import json
 import os
 import re
-import sys
 
 import astor
 import six
 
 from google.protobuf.message import Message as ProtoMessage
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
+from tensorflow.tools.docs import doc_controls
 
 
 # A regular expression capturing a python identifier.
@@ -53,7 +54,7 @@ class _Errors(object):
     template = 'ERROR:\n    output file name: %s\n    %s\n\n'
 
     for full_name, message in self._errors:
-      print(template % (full_name, message), file=sys.stderr)
+      logging.warn(template, full_name, message)
 
   def append(self, full_name, message):
     """Add an error to the collection.
@@ -761,8 +762,9 @@ def _generate_signature(func, reverse_index):
                 lookup_text = public_name + default_text[len(internal_name):]
                 break
             if default_text is lookup_text:
-              print('WARNING: Using default arg, failed lookup: %s, repr: %r' %
-                    (default_text, default))
+              logging.warn(
+                  'WARNING: Using default arg, failed lookup: %s, repr: %r',
+                  default_text, default)
             else:
               default_text = lookup_text
       else:
@@ -1165,7 +1167,7 @@ class _ClassPageInfo(object):
       if short_name in [
           '__class__', '__base__', '__weakref__', '__doc__', '__module__',
           '__dict__', '__abstractmethods__', '__slots__', '__getnewargs__',
-          '__str__', '__repr__', '__hash__'
+          '__str__', '__repr__', '__hash__', '__reduce__'
       ]:
         continue
 
@@ -1174,14 +1176,17 @@ class _ClassPageInfo(object):
 
       # Don't document anything that is defined in object or by protobuf.
       defining_class = _get_defining_class(py_class, short_name)
-      if (defining_class is object or
-          defining_class is type or defining_class is tuple or
-          defining_class is BaseException or defining_class is Exception or
-          # The following condition excludes most protobuf-defined symbols.
-          defining_class and defining_class.__name__ in ['CMessage', 'Message',
-                                                         'MessageMeta']):
+      if defining_class in [object, type, tuple, BaseException, Exception]:
+        continue
+
+      # The following condition excludes most protobuf-defined symbols.
+      if (defining_class and
+          defining_class.__name__ in ['CMessage', 'Message', 'MessageMeta']):
         continue
       # TODO(markdaoust): Add a note in child docs showing the defining class.
+
+      if doc_controls.should_skip_class_attr(py_class, short_name):
+        continue
 
       child_doc = _parse_md_docstring(child, relative_path,
                                       parser_config.reference_resolver)
@@ -1213,8 +1218,6 @@ class _ClassPageInfo(object):
         if not child_doc.brief.strip() and short_name in [
             '__del__', '__copy__'
         ]:
-          print('Skipping %s, defined in %s, no docstring.' % (child_name,
-                                                               defining_class))
           continue
 
         try:
@@ -1371,7 +1374,8 @@ class _ModulePageInfo(object):
     for name in member_names:
 
       if name in ['__builtins__', '__doc__', '__file__',
-                  '__name__', '__path__', '__package__']:
+                  '__name__', '__path__', '__package__',
+                  '__cached__', '__loader__', '__spec__']:
         continue
 
       member_full_name = self.full_name + '.' + name if self.full_name else name
@@ -1691,15 +1695,18 @@ class _Metadata(object):
 
   Attributes:
     name: The name of the page being described by the Metadata block.
+    version: The source version.
   """
 
-  def __init__(self, name):
+  def __init__(self, name, version='Stable'):
     """Creates a Metadata builder.
 
     Args:
       name: The name of the page being described by the Metadata block.
+      version: The source version.
     """
     self.name = name
+    self.version = version
     self._content = []
 
   def append(self, item):
@@ -1716,6 +1723,7 @@ class _Metadata(object):
     parts = ['<div itemscope itemtype="%s">' % schema]
 
     parts.append('<meta itemprop="name" content="%s" />' % self.name)
+    parts.append('<meta itemprop="path" content="%s" />' % self.version)
     for item in self._content:
       parts.append('<meta itemprop="property" content="%s"/>' % item)
 

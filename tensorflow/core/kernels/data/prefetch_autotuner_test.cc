@@ -33,7 +33,7 @@ TEST(PrefetchAutotuner, Disabled) {
 TEST(PrefetchAutotuner, Enabled) {
   PrefetchAutotuner t(PrefetchAutotuner::kAutoTune);
   EXPECT_EQ(1, t.buffer_limit());
-  t.RecordConsumption(0);  // Expect buffer limit to increase.
+  t.RecordConsumption(0);  // Expect buffer limit to stay the same.
   EXPECT_EQ(1, t.buffer_limit());
   t.RecordConsumption(1);
   EXPECT_EQ(1, t.buffer_limit());

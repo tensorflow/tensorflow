@@ -18,6 +18,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
@@ -28,11 +29,14 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -83,12 +87,9 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
     : options_(options),
       initialization_status_(Status::OK()),
       next_step_id_(1),
-      device_(
-          new XlaCompilationDevice(SessionOptions(), *options_.device_type)),
+      device_(new XlaCompilationDevice(SessionOptions(), options_.device_type)),
       device_mgr_({device_}) {
-  // We no longer need the device_type.
-  options_.device_type = nullptr;
-
+  CHECK(!options_.device_type.type_string().empty());
   if (options_.populate_resource_manager) {
     initialization_status_ =
         (*options_.populate_resource_manager)(device_->resource_manager());
@@ -228,15 +229,18 @@ Status XlaCompiler::CompileFunction(const XlaCompiler::CompileOptions& options,
 // Computes the XLA shape for argument 'arg'.
 Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
                                         bool is_entry_computation,
-                                        xla::Shape* xla_shape) {
+                                        xla::Shape* xla_shape) const {
   switch (arg.kind) {
     case XlaCompiler::Argument::kConstant:
       LOG(FATAL) << "Unreachable case";
     case XlaCompiler::Argument::kParameter: {
-      TensorShape shape =
-          is_entry_computation
-              ? options_.shape_representation_fn(arg.shape, arg.type)
-              : arg.shape;
+      TensorShape shape;
+      if (is_entry_computation) {
+        TF_ASSIGN_OR_RETURN(
+            shape, options_.shape_representation_fn(arg.shape, arg.type));
+      } else {
+        shape = arg.shape;
+      }
       return TensorShapeToXLAShape(arg.type, shape, xla_shape);
     }
     case XlaCompiler::Argument::kResource: {
@@ -244,8 +248,9 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
 
       switch (arg.resource_kind) {
         case XlaResource::kVariable: {
-          TensorShape representation_shape =
-              options_.shape_representation_fn(arg.shape, arg.type);
+          TF_ASSIGN_OR_RETURN(
+              TensorShape representation_shape,
+              options_.shape_representation_fn(arg.shape, arg.type));
           return TensorShapeToXLAShape(arg.type, representation_shape,
                                        xla_shape);
         }
@@ -306,7 +311,7 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   // unique_ptr so we can capture the cleanup status in the end.
   xla_context->Ref();
   Status status;
-  auto step_container = xla::MakeUnique<ScopedStepContainer>(
+  auto step_container = absl::make_unique<ScopedStepContainer>(
       step_id, [&status, device](const string& name) {
         status = device->resource_manager()->Cleanup(name);
       });
@@ -341,9 +346,9 @@ Status BuildComputation(
     const std::vector<int>& arg_cores,
     const std::vector<XlaContext::Retval>& retvals,
     const std::vector<std::unique_ptr<XlaResource>>& resources,
-    bool return_updated_values_for_all_resources, xla::XlaBuilder* builder,
-    xla::XlaComputation* computation, int* num_computation_outputs,
-    int* num_nonconst_outputs,
+    bool return_updated_values_for_all_resources, bool always_return_tuple,
+    xla::XlaBuilder* builder, xla::XlaComputation* computation,
+    int* num_computation_outputs, int* num_nonconst_outputs,
     std::vector<XlaCompiler::OutputDescription>* outputs,
     std::vector<XlaCompiler::ResourceUpdate>* resource_updates) {
   std::vector<xla::XlaOp> elems;
@@ -356,6 +361,9 @@ Status BuildComputation(
     if (retval.has_constant_value()) {
       output.is_constant = true;
       output.constant_value = retval.constant_value();
+    } else if (retval.resource() != nullptr) {
+      output.is_constant = false;
+      output.input_index = retval.resource()->arg_num();
     } else {
       output.is_constant = false;
       elems.push_back(retval.handle());
@@ -387,13 +395,14 @@ Status BuildComputation(
     const XlaCompiler::Argument& arg = args[resource->arg_num()];
     const int core = arg_cores[resource->arg_num()];
     DCHECK_LT(resource->arg_num(), arg_cores.size());
-    bool modified = resource->value() != resource->initial_value();
+    bool modified = !resource->value().IsIdenticalTo(resource->initial_value());
     // TensorArray gradients were modified if their values changed or there are
     // any newly created gradients.
     for (const auto& grad : resource->tensor_array_gradients()) {
-      modified = modified ||
-                 grad.second->value() != grad.second->initial_value() ||
-                 arg.tensor_array_gradients.count(grad.first) == 0;
+      modified =
+          modified ||
+          !grad.second->value().IsIdenticalTo(grad.second->initial_value()) ||
+          arg.tensor_array_gradients.count(grad.first) == 0;
     }
     if (return_updated_values_for_all_resources || modified) {
       resource_updates->emplace_back();
@@ -408,7 +417,7 @@ Status BuildComputation(
 
       // Request that the value be returned on a specific core.
       xla::XlaScopedShardingAssignment assign_sharding(
-          builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
+          builder, core == -1 ? absl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
 
       xla::XlaOp handle;
@@ -418,16 +427,20 @@ Status BuildComputation(
       // create a tuple/get-tuple-element combination so that sharding
       // assignment will be placed on this value, which will cause the resource
       // update to be returned from the same device that provided the resource.
-      handle = builder->GetTupleElement(builder->Tuple({handle}), 0);
-
+      handle = xla::GetTupleElement(xla::Tuple(builder, {handle}), 0);
       elems.push_back(handle);
     }
   }
 
   *num_computation_outputs = elems.size();
 
-  // Builds the XLA computation.
-  builder->Tuple(elems);
+  // Builds the XLA computation. We *always* form a tuple here to ensure that
+  // the output value is the last thing added into the XLA computation, even
+  // if there is only one output value.
+  auto tuple = xla::Tuple(builder, elems);
+  if (!always_return_tuple && elems.size() == 1) {
+    xla::GetTupleElement(tuple, 0);
+  }
   builder->ClearOpMetadata();
 
   xla::StatusOr<xla::XlaComputation> computation_status = builder->Build();
@@ -455,8 +468,6 @@ Status XlaCompiler::BuildArguments(
   // XLA computation as runtime parameters.
   input_mapping->clear();
   input_mapping->reserve(args.size());
-  std::vector<int> resources;
-  resources.reserve(args.size());
 
   // Fills in constant arguments, and computes non-constant argument order.
   for (std::vector<XlaCompiler::Argument>::size_type i = 0; i < args.size();
@@ -475,8 +486,9 @@ Status XlaCompiler::BuildArguments(
             /*tensor_array_gradients=*/arg.tensor_array_gradients, &resource));
         arg_expression.set_resource(resource);
         if (arg.initialized) {
-          resources.push_back(i);
+          input_mapping->push_back(i);
         }
+
         break;
       case XlaCompiler::Argument::kParameter: {
         input_mapping->push_back(i);
@@ -486,14 +498,11 @@ Status XlaCompiler::BuildArguments(
         arg_expression.set_constant_value(arg.constant_value);
         break;
       case XlaCompiler::Argument::kInvalid:
-        return errors::Internal("Unreachable case in BuildArguments()");
+        return errors::Internal(
+            "Unreachable case in BuildArguments() while filling constant args");
     }
   }
 
-  // Append parameters containing variable values after the other runtime
-  // parameters.
-  input_mapping->insert(input_mapping->end(), resources.begin(),
-                        resources.end());
   if (input_mapping->empty()) {
     return Status::OK();
   }
@@ -554,25 +563,25 @@ Status XlaCompiler::BuildArguments(
       }
       xla::XlaScopedShardingAssignment assign_tuple_sharding(builder,
                                                              tuple_sharding);
-      tuple = builder->Parameter(0, (*input_shapes)[0], "arg_tuple");
+      tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple");
     } else {
-      tuple = builder->Parameter(0, (*input_shapes)[0], "arg_tuple");
+      tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple");
     }
     for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
       const int core = (*arg_cores)[input_mapping->at(i)];
       xla::XlaScopedShardingAssignment assign_sharding(
-          builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
+          builder, core == -1 ? absl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
-      arg_handles[i] = builder->GetTupleElement(tuple, i);
+      arg_handles[i] = xla::GetTupleElement(tuple, i);
     }
   } else {
     for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
       const int core = (*arg_cores)[input_mapping->at(i)];
       xla::XlaScopedShardingAssignment assign_sharding(
-          builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
+          builder, core == -1 ? absl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
-      arg_handles[i] =
-          builder->Parameter(i, (*input_shapes)[i], strings::StrCat("arg", i));
+      arg_handles[i] = xla::Parameter(builder, i, (*input_shapes)[i],
+                                      strings::StrCat("arg", i));
     }
   }
 
@@ -603,14 +612,15 @@ Status XlaCompiler::BuildArguments(
         // return values of functions, and then reshape unconditionally.
         if (is_entry_computation) {
           arg_expression.set_handle(
-              builder->Reshape(arg_handles[i], arg.shape.dim_sizes()));
+              xla::Reshape(arg_handles[i], arg.shape.dim_sizes()));
         } else {
           arg_expression.set_handle(arg_handles[i]);
         }
         break;
       case XlaCompiler::Argument::kConstant:
       case XlaCompiler::Argument::kInvalid:
-        return errors::Internal("Unreachable case in BuildArguments()");
+        return errors::Internal(
+            "Unreachable case in BuildArguments() while filling handles");
     }
   }
 
@@ -655,9 +665,64 @@ Status XlaCompiler::CompileSingleOp(
                         .Finalize(graph.get(), &node);
     TF_RETURN_IF_ERROR(status);
   }
+  FixupSourceAndSinkEdges(graph.get());
 
   return CompileGraph(options, name, std::move(graph), args, result);
 }
+
+namespace {
+
+// Check that the ops of all non-functional nodes have been registered.
+Status ValidateFunctionDef(const FunctionDef* fdef,
+                           const FunctionLibraryDefinition& flib_def) {
+  for (const NodeDef& node : fdef->node_def()) {
+    const string& op = node.op();
+    if (op == FunctionLibraryDefinition::kGradientOp || flib_def.Find(op)) {
+      continue;
+    }
+    const OpDef* op_def;
+    TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(op, &op_def));
+  }
+  return Status::OK();
+}
+
+// Check that the graph doesn't have any invalid nodes (e.g. incompatible with
+// given device_type, invalid data type, missing attributes...)
+Status ValidateGraph(const Graph* graph,
+                     const FunctionLibraryDefinition& flib_def,
+                     const DeviceType& device_type, const string& name) {
+  auto maybe_error = [&](const Node* node, const Status& s) -> Status {
+    if (!s.ok()) {
+      return errors::InvalidArgument(strings::StrCat(
+          "Detected unsupported operations when trying to compile graph ", name,
+          " on ", device_type.type_string(), ": ", node->def().op(), " (",
+          s.error_message(), ")", FormatNodeForError(*node)));
+    }
+    return Status::OK();
+  };
+
+  for (const Node* node : graph->nodes()) {
+    if (node->type_string() == FunctionLibraryDefinition::kGradientOp) {
+      continue;
+    }
+    const FunctionDef* fdef = flib_def.Find(node->def().op());
+    Status s;
+    if (fdef) {
+      s = ValidateFunctionDef(fdef, flib_def);
+      TF_RETURN_IF_ERROR(maybe_error(node, s));
+      continue;
+    }
+    const OpDef* op_def;
+    s = OpRegistry::Global()->LookUpOpDef(node->def().op(), &op_def);
+    TF_RETURN_IF_ERROR(maybe_error(node, s));
+    TF_RETURN_IF_ERROR(ValidateNodeDef(node->def(), *op_def));
+    s = FindKernelDef(device_type, node->def(), nullptr, nullptr);
+    TF_RETURN_IF_ERROR(maybe_error(node, s));
+  }
+  return Status::OK();
+}
+
+}  // namespace
 
 Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                                  string const& name,
@@ -680,6 +745,11 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   TF_RETURN_IF_ERROR(
       FunctionalizeControlFlow(flib_runtime_->GetFunctionLibraryDefinition(),
                                graph.get(), local_flib_def_.get()));
+
+  // Detect invalid nodes.
+  // FunctionalizeControlFlow may remove some nodes from the graph.
+  TF_RETURN_IF_ERROR(ValidateGraph(graph.get(), *options_.flib_def,
+                                   options_.device_type, name));
 
   xla::XlaBuilder builder(name);
   XlaContext* context = new XlaContext(
@@ -705,9 +775,10 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   result->outputs.resize(context->retvals().size());
   TF_RETURN_IF_ERROR(BuildComputation(
       args, arg_cores, context->retvals(), context->resources(),
-      options.return_updated_values_for_all_resources, &builder,
-      result->computation.get(), &num_computation_outputs,
-      &num_nonconst_outputs, &result->outputs, &result->resource_updates));
+      options.return_updated_values_for_all_resources,
+      options.always_return_tuple, &builder, result->computation.get(),
+      &num_computation_outputs, &num_nonconst_outputs, &result->outputs,
+      &result->resource_updates));
 
   VLOG(2) << "Outputs: total: " << context->retvals().size()
           << " nonconstant: " << num_nonconst_outputs;
@@ -720,14 +791,6 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   result->xla_output_shape.Swap(computation_shape->mutable_result());
   VLOG(2) << "XLA output shape: "
           << xla::ShapeUtil::HumanString(result->xla_output_shape);
-
-  // Copy the host transfer metadata to the result.
-  for (const auto& send : host_compute_sends_) {
-    *result->host_compute_metadata.add_device_to_host() = send.second;
-  }
-  for (const auto& recv : host_compute_recvs_) {
-    *result->host_compute_metadata.add_host_to_device() = recv.second;
-  }
 
   // Tensorflow expects a major-to-minor order of results.
   xla::LayoutUtil::SetToDefaultLayout(&result->xla_output_shape);
@@ -746,10 +809,34 @@ Status XlaCompiler::GetChannelHandle(const string& key,
   return Status::OK();
 }
 
+Status XlaCompiler::GetHostToDeviceChannelHandle(const string& key,
+                                                 xla::ChannelHandle* channel) {
+  auto result = channels_.emplace(key, xla::ChannelHandle());
+  if (result.second) {
+    TF_ASSIGN_OR_RETURN(result.first->second,
+                        client()->CreateHostToDeviceChannelHandle());
+  }
+  *channel = result.first->second;
+  VLOG(1) << "Host to device channel: " << key << " " << channel->DebugString();
+  return Status::OK();
+}
+
+Status XlaCompiler::GetDeviceToHostChannelHandle(const string& key,
+                                                 xla::ChannelHandle* channel) {
+  auto result = channels_.emplace(key, xla::ChannelHandle());
+  if (result.second) {
+    TF_ASSIGN_OR_RETURN(result.first->second,
+                        client()->CreateDeviceToHostChannelHandle());
+  }
+  *channel = result.first->second;
+  VLOG(1) << "Device to host channel: " << key << " " << channel->DebugString();
+  return Status::OK();
+}
+
 namespace {
 
-void SetTransfer(const string& key, gtl::ArraySlice<DataType> types,
-                 gtl::ArraySlice<TensorShape> shapes,
+void SetTransfer(const string& key, absl::Span<const DataType> types,
+                 absl::Span<const TensorShape> shapes,
                  tf2xla::HostTransferMetadata* transfer) {
   transfer->set_key(key);
   CHECK(types.size() == shapes.size());
@@ -763,8 +850,8 @@ void SetTransfer(const string& key, gtl::ArraySlice<DataType> types,
 }  // namespace
 
 Status XlaCompiler::SetDeviceToHostMetadata(
-    const string& key, gtl::ArraySlice<DataType> types,
-    gtl::ArraySlice<TensorShape> shapes) {
+    const string& key, absl::Span<const DataType> types,
+    absl::Span<const TensorShape> shapes) {
   if (host_compute_sends_.find(key) != host_compute_sends_.end()) {
     return errors::InvalidArgument(
         "Duplicate calls to SetDeviceToHostMetadata with key ", key);
@@ -790,8 +877,8 @@ Status XlaCompiler::GetDeviceToHostShapes(
 }
 
 Status XlaCompiler::SetHostToDeviceMetadata(
-    const string& key, gtl::ArraySlice<DataType> types,
-    gtl::ArraySlice<TensorShape> shapes) {
+    const string& key, absl::Span<const DataType> types,
+    absl::Span<const TensorShape> shapes) {
   if (host_compute_recvs_.find(key) != host_compute_sends_.end()) {
     return errors::InvalidArgument(
         "Duplicate calls to SetHostToDeviceMetadata with key ", key);

@@ -60,6 +60,8 @@ class RamFileBlockCache : public FileBlockCache {
       pruning_thread_.reset(env_->StartThread(ThreadOptions(), "TF_prune_FBC",
                                               [this] { Prune(); }));
     }
+    VLOG(1) << "GCS file block cache is "
+            << (IsCacheEnabled() ? "enabled" : "disabled");
   }
 
   ~RamFileBlockCache() override {

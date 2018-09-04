@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_OPS_UTIL_H_
-#define TENSORFLOW_KERNELS_OPS_UTIL_H_
+#ifndef TENSORFLOW_CORE_KERNELS_OPS_UTIL_H_
+#define TENSORFLOW_CORE_KERNELS_OPS_UTIL_H_
 
 // This file contains utilities for various operations.
 
@@ -113,4 +113,4 @@ gtl::InlinedVector<T, 8> ComputeEigenStrides(const EigenDimensions& shape) {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_OPS_UTIL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_OPS_UTIL_H_

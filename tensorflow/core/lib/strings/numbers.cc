@@ -331,31 +331,29 @@ bool safe_strtou32(StringPiece str, uint32* value) {
   return true;
 }
 
-bool safe_strtof(const char* str, float* value) {
+bool safe_strtof(StringPiece str, float* value) {
   int processed_characters_count = -1;
-  auto len = str_util::Strnlen(str, kFastToBufferSize);
+  auto len = str.size();
 
-  // If there is no zero-termination in str, fail.
-  if (len == kFastToBufferSize) return false;
-  // If string length exceeds int max, fail.
+  // If string length exceeds buffer size or int max, fail.
+  if (len >= kFastToBufferSize) return false;
   if (len > std::numeric_limits<int>::max()) return false;
 
-  *value = StringToFloatConverter().StringToFloat(str, static_cast<int>(len),
-                                                  &processed_characters_count);
+  *value = StringToFloatConverter().StringToFloat(
+      str.data(), static_cast<int>(len), &processed_characters_count);
   return processed_characters_count > 0;
 }
 
-bool safe_strtod(const char* str, double* value) {
+bool safe_strtod(StringPiece str, double* value) {
   int processed_characters_count = -1;
-  auto len = str_util::Strnlen(str, kFastToBufferSize);
+  auto len = str.size();
 
-  // If there is no zero-termination in str, fail.
-  if (len == kFastToBufferSize) return false;
-  // If string length exceeds int max, fail.
+  // If string length exceeds buffer size or int max, fail.
+  if (len >= kFastToBufferSize) return false;
   if (len > std::numeric_limits<int>::max()) return false;
 
-  *value = StringToFloatConverter().StringToDouble(str, static_cast<int>(len),
-                                                   &processed_characters_count);
+  *value = StringToFloatConverter().StringToDouble(
+      str.data(), static_cast<int>(len), &processed_characters_count);
   return processed_characters_count > 0;
 }
 

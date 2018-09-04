@@ -60,11 +60,11 @@ TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
   auto builder = HloComputation::Builder(TestName());
   // The input dimensions are in CNHW order.
   auto input = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR4FromArray4D(Array4D<float>(
+      LiteralUtil::CreateR4FromArray4D(Array4D<float>(
           kInputFeatureCount, kBatchSize, kInputSize, kInputSize))));
   // The kernel dimensions are in OIHW order.
   auto kernel = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR4FromArray4D(Array4D<float>(
+      LiteralUtil::CreateR4FromArray4D(Array4D<float>(
           kOutputFeatureCount, kInputFeatureCount, kWindowSize, kWindowSize))));
 
   ConvolutionDimensionNumbers dnums;
@@ -122,11 +122,11 @@ TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
   auto builder = HloComputation::Builder(TestName());
   // The input dimensions are in NHWC order.
   auto input = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR4FromArray4D(Array4D<float>(
+      LiteralUtil::CreateR4FromArray4D(Array4D<float>(
           kBatchSize, kInputSize, kInputSize, kInputFeatureCount))));
   // The kernel dimensions are in HWIO order.
   auto kernel = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR4FromArray4D(Array4D<float>(
+      LiteralUtil::CreateR4FromArray4D(Array4D<float>(
           kWindowSize, kWindowSize, kInputFeatureCount, kOutputFeatureCount))));
 
   ConvolutionDimensionNumbers dnums;

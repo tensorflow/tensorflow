@@ -106,6 +106,17 @@ class Allocator {
 
   // Core allocation routine.
   void Allocate(std::size_t size, Alloc* result) {
+    if (size == 0) {
+      // zero-sized arrays get a dummy alloc of (0, 0) that does not
+      // need to be kept in the books (no need to insert that into
+      // live_allocs_).
+      // Note: zero-sized arrays shouldn't exist, but handling that case
+      // here allows such pathological cases to get a cleaner error message
+      // later instead of generating spurious allocator failures.
+      result->start = 0;
+      result->end = 0;
+      return;
+    }
     // Naive algorithm: pick the first gap between live allocations,
     // that is wide enough for the new array.
     std::size_t pos = 0;
@@ -128,6 +139,11 @@ class Allocator {
   }
 
   void Deallocate(const Alloc& a) {
+    // Special-case dummy allocs for zero-sized arrays.
+    if (a.start == 0 && a.end == 0) {
+      // Nothing needs to be done, these aren't kept in the books.
+      return;
+    }
     auto iter = std::lower_bound(live_allocs_.begin(), live_allocs_.end(), a);
     CHECK(iter != live_allocs_.end());
     CHECK(*iter == a);

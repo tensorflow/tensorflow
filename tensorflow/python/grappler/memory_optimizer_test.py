@@ -76,7 +76,8 @@ class MemoryOptimizerSwapTest(test.TestCase):
         disable_model_pruning=True,
         meta_optimizer_iterations=rewriter_config_pb2.RewriterConfig.ONE,
         constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
-        memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL)
+        memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL,
+        min_graph_nodes=-1)
     graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
 
     self.assertEqual(len(graph.node), graph_size + 2)
@@ -133,6 +134,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
             dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
             layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF,
             arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+            min_graph_nodes=-1,
             memory_optimization=rewriter_config_pb2.RewriterConfig.
             RECOMPUTATION_HEURISTICS), original_metagraph)
     self.assertGreater(
@@ -158,6 +160,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
             dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
             layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF,
             arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+            min_graph_nodes=-1,
             memory_optimization=rewriter_config_pb2.RewriterConfig.
             RECOMPUTATION_HEURISTICS,
             # Checks that name scope "gradients/" also match sub-scope.
@@ -297,6 +300,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
              if 'Recomputed/' in node.name]))
     rewritten_graph_def = tf_optimizer.OptimizeGraph(
         rewriter_config_pb2.RewriterConfig(
+            min_graph_nodes=-1,
             memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL),
         metagraph)
     self.assertEqual(

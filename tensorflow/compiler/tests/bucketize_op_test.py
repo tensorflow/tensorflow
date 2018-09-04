@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import array_ops
@@ -26,10 +26,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class BucketizationOpTest(XLATestCase):
+class BucketizationOpTest(xla_test.XLATestCase):
 
   def testInt(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       p = array_ops.placeholder(dtypes.int32)
       with self.test_scope():
         op = math_ops._bucketize(p, boundaries=[0, 3, 8, 11])
@@ -38,7 +38,7 @@ class BucketizationOpTest(XLATestCase):
                           sess.run(op, {p: [-5, 0, 2, 3, 5, 8, 10, 11, 12]}))
 
   def testFloat(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       p = array_ops.placeholder(dtypes.float32)
       with self.test_scope():
         op = math_ops._bucketize(p, boundaries=[0., 3., 8., 11.])
@@ -48,7 +48,7 @@ class BucketizationOpTest(XLATestCase):
           sess.run(op, {p: [-5., 0., 2., 3., 5., 8., 10., 11., 12.]}))
 
   def test2DInput(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       p = array_ops.placeholder(dtypes.float32)
       with self.test_scope():
         op = math_ops._bucketize(p, boundaries=[0, 3, 8, 11])
@@ -58,7 +58,7 @@ class BucketizationOpTest(XLATestCase):
                                  {p: [[-5, 0, 2, 3, 5], [8, 10, 11, 12, 0]]}))
 
   def testInvalidBoundariesOrder(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       p = array_ops.placeholder(dtypes.int32)
       with self.test_scope():
         op = math_ops._bucketize(p, boundaries=[0, 8, 3, 11])
@@ -67,7 +67,7 @@ class BucketizationOpTest(XLATestCase):
         sess.run(op, {p: [-5, 0]})
 
   def testBoundariesNotList(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(TypeError, "Expected list.*"):
         p = array_ops.placeholder(dtypes.int32)
         with self.test_scope():

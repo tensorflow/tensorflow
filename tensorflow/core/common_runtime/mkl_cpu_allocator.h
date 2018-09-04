@@ -22,14 +22,15 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include <cstdlib>
-#include <string>
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/visitable_allocator.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mem.h"
 
+#ifndef INTEL_MKL_DNN_ONLY
 #include "i_malloc.h"
+#endif
 
 #ifdef _WIN32
 typedef unsigned int uint;
@@ -97,14 +98,14 @@ class MklCPUAllocator : public VisitableAllocator {
     VLOG(1) << "MklCPUAllocator: Setting max_mem_bytes: " << max_mem_bytes;
     allocator_ = new BFCAllocator(new MklSubAllocator, max_mem_bytes,
                                   kAllowGrowth, kName);
-
+#ifndef INTEL_MKL_DNN_ONLY
     // For redirecting all allocations from MKL to this allocator
     // From: http://software.intel.com/en-us/node/528565
     i_malloc = MallocHook;
     i_calloc = CallocHook;
     i_realloc = ReallocHook;
     i_free = FreeHook;
-
+#endif
     return Status::OK();
   }
 
@@ -147,12 +148,14 @@ class MklCPUAllocator : public VisitableAllocator {
     Status s = Status(error::Code::UNIMPLEMENTED,
                       "Unimplemented case for hooking MKL function.");
     TF_CHECK_OK(s);  // way to assert with an error message
+    return nullptr; // return a value and make static code analyzers happy
   }
 
   static inline void* ReallocHook(void* ptr, size_t size) {
     Status s = Status(error::Code::UNIMPLEMENTED,
                       "Unimplemented case for hooking MKL function.");
     TF_CHECK_OK(s);  // way to assert with an error message
+    return nullptr; // return a value and make static code analyzers happy
   }
 
   /// Do we allow growth in BFC Allocator
@@ -165,6 +168,9 @@ class MklCPUAllocator : public VisitableAllocator {
   static constexpr const size_t kAlignment = 64;
 
   VisitableAllocator* allocator_;  // owned by this class
+
+  // Prevent copying and assignment
+  TF_DISALLOW_COPY_AND_ASSIGN(MklCPUAllocator);
 };
 
 }  // namespace tensorflow

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 
 namespace tensorflow {
 namespace {
@@ -31,7 +32,7 @@ class AddNOp : public XlaOpKernel {
 
     xla::XlaOp sum = ctx->Input(0);
     for (int i = 1; i < ctx->num_inputs(); ++i) {
-      sum = ctx->builder()->Add(sum, ctx->Input(i));
+      sum = xla::Add(sum, ctx->Input(i));
     }
 
     ctx->SetOutput(0, sum);

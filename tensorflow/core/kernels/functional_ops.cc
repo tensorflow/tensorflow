@@ -127,32 +127,48 @@ class IfOp : public AsyncOpKernel {
   explicit IfOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
     auto lib = ctx->function_library();
     OP_REQUIRES(ctx, lib != nullptr, errors::Internal("No function library"));
-    const NameAttrList* func;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("then_branch", &func));
-    OP_REQUIRES_OK(ctx, Instantiate(lib, *func, &then_handle_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("else_branch", &func));
-    OP_REQUIRES_OK(ctx, Instantiate(lib, *func, &else_handle_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("then_branch", &then_func_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("else_branch", &else_func_));
   }
 
   ~IfOp() override {}
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
+    auto lib = ctx->function_library();
+    OP_REQUIRES_ASYNC(ctx, lib != nullptr,
+                      errors::Internal("No function library"), done);
+
+    // TODO(b/37549631): Because this op has `SetIsStateful()` in its op
+    // registration, this kernel may be shared by multiple subgraphs, which have
+    // different associated `FunctionLibraryRuntime` objects and hence different
+    // `FHandle` namespaces. So we must call Instantiate() to make sure we get
+    // the correct function handles with respect to `lib`. Note the underlying
+    // `lib->Instantiate()` caches the created function handles, so calling
+    // `Instantiate()` repeatedly on the same `lib` and function is cheap.
+    FHandle then_handle;
+    FHandle else_handle;
+    OP_REQUIRES_OK_ASYNC(ctx, Instantiate(lib, then_func_, &then_handle), done);
+    OP_REQUIRES_OK_ASYNC(ctx, Instantiate(lib, else_func_, &else_handle), done);
+
     bool cond;
     OP_REQUIRES_OK(ctx, ToBool({ctx->input(0)}, &cond));
-    (new State(this, ctx, cond, done))->Start();
+    (new State(this, ctx, cond, then_handle, else_handle, done))->Start();
   }
 
  private:
-  FHandle then_handle_;
-  FHandle else_handle_;
+  NameAttrList then_func_;
+  NameAttrList else_func_;
 
   class State {
    public:
-    State(IfOp* kernel, OpKernelContext* ctx, bool cond, DoneCallback done)
+    State(IfOp* kernel, OpKernelContext* ctx, bool cond, FHandle then_handle,
+          FHandle else_handle, DoneCallback done)
         : kernel_(kernel),
           ctx_(ctx),
           cond_(cond),
-          done_(done),
+          then_handle_(then_handle),
+          else_handle_(else_handle),
+          done_(std::move(done)),
           lib_(CHECK_NOTNULL(ctx_->function_library())) {
       SetRunOptions(ctx_, &opts_, true /* always_collect_stats */);
       for (int i = 1; i < ctx_->num_inputs(); ++i) {
@@ -163,7 +179,7 @@ class IfOp : public AsyncOpKernel {
     ~State() {}
 
     void Start() {
-      FHandle handle = cond_ ? kernel_->then_handle_ : kernel_->else_handle_;
+      FHandle handle = cond_ ? then_handle_ : else_handle_;
       rets_.clear();
       lib_->Run(
           // Evaluate one of the branch.
@@ -174,9 +190,9 @@ class IfOp : public AsyncOpKernel {
               s = SetOutputs(kernel_, ctx_, rets_);
             }
             ctx_->SetStatus(s);
-            auto done = done_;
+            DoneCallback captured_done(std::move(done_));
             delete this;
-            done();
+            captured_done();
           });
     }
 
@@ -184,7 +200,9 @@ class IfOp : public AsyncOpKernel {
     IfOp* const kernel_;
     OpKernelContext* const ctx_;
     const bool cond_;
-    const DoneCallback done_;
+    FHandle then_handle_;
+    FHandle else_handle_;
+    DoneCallback done_;
     FunctionLibraryRuntime* const lib_;
     FunctionLibraryRuntime::Options opts_;
     TensorVec args_;
@@ -200,6 +218,10 @@ REGISTER_KERNEL_BUILDER(Name("_If").Device(DEVICE_GPU).HostMemory("cond"),
 REGISTER_KERNEL_BUILDER(Name("If").Device(DEVICE_CPU), IfOp);
 REGISTER_KERNEL_BUILDER(Name("If").Device(DEVICE_GPU).HostMemory("cond"), IfOp);
 
+REGISTER_KERNEL_BUILDER(Name("StatelessIf").Device(DEVICE_CPU), IfOp);
+REGISTER_KERNEL_BUILDER(
+    Name("StatelessIf").Device(DEVICE_GPU).HostMemory("cond"), IfOp);
+
 class WhileOp : public AsyncOpKernel {
  public:
   explicit WhileOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
@@ -214,40 +236,23 @@ class WhileOp : public AsyncOpKernel {
     OP_REQUIRES_ASYNC(ctx, lib != nullptr,
                       errors::Internal("No function library"), done);
 
-    // TODO(b/37549631): Because this op has `SetIsStateful()` in its
-    // op registration, this kernel may be shared by multiple
-    // subgraphs, which have different associated
-    // `FunctionLibraryRuntime` objects and hence different `FHandle`
-    // namespaces. We currently work around this by caching the map
-    // from `FunctionLibraryRuntime*` to `FHandle` pairs for the two
-    // functions this op uses.
+    // TODO(b/37549631): Because this op has `SetIsStateful()` in its op
+    // registration, this kernel may be shared by multiple subgraphs, which have
+    // different associated `FunctionLibraryRuntime` objects and hence different
+    // `FHandle` namespaces. So we must call Instantiate() to make sure we get
+    // the correct function handles with respect to `lib`. Note the underlying
+    // `lib->Instantiate()` caches the created function handles, so calling
+    // `Instantiate()` repeatedly on the same `lib` and function is cheap.
     FHandle cond_handle;
     FHandle body_handle;
-    {
-      mutex_lock l(mu_);
-      const auto iter = handles_.find(lib);
-      if (iter == handles_.end()) {
-        OP_REQUIRES_OK_ASYNC(ctx, Instantiate(lib, cond_func_, &cond_handle),
-                             done);
-        OP_REQUIRES_OK_ASYNC(ctx, Instantiate(lib, body_func_, &body_handle),
-                             done);
-        handles_[lib] = {cond_handle, body_handle};
-      } else {
-        cond_handle = iter->second.first;
-        body_handle = iter->second.second;
-      }
-    }
-
+    OP_REQUIRES_OK_ASYNC(ctx, Instantiate(lib, cond_func_, &cond_handle), done);
+    OP_REQUIRES_OK_ASYNC(ctx, Instantiate(lib, body_func_, &body_handle), done);
     (new State(this, ctx, cond_handle, body_handle, done))->Start();
   }
 
  private:
   NameAttrList cond_func_;
   NameAttrList body_func_;
-
-  mutex mu_;
-  std::unordered_map<FunctionLibraryRuntime*, std::pair<FHandle, FHandle>>
-      handles_ GUARDED_BY(mu_);
 
   class State {
    public:
@@ -257,7 +262,7 @@ class WhileOp : public AsyncOpKernel {
           ctx_(ctx),
           cond_handle_(cond_handle),
           body_handle_(body_handle),
-          done_(done),
+          done_(std::move(done)),
           lib_(CHECK_NOTNULL(ctx_->function_library())) {
       SetRunOptions(ctx_, &opts_, false /* always_collect_stats */);
       for (int i = 0; i < ctx_->num_inputs(); ++i) {
@@ -377,6 +382,9 @@ REGISTER_KERNEL_BUILDER(Name("_While").Device(DEVICE_GPU), WhileOp);
 
 REGISTER_KERNEL_BUILDER(Name("While").Device(DEVICE_CPU), WhileOp);
 REGISTER_KERNEL_BUILDER(Name("While").Device(DEVICE_GPU), WhileOp);
+
+REGISTER_KERNEL_BUILDER(Name("StatelessWhile").Device(DEVICE_CPU), WhileOp);
+REGISTER_KERNEL_BUILDER(Name("StatelessWhile").Device(DEVICE_GPU), WhileOp);
 
 Status GetScalar(OpKernelContext* ctx, int index, int32* value,
                  const char* label) {
@@ -517,6 +525,26 @@ REGISTER_KERNEL_BUILDER(Name("For")
                             .HostMemory("limit")
                             .HostMemory("delta"),
                         ForOp);
+
+class FakeParamOp : public OpKernel {
+ public:
+  explicit FakeParamOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    // We must produce something (only Switch and Recvs are allowed to output
+    // dead tensors). This output is not expected to be consumed by anything.
+    Tensor output_tensor(dtype_, TensorShape({}));
+    context->set_output(0, output_tensor);
+  }
+
+ private:
+  DataType dtype_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("FakeParam").Device(DEVICE_CPU), FakeParamOp);
+REGISTER_KERNEL_BUILDER(Name("FakeParam").Device(DEVICE_GPU), FakeParamOp);
 
 }  // namespace
 }  // namespace tensorflow
