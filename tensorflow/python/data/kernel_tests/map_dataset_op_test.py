@@ -711,57 +711,74 @@ class MapDatasetBenchmark(test.Benchmark):
   def benchmarkChainOfMaps(self):
     chain_lengths = [0, 1, 2, 5, 10, 20, 50]
     for chain_length in chain_lengths:
-      with ops.Graph().as_default():
-        dataset = dataset_ops.Dataset.from_tensors(0).repeat(None)
-        for _ in range(chain_length):
-          dataset = dataset.map(lambda x: x)
-        iterator = dataset.make_one_shot_iterator()
-        next_element = iterator.get_next()
+      for use_inter_op_parallelism in [False, True]:
+        with ops.Graph().as_default():
+          dataset = dataset_ops.Dataset.from_tensors(0).repeat(None)
+          for _ in range(chain_length):
+            dataset = dataset_ops.MapDataset(
+                dataset,
+                lambda x: x,
+                use_inter_op_parallelism=use_inter_op_parallelism)
+          iterator = dataset.make_one_shot_iterator()
+          next_element = iterator.get_next()
 
-        with session.Session() as sess:
-          for _ in range(5):
-            sess.run(next_element.op)
-          deltas = []
-          for _ in range(100):
-            start = time.time()
-            for _ in range(100):
+          with session.Session() as sess:
+            for _ in range(5):
               sess.run(next_element.op)
-            end = time.time()
-            deltas.append(end - start)
+            deltas = []
+            for _ in range(100):
+              start = time.time()
+              for _ in range(100):
+                sess.run(next_element.op)
+              end = time.time()
+              deltas.append(end - start)
 
-          median_wall_time = np.median(deltas) / 100
-          print("Map dataset chain length: %d Median wall time: %f"
-                % (chain_length, median_wall_time))
-          self.report_benchmark(
-              iters=1000, wall_time=median_wall_time,
-              name="benchmark_map_dataset_chain_latency_%d" % chain_length)
+            median_wall_time = np.median(deltas) / 100
+            print("Map dataset chain length%s: %d Median wall time: %f" %
+                  (" (single threaded mode)" if not use_inter_op_parallelism
+                   else "", chain_length, median_wall_time))
+            self.report_benchmark(
+                iters=1000,
+                wall_time=median_wall_time,
+                name="benchmark_map_dataset_chain_latency_%d%s" %
+                (chain_length, "_single_threaded"
+                 if not use_inter_op_parallelism else ""))
 
   def benchmarkMapFanOut(self):
     fan_outs = [1, 2, 5, 10, 20, 50, 100]
     for fan_out in fan_outs:
-      with ops.Graph().as_default():
-        dataset = dataset_ops.Dataset.from_tensors(
-            tuple(0 for _ in range(fan_out))).repeat(None).map(lambda *xs: xs)
-        iterator = dataset.make_one_shot_iterator()
-        next_element = iterator.get_next()
+      for use_inter_op_parallelism in [False, True]:
+        with ops.Graph().as_default():
+          dataset = dataset_ops.Dataset.from_tensors(
+              tuple(0 for _ in range(fan_out))).repeat(None)
+          dataset = dataset_ops.MapDataset(
+              dataset,
+              lambda *xs: xs,
+              use_inter_op_parallelism=use_inter_op_parallelism)
+          iterator = dataset.make_one_shot_iterator()
+          next_element = iterator.get_next()
 
-        with session.Session() as sess:
-          for _ in range(5):
-            sess.run(next_element[0].op)
-          deltas = []
-          for _ in range(100):
-            start = time.time()
-            for _ in range(100):
+          with session.Session() as sess:
+            for _ in range(5):
               sess.run(next_element[0].op)
-            end = time.time()
-            deltas.append(end - start)
+            deltas = []
+            for _ in range(100):
+              start = time.time()
+              for _ in range(100):
+                sess.run(next_element[0].op)
+              end = time.time()
+              deltas.append(end - start)
 
-          median_wall_time = np.median(deltas) / 100
-          print("Map dataset fan out: %d Median wall time: %f"
-                % (fan_out, median_wall_time))
-          self.report_benchmark(
-              iters=1000, wall_time=median_wall_time,
-              name="benchmark_map_dataset_fan_out_%d" % fan_out)
+            median_wall_time = np.median(deltas) / 100
+            print("Map dataset fan out%s: %d Median wall time: %f" %
+                  (" (single threaded mode)" if not use_inter_op_parallelism
+                   else "", fan_out, median_wall_time))
+            self.report_benchmark(
+                iters=1000,
+                wall_time=median_wall_time,
+                name="benchmark_map_dataset_fan_out_%d%s" %
+                (fan_out, "_single_threaded"
+                 if not use_inter_op_parallelism else ""))
 
 
 if __name__ == "__main__":
