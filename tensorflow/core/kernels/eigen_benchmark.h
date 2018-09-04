@@ -76,6 +76,9 @@ class SpatialConvolutionBenchmarksSuite {
 
   void SpatialConvolutionBackwardInput(Dimensions input_dims,
                                        Dimensions filter_dims) {
+    using OutputBackward = TTypes<float, 4>::ConstTensor;
+    using InputBackward = TTypes<float, 4>::Tensor;
+
     Dimensions output_dims(input_dims[0],    // batch
                            input_dims[1],    // input_height
                            input_dims[2],    // input_width
@@ -85,37 +88,37 @@ class SpatialConvolutionBenchmarksSuite {
     Eigen::Index input_rows = input_dims[1];
     Eigen::Index input_cols = input_dims[2];
 
-    Scalar* input_data =
-        static_cast<Scalar*>(device_.allocate(BufferSize(input_dims)));
     Scalar* filter_data =
         static_cast<Scalar*>(device_.allocate(BufferSize(filter_dims)));
-    Scalar* output_data =
+    Scalar* output_backward_data =
         static_cast<Scalar*>(device_.allocate(BufferSize(output_dims)));
+    Scalar* input_backward_data =
+        static_cast<Scalar*>(device_.allocate(BufferSize(input_dims)));
 
-    device_.memset(input_data, 123, BufferSize(input_dims));
     device_.memset(filter_data, 123, BufferSize(filter_dims));
+    device_.memset(output_backward_data, 123, BufferSize(output_dims));
 
-    Input input(input_data, input_dims);
     Filter filter(filter_data, filter_dims);
-    Output output(output_data, output_dims);
+    OutputBackward output_backward(output_backward_data, output_dims);
+    InputBackward input_backward(input_backward_data, input_dims);
 
     ::tensorflow::testing::StartTiming();
     for (int i = 0; i < iters_; ++i) {
-      output.device(device_) = Eigen::SpatialConvolutionBackwardInput(
-          filter, input, input_rows, input_cols);
-      tensorflow::testing::DoNotOptimize(output);
+      input_backward.device(device_) = Eigen::SpatialConvolutionBackwardInput(
+          filter, output_backward, input_rows, input_cols);
+      tensorflow::testing::DoNotOptimize(input_backward);
     }
     ::tensorflow::testing::StopTiming();
 
-    device_.deallocate(input_data);
     device_.deallocate(filter_data);
-    device_.deallocate(output_data);
+    device_.deallocate(output_backward_data);
+    device_.deallocate(input_backward_data);
   }
 
   void SpatialConvolutionBackwardKernel(Dimensions input_dims,
                                         Dimensions filter_dims) {
     using OutputBackward = TTypes<float, 4>::ConstTensor;
-    using FilterGrad = TTypes<float, 4>::Tensor;
+    using FilterBackward = TTypes<float, 4>::Tensor;
 
     Dimensions output_dims(input_dims[0],    // batch
                            input_dims[1],    // input_height
@@ -130,7 +133,7 @@ class SpatialConvolutionBenchmarksSuite {
         static_cast<Scalar*>(device_.allocate(BufferSize(input_dims)));
     Scalar* output_backward_data =
         static_cast<Scalar*>(device_.allocate(BufferSize(output_dims)));
-    Scalar* filter_data =
+    Scalar* filter_backward_data =
         static_cast<Scalar*>(device_.allocate(BufferSize(filter_dims)));
 
     device_.memset(input_data, 123, BufferSize(input_dims));
@@ -138,19 +141,19 @@ class SpatialConvolutionBenchmarksSuite {
 
     Input input(input_data, input_dims);
     OutputBackward output_backward(output_backward_data, input_dims);
-    FilterGrad filter_grad(filter_data, filter_dims);
+    FilterBackward filter_backward(filter_backward_data, filter_dims);
 
     ::tensorflow::testing::StartTiming();
     for (int i = 0; i < iters_; ++i) {
-      filter_grad.device(device_) = Eigen::SpatialConvolutionBackwardKernel(
+      filter_backward.device(device_) = Eigen::SpatialConvolutionBackwardKernel(
           input, output_backward, filter_rows, filter_cols);
-      tensorflow::testing::DoNotOptimize(filter_grad);
+      tensorflow::testing::DoNotOptimize(filter_backward);
     }
     ::tensorflow::testing::StopTiming();
 
     device_.deallocate(input_data);
     device_.deallocate(output_backward_data);
-    device_.deallocate(filter_data);
+    device_.deallocate(filter_backward_data);
   }
 
  private:
@@ -215,42 +218,45 @@ class CuboidConvolutionBenchmarksSuite {
                            input_dims[3],    // input_planes
                            filter_dims[4]);  // filter_count
 
+    using OutputBackward = TTypes<float, 5>::ConstTensor;
+    using InputBackward = TTypes<float, 5>::Tensor;
+
     // Assuming that the convolution had SAME padding.
     Eigen::Index input_rows = input_dims[1];
     Eigen::Index input_cols = input_dims[2];
     Eigen::Index input_planes = input_dims[3];
 
-    Scalar* input_data =
-        static_cast<Scalar*>(device_.allocate(BufferSize(input_dims)));
     Scalar* filter_data =
         static_cast<Scalar*>(device_.allocate(BufferSize(filter_dims)));
-    Scalar* output_data =
+    Scalar* output_backward_data =
         static_cast<Scalar*>(device_.allocate(BufferSize(output_dims)));
+    Scalar* input_backward_data =
+        static_cast<Scalar*>(device_.allocate(BufferSize(input_dims)));
 
-    device_.memset(input_data, 123, BufferSize(input_dims));
     device_.memset(filter_data, 123, BufferSize(filter_dims));
+    device_.memset(output_backward_data, 123, BufferSize(output_dims));
 
-    Input input(input_data, input_dims);
     Filter filter(filter_data, filter_dims);
-    Output output(output_data, output_dims);
+    OutputBackward output_backward(output_backward_data, output_dims);
+    InputBackward input_backward(input_backward_data, input_dims);
 
     ::tensorflow::testing::StartTiming();
     for (int i = 0; i < iters_; ++i) {
-      output.device(device_) = Eigen::CuboidConvolutionBackwardInput(
-          filter, input, input_planes, input_rows, input_cols);
-      tensorflow::testing::DoNotOptimize(output);
+      input_backward.device(device_) = Eigen::CuboidConvolutionBackwardInput(
+          filter, output_backward, input_planes, input_rows, input_cols);
+      tensorflow::testing::DoNotOptimize(input_backward);
     }
     ::tensorflow::testing::StopTiming();
 
-    device_.deallocate(input_data);
     device_.deallocate(filter_data);
-    device_.deallocate(output_data);
+    device_.deallocate(output_backward_data);
+    device_.deallocate(input_backward_data);
   }
 
   void CuboidConvolutionBackwardKernel(Dimensions input_dims,
                                        Dimensions filter_dims) {
     using OutputBackward = TTypes<float, 5>::ConstTensor;
-    using FilterGrad = TTypes<float, 5>::Tensor;
+    using FilterBackward = TTypes<float, 5>::Tensor;
 
     Dimensions output_dims(input_dims[0],    // batch
                            input_dims[1],    // input_height
@@ -267,7 +273,7 @@ class CuboidConvolutionBenchmarksSuite {
         static_cast<Scalar*>(device_.allocate(BufferSize(input_dims)));
     Scalar* output_backward_data =
         static_cast<Scalar*>(device_.allocate(BufferSize(output_dims)));
-    Scalar* filter_data =
+    Scalar* filter_backward_data =
         static_cast<Scalar*>(device_.allocate(BufferSize(filter_dims)));
 
     device_.memset(input_data, 123, BufferSize(input_dims));
@@ -275,19 +281,19 @@ class CuboidConvolutionBenchmarksSuite {
 
     Input input(input_data, input_dims);
     OutputBackward output_backward(output_backward_data, output_dims);
-    FilterGrad filter_grad(filter_data, filter_dims);
+    FilterBackward filter_backward(filter_backward_data, filter_dims);
 
     ::tensorflow::testing::StartTiming();
     for (int i = 0; i < iters_; ++i) {
-      filter_grad.device(device_) = Eigen::CuboidConvolutionBackwardKernel(
+      filter_backward.device(device_) = Eigen::CuboidConvolutionBackwardKernel(
           input, output_backward, filter_planes, filter_rows, filter_cols);
-      tensorflow::testing::DoNotOptimize(filter_grad);
+      tensorflow::testing::DoNotOptimize(filter_backward);
     }
     ::tensorflow::testing::StopTiming();
 
     device_.deallocate(input_data);
     device_.deallocate(output_backward_data);
-    device_.deallocate(filter_data);
+    device_.deallocate(filter_backward_data);
   }
 
  private:
