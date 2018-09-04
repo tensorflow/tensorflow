@@ -52,6 +52,7 @@ ${DOCKER_BINARY} run \
   -e "PYTHON_BIN_PATH=/usr/bin/python" \
   -e "TF_NEED_HDFS=0" \
   -e "TF_NEED_CUDA=${TF_NEED_CUDA}" \
+  -e "TF_NEED_TENSORRT=${TF_NEED_CUDA}" \
   -e "TF_NEED_OPENCL_SYCL=0" \
   "${DOCKER_IMAGE}" \
   "/workspace/tensorflow/tools/ci_build/linux/libtensorflow.sh"
