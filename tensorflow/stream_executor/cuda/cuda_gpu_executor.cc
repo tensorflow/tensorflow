@@ -493,7 +493,7 @@ void CUDAExecutor::VlogOccupancyInfo(const KernelBase &kernel,
 // Compute and return maximum blocks per core (occupancy) based on the
 // device description, some kernel characteristics and the number of threads per
 // block.  If unable to compute occupancy, zero is returned.
-int CalculateOccupancy(const DeviceDescription& device_description,
+int CUDAExecutor::CalculateOccupancy(const DeviceDescription& device_description,
                        uint64 registers_per_thread,
                        uint64 shared_memory_per_block,
                        const ThreadDim& thread_dims, CUfunction func) {
@@ -508,7 +508,7 @@ int CalculateOccupancy(const DeviceDescription& device_description,
 
 // Compute and return the suggested thread count to acheive ideal occupancy.
 // If the provided thread dimensions match this number, zero is returned.
-int CompareOccupancy(int* initial_blocks,
+int CUDAExecutor::CompareOccupancy(int* initial_blocks,
                      const DeviceDescription& device_description,
                      uint64 registers_per_thread,
                      uint64 shared_memory_per_block,
