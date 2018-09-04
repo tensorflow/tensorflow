@@ -18,8 +18,10 @@ message DynamicLearningRate {
 message LearningRate {
   oneof learning_rate {
     float constant = 1;
-    DynamicLearningRate dynamic = 2;
+    // DynamicLearningRate dynamic = 2; -- disabled while code is being
+    // rewritten.
   }
+  reserved 2;
 }
 
 message AdagradParameters {
