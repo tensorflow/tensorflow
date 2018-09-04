@@ -889,6 +889,7 @@ struct SplitParams {
   // Graphs that split into, say, 2000 nodes are encountered.  The indices in
   // OperatorEdges are of type uint16.
   uint16 num_split;
+  int16 axis;
 };
 
 struct SqueezeParams {
