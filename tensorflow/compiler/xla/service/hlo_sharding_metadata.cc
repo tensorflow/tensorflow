@@ -422,6 +422,13 @@ bool ShardingMetadata::Matches(const DomainMetadata& other) const {
              : false;
 }
 
+size_t ShardingMetadata::Hash() const {
+  if (sharding_ != nullptr) {
+    return sharding_->Hash();
+  }
+  return static_cast<size_t>(0x297814aaad196e6dULL);
+}
+
 string ShardingMetadata::ToString() const {
   return sharding_ != nullptr ? sharding_->ToString() : "{}";
 }
