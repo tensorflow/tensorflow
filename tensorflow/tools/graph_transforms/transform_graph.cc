@@ -65,19 +65,19 @@ Status ParseTransformParameters(const string& transforms_string,
               .GetResult(&remaining, &transform_name);
       if (!found_transform_name) {
         return errors::InvalidArgument("Looking for transform name, but found ",
-                                       std::string(remaining).c_str());
+                                       string(remaining).c_str());
       }
       if (Scanner(remaining).OneLiteral("(").GetResult(&remaining, &match)) {
         state = TRANSFORM_PARAM_NAME;
       } else {
         // Add a transform with no parameters.
-        params_list->push_back({std::string(transform_name), func_parameters});
+        params_list->push_back({string(transform_name), func_parameters});
         transform_name = "";
         state = TRANSFORM_NAME;
       }
     } else if (state == TRANSFORM_PARAM_NAME) {
       if (Scanner(remaining).OneLiteral(")").GetResult(&remaining, &match)) {
-        params_list->push_back({std::string(transform_name), func_parameters});
+        params_list->push_back({string(transform_name), func_parameters});
         transform_name = "";
         state = TRANSFORM_NAME;
       } else {
@@ -92,13 +92,13 @@ Status ParseTransformParameters(const string& transforms_string,
         if (!found_parameter_name) {
           return errors::InvalidArgument(
               "Looking for parameter name, but found ",
-              std::string(remaining).c_str());
+              string(remaining).c_str());
         }
         if (Scanner(remaining).OneLiteral("=").GetResult(&remaining, &match)) {
           state = TRANSFORM_PARAM_VALUE;
         } else {
           return errors::InvalidArgument("Looking for =, but found ",
-                                         std::string(remaining).c_str());
+                                         string(remaining).c_str());
         }
       }
     } else if (state == TRANSFORM_PARAM_VALUE) {
@@ -120,10 +120,9 @@ Status ParseTransformParameters(const string& transforms_string,
       }
       if (!found_parameter_value) {
         return errors::InvalidArgument("Looking for parameter name, but found ",
-                                       std::string(remaining).c_str());
+                                       string(remaining).c_str());
       }
-      func_parameters[std::string(parameter_name)].push_back(
-          std::string(parameter_value));
+      func_parameters[string(parameter_name)].emplace_back(parameter_value);
       // Eat up any trailing quotes.
       Scanner(remaining).ZeroOrOneLiteral("\"").GetResult(&remaining, &match);
       Scanner(remaining).ZeroOrOneLiteral("'").GetResult(&remaining, &match);
