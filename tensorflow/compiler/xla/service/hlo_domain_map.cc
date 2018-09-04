@@ -51,6 +51,10 @@ int64 HloDomainMap::GetDomainId(HloInstruction* instruction) const {
   return FindOrDefault(instruction_to_domain_, instruction, -1);
 }
 
+int64 HloDomainMap::GetDomainMetadataId(HloInstruction* instruction) const {
+  return FindOrDie(domain_metadata_id_, instruction);
+}
+
 Status HloDomainMap::TryProcessEmptyDomain(HloInstruction* instruction) {
   TF_RET_CHECK(instruction->opcode() == HloOpcode::kDomain);
   // We only check operands, so we are sure to not process the empty domain from
@@ -92,6 +96,43 @@ Status HloDomainMap::Populate(HloComputation* computation) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<DomainMetadata::Domain> domain,
                         CreateDomain(instruction, instructions_post_order));
     TF_RETURN_IF_ERROR(InsertDomain(std::move(domain)));
+  }
+  TF_RETURN_IF_ERROR(PopulateDomainMetadataMap());
+  return Status::OK();
+}
+
+Status HloDomainMap::PopulateDomainMetadataMap() {
+  auto hash = [](const DomainMetadata* m) { return m->Hash(); };
+  auto equal = [](const DomainMetadata* a, const DomainMetadata* b) {
+    return a->Matches(*b);
+  };
+  tensorflow::gtl::FlatMap<const DomainMetadata*, int64, decltype(hash),
+                           decltype(equal)>
+      domain_metadata(1024, hash, equal);
+
+  for (auto& domain : instruction_domains_) {
+    int64 domain_metadata_id = -1;
+    if (!domain->enter_domains.empty()) {
+      const HloInstruction* domain_instruction = *domain->enter_domains.begin();
+      domain_metadata_id =
+          domain_metadata
+              .insert({&domain_instruction->user_side_metadata(),
+                       domain_metadata.size() + 1})
+              .first->second;
+    } else if (!domain->exit_domains.empty()) {
+      const HloInstruction* domain_instruction = *domain->exit_domains.begin();
+      domain_metadata_id =
+          domain_metadata
+              .insert({&domain_instruction->operand_side_metadata(),
+                       domain_metadata.size() + 1})
+              .first->second;
+    } else {
+      domain_metadata_id = 0;
+    }
+    TF_RET_CHECK(domain_metadata_id >= 0);
+    for (HloInstruction* instruction : domain->instructions) {
+      domain_metadata_id_[instruction] = domain_metadata_id;
+    }
   }
   return Status::OK();
 }
