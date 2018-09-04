@@ -617,3 +617,31 @@ py_library(
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python:no_contrib"],
 )
+
+genrule(
+    name = "install_headers",
+    srcs = [
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:headers",
+        "//tensorflow/cc:headers",
+        "//tensorflow/core:headers",
+    ],
+    outs = ["include"],
+    cmd = """
+    mkdir $@
+    for f in $(SRCS); do
+      d="$${f%/*}"
+      d="$${d#bazel-out*genfiles/}"
+      d="$${d#*external/eigen_archive/}"
+
+      if [[ $${d} == *local_config_* ]]; then
+        continue
+      fi
+
+      mkdir -p "$@/$${d}"
+      cp "$${f}" "$@/$${d}/"
+    done
+    """,
+    tags = ["manual"],
+    visibility = ["//visibility:public"],
+)
