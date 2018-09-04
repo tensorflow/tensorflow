@@ -6,7 +6,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_opts_nortti_if_android")
 
 # Suppress warnings that are introduced by Eigen Tensor.
 EXTRA_EIGEN_COPTS = select({
@@ -147,7 +147,7 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "builtin_ops",
+    name = "builtin_op_kernels",
     srcs = [
         "activations.cc",
         "add.cc",
@@ -192,7 +192,6 @@ cc_library(
         "pooling.cc",
         "pow.cc",
         "reduce.cc",
-        "register.cc",
         "reshape.cc",
         "resize_bilinear.cc",
         "select.cc",
@@ -217,9 +216,9 @@ cc_library(
     ],
     hdrs = [
         "padding.h",
-        "register.h",
     ],
-    copts = tflite_copts() + EXTRA_EIGEN_COPTS,
+    copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
+    visibility = ["//visibility:private"],
     deps = [
         ":activation_functor",
         ":eigen_support",
@@ -240,6 +239,17 @@ cc_library(
         "//tensorflow/contrib/lite/kernels/internal:tensor_utils",
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "builtin_ops",
+    srcs = ["register.cc"],
+    hdrs = ["register.h"],
+    deps = [
+        ":builtin_op_kernels",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite:util",
     ],
 )
 
