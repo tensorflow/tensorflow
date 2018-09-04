@@ -93,6 +93,15 @@ class FunctionalOpsTest(test.TestCase):
                                initializer)
       self.assertAllEqual(1, self.evaluate(r))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testFoldl_MultiInputDifferentDimsSingleOutput(self):
+    elems = np.array([[1.0, 1.0, 1.0], [2.0, 3.0, 4.0]])
+    other_elems = np.array([-1.0, 1.0])
+    initializer = np.array([0.0, 0.0, 0.0])
+    r = functional_ops.foldl(lambda a, x: a + x[0] * x[1],
+                             (elems, other_elems), initializer)
+    self.assertAllEqual([1.0, 2.0, 3.0], self.evaluate(r))
+
   def testFoldl_Scoped(self):
     with self.test_session() as sess:
       with variable_scope.variable_scope("root") as varscope:
