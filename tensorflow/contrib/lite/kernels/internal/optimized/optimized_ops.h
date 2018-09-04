@@ -67,6 +67,7 @@ using reference_ops::Relu6;
 using reference_ops::ReluX;
 using reference_ops::Select;
 using reference_ops::SpaceToBatchND;
+using reference_ops::Split;
 using reference_ops::StridedSlice;
 using reference_ops::Transpose;
 
