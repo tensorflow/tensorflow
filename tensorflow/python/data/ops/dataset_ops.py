@@ -2207,10 +2207,11 @@ def _warn_if_collections(transformation_name):
 class MapDataset(Dataset):
   """A `Dataset` that maps a function over elements in its input."""
 
-  def __init__(self, input_dataset, map_func):
+  def __init__(self, input_dataset, map_func, use_inter_op_parallelism=True):
     """See `Dataset.map()` for details."""
     super(MapDataset, self).__init__()
     self._input_dataset = input_dataset
+    self._use_inter_op_parallelism = use_inter_op_parallelism
 
     wrapped_func = StructuredFunctionWrapper(
         map_func, "Dataset.map()", input_dataset)
@@ -2225,6 +2226,7 @@ class MapDataset(Dataset):
         input_t,
         self._map_func.captured_inputs,
         f=self._map_func,
+        use_inter_op_parallelism=self._use_inter_op_parallelism,
         **flat_structure(self))
 
   @property

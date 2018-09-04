@@ -485,6 +485,33 @@ Node* DiagPart(Graph* g, Node* in, DataType type) {
   return ret;
 }
 
+Node* CheckNumerics(Graph* g, Node* in, const string& message) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "CheckNumerics")
+                  .Input(in)
+                  .Attr("message", message)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Arg(Graph* g, int64 index, DataType type) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "_Arg")
+                  .Attr("T", type)
+                  .Attr("index", index)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Retval(Graph* g, int64 index, Node* in) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "_Retval")
+                  .Input(in)
+                  .Attr("index", index)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 void ToGraphDef(Graph* g, GraphDef* gdef) { g->ToGraphDef(gdef); }
 
 }  // end namespace graph
