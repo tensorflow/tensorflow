@@ -20,6 +20,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/eager/c_api.h"
 
 // --------------------------------------------------------------------------
 // Experimental C API for TensorFlow.
@@ -130,6 +131,9 @@ TF_CAPI_EXPORT extern void TF_EnqueueNamedTensor(TF_Session* session,
                                                  int tensor_id,
                                                  TF_Tensor* tensor,
                                                  TF_Status* status);
+
+TF_CAPI_EXPORT extern TFE_Context* TFE_NewContextFromSession(
+    const TFE_ContextOptions* opts, TF_Session* sess, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */
