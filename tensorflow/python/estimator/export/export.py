@@ -34,35 +34,44 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.util import compat
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import estimator_export
 
 _SINGLE_FEATURE_DEFAULT_NAME = 'feature'
 _SINGLE_RECEIVER_DEFAULT_NAME = 'input'
 _SINGLE_LABEL_DEFAULT_NAME = 'label'
 
+_SINGLE_TENSOR_DEFAULT_NAMES = {
+    'feature': _SINGLE_FEATURE_DEFAULT_NAME,
+    'label': _SINGLE_LABEL_DEFAULT_NAME,
+    'receiver_tensor': _SINGLE_RECEIVER_DEFAULT_NAME,
+    'receiver_tensors_alternative': _SINGLE_RECEIVER_DEFAULT_NAME
+}
 
-def _wrap_and_check_receiver_tensors(receiver_tensors):
-  """Ensure that receiver_tensors is a dict of str to Tensor mappings.
+
+def _wrap_and_check_input_tensors(tensors, field_name):
+  """Ensure that tensors is a dict of str to Tensor mappings.
 
   Args:
-    receiver_tensors: dict of str to Tensors, or a single Tensor.
+    tensors: dict of str to Tensors, or a single Tensor.
+    field_name: name of the member field of `ServingInputReceiver`
+      whose value is being passed to `tensors`.
 
   Returns:
     dict of str to Tensors; this is the original dict if one was passed, or
     the original tensor wrapped in a dictionary.
 
   Raises:
-    ValueError: if receiver_tensors is None, or has non-string keys,
+    ValueError: if tensors is None, or has non-string keys,
       or non-Tensor values
   """
-  if receiver_tensors is None:
-    raise ValueError('receiver_tensors must be defined.')
-  if not isinstance(receiver_tensors, dict):
-    receiver_tensors = {_SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors}
-  for name, tensor in receiver_tensors.items():
-    _check_tensor_key(name, error_label='receiver_tensors')
-    _check_tensor(tensor, name, error_label='receiver_tensor')
-  return receiver_tensors
+  if tensors is None:
+    raise ValueError('{}s must be defined.'.format(field_name))
+  if not isinstance(tensors, dict):
+    tensors = {_SINGLE_TENSOR_DEFAULT_NAMES[field_name]: tensors}
+  for name, tensor in tensors.items():
+    _check_tensor_key(name, error_label=field_name)
+    _check_tensor(tensor, name, error_label=field_name)
+  return tensors
 
 
 def _check_tensor(tensor, name, error_label='feature'):
@@ -93,7 +102,7 @@ def _check_tensor_key(name, error_label='feature'):
     raise ValueError('{} keys must be strings: {}.'.format(error_label, name))
 
 
-@tf_export('estimator.export.ServingInputReceiver')
+@estimator_export('estimator.export.ServingInputReceiver')
 class ServingInputReceiver(
     collections.namedtuple(
         'ServingInputReceiver',
@@ -125,15 +134,10 @@ class ServingInputReceiver(
               features,
               receiver_tensors,
               receiver_tensors_alternatives=None):
-    if features is None:
-      raise ValueError('features must be defined.')
-    if not isinstance(features, dict):
-      features = {_SINGLE_FEATURE_DEFAULT_NAME: features}
-    for name, tensor in features.items():
-      _check_tensor_key(name)
-      _check_tensor(tensor, name)
+    features = _wrap_and_check_input_tensors(features, 'feature')
 
-    receiver_tensors = _wrap_and_check_receiver_tensors(receiver_tensors)
+    receiver_tensors = _wrap_and_check_input_tensors(receiver_tensors,
+                                                     'receiver_tensor')
 
     if receiver_tensors_alternatives is not None:
       if not isinstance(receiver_tensors_alternatives, dict):
@@ -142,17 +146,10 @@ class ServingInputReceiver(
                 receiver_tensors_alternatives))
       for alternative_name, receiver_tensors_alt in (
           six.iteritems(receiver_tensors_alternatives)):
-        if not isinstance(receiver_tensors_alt, dict):
-          receiver_tensors_alt = {
-              _SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors_alt
-          }
-          # Updating dict during iteration is OK in this case.
-          receiver_tensors_alternatives[alternative_name] = (
-              receiver_tensors_alt)
-        for name, tensor in receiver_tensors_alt.items():
-          _check_tensor_key(name, error_label='receiver_tensors_alternative')
-          _check_tensor(
-              tensor, name, error_label='receiver_tensors_alternative')
+        # Updating dict during iteration is OK in this case.
+        receiver_tensors_alternatives[alternative_name] = (
+            _wrap_and_check_input_tensors(
+                receiver_tensors_alt, 'receiver_tensors_alternative'))
 
     return super(ServingInputReceiver, cls).__new__(
         cls,
@@ -161,7 +158,7 @@ class ServingInputReceiver(
         receiver_tensors_alternatives=receiver_tensors_alternatives)
 
 
-@tf_export('estimator.export.TensorServingInputReceiver')
+@estimator_export('estimator.export.TensorServingInputReceiver')
 class TensorServingInputReceiver(
     collections.namedtuple(
         'TensorServingInputReceiver',
@@ -220,6 +217,29 @@ class TensorServingInputReceiver(
         receiver_tensors_alternatives=receiver.receiver_tensors_alternatives)
 
 
+class UnsupervisedInputReceiver(ServingInputReceiver):
+  """A return type for a training_input_receiver_fn or eval_input_receiver_fn.
+
+  This differs from SupervisedInputReceiver in that it does not require a set
+  of labels.
+
+  The expected return values are:
+    features: A `Tensor`, `SparseTensor`, or dict of string to `Tensor` or
+      `SparseTensor`, specifying the features to be passed to the model.
+    receiver_tensors: A `Tensor`, `SparseTensor`, or dict of string to `Tensor`
+      or `SparseTensor`, specifying input nodes where this receiver expects to
+      be fed by default.  Typically, this is a single placeholder expecting
+      serialized `tf.Example` protos.
+  """
+
+  def __new__(cls, features, receiver_tensors):
+    return super(UnsupervisedInputReceiver, cls).__new__(
+        cls,
+        features=features,
+        receiver_tensors=receiver_tensors,
+        receiver_tensors_alternatives=None)
+
+
 class SupervisedInputReceiver(
     collections.namedtuple('SupervisedInputReceiver',
                            ['features', 'labels', 'receiver_tensors'])):
@@ -245,16 +265,12 @@ class SupervisedInputReceiver(
   def __new__(cls, features, labels, receiver_tensors):
     # Both features and labels can be dicts or raw tensors.
     for input_vals, error_label in ((features, 'feature'), (labels, 'label')):
-      if input_vals is None:
-        raise ValueError('{}s must be defined.'.format(error_label))
-      if isinstance(input_vals, dict):
-        for name, tensor in input_vals.items():
-          _check_tensor_key(name, error_label=error_label)
-          _check_tensor(tensor, name, error_label=error_label)
-      else:
-        _check_tensor(input_vals, None, error_label=error_label)
+      # _wrap_and_check_input_tensors is called here only to validate the
+      # tensors. The wrapped dict that is returned is deliberately discarded.
+      _wrap_and_check_input_tensors(input_vals, error_label)
 
-    receiver_tensors = _wrap_and_check_receiver_tensors(receiver_tensors)
+    receiver_tensors = _wrap_and_check_input_tensors(receiver_tensors,
+                                                     'receiver_tensor')
 
     return super(SupervisedInputReceiver, cls).__new__(
         cls,
@@ -263,7 +279,7 @@ class SupervisedInputReceiver(
         receiver_tensors=receiver_tensors)
 
 
-@tf_export('estimator.export.build_parsing_serving_input_receiver_fn')
+@estimator_export('estimator.export.build_parsing_serving_input_receiver_fn')
 def build_parsing_serving_input_receiver_fn(feature_spec,
                                             default_batch_size=None):
   """Build a serving_input_receiver_fn expecting fed tf.Examples.
@@ -295,14 +311,33 @@ def build_parsing_serving_input_receiver_fn(feature_spec,
 
 
 def _placeholder_from_tensor(t, default_batch_size=None):
-  shape_list = t.get_shape().as_list()
-  shape_list[0] = default_batch_size
-  shape = tensor_shape.TensorShape(shape_list)
+  """Creates a placeholder that matches the dtype and shape of passed tensor.
+
+  Args:
+    t: Tensor or EagerTensor
+    default_batch_size: the number of query examples expected per batch.
+        Leave unset for variable batch size (recommended).
+
+  Returns:
+    Placeholder that matches the passed tensor.
+  """
+  batch_shape = tensor_shape.TensorShape([default_batch_size])
+  shape = batch_shape.concatenate(t.get_shape()[1:])
 
   # Reuse the feature tensor's op name (t.op.name) for the placeholder,
   # excluding the index from the tensor's name (t.name):
   # t.name = "%s:%d" % (t.op.name, t._value_index)
-  return array_ops.placeholder(dtype=t.dtype, shape=shape, name=t.op.name)
+  try:
+    name = t.op.name
+  except AttributeError:
+    # In Eager mode, tensors don't have ops or names, and while they do have
+    # IDs, those are not maintained across runs. The name here is used
+    # primarily for debugging, and is not critical to the placeholder.
+    # So, in order to make this Eager-compatible, continue with an empty
+    # name if none is available.
+    name = None
+
+  return array_ops.placeholder(dtype=t.dtype, shape=shape, name=name)
 
 
 def _placeholders_from_receiver_tensors_dict(input_vals,
@@ -313,7 +348,7 @@ def _placeholders_from_receiver_tensors_dict(input_vals,
   }
 
 
-@tf_export('estimator.export.build_raw_serving_input_receiver_fn')
+@estimator_export('estimator.export.build_raw_serving_input_receiver_fn')
 def build_raw_serving_input_receiver_fn(features, default_batch_size=None):
   """Build a serving_input_receiver_fn expecting feature Tensors.
 
@@ -333,11 +368,7 @@ def build_raw_serving_input_receiver_fn(features, default_batch_size=None):
     """A serving_input_receiver_fn that expects features to be fed directly."""
     receiver_tensors = _placeholders_from_receiver_tensors_dict(
         features, default_batch_size)
-
-    # TODO(b/34885899): remove the unnecessary copy
-    # The features provided are simply the placeholders, but we defensively copy
-    # the dict because it may be mutated.
-    return ServingInputReceiver(receiver_tensors, receiver_tensors.copy())
+    return ServingInputReceiver(receiver_tensors, receiver_tensors)
 
   return serving_input_receiver_fn
 
@@ -402,6 +433,42 @@ def build_raw_supervised_input_receiver_fn(features,
     return SupervisedInputReceiver(features_cp, labels_cp, receiver_tensors)
 
   return supervised_input_receiver_fn
+
+
+def build_supervised_input_receiver_fn_from_input_fn(input_fn, **input_fn_args):
+  """Get a function that returns a SupervisedInputReceiver matching an input_fn.
+
+  Note that this function calls the input_fn in a local graph in order to
+  extract features and labels. Placeholders are then created from those
+  features and labels in the default graph.
+
+  Args:
+    input_fn: An Estimator input_fn, which is a function that returns one of:
+
+      * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
+          tuple (features, labels) with same constraints as below.
+      * A tuple (features, labels): Where `features` is a `Tensor` or a
+        dictionary of string feature name to `Tensor` and `labels` is a
+        `Tensor` or a dictionary of string label name to `Tensor`. Both
+        `features` and `labels` are consumed by `model_fn`. They should
+        satisfy the expectation of `model_fn` from inputs.
+
+    **input_fn_args: set of kwargs to be passed to the input_fn. Note that
+      these will not be checked or validated here, and any errors raised by
+      the input_fn will be thrown to the top.
+
+  Returns:
+    A function taking no arguments that, when called, returns a
+    SupervisedInputReceiver. This function can be passed in as part of the
+    input_receiver_map when exporting SavedModels from Estimator with multiple
+    modes.
+  """
+  # Wrap the input_fn call in a graph to prevent sullying the default namespace
+  with ops.Graph().as_default():
+    result = input_fn(**input_fn_args)
+    features, labels, _ = util.parse_input_fn_result(result)
+  # Placeholders are created back in the default graph.
+  return build_raw_supervised_input_receiver_fn(features, labels)
 
 
 ### Below utilities are specific to SavedModel exports.

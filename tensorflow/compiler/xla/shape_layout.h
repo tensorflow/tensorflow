@@ -72,6 +72,10 @@ class ShapeLayout {
   // tuple.
   void ResetLayout(const Layout& layout);
 
+  // Resets the layout on the shape at the provided ShapeIndex to the provided
+  // layout. Shape must be a tuple.
+  void ResetLayout(const Layout& layout, ShapeIndexView shape_index);
+
   // Returns a string representation of this object.
   string ToString() const { return ShapeUtil::HumanStringWithLayout(shape_); }
 

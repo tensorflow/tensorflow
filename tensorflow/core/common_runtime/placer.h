@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_PLACER_H_
-#define TENSORFLOW_COMMON_RUNTIME_PLACER_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PLACER_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_PLACER_H_
 
 #include <string>
 #include <unordered_map>
@@ -87,6 +87,8 @@ class Placer {
   // placement if the SessionOptions entry in 'options_' requests it.
   void AssignAndLog(int assigned_device, Node* node) const;
   void LogDeviceAssignment(const Node* node) const;
+  bool ClientHandlesErrorFormatting() const;
+  string RichNodeName(const Node* node) const;
 
   Graph* const graph_;              // Not owned.
   const DeviceSet* const devices_;  // Not owned.
@@ -98,4 +100,4 @@ class Placer {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_PLACER_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_PLACER_H_

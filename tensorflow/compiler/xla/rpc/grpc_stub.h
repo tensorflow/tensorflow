@@ -43,23 +43,11 @@ class GRPCStub : public ServiceInterface {
   Status ResetDevice(const ResetDeviceRequest* arg,
                      ResetDeviceResponse* result) override;
 
-  Status LoadComputationSnapshot(
-      const LoadComputationSnapshotRequest* request,
-      LoadComputationSnapshotResponse* result) override;
-
-  Status Execute(const ExecuteRequest* arg, ExecuteResponse* result) override;
-
   Status ExecuteGraph(const ExecuteGraphRequest* request,
                       ExecuteResponse* response) override;
 
-  Status ExecuteParallel(const ExecuteParallelRequest* arg,
-                         ExecuteParallelResponse* result) override;
-
   Status ExecuteGraphParallel(const ExecuteGraphParallelRequest* request,
                               ExecuteParallelResponse* response) override;
-
-  Status ExecuteAsync(const ExecuteAsyncRequest* arg,
-                      ExecuteAsyncResponse* result) override;
 
   Status WaitForExecution(const WaitForExecutionRequest* arg,
                           WaitForExecutionResponse* result) override;
@@ -67,14 +55,8 @@ class GRPCStub : public ServiceInterface {
   Status DeconstructTuple(const DeconstructTupleRequest* arg,
                           DeconstructTupleResponse* result) override;
 
-  Status GetComputationStats(const ComputationStatsRequest* arg,
-                             ComputationStatsResponse* result) override;
-
   Status GetComputationGraphStats(const ComputationGraphStatsRequest* request,
                                   ComputationStatsResponse* response) override;
-
-  Status GetComputationShape(const GetComputationShapeRequest* arg,
-                             GetComputationShapeResponse* result) override;
 
   Status GetShape(const GetShapeRequest* arg,
                   GetShapeResponse* result) override;
@@ -85,29 +67,8 @@ class GRPCStub : public ServiceInterface {
   Status CreateChannelHandle(const CreateChannelHandleRequest* arg,
                              CreateChannelHandleResponse* result) override;
 
-  // Methods used by ComputationBuilder.
-  Status Computation(const ComputationRequest* arg,
-                     ComputationResponse* result) override;
-
-  Status Op(const OpRequest* arg, OpResponse* result) override;
-  Status GetLocalShape(const GetLocalShapeRequest* arg,
-                       GetLocalShapeResponse* result) override;
-
-  Status SetReturnValue(const SetReturnValueRequest* arg,
-                        SetReturnValueResponse* results) override;
-
-  Status IsConstant(const IsConstantRequest* arg,
-                    IsConstantResponse* result) override;
-
-  Status ComputeConstant(const ComputeConstantRequest* arg,
-                         ComputeConstantResponse* result) override;
-
   Status ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
                               ComputeConstantResponse* result) override;
-
-  // Methods used by Computation.
-  Status SnapshotComputation(const SnapshotComputationRequest* ag,
-                             SnapshotComputationResponse* result) override;
 
   // Methods used by GlobalData.
   Status Unregister(const UnregisterRequest* arg,

@@ -245,6 +245,7 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
         array_ops.boolean_mask(tensor, mask).eval()
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class OperatorShapeTest(test_util.TensorFlowTestCase):
 
   def testExpandScalar(self):
@@ -262,13 +263,19 @@ class OperatorShapeTest(test_util.TensorFlowTestCase):
     matrix_squeezed = array_ops.squeeze(matrix, [0])
     self.assertEqual(matrix_squeezed.get_shape(), (3))
 
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(
+        Exception, "Can not squeeze dim.1., expected a dimension of 1, got 3"):
       matrix_squeezed = array_ops.squeeze(matrix, [1])
 
   def testSqueezeScalarDim(self):
     matrix = [[1, 2, 3]]
     matrix_squeezed = array_ops.squeeze(matrix, 0)
     self.assertEqual(matrix_squeezed.get_shape(), (3))
+
+  def testExpandDimsWithNonScalarDim(self):
+    with self.assertRaisesRegexp(Exception,
+                                 "must be a tensor with a single value"):
+      array_ops.expand_dims(1, axis=[0, 1])
 
 
 class ReverseV2Test(test_util.TensorFlowTestCase):
@@ -551,6 +558,22 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       strides = constant_op.constant([1], dtype=dtypes.int64)
       s = array_ops.strided_slice(x, begin, end, strides)
       self.assertAllEqual([3.], self.evaluate(s))
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_garbage_created
+  def testTensorSliceEagerMemory(self):
+    with context.eager_mode():
+      inputs = constant_op.constant(
+          [[[1], [2], [3], [4]]], dtype=dtypes.float32)
+      # Tests that slicing an EagerTensor doesn't leak memory
+      inputs[0]  # pylint: disable=pointless-statement
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_garbage_created
+  def testVariableSliceEagerMemory(self):
+    with context.eager_mode():
+      v = variables.Variable([1., 2.])
+      v[0]  # pylint: disable=pointless-statement
 
   def testDegenerateSlices(self):
     with self.test_session(use_gpu=True):
@@ -1006,7 +1029,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
 
 class ShapeSizeRankTest(test_util.TensorFlowTestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testDenseShape(self):
     t_value = [[0, 42], [24, 0]]
     self.assertAllEqual((2, 2), self.evaluate(array_ops.shape(t_value)))
@@ -1018,7 +1041,7 @@ class ShapeSizeRankTest(test_util.TensorFlowTestCase):
     self.assertEqual(4, self.evaluate(array_ops.size(t)))
     self.assertEqual(2, self.evaluate(array_ops.rank(t)))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testSparseShape(self):
     sp_value = sparse_tensor.SparseTensorValue(
         indices=((0, 1), (1, 0)), values=(42, 24), dense_shape=(2, 2))
@@ -1031,7 +1054,7 @@ class ShapeSizeRankTest(test_util.TensorFlowTestCase):
     self.assertEqual(4, self.evaluate(array_ops.size(sp)))
     self.assertEqual(2, self.evaluate(array_ops.rank(sp)))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testSizeDtype(self):
     tensor = [1]
     self.assertEqual(dtypes.int32, self.evaluate(array_ops.size(tensor)).dtype)
@@ -1123,7 +1146,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
 
 class ConcatSliceResourceTest(test_util.TensorFlowTestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConcatSlice(self):
     r1 = test_ops.stub_resource_handle_op(container="a", shared_name="b")
     r2 = test_ops.stub_resource_handle_op(container="a", shared_name="c")
@@ -1138,7 +1161,7 @@ class IdentityTest(test_util.TensorFlowTestCase):
 
   def testEagerIdentity(self):
     with context.eager_mode():
-      ctx = context.get_default_context()
+      ctx = context.context()
       if not ctx.num_gpus():
         self.skipTest("No GPUs found")
 

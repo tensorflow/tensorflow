@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
@@ -69,7 +70,7 @@ class XlaCompilationCache : public ResourceBase {
                  OpKernelContext* ctx,
                  const XlaCompiler::CompilationResult** compilation_result,
                  xla::LocalExecutable** executable,
-                 const XlaCompiler::CompileOptions* compile_options);
+                 const XlaCompiler::CompileOptions& compile_options);
 
   // As above, but calls XlaCompiler::CompileSingleOp instead of
   // XlaCompiler::CompileFunction.
@@ -79,7 +80,7 @@ class XlaCompilationCache : public ResourceBase {
       const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
       const XlaCompiler::CompilationResult** compilation_result,
       xla::LocalExecutable** executable,
-      const XlaCompiler::CompileOptions* compile_options);
+      const XlaCompiler::CompileOptions& compile_options);
 
   xla::LocalClient* client() const { return client_; }
   const DeviceType& device_type() const { return device_type_; }
@@ -95,7 +96,7 @@ class XlaCompilationCache : public ResourceBase {
                      OpKernelContext* ctx,
                      const XlaCompiler::CompilationResult** compilation_result,
                      xla::LocalExecutable** executable,
-                     const XlaCompiler::CompileOptions* compile_options,
+                     const XlaCompiler::CompileOptions& compile_options,
                      bool compile_single_op);
 
   // Takes `result` which has been compiled from a Tensorflow subgraph to a
@@ -150,9 +151,22 @@ class XlaCompilationCache : public ResourceBase {
     std::unique_ptr<xla::LocalExecutable> executable GUARDED_BY(mu);
   };
 
-  mutex mu_;
-  std::unordered_map<Signature, std::unique_ptr<Entry>, Signature::Hash> cache_
-      GUARDED_BY(mu_);
+  mutex compile_cache_mu_;
+  gtl::FlatMap<Signature, std::unique_ptr<Entry>, Signature::Hash> cache_
+      GUARDED_BY(compile_cache_mu_);
+
+  struct CompileStats {
+    // Number of times the cluster has been (re-)compiled.
+    int64 compile_count = 0;
+
+    // Cumulative time spent compiling the cluster.
+    int64 cumulative_compile_time_us = 0;
+  };
+  mutex compile_stats_mu_;
+
+  // Maps cluster names to compilation statistics for said cluster.
+  gtl::FlatMap<string, CompileStats> compile_stats_
+      GUARDED_BY(compile_stats_mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompilationCache);
 };

@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/platform/mem.h"
@@ -103,7 +103,7 @@ void XlaCompilationDevice::Compute(OpKernel* op_kernel,
   auto sharding_parse_result = ParseShardingFromDevice(
       op_kernel->def(), std::numeric_limits<int>::max());
   OP_REQUIRES_OK(context, sharding_parse_result.status());
-  tensorflow::gtl::optional<xla::OpSharding> op_sharding =
+  absl::optional<xla::OpSharding> op_sharding =
       sharding_parse_result.ValueOrDie();
 
   // If no sharding metadata is found, XLA is free to use whatever device it

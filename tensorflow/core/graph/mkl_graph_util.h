@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPH_MKL_GRAPH_UTIL_H_
 #ifdef INTEL_MKL
 
-#include <string>
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
@@ -42,7 +41,7 @@ namespace tensorflow {
 typedef enum { TENSORS_INTERLEAVED, TENSORS_CONTIGUOUS } MklTfTensorOrdering;
 // NOTE: Currently, we use contiguous ordering. If you change this, then you
 // would need to change Mkl op definitions in nn_ops.cc.
-static MklTfTensorOrdering kTensorOrdering = TENSORS_CONTIGUOUS;
+static const MklTfTensorOrdering kTensorOrdering = TENSORS_CONTIGUOUS;
 
 // Get index of MetaData tensor from index 'n' of Data tensor.
 inline int DataIndexToMetaDataIndex(int n, int total_tensors) {

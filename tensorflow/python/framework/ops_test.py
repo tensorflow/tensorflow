@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gc
+import os
 import threading
 import weakref
 
@@ -270,7 +271,6 @@ class OperationTest(test_util.TensorFlowTestCase):
     op1 = ops.Operation(
         ops._NodeDef("RefOutputFloatOutput", "op1"), g, [],
         [dtypes.float32_ref, dtypes.float32])
-    g._add_op(op1)
     self.assertProtoEquals("op:'RefOutputFloatOutput' name:'op1'", op1.node_def)
     self.assertEquals([], list(op1.inputs))
     ref_t, nonref_t = op1.values()
@@ -279,14 +279,12 @@ class OperationTest(test_util.TensorFlowTestCase):
         ops._NodeDef("RefInputFloatInput", "op2"),
         g, [ref_t, nonref_t], [],
         input_types=[dtypes.float32_ref, dtypes.float32])
-    g._add_op(op2)
     self.assertProtoEquals(
         "op:'RefInputFloatInput' name:'op2' input:'op1' input:'op1:1'",
         op2.node_def)
     self.assertEquals([ref_t, nonref_t], list(op2.inputs))
     op3 = ops.Operation(
         ops._NodeDef("TwoFloatInputs", "op3"), g, [ref_t, nonref_t], [])
-    g._add_op(op3)
     self.assertProtoEquals(
         "op:'TwoFloatInputs' name:'op3' input:'op1' input:'op1:1'",
         op3.node_def)
@@ -495,7 +493,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       y.op._add_control_input(z.op)  # pylint: disable=protected-access
       y.op._add_control_input(x.op)  # pylint: disable=protected-access
       x.op._add_control_input(y.op)  # pylint: disable=protected-access
-    with self.test_session(graph=graph) as sess:
+    with self.session(graph=graph) as sess:
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
           "Graph is invalid, contains a cycle with 2 nodes"):
@@ -1616,6 +1614,33 @@ class CollectionTest(test_util.TensorFlowTestCase):
       # Collections are ordered.
       self.assertEqual([90, 100], ops.get_collection("key"))
 
+  def test_defun(self):
+    with context.eager_mode():
+
+      @eager_function.defun
+      def defun():
+        ops.add_to_collection("int", 1)
+        ops.add_to_collection("tensor", constant_op.constant(2))
+
+        @eager_function.defun
+        def inner_defun():
+          self.assertEqual(ops.get_collection("int"), [1])
+          three = ops.get_collection("tensor")[0] + ops.get_collection("int")[0]
+          ops.add_to_collection("int", 2)
+          self.assertEqual(ops.get_collection("int"), [1, 2])
+          ops.add_to_collection("foo", "bar")
+          self.assertEqual(ops.get_collection("foo"), ["bar"])
+          return three
+
+        self.assertEqual(ops.get_collection("int"), [1])
+        three = inner_defun()
+        self.assertEqual(ops.get_collection("int"), [1, 2])
+        self.assertEqual(ops.get_collection("foo"), ["bar"])
+        return three
+
+      three = defun()
+      self.assertEqual(three.numpy(), 3)
+
 
 ops.NotDifferentiable("FloatOutput")
 
@@ -1693,7 +1718,7 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
     # e should be dominated by c.
     self.assertEqual(e.op.control_inputs, [])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEager(self):
     def future():
       future.calls += 1
@@ -1878,7 +1903,7 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
 
 class OpScopeTest(test_util.TensorFlowTestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNames(self):
     with ops.name_scope("foo") as foo:
       self.assertEqual("foo/", foo)
@@ -1909,7 +1934,7 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     with ops.name_scope("a//b/c") as foo10:
       self.assertEqual("a//b/c/", foo10)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerDefaultScopeName(self):
     with ops.name_scope(None, "default") as scope:
       self.assertEqual(scope, "default/")
@@ -2461,7 +2486,7 @@ class AsGraphDefTest(test_util.TensorFlowTestCase):
     """Test that the graphdef version is plumbed through to kernels."""
     with ops.Graph().as_default() as g:
       version = g.graph_def_versions.producer
-      with self.test_session(graph=g):
+      with self.session(graph=g):
         v = test_ops.graph_def_version().eval()
         self.assertEqual(version, v)
 
@@ -2545,6 +2570,56 @@ class StatisticsTest(test_util.TensorFlowTestCase):
     self.assertEqual(3, flops_total.value)
 
 
+class DeviceStackTest(test_util.TensorFlowTestCase):
+
+  def testBasicDeviceAssignmentMetadata(self):
+
+    def device_func(unused_op):
+      return "/cpu:*"
+
+    const_zero = constant_op.constant([0.0], name="zero")
+    with ops.device("/cpu"):
+      const_one = constant_op.constant([1.0], name="one")
+      with ops.device("/cpu:0"):
+        const_two = constant_op.constant([2.0], name="two")
+    with ops.device(device_func):
+      const_three = constant_op.constant(3.0, name="three")
+
+    self.assertEqual(0, len(const_zero.op._device_assignments))
+
+    one_list = const_one.op._device_assignments
+    self.assertEqual(1, len(one_list))
+    self.assertEqual("/cpu", one_list[0].obj)
+    self.assertEqual("ops_test.py", os.path.basename(one_list[0].filename))
+
+    two_list = const_two.op._device_assignments
+    self.assertEqual(2, len(two_list))
+    devices = [t.obj for t in two_list]
+    self.assertEqual(set(["/cpu", "/cpu:0"]), set(devices))
+
+    three_list = const_three.op._device_assignments
+    self.assertEqual(1, len(three_list))
+    func_description = three_list[0].obj
+    expected_regex = r"device_func<.*ops_test.py, [0-9]+"
+    self.assertRegexpMatches(func_description, expected_regex)
+
+  def testDeviceAssignmentMetadataForGraphDeviceAndTfDeviceFunctions(self):
+
+    with ops.device("/cpu"):
+      const_one = constant_op.constant([1.0], name="one")
+    with ops.get_default_graph().device("/cpu"):
+      const_two = constant_op.constant([2.0], name="two")
+
+    one_metadata = const_one.op._device_assignments[0]
+    two_metadata = const_two.op._device_assignments[0]
+
+    # Verify both types of device assignment return the right stack info.
+    self.assertRegexpMatches("ops_test.py",
+                             os.path.basename(one_metadata.filename))
+    self.assertEqual(one_metadata.filename, two_metadata.filename)
+    self.assertEqual(one_metadata.lineno + 2, two_metadata.lineno)
+
+
 class ColocationGroupTest(test_util.TensorFlowTestCase):
 
   def testBasic(self):
@@ -2556,6 +2631,18 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
     self.assertEqual([b"loc:@a"], b.op.colocation_groups())
     with self.assertRaises(ValueError):
       c.op.get_attr("_class")
+
+  def testBasicColocationMetadata(self):
+    const_two = constant_op.constant([2.0], name="two")
+    with ops.colocate_with(const_two.op):
+      const_three = constant_op.constant(3.0, name="three")
+    locations_dict = const_three.op._colocation_dict
+    self.assertIn("two", locations_dict)
+    metadata = locations_dict["two"]
+    self.assertIsNone(metadata.obj)
+    # Check that this test's filename is recorded as the file containing the
+    # colocation statement.
+    self.assertEqual("ops_test.py", os.path.basename(metadata.filename))
 
   def testColocationDeviceInteraction(self):
     with ops.device("/cpu:0"):
@@ -2668,6 +2755,28 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
 
     self.assertEqual("/device:CPU:0", b.device)
 
+  def testMakeColocationConflictMessage(self):
+    """Test that provides an example of a complicated error message."""
+    # We could test the message with any ops, but this test will be more
+    # instructive with a real colocation conflict.
+    with ops.device("/device:GPU:0"):
+      a = constant_op.constant([2.0], name="a")
+      with ops.colocate_with(a.op):
+        with ops.device("/cpu:0"):
+          b = constant_op.constant([3.0], name="b")
+    # The definition-location of the nodes will be wrong because of running
+    # from within a TF unittest.  The rest of the info should be correct.
+    message = ops.get_default_graph()._make_colocation_conflict_message(a.op,
+                                                                        b.op)
+    self.assertRegexpMatches(message,
+                             r"Tried to colocate op 'a' \(defined at.*\)")
+    self.assertRegexpMatches(message, "No node-device.*'a'")
+    self.assertRegexpMatches(message, "Device assignments active.*'a'")
+    self.assertRegexpMatches(message, "GPU:0")
+    self.assertRegexpMatches(message, "Node-device colocations active.*'b'")
+    self.assertRegexpMatches(message, "Device assignments active.*'b'")
+    self.assertRegexpMatches(message, "cpu:0")
+
 
 class DeprecatedTest(test_util.TensorFlowTestCase):
 
@@ -2675,7 +2784,7 @@ class DeprecatedTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default() as g:
       test_util.set_producer_version(g, 7)
       old = test_ops.old()
-      with self.test_session(graph=g):
+      with self.session(graph=g):
         old.run()
 
   def _error(self):

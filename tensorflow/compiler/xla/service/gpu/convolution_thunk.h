@@ -16,16 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CONVOLUTION_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CONVOLUTION_THUNK_H_
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
@@ -58,7 +59,8 @@ class ConvolutionThunk : public Thunk {
                    const BufferAllocation::Slice& scratch_buffer,
                    const Shape& input_shape, const Shape& filter_shape,
                    const Shape& output_shape, const Window& window,
-                   const ConvolutionDimensionNumbers& dim_nums, int64 algorithm,
+                   const ConvolutionDimensionNumbers& dim_nums,
+                   int64 feature_group_count, int64 algorithm,
                    bool tensor_ops_enabled, const HloInstruction* hlo);
 
   ConvolutionThunk(const ConvolutionThunk&) = delete;
@@ -66,22 +68,10 @@ class ConvolutionThunk : public Thunk {
 
   // Does the convolution for the thunk on "stream".
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream) override;
+                         se::Stream* stream,
+                         HloExecutionProfiler* profiler) override;
 
  private:
-  class ScratchAllocator;
-
-  Status Convolve(const se::dnn::BatchDescriptor& input_descriptor,
-                  se::DeviceMemory<float> input_data,
-                  const se::dnn::FilterDescriptor& filter_descriptor,
-                  se::DeviceMemory<float> filter_data,
-                  const se::dnn::BatchDescriptor& output_descriptor,
-                  se::DeviceMemory<float> output_data,
-                  const se::dnn::ConvolutionDescriptor& convolution_descriptor,
-                  const se::dnn::AlgorithmConfig& algorithm_config,
-                  se::Stream* stream, ScratchAllocator* scratch_allocator,
-                  se::dnn::ProfileResult* profile_result);
-
   const CudnnConvKind convolution_kind_;
 
   const BufferAllocation::Slice input_buffer_;
@@ -96,6 +86,7 @@ class ConvolutionThunk : public Thunk {
 
   const Window window_;
   const ConvolutionDimensionNumbers dim_nums_;
+  int64 feature_group_count_;
   int64 algorithm_;
   bool tensor_ops_enabled_;
 };

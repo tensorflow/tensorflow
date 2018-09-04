@@ -21,7 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.engine import Layer
+from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops

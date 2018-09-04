@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_buffer.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace xla {
@@ -39,7 +39,10 @@ class HloAliasAnalysis {
  public:
   // The callgraph of the given HloModule must be flattened
   // (xla::FlattenCallGraph) prior to running the analysis.
-  static StatusOr<std::unique_ptr<HloAliasAnalysis>> Run(HloModule* module);
+  static StatusOr<std::unique_ptr<HloAliasAnalysis>> Run(
+      HloModule* module,
+      const HloDataflowAnalysis::FusionCanShareBufferFunction&
+          fusion_can_share_buffer);
 
   string ToString() const;
 

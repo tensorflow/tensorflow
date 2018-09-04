@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -28,13 +28,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-
-namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace {
-using ReshapeMoverTest = HloVerifiedTestBase;
+
+namespace op = xla::testing::opcode_matchers;
+
+class ReshapeMoverTest : public HloVerifiedTestBase {};
 
 TEST_F(ReshapeMoverTest, ReshapesWithDifferentInputShapesNotMoved) {
   HloComputation::Builder builder(TestName());
@@ -76,9 +76,13 @@ TEST_F(ReshapeMoverTest, ReshapesWithDifferentInputShapesNotMoved) {
 TEST_F(ReshapeMoverTest, 1ConstantAnd1ReshapesOnRngNotMoved) {
   HloComputation::Builder builder(TestName());
   auto root_shape = ShapeUtil::MakeShape(F32, {8, 7});
-  auto rng0 = builder.AddInstruction(
-      HloInstruction::CreateRng(ShapeUtil::MakeShape(F32, {1, 8, 1, 7, 1}),
-                                RandomDistribution::RNG_UNIFORM, {}));
+  auto rng0 = builder.AddInstruction(HloInstruction::CreateRng(
+      ShapeUtil::MakeShape(F32, {1, 8, 1, 7, 1}),
+      RandomDistribution::RNG_UNIFORM,
+      {builder.AddInstruction(
+           HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f))),
+       builder.AddInstruction(HloInstruction::CreateConstant(
+           LiteralUtil::CreateR0<float>(1.0f)))}));
   auto reshape0 =
       builder.AddInstruction(HloInstruction::CreateReshape(root_shape, rng0));
 
@@ -175,8 +179,9 @@ TEST_F(ReshapeMoverTest, EquivalentReshapesMoved) {
 TEST_F(ReshapeMoverTest, 1ConstantAnd2ReshapesMoved) {
   HloComputation::Builder builder(TestName());
   auto root_shape = ShapeUtil::MakeShape(F32, {2, 3});
-  auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR2<bool>({{true, true, false}, {false, false, true}})));
+  auto const0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2<bool>(
+          {{true, true, false}, {false, false, true}})));
 
   auto param1 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {1, 3, 1, 2}), "param1"));
@@ -255,12 +260,12 @@ TEST_F(ReshapeMoverTest, 2TrivialConstantReshapeNotMoved) {
   HloComputation::Builder builder(TestName());
   auto root_shape = ShapeUtil::MakeShape(F32, {3, 2});
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR2<float>({{1, 2, 3}, {4, 5, 6}})));
+      LiteralUtil::CreateR2<float>({{1, 2, 3}, {4, 5, 6}})));
   auto reshape0 =
       builder.AddInstruction(HloInstruction::CreateReshape(root_shape, const0));
 
   auto const1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR2<float>({{1, 2, 3}, {4, 5, 6}})));
+      LiteralUtil::CreateR2<float>({{1, 2, 3}, {4, 5, 6}})));
   auto reshape1 =
       builder.AddInstruction(HloInstruction::CreateReshape(root_shape, const1));
 
@@ -309,7 +314,7 @@ TEST_F(ReshapeMoverTest, 1NonTrivialReshapeMoved) {
   auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {1, 3, 1, 2}), "param0"));
   auto const1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR2<float>({{1, 2, 3}, {4, 5, 6}})));
+      LiteralUtil::CreateR2<float>({{1, 2, 3}, {4, 5, 6}})));
   auto reshape0 =
       builder.AddInstruction(HloInstruction::CreateReshape(root_shape, param0));
   builder.AddInstruction(HloInstruction::CreateBinary(
@@ -348,7 +353,7 @@ TEST_F(ReshapeMoverTest, 1NonTrivialReshapeWith1ReshapedConstNotMoved) {
   auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {1, 3}), "param0"));
   auto const1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR1<float>({9, 8, 7})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({9, 8, 7})));
   auto reshape0 =
       builder.AddInstruction(HloInstruction::CreateReshape(root_shape, param0));
   auto reshape1 =

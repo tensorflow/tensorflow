@@ -41,7 +41,7 @@ from tensorflow.python.estimator import estimator as core_estimator
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import basic_session_run_hooks
-from tensorflow.python.training import saver
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
@@ -95,7 +95,7 @@ class _EvalAndExportListener(basic_session_run_hooks.CheckpointSaverListener):
     # Load and cache the path of the most recent checkpoint to avoid duplicate
     # searches on GCS.
     logging.info("Checking for checkpoint in %s", self._model_dir)
-    latest_path = saver.latest_checkpoint(self._model_dir)
+    latest_path = checkpoint_management.latest_checkpoint(self._model_dir)
 
     if not latest_path:
       logging.warning("Skipping evaluation and export since model has not been "
@@ -162,16 +162,16 @@ class Experiment(object):
 
     Args:
       estimator: Object implementing Estimator interface, which could be a
-        combination of @{tf.contrib.learn.Trainable} and
-        @{tf.contrib.learn.Evaluable} (deprecated), or
-        @{tf.estimator.Estimator}.
+        combination of `tf.contrib.learn.Trainable` and
+        `tf.contrib.learn.Evaluable` (deprecated), or
+        `tf.estimator.Estimator`.
       train_input_fn: function, returns features and labels for training.
       eval_input_fn: function, returns features and labels for evaluation. If
         `eval_steps` is `None`, this should be configured only to produce for a
         finite number of batches (generally, 1 epoch over the evaluation data).
       eval_metrics: `dict` of string, metric function. If `None`, default set
         is used. This should be `None` if the `estimator` is
-        @{tf.estimator.Estimator}. If metrics are provided they will be
+        `tf.estimator.Estimator`. If metrics are provided they will be
         *appended* to the default set.
       train_steps: Perform this many steps of training. `None`, the default,
         means train forever.
@@ -505,7 +505,7 @@ class Experiment(object):
     eval_result = None
     last_warning_time = 0
     while (not predicate_fn or predicate_fn(
-        eval_result, checkpoint_path=previous_path if eval_result else None)):
+        eval_result, checkpoint_path=previous_path)):
       # Exit if we have already reached number of steps to train.
       if self._has_training_stopped(eval_result):
         logging.info("Exiting continuous eval, global_step=%s >= "
@@ -516,7 +516,8 @@ class Experiment(object):
       start = time.time()
 
       error_msg = None
-      latest_path = saver.latest_checkpoint(self._estimator.model_dir)
+      latest_path = checkpoint_management.latest_checkpoint(
+          self._estimator.model_dir)
       if not latest_path:
         error_msg = ("Estimator is not fitted yet. "
                      "Will start an evaluation when a checkpoint is ready.")
@@ -778,7 +779,8 @@ class Experiment(object):
           saving_listeners=self._saving_listeners)
 
       logging.info("Evaluating model now.")
-      latest_checkpoint = saver.latest_checkpoint(self._estimator.model_dir)
+      latest_checkpoint = checkpoint_management.latest_checkpoint(
+          self._estimator.model_dir)
       eval_result = self._call_evaluate(
           input_fn=self._eval_input_fn,
           steps=self._eval_steps,

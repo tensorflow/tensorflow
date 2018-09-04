@@ -73,7 +73,7 @@ def custom_gradient(f):
   With this definition, the gradient at x=100 will be correctly evaluated as
   1.0.
 
-  See also @{tf.RegisterGradient} which registers a gradient function for a
+  See also `tf.RegisterGradient` which registers a gradient function for a
   primitive TensorFlow operation. `tf.custom_gradient` on the other hand allows
   for fine grained control over the gradient computation of a sequence of
   operations.
@@ -82,25 +82,25 @@ def custom_gradient(f):
   scope must be using `ResourceVariable`s.
 
   Args:
-    f: function `f(x)` that returns a tuple `(y, grad_fn)` where:
-       - `x` is a `Tensor` or sequence of `Tensor` inputs to the function.
+    f: function `f(*x)` that returns a tuple `(y, grad_fn)` where:
+       - `x` is a sequence of `Tensor` inputs to the function.
        - `y` is a `Tensor` or sequence of `Tensor` outputs of applying
-         TensorFlow
-         operations in `f` to `x`.
+         TensorFlow operations in `f` to `x`.
        - `grad_fn` is a function with the signature `g(*grad_ys)` which returns
          a list of `Tensor`s - the derivatives of `Tensor`s in `y` with respect
-         to the `Tensor`s in `x.  `grad_ys` is a `Tensor` or sequence of
+         to the `Tensor`s in `x`.  `grad_ys` is a `Tensor` or sequence of
          `Tensor`s the same size as `y` holding the initial value gradients for
          each `Tensor` in `y`. If `f` uses `Variable`s (that are not part of the
          inputs), i.e. through `get_variable`, then `grad_fn` should have
          signature `g(*grad_ys, variables=None)`, where `variables` is a list of
          the `Variable`s, and return a 2-tuple `(grad_xs, grad_vars)`, where
          `grad_xs` is the same as above, and `grad_vars` is a `list<Tensor>`
-         with the derivatives of `Tensor`s in `y` with respect to the variables.
+         with the derivatives of `Tensor`s in `y` with respect to the variables
+         (that is, grad_vars has one Tensor per variable in variables).
 
   Returns:
     A function `h(x)` which returns the same value as `f(x)[0]` and whose
-    gradient (as calculated by @{tf.gradients}) is determined by `f(x)[1]`.
+    gradient (as calculated by `tf.gradients`) is determined by `f(x)[1]`.
   """
 
   def decorated(*args, **kwargs):
@@ -142,9 +142,9 @@ def _graph_mode_decorator(f, *args, **kwargs):
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
   variables = list(set(tape.watched_variables()) - set(args))
-  grad_argspec = tf_inspect.getargspec(grad_fn)
+  grad_argspec = tf_inspect.getfullargspec(grad_fn)
   variables_in_signature = ("variables" in grad_argspec.args or
-                            grad_argspec.keywords)
+                            grad_argspec.varkw)
   if variables and not variables_in_signature:
     raise TypeError("If using @custom_gradient with a function that "
                     "uses variables, then grad_fn must accept a keyword "
@@ -194,9 +194,9 @@ def _eager_mode_decorator(f, *args, **kwargs):
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
   variables = [v for v in set(tape.watched_variables()) if v not in all_inputs]
-  grad_argspec = tf_inspect.getargspec(grad_fn)
-  if (variables and
-      not ("variables" in grad_argspec.args or grad_argspec.keywords)):
+  grad_argspec = tf_inspect.getfullargspec(grad_fn)
+  if (variables and ("variables" not in grad_argspec.args) and
+      not grad_argspec.varkw):
     raise TypeError("If using @custom_gradient with a function that "
                     "uses variables, then grad_fn must accept a keyword "
                     "argument 'variables'.")

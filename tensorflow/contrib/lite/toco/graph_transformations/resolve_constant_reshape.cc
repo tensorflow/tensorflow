@@ -25,7 +25,7 @@ namespace toco {
 bool ResolveConstantReshape::Run(Model* model, std::size_t op_index) {
   auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
-  if (base_op->type != OperatorType::kTensorFlowReshape) {
+  if (base_op->type != OperatorType::kReshape) {
     return false;
   }
   const auto* op = static_cast<const TensorFlowReshapeOperator*>(base_op);
@@ -100,13 +100,7 @@ bool ResolveConstantReshape::Run(Model* model, std::size_t op_index) {
 
   AddMessageF("Resolving constant reshape of %s", LogName(*op));
 
-  if (input_array.minmax) {
-    output_array.GetOrCreateMinMax() = input_array.GetMinMax();
-  }
-  if (input_array.quantization_params) {
-    output_array.GetOrCreateQuantizationParams() =
-        input_array.GetQuantizationParams();
-  }
+  CopyMinMaxAndQuantizationRelatedFields(input_array, &output_array);
 
   // Erase input arrays if no longer used.
   for (const auto& input : op->inputs) {

@@ -17,17 +17,18 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -94,15 +95,14 @@ string ClientLibraryTestBase::TestName() const {
 }
 
 StatusOr<std::unique_ptr<GlobalData>> ClientLibraryTestBase::Execute(
-    XlaBuilder* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+    XlaBuilder* builder, absl::Span<GlobalData* const> arguments) {
   // Build the computation, as a convenience.
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
   return client_->Execute(computation, arguments, &execution_options_);
 }
 
 StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
-    const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    const XlaComputation& computation, absl::Span<GlobalData* const> arguments,
     const Shape* shape_with_output_layout) {
   ExecutionOptions execution_options = execution_options_;
   if (shape_with_output_layout != nullptr) {
@@ -114,7 +114,7 @@ StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
 }
 
 StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
-    XlaBuilder* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    XlaBuilder* builder, absl::Span<GlobalData* const> arguments,
     const Shape* shape_with_output_layout) {
   // Build the computation, as a convenience.
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
@@ -123,8 +123,7 @@ StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
 
 StatusOr<std::unique_ptr<Literal>>
 ClientLibraryTestBase::ExecuteAndTransferReference(
-    const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    const XlaComputation& computation, absl::Span<GlobalData* const> arguments,
     const Shape* shape_with_output_layout) {
   ExecutionOptions execution_options = execution_options_;
   if (shape_with_output_layout != nullptr) {
@@ -137,7 +136,7 @@ ClientLibraryTestBase::ExecuteAndTransferReference(
 }
 
 string ClientLibraryTestBase::ExecuteToString(
-    XlaBuilder* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+    XlaBuilder* builder, absl::Span<GlobalData* const> arguments) {
   auto computation_status = builder->Build();
   if (!computation_status.ok()) {
     return computation_status.status().ToString();
@@ -155,23 +154,22 @@ string ClientLibraryTestBase::ExecuteToString(
 
 void ClientLibraryTestBase::ComputeAndCompareR1(
     XlaBuilder* builder, const tensorflow::core::Bitmap& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
-  std::unique_ptr<Literal> expected_literal = Literal::CreateR1(expected);
+    absl::Span<GlobalData* const> arguments) {
+  std::unique_ptr<Literal> expected_literal = LiteralUtil::CreateR1(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
                                                   arguments);
 }
 
 void ClientLibraryTestBase::ComputeAndCompareLiteral(
     XlaBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-    const Shape* shape_with_layout) {
+    absl::Span<GlobalData* const> arguments, const Shape* shape_with_layout) {
   EXPECT_IS_OK(ComputeAndCompareLiteralWithStatus(builder, expected, arguments,
                                                   shape_with_layout));
 }
 
 void ClientLibraryTestBase::ComputeAndCompareLiteral(
     XlaBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error,
+    absl::Span<GlobalData* const> arguments, ErrorSpec error,
     const Shape* shape_with_layout) {
   EXPECT_IS_OK(ComputeAndCompareLiteralWithStatus(builder, expected, arguments,
                                                   error, shape_with_layout));
@@ -179,7 +177,7 @@ void ClientLibraryTestBase::ComputeAndCompareLiteral(
 
 Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
     const xla::XlaComputation& computation, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    absl::Span<GlobalData* const> arguments,
     const std::function<void(const Literal& actual,
                              const string& error_message)>& verify_output) {
   // Try with no layout requirement.
@@ -195,8 +193,8 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
         AsInt64Slice(expected.shape().dimensions()), minor_to_major);
     TF_ASSIGN_OR_RETURN(auto actual,
                         ExecuteAndTransfer(computation, arguments, &layout));
-    verify_output(*actual, tensorflow::strings::StrCat(
-                               "Test with output layout: ",
+    verify_output(*actual,
+                  absl::StrCat("Test with output layout: ",
                                ShapeUtil::HumanStringWithLayout(layout)));
   } while (std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
   return Status::OK();
@@ -204,7 +202,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
 
 Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
     const xla::XlaComputation& computation, const Literal& /*expected*/,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    absl::Span<GlobalData* const> arguments,
     const std::function<void(const Literal& actual,
                              const string& error_message)>& verify_output,
     const Shape* output_with_layout) {
@@ -251,13 +249,12 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
     // Every argument has an assigned layout.
     TF_ASSIGN_OR_RETURN(
         auto actual,
-        ExecuteAndTransfer(
-            computation,
-            tensorflow::gtl::ArraySlice<GlobalData*>(arguments_with_layout),
-            output_with_layout));
+        ExecuteAndTransfer(computation,
+                           absl::Span<GlobalData* const>(arguments_with_layout),
+                           output_with_layout));
     string error_message = "Test with input layouts: ";
     for (const auto& str : layout_strings) {
-      tensorflow::strings::StrAppend(&error_message, str, " ");
+      absl::StrAppend(&error_message, str, " ");
     }
     verify_output(*actual, error_message);
     return Status::OK();
@@ -268,14 +265,20 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
 
 Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     XlaBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments_passed_in,
+    absl::Span<GlobalData* const> arguments_passed_in,
     const Shape* shape_with_layout) {
   std::vector<GlobalData*> arguments(arguments_passed_in.begin(),
                                      arguments_passed_in.end());
+
+  // Transfer and use elements of arguments_, if the AddParam() API was used.
+  std::vector<std::unique_ptr<GlobalData>> owning_arguments;
   if (!arguments_.empty()) {
     CHECK(arguments.empty());
     for (const auto& argument : arguments_) {
-      arguments.push_back(argument.get());
+      owning_arguments.push_back(
+          client_->TransferToServer(MaybeConvertLiteralToBfloat16(argument))
+              .ValueOrDie());
+      arguments.push_back(owning_arguments.back().get());
     }
   }
 
@@ -283,10 +286,6 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   if (ShapeUtil::ElementIsFloating(expected.shape()) ||
       ShapeUtil::ElementIsComplex(expected.shape())) {
     LOG(WARNING) << "performing exact comparison of floating point numbers";
-  } else {
-    TF_RET_CHECK(ShapeUtil::ElementIsIntegral(expected.shape()) ||
-                 expected.shape().element_type() == PRED)
-        << ShapeUtil::HumanString(expected.shape());
   }
   // We allow using a float expected literal for a bfloat16 output. In this
   // case, we need to convert the expected literal to bfloat16.
@@ -294,7 +293,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   std::unique_ptr<Literal> converted_expected;
   Shape layout_shape;
   if (use_bfloat16_) {
-    converted_expected = Literal::ConvertF32ToBF16(expected);
+    converted_expected = LiteralUtil::ConvertF32ToBF16(expected);
     expected_ptr = converted_expected.get();
     if (shape_with_layout != nullptr) {
       layout_shape = *shape_with_layout;
@@ -326,19 +325,23 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
 
 Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     XlaBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments_passed_in,
-    ErrorSpec error, const Shape* shape_with_layout) {
+    absl::Span<GlobalData* const> arguments_passed_in, ErrorSpec error,
+    const Shape* shape_with_layout) {
   std::vector<GlobalData*> arguments(arguments_passed_in.begin(),
                                      arguments_passed_in.end());
+
+  // Transfer and use elements of arguments_, if the AddParam() API was used.
+  std::vector<std::unique_ptr<GlobalData>> owning_arguments;
   if (!arguments_.empty()) {
     CHECK(arguments.empty());
     for (const auto& argument : arguments_) {
-      arguments.push_back(argument.get());
+      owning_arguments.push_back(
+          client_->TransferToServer(MaybeConvertLiteralToBfloat16(argument))
+              .ValueOrDie());
+      arguments.push_back(owning_arguments.back().get());
     }
   }
 
-  TF_RET_CHECK(ShapeUtil::ElementIsFloating(expected.shape()) ||
-               ShapeUtil::ElementIsComplex(expected.shape()));
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
   // We allow using a float expected literal for a bfloat16 output. In this
   // case, we need to convert the expected literal to bfloat16.
@@ -346,7 +349,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   std::unique_ptr<Literal> converted_expected;
   Shape layout_shape;
   if (use_bfloat16_) {
-    converted_expected = Literal::ConvertF32ToBF16(expected);
+    converted_expected = LiteralUtil::ConvertF32ToBF16(expected);
     expected_ptr = converted_expected.get();
     if (shape_with_layout != nullptr) {
       layout_shape = *shape_with_layout;
@@ -378,8 +381,8 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
 }
 
 void ClientLibraryTestBase::ComputeAndCompareR1U8(
-    XlaBuilder* builder, tensorflow::StringPiece expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+    XlaBuilder* builder, absl::string_view expected,
+    absl::Span<GlobalData* const> arguments) {
   auto actual_status = ExecuteAndTransfer(builder, arguments);
   EXPECT_IS_OK(actual_status.status());
   if (!actual_status.ok()) {
@@ -388,7 +391,7 @@ void ClientLibraryTestBase::ComputeAndCompareR1U8(
   auto actual = actual_status.ConsumeValueOrDie();
 
   // Turn the expected value into a literal.
-  std::unique_ptr<Literal> expected_literal = Literal::CreateR1U8(expected);
+  std::unique_ptr<Literal> expected_literal = LiteralUtil::CreateR1U8(expected);
 
   VLOG(1) << "expected: " << expected_literal->ToString();
   VLOG(1) << "actual:   " << actual->ToString();
@@ -398,7 +401,7 @@ void ClientLibraryTestBase::ComputeAndCompareR1U8(
 
 void ClientLibraryTestBase::ComputeAndCompareTuple(
     XlaBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+    absl::Span<GlobalData* const> arguments) {
   auto actual_status = ExecuteAndTransfer(builder, arguments);
   EXPECT_IS_OK(actual_status.status());
   if (!actual_status.ok()) {
@@ -410,7 +413,7 @@ void ClientLibraryTestBase::ComputeAndCompareTuple(
 
 void ClientLibraryTestBase::ComputeAndCompareTuple(
     XlaBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
+    absl::Span<GlobalData* const> arguments, ErrorSpec error) {
   auto actual_status = ExecuteAndTransfer(builder, arguments);
   EXPECT_IS_OK(actual_status.status());
   if (!actual_status.ok()) {
@@ -421,7 +424,7 @@ void ClientLibraryTestBase::ComputeAndCompareTuple(
 }
 
 void ClientLibraryTestBase::ComputeAndCompare(
-    XlaBuilder* builder, tensorflow::gtl::ArraySlice<Literal> arguments) {
+    XlaBuilder* builder, absl::Span<const Literal> arguments) {
   auto status_or_data = ComputeValueAndReference(builder, arguments);
   EXPECT_IS_OK(status_or_data);
   if (!status_or_data.ok()) {
@@ -433,8 +436,7 @@ void ClientLibraryTestBase::ComputeAndCompare(
 }
 
 void ClientLibraryTestBase::ComputeAndCompare(
-    XlaBuilder* builder, tensorflow::gtl::ArraySlice<Literal> arguments,
-    ErrorSpec error) {
+    XlaBuilder* builder, absl::Span<const Literal> arguments, ErrorSpec error) {
   auto status_or_data = ComputeValueAndReference(builder, arguments);
   EXPECT_IS_OK(status_or_data);
   if (!status_or_data.ok()) {
@@ -447,12 +449,20 @@ void ClientLibraryTestBase::ComputeAndCompare(
 
 StatusOr<std::pair<std::unique_ptr<Literal>, std::unique_ptr<Literal>>>
 ClientLibraryTestBase::ComputeValueAndReference(
-    XlaBuilder* builder, tensorflow::gtl::ArraySlice<Literal> arguments) {
+    XlaBuilder* builder, absl::Span<const Literal> arguments) {
   // Transfer the arguments to the executor service. We put the unique_ptr's
   // into a vector to keep the data alive on the service until the end of this
   // function.
   std::vector<std::unique_ptr<GlobalData>> argument_data;
   std::vector<std::unique_ptr<GlobalData>> ref_argument_data;
+
+  // Use `arguments_` if the AddParam() API was used.  Otherwise, use
+  // plain `arguments`.
+  if (!arguments_.empty()) {
+    CHECK_EQ(arguments.size(), 0);
+    arguments = arguments_;
+  }
+
   for (const auto& arg : arguments) {
     TF_ASSIGN_OR_RETURN(auto data, client_->TransferToServer(arg.Clone()));
     TF_ASSIGN_OR_RETURN(auto ref_data, ref_client_->TransferToServer(arg));
@@ -486,11 +496,11 @@ ClientLibraryTestBase::ComputeValueAndReference(
 XlaComputation ClientLibraryTestBase::CreateScalarRelu() {
   XlaBuilder builder("relu");
   auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
-  auto z_value = builder.Parameter(0, shape, "z_value");
+  auto z_value = Parameter(&builder, 0, shape, "z_value");
   auto zero = use_bfloat16_
-                  ? builder.ConstantR0<bfloat16>(static_cast<bfloat16>(0.0f))
-                  : builder.ConstantR0<float>(0.0f);
-  builder.Max(z_value, zero);
+                  ? ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(0.0f))
+                  : ConstantR0<float>(&builder, 0.0f);
+  Max(z_value, zero);
   auto computation_status = builder.Build();
   TF_CHECK_OK(computation_status.status());
   return computation_status.ConsumeValueOrDie();
@@ -499,9 +509,9 @@ XlaComputation ClientLibraryTestBase::CreateScalarRelu() {
 XlaComputation ClientLibraryTestBase::CreateScalarMax() {
   XlaBuilder builder("max");
   auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
-  auto x = builder.Parameter(0, shape, "x");
-  auto y = builder.Parameter(1, shape, "y");
-  builder.Max(x, y);
+  auto x = Parameter(&builder, 0, shape, "x");
+  auto y = Parameter(&builder, 1, shape, "y");
+  Max(x, y);
   auto computation_status = builder.Build();
   TF_CHECK_OK(computation_status.status());
   return computation_status.ConsumeValueOrDie();
@@ -510,13 +520,13 @@ XlaComputation ClientLibraryTestBase::CreateScalarMax() {
 XlaComputation ClientLibraryTestBase::CreateScalarReluSensitivity() {
   XlaBuilder builder("relu_sensitivity");
   auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
-  auto activation = builder.Parameter(0, shape, "activation");
-  auto backprop = builder.Parameter(1, shape, "backprop");
+  auto activation = Parameter(&builder, 0, shape, "activation");
+  auto backprop = Parameter(&builder, 1, shape, "backprop");
   auto zero = use_bfloat16_
-                  ? builder.ConstantR0<bfloat16>(static_cast<bfloat16>(0.0f))
-                  : builder.ConstantR0<float>(0.0f);
-  auto activation_gtz = builder.Gt(activation, zero);
-  builder.Select(activation_gtz, /*on_true=*/backprop, /*on_false=*/zero);
+                  ? ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(0.0f))
+                  : ConstantR0<float>(&builder, 0.0f);
+  auto activation_gtz = Gt(activation, zero);
+  Select(activation_gtz, /*on_true=*/backprop, /*on_false=*/zero);
 
   auto computation_status = builder.Build();
   TF_CHECK_OK(computation_status.status());
@@ -525,7 +535,7 @@ XlaComputation ClientLibraryTestBase::CreateScalarReluSensitivity() {
 
 std::unique_ptr<Array2D<float>> ClientLibraryTestBase::CreatePatternedMatrix(
     int rows, int cols, float offset) {
-  auto array = MakeUnique<Array2D<float>>(rows, cols);
+  auto array = absl::make_unique<Array2D<float>>(rows, cols);
   for (int64 row = 0; row < rows; ++row) {
     for (int64 col = 0; col < cols; ++col) {
       (*array)(row, col) = col + (row * 1000.0f) + offset;
@@ -540,7 +550,7 @@ ClientLibraryTestBase::CreatePatternedMatrixWithZeroPadding(int rows, int cols,
                                                             int cols_padded) {
   CHECK_GE(rows_padded, rows);
   CHECK_GE(cols_padded, cols);
-  auto array = MakeUnique<Array2D<float>>(rows_padded, cols_padded, 0.0);
+  auto array = absl::make_unique<Array2D<float>>(rows_padded, cols_padded, 0.0);
   for (int64 row = 0; row < rows; ++row) {
     for (int64 col = 0; col < cols; ++col) {
       (*array)(row, col) = col + (row * 1000.0f);
@@ -551,16 +561,16 @@ ClientLibraryTestBase::CreatePatternedMatrixWithZeroPadding(int rows, int cols,
 
 XlaOp ClientLibraryTestBase::AddParam(const Literal& argument,
                                       XlaBuilder* builder) {
-  XlaOp data_handle;
-  arguments_.push_back(CreateParameterAndTransferLiteral(
-      arguments_.size(), argument, "", builder, &data_handle));
-  return data_handle;
+  arguments_.push_back(argument.Clone());
+  return Parameter(builder, /*parameter_number=*/arguments_.size() - 1,
+                   MaybeConvertShapeToBfloat16(argument.shape()), "");
 }
 
 XlaOp ClientLibraryTestBase::CreateConstantFromLiteral(const Literal& literal,
                                                        XlaBuilder* builder) {
-  return builder->ConstantLiteral(
-      use_bfloat16_ ? *Literal::ConvertF32ToBF16(literal) : literal);
+  return ConstantLiteral(builder, use_bfloat16_
+                                      ? *LiteralUtil::ConvertF32ToBF16(literal)
+                                      : literal);
 }
 
 std::unique_ptr<GlobalData>
@@ -573,22 +583,39 @@ ClientLibraryTestBase::CreateParameterAndTransferLiteral(int64 parameter_number,
                                            nullptr, builder, data_handle);
 }
 
+Shape ClientLibraryTestBase::MaybeConvertShapeToBfloat16(const Shape& shape) {
+  if (!use_bfloat16_) {
+    return shape;
+  }
+  Shape new_shape = shape;
+  ShapeUtil::ForEachMutableSubshape(&new_shape,
+                                    [](Shape* subshape, const ShapeIndex&) {
+                                      if (subshape->element_type() == F32) {
+                                        subshape->set_element_type(BF16);
+                                      }
+                                    });
+  return new_shape;
+}
+
+Literal ClientLibraryTestBase::MaybeConvertLiteralToBfloat16(
+    const Literal& literal) {
+  if (use_bfloat16_) {
+    return std::move(*LiteralUtil::ConvertF32ToBF16(literal));
+  }
+  return literal.Clone();
+}
+
 std::unique_ptr<GlobalData>
 ClientLibraryTestBase::CreateParameterAndTransferLiteral(
     int64 parameter_number, const Literal& literal, const string& name,
     const DeviceHandle* device_handle, XlaBuilder* builder,
     XlaOp* data_handle) {
-  const Literal* param_literal = &literal;
-  std::unique_ptr<Literal> converted_literal;
-  if (use_bfloat16_) {
-    converted_literal = Literal::ConvertF32ToBF16(literal);
-    param_literal = converted_literal.get();
-  }
+  Literal param_literal = MaybeConvertLiteralToBfloat16(literal);
   std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(*param_literal, device_handle)
+      client_->TransferToServer(param_literal, device_handle)
           .ConsumeValueOrDie();
   *data_handle =
-      builder->Parameter(parameter_number, param_literal->shape(), name);
+      Parameter(builder, parameter_number, param_literal.shape(), name);
   return data;
 }
 

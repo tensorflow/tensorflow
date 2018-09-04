@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/hinge-loss.h"
 #include "tensorflow/core/kernels/logistic-loss.h"
 #include "tensorflow/core/kernels/loss.h"
+#include "tensorflow/core/kernels/poisson-loss.h"
 #include "tensorflow/core/kernels/sdca_internal.h"
 #include "tensorflow/core/kernels/smooth-hinge-loss.h"
 #include "tensorflow/core/kernels/squared-loss.h"
@@ -75,6 +76,8 @@ struct ComputeOptions {
       loss_updater.reset(new HingeLossUpdater);
     } else if (loss_type == "smooth_hinge_loss") {
       loss_updater.reset(new SmoothHingeLossUpdater);
+    } else if (loss_type == "poisson_loss") {
+      loss_updater.reset(new PoissonLossUpdater);
     } else {
       OP_REQUIRES(
           context, false,

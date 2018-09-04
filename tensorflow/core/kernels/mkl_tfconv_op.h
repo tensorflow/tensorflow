@@ -32,11 +32,13 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/tensor_format.h"
 
+#ifdef INTEL_MKL_ML_ONLY
 #include "mkl_dnn.h"
 #include "mkl_dnn_types.h"
+#endif
 #include "tensorflow/core/util/mkl_util.h"
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 using mkldnn::stream;
 #endif
 
@@ -62,7 +64,7 @@ class MklToTfOp : public OpKernel {
     VLOG(1) << "MKLToTFConversion complete successfully.";
   }
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
   static void ConvertMklToTf(OpKernel* op_kernel, OpKernelContext* context,
                              string data_format_str, DataType op_data_type,
                              bool has_avx512f, uint input_number) {
@@ -109,21 +111,18 @@ class MklToTfOp : public OpKernel {
       // Do we need to reorder Mkl layout into TensorFlow layout?
       if (input.IsReorderNeeded(output_tf_pd)) {
         // Insert reorder between Mkl layout and TensorFlow layout.
-        std::vector<primitive> net;
-        CHECK_EQ(input.CheckReorderToOpMem(output_tf_pd, output_tensor, &net),
+        CHECK_EQ(input.CheckReorderToOpMem(output_tf_pd, output_tensor),
                  true);
-        stream(stream::kind::eager).submit(net).wait();
       } else {
         // If not, just forward input tensor to output tensor.
         CHECK(output_tensor->CopyFrom(input_tensor, output_shape));
       }
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + std::string(e.message) + ", in file " +
-                         std::string(__FILE__) + ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
-          errors::Aborted("Operation received an exception:", error_msg));
+          errors::Aborted("Operation received an exception: Status: ", e.status,
+                          ", message: ", StringPiece(e.message), ", in file ",
+                          __FILE__, ":", __LINE__));
     }
   }
 #else

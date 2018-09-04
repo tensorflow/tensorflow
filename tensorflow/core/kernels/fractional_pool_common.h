@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_KERNELS_FRACTIONAL_POOL_COMMON_H_
-#define TENSORFLOW_KERNELS_FRACTIONAL_POOL_COMMON_H_
+#ifndef TENSORFLOW_CORE_KERNELS_FRACTIONAL_POOL_COMMON_H_
+#define TENSORFLOW_CORE_KERNELS_FRACTIONAL_POOL_COMMON_H_
 
 #include <algorithm>
 #include <vector>
@@ -75,4 +75,4 @@ std::vector<int64> GeneratePoolingSequence(int input_length, int output_length,
                                            bool pseudo_random);
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_FRACTIONAL_POOL_COMMON_H_
+#endif  // TENSORFLOW_CORE_KERNELS_FRACTIONAL_POOL_COMMON_H_

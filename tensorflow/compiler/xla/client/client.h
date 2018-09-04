@@ -19,16 +19,16 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace xla {
@@ -53,7 +53,7 @@ class Client {
   //   will be filled with profile data from the execution.
   StatusOr<std::unique_ptr<GlobalData>> Execute(
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      absl::Span<GlobalData* const> arguments,
       const ExecutionOptions* execution_options = nullptr,
       ExecutionProfile* execution_profile = nullptr);
 
@@ -82,7 +82,7 @@ class Client {
   // from each computation.
   //
   StatusOr<std::vector<std::unique_ptr<GlobalData>>> ExecuteParallel(
-      tensorflow::gtl::ArraySlice<XlaComputationInstance> computations);
+      absl::Span<const XlaComputationInstance> computations);
 
   // Requests device_count device handles available on the target. The returned
   // device handles are used to specify the devices to execute the computations
@@ -134,7 +134,7 @@ class Client {
   // Execute() and Transfer().
   StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      absl::Span<GlobalData* const> arguments,
       const ExecutionOptions* execution_options = nullptr,
       ExecutionProfile* execution_profile = nullptr);
 
@@ -153,8 +153,6 @@ class Client {
   //
   // If output_layout is non-null, then the output of the computation will be
   // stored using that layout.
-  //
-  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
   StatusOr<std::unique_ptr<Literal>> ComputeConstant(
       const XlaComputation& computation,
       const Layout* output_layout = nullptr) const;
@@ -180,9 +178,14 @@ class Client {
   StatusOr<std::unique_ptr<ProgramShape>> GetComputationShape(
       const XlaComputation& computation);
 
-  // Creates a channel handle that can be used to transfer data between
-  // two computations via a pair of Send and Recv instructions.
+  // Creates a channel handle that can be used to transfer data between two
+  // computations on different devices via a pair of Send and Recv instructions.
   StatusOr<ChannelHandle> CreateChannelHandle();
+
+  // Create a channel for communicating with the host via a SendtoHost or
+  // RecvFromHost operation.
+  StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle();
+  StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle();
 
   StatusOr<XlaComputation> LoadSnapshot(const HloSnapshot& module);
 
@@ -193,6 +196,9 @@ class Client {
   // ExecutionProfile returned from an execution of the computation.
   StatusOr<string> ExecutionStatsAsString(const XlaComputation& computation,
                                           const ExecutionProfile& profile);
+
+  StatusOr<ChannelHandle> CreateChannelHandleByType(
+      ChannelHandle::ChannelType type);
 
   ServiceInterface* stub_;  // Stub that this client is connected on.
 

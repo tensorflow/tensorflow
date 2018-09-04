@@ -20,11 +20,15 @@ load(
     size = "large",
     srcs = ["generated_examples_zip_test.cc"],
     args = [
-        "--zip_file_path=$(location :zip_%s)" % test_name,
-        # TODO(angerson) We may be able to add an external unzip binary instead
-        # of relying on an existing one for OSS builds.
-        "--unzip_binary_path=/usr/bin/unzip",
-    ],
+    ] + select({
+        "//tensorflow:android": [],
+        "//conditions:default": [
+            "--zip_file_path=$(location :zip_%s)" % test_name,
+            # TODO(angerson) We may be able to add an external unzip binary instead
+            # of relying on an existing one for OSS builds.
+            "--unzip_binary_path=/usr/bin/unzip",
+        ],
+    }),
     data = [
         ":zip_%s" % test_name,
     ],
@@ -136,6 +140,7 @@ cc_test(
 cc_library(
     name = "join",
     hdrs = ["join.h"],
+    deps = ["//tensorflow/contrib/lite:string"],
 )
 
 cc_test(
@@ -155,18 +160,21 @@ cc_library(
     deps = [
         ":split",
         ":test_runner",
+        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/delegates/eager:delegate",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "tflite_driver_test",
     size = "small",
     srcs = ["tflite_driver_test.cc"],
     data = ["//tensorflow/contrib/lite:testdata/multi_add.bin"],
     tags = [
         "tflite_not_portable_android",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":tflite_driver",
@@ -203,6 +211,10 @@ cc_library(
 cc_library(
     name = "util",
     hdrs = ["util.h"],
+    deps = [
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite:string",
+    ],
 )
 
 cc_test(
@@ -246,6 +258,7 @@ cc_test(
     srcs = ["tf_driver_test.cc"],
     data = ["//tensorflow/contrib/lite:testdata/multi_add.pb"],
     tags = [
+        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -262,6 +275,7 @@ cc_library(
         ":join",
         ":split",
         ":tf_driver",
+        "//tensorflow/contrib/lite:string",
         "//tensorflow/core:framework",
     ],
 )
@@ -271,6 +285,7 @@ cc_test(
     size = "small",
     srcs = ["generate_testspec_test.cc"],
     tags = [
+        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -327,7 +342,7 @@ tf_cc_test(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
-        "no_oss",
+        "no_oss",  # needs test data
         "tflite_not_portable",
     ],
     deps = [

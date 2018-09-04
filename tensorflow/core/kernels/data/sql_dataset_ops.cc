@@ -75,20 +75,20 @@ class SqlDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const string& driver_name,
             const string& data_source_name, const string& query,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           driver_name_(driver_name),
           data_source_name_(data_source_name),
           query_(query),
           output_types_(output_types),
           output_shapes_(output_shapes) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::Sql")}));
@@ -102,10 +102,11 @@ class SqlDatasetOp : public DatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "SqlDatasetOp::Dataset"; }
+    string DebugString() const override { return "SqlDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* driver_name_node;
       TF_RETURN_IF_ERROR(b->AddScalar(driver_name_, &driver_name_node));

@@ -39,7 +39,13 @@ class IndexedArrayAnalysis {
   // Array instances are immutable once created.
   class Array {
    public:
-    enum Kind { kUnknown, kConstant, kScalarIndexedConstant, kScalarIndexed };
+    enum Kind {
+      kUnknown,
+      kConstant,
+      kReshaped,
+      kScalarIndexedConstant,
+      kScalarIndexed
+    };
 
     virtual Kind kind() const = 0;
     virtual const Shape& shape() const = 0;
@@ -92,6 +98,27 @@ class IndexedArrayAnalysis {
    private:
     explicit ConstantArray(const Literal* literal) : literal_(literal) {}
     const Literal* literal_;
+
+    friend class IndexedArrayAnalysis;
+  };
+
+  // Represents an Array that is a reshape of another Array.
+  class ReshapedArray : public Array {
+   public:
+    Kind kind() const override { return kReshaped; }
+
+    // The array to reshape.
+    Array* operand() const { return operand_; }
+
+    // The output shape.
+    const Shape& shape() const override { return shape_; }
+
+   private:
+    explicit ReshapedArray(Array* operand, Shape shape)
+        : operand_(operand), shape_(shape) {}
+
+    Array* operand_;
+    const Shape shape_;
 
     friend class IndexedArrayAnalysis;
   };
@@ -161,9 +188,7 @@ class IndexedArrayAnalysis {
     // `output_dims` are the dimensions in the output array that are being used
     // to compute an index into the `indices` array.  See the class
     // documentation and the overview for more details.
-    tensorflow::gtl::ArraySlice<int64> output_dims() const {
-      return output_dims_;
-    }
+    absl::Span<const int64> output_dims() const { return output_dims_; }
 
    private:
     explicit ScalarIndexedArray(Array* source, Array* indices, int64 source_dim,
@@ -238,8 +263,19 @@ class IndexedArrayAnalysis {
 
   StatusOr<Array*> ComputeArrayForGather(
       const Shape& shape, const GatherDimensionNumbers& dim_numbers,
-      tensorflow::gtl::ArraySlice<int64> window_bounds, Array* source,
-      Array* indices);
+      absl::Span<const int64> slice_sizes, Array* source, Array* indices);
+
+  StatusOr<Array*> ComputeArrayForDotWithIndexedLhs(
+      const Shape& shape, const DotDimensionNumbers& dim_numbers,
+      ScalarIndexedConstantArray* lhs, ConstantArray* rhs);
+
+  StatusOr<Array*> ComputeArrayForDotWithIndexedRhs(
+      const Shape& shape, const DotDimensionNumbers& dim_numbers,
+      ConstantArray* lhs, ScalarIndexedConstantArray* rhs);
+
+  StatusOr<Array*> ComputeArrayForDot(const Shape& shape,
+                                      const DotDimensionNumbers& dim_numbers,
+                                      Array* lhs, Array* rhs);
 
   // This tries to fold a ScalarIndexedArray which has another
   // ScalarIndexedArray as a source into a ScalarIndexedArray that instead has a
@@ -264,8 +300,22 @@ class IndexedArrayAnalysis {
   //    G1 = [Arr[i] for i in I2]
   StatusOr<ScalarIndexedArray*> FoldGatherOfGather(
       ScalarIndexedArray* source, Array* indices, int64 source_dim,
-      tensorflow::gtl::ArraySlice<int64> output_dims, Shape shape);
+      absl::Span<const int64> output_dims, Shape shape);
 
+  // Reshapes a scalar-indexed node to remove the degenerate dimensions in its
+  // output.  The result is always a scalar-indexed node.
+  StatusOr<ScalarIndexedArray*> ReshapeToRemoveDegenerateDims(
+      ScalarIndexedArray* operand);
+
+  // Reshapes a scalar-indexed node such that the result has the degenerate
+  // dimensions `degenerate_dims`.  The result is always a scalar-indexed node.
+  StatusOr<ScalarIndexedArray*> ReshapeToAddDegenerateDims(
+      ScalarIndexedArray* operand, absl::Span<const int64> degenerate_dims);
+
+  StatusOr<ScalarIndexedArray*> FoldReshapeOfGather(
+      const Shape& shape, ScalarIndexedConstantArray* operand);
+  StatusOr<ScalarIndexedArray*> FoldReshapeOfGatherNoDegenerateDims(
+      const Shape& shape, ScalarIndexedConstantArray* scalar_indexed);
   StatusOr<Array*> ComputeArrayForReshape(const Shape& shape, Array* operand);
 
   StatusOr<Array*> ComputeArrayForElementwiseBinaryOp(HloOpcode opcode,
@@ -317,7 +367,7 @@ class IndexedArrayAnalysis {
 // unconditionally add to the regular HLO pass pipeline.
 class IndexedArrayAnalysisPrinterPass : public HloPassInterface {
  public:
-  tensorflow::StringPiece name() const override;
+  absl::string_view name() const override;
   StatusOr<bool> Run(HloModule* module) override;
 };
 

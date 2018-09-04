@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <iostream>
 
+#include "tensorflow/contrib/lite/builtin_op_data.h"
+#include "tensorflow/contrib/lite/delegates/eager/delegate.h"
 #include "tensorflow/contrib/lite/testing/split.h"
 
 namespace tflite {
@@ -134,7 +136,13 @@ class TfLiteDriver::Expectation {
   size_t num_elements_;
 };
 
-TfLiteDriver::TfLiteDriver(bool use_nnapi) : use_nnapi_(use_nnapi) {}
+TfLiteDriver::TfLiteDriver(bool use_nnapi, const string& delegate_name)
+    : use_nnapi_(use_nnapi) {
+  if (delegate_name == "EAGER") {
+    delegate_ = EagerDelegate::Create();
+  }
+}
+
 TfLiteDriver::~TfLiteDriver() {}
 
 void TfLiteDriver::AllocateTensors() {
@@ -161,6 +169,16 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
   if (!interpreter_) {
     Invalidate("Failed build interpreter");
     return;
+  }
+  interpreter_->UseNNAPI(use_nnapi_);
+
+  if (delegate_) {
+    if (interpreter_->ModifyGraphWithDelegate(delegate_.get(),
+                                              /*allow_dynamic_tensors=*/true) !=
+        kTfLiteOk) {
+      Invalidate("Unable to the build graph using the delegate");
+      return;
+    }
   }
 
   must_allocate_tensors_ = true;
@@ -283,22 +301,7 @@ bool TfLiteDriver::CheckResults() {
 }
 
 void TfLiteDriver::ResetLSTMStateTensors() {
-  // This is a workaround for initializing state tensors for LSTM.
-  // TODO(ycling): Refactoring and find a better way to initialize state
-  // tensors. Maybe write the reset instructions into the test data.
-  for (auto node_index : interpreter_->execution_plan()) {
-    const auto& node_and_reg = interpreter_->node_and_registration(node_index);
-    const auto& node = node_and_reg->first;
-    const auto& registration = node_and_reg->second;
-    if (registration.builtin_code == tflite::BuiltinOperator_LSTM &&
-        node.outputs->size >= 2) {
-      // The first 2 outputs of LSTM are state tensors.
-      for (int i = 0; i < 2; ++i) {
-        int node_index = node.outputs->data[i];
-        ResetTensor(node_index);
-      }
-    }
-  }
+  interpreter_->ResetVariableTensorsToZero();
 }
 
 }  // namespace testing

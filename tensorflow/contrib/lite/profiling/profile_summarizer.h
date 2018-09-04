@@ -45,9 +45,6 @@ class ProfileSummarizer {
     return stats_calculator_->GetShortSummary();
   }
 
-  // Prints the string returned by GetOutputString().
-  void PrintStepStats() const { stats_calculator_->PrintStepStats(); }
-
  private:
   std::unique_ptr<tensorflow::StatsCalculator> stats_calculator_;
 };

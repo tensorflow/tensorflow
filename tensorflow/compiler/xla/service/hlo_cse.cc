@@ -24,7 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/hash/hash.h"
 
 namespace xla {
 
@@ -103,6 +104,9 @@ int64 CseHash(const HloInstruction* instruction) {
   for (auto operand : instruction->operands()) {
     hash = tensorflow::Hash64Combine(hash, operand->unique_id());
   }
+  if (instruction->opcode() == HloOpcode::kConstant) {
+    hash = tensorflow::Hash64Combine(hash, instruction->literal().Hash());
+  }
   return hash;
 }
 
@@ -135,15 +139,14 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
     // instruction for each class.
     tensorflow::gtl::FlatSet<HloInstruction*, decltype(&CseHash),
                              decltype(cse_equal)>
-        representatives(/*N=*/1024, &CseHash, cse_equal);
-
+        representatives(/*N=*/computation->instruction_count() + 1, &CseHash,
+                        cse_equal);
     for (auto instruction : computation->MakeInstructionPostOrder()) {
       // If the instruction has zero operands (constants, parameters, etc.) skip
       // over it.
       if (instruction->operand_count() == 0) {
         continue;
       }
-
       // Skip instructions which have side effects.
       if (instruction->HasSideEffect()) {
         continue;

@@ -89,9 +89,9 @@ class BaseCandidateSamplerOp : public OpKernel {
     // Pick sampled candidates.
     auto local_gen = generator_.ReserveSamples32(samples32);
     random::SimplePhilox random(&local_gen);
-    sampler_->SampleBatchGetExpectedCount(&random, unique_, &sampled_candidate,
-                                          &sampled_expected_count,
-                                          true_candidate, &true_expected_count);
+    sampler_->SampleBatchGetExpectedCount(&random, unique_, sampled_candidate,
+                                          sampled_expected_count,
+                                          true_candidate, true_expected_count);
 
     if (sampler_->NeedsUpdates()) {
       sampler_->Update(true_candidate);

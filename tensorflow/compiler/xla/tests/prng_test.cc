@@ -16,9 +16,10 @@ limitations under the License.
 #include <limits>
 #include <memory>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -37,8 +37,7 @@ namespace {
 class PrngTest : public ClientLibraryTestBase {
  protected:
   template <typename T>
-  std::unique_ptr<Literal> UniformTest(T a, T b,
-                                       tensorflow::gtl::ArraySlice<int64> dims,
+  std::unique_ptr<Literal> UniformTest(T a, T b, absl::Span<const int64> dims,
                                        int64 seed = 42);
 
   // Computes the χ² statistic of a sample of the discrete uniform distribution
@@ -50,18 +49,19 @@ class PrngTest : public ClientLibraryTestBase {
 };
 
 template <typename T>
-std::unique_ptr<Literal> PrngTest::UniformTest(
-    T a, T b, tensorflow::gtl::ArraySlice<int64> dims, int64 seed) {
+std::unique_ptr<Literal> PrngTest::UniformTest(T a, T b,
+                                               absl::Span<const int64> dims,
+                                               int64 seed) {
   XlaBuilder builder(TestName());
-  builder.RngUniform(
-      builder.ConstantR0<T>(a), builder.ConstantR0<T>(b),
+  RngUniform(
+      ConstantR0<T>(&builder, a), ConstantR0<T>(&builder, b),
       ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<T>(), dims));
 
   SetSeed(seed);
   auto actual =
       ExecuteAndTransfer(&builder, /*arguments=*/{}).ConsumeValueOrDie();
   EXPECT_THAT(dims, ::testing::ElementsAreArray(actual->shape().dimensions()));
-  actual->EachCell<T>([=](tensorflow::gtl::ArraySlice<int64>, T value) {
+  actual->EachCell<T>([=](absl::Span<const int64>, T value) {
     EXPECT_LE(a, value);
     EXPECT_LT(value, b);
   });
@@ -117,7 +117,7 @@ XLA_TEST_F(PrngTest, DISABLED_ON_GPU(DISABLED_ON_CPU(ScalarBF16CountTests))) {
   for (int64 seed = 0; seed < count; ++seed) {
     auto result = UniformTest<bfloat16>(low, high, {}, /*seed=*/seed);
     result->Literal::EachCell<bfloat16>(
-        [&](tensorflow::gtl::ArraySlice<int64>, bfloat16 value) {
+        [&](absl::Span<const int64>, bfloat16 value) {
           int64 index = static_cast<int64>((value - low) / interval);
           counts[index]++;
         });
@@ -141,16 +141,16 @@ double PrngTest::UniformChiSquared(int32 range_size, int32 expected_count,
   int32 sample_size = range_size * expected_count;
 
   XlaBuilder builder(TestName());
-  builder.RngUniform(builder.ConstantR0<int32>(0),
-                     builder.ConstantR0<int32>(range_size),
-                     ShapeUtil::MakeShape(S32, {sample_size}));
+  RngUniform(ConstantR0<int32>(&builder, 0),
+             ConstantR0<int32>(&builder, range_size),
+             ShapeUtil::MakeShape(S32, {sample_size}));
 
   SetSeed(seed);
   auto actual =
       ExecuteAndTransfer(&builder, /*arguments=*/{}).ConsumeValueOrDie();
   std::vector<int32> counts(range_size, 0);
-  actual->EachCell<int32>([&counts](tensorflow::gtl::ArraySlice<int64>,
-                                    int32 value) { ++counts[value]; });
+  actual->EachCell<int32>(
+      [&counts](absl::Span<const int64>, int32 value) { ++counts[value]; });
   int64 sum = 0;
   for (int32 i = 0; i < range_size; ++i) {
     sum += Square(static_cast<int64>(counts[i] - expected_count));
@@ -177,28 +177,29 @@ XLA_TEST_F(PrngTest, Uniformity108) {
   EXPECT_LT(UniformChiSquared(108, 256), 132.144);
 }
 XLA_TEST_F(PrngTest, Uniformity256) {
-  EXPECT_LT(UniformChiSquared(256, 256), 293.248);
+  EXPECT_LT(UniformChiSquared(256, 512), 293.248);
 }
 
 XLA_TEST_F(PrngTest, MapUsingRng) {
   // Build a x -> (x + U[0,1)) computation.
-  auto build_sum_rng = [this](XlaBuilder& builder) {
+  auto build_sum_rng = [](XlaBuilder& builder) {
     auto b = builder.CreateSubBuilder("sum_with_rng");
-    auto x = b->Parameter(0, ShapeUtil::MakeShape(F32, {}), "input");
-    b->Add(x, b->RngUniform(b->ConstantR0<float>(0), b->ConstantR0<float>(1),
-                            ShapeUtil::MakeShape(F32, {})));
+    auto x = Parameter(b.get(), 0, ShapeUtil::MakeShape(F32, {}), "input");
+    Add(x,
+        RngUniform(ConstantR0<float>(b.get(), 0), ConstantR0<float>(b.get(), 1),
+                   ShapeUtil::MakeShape(F32, {})));
     return b->BuildAndNoteError();
   };
 
   XlaBuilder builder(TestName());
   std::unique_ptr<Literal> param0_literal =
-      Literal::CreateR1<float>({2.2f, 5.3f, 4.4f, 5.5f});
+      LiteralUtil::CreateR1<float>({2.2f, 5.3f, 4.4f, 5.5f});
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> param0_data,
                           client_->TransferToServer(*param0_literal));
 
-  auto param0 = builder.Parameter(0, param0_literal->shape(), "param0");
+  auto param0 = Parameter(&builder, 0, param0_literal->shape(), "param0");
   auto fn = build_sum_rng(builder);
-  builder.Map({param0}, fn, {0});
+  Map(&builder, {param0}, fn, {0});
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
 
@@ -226,9 +227,8 @@ XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
   // Build a U[0,1) computation.
   auto build_computation = [this]() {
     XlaBuilder builder(TestName());
-    builder.RngUniform(builder.ConstantR0<float>(0),
-                       builder.ConstantR0<float>(1),
-                       ShapeUtil::MakeShape(F32, {10}));
+    RngUniform(ConstantR0<float>(&builder, 0), ConstantR0<float>(&builder, 1),
+               ShapeUtil::MakeShape(F32, {10}));
     return builder.Build();
   };
 
@@ -282,8 +282,8 @@ XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
 
 XLA_TEST_F(PrngTest, TenValuesN01) {
   XlaBuilder builder(TestName());
-  builder.RngNormal(builder.ConstantR0<float>(0), builder.ConstantR0<float>(1),
-                    ShapeUtil::MakeShape(F32, {10}));
+  RngNormal(ConstantR0<float>(&builder, 0), ConstantR0<float>(&builder, 1),
+            ShapeUtil::MakeShape(F32, {10}));
 
   SetSeed(42);
   ExecuteAndTransfer(&builder, /*arguments=*/{}).ConsumeValueOrDie();
@@ -294,9 +294,9 @@ XLA_TEST_F(PrngTest, RngUniformCrash) {
   XlaBuilder builder(TestName());
 
   // This used to crash XLA during LLVM IR generation for CPUs.
-  auto rng_uniform = builder.RngUniform(builder.ConstantR0<int32>(0),
-                                        builder.ConstantR0<int32>(1000 * 1000),
-                                        ShapeUtil::MakeShape(S32, {}));
+  RngUniform(ConstantR0<int32>(&builder, 0),
+             ConstantR0<int32>(&builder, 1000 * 1000),
+             ShapeUtil::MakeShape(S32, {}));
   SetSeed(0);
   ExecuteAndTransfer(&builder, /*arguments=*/{}).ConsumeValueOrDie();
 }

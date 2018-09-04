@@ -20,7 +20,17 @@ namespace tensorflow {
 REGISTER_LINALG_OP("Qr", (QrOp<complex128>), complex128);
 
 #if GOOGLE_CUDA
-REGISTER_LINALG_OP_GPU("Qr", (QrOpGpu<complex128>), complex128);
+// We temporarily disable QR on GPU due to a bug in the QR implementation in
+// cuSolver affecting older hardware. The cuSolver team is tracking the issue
+// (https://partners.nvidia.com/bug/viewbug/2171459) and we will re-enable
+// this feature when a fix is available.
+REGISTER_KERNEL_BUILDER(Name("Qr")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<complex128>("T")
+                            .HostMemory("input")
+                            .HostMemory("q")
+                            .HostMemory("r"),
+                        QrOp<complex128>);
 #endif
 
 }  // namespace tensorflow

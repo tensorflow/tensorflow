@@ -20,8 +20,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -29,18 +30,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -52,9 +52,17 @@ using ::testing::ElementsAre;
 class LayoutAssignmentTest : public HloTestBase {
  protected:
   void AssignLayouts(HloModule* module,
-                     ComputationLayout* entry_computation_layout) {
-    LayoutAssignment layout_assignment(entry_computation_layout);
+                     ComputationLayout* entry_computation_layout,
+                     ChannelLayoutConstraints* channel_constraints = nullptr) {
+    LayoutAssignment layout_assignment(
+        entry_computation_layout, /*channel_constraints=*/channel_constraints);
     EXPECT_IS_OK(layout_assignment.Run(module).status());
+  }
+
+  std::vector<int64> LayoutOf(HloModule* module, absl::string_view name) {
+    auto minor_to_major =
+        FindInstruction(module, name)->shape().layout().minor_to_major();
+    return std::vector<int64>(minor_to_major.begin(), minor_to_major.end());
   }
 };
 
@@ -133,9 +141,9 @@ TEST_F(LayoutAssignmentTest, FusionInstruction) {
   std::vector<std::initializer_list<int64>> minor_to_majors = {{0, 1}, {1, 0}};
   for (auto& minor_to_major : minor_to_majors) {
     auto builder = HloComputation::Builder(TestName());
-    auto constant_literal1 = Literal::CreateR2WithLayout<float>(
+    auto constant_literal1 = LiteralUtil::CreateR2WithLayout<float>(
         {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout(minor_to_major));
-    auto constant_literal2 = Literal::CreateR2WithLayout<float>(
+    auto constant_literal2 = LiteralUtil::CreateR2WithLayout<float>(
         {{5.0, 6.0}, {7.0, 8.0}}, LayoutUtil::MakeLayout(minor_to_major));
     Shape ashape = constant_literal1->shape();
 
@@ -184,10 +192,10 @@ TEST_F(LayoutAssignmentTest, TupleLayout) {
   // match their source).
   auto builder = HloComputation::Builder(TestName());
   auto constant0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2WithLayout<float>(
           {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2WithLayout<float>(
           {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({1, 0}))));
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({constant0, constant1}));
@@ -221,10 +229,10 @@ TEST_F(LayoutAssignmentTest, TupleSelect) {
   // Verify layouts of a select with tuple operands is assigned properly.
   auto builder = HloComputation::Builder(TestName());
   auto constant0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2WithLayout<float>(
           {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2WithLayout<float>(
           {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({1, 0}))));
   auto tuple0 = builder.AddInstruction(
       HloInstruction::CreateTuple({constant0, constant1}));
@@ -232,7 +240,7 @@ TEST_F(LayoutAssignmentTest, TupleSelect) {
       HloInstruction::CreateTuple({constant0, constant1}));
 
   auto pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
 
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
       tuple0->shape(), HloOpcode::kSelect, pred, tuple0, tuple1));
@@ -266,7 +274,7 @@ TEST_F(LayoutAssignmentTest, ConflictingLayoutTuple) {
   // tuple and assigning the layouts of the copied arrays as needed.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
+      LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
   auto inner_tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({constant}));
   auto nested_tuple = builder.AddInstruction(
@@ -576,7 +584,7 @@ TEST_F(LayoutAssignmentTest, TransposeToBitcastToUser) {
   auto builder = HloComputation::Builder(TestName());
   Shape input_shape = ShapeUtil::MakeShape(F32, {3, 5, 6, 7});
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
   auto broadcast = builder.AddInstruction(
       HloInstruction::CreateBroadcast(input_shape, constant, {}));
   auto transpose = builder.AddInstruction(HloInstruction::CreateTranspose(
@@ -651,7 +659,7 @@ TEST_F(LayoutAssignmentTest, TransposeWithinFusionDoesNotCrash) {
     }
   )";
 
-  auto module = tools::Parse(module_str).ValueOrDie();
+  auto module = ParseHloString(module_str).ValueOrDie();
 
   module =
       backend()
@@ -691,7 +699,7 @@ TEST_F(LayoutAssignmentTest, GTEInheritsLayoutFromOperand) {
     }
   )";
 
-  auto module = tools::Parse(module_str).ValueOrDie();
+  auto module = ParseHloString(module_str).ValueOrDie();
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape());
   Shape param_shape = ShapeUtil::MakeTupleShape(
@@ -707,17 +715,10 @@ TEST_F(LayoutAssignmentTest, GTEInheritsLayoutFromOperand) {
       LayoutUtil::MakeLayout({2, 1, 0}));
   AssignLayouts(module.get(), &computation_layout);
 
-  auto layout_of = [&](tensorflow::StringPiece name) {
-    return FindInstruction(module.get(), name)
-        ->shape()
-        .layout()
-        .minor_to_major();
-  };
-
-  EXPECT_THAT(layout_of("gte0"), ElementsAre(0, 1, 2));
-  EXPECT_THAT(layout_of("gte1a"), ElementsAre(1, 2, 0));
-  EXPECT_THAT(layout_of("gte1b"), ElementsAre(2, 0, 1));
-  EXPECT_THAT(layout_of("fresult"), ElementsAre(2, 1, 0));
+  EXPECT_THAT(LayoutOf(module.get(), "gte0"), ElementsAre(0, 1, 2));
+  EXPECT_THAT(LayoutOf(module.get(), "gte1a"), ElementsAre(1, 2, 0));
+  EXPECT_THAT(LayoutOf(module.get(), "gte1b"), ElementsAre(2, 0, 1));
+  EXPECT_THAT(LayoutOf(module.get(), "fresult"), ElementsAre(2, 1, 0));
   EXPECT_THAT(FindInstruction(module.get(), "gte1")
                   ->shape()
                   .tuple_shapes(0)
@@ -769,9 +770,12 @@ TEST_F(LayoutAssignmentTest, ConditionalAsymmetricLayout) {
     false_builder.AddInstruction(
         HloInstruction::CreateParameter(0, tshape, "param"));
     // Using infeed as layout assignment does not mess up with it.
-    auto infeed =
-        false_builder.AddInstruction(HloInstruction::CreateInfeed(xshape, ""));
-    false_builder.AddInstruction(HloInstruction::CreateTuple({infeed}));
+    auto token = false_builder.AddInstruction(HloInstruction::CreateToken());
+    auto infeed = false_builder.AddInstruction(
+        HloInstruction::CreateInfeed(xshape, token, ""));
+    auto infeed_data = false_builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(xshape, infeed, 0));
+    false_builder.AddInstruction(HloInstruction::CreateTuple({infeed_data}));
   }
   HloComputation* false_computation =
       module->AddEmbeddedComputation(false_builder.Build());
@@ -798,7 +802,7 @@ TEST_F(LayoutAssignmentTest, ConditionalAsymmetricLayout) {
 TEST_F(LayoutAssignmentTest, InternalErrorOnBitcast) {
   auto builder = HloComputation::Builder(TestName());
   auto constant0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2WithLayout<float>(
           {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
   builder.AddInstruction(HloInstruction::CreateUnary(
       constant0->shape(), HloOpcode::kBitcast, constant0));
@@ -814,6 +818,157 @@ TEST_F(LayoutAssignmentTest, InternalErrorOnBitcast) {
       error_status.error_message(),
       ::testing::HasSubstr(
           "Unexpected bitcast operation seen during layout assignment"));
+}
+
+TEST_F(LayoutAssignmentTest, ChannelLayoutMismatch) {
+  // Pin non matching layouts to parameter and root.
+  const char* module_str = R"(
+    HloModule test_module
+
+    ENTRY entry_computation {
+      param = (f32[2,2]) parameter(0)
+      gte = f32[2,2] get-tuple-element(param), index=0
+      token = token[] after-all()
+      recv = (f32[2,2], u32[], token[]) recv(token), channel_id=1, sharding={maximal device=1}
+      recv-done = (f32[2,2], token[]) recv-done(recv), channel_id=1,
+        sharding={maximal device=1}
+      ROOT root = f32[2,2] get-tuple-element(recv-done), index=0
+      send = (f32[2,2], u32[], token[]) send(gte, token), channel_id=1,
+        sharding={maximal device=0}
+      send-done = token[] send-done(send), channel_id=1, sharding={maximal device=0}
+    }
+  )";
+
+  auto module = ParseHloString(module_str).ValueOrDie();
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape());
+  Shape param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1})});
+  TF_ASSERT_OK(
+      computation_layout.mutable_parameter_layout(0)->CopyLayoutFromShape(
+          param_shape));
+  computation_layout.mutable_result_layout()->ResetLayout(
+      LayoutUtil::MakeLayout({1, 0}));
+
+  ChannelLayoutConstraints channel_constraints;
+  AssignLayouts(module.get(), &computation_layout, &channel_constraints);
+
+  EXPECT_THAT(LayoutOf(module.get(), "gte"), ElementsAre(0, 1));
+  EXPECT_THAT(LayoutOf(module.get(), "root"), ElementsAre(1, 0));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::GetSubshape(
+                           FindInstruction(module.get(), "send")->shape(), {0}),
+                       ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0})));
+}
+
+TEST_F(LayoutAssignmentTest, CopySliceOperandToAvoidImplicitLayoutChange) {
+  const char* module_str = R"(
+    HloModule CopySliceOperandToAvoidImplicitLayoutChange
+
+    ENTRY CopySliceOperandToAvoidImplicitLayoutChange {
+      par0 = f32[3,4]{1,0} parameter(0)
+      par1 = f32[4,5]{0,1} parameter(1)
+      slice0 = f32[3,4] slice(par1), slice={[1:4],[1:5]}
+      ROOT add0 = f32[3,4]{1,0} add(par0,slice0)
+    }
+  )";
+
+  auto module = ParseHloString(module_str).ValueOrDie();
+  module =
+      backend()
+          .compiler()
+          ->RunHloPasses(std::move(module), backend().default_stream_executor(),
+                         /*device_allocator=*/nullptr)
+          .ConsumeValueOrDie();
+
+  auto copy = FindInstruction(module.get(), "copy.1");
+  auto slice = FindInstruction(module.get(), "slice0");
+  EXPECT_EQ(slice->operand(0), copy);
+  EXPECT_TRUE(
+      LayoutUtil::Equal(slice->shape().layout(), copy->shape().layout()));
+}
+
+TEST_F(LayoutAssignmentTest, CopyDSliceOperandToAvoidImplicitLayoutChange) {
+  const char* module_str = R"(
+    HloModule CopyDSliceOperandToAvoidImplicitLayoutChange
+
+    ENTRY CopyDSliceOperandToAvoidImplicitLayoutChange {
+      par0 = f32[3,4]{1,0} parameter(0)
+      par1 = f32[4,5]{0,1} parameter(1)
+      par2 = s32[2] parameter(2)
+      dslice0 = f32[3,4] dynamic-slice(par1, par2), dynamic_slice_sizes={3,4}
+      ROOT add0 = f32[3,4]{1,0} add(par0,dslice0)
+    }
+  )";
+
+  auto module = ParseHloString(module_str).ValueOrDie();
+  module =
+      backend()
+          .compiler()
+          ->RunHloPasses(std::move(module), backend().default_stream_executor(),
+                         /*device_allocator=*/nullptr)
+          .ConsumeValueOrDie();
+
+  auto copy = FindInstruction(module.get(), "copy.1");
+  auto dslice = FindInstruction(module.get(), "dslice0");
+  EXPECT_EQ(dslice->operand(0), copy);
+  EXPECT_TRUE(
+      LayoutUtil::Equal(dslice->shape().layout(), copy->shape().layout()));
+}
+
+TEST_F(LayoutAssignmentTest, CopyConcatOperandToAvoidImplicitLayoutChange) {
+  const char* module_str = R"(
+    HloModule CopyConcatOperandToAvoidImplicitLayoutChange
+
+    ENTRY CopyConcatOperandToAvoidImplicitLayoutChange {
+      par0 = f32[3,8]{1,0} parameter(0)
+      par1 = f32[3,5]{0,1} parameter(1)
+      par2 = f32[3,3]{1,0} parameter(2)
+      concat0 = f32[3,8] concatenate(f32[3,5] par1, f32[3,3] par2),
+        dimensions={1}
+      ROOT add0 = f32[3,8]{1,0} add(par0,concat0)
+    }
+  )";
+
+  auto module = ParseHloString(module_str).ValueOrDie();
+  module =
+      backend()
+          .compiler()
+          ->RunHloPasses(std::move(module), backend().default_stream_executor(),
+                         /*device_allocator=*/nullptr)
+          .ConsumeValueOrDie();
+
+  auto copy = FindInstruction(module.get(), "copy.1");
+  auto concat = FindInstruction(module.get(), "concat0");
+  EXPECT_EQ(concat->operand(0), copy);
+  EXPECT_TRUE(
+      LayoutUtil::Equal(concat->shape().layout(), copy->shape().layout()));
+}
+
+TEST_F(LayoutAssignmentTest,
+       ConvolutionOperandWithImplicitLayoutChangeNotCopied) {
+  const char* module_str = R"(
+    HloModule ConvolutionOperandWithImplicitLayoutChangeNotCopied
+
+    ENTRY ConvolutionOperandWithImplicitLayoutChangeNotCopied {
+      par0 = f32[128,3,230,230]{2,3,1,0} parameter(0)
+      par1 = f32[7,7,3,64]{3,2,0,1} parameter(1)
+      ROOT convolution0 = f32[128,64,112,112]{3,2,1,0} convolution(par0, par1),
+        window={size=7x7 stride=2x2}, dim_labels=bf01_01io->bf01,
+        feature_group_count=1
+    }
+  )";
+
+  auto module = ParseHloString(module_str).ValueOrDie();
+  module =
+      backend()
+          .compiler()
+          ->RunHloPasses(std::move(module), backend().default_stream_executor(),
+                         /*device_allocator=*/nullptr)
+          .ConsumeValueOrDie();
+
+  auto copy = FindInstruction(module.get(), "copy.1");
+  EXPECT_EQ(copy, nullptr);
 }
 
 }  // namespace

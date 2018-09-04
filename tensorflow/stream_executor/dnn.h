@@ -469,6 +469,9 @@ enum class PadAlignment : int64 {
 // Returns a string representation of the given padding alignment.
 string PadAlignmentString(PadAlignment alignment);
 
+// Print alignment to str. Needed to use CHECK_EQ between two PadAlignments.
+std::ostream& operator<<(std::ostream& str, dnn::PadAlignment alignment);
+
 // Describes a convolution.
 //
 // Uses the named argument construction form:
@@ -710,15 +713,23 @@ class PoolingDescriptor {
 class AlgorithmDesc {
  public:
   typedef int64 Index;
-  AlgorithmDesc() : algo_(kDefaultAlgorithm), tensor_ops_enabled_(false) {}
+  AlgorithmDesc()
+      : algo_(kDefaultAlgorithm), tensor_ops_enabled_(true), scratch_size_(0) {}
   AlgorithmDesc(Index a, bool use_tensor_ops)
-      : algo_(a), tensor_ops_enabled_(use_tensor_ops) {}
+      : algo_(a), tensor_ops_enabled_(use_tensor_ops), scratch_size_(0) {}
+  AlgorithmDesc(Index a, bool use_tensor_ops, size_t scratch_size)
+      : algo_(a),
+        tensor_ops_enabled_(use_tensor_ops),
+        scratch_size_(scratch_size) {}
   bool is_default() const { return algo_ == kDefaultAlgorithm; }
   bool tensor_ops_enabled() const { return tensor_ops_enabled_; }
   Index algo_id() const { return algo_; }
+  size_t scratch_size() const { return scratch_size_; }
+  void set_scratch_size(size_t val) { scratch_size_ = val; }
   bool operator==(const AlgorithmDesc& other) const {
     return this->algo_ == other.algo_ &&
-           this->tensor_ops_enabled_ == other.tensor_ops_enabled_;
+           this->tensor_ops_enabled_ == other.tensor_ops_enabled_ &&
+           this->scratch_size_ == other.scratch_size_;
   }
   uint64 hash() const;
 
@@ -726,6 +737,7 @@ class AlgorithmDesc {
   enum { kDefaultAlgorithm = -1 };
   Index algo_;
   bool tensor_ops_enabled_;
+  size_t scratch_size_;
 };
 
 // Describes the result from a perf experiment.
@@ -1549,14 +1561,16 @@ class DnnSupport {
                              const dnn::BatchDescriptor& input_dimensions,
                              const DeviceMemory<float>& input_data,
                              const dnn::BatchDescriptor& output_dimensions,
-                             DeviceMemory<float>* output_data) = 0;
+                             DeviceMemory<float>* output_data,
+                             ScratchAllocator* workspace_allocator) = 0;
 
   virtual bool DoPoolForward(Stream* stream,
                              const dnn::PoolingDescriptor& pooling_dimensions,
                              const dnn::BatchDescriptor& input_dimensions,
                              const DeviceMemory<double>& input_data,
                              const dnn::BatchDescriptor& output_dimensions,
-                             DeviceMemory<double>* output_data) {
+                             DeviceMemory<double>* output_data,
+                             ScratchAllocator* workspace_allocator) {
     LOG(FATAL) << "DoPoolForward not implemented for double.";
     return false;
   }
@@ -1566,7 +1580,8 @@ class DnnSupport {
                              const dnn::BatchDescriptor& input_dimensions,
                              const DeviceMemory<Eigen::half>& input_data,
                              const dnn::BatchDescriptor& output_dimensions,
-                             DeviceMemory<Eigen::half>* output_data) {
+                             DeviceMemory<Eigen::half>* output_data,
+                             ScratchAllocator* workspace_allocator) {
     LOG(FATAL) << "DoPoolForward not implemented for float16.";
     return false;
   }
@@ -1579,7 +1594,8 @@ class DnnSupport {
                               const dnn::BatchDescriptor& output_dimensions,
                               const DeviceMemory<double>& output_data,
                               const DeviceMemory<double>& input_diff_data,
-                              DeviceMemory<double>* output_diff_data) {
+                              DeviceMemory<double>* output_diff_data,
+                              ScratchAllocator* workspace_allocator) {
     LOG(FATAL) << "DoPoolBackward not implemented.";
     return false;
   }
@@ -1591,7 +1607,8 @@ class DnnSupport {
                               const dnn::BatchDescriptor& output_dimensions,
                               const DeviceMemory<float>& output_data,
                               const DeviceMemory<float>& input_diff_data,
-                              DeviceMemory<float>* output_diff_data) {
+                              DeviceMemory<float>* output_diff_data,
+                              ScratchAllocator* workspace_allocator) {
     LOG(FATAL) << "DoPoolBackward not implemented.";
     return false;
   }
@@ -1603,7 +1620,8 @@ class DnnSupport {
                               const dnn::BatchDescriptor& output_dimensions,
                               const DeviceMemory<Eigen::half>& output_data,
                               const DeviceMemory<Eigen::half>& input_diff_data,
-                              DeviceMemory<Eigen::half>* output_diff_data) {
+                              DeviceMemory<Eigen::half>* output_diff_data,
+                              ScratchAllocator* workspace_allocator) {
     LOG(FATAL) << "DoPoolBackward not implemented.";
     return false;
   }
@@ -1650,7 +1668,8 @@ class DnnSupport {
       const DeviceMemory<float>& raw_data,
       const DeviceMemory<float>& normalized_data,
       const DeviceMemory<float>& normalized_variable_gradient,
-      DeviceMemory<float>* raw_variable_gradient) {
+      DeviceMemory<float>* raw_variable_gradient,
+      ScratchAllocator* workspace_allocator) {
     return false;
   }
 

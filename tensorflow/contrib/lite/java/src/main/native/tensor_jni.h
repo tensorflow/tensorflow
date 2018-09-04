@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_LITE_JAVA_TENSOR_JNI_H_
-#define TENSORFLOW_CONTRIB_LITE_JAVA_TENSOR_JNI_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_JAVA_SRC_MAIN_NATIVE_TENSOR_JNI_H_
+#define TENSORFLOW_CONTRIB_LITE_JAVA_SRC_MAIN_NATIVE_TENSOR_JNI_H_
 
 #include <jni.h>
 #include "tensorflow/contrib/lite/context.h"
@@ -24,8 +24,25 @@ extern "C" {
 #endif  // __cplusplus
 
 /*
- *  Class:     org_tensorflow_lite_TfLiteTensor
- *  Method:
+ * Class:     org_tensorflow_lite_Tensor
+ * Method:    buffer
+ * Signature: (J)Ljava/nio/ByteBuffer;
+ */
+JNIEXPORT jobject JNICALL Java_org_tensorflow_lite_Tensor_buffer(JNIEnv* env,
+                                                                 jclass clazz,
+                                                                 jlong handle);
+
+/*
+ *  Class:     org_tensorflow_lite_Tensor
+ *  Method:    writeDirectBuffer
+ *  Signature: (JLjava/nio/ByteBuffer;)
+ */
+JNIEXPORT void JNICALL Java_org_tensorflow_lite_Tensor_writeDirectBuffer(
+    JNIEnv* env, jclass clazz, jlong handle, jobject src);
+
+/*
+ *  Class:     org_tensorflow_lite_Tensor
+ *  Method:    dtype
  *  Signature: (J)I
  */
 JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_dtype(JNIEnv* env,
@@ -33,8 +50,8 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_dtype(JNIEnv* env,
                                                              jlong handle);
 
 /*
- *  Class:     org_tensorflow_lite_TfLiteTensor
- *  Method:
+ *  Class:     org_tensorflow_lite_Tensor
+ *  Method:    shape
  *  Signature: (J)[I
  */
 JNIEXPORT jintArray JNICALL Java_org_tensorflow_lite_Tensor_shape(JNIEnv* env,
@@ -42,33 +59,37 @@ JNIEXPORT jintArray JNICALL Java_org_tensorflow_lite_Tensor_shape(JNIEnv* env,
                                                                   jlong handle);
 
 /*
- *  Class:     org_tensorflow_lite_TfLiteTensor
- *  Method:
+ *  Class:     org_tensorflow_lite_Tensor
+ *  Method:    numBytes
+ *  Signature: (J)I
+ */
+JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_numBytes(JNIEnv* env,
+                                                                jclass clazz,
+                                                                jlong handle);
+
+/*
+ *  Class:     org_tensorflow_lite_Tensor
+ *  Method:    readMultiDimensionalArray
  *  Signature: (JLjava/lang/Object;)
  */
 JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_Tensor_readMultiDimensionalArray(JNIEnv* env,
                                                           jclass clazz,
                                                           jlong handle,
-                                                          jobject value);
+                                                          jobject dst);
 
 /*
- * Finds the size of each data type.
+ *  Class:     org_tensorflow_lite_Tensor
+ *  Method:    writeMultidimensionalArray
+ *  Signature: (JLjava/lang/Object;)
  */
-size_t elementByteSize(TfLiteType data_type);
-
-/*
- * Writes data of a ByteBuffer into dest.
- */
-size_t writeByteBuffer(JNIEnv* env, jobject object, char** dst, int dst_size);
-
-/*
- * Writes a multi-dimensional array into dest.
- */
-size_t writeMultiDimensionalArray(JNIEnv* env, jobject src, TfLiteType type,
-                                  int dims_left, char** dst, int dst_size);
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_Tensor_writeMultiDimensionalArray(JNIEnv* env,
+                                                           jclass clazz,
+                                                           jlong handle,
+                                                           jobject src);
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
-#endif  // TENSORFLOW_CONTRIB_LITE_JAVA_TENSOR_JNI_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_JAVA_SRC_MAIN_NATIVE_TENSOR_JNI_H_

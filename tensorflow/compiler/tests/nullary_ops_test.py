@@ -20,23 +20,23 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import googletest
 
 
-class NullaryOpsTest(XLATestCase):
+class NullaryOpsTest(xla_test.XLATestCase):
 
   def _testNullary(self, op, expected):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       with self.test_scope():
         output = op()
       result = session.run(output)
       self.assertAllClose(result, expected, rtol=1e-3)
 
   def testNoOp(self):
-    with self.test_session():
+    with self.cached_session():
       with self.test_scope():
         output = control_flow_ops.no_op()
       # This should not crash.

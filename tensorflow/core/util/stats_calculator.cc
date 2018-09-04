@@ -21,8 +21,6 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
-#include "tensorflow/core/platform/logging.h"
-
 namespace tensorflow {
 
 StatsCalculator::StatsCalculator(const StatSummarizerOptions& options)
@@ -93,7 +91,7 @@ std::string StatsCalculator::ColumnString(const Detail& detail,
 
 void StatsCalculator::OrderNodesByMetric(
     SortingMetric metric, std::vector<const Detail*>* details) const {
-  std::priority_queue<std::pair<string, const Detail*>> sorted_list;
+  std::priority_queue<std::pair<std::string, const Detail*>> sorted_list;
   const int num_nodes = details_.size();
 
   for (const auto& det : details_) {
@@ -142,7 +140,7 @@ void StatsCalculator::ComputeStatsByType(
   int64_t run_count = run_total_us_.count();
 
   for (const auto& det : details_) {
-    const string node_name = det.first;
+    const std::string node_name = det.first;
     const Detail& detail = det.second;
 
     int64_t curr_time_val =
@@ -151,7 +149,7 @@ void StatsCalculator::ComputeStatsByType(
 
     int64_t curr_memory_val = detail.mem_used.newest();
 
-    const string& node_type = detail.type;
+    const std::string& node_type = detail.type;
 
     (*node_type_map_count)[node_type] += 1;
     (*node_type_map_time)[node_type] += curr_time_val;
@@ -163,11 +161,11 @@ void StatsCalculator::ComputeStatsByType(
 std::string StatsCalculator::GetStatsByNodeType() const {
   std::stringstream stream;
 
+  stream << "Number of nodes executed: " << details_.size() << std::endl;
+
   stream << "============================== Summary by node type "
             "=============================="
          << std::endl;
-
-  LOG(INFO) << "Number of nodes executed: " << details_.size();
 
   std::map<std::string, int64_t> node_type_map_count;
   std::map<std::string, int64_t> node_type_map_time;
@@ -180,11 +178,12 @@ std::string StatsCalculator::GetStatsByNodeType() const {
                      &accumulated_us);
 
   // Sort them.
-  std::priority_queue<std::pair<int64_t, std::pair<string, int64_t>>> timings;
+  std::priority_queue<std::pair<int64_t, std::pair<std::string, int64_t>>>
+      timings;
   for (const auto& node_type : node_type_map_time) {
     const int64_t mem_used = node_type_map_memory[node_type.first];
     timings.emplace(node_type.second,
-                    std::pair<string, int64_t>(node_type.first, mem_used));
+                    std::pair<std::string, int64_t>(node_type.first, mem_used));
   }
 
   InitField(stream, 24) << "[Node type]";
@@ -201,7 +200,7 @@ std::string StatsCalculator::GetStatsByNodeType() const {
     auto entry = timings.top();
     timings.pop();
 
-    const string node_type = entry.second.first;
+    const std::string node_type = entry.second.first;
     const float memory = entry.second.second / 1000.0f;
 
     const int64_t node_type_total_us = entry.first;
@@ -273,17 +272,24 @@ std::string StatsCalculator::GetOutputString() const {
   return stream.str();
 }
 
-void StatsCalculator::PrintStepStats() const {
-  string output = GetOutputString();
-  std::istringstream iss(output);
-  for (std::string line; std::getline(iss, line);) {
-    LOG(INFO) << line;
+void StatsCalculator::AddNodeStats(const std::string& name,
+                                   const std::string& type, int64_t run_order,
+                                   int64_t start_us, int64_t rel_end_us,
+                                   int64_t mem_used) {
+  Detail* detail = nullptr;
+  if (details_.find(name) == details_.end()) {
+    details_.insert({name, {}});
+    detail = &details_.at(name);
+    detail->type = type;
+    detail->name = name;
+    detail->run_order = run_order;
+  } else {
+    detail = &details_.at(name);
   }
-}
-
-void StatsCalculator::UpdateDetails(
-    const std::map<std::string, Detail>& details) {
-  details_.insert(details.begin(), details.end());
+  detail->start_us.UpdateStat(start_us);
+  detail->rel_end_us.UpdateStat(rel_end_us);
+  detail->mem_used.UpdateStat(mem_used);
+  detail->times_called++;
 }
 
 }  // namespace tensorflow

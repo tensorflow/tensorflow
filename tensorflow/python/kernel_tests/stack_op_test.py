@@ -277,6 +277,18 @@ class AutomaticStackingTest(test.TestCase):
         [[0., 0., 0.], [0., 0., 0.], [0., 0., 0.]], dtype=dtypes.float64)
     self.assertEqual(dtypes.float64, t_2.dtype)
 
+    t_3 = ops.convert_to_tensor(
+        [[0., 0., 0.],
+         constant_op.constant([0., 0., 0.], dtype=dtypes.float64), [0., 0., 0.]
+        ],
+        dtype=dtypes.float32)
+    self.assertEqual(dtypes.float32, t_3.dtype)
+
+    t_4 = ops.convert_to_tensor(
+        [constant_op.constant([0., 0., 0.], dtype=dtypes.float64)],
+        dtype=dtypes.float32)
+    self.assertEqual(dtypes.float32, t_4.dtype)
+
     with self.assertRaises(TypeError):
       ops.convert_to_tensor([
           constant_op.constant(
@@ -284,17 +296,15 @@ class AutomaticStackingTest(test.TestCase):
                   [0., 0., 0.], dtype=dtypes.float64), [0., 0., 0.]
       ])
 
-    with self.assertRaises(TypeError):
-      ops.convert_to_tensor(
-          [[0., 0., 0.], constant_op.constant(
-              [0., 0., 0.], dtype=dtypes.float64), [0., 0., 0.]],
-          dtype=dtypes.float32)
+  def testDtypeConversionWhenTensorDtypeMismatch(self):
+    t_0 = ops.convert_to_tensor([0., 0., 0.])
+    self.assertEqual(dtypes.float32, t_0.dtype)
 
-    with self.assertRaises(TypeError):
-      ops.convert_to_tensor(
-          [constant_op.constant(
-              [0., 0., 0.], dtype=dtypes.float64)],
-          dtype=dtypes.float32)
+    t_1 = ops.convert_to_tensor([0, 0, 0])
+    self.assertEqual(dtypes.int32, t_1.dtype)
+
+    t_2 = ops.convert_to_tensor([t_0, t_0, t_1], dtype=dtypes.float64)
+    self.assertEqual(dtypes.float64, t_2.dtype)
 
   def testPlaceholder(self):
     with self.test_session(use_gpu=True):

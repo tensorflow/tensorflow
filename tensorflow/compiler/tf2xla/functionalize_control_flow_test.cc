@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/equal_graph_def.h"
@@ -36,12 +37,12 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// Returns the names of the "then" and "else" functions for the XlaIf node in a
+// Returns the names of the "then" and "else" functions for the If node in a
 // graph.
 Status FindIfThenAndElse(const GraphDef& graph, string* op_name,
                          NameAttrList* then_fn, NameAttrList* else_fn) {
   for (const NodeDef& node : graph.node()) {
-    if (node.op() == "XlaIf") {
+    if (node.op() == "If") {
       *op_name = node.name();
       const NameAttrList* result;
       TF_RETURN_IF_ERROR(GetNodeAttr(node, "then_branch", &result));
@@ -51,7 +52,7 @@ Status FindIfThenAndElse(const GraphDef& graph, string* op_name,
       return Status::OK();
     }
   }
-  return errors::NotFound("No XlaIf node found in graph");
+  return errors::NotFound("No If node found in graph");
 }
 
 // Graph:
@@ -114,8 +115,13 @@ TEST(FunctionalizeControlFlow, Conditional) {
     auto if_op = ops::XlaIf(scope.WithOpName(op_name), less,
                             std::initializer_list<Input>{less, y, x}, then_fn,
                             else_fn, {DT_INT32});
+    auto id = ops::Identity(scope.WithOpName("cond/Merge"), if_op.output[0]);
     GraphDef expected;
     TF_EXPECT_OK(scope.ToGraphDef(&expected));
+    // TODO(jpienaar): Create wrapper for IfOp.
+    for (NodeDef& n : *expected.mutable_node()) {
+      if (n.op() == "XlaIf") n.set_op("If");
+    }
     TF_EXPECT_GRAPH_EQ(expected, graph_def);
   }
 
@@ -799,11 +805,11 @@ TEST(FunctionalizeControlFlow, Complex) {
     auto assign = ops::AssignAddVariableOp(
         scope.WithOpName("outer/inner/assign_add"), enter_var, add_jkx);
 
-    auto one =
-        ops::Const<int32>(scope.WithOpName("outer/inner/One")
-                              .WithControlDependencies(
-                                  gtl::ArraySlice<Operation>{assign.operation}),
-                          1);
+    auto one = ops::Const<int32>(
+        scope.WithOpName("outer/inner/One")
+            .WithControlDependencies(
+                absl::Span<const Operation>{assign.operation}),
+        1);
     auto add_j =
         ops::Add(scope.WithOpName("outer/inner/add_j"), identity_j, one);
 
@@ -817,7 +823,7 @@ TEST(FunctionalizeControlFlow, Complex) {
         scope.WithOpName("outer/add/y").WithControlDependencies(identity_i), 1);
     auto add_i =
         ops::Add(scope.WithOpName("outer/add")
-                     .WithControlDependencies(gtl::ArraySlice<Operation>{
+                     .WithControlDependencies(absl::Span<const Operation>{
                          exit_j.output.op(), exit_k.output.op()}),
                  identity_i, one_outer);
     auto next_iteration_i =
@@ -923,7 +929,7 @@ TEST(FunctionalizeControlFlow, Complex) {
         scope.WithOpName("outer/add/y").WithControlDependencies(identity_i), 1);
     auto add_i =
         ops::Add(scope.WithOpName("outer/add")
-                     .WithControlDependencies(gtl::ArraySlice<Operation>{
+                     .WithControlDependencies(absl::Span<const Operation>{
                          while_op[0].op(), while_op[1].op()}),
                  identity_i, one_outer);
 
@@ -985,11 +991,11 @@ TEST(FunctionalizeControlFlow, Complex) {
     auto assign = ops::AssignAddVariableOp(
         scope.WithOpName("outer/inner/assign_add"), arg3, add_jkx);
 
-    auto one =
-        ops::Const<int32>(scope.WithOpName("outer/inner/One")
-                              .WithControlDependencies(
-                                  gtl::ArraySlice<Operation>{assign.operation}),
-                          1);
+    auto one = ops::Const<int32>(
+        scope.WithOpName("outer/inner/One")
+            .WithControlDependencies(
+                absl::Span<const Operation>{assign.operation}),
+        1);
     auto add_j =
         ops::Add(scope.WithOpName("outer/inner/add_j"), identity_j, one);
 

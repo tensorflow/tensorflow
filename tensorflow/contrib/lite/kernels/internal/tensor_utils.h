@@ -17,6 +17,10 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 
+#if defined(_MSC_VER)
+#define __restrict__ __restrict
+#endif
+
 namespace tflite {
 namespace tensor_utils {
 
@@ -31,8 +35,8 @@ bool IsZeroVector(const float* vector, int v_size);
 // It also outputs the range (min, max) of the floating point buffer, and the
 // scaling factor used to quantize the values.
 void SymmetricQuantizeFloats(const float* values, const int size,
-                             int8_t* quantized_values, float* min, float* max,
-                             float* scaling_factor);
+                             int8_t* quantized_values, float* min_value,
+                             float* max_value, float* scaling_factor);
 
 // Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
 // dimension composed by input vectors independent from each other). The result
@@ -97,6 +101,11 @@ void BatchVectorBatchVectorDotProduct(const float* vector1,
                                       int n_batch, float* result,
                                       int result_stride);
 
+// Cwise product of a vector and a batch-vector.
+void VectorBatchVectorCwiseProduct(const float* vector, int v_size,
+                                   const float* batch_vector, int n_batch,
+                                   float* result);
+
 // Cwise product and accumulate of a vector and a batch-vector. Since it's a MAC
 // operation, the assumption here is that result array is initialized to valid
 // values.
@@ -123,6 +132,10 @@ void Sub1Vector(const float* vector, int v_size, float* result);
 
 // Fill vector with 0.f.
 void ZeroVector(float* vector, int v_size);
+
+// Multiply all elements of vector with a scalar.
+void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,
+                          float* result);
 
 // Clip elements of a vector using a abs_limit value.
 void ClipVector(const float* vector, int v_size, float abs_limit,

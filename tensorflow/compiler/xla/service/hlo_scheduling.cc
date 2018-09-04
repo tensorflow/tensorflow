@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 
 #include <map>
+#include <queue>
 #include <utility>
 #include <vector>
 
@@ -28,38 +29,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 
-using ::tensorflow::strings::HumanReadableNumBytes;
-
 namespace xla {
-
-StatusOr<int64> MinimumMemoryForSequence(
-    const SequentialHloOrdering::HloModuleSequence& module_sequence,
-    const LogicalBuffer::SizeFunction& size_function) {
-  if (module_sequence.empty()) {
-    return 0;
-  }
-
-  const HloModule* module = module_sequence.begin()->first->parent();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
-                      TuplePointsToAnalysis::Run(module));
-
-  // The absolute minimum memory required for a given sequence of instructions
-  // is determined by the sequence of Alloc and Free calls on a simulated heap,
-  // ignoring fragmentation. We run the heap simulation on the whole module,
-  // rather than summing each computation, since it gives us a better lower
-  // bound, by minimizing the liveness of sub-computations.
-  TF_ASSIGN_OR_RETURN(
-      HeapSimulator::Result result,
-      HeapSimulator::Run(MakeUnique<NoFragmentationStatsHeap>(), *module,
-                         module_sequence, *points_to_analysis, size_function));
-  return result.heap_size;
-}
-
 namespace {
+
+using ::tensorflow::strings::HumanReadableNumBytes;
 
 // Class implementing a list scheduler of HLO instructions which produces a
 // sequence which minimizes memory usage by preferring to schedule the node that
@@ -398,7 +374,7 @@ int64 SumLogicalBufferSizes(
   return size;
 }
 
-StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
+StatusOr<std::vector<const HloInstruction*>> ScheduleComputationHelper(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
@@ -416,30 +392,15 @@ StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
 
 }  // namespace
 
-StatusOr<int64> MinimumMemoryForComputation(
-    const HloComputation& computation,
-    const std::vector<const HloInstruction*>& sequence,
-    const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function) {
-  TF_ASSIGN_OR_RETURN(
-      HeapSimulator::Result result,
-      HeapSimulator::Run(MakeUnique<NoFragmentationStatsHeap>(), computation,
-                         sequence, points_to_analysis, size_function));
-  return result.heap_size;
-}
-
 StatusOr<std::vector<const HloInstruction*>> DFSMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
     const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
         memory_by_computation) {
-  // This ordering is based on DFS post-order, with a heuristic to decide which
-  // operand to visit first.  The heuristic is based on 'extra_users', which is
-  // simply users-1 for each instruction.  By subtracting 1, we're saying that
-  // instructions with no users or a single user don't count; instructions with
-  // lots of fan-out will be visited earlier.
+  // These variables are a hack to prevent overflows.
   int64 cumulative_total_size = 0;
+  int64 total_hlos = computation.parent()->NumUniqueInstructionIds();
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> extra_users;
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> total_sizes;
   for (const HloInstruction* hlo : computation.MakeInstructionPostOrder()) {
@@ -448,6 +409,11 @@ StatusOr<std::vector<const HloInstruction*>> DFSMemoryScheduler(
       total_sizes[hlo] = 0;
       continue;
     }
+    // This ordering is based on DFS post-order, with a heuristic to decide
+    // which operand to visit first.  The heuristic is based on 'extra_users',
+    // which is simply users-1 for each instruction.  By subtracting 1, we're
+    // saying that instructions with no users or a single user don't count;
+    // instructions with lots of fan-out will be visited earlier.
     extra_users[hlo] = hlo->users().empty() ? 0 : hlo->users().size() - 1;
     int64 logical_buffer_size = SumLogicalBufferSizes(
         points_to_analysis.GetBuffersDefinedByInstruction(hlo), size_function);
@@ -463,10 +429,13 @@ StatusOr<std::vector<const HloInstruction*>> DFSMemoryScheduler(
     // lead to it. But computation is a DAG, so we are double-counting nodes,
     // which can lead to overflows for large programs.
     // cumulative_total_size caps the size to prevent overflows.
+    // Same for total_hlos: it prevents overflows on very large and branchy
+    // models, where the number of paths is exponential to the number of nodes.
     // NOTE(dimvar): this is quite ugly and should be changed. It's unclear
     // why we care about transitive sizes; when scheduling a node, its input
     // and output buffers should be all that matters, not its "history".
     total_sizes[hlo] = std::min(total_sizes[hlo], cumulative_total_size);
+    extra_users[hlo] = std::min(extra_users[hlo], total_hlos);
   }
   CHECK_EQ(extra_users.size(), computation.instruction_count());
   CHECK_EQ(total_sizes.size(), computation.instruction_count());
@@ -533,29 +502,29 @@ StatusOr<std::vector<const HloInstruction*>> DefaultMemoryScheduler(
       std::vector<const HloInstruction*> list_sequence,
       ListMemoryScheduler(computation, points_to_analysis, size_function,
                           memory_by_computation));
-  TF_ASSIGN_OR_RETURN(
-      const int64 list_memory,
-      MinimumMemoryForComputation(computation, list_sequence,
-                                  points_to_analysis, size_function));
+  TF_ASSIGN_OR_RETURN(const int64 list_memory,
+                      HeapSimulator::MinimumMemoryForComputation(
+                          computation, list_sequence, points_to_analysis,
+                          size_function, &memory_by_computation));
   VLOG(2) << "Min-memory list sequence: " << HumanReadableNumBytes(list_memory);
 
   TF_ASSIGN_OR_RETURN(std::vector<const HloInstruction*> dfs_sequence,
                       DFSMemoryScheduler(computation, points_to_analysis,
                                          size_function, memory_by_computation));
-  TF_ASSIGN_OR_RETURN(
-      const int64 dfs_memory,
-      MinimumMemoryForComputation(computation, dfs_sequence, points_to_analysis,
-                                  size_function));
+  TF_ASSIGN_OR_RETURN(const int64 dfs_memory,
+                      HeapSimulator::MinimumMemoryForComputation(
+                          computation, dfs_sequence, points_to_analysis,
+                          size_function, &memory_by_computation));
   VLOG(2) << "Min-memory dfs sequence: " << HumanReadableNumBytes(dfs_memory);
 
   TF_ASSIGN_OR_RETURN(
       std::vector<const HloInstruction*> post_order_sequence,
       PostOrderMemoryScheduler(computation, points_to_analysis, size_function,
                                memory_by_computation));
-  TF_ASSIGN_OR_RETURN(
-      const int64 post_order_memory,
-      MinimumMemoryForComputation(computation, post_order_sequence,
-                                  points_to_analysis, size_function));
+  TF_ASSIGN_OR_RETURN(const int64 post_order_memory,
+                      HeapSimulator::MinimumMemoryForComputation(
+                          computation, post_order_sequence, points_to_analysis,
+                          size_function, &memory_by_computation));
   VLOG(2) << "Min-memory post order sequence: "
           << HumanReadableNumBytes(post_order_memory);
 
@@ -576,10 +545,9 @@ StatusOr<std::vector<const HloInstruction*>> DefaultMemoryScheduler(
   }
 }
 
-StatusOr<SequentialHloOrdering::HloModuleSequence>
-CreateMemoryMinimizingSequence(const HloModule& module,
-                               const LogicalBuffer::SizeFunction& size_function,
-                               const MemorySchedulerAlgorithm& algorithm) {
+StatusOr<SequentialHloOrdering::HloModuleSequence> ScheduleComputationsInModule(
+    const HloModule& module, const LogicalBuffer::SizeFunction& size_function,
+    const MemorySchedulerAlgorithm& algorithm) {
   SequentialHloOrdering::HloModuleSequence sequence;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(&module));
@@ -587,28 +555,213 @@ CreateMemoryMinimizingSequence(const HloModule& module,
   for (const auto* computation : module.MakeComputationPostOrder()) {
     if (!computation->IsFusionComputation()) {
       TF_ASSIGN_OR_RETURN(auto one_computation_sequence,
-                          CreateMemoryMinimizingSequence(
+                          ScheduleComputationHelper(
                               *computation, *points_to_analysis, size_function,
                               algorithm, memory_by_computation));
       memory_by_computation[computation] =
-          MinimumMemoryForComputation(*computation, one_computation_sequence,
-                                      *points_to_analysis, size_function)
+          HeapSimulator::MinimumMemoryForComputation(
+              *computation, one_computation_sequence, *points_to_analysis,
+              size_function, &memory_by_computation)
               .ValueOrDie();
       sequence[computation] = std::move(one_computation_sequence);
     }
   }
+  VLOG(1) << "Module schedule:\n" << sequence;
   return sequence;
 }
 
-StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
+StatusOr<std::vector<const HloInstruction*>> ScheduleOneComputation(
     const HloComputation& computation,
     const LogicalBuffer::SizeFunction& size_function) {
   CHECK(!computation.IsFusionComputation());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(computation.parent()));
   tensorflow::gtl::FlatMap<const HloComputation*, int64> empty_map;
-  return CreateMemoryMinimizingSequence(computation, *points_to_analysis,
-                                        size_function, nullptr, empty_map);
+  return ScheduleComputationHelper(computation, *points_to_analysis,
+                                   size_function, nullptr, empty_map);
+}
+
+tensorflow::gtl::FlatMap<const HloComputation*, std::vector<int>>
+ComputeIdSchedule(const SequentialHloOrdering::HloModuleSequence& sequence) {
+  tensorflow::gtl::FlatMap<const HloComputation*, std::vector<int>> id_sequence;
+  for (const auto& computation_sequence : sequence) {
+    for (const HloInstruction* instruction : computation_sequence.second) {
+      id_sequence[computation_sequence.first].push_back(
+          instruction->unique_id());
+    }
+  }
+  return id_sequence;
+}
+
+Status UpdateSchedule(
+    const HloModule& module,
+    const tensorflow::gtl::FlatMap<const HloComputation*, std::vector<int>>&
+        id_sequence,
+    SequentialHloOrdering::HloModuleSequence* sequence) {
+  // Map from unique ID to HloInstruction pointer for instructions in the
+  // module.
+  tensorflow::gtl::FlatMap<int, const HloInstruction*> id_to_instruction;
+  // Set of all HloInstructions in the schedule.
+  tensorflow::gtl::FlatSet<int> ids_in_schedule;
+  std::vector<HloComputation*> nonfusion_computations =
+      module.MakeNonfusionComputations();
+  for (const HloComputation* computation : nonfusion_computations) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      TF_RET_CHECK(
+          id_to_instruction.insert({instruction->unique_id(), instruction})
+              .second);
+    }
+    for (int id : id_sequence.at(computation)) {
+      ids_in_schedule.insert(id);
+    }
+  }
+
+  // Map from HloInstruction X to newly added instructions (instruction is in
+  // module, but not in schedule) which use X. If an instruction is not in the
+  // map, then it has no users which are newly added instructions.
+  tensorflow::gtl::FlatMap<const HloInstruction*,
+                           std::vector<const HloInstruction*>>
+      new_instruction_uses;
+
+  // For each newly added instruction, this is the count of the instruction's
+  // operands that have not yet been scheduled. When this value reaches zero,
+  // then the instruction may be placed in the schedule.
+  tensorflow::gtl::FlatMap<const HloInstruction*, int>
+      unscheduled_operand_count;
+  // For each computation, this is the set of newly added instructions which
+  // have no operands. These must be handled specially and are added to the
+  // beginning of the schedule.
+  tensorflow::gtl::FlatMap<const HloComputation*,
+                           std::vector<const HloInstruction*>>
+      new_zero_operand_instructions;
+  for (const HloComputation* computation : nonfusion_computations) {
+    new_zero_operand_instructions[computation] = {};
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (ids_in_schedule.count(instruction->unique_id()) == 0) {
+        // This is a newly added instruction which is not in the schedule.
+        for (const HloInstruction* operand : instruction->operands()) {
+          new_instruction_uses[operand].push_back(instruction);
+        }
+        if (instruction->operands().empty()) {
+          new_zero_operand_instructions[computation].push_back(instruction);
+        }
+        unscheduled_operand_count[instruction] = instruction->operand_count();
+      }
+    }
+  }
+
+  // Update the schedule with the newly added instructions, and remove any
+  // instructions no longer in the graph.
+  for (const HloComputation* computation : nonfusion_computations) {
+    std::vector<const HloInstruction*> old_computation_sequence =
+        std::move(sequence->at(computation));
+    sequence->at(computation).clear();
+
+    // Create a worklist of newly added instructions which are ready to be added
+    // to the schedule. Initialize worklist with those that have zero operands.
+    std::queue<const HloInstruction*> worklist;
+    for (const HloInstruction* instruction :
+         new_zero_operand_instructions.at(computation)) {
+      worklist.push(instruction);
+    }
+
+    // Lambda which schedules all instructions on the worklist.
+    auto schedule_worklist = [&]() {
+      while (!worklist.empty()) {
+        const HloInstruction* instruction = worklist.front();
+        worklist.pop();
+        sequence->at(computation).push_back(instruction);
+        std::vector<const HloInstruction*>* new_users =
+            tensorflow::gtl::FindOrNull(new_instruction_uses, instruction);
+        if (new_users != nullptr) {
+          // This just-scheduled instruction has users which are newly added to
+          // the module. Update the number of unscheduled operands and push the
+          // newly added instruction to the worklist if it is ready to
+          // schedule.
+          for (const HloInstruction* new_user : *new_users) {
+            unscheduled_operand_count.at(new_user)--;
+            CHECK_GE(unscheduled_operand_count.at(new_user), 0);
+            if (unscheduled_operand_count.at(new_user) == 0) {
+              worklist.push(new_user);
+            }
+          }
+        }
+      }
+    };
+
+    schedule_worklist();
+    for (int id : id_sequence.at(computation)) {
+      auto it = id_to_instruction.find(id);
+      if (it == id_to_instruction.end()) {
+        // This instruction in the schedule is no longer in the module.
+        continue;
+      }
+      const HloInstruction* instruction = it->second;
+      worklist.push(instruction);
+      schedule_worklist();
+    }
+  }
+
+  TF_RETURN_IF_ERROR(VerifySchedule(module, *sequence));
+  return Status::OK();
+}
+
+Status VerifySchedule(
+    const HloModule& module,
+    const SequentialHloOrdering::HloModuleSequence& sequence) {
+  VLOG(2) << "VerifySchedule()";
+  XLA_VLOG_LINES(2, module.ToString());
+  VLOG(2) << sequence;
+
+  // Verify the set of computations in the sequence is exactly the set of
+  // computations in the module.
+  std::vector<HloComputation*> nonfusion_computations =
+      module.MakeNonfusionComputations();
+  TF_RET_CHECK(nonfusion_computations.size() == sequence.size());
+  tensorflow::gtl::FlatSet<const HloComputation*> computations_in_module(
+      module.computations().begin(), module.computations().end());
+  for (const auto& computation_sequence : sequence) {
+    TF_RET_CHECK(computations_in_module.count(computation_sequence.first) == 1);
+  }
+
+  // For each computation verify the set of instructions is the same and that
+  // each dependency and control edge is honored.
+  for (const HloComputation* computation : nonfusion_computations) {
+    tensorflow::gtl::FlatMap<const HloInstruction*, int> instruction_position;
+    int pos = 0;
+    for (const HloInstruction* instruction : sequence.at(computation)) {
+      TF_RET_CHECK(instruction_position.insert({instruction, pos}).second)
+          << "Instruction " << instruction->name()
+          << " appears more than once in the schedule";
+      pos++;
+    }
+
+    TF_RET_CHECK(instruction_position.size() ==
+                 computation->instruction_count());
+    for (const HloInstruction* instruction : computation->instructions()) {
+      TF_RET_CHECK(instruction_position.count(instruction) == 1)
+          << "Instruction " << instruction->name() << " is not in schedule";
+    }
+
+    for (const HloInstruction* instruction : computation->instructions()) {
+      for (const HloInstruction* operand : instruction->operands()) {
+        TF_RET_CHECK(instruction_position.at(operand) <
+                     instruction_position.at(instruction))
+            << "Instruction " << instruction->name()
+            << " is not scheduled after its operand " << operand->name();
+      }
+
+      for (const HloInstruction* pred : instruction->control_predecessors()) {
+        TF_RET_CHECK(instruction_position.at(pred) <
+                     instruction_position.at(instruction))
+            << "Instruction " << instruction->name()
+            << " is not scheduled after its control predecessor "
+            << pred->name();
+      }
+    }
+  }
+
+  return Status::OK();
 }
 
 }  // namespace xla

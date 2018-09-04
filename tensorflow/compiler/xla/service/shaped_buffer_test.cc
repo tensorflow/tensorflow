@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -34,7 +35,7 @@ TEST(ShapedBufferTest, ScopedShapeBufferAsShapedBufferB71629047) {
   xla::StreamExecutorMemoryAllocator allocator(platform, executors);
   const xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {});
   const int kDeviceOrdinal = 0;
-  auto scoped_buffer = tensorflow::MakeUnique<xla::ScopedShapedBuffer>(
+  auto scoped_buffer = absl::make_unique<xla::ScopedShapedBuffer>(
       shape, shape, &allocator, kDeviceOrdinal);
   std::unique_ptr<xla::ShapedBuffer> buffer = std::move(scoped_buffer);
   buffer = nullptr;

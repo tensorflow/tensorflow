@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -37,8 +37,8 @@ ConvolutionThunk::ConvolutionThunk(
     const BufferAllocation::Slice& tuple_result_buffer,
     const BufferAllocation::Slice& scratch_buffer, const Shape& input_shape,
     const Shape& filter_shape, const Shape& output_shape, const Window& window,
-    const ConvolutionDimensionNumbers& dim_nums, int64 algorithm,
-    bool tensor_ops_enabled, const HloInstruction* hlo)
+    const ConvolutionDimensionNumbers& dim_nums, int64 feature_group_count,
+    int64 algorithm, bool tensor_ops_enabled, const HloInstruction* hlo)
     : Thunk(Kind::kConvolution, hlo),
       convolution_kind_(convolution_kind),
       input_buffer_(input_buffer),
@@ -51,11 +51,13 @@ ConvolutionThunk::ConvolutionThunk(
       output_shape_(output_shape),
       window_(window),
       dim_nums_(dim_nums),
+      feature_group_count_(feature_group_count),
       algorithm_(algorithm),
       tensor_ops_enabled_(tensor_ops_enabled) {}
 
 Status ConvolutionThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
+    const BufferAllocations& buffer_allocations, se::Stream* stream,
+    HloExecutionProfiler* profiler) {
   se::DeviceMemoryBase input_data =
       buffer_allocations.GetDeviceAddress(input_buffer_);
   se::DeviceMemoryBase filter_data =
@@ -68,10 +70,11 @@ Status ConvolutionThunk::ExecuteOnStream(
   se::dnn::AlgorithmConfig algorithm_config(
       se::dnn::AlgorithmDesc(algorithm_, tensor_ops_enabled_));
 
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   TF_RETURN_IF_ERROR(RunCudnnConvolution(
       convolution_kind_, input_shape_, filter_shape_, output_shape_, input_data,
-      filter_data, output_data, scratch, window_, dim_nums_, algorithm_config,
-      stream));
+      filter_data, output_data, scratch, window_, dim_nums_,
+      feature_group_count_, algorithm_config, stream));
 
   // Figure out which of output/input/filter is the result produced by
   // this op, and write the result tuple.

@@ -16,15 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FFT_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FFT_THUNK_H_
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
@@ -61,7 +62,7 @@ class FftThunk : public Thunk {
  public:
   // Constructs a thunk for launching an FFT on a stream.
   // Semantics of null hlo_instruction argument are as in Thunk.
-  FftThunk(FftType fft_type, tensorflow::gtl::ArraySlice<int64> fft_length,
+  FftThunk(FftType fft_type, absl::Span<const int64> fft_length,
            const BufferAllocation::Slice& input_buffer,
            const BufferAllocation::Slice& output_buffer,
            const Shape& input_shape, const Shape& output_shape,
@@ -72,7 +73,8 @@ class FftThunk : public Thunk {
 
   // Does the FFT for the thunk on "stream".
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream) override;
+                         se::Stream* stream,
+                         HloExecutionProfiler* profiler) override;
 
  private:
   const se::fft::Type fft_type_;

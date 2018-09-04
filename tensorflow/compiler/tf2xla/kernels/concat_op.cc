@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -88,7 +89,7 @@ class ConcatBaseOp : public XlaOpKernel {
               "] = ", in_shape.DebugString()));
       if (in_shape.dims() == 0) {
         // Inputs that come in as scalars must be reshaped to 1-vectors.
-        input_data.push_back(ctx->builder()->Reshape(handle, {1}));
+        input_data.push_back(xla::Reshape(handle, {1}));
       } else {
         input_data.push_back(handle);
       }
@@ -96,7 +97,7 @@ class ConcatBaseOp : public XlaOpKernel {
     }
 
     VLOG(1) << "Concat dim " << concat_dim << " equivalent to " << axis;
-    ctx->SetOutput(0, ctx->builder()->ConcatInDim(input_data, axis));
+    ctx->SetOutput(0, xla::ConcatInDim(ctx->builder(), input_data, axis));
   }
 
  private:

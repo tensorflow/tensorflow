@@ -21,15 +21,15 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/service/pool.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -63,11 +63,9 @@ class BackendOptions {
 //
 // It also offers a pooling API for creation/use of initialized streams:
 //
-//    StreamPtr stream = backend->BorrowStream().ConsumeValueOrDie();
+//    StreamPool::Ptr stream = backend->BorrowStream().ConsumeValueOrDie();
 class Backend {
  public:
-  using StreamPtr = Pool<se::Stream>::SmartPtr;
-
   // Creates a new backend.
   static StatusOr<std::unique_ptr<Backend>> CreateBackend(
       const BackendOptions& options);
@@ -114,13 +112,13 @@ class Backend {
   // Borrows a stream for use by the caller, either by grabbing it from an
   // internal pool, or by constructing/initializating it, and returns the result
   // to the caller.
-  StatusOr<StreamPtr> BorrowStream(int device_ordinal);
-  StatusOr<StreamPtr> BorrowStream(se::StreamExecutor* executor);
+  StatusOr<StreamPool::Ptr> BorrowStream(int device_ordinal);
+  StatusOr<StreamPool::Ptr> BorrowStream(se::StreamExecutor* executor);
 
   // Returns a function to borrow a stream, as `BorrowStream` above does.
   // Purely for convenience, the caller could rather make this anonymous
   // function itself.
-  std::function<StatusOr<StreamPtr>(int)> StreamBorrower() {
+  std::function<StatusOr<StreamPool::Ptr>(int)> StreamBorrower() {
     return [this](int device_ordinal) { return BorrowStream(device_ordinal); };
   }
 
@@ -132,7 +130,7 @@ class Backend {
 
   // Return a string identifier for the given device, eg: "GPU:3".
   string device_name(int device_ordinal) const {
-    return tensorflow::strings::StrCat(platform_->Name(), ":", device_ordinal);
+    return absl::StrCat(platform_->Name(), ":", device_ordinal);
   }
 
   // Returns true if the devices with the given ordinals are equivalent from
@@ -151,7 +149,7 @@ class Backend {
  private:
   struct EigenThreadPoolWrapper;
   Backend(se::Platform* platform, Compiler* compiler,
-          tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors,
+          absl::Span<se::StreamExecutor* const> stream_executors,
           TransferManager* transfer_manager,
           ComputationPlacer* computation_placer,
           int intra_op_parallelism_threads);
@@ -169,7 +167,7 @@ class Backend {
   tensorflow::mutex mu_;
 
   // Mapping from stream executor to stream pools, used by `BorrowStream` above.
-  std::map<se::StreamExecutor*, Pool<se::Stream>> stream_pools_ GUARDED_BY(mu_);
+  std::map<se::StreamExecutor*, StreamPool> stream_pools_ GUARDED_BY(mu_);
 
   // The default memory allocator to use.
   std::unique_ptr<StreamExecutorMemoryAllocator> memory_allocator_;

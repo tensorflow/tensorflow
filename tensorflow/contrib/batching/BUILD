@@ -50,6 +50,14 @@ cc_library(
 )
 
 cc_library(
+    name = "serial_device_batch_scheduler",
+    hdrs = ["serial_device_batch_scheduler.h"],
+    deps = [
+        "//tensorflow/core/kernels/batching_util:serial_device_batch_scheduler",
+    ],
+)
+
+cc_library(
     name = "basic_batch_scheduler",
     hdrs = ["basic_batch_scheduler.h"],
     deps = [

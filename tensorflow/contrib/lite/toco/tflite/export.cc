@@ -16,10 +16,12 @@ limitations under the License.
 
 #include "flatbuffers/flexbuffers.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/toco/tflite/operator.h"
 #include "tensorflow/contrib/lite/toco/tflite/types.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
+#include "tensorflow/contrib/lite/tools/optimize/quantize_weights.h"
 #include "tensorflow/contrib/lite/version.h"
 
 namespace toco {
@@ -49,7 +51,7 @@ details::OperatorKey GetOperatorKey(
     const ::toco::Operator& op,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
   string custom_code;
-  if (op.type == OperatorType::kTensorFlowUnsupported) {
+  if (op.type == OperatorType::kUnsupported) {
     const TensorFlowUnsupportedOperator& unsupported_op =
         static_cast<const TensorFlowUnsupportedOperator&>(op);
     custom_code = unsupported_op.tensorflow_op;
@@ -59,6 +61,13 @@ details::OperatorKey GetOperatorKey(
     version = ops_by_type.at(op.type)->GetVersion(op);
   }
   return details::OperatorKey(op.type, custom_code, version);
+}
+
+void WriteModelToString(const flatbuffers::FlatBufferBuilder& builder,
+                        string* file_contents) {
+  const uint8_t* buffer = builder.GetBufferPointer();
+  int size = builder.GetSize();
+  *file_contents = string(reinterpret_cast<const char*>(buffer), size);
 }
 
 }  // Anonymous namespace.
@@ -99,7 +108,8 @@ void LoadOperatorsMap(
 
 Offset<Vector<Offset<Tensor>>> ExportTensors(
     const Model& model, const details::TensorsMap& tensors_map,
-    FlatBufferBuilder* builder, std::vector<const Array*>* buffers_to_write) {
+    FlatBufferBuilder* builder, std::vector<const Array*>* buffers_to_write,
+    const std::set<int32_t>& variable_tensor_indices) {
   // In the end we will need to produce a vector sorted by the indices of the
   // tensors in the tensors_map.
   std::map<int, Offset<Tensor>> ordered_tensors;
@@ -139,9 +149,11 @@ Offset<Vector<Offset<Tensor>>> ExportTensors(
                                                           scale, zero_point);
 
     int index = tensors_map.at(tensor_name);
+    bool is_variable =
+        variable_tensor_indices.find(index) != variable_tensor_indices.end();
     ordered_tensors[index] =
         CreateTensor(*builder, builder->CreateVector(shape), type, buffer_index,
-                     builder->CreateString(tensor_name), q_param);
+                     builder->CreateString(tensor_name), q_param, is_variable);
   }
 
   std::vector<Offset<Tensor>> tensor_vector;
@@ -208,7 +220,7 @@ Offset<Vector<Offset<OperatorCode>>> ExportOperatorCodes(
       ordered_opcodes[op_index] =
           CreateOperatorCode(*builder, builtin_ops[name], 0, op_version);
     } else {
-      // This could be a kTensorFlowUnsupported, in which case we should be
+      // This could be a kUnsupported, in which case we should be
       // able to retrieve the original Tensorflow name from the OperatorKey, or
       // this could be a proper TOCO operator that is completely unknown to TF
       // Lite.
@@ -239,7 +251,10 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
     const Model& model,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
     const details::OperatorsMap& operators_map,
-    const details::TensorsMap& tensors_map, FlatBufferBuilder* builder) {
+    const details::TensorsMap& tensors_map, FlatBufferBuilder* builder,
+    std::set<int32_t>* variable_tensor_indices) {
+  variable_tensor_indices->clear();
+
   // The operators are in execution order, so we just follow tf.mini order.
   std::vector<Offset<Operator>> op_vector;
   for (const auto& op : model.operators) {
@@ -256,18 +271,36 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
 
     int op_index = operators_map.at(GetOperatorKey(*op, ops_by_type));
 
-    // This is a custom op unless we can find it in ops_by_type, and even then
-    // it could be a custom op (such as kTensorFlowUnsupported).
+    auto tflite_op_it = ops_by_type.find(op->type);
+    BaseOperator* tflite_op = tflite_op_it == ops_by_type.end()
+                                  ? nullptr
+                                  : tflite_op_it->second.get();
 
+    // This is a custom op unless we can find it in ops_by_type, and even then
+    // it could be a custom op (such as kUnsupported).
     auto options = Options::Custom(0);
-    if (ops_by_type.count(op->type) != 0) {
-      options = ops_by_type.at(op->type)->Serialize(*op, builder);
+
+    std::vector<bool> mutating_input_variables;
+    if (tflite_op) {
+      options = tflite_op->Serialize(*op, builder);
+      mutating_input_variables = tflite_op->GetMutatingInputVariables(*op);
+
+      if (!mutating_input_variables.empty()) {
+        for (int i = 0; i < op->inputs.size(); ++i) {
+          if (!mutating_input_variables[i]) {
+            continue;
+          }
+          int32_t variable_tensor_index = tensors_map.at(op->inputs[i]);
+          variable_tensor_indices->insert(variable_tensor_index);
+        }
+      }
     }
     // The only supported CustomOptionFormat is FLEXBUFFERS now.
     op_vector.push_back(CreateOperator(
         *builder, op_index, builder->CreateVector(inputs),
         builder->CreateVector(outputs), options.type, options.builtin,
-        options.custom, ::tflite::CustomOptionsFormat_FLEXBUFFERS));
+        options.custom, ::tflite::CustomOptionsFormat_FLEXBUFFERS,
+        builder->CreateVector(mutating_input_variables)));
   }
 
   return builder->CreateVector(op_vector);
@@ -287,14 +320,16 @@ Offset<Vector<Offset<Buffer>>> ExportBuffers(
   return builder->CreateVector(buffer_vector);
 }
 
-void Export(const Model& model, bool allow_custom_ops,
+void Export(const Model& model, bool allow_custom_ops, bool quantize_weights,
             string* output_file_contents) {
   const auto ops_by_type = BuildOperatorByTypeMap();
-  Export(model, allow_custom_ops, output_file_contents, ops_by_type);
+  Export(model, allow_custom_ops, quantize_weights, output_file_contents,
+         ops_by_type);
 }
 
 void Export(
-    const Model& model, bool allow_custom_ops, string* output_file_contents,
+    const Model& model, bool allow_custom_ops, bool quantize_weights,
+    string* output_file_contents,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
   flatbuffers::FlatBufferBuilder builder(/*initial_size=*/10240);
 
@@ -308,40 +343,56 @@ void Export(
   Array empty_array;
   buffers_to_write.push_back(&empty_array);
 
-  auto tensors = ExportTensors(model, tensors_map, &builder, &buffers_to_write);
-  auto inputs = ExportInputTensors(model, tensors_map, &builder);
-  auto outputs = ExportOutputTensors(model, tensors_map, &builder);
-
   std::set<string> error_summary;
   auto op_codes = ExportOperatorCodes(model, ops_by_type, operators_map,
                                       &builder, &error_summary);
-  const string fake_quant_operation_name = "FAKE_QUANT";
-  if (error_summary.count(fake_quant_operation_name) != 0) {
-    LOG(ERROR)
-        << fake_quant_operation_name
-        << " operation was not converted. If running quantized make sure you "
-           "are passing --inference_type=QUANTIZED_UINT8 and values for "
-           "--std_values and --mean_values.";
-    // Remove the fake quant operation from the errors, since it shouldn't
-    // be provided a custom implementation.
-    error_summary.erase(fake_quant_operation_name);
+
+  for (const auto& op : model.operators) {
+    if (op->type == OperatorType::kFakeQuant) {
+      LOG(WARNING) << "FAKE_QUANT operation " << LogName(*op)
+                   << " was not converted. If running quantized make sure you "
+                      "are passing --inference_type=QUANTIZED_UINT8 and values "
+                      "for --std_values and --mean_values.";
+    }
   }
   if (!allow_custom_ops && !error_summary.empty()) {
+    // Remove ExpandDims and ReorderAxes from unimplemented list unless they
+    // compose the list. Both ops are removed during graph transformations.
+    // However, if an op is unimplemented earlier in the model, the graph
+    // transformation is unable to run because the output shape is not defined.
+    // This causes unnecessary confusion during model conversion time.
+    std::set<string> error_summary_final;
+    for (const auto& op_type : error_summary) {
+      if (op_type != "ReorderAxes" && op_type != "ExpandDims") {
+        error_summary_final.insert(op_type);
+      }
+    }
+    if (error_summary_final.empty()) {
+      error_summary_final = error_summary;
+    }
+
     LOG(QFATAL)
         << "Some of the operators in the model are not supported by "
            "the standard TensorFlow Lite runtime. If you have a custom "
            "implementation for them you can disable this error with "
            "--allow_custom_ops, or by setting allow_custom_ops=True "
-           "when calling tf.contrib.lite.toco_convert(). Here is a list "
+           "when calling tf.contrib.lite.TocoConverter(). Here is a list "
            "of operators for which  you will need custom implementations: "
-        << absl::StrJoin(error_summary, ", ") << ".";
+        << absl::StrJoin(error_summary_final, ", ") << ".";
   }
 
-  auto ops =
-      ExportOperators(model, ops_by_type, operators_map, tensors_map, &builder);
+  std::set<int32_t> variable_tensor_indices;
+  auto ops = ExportOperators(model, ops_by_type, operators_map, tensors_map,
+                             &builder, &variable_tensor_indices);
+
+  auto tensors = ExportTensors(model, tensors_map, &builder, &buffers_to_write,
+                               variable_tensor_indices);
+  auto inputs = ExportInputTensors(model, tensors_map, &builder);
+  auto outputs = ExportOutputTensors(model, tensors_map, &builder);
 
   // TODO(aselle): add support to toco for multiple subgraphs.
-  auto subgraph = CreateSubGraph(builder, tensors, inputs, outputs, ops);
+  auto subgraph = CreateSubGraph(builder, tensors, inputs, outputs, ops,
+                                 /* name */ 0);
   std::vector<flatbuffers::Offset<SubGraph>> subgraphs = {subgraph};
 
   auto buffers = ExportBuffers(model, buffers_to_write, &builder);
@@ -350,9 +401,24 @@ void Export(
       CreateModel(builder, TFLITE_SCHEMA_VERSION, op_codes,
                   builder.CreateVector(subgraphs), description, buffers);
   ::tflite::FinishModelBuffer(builder, new_model_location);
-  const uint8_t* buffer = builder.GetBufferPointer();
-  int size = builder.GetSize();
-  *output_file_contents = string(reinterpret_cast<const char*>(buffer), size);
+
+  if (quantize_weights) {
+    // Call the quantize_weights tool.
+    LOG(INFO) << "Quantizing TFLite model after conversion to flatbuffer. "
+                 "dump_graphviz will only output the model before this "
+                 "transformation. To visualize the output graph use "
+                 "lite/tools/optimize.py.";
+    flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);
+    const uint8_t* buffer = builder.GetBufferPointer();
+    const ::tflite::Model* input_model = ::tflite::GetModel(buffer);
+    if (::tflite::optimize::QuantizeWeights(&q_builder, input_model) !=
+        kTfLiteOk) {
+      LOG(QFATAL) << "Quantize weights transformation failed.";
+    }
+    WriteModelToString(q_builder, output_file_contents);
+  } else {
+    WriteModelToString(builder, output_file_contents);
+  }
 }
 
 }  // namespace tflite

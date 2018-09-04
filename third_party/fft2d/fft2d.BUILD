@@ -14,6 +14,11 @@ FFT2D_SRCS = [
     "fft/fftsg.c",
 ]
 
+config_setting(
+    name = "windows",
+    values = {"cpu": "x64_windows"},
+)
+
 # This is the main 2D FFT library.  The 2D FFTs in this library call
 # 1D FFTs.  In addition, fast DCTs are provided for the special case
 # of 8x8 and 16x16.  This code in this library is referred to as
@@ -21,7 +26,10 @@ FFT2D_SRCS = [
 cc_library(
     name = "fft2d",
     srcs = FFT2D_SRCS,
-    linkopts = ["-lm"],
+    linkopts = select({
+        ":windows": [],
+        "//conditions:default": ["-lm"],
+    }),
 )
 
 objc_library(

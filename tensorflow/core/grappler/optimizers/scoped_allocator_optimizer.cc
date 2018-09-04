@@ -203,7 +203,7 @@ void ScopedAllocatorOptimizer::ExtendNodeAttr(StringPiece name,
                                               NodeDef* node_def) {
   if (HasNodeAttr(*node_def, name)) {
     VLOG(2) << "extending";
-    AttrValue* existing = &(*node_def->mutable_attr())[name.ToString()];
+    AttrValue* existing = &(*node_def->mutable_attr())[string(name)];
     for (int32 i : values) {
       existing->mutable_list()->add_i(i);
     }
@@ -650,7 +650,8 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
 };
 
 ScopedAllocatorOptimizer::ScopedAllocatorOptimizer(
-    const ScopedAllocatorOptions& opts) {
+    RewriterConfig::Toggle opt_level, const ScopedAllocatorOptions& opts)
+    : opt_level_(opt_level) {
   VLOG(1) << "ScopedAllocatorOptimizer::ScopedAllocatorOptimizer";
   Rewriter* r = new UnaryElementwiseRewriter();
   to_delete_.push_back(r);
