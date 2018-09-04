@@ -93,7 +93,8 @@ def scalar(name, tensor, collections=None, family=None):
 
 
 @tf_export('summary.image')
-def image(name, tensor, max_outputs=3, collections=None, family=None):
+def image(name, tensor, max_outputs=3, vmin=None, vmax=None, clip=False,
+          collections=None, family=None):
   """Outputs a `Summary` protocol buffer with images.
 
   The summary has up to `max_outputs` summary values containing images. The
@@ -104,17 +105,20 @@ def image(name, tensor, max_outputs=3, collections=None, family=None):
   *  3: `tensor` is interpreted as RGB.
   *  4: `tensor` is interpreted as RGBA.
 
-  The images have the same number of channels as the input tensor. For float
-  input, the values are normalized one image at a time to fit in the range
-  `[0, 255]`.  `uint8` values are unchanged.  The op uses two different
-  normalization algorithms:
+  If `clip` is `true`, the values of `tensor` outside of the interval `[vmin,
+  vmax]` will be clipped into the interval edge. If `vmin` or `vmax` is not
+  given, they will be initialized from the min and max of the tensor with
+  ignoring nonfinite values.
 
-  *  If the input values are all positive, they are rescaled so the largest one
-     is 255.
+  The images have the same number of channels as the input tensor. The values
+  are normalized by the interval `[vmin, vmax]` to one image at a time to fit
+  in the range `[0, 255]`. `uint8` values are unchanged. The op uses two
+  different normalization algorithms:
 
-  *  If any input value is negative, the values are shifted so input value 0.0
-     is at 127.  They are then rescaled so that either the smallest value is 0,
-     or the largest one is 255.
+  *  If `vmin >= 0`, they are rescaled so 'vmax' is 255.
+
+  *  If `vmin` < 0, the values are shifted so input value 0.0 is at 127.
+     They are then rescaled so that either `vmin` is 0, or `vmax` is 255.
 
   The `tag` in the outputted Summary.Value protobufs is generated based on the
   name, with a suffix depending on the max_outputs setting:
@@ -129,6 +133,10 @@ def image(name, tensor, max_outputs=3, collections=None, family=None):
     tensor: A 4-D `uint8` or `float32` `Tensor` of shape `[batch_size, height,
       width, channels]` where `channels` is 1, 3, or 4.
     max_outputs: Max number of batch elements to generate images for.
+    vmin: Maximum clipping value.
+    vmax: Minimum clipping value.
+    clip: boolen value; if True, the value of images will be clipped by `vmin`
+      and `vmax`; otherwise, not.
     collections: Optional list of ops.GraphKeys.  The collections to add the
       summary to.  Defaults to [_ops.GraphKeys.SUMMARIES]
     family: Optional; if provided, used as the prefix of the summary tag name,
@@ -143,7 +151,8 @@ def image(name, tensor, max_outputs=3, collections=None, family=None):
   with _summary_op_util.summary_scope(
       name, family, values=[tensor]) as (tag, scope):
     val = _gen_logging_ops.image_summary(
-        tag=tag, tensor=tensor, max_images=max_outputs, name=scope)
+        tag=tag, tensor=tensor, max_images=max_outputs, vmin=vmin, vmax=vmax,
+        clip=clip, name=scope)
     _summary_op_util.collect(val, collections, [_ops.GraphKeys.SUMMARIES])
   return val
 

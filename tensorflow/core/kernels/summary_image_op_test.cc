@@ -57,9 +57,25 @@ class SummaryImageOpTest : public OpsTestBase {
     TF_ASSERT_OK(InitOp());
   }
 
+  void MakeOpV2(int max_images, float vmin, float vmax, bool clip) {
+    TF_ASSERT_OK(NodeDefBuilder("myop", "ImageSummary")
+                     .Input(FakeInput())
+                     .Input(FakeInput())
+                     .Attr("max_images", max_images)
+                     .Attr("vmin", vmin)
+                     .Attr("vmax", vmax)
+                     .Attr("clip", clip)
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+  }
+
   void CheckAndRemoveEncodedImages(Summary* summary) {
     for (int i = 0; i < summary->value_size(); ++i) {
       Summary::Value* value = summary->mutable_value(i);
+      TF_CHECK_OK(WriteStringToFile(
+          Env::Default(), strings::StrCat("/tmp/", value->tag(), ".png"),
+          value->image().encoded_image_string()));
+
       ASSERT_TRUE(value->has_image()) << "No image for value: " << value->tag();
       ASSERT_FALSE(value->image().encoded_image_string().empty())
           << "No encoded_image_string for value: " << value->tag();
@@ -140,7 +156,83 @@ TEST_F(SummaryImageOpTest, OneColorImage4dInput) {
 
   // Check the output size.
   Tensor* out_tensor = GetOutput(0);
+
   ASSERT_EQ(0, out_tensor->dims());
+
+  Summary summary;
+  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+
+  CheckAndRemoveEncodedImages(&summary);
+  EXPECT_SummaryMatches(summary, R"(
+    value { tag: 'tag/image' image { width: 2 height: 5 colorspace: 3} })");
+}
+
+TEST_F(SummaryImageOpTest, OneColorImage4dInputWithClip) {
+  MakeOpV2(1,     /* max images */
+           -2.0f, /*vmin*/
+           8.0f,  /*vmax*/
+           true /*clip*/);
+
+  // Feed and run
+  AddInputFromArray<string>(TensorShape({}), {"tag"});
+  AddInputFromArray<float>(
+      TensorShape({1 /*batch*/, 5 /*rows*/, 2 /*columns*/, 3 /*depth*/}),
+      {
+          /* r0, c0, RGB */ -1.1f, -2.5f, -3.9f,
+          /* r0, c1, RGB */ -4.1f, -5.5f, -6.9f,
+          /* r1, c0, RGB */ 3.1f,  4.5f,  5.9f,
+          /* r1, c1, RGB */ 6.1f,  7.5f,  8.9f,
+          /* r2, c0, RGB */ 9.1f,  10.5f, 11.9f,
+          /* r2, c1, RGB */ 12.1f, 16.5f, 26.9f,
+          /* r3, c0, RGB */ 17.1f, 7.5f,  27.9f,
+          /* r3, c1, RGB */ 12.1f, 8.5f,  28.9f,
+          /* r4, c0, RGB */ 19.1f, 29.5f, 9.9f,
+          /* r4, c1, RGB */ 21.1f, 12.5f, 10.9f,
+      });
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Check the output size.
+  Tensor* out_tensor = GetOutput(0);
+
+  ASSERT_EQ(0, out_tensor->dims());
+
+  Summary summary;
+  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+
+  CheckAndRemoveEncodedImages(&summary);
+  EXPECT_SummaryMatches(summary, R"(
+    value { tag: 'tag/image' image { width: 2 height: 5 colorspace: 3} })");
+}
+
+TEST_F(SummaryImageOpTest, OneColorImage4dInputWithoutClip) {
+  MakeOpV2(1,     /* max images */
+           -2.0f, /*vmin*/
+           8.0f,  /*vmax*/
+           false /*clip*/);
+
+  // Feed and run
+  AddInputFromArray<string>(TensorShape({}), {"tag"});
+  AddInputFromArray<float>(
+      TensorShape({1 /*batch*/, 5 /*rows*/, 2 /*columns*/, 3 /*depth*/}),
+      {
+          /* r0, c0, RGB */ -1.1f, -2.5f, -3.9f,
+          /* r0, c1, RGB */ -4.1f, -5.5f, -6.9f,
+          /* r1, c0, RGB */ 3.1f,  4.5f,  5.9f,
+          /* r1, c1, RGB */ 6.1f,  7.5f,  8.9f,
+          /* r2, c0, RGB */ 9.1f,  10.5f, 11.9f,
+          /* r2, c1, RGB */ 12.1f, 16.5f, 26.9f,
+          /* r3, c0, RGB */ 17.1f, 7.5f,  27.9f,
+          /* r3, c1, RGB */ 12.1f, 8.5f,  28.9f,
+          /* r4, c0, RGB */ 19.1f, 29.5f, 9.9f,
+          /* r4, c1, RGB */ 21.1f, 12.5f, 10.9f,
+      });
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Check the output size.
+  Tensor* out_tensor = GetOutput(0);
+
+  ASSERT_EQ(0, out_tensor->dims());
+
   Summary summary;
   ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
 

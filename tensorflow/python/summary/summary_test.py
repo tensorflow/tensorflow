@@ -100,7 +100,8 @@ class ScalarSummaryTest(test.TestCase):
     with self.cached_session() as s:
       i = array_ops.ones((5, 2, 3, 1))
       with ops.name_scope('outer'):
-        im = summary_lib.image('inner', i, max_outputs=3, family='family')
+        im = summary_lib.image('inner', i, max_outputs=3, vmin=1.0, vmax=1.0,
+                               clip=True, family='family')
         self.assertEquals(im.op.name, 'outer/family/inner')
       summary_str = s.run(im)
     summary = summary_pb2.Summary()
@@ -111,6 +112,51 @@ class ScalarSummaryTest(test.TestCase):
     expected = sorted('family/outer/family/inner/image/{}'.format(i)
                       for i in xrange(3))
     self.assertEqual(tags, expected)
+
+  def testImageSummaryWithValueRange(self):
+    with self.cached_session() as s:
+      i = constant_op.constant([[[[-1.1, -2.5, -3.9],
+                                  [-4.1, -5.5, -6.9]],
+                                 [[3.1, 4.5, 5.9],
+                                  [6.1, 7.5, 8.9]],
+                                 [[9.1, 10.5, 11.9],
+                                  [12.1, 16.5, 26.9]],
+                                 [[17.1, 7.5, 27.9],
+                                  [12.1, 8.5, 28.9]],
+                                 [[19.1, 29.5, 9.9],
+                                  [21.1, 12.5, 10.9]]]])
+      ims = []
+      with ops.name_scope('outer'):
+        im1 = summary_lib.image('inner', i, max_outputs=3, vmin=2.0, vmax=2.0,
+                                clip=True, family='family')
+        self.assertEquals(im1.op.name, 'outer/family/inner')
+        ims.append(im1)
+
+        im2 = summary_lib.image('inner', i, max_outputs=3, vmin=-2.0, vmax=20.0,
+                                clip=True, family='family')
+        self.assertEquals(im2.op.name, 'outer/family/inner_1')
+        ims.append(im2)
+
+        im3 = summary_lib.image('inner', i, max_outputs=3, vmin=-2.0, clip=True,
+                                family='family')
+        self.assertEquals(im3.op.name, 'outer/family/inner_2')
+        ims.append(im3)
+
+        im4 = summary_lib.image('inner', i, max_outputs=3, vmax=20.0, clip=True,
+                                family='family')
+        self.assertEquals(im4.op.name, 'outer/family/inner_3')
+        ims.append(im4)
+
+      for i in xrange(len(ims)):
+        summary_str = s.run(ims[i])
+        summary = summary_pb2.Summary()
+        summary.ParseFromString(summary_str)
+        values = summary.value
+        self.assertEqual(len(values), 1)
+        tags = sorted(v.tag for v in values)
+        expected = sorted(['family/outer/family/inner_{}/image/0'.format(i)
+                           if i != 0 else 'family/outer/family/inner/image/0'])
+        self.assertEqual(tags, expected)
 
   def testHistogramSummary(self):
     with self.cached_session() as s:
