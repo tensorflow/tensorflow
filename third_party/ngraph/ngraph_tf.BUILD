@@ -10,6 +10,8 @@ load(
 cc_library(
     name = "ngraph_tf",
     srcs = [
+        "src/ngraph_api.h",
+        "src/ngraph_api.cc",
         "src/ngraph_assign_clusters.h",
         "src/ngraph_assign_clusters.cc",
         "src/ngraph_builder.h",
