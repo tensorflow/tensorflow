@@ -46,6 +46,8 @@ void MutableOpResolver::AddCustom(const char* name,
                                   TfLiteRegistration* registration,
                                   int min_version, int max_version) {
   for (int version = min_version; version <= max_version; ++version) {
+    // TODO(aselle): This should verify that the incoming registration
+    // has the name in the registration already and it matches!!!
     TfLiteRegistration new_registration = *registration;
     new_registration.builtin_code = BuiltinOperator_CUSTOM;
     new_registration.version = version;
