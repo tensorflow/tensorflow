@@ -947,6 +947,7 @@ class _ClassPageInfo(object):
     self._aliases = None
     self._doc = None
     self._guides = None
+    self._namedtuplefields = None
 
     self._bases = None
     self._properties = []
@@ -1030,6 +1031,17 @@ class _ClassPageInfo(object):
     self._guides = guides
 
   @property
+  def namedtuplefields(self):
+    return self._namedtuplefields
+
+  def set_namedtuplefields(self, py_class):
+    if issubclass(py_class, tuple):
+      if all(
+          hasattr(py_class, attr)
+          for attr in ('_asdict', '_fields', '_make', '_replace')):
+        self._namedtuplefields = py_class._fields
+
+  @property
   def bases(self):
     """Returns a list of `_LinkInfo` objects pointing to the class' parents."""
     return self._bases
@@ -1066,7 +1078,15 @@ class _ClassPageInfo(object):
   @property
   def properties(self):
     """Returns a list of `_PropertyInfo` describing the class' properties."""
-    return self._properties
+    props_dict = {prop.short_name: prop for prop in self._properties}
+    props = []
+    if self.namedtuplefields:
+      for field in self.namedtuplefields:
+        props.append(props_dict.pop(field))
+
+    props.extend(sorted(props_dict.values()))
+
+    return props
 
   def _add_property(self, short_name, full_name, obj, doc):
     """Adds a `_PropertyInfo` entry to the `properties` list.
@@ -1077,6 +1097,9 @@ class _ClassPageInfo(object):
       obj: The property object itself
       doc: The property's parsed docstring, a `_DocstringInfo`.
     """
+    # Hide useless namedtuple docs-trings
+    if re.match('Alias for field number [0-9]+', doc.docstring):
+      doc = doc._replace(docstring='', brief='')
     property_info = _PropertyInfo(short_name, full_name, obj, doc)
     self._properties.append(property_info)
 
@@ -1156,6 +1179,7 @@ class _ClassPageInfo(object):
       py_class: The class object being documented
       parser_config: An instance of ParserConfig.
     """
+    self.set_namedtuplefields(py_class)
     doc_path = documentation_path(self.full_name)
     relative_path = os.path.relpath(
         path='.', start=os.path.dirname(doc_path) or '.')
