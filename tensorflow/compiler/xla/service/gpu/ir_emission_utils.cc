@@ -221,11 +221,9 @@ bool IsReductionToVector(const HloInstruction& reduce) {
 }
 
 llvm::Value* EmitDeviceFunctionCall(
-    const string& callee_name,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-    PrimitiveType output_type,
-    tensorflow::gtl::ArraySlice<llvm::Attribute::AttrKind> attributes,
+    const string& callee_name, absl::Span<llvm::Value* const> operands,
+    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
+    absl::Span<const llvm::Attribute::AttrKind> attributes,
     llvm::IRBuilder<>* ir_builder, llvm::Module* module) {
   std::vector<llvm::Type*> ir_input_types;
   for (PrimitiveType input_type : input_types) {

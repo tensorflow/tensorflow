@@ -41,7 +41,7 @@ Status KernelThunk::Initialize(const GpuExecutable& executable,
   tensorflow::mutex_lock lock(mutex_);
   if (!loader_spec_) {
     loader_spec_.reset(new se::MultiKernelLoaderSpec(args_.size()));
-    loader_spec_->AddCudaPtxInMemory(executable.ptx(), kernel_name_);
+    loader_spec_->AddCudaPtxInMemory(executable.text(), kernel_name_);
 
   // XXX figure out how to cope with both CUDA and ROCm platforms
 #if GOOGLE_CUDA
