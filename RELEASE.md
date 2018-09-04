@@ -2,12 +2,21 @@
 
 ## Major Features and Improvements
 
+* Cloud TPU:
+  * Experimental tf.data integration for Keras on Cloud TPUs.
+* Add C functions for querying kernels
+* Add C++ functions for querying kernels
+* Add Python functions for querying kernels
+
 ## Breaking Changes
+
+* Keras:
+  * The default values for tf.keras `RandomUniform`, `RandomNormal`, and `TruncatedNormal` initializers have been changed to match those in external Keras.
+* `tf.contrib`:
+  * Breaking change: `model.get_config()` on a Sequential model now returns a config dictionary (consistent with other Model instances) instead of a list of configs for the underlying layers.
 
 ## Bug Fixes and Other Changes
 
-* Cloud TPU:
-  * Experimental tf.data integration for Keras on Cloud TPUs.
 * C++:
   * Changed the signature of SessionFactory::NewSession so that it can return a meaningful error message on failure.
 * tf.data:
@@ -20,51 +29,39 @@
 * INC:
   * Runtime improvements to triangular solve.
 * `tf.contrib`:
-  * Allow a different output shape from the input in tf.contrib.image.transform.
-  * Estimator.train() now supports tf.contrib.summary.\* summaries out of the box; each call to .train() will now create a separate tfevents file rather than re-using a shared one.
-* Other:
-  * Breaking change: The default values for tf.keras `RandomUniform`, `RandomNormal`, and `TruncatedNormal` initializers have been changed to match those in external Keras.
-  * none
-  * tfdbg: Limit the total disk space occupied by dumped tensor data to 100 GBytes. Add environment variable `TFDBG_DISK_BYTES_LIMIT` to allow adjustment of this upper limit.
-  * Fix FTRL L2-shrinkage behavior: the gradient from the L2 shrinkage term should not end up in the accumulator.
-  * Change the state_size order of the StackedRNNCell to be natural order. To keep the existing behavior, user can add reverse_state_order=True when constructing the StackedRNNCells.
-  * Directly import tensor.proto.h (the transitive import will be removed from tensor.h soon)
+  * Add an `implementation` argument to `tf.keras.layers.LocallyConnected2D` and `tf.keras.layers.LocallyConnected1D`. The new mode (`implementation=2`) performs forward pass as a single dense matrix multiplication, allowing dramatic speedups in certain scenarios (but worse performance in others - see docstring). The option also allows to use `padding=same`.
+  * Add documentation clarifying the differences between tf.fill and tf.constant.
   * Add experimental IndexedDatasets.
-  * Deprecate self.test_session() in favor of self.session() or self.cached_session().
-  * Update initialization of variables in Keras.
-  * Unify RNN cell interface between TF and Keras. Add new get_initial_state() to Keras and TF RNN cell, which will use to replace the existing zero_state() method.
+  * Add selective registration target using the lite proto runtime.
   * Add simple Tensor and DataType classes to TensorFlow Lite Java
+  * Add support for bitcasting to/from uint32 and uint64.
+  * Added a subclass of Estimator that can be created from a SavedModel (SavedModelEstimator).
+  * Adds leaf index modes as an argument.
+  * Allow a different output shape from the input in tf.contrib.image.transform.
+  * Change the state_size order of the StackedRNNCell to be natural order. To keep the existing behavior, user can add reverse_state_order=True when constructing the StackedRNNCells.
+  * Deprecate self.test_session() in favor of self.session() or self.cached_session().
+  * Directly import tensor.proto.h (the transitive import will be removed from tensor.h soon)
+  * Estimator.train() now supports tf.contrib.summary.\* summaries out of the box; each call to .train() will now create a separate tfevents file rather than re-using a shared one.
+  * Fix FTRL L2-shrinkage behavior: the gradient from the L2 shrinkage term should not end up in the accumulator.
+  * Fix toco compilation/execution on Windows
+  * GoogleZoneProvider class added to detect  which Google Cloud Engine zone tensorflow is running in.
+  * It is now safe to call any of the C API's TF_Delete\* functions on nullptr
+  * Log some errors on Android to logcat
+  * Match FakeQuant numerics in TFLite to improve accuracy of TFLite quantized inference models.
+  * Optional bucket location check for the GCS Filesystem.
   * Performance enhancements for StringSplitOp & StringSplitV2Op.
   * Performance improvements for regex replace operations.
   * TFRecordWriter now raises an error if .write() fails.
-  * Add documentation clarifying the differences between tf.fill and tf.constant.
-  * Updates to "constrained_optimization" in tensorflow/contrib.
-  * Fix toco compilation/execution on Windows
-  * Add an `implementation` argument to `tf.keras.layers.LocallyConnected2D` and `tf.keras.layers.LocallyConnected1D`. The new mode (`implementation=2`) performs forward pass as a single dense matrix multiplication, allowing dramatic speedups in certain scenarios (but worse performance in others - see docstring). The option also allows to use `padding=same`.
-  * Log errors on Android to logcat
-  * tf.train.Checkpoint does not delete old checkpoints by default.
-  * Breaking change: `model.get_config()` on a Sequential model now returns a config dictionary (consistent with other Model instances) instead of a list of configs for the underlying layers.
-  * Match FakeQuant numerics in TFLite to improve accuracy of TFLite quantized inference models.
-  * Optional bucket location check for the GCS Filesystem.
   * TPU: More helpful error messages in TPUClusterResolvers.
-  * GoogleZoneProvider class added to detect  which Google Cloud Engine zone tensorflow is running in.
-  * boosted trees: adding pruning mode
-  * none GOOGLE:
-  * Added a subclass of Estimator that can be created from a SavedModel (SavedModelEstimator).
   * The legacy_init_op argument to SavedModelBuilder methods for adding MetaGraphs has been deprecated. Please use the equivalent main_op argument instead. As part of this, we now explicitly check for a single main_op or legacy_init_op at the time of SavedModel building, whereas the check on main_op was previously only done at load time. SKIP_ATC=Ignoring the Tap cnn_e2e_test error as per the recommendations of chendouble@, who says they will regenerate the SavedModel protos in question after the fact.
-  * Triangular solve performance improvements.
-  * It is now safe to call any of the C API's TF_Delete* functions on nullptr
-  * Add Python functions for querying kernels
-  * The legacy_init_op argument to SavedModelBuilder methods for adding MetaGraphs has been deprecated. Please use the equivalent main_op argument instead. As part of this, we now explicitly check for a single main_op or legacy_init_op at the time of SavedModel building, whereas the check on main_op was previously only done at load time. SKIP_ATC=Ignoring the Tap cnn_e2e_test error as per the recommendations of chendouble@, who says they will regenerate the SavedModel protos in question after the fact.
-  * Add C functions for querying kernels
-  * Add C++ functions for querying kernels
-  * Added a subclass of Estimator that can be created from a SavedModel (SavedModelEstimator).
-  * Added a subclass of Estimator that can be created from a SavedModel (SavedModelEstimator).
-  * Adds leaf index modes as an argument.
-  * Add support for bitcasting to/from uint32 and uint64.
-  * Internal rename, no functional change.
-  * Add selective registration target using the lite proto runtime.
   * The protocol used for Estimator training is now configurable in RunConfig.
+  * Triangular solve performance improvements.
+  * Unify RNN cell interface between TF and Keras. Add new get_initial_state() to Keras and TF RNN cell, which will use to replace the existing zero_state() method.
+  * Update initialization of variables in Keras.
+  * Updates to "constrained_optimization" in tensorflow/contrib.
+  * boosted trees: adding pruning mode
+  * tf.train.Checkpoint does not delete old checkpoints by default.
+  * tfdbg: Limit the total disk space occupied by dumped tensor data to 100 GBytes. Add environment variable `TFDBG_DISK_BYTES_LIMIT` to allow adjustment of this upper limit.
 
 ## Thanks to our Contributors
 
