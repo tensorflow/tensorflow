@@ -115,7 +115,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
       HloOpcode opcode, const Literal& operand);
 
   StatusOr<std::unique_ptr<Literal>> EvaluateDotOp(
-      const DotDimensionNumbers& dim_numbers, const Literal& lhs,
+      const DotDimensionNumbers& dim_numbers,
+      const PrecisionConfigProto& precision_config, const Literal& lhs,
       const Literal& rhs);
 
  protected:

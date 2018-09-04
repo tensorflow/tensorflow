@@ -112,8 +112,11 @@ std::unique_ptr<HloModule> MakeBigGraph() {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto dot = builder.AddInstruction(
-      HloInstruction::CreateDot(vshape, clamp, param_v0, dot_dnums));
+  PrecisionConfigProto precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      /*new_size=*/2, PrecisionConfigProto::DEFAULT);
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      vshape, clamp, param_v0, dot_dnums, precision_config));
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({dot, param_s, clamp}));
   auto scalar = builder.AddInstruction(
