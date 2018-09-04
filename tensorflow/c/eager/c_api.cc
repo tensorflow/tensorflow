@@ -273,7 +273,20 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       new tensorflow::IntraProcessRendezvous(device_mgr.get());
 
   return new TFE_Context(opts->session_options.options, opts->policy,
-                         opts->async, std::move(device_mgr), r);
+                         opts->async, device_mgr.release(),
+                         /*device_mgr_owned*/ true, r);
+}
+
+TFE_Context* TFE_NewContextFromSession(const TFE_ContextOptions* opts,
+                                       TF_Session* sess, TF_Status* status) {
+  const tensorflow::DeviceMgr* device_mgr = nullptr;
+  status->status = sess->session->LocalDeviceManager(&device_mgr);
+  if (!status->status.ok()) return nullptr;
+  tensorflow::Rendezvous* r =
+      new tensorflow::IntraProcessRendezvous(device_mgr);
+  return new TFE_Context(opts->session_options.options, opts->policy,
+                         opts->async, device_mgr, /*device_mgr_owned*/ false,
+                         r);
 }
 
 void TFE_DeleteContext(TFE_Context* ctx) { delete ctx; }
