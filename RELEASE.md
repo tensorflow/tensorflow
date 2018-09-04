@@ -2,6 +2,7 @@
 
 ## Major Features and Improvements
 
+* Prebuilt binaries are now (as of TensorFlow 1.11) built against cuDNN 7.2. See updated install guides: [Installing TensorFlow on Ubuntu](https://www.tensorflow.org/install/install_linux#tensorflow_gpu_support)
 * Cloud TPU:
   * Experimental tf.data integration for Keras on Cloud TPUs.
 * Add C functions for querying kernels
@@ -12,7 +13,6 @@
 
 * Keras:
   * The default values for tf.keras `RandomUniform`, `RandomNormal`, and `TruncatedNormal` initializers have been changed to match those in external Keras.
-* `tf.contrib`:
   * Breaking change: `model.get_config()` on a Sequential model now returns a config dictionary (consistent with other Model instances) instead of a list of configs for the underlying layers.
 
 ## Bug Fixes and Other Changes
