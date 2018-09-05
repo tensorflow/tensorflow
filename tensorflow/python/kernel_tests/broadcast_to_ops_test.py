@@ -23,6 +23,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
 from tensorflow.python.platform import test as test_lib
 
 
@@ -80,6 +81,25 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(v_tf.eval(), v_np)
         # check shape inference when shape input is constant
         self.assertAllEqual(shape, v_np.shape)
+
+  def testGradient(self):
+    x = constant_op.constant([[1, 2, 3], [4, 5, 6]], dtype=dtypes.float32)
+    v = array_ops.broadcast_to(x, [2, 4, 3])
+    out = 2 * v
+    with self.test_session():
+      err = gradient_checker.compute_gradient_error(x, x.get_shape(),
+                                                    out, out.get_shape())
+    self.assertLess(err, 1e-4)
+
+  def testGradientForScalar(self):
+    x = constant_op.constant(1, dtype=dtypes.float32)
+    v = array_ops.broadcast_to(x, [2, 4, 3])
+    out = 2 * v
+    with self.test_session():
+      err = gradient_checker.compute_gradient_error(x, x.get_shape(),
+                                                    out, out.get_shape())
+    self.assertLess(err, 1e-4)
+
 
 if __name__ == "__main__":
   test_lib.main()
