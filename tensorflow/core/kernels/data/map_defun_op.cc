@@ -29,7 +29,6 @@ void SetRunOptions(OpKernelContext* ctx, FunctionLibraryRuntime::Options* opts,
                    bool always_collect_stats) {
   opts->step_id = ctx->step_id();
   opts->rendezvous = ctx->rendezvous();
-  opts->cancellation_manager = ctx->cancellation_manager();
   if (always_collect_stats) {
     opts->stats_collector = ctx->stats_collector();
   }
@@ -117,10 +116,13 @@ class MapDefunOp : public AsyncOpKernel {
     for (size_t i = 0; i < static_cast<size_t>(batch_size); ++i) {
       auto* call_frame =
           new MapFunctionCallFrame(*args, *arg_shapes, output, this, i);
+      CancellationManager* c_mgr = new CancellationManager;
+      opts_.cancellation_manager = c_mgr;
       ctx->function_library()->Run(
           opts_, func_handle_, call_frame,
-          [call_frame, refcounted](const Status& func_status) {
+          [call_frame, refcounted, c_mgr](const Status& func_status) {
             delete call_frame;
+            delete c_mgr;
             refcounted->UpdateStatus(func_status);
             refcounted->Unref();
           });
