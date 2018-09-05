@@ -1,5 +1,3 @@
-Github issue: #XX
-
 **Major changes:**
 - 
 
@@ -11,5 +9,3 @@ Github issue: #XX
 
 **Other comments:**
 - 
-
-resolves #XX
