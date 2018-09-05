@@ -42,7 +42,6 @@ using ops::MaxPoolV2;
 using ops::Placeholder;
 using ops::Relu;
 using ops::Relu6;
-using ops::LeakyRelu;
 using ops::Selu;
 using ops::Softmax;
 using ops::Softplus;
@@ -165,7 +164,7 @@ TEST_F(NNGradTest, Relu6Grad) {
 TEST_F(NNGradTest, LeakyReluGrad) {
   TensorShape shape({5, 2});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
-  auto y = LeakyRelu(scope_, x);
+  auto y = ops::internal::LeakyRelu(scope_, x);
   // Avoid input values where Leaky ReLU gradient is not well defined (around
   // zero).
   Tensor x_init_value = test::AsTensor<float>(
