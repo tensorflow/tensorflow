@@ -2056,7 +2056,7 @@ class WarmStartSettings(
     var_name_to_vocab_info: [Optional] Dict of variable names (strings) to
       `tf.estimator.VocabInfo`. The variable names should be "full" variables,
       not the names of the partitions.  If not explicitly provided, the variable
-      is assumed to have no vocabulary.
+      is assumed to have no (changes to) vocabulary.
     var_name_to_prev_var_name: [Optional] Dict of variable names (strings) to
       name of the previously-trained variable in `ckpt_to_initialize_from`. If
       not explicitly provided, the name of the variable is assumed to be same
