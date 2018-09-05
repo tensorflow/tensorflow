@@ -1674,7 +1674,9 @@ std::vector<string> HloConvolutionInstruction::ExtraAttributesToStringImpl(
   }
   extra.push_back(StrCat("dim_labels=", ConvolutionDimensionNumbersToString(
                                             convolution_dimension_numbers_)));
-  extra.push_back(StrCat("feature_group_count=", feature_group_count_));
+  if (feature_group_count_ != 1) {
+    extra.push_back(StrCat("feature_group_count=", feature_group_count_));
+  }
   return extra;
 }
 
