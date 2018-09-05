@@ -295,6 +295,7 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
   def testFloatTensor(self):
     self.assertEqual(dtypes.float64, _create_tensor(np.float64()).dtype)
     self.assertEqual(dtypes.float32, _create_tensor(np.float32()).dtype)
+    self.assertEqual(dtypes.float16, _create_tensor(np.float16()).dtype)
     self.assertEqual(dtypes.float32, _create_tensor(0.0).dtype)
 
   def testSliceDimOutOfRange(self):
