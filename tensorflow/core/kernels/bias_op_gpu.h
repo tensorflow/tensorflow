@@ -31,7 +31,7 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename T>
 struct BiasGPU {
   static void compute(const GPUDevice& d, const T* input, const T* bias,
-                      T* output, int32 batch, int32 height, int32 width,
+                      T* output, int32 batch, int32 height, int32 width, int32 depth,
                       int32 channel, TensorFormat data_format);
 };
 
