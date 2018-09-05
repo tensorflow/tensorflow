@@ -66,13 +66,13 @@ class Readable():
 
   def __read(self, data_type, length):
     """Reads, unpacks and returns specified type (little-endian)."""
-    buffer = self.read_data(length)
-    return struct.unpack("<" + data_type, buffer)[0]
+    data_buffer = self.read_data(length)
+    return struct.unpack("<" + data_type, data_buffer)[0]
 
 class DataBuffer(Readable):
   """DataBuffer class that exposes methods to read data from a byte buffer."""
 
-  def __init__(self, buffer):
+  def __init__(self, data_buffer):
     """Constructs a new instance of DataBuffer based on the specified byte
        buffer.
 
@@ -80,7 +80,7 @@ class DataBuffer(Readable):
       buffer: Buffer to be read.
     """
     Readable.__init__(self)
-    self.buffer = buffer
+    self.buffer = data_buffer
     self.ptr = 0
 
   def read_data(self, length):
