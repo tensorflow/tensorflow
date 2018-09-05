@@ -58,7 +58,7 @@ def get_item(target, i, opts):
   elif tensor_util.is_tensor(target):
     if target.dtype == dtypes.variant:
       return _tf_tensor_list_get_item(target, i, opts)
-    elif target.dtype == dtypes.string and target.get_shape() == (): # target is string with rank 0
+    elif target.dtype == dtypes.string and target.shape.ndims == 0: # target is string with rank 0
       return _tf_tensor_string_get_item(target, i)
     else:
       return _tf_tensor_get_item(target, i)
