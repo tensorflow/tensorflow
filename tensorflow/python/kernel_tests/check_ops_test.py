@@ -116,7 +116,7 @@ class AssertEqualTest(test.TestCase):
       check_ops.assert_equal(static_big, static_small, message="fail")
 
   def test_raises_when_greater_dynamic(self):
-    with self.test_session():
+    with self.cached_session():
       small = array_ops.placeholder(dtypes.int32, name="small")
       big = array_ops.placeholder(dtypes.int32, name="big")
       with ops.control_dependencies(
@@ -194,7 +194,7 @@ First 2 elements of y:
       check_ops.assert_equal(static_big, static_small, message="fail")
 
   def test_raises_when_less_dynamic(self):
-    with self.test_session():
+    with self.cached_session():
       small = array_ops.placeholder(dtypes.int32, name="small")
       big = array_ops.placeholder(dtypes.int32, name="big")
       with ops.control_dependencies([check_ops.assert_equal(small, big)]):
@@ -271,30 +271,28 @@ class AssertNoneEqualTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_raises_when_not_equal_but_non_broadcastable_shapes(self):
-    with self.test_session():
-      small = constant_op.constant([1, 1, 1], name="small")
-      big = constant_op.constant([10, 10], name="big")
-      # The exception in eager and non-eager mode is different because
-      # eager mode relies on shape check done as part of the C++ op, while
-      # graph mode does shape checks when creating the `Operation` instance.
-      with self.assertRaisesRegexp(
-          (ValueError, errors.InvalidArgumentError),
-          (r"Incompatible shapes: \[3\] vs. \[2\]|"
-           r"Dimensions must be equal, but are 3 and 2")):
-        with ops.control_dependencies(
-            [check_ops.assert_none_equal(small, big)]):
-          out = array_ops.identity(small)
-        self.evaluate(out)
+    small = constant_op.constant([1, 1, 1], name="small")
+    big = constant_op.constant([10, 10], name="big")
+    # The exception in eager and non-eager mode is different because
+    # eager mode relies on shape check done as part of the C++ op, while
+    # graph mode does shape checks when creating the `Operation` instance.
+    with self.assertRaisesRegexp(
+        (ValueError, errors.InvalidArgumentError),
+        (r"Incompatible shapes: \[3\] vs. \[2\]|"
+         r"Dimensions must be equal, but are 3 and 2")):
+      with ops.control_dependencies(
+          [check_ops.assert_none_equal(small, big)]):
+        out = array_ops.identity(small)
+      self.evaluate(out)
 
   @test_util.run_in_graph_and_eager_modes
   def test_doesnt_raise_when_both_empty(self):
-    with self.test_session():
-      larry = constant_op.constant([])
-      curly = constant_op.constant([])
-      with ops.control_dependencies(
-          [check_ops.assert_none_equal(larry, curly)]):
-        out = array_ops.identity(larry)
-      self.evaluate(out)
+    larry = constant_op.constant([])
+    curly = constant_op.constant([])
+    with ops.control_dependencies(
+        [check_ops.assert_none_equal(larry, curly)]):
+      out = array_ops.identity(larry)
+    self.evaluate(out)
 
   def test_returns_none_with_eager(self):
     with context.eager_mode():
@@ -905,7 +903,7 @@ class AssertRankTest(test.TestCase):
         self.evaluate(array_ops.identity(tensor))
 
   def test_rank_zero_tensor_raises_if_rank_too_small_dynamic_rank(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
       desired_rank = 1
       with ops.control_dependencies(
@@ -923,7 +921,7 @@ class AssertRankTest(test.TestCase):
       self.evaluate(array_ops.identity(tensor))
 
   def test_rank_zero_tensor_doesnt_raise_if_rank_just_right_dynamic_rank(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
       desired_rank = 0
       with ops.control_dependencies(
@@ -940,7 +938,7 @@ class AssertRankTest(test.TestCase):
         self.evaluate(array_ops.identity(tensor))
 
   def test_rank_one_tensor_raises_if_rank_too_large_dynamic_rank(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
       desired_rank = 0
       with ops.control_dependencies(
@@ -957,7 +955,7 @@ class AssertRankTest(test.TestCase):
       self.evaluate(array_ops.identity(tensor))
 
   def test_rank_one_tensor_doesnt_raise_if_rank_just_right_dynamic_rank(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
       desired_rank = 1
       with ops.control_dependencies(
@@ -974,7 +972,7 @@ class AssertRankTest(test.TestCase):
         self.evaluate(array_ops.identity(tensor))
 
   def test_rank_one_tensor_raises_if_rank_too_small_dynamic_rank(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
       desired_rank = 2
       with ops.control_dependencies(
@@ -989,7 +987,7 @@ class AssertRankTest(test.TestCase):
       check_ops.assert_rank(tensor, np.array([], dtype=np.int32))
 
   def test_raises_if_rank_is_not_scalar_dynamic(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = constant_op.constant(
           [1, 2], dtype=dtypes.float32, name="my_tensor")
       rank_tensor = array_ops.placeholder(dtypes.int32, name="rank_tensor")
@@ -1006,7 +1004,7 @@ class AssertRankTest(test.TestCase):
       check_ops.assert_rank(tensor, .5)
 
   def test_raises_if_rank_is_not_integer_dynamic(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = constant_op.constant(
           [1, 2], dtype=dtypes.float32, name="my_tensor")
       rank_tensor = array_ops.placeholder(dtypes.float32, name="rank_tensor")
@@ -1029,7 +1027,7 @@ class AssertRankInTest(test.TestCase):
         self.evaluate(array_ops.identity(tensor_rank0))
 
   def test_rank_zero_tensor_raises_if_rank_mismatch_dynamic_rank(self):
-    with self.test_session():
+    with self.cached_session():
       tensor_rank0 = array_ops.placeholder(dtypes.float32, name="my_tensor")
       with ops.control_dependencies([
           check_ops.assert_rank_in(tensor_rank0, (1, 2), message="fail")]):
@@ -1045,7 +1043,7 @@ class AssertRankInTest(test.TestCase):
         self.evaluate(array_ops.identity(tensor_rank0))
 
   def test_rank_zero_tensor_doesnt_raise_if_rank_matches_dynamic_rank(self):
-    with self.test_session():
+    with self.cached_session():
       tensor_rank0 = array_ops.placeholder(dtypes.float32, name="my_tensor")
       for desired_ranks in ((0, 1, 2), (1, 0, 2), (1, 2, 0)):
         with ops.control_dependencies([
@@ -1061,7 +1059,7 @@ class AssertRankInTest(test.TestCase):
         self.evaluate(array_ops.identity(tensor_rank1))
 
   def test_rank_one_tensor_doesnt_raise_if_rank_matches_dynamic_rank(self):
-    with self.test_session():
+    with self.cached_session():
       tensor_rank1 = array_ops.placeholder(dtypes.float32, name="my_tensor")
       for desired_ranks in ((0, 1, 2), (1, 0, 2), (1, 2, 0)):
         with ops.control_dependencies([
@@ -1079,7 +1077,7 @@ class AssertRankInTest(test.TestCase):
         self.evaluate(array_ops.identity(tensor_rank1))
 
   def test_rank_one_tensor_raises_if_rank_mismatches_dynamic_rank(self):
-    with self.test_session():
+    with self.cached_session():
       tensor_rank1 = array_ops.placeholder(dtypes.float32, name="my_tensor")
       with ops.control_dependencies([
           check_ops.assert_rank_in(tensor_rank1, (0, 2))]):
@@ -1098,7 +1096,7 @@ class AssertRankInTest(test.TestCase):
       check_ops.assert_rank_in(tensor, desired_ranks)
 
   def test_raises_if_rank_is_not_scalar_dynamic(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = constant_op.constant(
           (42, 43), dtype=dtypes.float32, name="my_tensor")
       desired_ranks = (
@@ -1120,7 +1118,7 @@ class AssertRankInTest(test.TestCase):
       check_ops.assert_rank_in(tensor, (1, .5,))
 
   def test_raises_if_rank_is_not_integer_dynamic(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = constant_op.constant(
           (42, 43), dtype=dtypes.float32, name="my_tensor")
       rank_tensor = array_ops.placeholder(dtypes.float32, name="rank_tensor")
@@ -1143,7 +1141,7 @@ class AssertRankAtLeastTest(test.TestCase):
         self.evaluate(array_ops.identity(tensor))
 
   def test_rank_zero_tensor_raises_if_rank_too_small_dynamic_rank(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
       desired_rank = 1
       with ops.control_dependencies(
@@ -1160,7 +1158,7 @@ class AssertRankAtLeastTest(test.TestCase):
       self.evaluate(array_ops.identity(tensor))
 
   def test_rank_zero_tensor_doesnt_raise_if_rank_just_right_dynamic_rank(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
       desired_rank = 0
       with ops.control_dependencies(
@@ -1176,7 +1174,7 @@ class AssertRankAtLeastTest(test.TestCase):
       self.evaluate(array_ops.identity(tensor))
 
   def test_rank_one_ten_doesnt_raise_if_rank_too_large_dynamic_rank(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
       desired_rank = 0
       with ops.control_dependencies(
@@ -1192,7 +1190,7 @@ class AssertRankAtLeastTest(test.TestCase):
       self.evaluate(array_ops.identity(tensor))
 
   def test_rank_one_tensor_doesnt_raise_if_rank_just_right_dynamic_rank(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
       desired_rank = 1
       with ops.control_dependencies(
@@ -1209,7 +1207,7 @@ class AssertRankAtLeastTest(test.TestCase):
         self.evaluate(array_ops.identity(tensor))
 
   def test_rank_one_tensor_raises_if_rank_too_small_dynamic_rank(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.placeholder(dtypes.float32, name="my_tensor")
       desired_rank = 2
       with ops.control_dependencies(

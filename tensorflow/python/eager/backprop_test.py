@@ -64,7 +64,7 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(fn, [0])(var)[0]
     grad = self.evaluate(ops.convert_to_tensor(grad))
 
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode():
       tf_var = array_ops.constant(var_np, dtypes.float32)
       tf_ind1 = array_ops.constant([0, 1])
       tf_ind2 = array_ops.constant([2, 3])
@@ -79,7 +79,7 @@ class BackpropTest(test.TestCase):
       tf_dense_grad = math_ops.unsorted_segment_sum(
           tf_grad.values, tf_grad.indices, tf_grad.dense_shape[0])
 
-      self.assertAllClose(grad, tf_dense_grad.eval())
+      self.assertAllClose(grad, self.evaluate(tf_dense_grad))
 
   def testImplicitGradWithResourceVariable(self):
     x = resource_variable_ops.ResourceVariable(
@@ -198,7 +198,7 @@ class BackpropTest(test.TestCase):
     grad = backprop.implicit_grad(f)()[0][0]
     opt = training.GradientDescentOptimizer(lrn_rate)
 
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       tf_x = array_ops.ones((batch_size), dtypes.int64)
       # TODO(ashankar,apassos): Change to ResourceVariable.
       tf_embedding = variables.Variable(
@@ -941,7 +941,7 @@ class BackpropTest(test.TestCase):
   def testZerosCacheDoesntLeakAcrossGraphs(self):
     with context.graph_mode():
       def get_grad():
-        with ops.Graph().as_default(), self.test_session():
+        with ops.Graph().as_default(), self.cached_session():
           t = constant_op.constant(1, dtype=dtypes.float32, shape=(10, 4))
           x = constant_op.constant(2, dtype=dtypes.float32, shape=(10, 4))
           with backprop.GradientTape() as tape:
