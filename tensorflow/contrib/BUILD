@@ -20,7 +20,13 @@ py_library(
     ),
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [
+    deps = if_not_windows([
+        # TODO(aaroey): tensorrt dependency has to appear before tflite so the
+        # build can resolve its flatbuffers symbols within the tensorrt library.
+        # This is an issue with the tensorrt static library and will be fixed by
+        # the next tensorrt release, so fix the order here after that.
+        "//tensorflow/contrib/tensorrt:init_py",  # doesn't compile on windows
+    ]) + [
         "//tensorflow/contrib/all_reduce",
         "//tensorflow/contrib/batching:batch_py",
         "//tensorflow/contrib/bayesflow:bayesflow_py",
@@ -55,7 +61,6 @@ py_library(
         "//tensorflow/contrib/integrate:integrate_py",
         "//tensorflow/contrib/keras",
         "//tensorflow/contrib/kernel_methods",
-        "//tensorflow/contrib/kfac",
         "//tensorflow/contrib/labeled_tensor",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
@@ -64,6 +69,7 @@ py_library(
         "//tensorflow/contrib/linalg:linalg_py",
         "//tensorflow/contrib/linear_optimizer:sdca_estimator_py",
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
+        "//tensorflow/contrib/lite/python:lite",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/contrib/losses:metric_learning_py",
@@ -130,12 +136,6 @@ py_library(
         "//tensorflow/contrib/bigtable",  # depends on bigtable
         "//tensorflow/contrib/cloud:cloud_py",  # doesn't compile on Windows
         "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
-        # TODO(aaroey): tensorrt dependency has to appear before tflite so the
-        # build can resolve its flatbuffers symbols within the tensorrt library.
-        # This is an issue with the tensorrt static library and will be fixed by
-        # the next tensorrt release, so fix the order here after that.
-        "//tensorflow/contrib/tensorrt:init_py",  # doesn't compile on windows
-        "//tensorflow/contrib/lite/python:lite",  # unix dependency, need to fix code
     ]),
 )
 
@@ -181,6 +181,7 @@ cc_library(
         "//tensorflow/contrib/boosted_trees:boosted_trees_ops_op_lib",
         "//tensorflow/contrib/coder:all_ops",
         "//tensorflow/contrib/data:dataset_ops_op_lib",
+        "//tensorflow/contrib/data:indexed_dataset_ops_op_lib",
         "//tensorflow/contrib/factorization:all_ops",
         "//tensorflow/contrib/framework:all_ops",
         "//tensorflow/contrib/hadoop:dataset_ops_op_lib",

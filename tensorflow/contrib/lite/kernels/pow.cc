@@ -80,14 +80,14 @@ template <typename T>
 void PowImpl(const TfLiteTensor* input1, const TfLiteTensor* input2,
              TfLiteTensor* output, bool requires_broadcast) {
   if (requires_broadcast) {
-    reference_ops::BroadcastPow(GetTensorData<T>(input1), GetTensorDims(input1),
-                                GetTensorData<T>(input2), GetTensorDims(input2),
-                                GetTensorData<T>(output),
-                                GetTensorDims(output));
+    reference_ops::BroadcastPow4DSlow(
+        GetTensorShape(input1), GetTensorData<T>(input1),
+        GetTensorShape(input2), GetTensorData<T>(input2),
+        GetTensorShape(output), GetTensorData<T>(output));
   } else {
-    reference_ops::Pow(GetTensorData<T>(input1), GetTensorDims(input1),
-                       GetTensorData<T>(input2), GetTensorDims(input2),
-                       GetTensorData<T>(output), GetTensorDims(output));
+    reference_ops::Pow(GetTensorShape(input1), GetTensorData<T>(input1),
+                       GetTensorShape(input2), GetTensorData<T>(input2),
+                       GetTensorShape(output), GetTensorData<T>(output));
   }
 }
 

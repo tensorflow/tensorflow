@@ -51,7 +51,6 @@ from tensorflow.contrib import input_pipeline
 from tensorflow.contrib import integrate
 from tensorflow.contrib import keras
 from tensorflow.contrib import kernel_methods
-from tensorflow.contrib import kfac
 from tensorflow.contrib import labeled_tensor
 from tensorflow.contrib import layers
 from tensorflow.contrib import learn
@@ -94,8 +93,7 @@ from tensorflow.contrib import tpu
 from tensorflow.contrib import training
 from tensorflow.contrib import util
 from tensorflow.contrib.eager.python import tfe as eager
-if os.name != "nt":
-  from tensorflow.contrib.lite.python import lite
+from tensorflow.contrib.lite.python import lite
 from tensorflow.contrib.optimizer_v2 import optimizer_v2_symbols as optimizer_v2
 from tensorflow.contrib.receptive_field import receptive_field_api as receptive_field
 from tensorflow.contrib.recurrent.python import recurrent_api as recurrent

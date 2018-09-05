@@ -16,6 +16,10 @@ limitations under the License.
 #include <cstdarg>
 #include <cstdio>
 
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
+
 namespace tflite {
 
 ErrorReporter::~ErrorReporter() {}
@@ -39,6 +43,15 @@ int ErrorReporter::ReportError(void*, const char* format, ...) {
 }
 
 int StderrReporter::Report(const char* format, va_list args) {
+#ifdef __ANDROID__
+  // On Android stderr is not captured for applications, only for code run from
+  // the shell. Rather than assume all users will set up a custom error
+  // reporter, let's output to logcat here
+  va_list args_for_log;
+  va_copy(args_for_log, args);
+  __android_log_vprint(ANDROID_LOG_ERROR, "tflite", format, args_for_log);
+  va_end(args_for_log);
+#endif
   const int result = vfprintf(stderr, format, args);
   fputc('\n', stderr);
   return result;

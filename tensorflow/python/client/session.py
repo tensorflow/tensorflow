@@ -1500,7 +1500,7 @@ class Session(BaseSession):
     Args:
       target: (Optional.) The execution engine to connect to.
         Defaults to using an in-process engine. See
-        @{$distributed$Distributed TensorFlow}
+        [Distributed TensorFlow](https://tensorflow.org/deploy/distributed)
         for more examples.
       graph: (Optional.) The `Graph` to be launched (described above).
       config: (Optional.) A

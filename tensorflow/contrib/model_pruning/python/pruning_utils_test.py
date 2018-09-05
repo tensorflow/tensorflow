@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.contrib.model_pruning.python import pruning_utils
@@ -26,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -36,26 +38,12 @@ class PruningUtilsTest(test.TestCase):
   def _compare_cdf(self, values):
     abs_values = math_ops.abs(values)
     max_value = math_ops.reduce_max(abs_values)
-    with self.test_session():
+    with self.cached_session():
       variables.global_variables_initializer().run()
       cdf_from_histogram = pruning_utils.compute_cdf_from_histogram(
           abs_values, [0.0, max_value], nbins=pruning_utils._NBINS)
       cdf = pruning_utils.compute_cdf(abs_values, [0.0, max_value])
       self.assertAllEqual(cdf.eval(), cdf_from_histogram.eval())
-
-  def _compare_pooling_methods(self, weights, pooling_kwargs):
-    with self.test_session():
-      variables.global_variables_initializer().run()
-      pooled_weights_tf = array_ops.squeeze(
-          nn_ops.pool(
-              array_ops.reshape(
-                  weights,
-                  [1, weights.get_shape()[0],
-                   weights.get_shape()[1], 1]), **pooling_kwargs))
-      pooled_weights_factorized_pool = pruning_utils.factorized_pool(
-          weights, **pooling_kwargs)
-      self.assertAllClose(pooled_weights_tf.eval(),
-                          pooled_weights_factorized_pool.eval())
 
   def testHistogram(self):
     width = 10
@@ -67,7 +55,7 @@ class PruningUtilsTest(test.TestCase):
         "weights", [width, height], initializer=init)
     histogram = pruning_utils._histogram(
         weights, [0, 1.0], nbins, dtype=np.float32)
-    with self.test_session():
+    with self.cached_session():
       variables.global_variables_initializer().run()
       computed_histogram = histogram.eval()
     self.assertAllEqual(expected_histogram, computed_histogram)
@@ -79,7 +67,7 @@ class PruningUtilsTest(test.TestCase):
     norm_cdf = pruning_utils.compute_cdf_from_histogram(
         abs_weights, [0.0, 5.0], nbins=nbins)
     expected_cdf = np.array([0.1, 0.4, 0.5, 0.6, 1.0], dtype=np.float32)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       variables.global_variables_initializer().run()
       norm_cdf_val = sess.run(norm_cdf)
       self.assertAllEqual(len(norm_cdf_val), nbins)
@@ -95,25 +83,59 @@ class PruningUtilsTest(test.TestCase):
     weights = variable_scope.get_variable("weights", shape=[5, 5, 128, 128])
     self._compare_cdf(weights)
 
-  def testFactorizedAvgPool(self):
+
+@parameterized.named_parameters(
+    ("1x1", [1, 1]), ("4x4", [4, 4]), ("6x6", [6, 6]), ("1x4", [1, 4]),
+    ("4x1", [4, 1]), ("1x8", [1, 8]), ("8x1", [8, 1]))
+class PruningUtilsParameterizedTest(test.TestCase, parameterized.TestCase):
+
+  def _compare_pooling_methods(self, weights, pooling_kwargs):
+    with self.cached_session():
+      variables.global_variables_initializer().run()
+      pooled_weights_tf = array_ops.squeeze(
+          nn_ops.pool(
+              array_ops.reshape(
+                  weights,
+                  [1, weights.get_shape()[0],
+                   weights.get_shape()[1], 1]), **pooling_kwargs))
+      pooled_weights_factorized_pool = pruning_utils.factorized_pool(
+          weights, **pooling_kwargs)
+      self.assertAllClose(pooled_weights_tf.eval(),
+                          pooled_weights_factorized_pool.eval())
+
+  def _compare_expand_tensor_with_kronecker_product(self, tensor, block_dim):
+    with self.cached_session() as session:
+      variables.global_variables_initializer().run()
+      expanded_tensor = pruning_utils.expand_tensor(tensor, block_dim)
+      kronecker_product = pruning_utils.kronecker_product(
+          tensor, array_ops.ones(block_dim))
+      expanded_tensor_val, kronecker_product_val = session.run(
+          [expanded_tensor, kronecker_product])
+      self.assertAllEqual(expanded_tensor_val, kronecker_product_val)
+
+  def testFactorizedAvgPool(self, window_shape):
     weights = variable_scope.get_variable("weights", shape=[1024, 2048])
     pooling_kwargs = {
-        "window_shape": [2, 4],
+        "window_shape": window_shape,
         "pooling_type": "AVG",
-        "strides": [2, 4],
+        "strides": window_shape,
         "padding": "SAME"
     }
     self._compare_pooling_methods(weights, pooling_kwargs)
 
-  def testFactorizedMaxPool(self):
+  def testFactorizedMaxPool(self, window_shape):
     weights = variable_scope.get_variable("weights", shape=[1024, 2048])
     pooling_kwargs = {
-        "window_shape": [2, 4],
+        "window_shape": window_shape,
         "pooling_type": "MAX",
-        "strides": [2, 4],
+        "strides": window_shape,
         "padding": "SAME"
     }
     self._compare_pooling_methods(weights, pooling_kwargs)
+
+  def testExpandTensor(self, block_dim):
+    weights = random_ops.random_normal(shape=[1024, 512])
+    self._compare_expand_tensor_with_kronecker_product(weights, block_dim)
 
 
 if __name__ == "__main__":

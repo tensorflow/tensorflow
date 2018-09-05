@@ -47,7 +47,6 @@ py_library(
         ":core",
         ":execute",
         ":function",
-        ":graph_callable",
         ":graph_only_ops",
         ":tape",
         ":test",
@@ -238,6 +237,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":graph_only_ops",
+        "//tensorflow/python:cond_v2_impl",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
@@ -250,41 +250,6 @@ py_library(
         "//tensorflow/python/eager:tape",
         "//third_party/py/numpy",
         "@six_archive//:six",
-    ],
-)
-
-py_library(
-    name = "graph_callable",
-    srcs = ["graph_callable.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:function",
-        "//tensorflow/python/eager:tape",
-    ],
-)
-
-py_test(
-    name = "graph_callable_test",
-    srcs = ["graph_callable_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":backprop",
-        ":graph_callable",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:function",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python/eager:test",
     ],
 )
 

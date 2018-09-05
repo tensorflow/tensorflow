@@ -19,12 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+from functools import partial
 import threading
 
 from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_ops_lib
 from tensorflow.contrib.distribute.python import shared_variable_creator
 from tensorflow.contrib.distribute.python import values
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
@@ -63,7 +65,7 @@ class _RequestedStop(Exception):
   pass
 
 
-# Make _call_for_each_tower and _reduce_non_distributed_value not members of
+# _call_for_each_tower and _reduce_non_distributed_value are not members of
 # MirroredStrategy so that they are generally not allowed to use anything
 # specific to MirroredStrategy and thus can be shared with other distribution
 # strategies.
@@ -195,10 +197,12 @@ def _reduce_non_distributed_value(distribution, aggregation, value,
   # and equal to 0.
   if value == 0:
     return 0
-  # If the aggregation type is MEAN, then this essentially means that the same
-  # value should be on all destinations.
-  if aggregation == variable_scope.VariableAggregation.MEAN:
-    return distribution.broadcast(value, destinations)
+  # If the aggregation type is MEAN or ONLY_FIRST_TOWER, then this
+  # essentially means that the same value should be on all destinations.
+  if aggregation in (
+      variable_scope.VariableAggregation.MEAN,
+      variable_scope.VariableAggregation.ONLY_FIRST_TOWER):
+    return value
 
   cross_tower_ops_lib.validate_destinations(destinations)
   # We do not support an aggregation type of SUM if the value is the same across
@@ -206,8 +210,8 @@ def _reduce_non_distributed_value(distribution, aggregation, value,
   # and summing up identical values across towers is not clearly defined.
   if (len(distribution.worker_devices) != 1 or
       not cross_tower_ops_lib.check_destinations(destinations)):
-    raise ValueError("A non-DistributedValues value cannot be reduced with the "
-                     "given aggregation.")
+    raise ValueError("A non-DistributedValues value %s cannot be reduced with "
+                     "the given aggregation %s." % (value, aggregation))
   # TODO(anjalisridhar): Moves these methods to a device utility file?
   devices = cross_tower_ops_lib.get_devices_from(destinations)
   if len(devices) == 1:
@@ -252,11 +256,12 @@ def _create_mirrored_variable(devices, real_mirrored_creator, *args, **kwargs): 
   # Get aggregation value
   aggregation = kwargs.pop("aggregation",
                            variable_scope.VariableAggregation.NONE)
-  if aggregation not in [
+  if aggregation not in (
       variable_scope.VariableAggregation.NONE,
       variable_scope.VariableAggregation.SUM,
-      variable_scope.VariableAggregation.MEAN
-  ]:
+      variable_scope.VariableAggregation.MEAN,
+      variable_scope.VariableAggregation.ONLY_FIRST_TOWER
+  ):
     raise ValueError("Invalid variable aggregation mode: " + aggregation +
                      " for variable: " + kwargs["name"])
 
@@ -274,6 +279,9 @@ def _create_mirrored_variable(devices, real_mirrored_creator, *args, **kwargs): 
     else:
       result = values.MirroredVariable(index, index[devices[0]], aggregation)
 
+  # Add the wrapped variable to the requested collections.
+  # The handling of eager mode and the global step matches
+  # ResourceVariable._init_from_args().
   if not context.executing_eagerly():
     g = ops.get_default_graph()
     # If "trainable" is True, next_creator() will add the member variables
@@ -287,28 +295,140 @@ def _create_mirrored_variable(devices, real_mirrored_creator, *args, **kwargs): 
       for v in index.values():
         l.remove(v)
     g.add_to_collections(collections, result)
+  elif ops.GraphKeys.GLOBAL_STEP in collections:
+    ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, result)
+
   return result
 
 
 class MirroredStrategy(distribute_lib.DistributionStrategy):
-  """Mirrors vars to distribute across multiple devices on a single machine.
+  """Mirrors vars to distribute across multiple devices and machines.
 
-  This strategy uses one tower per device and sync replication.
+  This strategy uses one tower per device and sync replication for its multi-GPU
+  version.
+
+  When `cluster_spec` is given by the `configure` method., it turns into the
+  mulit-worker version that works on multiple workers with in-graph replication.
+  Note: `configure` will be called by higher-level APIs if running in
+  distributed environment.
+
+  There are several important concepts for distributed TensorFlow, e.g.
+  `client`, `job`, 'task', `cluster`, `in-graph replication` and
+  'synchronous training' and they have already been defined in the
+  [TensorFlow's documentation](https://www.tensorflow.org/deploy/distributed).
+  The distribution strategy inherits these concepts as well and in addition to
+  that we also clarify several more concepts:
+    * **In-graph replication**: the `client` creates a single `tf.Graph` that
+    specifies tasks for devices on all workers. The `client` then creates a
+    client session which will talk to the `master` service of a `worker`. Then
+    the `master` will partition the graph and distribute the work to all
+    participating workers.
+    * **Worker**: A `worker` is a TensorFlow `task` that usually maps to one
+    physical machine. We will have multiple `worker`s with different `task`
+    index. They all do similar things except for one worker checkpointing model
+    variables, writing summaries, etc. in addition to its ordinary work.
+
+  The multi-worker version of this class maps one tower to one device on a
+  worker. It mirrors all model variables on all towers. For example, if you have
+  two `worker`s and each `worker` has 4 GPUs, it will create 8 copies of the
+  model variables on these 8 GPUs. Then like in MirroredStrategy, each tower
+  performs their computation with their own copy of variables unless in
+  cross-tower model where variable or tensor reduction happens.
+
+  Args:
+    devices: a list of device strings.
+    num_gpus: number of GPUs. For local training, either specify `devices` or
+      `num_gpus`. In distributed training, this must be specified as number of
+      GPUs on each worker.
+    num_gpus_per_worker: number of GPUs per worker. This is the same as
+      `num_gpus` and only one of `num_gpus` and `num_gpus_per_worker` can be
+      specified.
+    cross_tower_ops: optional, a descedant of `CrossTowerOps`. If this is not
+      set, the `configure` method will try to find the best one.
+    prefetch_on_device: optional boolean to specify whether to prefetch input
+      data to devices.
   """
 
   def __init__(self,
                devices=None,
                num_gpus=None,
+               num_gpus_per_worker=None,
                cross_tower_ops=None,
                prefetch_on_device=None):
     super(MirroredStrategy, self).__init__()
+
+    self._cross_tower_ops = cross_tower_ops
+    self._prefetch_on_device = prefetch_on_device
+    # Rememeber num GPUs which might be needed by `configure` method.
+    if num_gpus is not None and num_gpus_per_worker is not None:
+      raise ValueError(
+          "You cannot specify both `num_gpus` and `num_gpus_per_worker`.")
+    if num_gpus is not None:
+      self._num_gpus = num_gpus
+    else:
+      self._num_gpus = num_gpus_per_worker
+
+    self._initialize_local(self._num_gpus, devices)
+
+  def _initialize_local(self, num_gpus, devices):
+    """Initializes the object for local training."""
+    self._cluster_spec = None
     # Convert `num_gpus` into `devices`, shouldn't specify both.
     if devices is None:
       if num_gpus is None:
         num_gpus = context.num_gpus()
-      devices = ["/device:GPU:%d" % d for d in range(num_gpus)]
+      if num_gpus == 0:
+        devices = ["/device:CPU:0"]
+      else:
+        devices = ["/device:GPU:%d" % d for d in range(num_gpus)]
     elif num_gpus is not None:
       raise ValueError("Must only specify one of `devices` and `num_gpus`.")
+    self._num_gpus = num_gpus
+    # TODO(yuefengz): consider setting the default device.
+
+    assert devices, "Must specify at least one device."
+    assert len(set(devices)) == len(devices), (
+        "No duplicates allowed in `devices` argument.")
+    # TODO(josh11b): Require at least 2 devices?
+    self._devices = [device_util.resolve(d) for d in devices]
+    self._canonical_device_set = set(self._devices)
+    self._device_index = values.PerDevice({d: i for i, d in enumerate(devices)})
+
+  def _initialize_multi_worker(self, num_gpus, cluster_spec):
+    """Initializes the object for multi-worker training."""
+    cluster_spec = multi_worker_util.normalize_cluster_spec(cluster_spec)
+    self._cluster_spec = cluster_spec
+
+    self._workers = []
+    for job in ["chief", "worker"]:
+      for task in range(len(cluster_spec.as_dict().get(job, []))):
+        self._workers.append("/job:%s/task:%d" % (job, task))
+
+    if num_gpus is None:
+      raise ValueError("`num_gpus` is required if `cluster_spec` is given.")
+    if num_gpus > 0:
+      self._worker_device_map = {
+          worker: [
+              device_util.canonicalize(worker + "/device:GPU:%d" % gpu)
+              for gpu in range(num_gpus)
+          ] for worker in self._workers
+      }
+    else:
+      self._worker_device_map = {
+          worker: [device_util.canonicalize(worker, "/device:CPU:0")]
+          for worker in self._workers
+      }
+
+    devices = nest.flatten(self._worker_device_map)
+
+    # Setting `_default_device` will add a device scope in the
+    # distribution.scope. We set the default device to the first worker. When
+    # users specify device under distribution.scope by
+    #   with tf.device("/cpu:0"):
+    #     ...
+    # their ops will end up on the cpu device of its first worker, e.g.
+    # "/job:worker/task:0/device:CPU:0". Note this is not used in tower mode.
+    self._default_device = self._workers[0]
 
     assert devices, "Must specify at least one device."
     assert len(set(devices)) == len(devices), (
@@ -318,9 +438,6 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     self._canonical_device_set = set(self._devices)
     self._device_index = values.PerDevice(
         {d: i for i, d in enumerate(devices)})
-    self._cross_tower_ops = cross_tower_ops
-    self._prefetch_on_device = prefetch_on_device
-    # TODO(yuefengz): consider setting the default device.
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a mirrored variable. See `DistributionStrategy.scope`."""
@@ -357,9 +474,14 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
                                      **kwargs)
 
   def distribute_dataset(self, dataset_fn):
-    return values.PerDeviceDataset(
-        self._call_dataset_fn(dataset_fn), self._devices,
-        self._prefetch_on_device)
+    if self._cluster_spec:
+      return values.MultiWorkerDataset(
+          partial(self._call_dataset_fn, dataset_fn), self._worker_device_map,
+          self._prefetch_on_device)
+    else:
+      return values.PerDeviceDataset(
+          self._call_dataset_fn(dataset_fn), self._devices,
+          self._prefetch_on_device)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   def _run_steps_on_dataset(self, fn, iterator, iterations,
@@ -372,7 +494,10 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     def body(i, *args):
       """A wrapper around `fn` to create the while loop body."""
       del args
-      fn_result = fn(ctx, iterator.get_next())
+      fn_inputs = iterator.get_next()
+      if not isinstance(fn_inputs, tuple):
+        fn_inputs = (fn_inputs,)
+      fn_result = fn(ctx, *fn_inputs)
       for (name, output) in ctx.last_step_outputs.items():
         # Convert all outputs to tensors, potentially from `DistributedValues`.
         ctx.last_step_outputs[name] = self.unwrap(output)
@@ -380,12 +505,21 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       with ops.control_dependencies([fn_result]):
         return [i + 1] + flat_last_step_outputs
 
+    # We capture the control_flow_context at this point, before we run `fn`
+    # inside a while_loop. This is useful in cases where we might need to exit
+    # these contexts and get back to the outer context to do some things, for
+    # e.g. create an op which should be evaluated only once at the end of the
+    # loop on the host. One such usage is in creating metrics' value op.
+    self._outer_control_flow_context = (
+        ops.get_default_graph()._get_control_flow_context())  # pylint: disable=protected-access
+
     cond = lambda i, *args: i < iterations
     i = constant_op.constant(0)
     loop_result = control_flow_ops.while_loop(
         cond, body, [i] + initial_loop_values, name="",
         parallel_iterations=1, back_prop=False, swap_memory=False,
         return_same_structure=True)
+    del self._outer_control_flow_context
 
     ctx.run_op = control_flow_ops.group(loop_result)
 
@@ -432,10 +566,29 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     # in addition to PerDevice data.
     return values.PerDevice({k: values.MapOutput(v) for k, v in index.items()})
 
-  def configure(self, session_config=None):
+  def configure(self,
+                session_config=None,
+                cluster_spec=None,
+                task_type=None,
+                task_id=None):
+    del task_type, task_id
+    if cluster_spec:
+      self._initialize_multi_worker(self._num_gpus, cluster_spec)
+
     if self._cross_tower_ops is None:
-      self._cross_tower_ops = cross_tower_ops_lib.choose_the_best(
-          self._devices, session_config=session_config)
+      if self._cluster_spec:
+        # It currently cannot detect the toplogy of remote workers. So we
+        # hard-code the multi-worker all-reduce algorithm for now.
+        if len(self._workers) == 1:
+          # The default is "nccl".
+          self._cross_tower_ops = cross_tower_ops_lib.AllReduceCrossTowerOps()
+        else:
+          # The default is hierarchical reduce and broadcast.
+          self._cross_tower_ops = cross_tower_ops_lib.MultiWorkerAllReduce(
+              self._workers, self._num_gpus)
+      else:
+        self._cross_tower_ops = cross_tower_ops_lib.choose_the_best(
+            self._devices, session_config=session_config)
 
   def _get_cross_tower_ops(self):
     if self._cross_tower_ops is None:
@@ -451,10 +604,18 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       # which case `value` would be a single value or value could be 0.
       return _reduce_non_distributed_value(self, aggregation, value,
                                            destinations)
+    if aggregation == variable_scope.VariableAggregation.ONLY_FIRST_TOWER:
+      value = value.get(self._devices[0])
+      if isinstance(value, (int, float)):
+        return value
+      return self.broadcast(value, destinations)
     return self._get_cross_tower_ops().reduce(
         aggregation, value, destinations=destinations)
 
   def _batch_reduce(self, aggregation, value_destination_pairs):
+    if aggregation == variable_scope.VariableAggregation.ONLY_FIRST_TOWER:
+      return [self.broadcast(v.get(self._devices[0]), d)
+              for v, d in value_destination_pairs]
     return self._get_cross_tower_ops().batch_reduce(aggregation,
                                                     value_destination_pairs)
 
@@ -519,6 +680,22 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   @property
   def parameter_devices(self):
     return list(self._devices)
+
+  @property
+  def between_graph(self):
+    return False
+
+  @property
+  def should_init(self):
+    return True
+
+  @property
+  def should_checkpoint(self):
+    return True
+
+  @property
+  def should_save_summary(self):
+    return True
 
   def non_slot_devices(self, var_list):
     del var_list

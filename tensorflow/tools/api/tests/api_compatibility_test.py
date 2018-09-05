@@ -79,7 +79,7 @@ def _KeyToFilePath(key, api_version):
   case_insensitive_key = re.sub('([A-Z]{1})', _ReplaceCapsWithDash, key)
   api_folder = (
       _API_GOLDEN_FOLDER_V2 if api_version == 2 else _API_GOLDEN_FOLDER_V1)
-  return os.path.join(_API_GOLDEN_FOLDER_V1, '%s.pbtxt' % case_insensitive_key)
+  return os.path.join(api_folder, '%s.pbtxt' % case_insensitive_key)
 
 
 def _FileNameToKey(filename):
@@ -315,7 +315,7 @@ class ApiCompatibilityTest(test.TestCase):
   def testAPIBackwardsCompatibilityV2(self):
     if not hasattr(tf.compat, 'v2'):
       return
-    api_version = 1
+    api_version = 2
     golden_file_pattern = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))

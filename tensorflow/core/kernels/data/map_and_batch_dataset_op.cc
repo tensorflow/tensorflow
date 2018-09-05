@@ -101,7 +101,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 batch_size,
             int64 num_parallel_calls, bool drop_remainder,
@@ -110,7 +110,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             const NameAttrList& func,
             std::unique_ptr<CapturedFunction> captured_func,
             const Eigen::ThreadPoolDevice* device)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           batch_size_(batch_size),
           num_parallel_calls_(num_parallel_calls),
@@ -147,7 +147,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx->flib_def(), map_fn_.name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, map_fn_.name()));
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* batch_size_node;
@@ -204,7 +204,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       }
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        TF_RETURN_IF_ERROR(
+            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+        return dataset()->captured_func_->Instantiate(ctx);
       }
 
       Status GetNextInternal(IteratorContext* ctx,

@@ -114,12 +114,10 @@ final class NativeInterpreterWrapper implements AutoCloseable {
       }
     }
 
-    if (!isMemoryAllocated) {
+    boolean needsAllocation = !isMemoryAllocated;
+    if (needsAllocation) {
       allocateTensors(interpreterHandle, errorHandle);
       isMemoryAllocated = true;
-      // Allocation can trigger dynamic resizing of output tensors, so clear the
-      // output tensor cache.
-      Arrays.fill(outputTensors, null);
     }
 
     for (int i = 0; i < inputs.length; ++i) {
@@ -130,6 +128,14 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     run(interpreterHandle, errorHandle);
     long inferenceDurationNanoseconds = System.nanoTime() - inferenceStartNanos;
 
+    // Allocation can trigger dynamic resizing of output tensors, so refresh all output shapes.
+    if (needsAllocation) {
+      for (int i = 0; i < outputTensors.length; ++i) {
+        if (outputTensors[i] != null) {
+          outputTensors[i].refreshShape();
+        }
+      }
+    }
     for (Map.Entry<Integer, Object> output : outputs.entrySet()) {
       getOutputTensor(output.getKey()).copyTo(output.getValue());
     }
@@ -144,8 +150,9 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   void resizeInput(int idx, int[] dims) {
     if (resizeInput(interpreterHandle, errorHandle, idx, dims)) {
       isMemoryAllocated = false;
-      // Resizing will invalidate the Tensor's shape, so invalidate the Tensor handle.
-      inputTensors[idx] = null;
+      if (inputTensors[idx] != null) {
+        inputTensors[idx].refreshShape();
+      }
     }
   }
 
@@ -230,6 +237,11 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     return getOutputQuantizationScale(interpreterHandle, index);
   }
 
+  /** Gets the number of input tensors. */
+  int getInputTensorCount() {
+    return inputTensors.length;
+  }
+
   /**
    * Gets the input {@link Tensor} for the provided input index.
    *
@@ -245,6 +257,11 @@ final class NativeInterpreterWrapper implements AutoCloseable {
           inputTensors[index] = Tensor.fromHandle(getInputTensor(interpreterHandle, index));
     }
     return inputTensor;
+  }
+
+  /** Gets the number of output tensors. */
+  int getOutputTensorCount() {
+    return inputTensors.length;
   }
 
   /**

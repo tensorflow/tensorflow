@@ -19,10 +19,12 @@ limitations under the License.
 #include <new>
 #include <utility>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -36,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -46,18 +47,27 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::tensorflow::gtl::ArraySlice;
 
 class MultiOutputFusionTest : public HloTestBase {
  protected:
   MultiOutputFusionTest() { error_spec_ = ErrorSpec{0.0001, 1e-2}; }
 
+  // Layout assignment assumes that there are no fusions in the input graph.
+  // Since the purpose of this test is to send pre-fused graphs to XLA, we have
+  // to do layout assignment ourselves.
+  DebugOptions GetDebugOptionsForTest() override {
+    auto opts = HloTestBase::GetDebugOptionsForTest();
+    opts.add_xla_disable_hlo_passes("layout-assignment");
+    return opts;
+  }
+
   void RunTest2D(bool manual_fusion, int64 size) {
     auto builder = HloComputation::Builder(TestName());
     auto hlo_module = CreateNewModule();
 
-    const Shape elem_shape0 = ShapeUtil::MakeShape(F32, {});
-    const Shape elem_shape2 = ShapeUtil::MakeShape(F32, {size, size});
+    const Shape elem_shape0 = ShapeUtil::MakeShapeWithLayout(F32, {}, {});
+    const Shape elem_shape2 =
+        ShapeUtil::MakeShapeWithLayout(F32, {size, size}, {1, 0});
 
     auto const0 = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(8.0f)));
@@ -85,8 +95,8 @@ class MultiOutputFusionTest : public HloTestBase {
     auto computation = hlo_module->AddEntryComputation(builder.Build(dot));
 
     if (manual_fusion) {
-      auto tuple = computation->AddInstruction(HloInstruction::CreateTuple(
-          ArraySlice<HloInstruction*>({sub, add2}, 0, 2)));
+      auto tuple =
+          computation->AddInstruction(HloInstruction::CreateTuple({sub, add2}));
       auto gte0 = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(elem_shape2, tuple, 0));
       auto gte1 = computation->AddInstruction(
@@ -100,10 +110,10 @@ class MultiOutputFusionTest : public HloTestBase {
           nullptr);
     }
 
-    Literal arg1(ShapeUtil::MakeShape(F32, {size, size}));
+    Literal arg1(ShapeUtil::MakeShapeWithDescendingLayout(F32, {size, size}));
     arg1.PopulateWithValue<float>(2.5f);
 
-    Literal expect(ShapeUtil::MakeShape(F32, {size, size}));
+    Literal expect(ShapeUtil::MakeShapeWithDescendingLayout(F32, {size, size}));
     expect.PopulateWithValue<float>(size * 1.5f * 3.5f);
     auto actual =
         ExecuteAndTransfer(std::move(hlo_module),
@@ -115,8 +125,10 @@ class MultiOutputFusionTest : public HloTestBase {
     auto builder = HloComputation::Builder(TestName());
     auto hlo_module = CreateNewModule();
 
-    const Shape elem_shape_F32 = ShapeUtil::MakeShape(F32, {size});
-    const Shape elem_shape_U8 = ShapeUtil::MakeShape(F64, {size});
+    const Shape elem_shape_F32 =
+        ShapeUtil::MakeShapeWithDescendingLayout(F32, {size});
+    const Shape elem_shape_U8 =
+        ShapeUtil::MakeShapeWithDescendingLayout(F64, {size});
     auto param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, elem_shape_F32, "0"));
     auto param1 = builder.AddInstruction(
@@ -136,17 +148,18 @@ class MultiOutputFusionTest : public HloTestBase {
 
     HloInstruction* reshape =
         builder.AddInstruction(HloInstruction::CreateReshape(
-            ShapeUtil::MakeShape(F32, {size, 1}), add));
+            ShapeUtil::MakeShapeWithDescendingLayout(F32, {size, 1}), add));
     DotDimensionNumbers dot_dnums;
     dot_dnums.add_lhs_contracting_dimensions(0);
     dot_dnums.add_rhs_contracting_dimensions(0);
     HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
-        ShapeUtil::MakeShape(F32, {1}), sub, reshape, dot_dnums));
+        ShapeUtil::MakeShapeWithDescendingLayout(F32, {1}), sub, reshape,
+        dot_dnums));
     auto computation = hlo_module->AddEntryComputation(builder.Build(dot));
 
     if (manual_fusion) {
-      auto tuple = computation->AddInstruction(HloInstruction::CreateTuple(
-          ArraySlice<HloInstruction*>({sub_U8, add}, 0, 2)));
+      auto tuple = computation->AddInstruction(
+          HloInstruction::CreateTuple({sub_U8, add}));
 
       auto gte0 = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(elem_shape_U8, tuple, 0));
@@ -161,9 +174,9 @@ class MultiOutputFusionTest : public HloTestBase {
                nullptr);
     }
 
-    Literal input0(ShapeUtil::MakeShape(F32, {size}));
+    Literal input0(ShapeUtil::MakeShapeWithDescendingLayout(F32, {size}));
     input0.PopulateWithValue(2.5f);
-    Literal input1(ShapeUtil::MakeShape(F64, {size}));
+    Literal input1(ShapeUtil::MakeShapeWithDescendingLayout(F64, {size}));
     input1.PopulateWithValue(1.);
 
     Literal expect =
@@ -291,7 +304,7 @@ const char* const kScalarOps = R"(
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionMinor)) {
-  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+  const string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -323,7 +336,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionMajor)) {
-  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+  const string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -355,7 +368,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionScalar)) {
-  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+  const string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -388,7 +401,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionMinorWithExtraOutput)) {
-  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+  const string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -422,7 +435,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionMajorWithExtraOutput)) {
-  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+  const string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -457,7 +470,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionScalarWithExtraOutput)) {
-  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+  const string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -494,7 +507,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionNonConstInit)) {
-  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+  const string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       init1 = f32[] parameter(1)
@@ -529,7 +542,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionDifferentElementTypes)) {
-  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+  const string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce (p0: f16[2,2,2]) -> (f32[2,2], f32[2,2], f16[2,2,2]) {
       p0 = f16[2,2,2]{2,1,0} parameter(0)
       convert = f32[2,2,2]{2,1,0} convert(p0)

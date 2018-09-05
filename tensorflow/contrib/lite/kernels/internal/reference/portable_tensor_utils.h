@@ -69,6 +69,11 @@ void PortableBatchVectorBatchVectorDotProduct(const float* vector1,
                                               int n_batch, float* result,
                                               int result_stride);
 
+// Cwise product of a vector and a batch-vector.
+void PortableVectorBatchVectorCwiseProduct(const float* vector, int v_size,
+                                           const float* batch_vector,
+                                           int n_batch, float* result);
+
 // Cwise product and accumulate of a vector and a batch-vector. Since it's a MAC
 // operation, the assumption here is that result array is initialized to valid
 // values.
@@ -159,6 +164,13 @@ void VectorVectorCwiseProductAccumulate(const float* vector1,
                                         const float* vector2, int v_size,
                                         float* result) {
   PortableVectorVectorCwiseProductAccumulate(vector1, vector2, v_size, result);
+}
+
+void VectorBatchVectorCwiseProduct(const float* vector, int v_size,
+                                   const float* batch_vector, int n_batch,
+                                   float* result) {
+  PortableVectorBatchVectorCwiseProduct(vector, v_size, batch_vector, n_batch,
+                                        result);
 }
 
 void VectorBatchVectorCwiseProductAccumulate(const float* vector, int v_size,

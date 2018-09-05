@@ -117,7 +117,7 @@ class CheckpointsTest(test.TestCase):
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         with variable_scope.variable_scope("some_scope"):
           my1 = variable_scope.get_variable("my1", [1, 10])
           with variable_scope.variable_scope("some_other_scope"):
@@ -158,7 +158,7 @@ class CheckpointsTest(test.TestCase):
 
       checkpoint_utils.init_from_checkpoint(checkpoint_dir,
                                             {"useful_scope/": "useful_scope/"})
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         session.run(variables.global_variables_initializer())
         self.assertAllEqual(my4.eval(session), v4)
         self.assertAllEqual(my5.eval(session), my5_init)
@@ -170,7 +170,7 @@ class CheckpointsTest(test.TestCase):
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         with variable_scope.variable_scope("some_scope"):
           my1 = variable_scope.get_variable("var1", [1, 10])
           my2 = variable_scope.get_variable("var2", [10, 10])
@@ -194,7 +194,7 @@ class CheckpointsTest(test.TestCase):
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         my1 = variable_scope.get_variable("var1", [1, 10])
         my2 = variable_scope.get_variable("var2", [10, 10])
         my3 = variable_scope.get_variable("var3", [100, 100])
@@ -217,7 +217,7 @@ class CheckpointsTest(test.TestCase):
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         with variable_scope.variable_scope("some_scope"):
           my1 = variable_scope.get_variable(
               name="my1",
@@ -247,7 +247,7 @@ class CheckpointsTest(test.TestCase):
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         with variable_scope.variable_scope("some_scope"):
           my1 = variable_scope.get_variable(
               name="my1",
@@ -271,7 +271,7 @@ class CheckpointsTest(test.TestCase):
 
     # New graph and session.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         with variable_scope.variable_scope("some_scope"):
           _ = variable_scope.get_variable("my1", [10, 10])
           _ = variable_scope.get_variable(

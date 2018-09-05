@@ -69,8 +69,10 @@ class TimeSeriesRegressorTest(test.TestCase):
         input_pipeline.NumpyReader(features), shuffle_seed=3, num_threads=1,
         batch_size=16, window_size=16)
     first_estimator.train(input_fn=train_input_fn, steps=1)
-    first_loss_before_fit = first_estimator.evaluate(
-        input_fn=eval_input_fn, steps=1)["loss"]
+    first_evaluation = first_estimator.evaluate(
+        input_fn=eval_input_fn, steps=1)
+    first_loss_before_fit = first_evaluation["loss"]
+    self.assertAllEqual(first_loss_before_fit, first_evaluation["average_loss"])
     self.assertAllEqual([], first_loss_before_fit.shape)
     first_estimator.train(input_fn=train_input_fn, steps=1)
     first_loss_after_fit = first_estimator.evaluate(

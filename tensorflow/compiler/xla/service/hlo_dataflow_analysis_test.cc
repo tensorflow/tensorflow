@@ -1963,6 +1963,54 @@ TEST_F(DoesNotUseOperandBufferTest, FusedDynamicUpdateSlice) {
   EXPECT_FALSE(dataflow_analysis_->DoesNotUseOperandBuffer(tuple, {1}, fusion));
 }
 
+// Similar to FusedDynamicUpdateSlice above, but tests indirect uses of the
+// parameter tuple.
+TEST_F(DoesNotUseOperandBufferTest, IndirectUses) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape data_shape = ShapeUtil::MakeShape(F32, {8});
+  auto tuple_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeTupleShape({data_shape, data_shape}), "tuple"));
+  auto t0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape, tuple_param, 0));
+  auto t1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape, tuple_param, 1));
+  // Swap the tuple elements.
+  auto tuple = builder.AddInstruction(HloInstruction::CreateTuple({t1, t0}));
+
+  auto gte0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape, tuple, 0));
+  auto gte1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape, tuple, 1));
+
+  // Create a DynamicUpdateSlice instruction of tuple element 1.
+  auto starts = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+  auto update = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
+  auto dynamic_update_slice =
+      builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+          data_shape, gte1, update, starts));
+  builder.AddInstruction(
+      HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
+
+  BuildModule(builder.Build());
+  auto fusion = computation_->CreateFusionInstruction(
+      {dynamic_update_slice, starts, update, gte1},
+      HloInstruction::FusionKind::kLoop);
+  RunAnalysis();
+
+  // The fusion instruction never uses tuple element 0, but does use element 1.
+  EXPECT_TRUE(dataflow_analysis_->DoesNotUseOperandBuffer(tuple, {0}, fusion));
+  EXPECT_FALSE(dataflow_analysis_->DoesNotUseOperandBuffer(tuple, {1}, fusion));
+  // The same holds for the parameter tuple, except that the tuple elements are
+  // swapped in 'tuple'.
+  EXPECT_TRUE(
+      dataflow_analysis_->DoesNotUseOperandBuffer(tuple_param, {1}, fusion));
+  EXPECT_FALSE(
+      dataflow_analysis_->DoesNotUseOperandBuffer(tuple_param, {0}, fusion));
+}
+
 class CanShareOperandBufferWithUserTest : public HloDataflowAnalysisTestBase {};
 
 TEST_F(CanShareOperandBufferWithUserTest, ElementWiseSameShape) {

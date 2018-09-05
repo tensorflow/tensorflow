@@ -15,7 +15,7 @@
 
 """Support for training models.
 
-See the @{$python/train} guide.
+See the [Training](https://tensorflow.org/api_guides/python/train) guide.
 """
 
 # Optimizers.

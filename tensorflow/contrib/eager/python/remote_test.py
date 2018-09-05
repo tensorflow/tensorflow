@@ -23,6 +23,7 @@ import os
 
 import numpy as np
 
+from tensorflow.contrib.eager.python import remote
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.eager import backprop
@@ -85,6 +86,7 @@ class RemoteExecutionTest(test.TestCase):
     self._cached_server1_target = self._cached_server1.target[len("grpc://"):]
     self._cached_server2_target = self._cached_server2.target[len("grpc://"):]
 
+  def setUp(self):
     # Start the local server.
     context.set_server_def(
         server_def=get_server_def(
@@ -170,6 +172,17 @@ class RemoteExecutionTest(test.TestCase):
     with ops.device("job:%s/replica:0/task:1/device:CPU:0" % JOB_NAME):
       x1 = array_ops.ones([2, 2])
     y = math_ops.matmul(x1, x1)
+    np.testing.assert_array_equal([[2, 2], [2, 2]], y.numpy())
+
+  @run_sync_and_async
+  def testConnectToRemoteServer(self):
+    """Basic server connection."""
+    remote.connect_to_remote_host(self._cached_server1_target)
+
+    with ops.device("job:worker/replica:0/task:1/device:CPU:0"):
+      x1 = array_ops.ones([2, 2])
+      x2 = array_ops.ones([2, 2])
+      y = math_ops.matmul(x1, x2)
     np.testing.assert_array_equal([[2, 2], [2, 2]], y.numpy())
 
 

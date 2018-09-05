@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -137,7 +138,7 @@ class HeapSimulatorTracker {
       const string& name, std::unique_ptr<HloComputation> computation,
       const std::vector<const HloInstruction*>& instruction_sequence) {
     HloModuleConfig config;
-    module_ = MakeUnique<HloModule>(name, config);
+    module_ = absl::make_unique<HloModule>(name, config);
     module_->AddEntryComputation(std::move(computation));
     points_to_analysis_ =
         TuplePointsToAnalysis::Run(module_.get()).ConsumeValueOrDie();
@@ -146,8 +147,8 @@ class HeapSimulatorTracker {
     // the secondary sorting criteria of DecreasingSizeRunsHeap to sort calls by
     // buffer id, for determinism in the tests.
     auto zero_size = [](const BufferValue& buffer) { return 0; };
-    auto algorithm = MakeUnique<DecreasingSizeRunsHeap>(
-        MakeUnique<HeapCallRecorder>(&actual_calls_));
+    auto algorithm = absl::make_unique<DecreasingSizeRunsHeap>(
+        absl::make_unique<HeapCallRecorder>(&actual_calls_));
     result_ = HeapSimulator::Run(
                   std::move(algorithm), *module_->entry_computation(),
                   instruction_sequence, *points_to_analysis_, zero_size)
@@ -156,7 +157,7 @@ class HeapSimulatorTracker {
 
   explicit HeapSimulatorTracker(const string& name) {
     HloModuleConfig config;
-    module_ = MakeUnique<HloModule>(name, config);
+    module_ = absl::make_unique<HloModule>(name, config);
   }
 
   // Similar to the single entry computation constructor above, but runs the
@@ -182,8 +183,8 @@ class HeapSimulatorTracker {
     auto size_fn = [&reverse_position](const BufferValue& buffer) {
       return reverse_position[buffer.instruction()];
     };
-    auto algorithm = MakeUnique<DecreasingSizeRunsHeap>(
-        MakeUnique<HeapCallRecorder>(&actual_calls_));
+    auto algorithm = absl::make_unique<DecreasingSizeRunsHeap>(
+        absl::make_unique<HeapCallRecorder>(&actual_calls_));
     result_ = HeapSimulator::Run(std::move(algorithm), *module_,
                                  module_sequence, *points_to_analysis_, size_fn)
                   .ConsumeValueOrDie();
@@ -675,7 +676,8 @@ class HeapAlgorithmTestBase : public ::testing::Test {
     const BufferValue::Id id = buffers_.size();
     auto const0 = builder_.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-    buffers_.emplace_back(MakeUnique<HloValue>(id, const0, ShapeIndex{}));
+    buffers_.emplace_back(
+        absl::make_unique<HloValue>(id, const0, ShapeIndex{}));
     return buffers_.back().get();
   }
 
@@ -724,7 +726,8 @@ class DecreasingSizeRunsHeapTest : public HeapAlgorithmTestBase {};
 
 TEST_F(DecreasingSizeRunsHeapTest, Empty) {
   CallSequence call_sequence;
-  DecreasingSizeRunsHeap heap(MakeUnique<HeapCallRecorder>(&call_sequence));
+  DecreasingSizeRunsHeap heap(
+      absl::make_unique<HeapCallRecorder>(&call_sequence));
   heap.Finish();
   EXPECT_EQ(call_sequence, CallSequence({
                                {kFinish, nullptr},
@@ -733,7 +736,8 @@ TEST_F(DecreasingSizeRunsHeapTest, Empty) {
 
 TEST_F(DecreasingSizeRunsHeapTest, Simple) {
   CallSequence call_sequence;
-  DecreasingSizeRunsHeap heap(MakeUnique<HeapCallRecorder>(&call_sequence));
+  DecreasingSizeRunsHeap heap(
+      absl::make_unique<HeapCallRecorder>(&call_sequence));
   heap.Alloc(buffer_a_, 10);
   heap.Alloc(buffer_b_, 20);
   heap.Alloc(buffer_c_, 30);
@@ -760,7 +764,8 @@ TEST_F(DecreasingSizeRunsHeapTest, Simple) {
 
 TEST_F(DecreasingSizeRunsHeapTest, Mixed) {
   CallSequence call_sequence;
-  DecreasingSizeRunsHeap heap(MakeUnique<HeapCallRecorder>(&call_sequence));
+  DecreasingSizeRunsHeap heap(
+      absl::make_unique<HeapCallRecorder>(&call_sequence));
   heap.Alloc(buffer_a_, 10);
   heap.Alloc(buffer_b_, 20);
   heap.Free(buffer_b_, 20);

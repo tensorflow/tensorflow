@@ -244,7 +244,9 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
     ],
 )

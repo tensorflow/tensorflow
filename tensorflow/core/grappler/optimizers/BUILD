@@ -116,6 +116,7 @@ tf_cc_test(
     shard_count = 5,
     deps = [
         ":constant_folding",
+        ":dependency_optimizer",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core:all_kernels",
@@ -827,11 +828,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:op_types",
-        "//tensorflow/core/grappler:utils",
-        "//tensorflow/core/grappler/clusters:cluster",
-        "//tensorflow/core/grappler/costs:graph_properties",
     ],
 )
 

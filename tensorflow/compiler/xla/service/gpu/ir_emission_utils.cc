@@ -144,10 +144,12 @@ bool ImplementedAsLibraryCall(const HloInstruction& hlo) {
          IsCustomCallToDnnConvolution(hlo);
 }
 
-static HloInstruction* CreateCudnnConv(
-    const char* call_target, const Shape& shape, HloInstruction* lhs,
-    HloInstruction* rhs, const Window& window,
-    const ConvolutionDimensionNumbers& dnums) {
+static HloInstruction* CreateCudnnConv(const char* call_target,
+                                       const Shape& shape, HloInstruction* lhs,
+                                       HloInstruction* rhs,
+                                       const Window& window,
+                                       const ConvolutionDimensionNumbers& dnums,
+                                       int64 feature_group_count) {
   HloComputation* computation = lhs->parent();
 
   // This call returns a tuple of (conv_result, scratch_memory), where
@@ -165,28 +167,34 @@ static HloInstruction* CreateCudnnConv(
       HloInstruction::CreateCustomCall(call_shape, {lhs, rhs}, call_target));
   custom_call->set_window(window);
   custom_call->set_convolution_dimension_numbers(dnums);
+  custom_call->set_feature_group_count(feature_group_count);
   return custom_call;
 }
 
-HloInstruction* CreateCudnnConvForward(
-    const Shape& shape, HloInstruction* input, HloInstruction* kernel,
-    const Window& window, const ConvolutionDimensionNumbers& dnums) {
+HloInstruction* CreateCudnnConvForward(const Shape& shape,
+                                       HloInstruction* input,
+                                       HloInstruction* kernel,
+                                       const Window& window,
+                                       const ConvolutionDimensionNumbers& dnums,
+                                       int64 feature_group_count) {
   return CreateCudnnConv(kCudnnConvForwardCallTarget, shape, input, kernel,
-                         window, dnums);
+                         window, dnums, feature_group_count);
 }
 
 HloInstruction* CreateCudnnConvBackwardInput(
     const Shape& shape, HloInstruction* output, HloInstruction* reverse_filter,
-    const Window& window, const ConvolutionDimensionNumbers& dnums) {
+    const Window& window, const ConvolutionDimensionNumbers& dnums,
+    int64 feature_group_count) {
   return CreateCudnnConv(kCudnnConvBackwardInputCallTarget, shape, output,
-                         reverse_filter, window, dnums);
+                         reverse_filter, window, dnums, feature_group_count);
 }
 
 HloInstruction* CreateCudnnConvBackwardFilter(
     const Shape& shape, HloInstruction* input, HloInstruction* output,
-    const Window& window, const ConvolutionDimensionNumbers& dnums) {
+    const Window& window, const ConvolutionDimensionNumbers& dnums,
+    int64 feature_group_count) {
   return CreateCudnnConv(kCudnnConvBackwardFilterCallTarget, shape, input,
-                         output, window, dnums);
+                         output, window, dnums, feature_group_count);
 }
 
 bool IsReductionToVector(const HloInstruction& reduce) {
@@ -215,8 +223,8 @@ bool IsReductionToVector(const HloInstruction& reduce) {
 // This emits a device-side call to
 // "i32 vprintf(i8* fmt, arguments_type* arguments)" in the driver; see
 // http://docs.nvidia.com/cuda/ptx-writers-guide-to-interoperability/index.html#system-calls
-llvm::Value* EmitPrintf(tensorflow::StringPiece fmt,
-                        tensorflow::gtl::ArraySlice<llvm::Value*> arguments,
+llvm::Value* EmitPrintf(absl::string_view fmt,
+                        absl::Span<llvm::Value* const> arguments,
                         llvm::IRBuilder<>* builder) {
   std::vector<llvm::Type*> argument_types;
   for (auto argument : arguments) {

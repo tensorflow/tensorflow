@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <vector>
-#include "flatbuffers/flexbuffers.h"
+#include "flatbuffers/flexbuffers.h"  // flatbuffers
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/experimental/kernels/ctc_beam_search.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"

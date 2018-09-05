@@ -225,7 +225,7 @@ class RNNCellTest(test.TestCase):
   def testBasicLSTMCell(self):
     for dtype in [dtypes.float16, dtypes.float32]:
       np_dtype = dtype.as_numpy_dtype
-      with self.test_session(graph=ops.Graph()) as sess:
+      with self.session(graph=ops.Graph()) as sess:
         with variable_scope.variable_scope(
             "root", initializer=init_ops.constant_initializer(0.5)):
           x = array_ops.zeros([1, 2], dtype=dtype)
@@ -395,7 +395,7 @@ class RNNCellTest(test.TestCase):
   def testIndyLSTMCell(self):
     for dtype in [dtypes.float16, dtypes.float32]:
       np_dtype = dtype.as_numpy_dtype
-      with self.test_session(graph=ops.Graph()) as sess:
+      with self.session(graph=ops.Graph()) as sess:
         with variable_scope.variable_scope(
             "root", initializer=init_ops.constant_initializer(0.5)):
           x = array_ops.zeros([1, 2], dtype=dtype)

@@ -93,7 +93,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
             const NameAttrList& key_func, const NameAttrList& reduce_func,
@@ -103,7 +103,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             std::unique_ptr<CapturedFunction> captured_window_size_func,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           key_func_(key_func),
           reduce_func_(reduce_func),
@@ -139,10 +139,9 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx->flib_def(), key_func_.name()));
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx->flib_def(), reduce_func_.name()));
-      TF_RETURN_IF_ERROR(
-          b->AddFunction(ctx->flib_def(), window_size_func_.name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, key_func_.name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, reduce_func_.name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, window_size_func_.name()));
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
@@ -205,7 +204,13 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        TF_RETURN_IF_ERROR(
+            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+        TF_RETURN_IF_ERROR(dataset()->captured_key_func_->Instantiate(ctx));
+        TF_RETURN_IF_ERROR(dataset()->captured_reduce_func_->Instantiate(ctx));
+        TF_RETURN_IF_ERROR(
+            dataset()->captured_window_size_func_->Instantiate(ctx));
+        return Status::OK();
       }
 
       Status GetNextInternal(IteratorContext* ctx,

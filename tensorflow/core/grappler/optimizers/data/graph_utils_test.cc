@@ -176,25 +176,25 @@ TEST(GraphUtilsTest, FindGraphFunctionWithName) {
       FindGraphFunctionWithName(new_function->signature().name(), library), -1);
 }
 
-TEST(GraphUtilsTest, FindNodeWithOp) {
+TEST(GraphUtilsTest, FindGraphNodeWithOp) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
-  EXPECT_EQ(FindNodeWithOp("OpA", *graph.GetGraph()), -1);
+  EXPECT_EQ(FindGraphNodeWithOp("OpA", *graph.GetGraph()), -1);
 
   AddNode("A", "OpA", {}, {}, &graph);
   AddNode("B", "OpB", {"A"}, {}, &graph);
   AddNode("A2", "OpA", {"B"}, {}, &graph);
-  EXPECT_EQ(FindNodeWithOp("OpA", *graph.GetGraph()), 0);
+  EXPECT_EQ(FindGraphNodeWithOp("OpA", *graph.GetGraph()), 0);
 
   graph.DeleteNodes({"B"});
-  EXPECT_EQ(FindNodeWithOp("OpB", *graph.GetGraph()), -1);
+  EXPECT_EQ(FindGraphNodeWithOp("OpB", *graph.GetGraph()), -1);
   EXPECT_EQ(FindGraphNodeWithName("A2", *graph.GetGraph()), 1);
 }
 
 TEST(GraphUtilsTest, FindAllGraphNodesWithOp) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
-  EXPECT_EQ(FindNodeWithOp("OpA", *graph.GetGraph()), -1);
+  EXPECT_EQ(FindGraphNodeWithOp("OpA", *graph.GetGraph()), -1);
 
   AddNode("A", "OpA", {}, {}, &graph);
   AddNode("B", "OpB", {"A"}, {}, &graph);
@@ -249,6 +249,54 @@ TEST(GraphUtilsTest, SetUniqueGraphFunctionName) {
   SetUniqueGraphFunctionName("new_function", &library, other_function);
   EXPECT_NE(new_function->signature().name(),
             other_function->signature().name());
+}
+
+TEST(GraphUtilsTest, AddNodeToFunctionDef) {
+  FunctionDef func;
+  const char* op_name = "xxx";
+  AddNode(op_name, op_name, {}, {}, &func);
+
+  const NodeDef& node1 = func.node_def(FindFunctionNodeWithName("xxx", func));
+  EXPECT_EQ(node1.op(), op_name);
+  EXPECT_EQ(node1.input_size(), 0);
+  EXPECT_EQ(node1.attr_size(), 0);
+
+  const std::vector<string> inputs({"input1", "input2"});
+  AddNode("", op_name, inputs, {}, &func);
+  const NodeDef& node2 =
+      func.node_def(FindFunctionNodeWithName("xxx/_2", func));
+  EXPECT_EQ(node2.op(), op_name);
+  EXPECT_EQ(node2.attr_size(), 0);
+  EXPECT_EQ(node2.input_size(), inputs.size());
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    EXPECT_EQ(node2.input(i), inputs[i]);
+  }
+
+  AttrValue a1, a2;
+  a1.set_type(DT_INT32);
+  a2.set_type(DT_INT64);
+  const std::vector<std::pair<string, AttrValue>> attrs(
+      {{"attr1", a1}, {"attr2", a2}});
+  AddNode("", op_name, {}, attrs, &func);
+  const NodeDef& node3 =
+      func.node_def(FindFunctionNodeWithName("xxx/_3", func));
+  EXPECT_EQ(node3.op(), op_name);
+  EXPECT_EQ(node3.input_size(), 0);
+  EXPECT_EQ(node3.attr_size(), attrs.size());
+  for (size_t i = 0; i < attrs.size(); ++i) {
+    EXPECT_EQ(attrs[i].second.type(), node3.attr().at(attrs[i].first).type());
+  }
+}
+
+TEST(GraphUtilsTest, GetInputNode) {
+  GraphDef graph_def;
+  MutableGraphView graph(&graph_def);
+
+  NodeDef* node1 = AddNode("", "A", {}, {}, &graph);
+  NodeDef* node2 = AddNode("", "A", {node1->name()}, {}, &graph);
+
+  EXPECT_EQ(GetInputNode(*node2, graph), node1);
+  EXPECT_EQ(GetInputNode(*node1, graph), nullptr);
 }
 
 }  // namespace

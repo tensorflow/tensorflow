@@ -274,6 +274,19 @@ bool PropagateMinMaxAmongArrays(Model* model,
   return changed;
 }
 
+bool HardcodeMinMaxForReshape(Model* model, Operator* op) {
+  Array& input = model->GetArray(op->inputs[0]);
+  Array& output = model->GetArray(op->outputs[0]);
+
+  // If input and output both exist or do not exist, do nothing.
+  if ((!input.minmax && !output.minmax) || (input.minmax && output.minmax)) {
+    return false;
+  }
+
+  // Otherwise propagate info amongst the input and output array.
+  return PropagateMinMaxAmongArrays(model, {op->inputs[0], op->outputs[0]});
+}
+
 bool HardcodeMinMaxForLstmCell(Model* model, Operator* op) {
   CHECK_EQ(op->inputs.size(), LstmCellOperator::NUM_INPUTS);
   CHECK_EQ(op->outputs.size(), LstmCellOperator::NUM_OUTPUTS);
@@ -370,7 +383,6 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
     case OperatorType::kSlice:
     case OperatorType::kStridedSlice:
     case OperatorType::kSqueeze:
-    case OperatorType::kReshape:
     case OperatorType::kExpandDims:
     case OperatorType::kPad:
     case OperatorType::kGather:
@@ -414,6 +426,10 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
 
     case OperatorType::kLstmCell:
       changed = HardcodeMinMaxForLstmCell(model, op);
+      break;
+
+    case OperatorType::kReshape:
+      changed = HardcodeMinMaxForReshape(model, op);
       break;
 
     default:

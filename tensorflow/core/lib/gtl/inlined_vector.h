@@ -28,8 +28,8 @@ limitations under the License.
 //
 // TODO(billydonahue): change size_t to size_type where appropriate.
 
-#ifndef TENSORFLOW_LIB_GTL_INLINED_VECTOR_H_
-#define TENSORFLOW_LIB_GTL_INLINED_VECTOR_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_INLINED_VECTOR_H_
+#define TENSORFLOW_CORE_LIB_GTL_INLINED_VECTOR_H_
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -685,4 +685,4 @@ inline void InlinedVector<T, N>::AppendRange(Iter first, Iter last) {
 }  // namespace gtl
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_GTL_INLINED_VECTOR_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_INLINED_VECTOR_H_

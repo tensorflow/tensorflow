@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
 #include "tensorflow/contrib/lite/kernels/op_macros.h"
 
-#include "flatbuffers/flexbuffers.h"
+#include "flatbuffers/flexbuffers.h"  // flatbuffers
 
 namespace tflite {
 namespace ops {

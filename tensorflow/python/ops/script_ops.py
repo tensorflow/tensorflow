@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Script Language Operators. See the @{$python/script_ops} guide."""
+"""Script Language Operators."""
 
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -343,7 +343,8 @@ def eager_py_func(func, inp, Tout, name=None):
   or print statements as desired, and wrap those functions in
   `tf.contrib.eager.py_func`.
 
-  For more information on eager execution, see @{$guide/eager}.
+  For more information on eager execution, see the
+  [Eager guide](https://tensorflow.org/guide/eager).
 
   `tf.contrib.eager.py_func` is similar in spirit to `tf.py_func`, but unlike
   the latter, the former lets you use TensorFlow operations in the wrapped

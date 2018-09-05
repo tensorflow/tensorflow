@@ -94,26 +94,8 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
         ops.set_shape_and_handle_data_for_outputs(h.op)
       handle._handle_data = h._handle_data
     # pylint: enable=protected-access
-
-  # Clean up our reference cycles to avoid making the garbage collector run.
-  # pylint: disable=protected-access
-  # OrderedDict, constructed on Graph creation, makes a simple reference loop
-  # and hides it in an __attribute in some Python versions. We don't need to
-  # throw an error if we can't find it, but if we do find it we can break the
-  # loop to avoid creating work for the garbage collector.
-  problematic_cycle = graph._functions.__dict__.get("_OrderedDict__root", None)
-  # pylint: enable=protected-access
-  if problematic_cycle:
-    try:
-      del problematic_cycle[0][:]
-    except TypeError:
-      # This is probably not one of the problematic Python versions. Continue
-      # with the rest of our cleanup.
-      pass
-  # Now clean up our own reference cycles by clearing all of the attributes for
-  # the Graph and op we created.
-  h.__dict__ = {}
-  graph.__dict__ = {}
+  # Clean up op->graph->op reference cycles.
+  ops.dismantle_graph(graph)
   return handle
 
 
@@ -185,7 +167,8 @@ def shape_safe_assign_variable_handle(handle, shape, value, name=None):
 class ResourceVariable(variables.RefVariable):
   """Variable based on resource handles.
 
-  See the @{$variables$Variables How To} for a high level overview.
+  See the [Variables How To](https://tensorflow.org/guide/variables)
+  for a high level overview.
 
   A `ResourceVariable` allows you to maintain state across subsequent calls to
   session.run.
@@ -371,6 +354,15 @@ class ResourceVariable(variables.RefVariable):
     if initial_value is None:
       raise ValueError("initial_value must be specified.")
     init_from_fn = callable(initial_value)
+
+    if isinstance(initial_value, ops.Tensor) and hasattr(
+        initial_value, "graph") and initial_value.graph.building_function:
+      raise ValueError("Tensor-typed variable initializers must either be "
+                       "wrapped in an init_scope or callable "
+                       "(e.g., `tf.Variable(lambda : "
+                       "tf.truncated_normal([10, 40]))`) when building "
+                       "functions. Please file a feature request if this "
+                       "restriction inconveniences you.")
 
     if collections is None:
       collections = [ops.GraphKeys.GLOBAL_VARIABLES]
@@ -602,6 +594,22 @@ class ResourceVariable(variables.RefVariable):
 
   def __bool__(self):
     return bool(self.read_value())
+
+  def __copy__(self):
+    return self
+
+  def __deepcopy__(self, memo):
+    if not context.executing_eagerly():
+      raise NotImplementedError(
+          "__deepcopy__() is only available when eager execution is enabled.")
+    copied_variable = ResourceVariable(
+        initial_value=self.read_value(),
+        trainable=self._trainable,
+        constraint=self._constraint,
+        dtype=self._dtype,
+        name=self._shared_name + "_copy")
+    memo[self._unique_id] = copied_variable
+    return copied_variable
 
   @property
   def dtype(self):
@@ -974,6 +982,231 @@ class ResourceVariable(variables.RefVariable):
       if read_value:
         return self._lazy_read(assign_op)
     return assign_op
+
+  def __reduce__(self):
+    return (ResourceVariable, (self.numpy(),))
+
+  def scatter_sub(self, sparse_delta, use_locking=False, name=None):
+    """Subtracts `IndexedSlices` from this variable.
+
+    Args:
+      sparse_delta: `IndexedSlices` to be subtracted from this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return self._lazy_read(gen_resource_variable_ops.resource_scatter_sub(
+        self.handle, sparse_delta.indices,
+        ops.convert_to_tensor(sparse_delta.values, self.dtype), name=name))
+
+  def scatter_add(self, sparse_delta, use_locking=False, name=None):
+    """Adds `IndexedSlices` from this variable.
+
+    Args:
+      sparse_delta: `IndexedSlices` to be added to this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return self._lazy_read(gen_resource_variable_ops.resource_scatter_add(
+        self.handle, sparse_delta.indices,
+        ops.convert_to_tensor(sparse_delta.values, self.dtype), name=name))
+
+  def scatter_update(self, sparse_delta, use_locking=False, name=None):
+    """Assigns `IndexedSlices` to this variable.
+
+    Args:
+      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return self._lazy_read(gen_resource_variable_ops.resource_scatter_update(
+        self.handle, sparse_delta.indices,
+        ops.convert_to_tensor(sparse_delta.values, self.dtype), name=name))
+
+  def scatter_nd_sub(self, indices, updates, name=None):
+    """Applies sparse subtraction to individual values or slices in a Variable.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    For example, say we want to add 4 scattered elements to a rank-1 tensor to
+    8 elements. In Python, that update would look like this:
+
+    ```python
+        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        indices = tf.constant([[4], [3], [1] ,[7]])
+        updates = tf.constant([9, 10, 11, 12])
+        op = ref.scatter_nd_sub(indices, updates)
+        with tf.Session() as sess:
+          print sess.run(op)
+    ```
+
+    The resulting update to ref would look like this:
+
+        [1, -9, 3, -6, -6, 6, 7, -4]
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    return self._lazy_read(gen_state_ops.resource_scatter_nd_sub(
+        self.handle, indices, ops.convert_to_tensor(updates, self.dtype),
+        name=name))
+
+  def scatter_nd_add(self, indices, updates, name=None):
+    """Applies sparse addition to individual values or slices in a Variable.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    For example, say we want to add 4 scattered elements to a rank-1 tensor to
+    8 elements. In Python, that update would look like this:
+
+    ```python
+        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        indices = tf.constant([[4], [3], [1] ,[7]])
+        updates = tf.constant([9, 10, 11, 12])
+        add = ref.scatter_nd_add(indices, updates)
+        with tf.Session() as sess:
+          print sess.run(add)
+    ```
+
+    The resulting update to ref would look like this:
+
+        [1, 13, 3, 14, 14, 6, 7, 20]
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    return self._lazy_read(gen_state_ops.resource_scatter_nd_add(
+        self.handle, indices, ops.convert_to_tensor(updates, self.dtype),
+        name=name))
+
+  def scatter_nd_update(self, indices, updates, name=None):
+    """Applies sparse assignment to individual values or slices in a Variable.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    For example, say we want to add 4 scattered elements to a rank-1 tensor to
+    8 elements. In Python, that update would look like this:
+
+    ```python
+        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        indices = tf.constant([[4], [3], [1] ,[7]])
+        updates = tf.constant([9, 10, 11, 12])
+        op = ref.scatter_nd_update(indices, updates)
+        with tf.Session() as sess:
+          print sess.run(op)
+    ```
+
+    The resulting update to ref would look like this:
+
+        [1, 11, 3, 10, 9, 6, 7, 12]
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    return self._lazy_read(gen_state_ops.resource_scatter_nd_update(
+        self.handle, indices, ops.convert_to_tensor(updates, self.dtype),
+        name=name))
 
   def _strided_slice_assign(self, begin, end, strides, value, name, begin_mask,
                             end_mask, ellipsis_mask, new_axis_mask,

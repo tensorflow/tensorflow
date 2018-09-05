@@ -108,7 +108,7 @@ class LinearOperatorTest(test.TestCase):
     self.assertAllEqual(3, operator.range_dimension)
 
   def test_all_shape_methods_defined_by_the_one_method_shape(self):
-    with self.test_session():
+    with self.cached_session():
       shape = (1, 2, 3, 4)
       operator = LinearOperatorShape(shape)
 
@@ -131,7 +131,7 @@ class LinearOperatorTest(test.TestCase):
   def test_generic_to_dense_method_non_square_matrix_static(self):
     matrix = rng.randn(2, 3, 4)
     operator = LinearOperatorMatmulSolve(matrix)
-    with self.test_session():
+    with self.cached_session():
       operator_dense = operator.to_dense()
       self.assertAllEqual((2, 3, 4), operator_dense.get_shape())
       self.assertAllClose(matrix, operator_dense.eval())
@@ -140,7 +140,7 @@ class LinearOperatorTest(test.TestCase):
     matrix = rng.randn(2, 3, 4)
     matrix_ph = array_ops.placeholder(dtypes.float64)
     operator = LinearOperatorMatmulSolve(matrix_ph)
-    with self.test_session():
+    with self.cached_session():
       operator_dense = operator.to_dense()
       self.assertAllClose(
           matrix, operator_dense.eval(feed_dict={matrix_ph: matrix}))
@@ -149,7 +149,7 @@ class LinearOperatorTest(test.TestCase):
     matrix = [[1., 0], [0., 2.]]
     operator = LinearOperatorMatmulSolve(matrix)
     x = [1., 1.]
-    with self.test_session():
+    with self.cached_session():
       y = operator.matvec(x)
       self.assertAllEqual((2,), y.get_shape())
       self.assertAllClose([1., 2.], y.eval())
@@ -158,7 +158,7 @@ class LinearOperatorTest(test.TestCase):
     matrix = [[1., 0], [0., 2.]]
     operator = LinearOperatorMatmulSolve(matrix)
     y = [1., 1.]
-    with self.test_session():
+    with self.cached_session():
       x = operator.solvevec(y)
       self.assertAllEqual((2,), x.get_shape())
       self.assertAllClose([1., 1 / 2.], x.eval())

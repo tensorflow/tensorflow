@@ -14,7 +14,7 @@
 # ==============================================================================
 """Operations that generate constants.
 
-See the @{$python/constant_op$constants guide}.
+See the [constants guide](https://tensorflow.org/api_guides/python/constant_op).
 """
 
 # Must be separate from array_ops to avoid a cyclic dependency.
@@ -144,6 +144,17 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
   tensor = tf.constant(-1.0, shape=[2, 3]) => [[-1. -1. -1.]
                                                [-1. -1. -1.]]
   ```
+
+  `tf.constant` differs from `tf.fill` in a few ways:
+
+  *   `tf.constant` supports arbitrary constants, not just uniform scalar
+      Tensors like `tf.fill`.
+  *   `tf.constant` creates a `Const` node in the computation graph with the
+      exact value at graph construction time. On the other hand, `tf.fill`
+      creates an Op in the graph that is expanded at runtime.
+  *   Because `tf.constant` only embeds constant values in the graph, it does
+      not support dynamic shapes based on other runtime Tensors, whereas
+      `tf.fill` does.
 
   Args:
     value:          A constant value (or list) of output type `dtype`.

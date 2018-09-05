@@ -173,6 +173,26 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     eval_res = est.evaluate(input_fn=input_fn, steps=1)
     self.assertAllClose(eval_res['accuracy'], 1.0)
 
+  def testTrainTwiceAndEvaluateBinaryClassifier(self):
+    input_fn = _make_train_input_fn(is_classification=True)
+
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=5,
+        max_depth=10)
+
+    num_steps = 2
+    # Train for a few steps, and validate final checkpoint.
+    est.train(input_fn, steps=num_steps)
+    est.train(input_fn, steps=num_steps)
+
+    self._assert_checkpoint(
+        est.model_dir, global_step=num_steps * 2,
+        finalized_trees=0, attempted_layers=4)
+    eval_res = est.evaluate(input_fn=input_fn, steps=1)
+    self.assertAllClose(eval_res['accuracy'], 1.0)
+
   def testInferBinaryClassifier(self):
     train_input_fn = _make_train_input_fn(is_classification=True)
     predict_input_fn = numpy_io.numpy_input_fn(

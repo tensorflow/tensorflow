@@ -21,19 +21,24 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 
 namespace xla {
 
-using tensorflow::strings::StrCat;
+using absl::StrCat;
 
 namespace {
 
@@ -67,7 +72,7 @@ XlaOp operator>>(const XlaOp& x, const XlaOp& y) {
     if (!ShapeUtil::ElementIsIntegral(shape)) {
       return InvalidArgument(
           "Argument to >> operator does not have an integral type (%s).",
-          ShapeUtil::HumanString(shape).c_str());
+          ShapeUtil::HumanString(shape));
     }
     if (ShapeUtil::ElementIsSigned(shape)) {
       return ShiftRightArithmetic(x, y);
@@ -85,7 +90,7 @@ StatusOr<Shape> XlaBuilder::GetShape(const XlaOp& op) const {
 }
 
 StatusOr<std::vector<Shape>> XlaBuilder::GetOperandShapes(
-    tensorflow::gtl::ArraySlice<XlaOp> operands) const {
+    absl::Span<const XlaOp> operands) const {
   std::vector<Shape> operand_shapes;
   for (const XlaOp& operand : operands) {
     TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(operand));
@@ -194,7 +199,6 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
       // TODO(b/33009255): Implmement constant folding for cross replica sum.
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
-    case HloOpcode::kHostCompute:
     case HloOpcode::kCall:
       // TODO(b/32495713): We aren't checking the to_apply computation itself,
       // so we conservatively say that computations containing the Call op
@@ -221,8 +225,7 @@ XlaComputation XlaBuilder::BuildAndNoteError() {
   auto build_status = Build();
   if (!build_status.ok()) {
     parent_builder_->ReportError(
-        AddStatus(build_status.status(),
-                  tensorflow::strings::StrCat("error from: ", name_)));
+        AddStatus(build_status.status(), absl::StrCat("error from: ", name_)));
     return {};
   }
   return build_status.ConsumeValueOrDie();
@@ -288,7 +291,7 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
 
 StatusOr<XlaOp> XlaBuilder::InDimBroadcast(
     const Shape& shape, const XlaOp& operand,
-    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+    absl::Span<const int64> broadcast_dimensions) {
   TF_RETURN_IF_ERROR(first_error_);
 
   HloInstructionProto instr;
@@ -349,9 +352,8 @@ XlaOp XlaBuilder::UnaryOp(HloOpcode unop, const XlaOp& operand) {
   });
 }
 
-XlaOp XlaBuilder::BinaryOp(
-    HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
-    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+XlaOp XlaBuilder::BinaryOp(HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
+                           absl::Span<const int64> broadcast_dimensions) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
@@ -445,12 +447,12 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, const XlaOp& lhs, const XlaOp& rhs,
 }
 
 XlaOp XlaBuilder::Add(const XlaOp& lhs, const XlaOp& rhs,
-                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+                      absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kAdd, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Mul(const XlaOp& lhs, const XlaOp& rhs,
-                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+                      absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kMultiply, lhs, rhs, broadcast_dimensions);
 }
 
@@ -463,14 +465,27 @@ XlaOp XlaBuilder::ConstantLiteral(const LiteralSlice& literal) {
   });
 }
 
+XlaOp XlaBuilder::Iota(const Shape& shape, int64 iota_dimension) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape;
+    instr.add_dimensions(iota_dimension);
+    return AddInstruction(std::move(instr), HloOpcode::kIota);
+  });
+}
+
+XlaOp XlaBuilder::Iota(PrimitiveType type, int64 size) {
+  return Iota(ShapeUtil::MakeShape(type, {size}), /*iota_dimension=*/0);
+}
+
 XlaOp XlaBuilder::Call(const XlaComputation& computation,
-                       tensorflow::gtl::ArraySlice<XlaOp> operands) {
+                       absl::Span<const XlaOp> operands) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     std::vector<const Shape*> operand_shape_ptrs;
     TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(operands));
-    c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
-                [](const Shape& shape) { return &shape; });
+    absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
     TF_ASSIGN_OR_RETURN(const ProgramShape& called_program_shape,
                         computation.GetProgramShape());
     TF_ASSIGN_OR_RETURN(
@@ -489,7 +504,7 @@ XlaOp XlaBuilder::Parameter(int64 parameter_number, const Shape& shape,
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     if (!parameter_numbers_.insert(parameter_number).second) {
-      return InvalidArgument("parameter %lld already registered",
+      return InvalidArgument("parameter %d already registered",
                              parameter_number);
     }
     instr.set_parameter_number(parameter_number);
@@ -499,8 +514,8 @@ XlaOp XlaBuilder::Parameter(int64 parameter_number, const Shape& shape,
   });
 }
 
-XlaOp XlaBuilder::Broadcast(
-    const XlaOp& operand, tensorflow::gtl::ArraySlice<int64> broadcast_sizes) {
+XlaOp XlaBuilder::Broadcast(const XlaOp& operand,
+                            absl::Span<const int64> broadcast_sizes) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
     TF_ASSIGN_OR_RETURN(
@@ -525,7 +540,7 @@ XlaOp XlaBuilder::Broadcast(
 
 XlaOp XlaBuilder::BroadcastInDim(
     const XlaOp& operand, const Shape& shape,
-    const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+    const absl::Span<const int64> broadcast_dimensions) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     return InDimBroadcast(shape, operand, broadcast_dimensions);
   });
@@ -540,9 +555,9 @@ StatusOr<XlaOp> XlaBuilder::Reshape(const Shape& shape, const XlaOp& operand) {
 }
 
 XlaOp XlaBuilder::Slice(const XlaOp& operand,
-                        tensorflow::gtl::ArraySlice<int64> start_indices,
-                        tensorflow::gtl::ArraySlice<int64> limit_indices,
-                        tensorflow::gtl::ArraySlice<int64> strides) {
+                        absl::Span<const int64> start_indices,
+                        absl::Span<const int64> limit_indices,
+                        absl::Span<const int64> strides) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
@@ -577,7 +592,7 @@ XlaOp XlaBuilder::SliceInDim(const XlaOp& operand, int64 start_index,
 }
 
 XlaOp XlaBuilder::DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
-                               tensorflow::gtl::ArraySlice<int64> slice_sizes) {
+                               absl::Span<const int64> slice_sizes) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
 
@@ -615,15 +630,15 @@ XlaOp XlaBuilder::DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
   });
 }
 
-XlaOp XlaBuilder::ConcatInDim(tensorflow::gtl::ArraySlice<XlaOp> operands,
+XlaOp XlaBuilder::ConcatInDim(absl::Span<const XlaOp> operands,
                               int64 dimension) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
 
     std::vector<const Shape*> operand_shape_ptrs;
     TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(operands));
-    c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
-                [](const Shape& shape) { return &shape; });
+    absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
     TF_ASSIGN_OR_RETURN(
         *instr.mutable_shape(),
         ShapeInference::InferConcatOpShape(operand_shape_ptrs, dimension));
@@ -655,8 +670,8 @@ XlaOp XlaBuilder::Pad(const XlaOp& operand, const XlaOp& padding_value,
 }
 
 XlaOp XlaBuilder::Reshape(const XlaOp& operand,
-                          tensorflow::gtl::ArraySlice<int64> dimensions,
-                          tensorflow::gtl::ArraySlice<int64> new_sizes) {
+                          absl::Span<const int64> dimensions,
+                          absl::Span<const int64> new_sizes) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
     TF_ASSIGN_OR_RETURN(const Shape& shape,
@@ -670,7 +685,7 @@ XlaOp XlaBuilder::Reshape(const XlaOp& operand,
 }
 
 XlaOp XlaBuilder::Reshape(const XlaOp& operand,
-                          tensorflow::gtl::ArraySlice<int64> new_sizes) {
+                          absl::Span<const int64> new_sizes) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, GetShape(operand));
     std::vector<int64> dimensions(shape.dimensions_size());
@@ -680,7 +695,7 @@ XlaOp XlaBuilder::Reshape(const XlaOp& operand,
 }
 
 XlaOp XlaBuilder::Collapse(const XlaOp& operand,
-                           tensorflow::gtl::ArraySlice<int64> dimensions) {
+                           absl::Span<const int64> dimensions) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     if (dimensions.size() <= 1) {
       // Not collapsing anything, trivially we can return the operand versus
@@ -690,8 +705,7 @@ XlaOp XlaBuilder::Collapse(const XlaOp& operand,
 
     // Out-of-order collapse is not supported.
     // Checks that the collapsed dimensions are in order and consecutive.
-    for (tensorflow::gtl::ArraySlice<int64>::size_type i = 1;
-         i < dimensions.size(); ++i) {
+    for (absl::Span<const int64>::size_type i = 1; i < dimensions.size(); ++i) {
       if (dimensions[i] - 1 != dimensions[i - 1]) {
         return InvalidArgument(
             "Collapsed dimensions are not in consecutive order.");
@@ -703,8 +717,7 @@ XlaOp XlaBuilder::Collapse(const XlaOp& operand,
     TF_ASSIGN_OR_RETURN(const Shape& original_shape, GetShape(operand));
 
     VLOG(3) << "original shape: " << ShapeUtil::HumanString(original_shape);
-    VLOG(3) << "dims to collapse: "
-            << tensorflow::str_util::Join(dimensions, ",");
+    VLOG(3) << "dims to collapse: " << absl::StrJoin(dimensions, ",");
 
     std::vector<int64> new_sizes;
     for (int i = 0; i < ShapeUtil::Rank(original_shape); ++i) {
@@ -715,8 +728,7 @@ XlaOp XlaBuilder::Collapse(const XlaOp& operand,
       }
     }
 
-    VLOG(3) << "new sizes: [" << tensorflow::str_util::Join(new_sizes, ",")
-            << "]";
+    VLOG(3) << "new sizes: [" << absl::StrJoin(new_sizes, ",") << "]";
 
     return Reshape(operand, new_sizes);
   });
@@ -744,13 +756,13 @@ XlaOp XlaBuilder::Select(const XlaOp& pred, const XlaOp& on_true,
   });
 }
 
-XlaOp XlaBuilder::Tuple(tensorflow::gtl::ArraySlice<XlaOp> elements) {
+XlaOp XlaBuilder::Tuple(absl::Span<const XlaOp> elements) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     std::vector<const Shape*> operand_shape_ptrs;
     TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(elements));
-    c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
-                [](const Shape& shape) { return &shape; });
+    absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
     TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
                         ShapeInference::InferVariadicOpShape(
                             HloOpcode::kTuple, operand_shape_ptrs));
@@ -765,7 +777,7 @@ XlaOp XlaBuilder::GetTupleElement(const XlaOp& tuple_data, int64 index) {
     if (!ShapeUtil::IsTuple(tuple_shape)) {
       return InvalidArgument(
           "Operand to GetTupleElement() is not a tuple; got %s",
-          ShapeUtil::HumanString(tuple_shape).c_str());
+          ShapeUtil::HumanString(tuple_shape));
     }
     *instr.mutable_shape() =
         ShapeUtil::GetTupleElementShape(tuple_shape, index);
@@ -778,36 +790,37 @@ XlaOp XlaBuilder::GetTupleElement(const XlaOp& tuple_data, int64 index) {
 }
 
 XlaOp XlaBuilder::Eq(const XlaOp& lhs, const XlaOp& rhs,
-                     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+                     absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kEq, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Ne(const XlaOp& lhs, const XlaOp& rhs,
-                     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+                     absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kNe, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Ge(const XlaOp& lhs, const XlaOp& rhs,
-                     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+                     absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kGe, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Gt(const XlaOp& lhs, const XlaOp& rhs,
-                     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+                     absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kGt, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Le(const XlaOp& lhs, const XlaOp& rhs,
-                     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+                     absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kLe, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Lt(const XlaOp& lhs, const XlaOp& rhs,
-                     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+                     absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kLt, lhs, rhs, broadcast_dimensions);
 }
 
-XlaOp XlaBuilder::Dot(const XlaOp& lhs, const XlaOp& rhs) {
+XlaOp XlaBuilder::Dot(const XlaOp& lhs, const XlaOp& rhs,
+                      const PrecisionConfigProto* precision_config_proto) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
 
@@ -815,12 +828,14 @@ XlaOp XlaBuilder::Dot(const XlaOp& lhs, const XlaOp& rhs) {
     dimension_numbers.add_lhs_contracting_dimensions(
         lhs_shape.dimensions_size() == 1 ? 0 : 1);
     dimension_numbers.add_rhs_contracting_dimensions(0);
-    return DotGeneral(lhs, rhs, dimension_numbers);
+    return DotGeneral(lhs, rhs, dimension_numbers, precision_config_proto);
   });
 }
 
-XlaOp XlaBuilder::DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
-                             const DotDimensionNumbers& dimension_numbers) {
+XlaOp XlaBuilder::DotGeneral(
+    const XlaOp& lhs, const XlaOp& rhs,
+    const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfigProto* precision_config_proto) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
@@ -829,6 +844,9 @@ XlaOp XlaBuilder::DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
                         ShapeInference::InferDotOpShape(lhs_shape, rhs_shape,
                                                         dimension_numbers));
     *instr.mutable_dot_dimension_numbers() = dimension_numbers;
+    if (precision_config_proto != nullptr) {
+      *instr.mutable_precision_config() = *precision_config_proto;
+    }
     return AddInstruction(std::move(instr), HloOpcode::kDot, {lhs, rhs});
   });
 }
@@ -840,16 +858,14 @@ Status XlaBuilder::VerifyConvolution(
     return InvalidArgument(
         "Convolution arguments must have same number of "
         "dimensions. Got: %s and %s",
-        ShapeUtil::HumanString(lhs_shape).c_str(),
-        ShapeUtil::HumanString(rhs_shape).c_str());
+        ShapeUtil::HumanString(lhs_shape), ShapeUtil::HumanString(rhs_shape));
   }
   int num_dims = ShapeUtil::Rank(lhs_shape);
   if (num_dims < 2) {
     return InvalidArgument(
         "Convolution expects argument arrays with >= 3 dimensions. "
         "Got: %s and %s",
-        ShapeUtil::HumanString(lhs_shape).c_str(),
-        ShapeUtil::HumanString(rhs_shape).c_str());
+        ShapeUtil::HumanString(lhs_shape), ShapeUtil::HumanString(rhs_shape));
   }
   int num_spatial_dims = num_dims - 2;
 
@@ -863,7 +879,7 @@ Status XlaBuilder::VerifyConvolution(
         }
         for (int i = 0; i < numbers.size(); ++i) {
           if (numbers.Get(i) < 0 || numbers.Get(i) >= num_dims) {
-            return InvalidArgument("Convolution %s[%d] is out of bounds: %lld",
+            return InvalidArgument("Convolution %s[%d] is out of bounds: %d",
                                    field_name, i, numbers.Get(i));
           }
         }
@@ -881,25 +897,30 @@ Status XlaBuilder::VerifyConvolution(
 }
 
 XlaOp XlaBuilder::Conv(const XlaOp& lhs, const XlaOp& rhs,
-                       tensorflow::gtl::ArraySlice<int64> window_strides,
-                       Padding padding) {
+                       absl::Span<const int64> window_strides, Padding padding,
+                       int64 feature_group_count,
+                       const PrecisionConfigProto* precision_config_proto) {
   return ConvWithGeneralDimensions(
       lhs, rhs, window_strides, padding,
-      CreateDefaultConvDimensionNumbers(window_strides.size()));
+      CreateDefaultConvDimensionNumbers(window_strides.size()),
+      feature_group_count, precision_config_proto);
 }
 
 XlaOp XlaBuilder::ConvWithGeneralPadding(
-    const XlaOp& lhs, const XlaOp& rhs,
-    tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
+    const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding,
+    int64 feature_group_count,
+    const PrecisionConfigProto* precision_config_proto) {
   return ConvGeneral(lhs, rhs, window_strides, padding,
-                     CreateDefaultConvDimensionNumbers(window_strides.size()));
+                     CreateDefaultConvDimensionNumbers(window_strides.size()),
+                     feature_group_count, precision_config_proto);
 }
 
 XlaOp XlaBuilder::ConvWithGeneralDimensions(
-    const XlaOp& lhs, const XlaOp& rhs,
-    tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
+    const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
+    Padding padding, const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count,
+    const PrecisionConfigProto* precision_config_proto) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
     TF_ASSIGN_OR_RETURN(const Shape& rhs_shape, GetShape(rhs));
@@ -926,26 +947,29 @@ XlaOp XlaBuilder::ConvWithGeneralDimensions(
     return ConvGeneral(lhs, rhs, window_strides,
                        MakePadding(base_area_dimensions, window_dimensions,
                                    window_strides, padding),
-                       dimension_numbers);
+                       dimension_numbers, feature_group_count,
+                       precision_config_proto);
   });
 }
 
 XlaOp XlaBuilder::ConvGeneral(
-    const XlaOp& lhs, const XlaOp& rhs,
-    tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
+    const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding,
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count,
+    const PrecisionConfigProto* precision_config_proto) {
   return ConvGeneralDilated(lhs, rhs, window_strides, padding, {}, {},
-                            dimension_numbers);
+                            dimension_numbers, feature_group_count,
+                            precision_config_proto);
 }
 
 XlaOp XlaBuilder::ConvGeneralDilated(
-    const XlaOp& lhs, const XlaOp& rhs,
-    tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-    tensorflow::gtl::ArraySlice<int64> lhs_dilation,
-    tensorflow::gtl::ArraySlice<int64> rhs_dilation,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
+    const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding,
+    absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count,
+    const PrecisionConfigProto* precision_config_proto) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
@@ -964,12 +988,17 @@ XlaOp XlaBuilder::ConvGeneralDilated(
                         MakeWindow(window_dimensions, window_strides, padding,
                                    lhs_dilation, rhs_dilation));
 
-    TF_ASSIGN_OR_RETURN(
-        *instr.mutable_shape(),
-        ShapeInference::InferConvolveShape(lhs_shape, rhs_shape, instr.window(),
-                                           dimension_numbers));
+    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
+                        ShapeInference::InferConvolveShape(
+                            lhs_shape, rhs_shape, instr.window(),
+                            dimension_numbers, feature_group_count));
 
     *instr.mutable_convolution_dimension_numbers() = dimension_numbers;
+    instr.set_feature_group_count(feature_group_count);
+
+    if (precision_config_proto != nullptr) {
+      *instr.mutable_precision_config() = *precision_config_proto;
+    }
 
     return AddInstruction(std::move(instr), HloOpcode::kConvolution,
                           {lhs, rhs});
@@ -977,22 +1006,21 @@ XlaOp XlaBuilder::ConvGeneralDilated(
 }
 
 StatusOr<Window> XlaBuilder::MakeWindow(
-    tensorflow::gtl::ArraySlice<int64> window_dimensions,
-    tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-    tensorflow::gtl::ArraySlice<int64> lhs_dilation,
-    tensorflow::gtl::ArraySlice<int64> rhs_dilation) const {
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding,
+    absl::Span<const int64> lhs_dilation,
+    absl::Span<const int64> rhs_dilation) const {
   const auto verify_size = [&](const size_t x, const char* x_name) {
     if (x == 0 || x == window_dimensions.size()) {
       return Status::OK();
     } else {
       return InvalidArgument(
-          "%s", tensorflow::strings::StrCat(
+          "%s", absl::StrCat(
                     "Window has different number of window dimensions than of ",
                     x_name,
                     "\nNumber of window dimensions: ", window_dimensions.size(),
-                    "\nNumber of ", x_name, ": ", x, "\n")
-                    .c_str());
+                    "\nNumber of ", x_name, ": ", x, "\n"));
     }
   };
   TF_RETURN_IF_ERROR(verify_size(window_strides.size(), "window strides"));
@@ -1032,7 +1060,7 @@ StatusOr<Window> XlaBuilder::MakeWindow(
 }
 
 XlaOp XlaBuilder::Fft(const XlaOp& operand, const FftType fft_type,
-                      const tensorflow::gtl::ArraySlice<int64> fft_length) {
+                      const absl::Span<const int64> fft_length) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
@@ -1073,6 +1101,23 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
           "Replicated sharding is not yet supported for infeeds");
     }
 
+    // Infeed takes a single token operand. Generate the token to pass to the
+    // infeed.
+    XlaOp token;
+    auto make_token = [&]() {
+      HloInstructionProto token_instr;
+      *token_instr.mutable_shape() = ShapeUtil::MakeTokenShape();
+      return AddInstruction(std::move(token_instr), HloOpcode::kAfterAll, {});
+    };
+    if (sharding()) {
+      // Arbitrarily assign token to device 0.
+      OpSharding sharding = sharding_builder::AssignDevice(0);
+      XlaScopedShardingAssignment scoped_sharding(this, sharding);
+      TF_ASSIGN_OR_RETURN(token, make_token());
+    } else {
+      TF_ASSIGN_OR_RETURN(token, make_token());
+    }
+
     // The sharding is set by the client according to the data tuple shape.
     // However, the shape of the infeed instruction is a tuple containing the
     // data and a token. For tuple sharding type, the sharding must be changed
@@ -1088,11 +1133,11 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
           sharding_builder::AssignDevice(0);
       XlaScopedShardingAssignment scoped_sharding(this,
                                                   infeed_instruction_sharding);
-      TF_ASSIGN_OR_RETURN(
-          infeed, AddInstruction(std::move(instr), HloOpcode::kInfeed, {}));
+      TF_ASSIGN_OR_RETURN(infeed, AddInstruction(std::move(instr),
+                                                 HloOpcode::kInfeed, {token}));
     } else {
-      TF_ASSIGN_OR_RETURN(
-          infeed, AddInstruction(std::move(instr), HloOpcode::kInfeed, {}));
+      TF_ASSIGN_OR_RETURN(infeed, AddInstruction(std::move(instr),
+                                                 HloOpcode::kInfeed, {token}));
     }
 
     // The infeed instruction produces a tuple of the infed data and a token
@@ -1151,15 +1196,22 @@ void XlaBuilder::Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
     if (!ShapeUtil::Compatible(operand_shape, shape_with_layout)) {
       return InvalidArgument(
           "Outfeed shape %s must be compatible with operand shape %s",
-          ShapeUtil::HumanStringWithLayout(shape_with_layout).c_str(),
-          ShapeUtil::HumanStringWithLayout(operand_shape).c_str());
+          ShapeUtil::HumanStringWithLayout(shape_with_layout),
+          ShapeUtil::HumanStringWithLayout(operand_shape));
     }
     *instr.mutable_outfeed_shape() = shape_with_layout;
 
     instr.set_outfeed_config(outfeed_config);
 
+    // Outfeed takes a token as its second operand. Generate the token to pass
+    // to the outfeed.
+    HloInstructionProto token_instr;
+    *token_instr.mutable_shape() = ShapeUtil::MakeTokenShape();
+    TF_ASSIGN_OR_RETURN(XlaOp token, AddInstruction(std::move(token_instr),
+                                                    HloOpcode::kAfterAll, {}));
+
     TF_RETURN_IF_ERROR(
-        AddInstruction(std::move(instr), HloOpcode::kOutfeed, {operand})
+        AddInstruction(std::move(instr), HloOpcode::kOutfeed, {operand, token})
             .status());
 
     // The outfeed instruction produces a token. However, existing users expect
@@ -1197,8 +1249,8 @@ XlaOp XlaBuilder::OutfeedWithToken(const XlaOp& operand, const XlaOp& token,
     if (!ShapeUtil::Compatible(operand_shape, shape_with_layout)) {
       return InvalidArgument(
           "Outfeed shape %s must be compatible with operand shape %s",
-          ShapeUtil::HumanStringWithLayout(shape_with_layout).c_str(),
-          ShapeUtil::HumanStringWithLayout(operand_shape).c_str());
+          ShapeUtil::HumanStringWithLayout(shape_with_layout),
+          ShapeUtil::HumanStringWithLayout(operand_shape));
     }
     *instr.mutable_outfeed_shape() = shape_with_layout;
 
@@ -1217,7 +1269,7 @@ XlaOp XlaBuilder::CreateToken() {
   });
 }
 
-XlaOp XlaBuilder::AfterAll(tensorflow::gtl::ArraySlice<XlaOp> tokens) {
+XlaOp XlaBuilder::AfterAll(absl::Span<const XlaOp> tokens) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     if (tokens.empty()) {
       return InvalidArgument("AfterAll requires at least one operand");
@@ -1229,15 +1281,15 @@ XlaOp XlaBuilder::AfterAll(tensorflow::gtl::ArraySlice<XlaOp> tokens) {
 }
 
 XlaOp XlaBuilder::CustomCall(const string& call_target_name,
-                             tensorflow::gtl::ArraySlice<XlaOp> operands,
+                             absl::Span<const XlaOp> operands,
                              const Shape& shape) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
-    if (tensorflow::str_util::StartsWith(call_target_name, "$")) {
+    if (absl::StartsWith(call_target_name, "$")) {
       return InvalidArgument(
           "Invalid custom_call_target \"%s\": Call targets that start with '$' "
           "are reserved for internal use.",
-          call_target_name.c_str());
+          call_target_name);
     }
     *instr.mutable_shape() = shape;
     instr.set_custom_call_target(call_target_name);
@@ -1245,21 +1297,8 @@ XlaOp XlaBuilder::CustomCall(const string& call_target_name,
   });
 }
 
-XlaOp XlaBuilder::HostCompute(tensorflow::gtl::ArraySlice<XlaOp> operands,
-                              const string& channel_name,
-                              int64 cost_estimate_ns, const Shape& shape) {
-  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-    *instr.mutable_shape() = shape;
-    instr.set_channel_name(channel_name);
-    instr.set_cost_estimate_ns(cost_estimate_ns);
-    return AddInstruction(std::move(instr), HloOpcode::kHostCompute, operands);
-  });
-}
-
-XlaOp XlaBuilder::Complex(
-    const XlaOp& real, const XlaOp& imag,
-    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+XlaOp XlaBuilder::Complex(const XlaOp& real, const XlaOp& imag,
+                          absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kComplex, real, imag, broadcast_dimensions);
 }
 
@@ -1268,42 +1307,42 @@ XlaOp XlaBuilder::Conj(const XlaOp& operand) {
 }
 
 XlaOp XlaBuilder::Sub(const XlaOp& lhs, const XlaOp& rhs,
-                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+                      absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kSubtract, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Div(const XlaOp& lhs, const XlaOp& rhs,
-                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+                      absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kDivide, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Rem(const XlaOp& lhs, const XlaOp& rhs,
-                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+                      absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kRemainder, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Max(const XlaOp& lhs, const XlaOp& rhs,
-                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+                      absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kMaximum, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Min(const XlaOp& lhs, const XlaOp& rhs,
-                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+                      absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kMinimum, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::And(const XlaOp& lhs, const XlaOp& rhs,
-                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+                      absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kAnd, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Or(const XlaOp& lhs, const XlaOp& rhs,
-                     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+                     absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kOr, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Xor(const XlaOp& lhs, const XlaOp& rhs,
-                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+                      absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kXor, lhs, rhs, broadcast_dimensions);
 }
 
@@ -1311,22 +1350,21 @@ XlaOp XlaBuilder::Not(const XlaOp& operand) {
   return UnaryOp(HloOpcode::kNot, operand);
 }
 
-XlaOp XlaBuilder::ShiftLeft(
-    const XlaOp& lhs, const XlaOp& rhs,
-    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+XlaOp XlaBuilder::ShiftLeft(const XlaOp& lhs, const XlaOp& rhs,
+                            absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kShiftLeft, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::ShiftRightArithmetic(
     const XlaOp& lhs, const XlaOp& rhs,
-    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+    absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kShiftRightArithmetic, lhs, rhs,
                   broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::ShiftRightLogical(
     const XlaOp& lhs, const XlaOp& rhs,
-    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+    absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kShiftRightLogical, lhs, rhs,
                   broadcast_dimensions);
 }
@@ -1335,9 +1373,8 @@ XlaOp XlaBuilder::Abs(const XlaOp& operand) {
   return UnaryOp(HloOpcode::kAbs, operand);
 }
 
-XlaOp XlaBuilder::Atan2(
-    const XlaOp& y, const XlaOp& x,
-    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+XlaOp XlaBuilder::Atan2(const XlaOp& y, const XlaOp& x,
+                        absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kAtan2, y, x, broadcast_dimensions);
 }
 
@@ -1402,7 +1439,7 @@ XlaOp XlaBuilder::IsFinite(const XlaOp& operand) {
 }
 
 XlaOp XlaBuilder::Transpose(const XlaOp& operand,
-                            tensorflow::gtl::ArraySlice<int64> permutation) {
+                            absl::Span<const int64> permutation) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
@@ -1417,7 +1454,7 @@ XlaOp XlaBuilder::Transpose(const XlaOp& operand,
 }
 
 XlaOp XlaBuilder::Rev(const XlaOp& operand,
-                      tensorflow::gtl::ArraySlice<int64> dimensions) {
+                      absl::Span<const int64> dimensions) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
@@ -1431,7 +1468,7 @@ XlaOp XlaBuilder::Rev(const XlaOp& operand,
   });
 }
 
-XlaOp XlaBuilder::Sort(XlaOp keys, tensorflow::gtl::optional<XlaOp> values,
+XlaOp XlaBuilder::Sort(XlaOp keys, absl::optional<XlaOp> values,
                        int64 dimension) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
@@ -1459,7 +1496,7 @@ XlaOp XlaBuilder::Sort(XlaOp keys, tensorflow::gtl::optional<XlaOp> values,
 }
 
 XlaOp XlaBuilder::Pow(const XlaOp& lhs, const XlaOp& rhs,
-                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+                      absl::Span<const int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kPower, lhs, rhs, broadcast_dimensions);
 }
 
@@ -1497,10 +1534,10 @@ XlaOp XlaBuilder::Clamp(const XlaOp& min, const XlaOp& operand,
   return TernaryOp(HloOpcode::kClamp, min, operand, max);
 }
 
-XlaOp XlaBuilder::Map(tensorflow::gtl::ArraySlice<XlaOp> operands,
+XlaOp XlaBuilder::Map(absl::Span<const XlaOp> operands,
                       const XlaComputation& computation,
-                      tensorflow::gtl::ArraySlice<int64> dimensions,
-                      tensorflow::gtl::ArraySlice<XlaOp> static_operands) {
+                      absl::Span<const int64> dimensions,
+                      absl::Span<const XlaOp> static_operands) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     if (!static_operands.empty()) {
       return Unimplemented("static_operands is not supported in Map");
@@ -1509,8 +1546,8 @@ XlaOp XlaBuilder::Map(tensorflow::gtl::ArraySlice<XlaOp> operands,
     HloInstructionProto instr;
     std::vector<const Shape*> operand_shape_ptrs;
     TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(operands));
-    c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
-                [](const Shape& shape) { return &shape; });
+    absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
     TF_ASSIGN_OR_RETURN(const ProgramShape& called_program_shape,
                         computation.GetProgramShape());
     TF_ASSIGN_OR_RETURN(
@@ -1541,7 +1578,7 @@ XlaOp XlaBuilder::Map(tensorflow::gtl::ArraySlice<XlaOp> operands,
 }
 
 XlaOp XlaBuilder::RngOp(RandomDistribution distribution,
-                        tensorflow::gtl::ArraySlice<XlaOp> parameters,
+                        absl::Span<const XlaOp> parameters,
                         const Shape& shape) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
@@ -1553,7 +1590,7 @@ XlaOp XlaBuilder::RngOp(RandomDistribution distribution,
         if (parameters.size() != 2) {
           return InvalidArgument(
               "RNG distribution (%s) expects 2 parameters, but got %ld",
-              RandomDistribution_Name(distribution).c_str(), parameters.size());
+              RandomDistribution_Name(distribution), parameters.size());
         }
         break;
       default:
@@ -1600,27 +1637,27 @@ XlaOp XlaBuilder::While(const XlaComputation& condition,
   });
 }
 
-XlaOp XlaBuilder::Gather(const XlaOp& input, const XlaOp& gather_indices,
+XlaOp XlaBuilder::Gather(const XlaOp& input, const XlaOp& start_indices,
                          const GatherDimensionNumbers& dimension_numbers,
-                         tensorflow::gtl::ArraySlice<int64> window_bounds) {
+                         absl::Span<const int64> slice_sizes) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
 
     TF_ASSIGN_OR_RETURN(const Shape& input_shape, GetShape(input));
-    TF_ASSIGN_OR_RETURN(const Shape& gather_indices_shape,
-                        GetShape(gather_indices));
+    TF_ASSIGN_OR_RETURN(const Shape& start_indices_shape,
+                        GetShape(start_indices));
     TF_ASSIGN_OR_RETURN(
         *instr.mutable_shape(),
-        ShapeInference::InferGatherShape(input_shape, gather_indices_shape,
-                                         dimension_numbers, window_bounds));
+        ShapeInference::InferGatherShape(input_shape, start_indices_shape,
+                                         dimension_numbers, slice_sizes));
 
     *instr.mutable_gather_dimension_numbers() = dimension_numbers;
-    for (int64 bound : window_bounds) {
-      instr.add_gather_window_bounds(bound);
+    for (int64 bound : slice_sizes) {
+      instr.add_gather_slice_sizes(bound);
     }
 
     return AddInstruction(std::move(instr), HloOpcode::kGather,
-                          {input, gather_indices});
+                          {input, start_indices});
   });
 }
 
@@ -1682,22 +1719,39 @@ XlaOp XlaBuilder::Conditional(const XlaOp& predicate, const XlaOp& true_operand,
   });
 }
 
-XlaOp XlaBuilder::Reduce(
-    const XlaOp& operand, const XlaOp& init_value,
-    const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce) {
+XlaOp XlaBuilder::Reduce(const XlaOp& operand, const XlaOp& init_value,
+                         const XlaComputation& computation,
+                         absl::Span<const int64> dimensions_to_reduce) {
+  return Reduce(absl::Span<const XlaOp>({operand}),
+                absl::Span<const XlaOp>({init_value}), computation,
+                dimensions_to_reduce);
+}
+
+XlaOp XlaBuilder::Reduce(absl::Span<const XlaOp> operands,
+                         absl::Span<const XlaOp> init_values,
+                         const XlaComputation& computation,
+                         absl::Span<const int64> dimensions_to_reduce) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
 
-    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
-    TF_ASSIGN_OR_RETURN(const Shape& init_shape, GetShape(init_value));
     TF_ASSIGN_OR_RETURN(const ProgramShape& called_program_shape,
                         computation.GetProgramShape());
 
-    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
-                        ShapeInference::InferReduceShape(
-                            {&operand_shape, &init_shape}, dimensions_to_reduce,
-                            called_program_shape));
+    std::vector<XlaOp> all_operands;
+    all_operands.insert(all_operands.end(), operands.begin(), operands.end());
+    all_operands.insert(all_operands.end(), init_values.begin(),
+                        init_values.end());
+
+    std::vector<const Shape*> operand_shape_ptrs;
+    TF_ASSIGN_OR_RETURN(const auto& operand_shapes,
+                        GetOperandShapes(all_operands));
+    absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
+
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferReduceShape(
+            operand_shape_ptrs, dimensions_to_reduce, called_program_shape));
 
     for (int64 dim : dimensions_to_reduce) {
       instr.add_dimensions(dim);
@@ -1705,8 +1759,7 @@ XlaOp XlaBuilder::Reduce(
 
     AddCalledComputation(computation, &instr);
 
-    return AddInstruction(std::move(instr), HloOpcode::kReduce,
-                          {operand, init_value});
+    return AddInstruction(std::move(instr), HloOpcode::kReduce, all_operands);
   });
 }
 
@@ -1720,11 +1773,11 @@ XlaOp XlaBuilder::ReduceAll(const XlaOp& operand, const XlaOp& init_value,
   });
 }
 
-XlaOp XlaBuilder::ReduceWindow(
-    const XlaOp& operand, const XlaOp& init_value,
-    const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<int64> window_dimensions,
-    tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding) {
+XlaOp XlaBuilder::ReduceWindow(const XlaOp& operand, const XlaOp& init_value,
+                               const XlaComputation& computation,
+                               absl::Span<const int64> window_dimensions,
+                               absl::Span<const int64> window_strides,
+                               Padding padding) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
 
@@ -1745,9 +1798,9 @@ XlaOp XlaBuilder::ReduceWindow(
 XlaOp XlaBuilder::ReduceWindowWithGeneralPadding(
     const XlaOp& operand, const XlaOp& init_value,
     const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<int64> window_dimensions,
-    tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
 
@@ -1842,8 +1895,7 @@ XlaOp XlaBuilder::BatchNormGrad(const XlaOp& operand, const XlaOp& scale,
 }
 
 XlaOp XlaBuilder::CrossReplicaSum(
-    const XlaOp& operand,
-    tensorflow::gtl::ArraySlice<int64> replica_group_ids) {
+    const XlaOp& operand, absl::Span<const ReplicaGroup> replica_groups) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(operand));
     const Shape& scalar_shape = ShapeUtil::MakeShape(shape.element_type(), {});
@@ -1851,23 +1903,24 @@ XlaOp XlaBuilder::CrossReplicaSum(
     b->Add(b->Parameter(/*parameter_number=*/0, scalar_shape, "x"),
            b->Parameter(/*parameter_number=*/1, scalar_shape, "y"));
     TF_ASSIGN_OR_RETURN(auto computation, b->Build());
-    return CrossReplicaSum(operand, computation, replica_group_ids,
-                           /*channel_id=*/tensorflow::gtl::nullopt);
+    return CrossReplicaSum(operand, computation, replica_groups,
+                           /*channel_id=*/absl::nullopt);
   });
 }
 
 XlaOp XlaBuilder::CrossReplicaSum(
     const XlaOp& operand, const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<int64> replica_group_ids,
-    const tensorflow::gtl::optional<ChannelHandle>& channel_id) {
+    absl::Span<const ReplicaGroup> replica_groups,
+    const absl::optional<ChannelHandle>& channel_id) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
     TF_ASSIGN_OR_RETURN(
         *instr.mutable_shape(),
         ShapeInference::InferCrossReplicaSumShape({&operand_shape}));
-    for (int64 replica_group_id : replica_group_ids) {
-      instr.add_replica_group_ids(replica_group_id);
+
+    for (const ReplicaGroup& group : replica_groups) {
+      *instr.add_replica_groups() = group;
     }
 
     if (channel_id.has_value()) {
@@ -1914,8 +1967,8 @@ XlaOp XlaBuilder::AllToAll(const XlaOp& operand, int64 split_dimension,
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(auto slice_shapes, this->GetOperandShapes(slices));
     std::vector<const Shape*> slice_shape_ptrs;
-    c_transform(slice_shapes, std::back_inserter(slice_shape_ptrs),
-                [](const Shape& shape) { return &shape; });
+    absl::c_transform(slice_shapes, std::back_inserter(slice_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
     TF_ASSIGN_OR_RETURN(
         *instr.mutable_shape(),
         ShapeInference::InferAllToAllTupleShape(slice_shape_ptrs));
@@ -1936,12 +1989,34 @@ XlaOp XlaBuilder::AllToAll(const XlaOp& operand, int64 split_dimension,
   });
 }
 
-XlaOp XlaBuilder::SelectAndScatter(
-    const XlaOp& operand, const XlaComputation& select,
-    tensorflow::gtl::ArraySlice<int64> window_dimensions,
-    tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
-    const XlaOp& source, const XlaOp& init_value,
-    const XlaComputation& scatter) {
+XlaOp XlaBuilder::CollectivePermute(
+    const XlaOp& operand,
+    const std::vector<std::pair<int64, int64>>& source_target_pairs) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferCollectivePermuteShape(operand_shape));
+
+    for (const auto& pair : source_target_pairs) {
+      auto* proto_pair = instr.add_source_target_pairs();
+      proto_pair->set_source(pair.first);
+      proto_pair->set_target(pair.second);
+    }
+
+    return AddInstruction(std::move(instr), HloOpcode::kCollectivePermute,
+                          {operand});
+  });
+}
+
+XlaOp XlaBuilder::SelectAndScatter(const XlaOp& operand,
+                                   const XlaComputation& select,
+                                   absl::Span<const int64> window_dimensions,
+                                   absl::Span<const int64> window_strides,
+                                   Padding padding, const XlaOp& source,
+                                   const XlaOp& init_value,
+                                   const XlaComputation& scatter) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
     return SelectAndScatterWithGeneralPadding(
@@ -1954,11 +2029,10 @@ XlaOp XlaBuilder::SelectAndScatter(
 
 XlaOp XlaBuilder::SelectAndScatterWithGeneralPadding(
     const XlaOp& operand, const XlaComputation& select,
-    tensorflow::gtl::ArraySlice<int64> window_dimensions,
-    tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-    const XlaOp& source, const XlaOp& init_value,
-    const XlaComputation& scatter) {
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding, const XlaOp& source,
+    const XlaOp& init_value, const XlaComputation& scatter) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
 
@@ -2102,13 +2176,13 @@ XlaOp XlaBuilder::SendToHost(const XlaOp& operand, const XlaOp& token,
     if (!ShapeUtil::Compatible(operand_shape, shape_with_layout)) {
       return InvalidArgument(
           "SendToHost shape %s must be compatible with operand shape %s",
-          ShapeUtil::HumanStringWithLayout(shape_with_layout).c_str(),
-          ShapeUtil::HumanStringWithLayout(operand_shape).c_str());
+          ShapeUtil::HumanStringWithLayout(shape_with_layout),
+          ShapeUtil::HumanStringWithLayout(operand_shape));
     }
     // TODO(b/111544877): Support tuple shapes.
     if (!ShapeUtil::IsArray(operand_shape)) {
       return InvalidArgument("SendToHost only supports array shapes, shape: %s",
-                             ShapeUtil::HumanString(operand_shape).c_str());
+                             ShapeUtil::HumanString(operand_shape));
     }
 
     if (handle.type() != ChannelHandle::DEVICE_TO_HOST) {
@@ -2147,7 +2221,7 @@ XlaOp XlaBuilder::RecvFromHost(const XlaOp& token, const Shape& shape,
     if (!ShapeUtil::IsArray(shape)) {
       return InvalidArgument(
           "RecvFromHost only supports array shapes, shape: %s",
-          ShapeUtil::HumanString(shape).c_str());
+          ShapeUtil::HumanString(shape));
     }
 
     if (handle.type() != ChannelHandle::HOST_TO_DEVICE) {
@@ -2202,7 +2276,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
         "of being evaluated at XLA compile time.\n\n"
         "Please file a usability bug with the framework being used (e.g. "
         "TensorFlow).",
-        op_string.c_str());
+        op_string);
   }
 
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
@@ -2265,7 +2339,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
 
 std::unique_ptr<XlaBuilder> XlaBuilder::CreateSubBuilder(
     const string& computation_name) {
-  auto sub_builder = MakeUnique<XlaBuilder>(computation_name);
+  auto sub_builder = absl::make_unique<XlaBuilder>(computation_name);
   sub_builder->parent_builder_ = this;
   sub_builder->die_immediately_on_error_ = this->die_immediately_on_error_;
   return sub_builder;
@@ -2310,8 +2384,8 @@ XlaBuilder::CreateDefaultConvDimensionNumbers(int num_spatial_dims) {
            dnum.input_spatial_dimensions(0), dnum.input_spatial_dimensions(1)})
           .size() != 4) {
     return FailedPrecondition(
-        "dimension numbers for the input are not unique: (%lld, %lld, %lld, "
-        "%lld)",
+        "dimension numbers for the input are not unique: (%d, %d, %d, "
+        "%d)",
         dnum.input_batch_dimension(), dnum.input_feature_dimension(),
         dnum.input_spatial_dimensions(0), dnum.input_spatial_dimensions(1));
   }
@@ -2321,8 +2395,8 @@ XlaBuilder::CreateDefaultConvDimensionNumbers(int num_spatial_dims) {
                        dnum.kernel_spatial_dimensions(1)})
           .size() != 4) {
     return FailedPrecondition(
-        "dimension numbers for the weight are not unique: (%lld, %lld, %lld, "
-        "%lld)",
+        "dimension numbers for the weight are not unique: (%d, %d, %d, "
+        "%d)",
         dnum.kernel_output_feature_dimension(),
         dnum.kernel_input_feature_dimension(),
         dnum.kernel_spatial_dimensions(0), dnum.kernel_spatial_dimensions(1));
@@ -2333,17 +2407,17 @@ XlaBuilder::CreateDefaultConvDimensionNumbers(int num_spatial_dims) {
                        dnum.output_spatial_dimensions(1)})
           .size() != 4) {
     return FailedPrecondition(
-        "dimension numbers for the output are not unique: (%lld, %lld, %lld, "
-        "%lld)",
+        "dimension numbers for the output are not unique: (%d, %d, %d, "
+        "%d)",
         dnum.output_batch_dimension(), dnum.output_feature_dimension(),
         dnum.output_spatial_dimensions(0), dnum.output_spatial_dimensions(1));
   }
   return Status::OK();
 }
 
-StatusOr<XlaOp> XlaBuilder::AddInstruction(
-    HloInstructionProto&& instr, HloOpcode opcode,
-    tensorflow::gtl::ArraySlice<XlaOp> operands) {
+StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
+                                           HloOpcode opcode,
+                                           absl::Span<const XlaOp> operands) {
   TF_RETURN_IF_ERROR(first_error_);
 
   const int64 handle = instructions_.size();
@@ -2354,13 +2428,11 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(
   }
   for (const auto& operand : operands) {
     if (operand.builder_ == nullptr) {
-      return InvalidArgument("invalid XlaOp with handle %lld",
-                             operand.handle());
+      return InvalidArgument("invalid XlaOp with handle %d", operand.handle());
     }
     if (operand.builder_ != this) {
       return InvalidArgument("Do not add XlaOp from builder %s to builder %s",
-                             operand.builder_->name().c_str(),
-                             this->name().c_str());
+                             operand.builder_->name(), this->name());
     }
     instr.add_operand_ids(operand.handle());
   }
@@ -2390,18 +2462,18 @@ StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstruction(
 
   if (op.builder_ == nullptr) {
     return InvalidArgument(
-        "invalid XlaOp with handle %lld; the builder of this op is freed",
+        "invalid XlaOp with handle %d; the builder of this op is freed",
         op.handle());
   }
   if (op.builder_ != this) {
     return InvalidArgument(
-        "XlaOp with handle %lld is built by builder '%s', but is trying to use "
+        "XlaOp with handle %d is built by builder '%s', but is trying to use "
         "it in builder '%s'",
-        op.handle(), op.builder_->name().c_str(), this->name().c_str());
+        op.handle(), op.builder_->name(), this->name());
   }
 
   if (op.handle() >= instructions_.size() || op.handle() < 0) {
-    return InvalidArgument("no XlaOp value %lld", op.handle());
+    return InvalidArgument("no XlaOp value %d", op.handle());
   }
   return &instructions_[op.handle()];
 }
@@ -2419,14 +2491,12 @@ XlaOp ConstantLiteral(XlaBuilder* builder, const LiteralSlice& literal) {
   return builder->ConstantLiteral(literal);
 }
 
-XlaOp Broadcast(const XlaOp& operand,
-                tensorflow::gtl::ArraySlice<int64> broadcast_sizes) {
+XlaOp Broadcast(const XlaOp& operand, absl::Span<const int64> broadcast_sizes) {
   return operand.builder()->Broadcast(operand, broadcast_sizes);
 }
 
-XlaOp BroadcastInDim(
-    const XlaOp& operand, const Shape& shape,
-    const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+XlaOp BroadcastInDim(const XlaOp& operand, const Shape& shape,
+                     const absl::Span<const int64> broadcast_dimensions) {
   return operand.builder()->BroadcastInDim(operand, shape,
                                            broadcast_dimensions);
 }
@@ -2436,26 +2506,22 @@ XlaOp Pad(const XlaOp& operand, const XlaOp& padding_value,
   return operand.builder()->Pad(operand, padding_value, padding_config);
 }
 
-XlaOp Reshape(const XlaOp& operand,
-              tensorflow::gtl::ArraySlice<int64> dimensions,
-              tensorflow::gtl::ArraySlice<int64> new_sizes) {
+XlaOp Reshape(const XlaOp& operand, absl::Span<const int64> dimensions,
+              absl::Span<const int64> new_sizes) {
   return operand.builder()->Reshape(operand, dimensions, new_sizes);
 }
 
-XlaOp Reshape(const XlaOp& operand,
-              tensorflow::gtl::ArraySlice<int64> new_sizes) {
+XlaOp Reshape(const XlaOp& operand, absl::Span<const int64> new_sizes) {
   return operand.builder()->Reshape(operand, new_sizes);
 }
 
-XlaOp Collapse(const XlaOp& operand,
-               tensorflow::gtl::ArraySlice<int64> dimensions) {
+XlaOp Collapse(const XlaOp& operand, absl::Span<const int64> dimensions) {
   return operand.builder()->Collapse(operand, dimensions);
 }
 
-XlaOp Slice(const XlaOp& operand,
-            tensorflow::gtl::ArraySlice<int64> start_indices,
-            tensorflow::gtl::ArraySlice<int64> limit_indices,
-            tensorflow::gtl::ArraySlice<int64> strides) {
+XlaOp Slice(const XlaOp& operand, absl::Span<const int64> start_indices,
+            absl::Span<const int64> limit_indices,
+            absl::Span<const int64> strides) {
   return operand.builder()->Slice(operand, start_indices, limit_indices,
                                   strides);
 }
@@ -2467,7 +2533,7 @@ XlaOp SliceInDim(const XlaOp& operand, int64 start_index, int64 limit_index,
 }
 
 XlaOp DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
-                   tensorflow::gtl::ArraySlice<int64> slice_sizes) {
+                   absl::Span<const int64> slice_sizes) {
   return operand.builder()->DynamicSlice(operand, start_indices, slice_sizes);
 }
 
@@ -2476,8 +2542,7 @@ XlaOp DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
   return operand.builder()->DynamicUpdateSlice(operand, update, start_indices);
 }
 
-XlaOp ConcatInDim(XlaBuilder* builder,
-                  tensorflow::gtl::ArraySlice<XlaOp> operands,
+XlaOp ConcatInDim(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                   int64 dimension) {
   return builder->ConcatInDim(operands, dimension);
 }
@@ -2490,7 +2555,7 @@ XlaOp Select(const XlaOp& pred, const XlaOp& on_true, const XlaOp& on_false) {
   return pred.builder()->Select(pred, on_true, on_false);
 }
 
-XlaOp Tuple(XlaBuilder* builder, tensorflow::gtl::ArraySlice<XlaOp> elements) {
+XlaOp Tuple(XlaBuilder* builder, absl::Span<const XlaOp> elements) {
   return builder->Tuple(elements);
 }
 
@@ -2499,87 +2564,101 @@ XlaOp GetTupleElement(const XlaOp& tuple_data, int64 index) {
 }
 
 XlaOp Eq(const XlaOp& lhs, const XlaOp& rhs,
-         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+         absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->Eq(lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp Ne(const XlaOp& lhs, const XlaOp& rhs,
-         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+         absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->Ne(lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp Ge(const XlaOp& lhs, const XlaOp& rhs,
-         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+         absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->Ge(lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp Gt(const XlaOp& lhs, const XlaOp& rhs,
-         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+         absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->Gt(lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp Lt(const XlaOp& lhs, const XlaOp& rhs,
-         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+         absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->Lt(lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
-         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+         absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->Le(lhs, rhs, broadcast_dimensions);
 }
 
-XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs) {
-  return lhs.builder()->Dot(lhs, rhs);
+XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,
+          const PrecisionConfigProto* precision_config_proto) {
+  return lhs.builder()->Dot(lhs, rhs, precision_config_proto);
 }
 
 XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
-                 const DotDimensionNumbers& dimension_numbers) {
-  return lhs.builder()->DotGeneral(lhs, rhs, dimension_numbers);
+                 const DotDimensionNumbers& dimension_numbers,
+                 const PrecisionConfigProto* precision_config_proto) {
+  return lhs.builder()->DotGeneral(lhs, rhs, dimension_numbers,
+                                   precision_config_proto);
 }
 
 XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
-           tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding) {
-  return lhs.builder()->Conv(lhs, rhs, window_strides, padding);
+           absl::Span<const int64> window_strides, Padding padding,
+           int64 feature_group_count,
+           const PrecisionConfigProto* precision_config_proto) {
+  return lhs.builder()->Conv(lhs, rhs, window_strides, padding,
+                             feature_group_count, precision_config_proto);
 }
 
 XlaOp ConvWithGeneralPadding(
-    const XlaOp& lhs, const XlaOp& rhs,
-    tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
+    const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding,
+    int64 feature_group_count,
+    const PrecisionConfigProto* precision_config_proto) {
   return lhs.builder()->ConvWithGeneralPadding(lhs, rhs, window_strides,
-                                               padding);
+                                               padding, feature_group_count,
+                                               precision_config_proto);
 }
 
 XlaOp ConvWithGeneralDimensions(
-    const XlaOp& lhs, const XlaOp& rhs,
-    tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
-  return lhs.builder()->ConvWithGeneralDimensions(lhs, rhs, window_strides,
-                                                  padding, dimension_numbers);
+    const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
+    Padding padding, const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count,
+    const PrecisionConfigProto* precision_config_proto) {
+  return lhs.builder()->ConvWithGeneralDimensions(
+      lhs, rhs, window_strides, padding, dimension_numbers, feature_group_count,
+      precision_config_proto);
 }
 
 XlaOp ConvGeneral(const XlaOp& lhs, const XlaOp& rhs,
-                  tensorflow::gtl::ArraySlice<int64> window_strides,
-                  tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-                  const ConvolutionDimensionNumbers& dimension_numbers) {
+                  absl::Span<const int64> window_strides,
+                  absl::Span<const std::pair<int64, int64>> padding,
+                  const ConvolutionDimensionNumbers& dimension_numbers,
+                  int64 feature_group_count,
+                  const PrecisionConfigProto* precision_config_proto) {
   return lhs.builder()->ConvGeneral(lhs, rhs, window_strides, padding,
-                                    dimension_numbers);
+                                    dimension_numbers, feature_group_count,
+                                    precision_config_proto);
 }
 
-XlaOp ConvGeneralDilated(
-    const XlaOp& lhs, const XlaOp& rhs,
-    tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-    tensorflow::gtl::ArraySlice<int64> lhs_dilation,
-    tensorflow::gtl::ArraySlice<int64> rhs_dilation,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
-  return lhs.builder()->ConvGeneralDilated(lhs, rhs, window_strides, padding,
-                                           lhs_dilation, rhs_dilation,
-                                           dimension_numbers);
+XlaOp ConvGeneralDilated(const XlaOp& lhs, const XlaOp& rhs,
+                         absl::Span<const int64> window_strides,
+                         absl::Span<const std::pair<int64, int64>> padding,
+                         absl::Span<const int64> lhs_dilation,
+                         absl::Span<const int64> rhs_dilation,
+                         const ConvolutionDimensionNumbers& dimension_numbers,
+                         int64 feature_group_count,
+                         const PrecisionConfigProto* precision_config_proto) {
+  return lhs.builder()->ConvGeneralDilated(
+      lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
+      dimension_numbers, feature_group_count, precision_config_proto);
 }
 
 XlaOp Fft(const XlaOp& operand, FftType fft_type,
-          tensorflow::gtl::ArraySlice<int64> fft_length) {
+          absl::Span<const int64> fft_length) {
   return operand.builder()->Fft(operand, fft_type, fft_length);
 }
 
@@ -2593,104 +2672,104 @@ void Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
 }
 
 XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
-           tensorflow::gtl::ArraySlice<XlaOp> operands) {
+           absl::Span<const XlaOp> operands) {
   return builder->Call(computation, operands);
 }
 
 XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
-                 tensorflow::gtl::ArraySlice<XlaOp> operands,
-                 const Shape& shape) {
+                 absl::Span<const XlaOp> operands, const Shape& shape) {
   return builder->CustomCall(call_target_name, operands, shape);
 }
 
-XlaOp HostCompute(XlaBuilder* builder,
-                  tensorflow::gtl::ArraySlice<XlaOp> operands,
-                  const string& channel_name, int64 cost_estimate_ns,
-                  const Shape& shape) {
-  return builder->HostCompute(operands, channel_name, cost_estimate_ns, shape);
-}
-
 XlaOp Complex(const XlaOp& real, const XlaOp& imag,
-              tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+              absl::Span<const int64> broadcast_dimensions) {
   return real.builder()->Complex(real, imag, broadcast_dimensions);
 }
 
 XlaOp Conj(const XlaOp& operand) { return operand.builder()->Conj(operand); }
 
 XlaOp Add(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+          absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->Add(lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp Sub(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+          absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->Sub(lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp Mul(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+          absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->Mul(lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp Div(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+          absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->Div(lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp Rem(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+          absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->Rem(lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp Max(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+          absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->Max(lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp Min(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+          absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->Min(lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp And(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+          absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->And(lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp Or(const XlaOp& lhs, const XlaOp& rhs,
-         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+         absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->Or(lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp Xor(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+          absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->Xor(lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp Not(const XlaOp& operand) { return operand.builder()->Not(operand); }
 
 XlaOp ShiftLeft(const XlaOp& lhs, const XlaOp& rhs,
-                tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+                absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->ShiftLeft(lhs, rhs, broadcast_dimensions);
 }
 
-XlaOp ShiftRightArithmetic(
-    const XlaOp& lhs, const XlaOp& rhs,
-    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+XlaOp ShiftRightArithmetic(const XlaOp& lhs, const XlaOp& rhs,
+                           absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->ShiftRightArithmetic(lhs, rhs, broadcast_dimensions);
 }
 
-XlaOp ShiftRightLogical(
-    const XlaOp& lhs, const XlaOp& rhs,
-    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+XlaOp ShiftRightLogical(const XlaOp& lhs, const XlaOp& rhs,
+                        absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->ShiftRightLogical(lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp Reduce(const XlaOp& operand, const XlaOp& init_value,
              const XlaComputation& computation,
-             tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce) {
+             absl::Span<const int64> dimensions_to_reduce) {
   return operand.builder()->Reduce(operand, init_value, computation,
                                    dimensions_to_reduce);
+}
+
+// Reduces several arrays simultaneously among the provided dimensions, given
+// "computation" as a reduction operator.
+XlaOp Reduce(XlaBuilder* builder, absl::Span<const XlaOp> operands,
+             absl::Span<const XlaOp> init_values,
+             const XlaComputation& computation,
+             absl::Span<const int64> dimensions_to_reduce) {
+  return builder->Reduce(operands, init_values, computation,
+                         dimensions_to_reduce);
 }
 
 XlaOp ReduceAll(const XlaOp& operand, const XlaOp& init_value,
@@ -2700,9 +2779,8 @@ XlaOp ReduceAll(const XlaOp& operand, const XlaOp& init_value,
 
 XlaOp ReduceWindow(const XlaOp& operand, const XlaOp& init_value,
                    const XlaComputation& computation,
-                   tensorflow::gtl::ArraySlice<int64> window_dimensions,
-                   tensorflow::gtl::ArraySlice<int64> window_strides,
-                   Padding padding) {
+                   absl::Span<const int64> window_dimensions,
+                   absl::Span<const int64> window_strides, Padding padding) {
   return operand.builder()->ReduceWindow(operand, init_value, computation,
                                          window_dimensions, window_strides,
                                          padding);
@@ -2711,25 +2789,24 @@ XlaOp ReduceWindow(const XlaOp& operand, const XlaOp& init_value,
 XlaOp ReduceWindowWithGeneralPadding(
     const XlaOp& operand, const XlaOp& init_value,
     const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<int64> window_dimensions,
-    tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding) {
   return operand.builder()->ReduceWindowWithGeneralPadding(
       operand, init_value, computation, window_dimensions, window_strides,
       padding);
 }
 
 XlaOp CrossReplicaSum(const XlaOp& operand,
-                      tensorflow::gtl::ArraySlice<int64> replica_group_ids) {
-  return operand.builder()->CrossReplicaSum(operand, replica_group_ids);
+                      absl::Span<const ReplicaGroup> replica_groups) {
+  return operand.builder()->CrossReplicaSum(operand, replica_groups);
 }
 
-XlaOp CrossReplicaSum(
-    const XlaOp& operand, const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<int64> replica_group_ids,
-    const tensorflow::gtl::optional<ChannelHandle>& channel_id) {
+XlaOp CrossReplicaSum(const XlaOp& operand, const XlaComputation& computation,
+                      absl::Span<const ReplicaGroup> replica_groups,
+                      const absl::optional<ChannelHandle>& channel_id) {
   return operand.builder()->CrossReplicaSum(operand, computation,
-                                            replica_group_ids, channel_id);
+                                            replica_groups, channel_id);
 }
 
 XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,
@@ -2739,11 +2816,17 @@ XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,
                                      split_count, replica_groups);
 }
 
+XlaOp CollectivePermute(
+    const XlaOp& operand,
+    const std::vector<std::pair<int64, int64>>& source_target_pairs) {
+  return operand.builder()->CollectivePermute(operand, source_target_pairs);
+}
+
 XlaOp SelectAndScatter(const XlaOp& operand, const XlaComputation& select,
-                       tensorflow::gtl::ArraySlice<int64> window_dimensions,
-                       tensorflow::gtl::ArraySlice<int64> window_strides,
-                       Padding padding, const XlaOp& source,
-                       const XlaOp& init_value, const XlaComputation& scatter) {
+                       absl::Span<const int64> window_dimensions,
+                       absl::Span<const int64> window_strides, Padding padding,
+                       const XlaOp& source, const XlaOp& init_value,
+                       const XlaComputation& scatter) {
   return operand.builder()->SelectAndScatter(operand, select, window_dimensions,
                                              window_strides, padding, source,
                                              init_value, scatter);
@@ -2751,11 +2834,10 @@ XlaOp SelectAndScatter(const XlaOp& operand, const XlaComputation& select,
 
 XlaOp SelectAndScatterWithGeneralPadding(
     const XlaOp& operand, const XlaComputation& select,
-    tensorflow::gtl::ArraySlice<int64> window_dimensions,
-    tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-    const XlaOp& source, const XlaOp& init_value,
-    const XlaComputation& scatter) {
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding, const XlaOp& source,
+    const XlaOp& init_value, const XlaComputation& scatter) {
   return operand.builder()->SelectAndScatterWithGeneralPadding(
       operand, select, window_dimensions, window_strides, padding, source,
       init_value, scatter);
@@ -2764,7 +2846,7 @@ XlaOp SelectAndScatterWithGeneralPadding(
 XlaOp Abs(const XlaOp& operand) { return operand.builder()->Abs(operand); }
 
 XlaOp Atan2(const XlaOp& y, const XlaOp& x,
-            tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+            absl::Span<const int64> broadcast_dimensions) {
   return y.builder()->Atan2(y, x, broadcast_dimensions);
 }
 
@@ -2797,7 +2879,7 @@ XlaOp Real(const XlaOp& operand) { return operand.builder()->Real(operand); }
 XlaOp Imag(const XlaOp& operand) { return operand.builder()->Imag(operand); }
 
 XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
-          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+          absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->Pow(lhs, rhs, broadcast_dimensions);
 }
 
@@ -2815,17 +2897,15 @@ XlaOp BitcastConvertType(const XlaOp& operand, PrimitiveType new_element_type) {
 
 XlaOp Neg(const XlaOp& operand) { return operand.builder()->Neg(operand); }
 
-XlaOp Transpose(const XlaOp& operand,
-                tensorflow::gtl::ArraySlice<int64> permutation) {
+XlaOp Transpose(const XlaOp& operand, absl::Span<const int64> permutation) {
   return operand.builder()->Transpose(operand, permutation);
 }
 
-XlaOp Rev(const XlaOp& operand, tensorflow::gtl::ArraySlice<int64> dimensions) {
+XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions) {
   return operand.builder()->Rev(operand, dimensions);
 }
 
-XlaOp Sort(XlaOp keys, tensorflow::gtl::optional<XlaOp> values,
-           int64 dimension) {
+XlaOp Sort(XlaOp keys, absl::optional<XlaOp> values, int64 dimension) {
   return keys.builder()->Sort(keys, std::move(values), dimension);
 }
 
@@ -2833,10 +2913,9 @@ XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max) {
   return min.builder()->Clamp(min, operand, max);
 }
 
-XlaOp Map(XlaBuilder* builder, tensorflow::gtl::ArraySlice<XlaOp> operands,
-          const XlaComputation& computation,
-          tensorflow::gtl::ArraySlice<int64> dimensions,
-          tensorflow::gtl::ArraySlice<XlaOp> static_operands) {
+XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,
+          const XlaComputation& computation, absl::Span<const int64> dimensions,
+          absl::Span<const XlaOp> static_operands) {
   return builder->Map(operands, computation, dimensions, static_operands);
 }
 
@@ -2868,11 +2947,11 @@ XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,
                                             mantissa_bits);
 }
 
-XlaOp Gather(const XlaOp& input, const XlaOp& gather_indices,
+XlaOp Gather(const XlaOp& input, const XlaOp& start_indices,
              const GatherDimensionNumbers& dimension_numbers,
-             tensorflow::gtl::ArraySlice<int64> window_bounds) {
-  return input.builder()->Gather(input, gather_indices, dimension_numbers,
-                                 window_bounds);
+             absl::Span<const int64> slice_sizes) {
+  return input.builder()->Gather(input, start_indices, dimension_numbers,
+                                 slice_sizes);
 }
 
 XlaOp Scatter(const XlaOp& input, const XlaOp& scatter_indices,
@@ -2926,7 +3005,7 @@ XlaOp OutfeedWithToken(const XlaOp& operand, const XlaOp& token,
 
 XlaOp CreateToken(XlaBuilder* builder) { return builder->CreateToken(); }
 
-XlaOp AfterAll(XlaBuilder* builder, tensorflow::gtl::ArraySlice<XlaOp> tokens) {
+XlaOp AfterAll(XlaBuilder* builder, absl::Span<const XlaOp> tokens) {
   return builder->AfterAll(tokens);
 }
 
@@ -2953,11 +3032,12 @@ XlaOp BatchNormGrad(const XlaOp& operand, const XlaOp& scale,
                                           grad_output, epsilon, feature_index);
 }
 
-XlaOp IotaGen(XlaBuilder* builder, PrimitiveType type, int64 size) {
-  HloInstructionProto instr;
-  *instr.mutable_shape() = ShapeUtil::MakeShape(type, {size});
-  return builder->ReportErrorOrReturn(
-      builder->AddInstruction(std::move(instr), HloOpcode::kIota));
+XlaOp Iota(XlaBuilder* builder, PrimitiveType type, int64 size) {
+  return builder->Iota(type, size);
+}
+
+XlaOp Iota(XlaBuilder* builder, const Shape& shape, int64 iota_dimension) {
+  return builder->Iota(shape, iota_dimension);
 }
 
 }  // namespace xla

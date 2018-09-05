@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/casts.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -47,8 +47,7 @@ class RoundTripPackedLiteralTest : public ClientLibraryTestBase {
 
 TEST_F(RoundTripPackedLiteralTest, RoundTripsR1F32Length2) {
   string data(sizeof(float) * 2, 0);
-  tensorflow::gtl::MutableArraySlice<float> floats(
-      tensorflow::bit_cast<float*>(data.data()), 2);
+  absl::Span<float> floats(tensorflow::bit_cast<float*>(data.data()), 2);
   floats[0] = 42.0;
   floats[1] = 24.0;
 
@@ -70,8 +69,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR1F32Length2) {
 
 TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim0Minor) {
   string data(sizeof(float) * 4, 0);
-  tensorflow::gtl::MutableArraySlice<float> floats(
-      tensorflow::bit_cast<float*>(data.data()), 4);
+  absl::Span<float> floats(tensorflow::bit_cast<float*>(data.data()), 4);
   // With x as the minor dimension, these will become:
   floats[0] = 42.0;  // y=0,x=0
   floats[1] = 24.0;  // y=0,x=1
@@ -105,8 +103,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim0Minor) {
 
 TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim1Minor) {
   string data(sizeof(float) * 4, 0);
-  tensorflow::gtl::MutableArraySlice<float> floats(
-      tensorflow::bit_cast<float*>(data.data()), 4);
+  absl::Span<float> floats(tensorflow::bit_cast<float*>(data.data()), 4);
   // With y as the minor dimension, these will become:
   floats[0] = 42.0;  // y=0,x=0
   floats[1] = 24.0;  // y=1,x=0

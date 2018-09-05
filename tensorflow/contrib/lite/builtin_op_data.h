@@ -286,6 +286,11 @@ typedef struct {
   int axis;
 } TfLiteOneHotParams;
 
+typedef struct {
+  int num;
+  int axis;
+} TfLiteUnpackParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

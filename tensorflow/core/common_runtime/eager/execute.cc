@@ -192,17 +192,14 @@ Status ValidateInputTypeAndPlacement(EagerContext* ctx, Device* op_device,
 }
 
 Status SelectDevice(const NodeDef& ndef, EagerContext* ctx, Device** device) {
-  DeviceSet ds;
-  for (Device* d : *ctx->devices()) {
-    ds.AddDevice(d);
-  }
   DeviceTypeVector final_devices;
-  auto status = SupportedDeviceTypesForNode(ds.PrioritizedDeviceTypeList(),
-                                            ndef, &final_devices);
-  if (!status.ok()) return status;
+  TF_RETURN_IF_ERROR(SupportedDeviceTypesForNode(
+      ctx->prioritized_device_type_list(), ndef, &final_devices));
   if (final_devices.empty()) {
-    return errors::Internal("Could not find valid device for node ",
-                            ndef.DebugString());
+    return errors::Internal(
+        "Could not find valid device for node.\nNode: ", SummarizeNodeDef(ndef),
+        "\nAll kernels registered for op ", ndef.op(), " :\n",
+        KernelsRegisteredForOp(ndef.op()));
   }
   for (Device* d : *ctx->devices()) {
     if (d->device_type() == final_devices[0].type_string()) {
@@ -211,7 +208,7 @@ Status SelectDevice(const NodeDef& ndef, EagerContext* ctx, Device** device) {
     }
   }
   return errors::Unknown("Could not find a device for node ",
-                         ndef.DebugString());
+                         SummarizeNodeDef(ndef));
 }
 
 Status GetOutputDTypes(EagerOperation* op, DataTypeVector* output_dtypes) {

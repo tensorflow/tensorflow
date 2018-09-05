@@ -394,10 +394,10 @@ class Network(base_layer.Layer):
     no_dependency = isinstance(value, data_structures.NoDependency)
     value = data_structures.sticky_attribute_assignment(
         checkpointable=self, value=value, name=name)
-    if isinstance(value, (
-        base_layer.Layer,
-        Network,
-        data_structures.CheckpointableDataStructure)):
+    if (isinstance(value, (base_layer.Layer,
+                           Network,
+                           data_structures.CheckpointableDataStructure))
+        or checkpointable_layer_utils.has_weights(value)):
       try:
         is_graph_network = self._is_graph_network
       except AttributeError:
@@ -689,14 +689,14 @@ class Network(base_layer.Layer):
   def trainable_weights(self):
     return checkpointable_layer_utils.gather_trainable_weights(
         trainable=self.trainable,
-        sub_layers=self.layers,
+        sub_layers=self._layers,
         extra_variables=self._extra_variables)
 
   @property
   def non_trainable_weights(self):
     return checkpointable_layer_utils.gather_non_trainable_weights(
         trainable=self.trainable,
-        sub_layers=self.layers,
+        sub_layers=self._layers,
         extra_variables=self._extra_variables)
 
   @property

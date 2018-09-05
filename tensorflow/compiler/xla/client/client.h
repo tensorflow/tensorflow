@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace xla {
@@ -53,7 +53,7 @@ class Client {
   //   will be filled with profile data from the execution.
   StatusOr<std::unique_ptr<GlobalData>> Execute(
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      absl::Span<GlobalData* const> arguments,
       const ExecutionOptions* execution_options = nullptr,
       ExecutionProfile* execution_profile = nullptr);
 
@@ -82,7 +82,7 @@ class Client {
   // from each computation.
   //
   StatusOr<std::vector<std::unique_ptr<GlobalData>>> ExecuteParallel(
-      tensorflow::gtl::ArraySlice<XlaComputationInstance> computations);
+      absl::Span<const XlaComputationInstance> computations);
 
   // Requests device_count device handles available on the target. The returned
   // device handles are used to specify the devices to execute the computations
@@ -134,7 +134,7 @@ class Client {
   // Execute() and Transfer().
   StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      absl::Span<GlobalData* const> arguments,
       const ExecutionOptions* execution_options = nullptr,
       ExecutionProfile* execution_profile = nullptr);
 

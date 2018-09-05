@@ -15,7 +15,9 @@
 
 """Framework utilities.
 
-See the @{$python/contrib.framework} guide.
+See the
+[Contrib Framework](https://tensorflow.org/api_guides/python/contrib.framework)
+guide.
 
 @@assert_same_float_dtype
 @@assert_scalar

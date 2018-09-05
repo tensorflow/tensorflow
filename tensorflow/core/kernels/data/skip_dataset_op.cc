@@ -38,10 +38,10 @@ class SkipDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, int64 count, const DatasetBase* input)
-        : GraphDatasetBase(ctx), count_(count), input_(input) {
+        : DatasetBase(DatasetContext(ctx)), count_(count), input_(input) {
       input_->Ref();
     }
 

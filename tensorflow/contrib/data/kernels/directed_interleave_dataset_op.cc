@@ -63,11 +63,11 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* selector_input,
             std::vector<DatasetBase*> data_inputs)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           selector_input_(selector_input),
           data_inputs_(std::move(data_inputs)) {
       selector_input_->Ref();

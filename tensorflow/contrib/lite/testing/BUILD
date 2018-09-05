@@ -162,11 +162,12 @@ cc_library(
         ":test_runner",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/delegates/eager:delegate",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "tflite_driver_test",
     size = "small",
     srcs = ["tflite_driver_test.cc"],

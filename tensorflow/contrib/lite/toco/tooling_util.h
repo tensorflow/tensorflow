@@ -348,6 +348,9 @@ tensorflow::Status NumElements(const std::vector<T>& shape, U* num_elements) {
 // so that the rest of toco doesn't need to know about shuffled weights.
 void UndoWeightsShuffling(Model* model);
 
+// Copies minmax, quantization_params, and narrow_range.
+void CopyMinMaxAndQuantizationRelatedFields(const Array& src, Array* dst);
+
 }  // namespace toco
 
 #endif  // TENSORFLOW_CONTRIB_LITE_TOCO_TOOLING_UTIL_H_

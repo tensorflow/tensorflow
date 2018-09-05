@@ -114,6 +114,12 @@ py_library(
     ],
 )
 
+py_library(
+    name = "component_api_helper",
+    srcs = ["component_api_helper.py"],
+    srcs_version = "PY2AND3",
+)
+
 py_binary(
     name = "strip_unused",
     srcs = ["strip_unused.py"],

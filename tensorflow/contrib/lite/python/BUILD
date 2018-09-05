@@ -70,7 +70,7 @@ py_library(
 py_test(
     name = "lite_test",
     srcs = ["lite_test.py"],
-    data = [":interpreter_test_data"],
+    data = ["@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pbtxt"],
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
@@ -112,8 +112,11 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework",
         "//tensorflow/python:platform",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -127,6 +130,7 @@ py_test(
     ],
     deps = [
         ":convert",
+        ":interpreter",
         ":op_hint",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

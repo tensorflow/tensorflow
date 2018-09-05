@@ -34,11 +34,29 @@ py_test(
 )
 
 py_library(
+    name = "doc_controls",
+    srcs = ["doc_controls.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "doc_controls_test",
+    size = "small",
+    srcs = ["doc_controls_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":doc_controls",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_library(
     name = "parser",
     srcs = ["parser.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":doc_controls",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "@astor_archive//:astor",
@@ -68,6 +86,7 @@ py_binary(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":doc_controls",
         ":doc_generator_visitor",
         ":parser",
         ":pretty_docs",

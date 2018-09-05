@@ -780,10 +780,15 @@ def make_binary_op_tests(zip_path, binary_operator):
       "input_shape_2": [[5]],
       "activation": [False, True]
   }, {
-      "dtype": [tf.float32],
+      "dtype": [tf.float32, tf.int32],
       "input_shape_1": [[1, 3, 4, 3]],
       "input_shape_2": [[3]],
-      "activation": [True]
+      "activation": [True, False]
+  }, {
+      "dtype": [tf.float32, tf.int32],
+      "input_shape_1": [[3]],
+      "input_shape_2": [[1, 3, 4, 3]],
+      "activation": [True, False]
   }, {
       "dtype": [tf.float32],
       "input_shape_1": [[]],
@@ -821,13 +826,17 @@ def make_binary_op_tests(zip_path, binary_operator):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
-def make_reduce_tests(reduce_op, min_value=-10, max_value=10):
+def make_reduce_tests(reduce_op,
+                      min_value=-10,
+                      max_value=10,
+                      boolean_tensor_only=False):
   """Make a set of tests to do reduce operation.
 
   Args:
     reduce_op: TensorFlow reduce operation to test, i.e. `tf.reduce_mean`.
     min_value: min value for created tensor data.
     max_value: max value for created tensor data.
+    boolean_tensor_only: If true, will only generate tensor with boolean value.
 
   Returns:
     a function representing the true generator with `reduce_op_in` curried.
@@ -867,10 +876,11 @@ def make_reduce_tests(reduce_op, min_value=-10, max_value=10):
 
     def build_graph(parameters):
       """Build the mean op testing graph."""
+      dtype = parameters["input_dtype"]
+      if boolean_tensor_only:
+        dtype = tf.bool
       input_tensor = tf.placeholder(
-          dtype=parameters["input_dtype"],
-          name="input",
-          shape=parameters["input_shape"])
+          dtype=dtype, name="input", shape=parameters["input_shape"])
 
       # Get axis as either a placeholder or constants.
       if parameters["const_axis"]:
@@ -889,9 +899,12 @@ def make_reduce_tests(reduce_op, min_value=-10, max_value=10):
       return input_tensors, [out]
 
     def build_inputs(parameters, sess, inputs, outputs):
+      dtype = parameters["input_dtype"]
+      if boolean_tensor_only:
+        dtype = tf.bool
       values = [
           create_tensor_data(
-              parameters["input_dtype"],
+              dtype,
               parameters["input_shape"],
               min_value=min_value,
               max_value=max_value)
@@ -924,6 +937,16 @@ def make_reduce_prod_tests(zip_path):
 def make_reduce_max_tests(zip_path):
   """Make a set of tests to do max."""
   return make_reduce_tests(tf.reduce_max)(zip_path)
+
+
+def make_reduce_min_tests(zip_path):
+  """Make a set of tests to do min."""
+  return make_reduce_tests(tf.reduce_min)(zip_path)
+
+
+def make_reduce_any_tests(zip_path):
+  """Make a set of tests to do any."""
+  return make_reduce_tests(tf.reduce_any, boolean_tensor_only=True)(zip_path)
 
 
 def make_exp_tests(zip_path):
@@ -1078,6 +1101,10 @@ def make_mul_tests(zip_path):
 
 def make_pow_tests(zip_path):
   make_binary_op_tests(zip_path, tf.pow)
+
+
+def make_floor_div_tests(zip_path):
+  make_binary_op_tests(zip_path, tf.floor_div)
 
 
 def make_gather_tests(zip_path):
@@ -1250,6 +1277,140 @@ def make_conv_tests(zip_path):
     values = [create_tensor_data(np.float32, input_shape)]
     if not parameters["constant_filter"]:
       values.append(create_tensor_data(np.float32, filter_shape))
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+# Note: This is a regression test for a bug (b/112436267) that Toco incorrectly
+# fuses weights when multiple Conv2D/FULLY_CONNECTED ops share the same constant
+# weight tensor.
+def make_conv_with_shared_weights_tests(zip_path):
+  """Make a test where 2 Conv ops shared the same constant weight tensor."""
+
+  test_parameters = [{
+      "input_shape": [[1, 10, 10, 3]],
+      "filter_shape": [[3, 3]],
+      "strides": [[1, 1, 1, 1]],
+      "dilations": [[1, 1, 1, 1]],
+      "padding": ["SAME"],
+      "data_format": ["NHWC"],
+      "channel_multiplier": [1],
+  }]
+
+  def get_tensor_shapes(parameters):
+    input_shape = parameters["input_shape"]
+    filter_size = parameters["filter_shape"]
+    filter_shape = filter_size + [
+        input_shape[3], parameters["channel_multiplier"]
+    ]
+    return [input_shape, filter_shape]
+
+  def build_graph(parameters):
+    """Build a conv graph given `parameters`."""
+    input_shape, filter_shape = get_tensor_shapes(parameters)
+    input_tensor = tf.placeholder(
+        dtype=tf.float32, name="input", shape=input_shape)
+
+    # Construct a constant weights tensor which will be used by both Conv2D.
+    filter_tensor = tf.constant(
+        create_tensor_data(np.float32, filter_shape), dtype=tf.float32)
+    input_tensors = [input_tensor]
+
+    # Construct 2 Conv2D operations which use exactly the same input and
+    # weights.
+    result1 = tf.nn.conv2d(
+        input_tensor,
+        filter_tensor,
+        strides=parameters["strides"],
+        dilations=parameters["dilations"],
+        padding=parameters["padding"],
+        data_format=parameters["data_format"])
+    result2 = tf.nn.conv2d(
+        input_tensor,
+        filter_tensor,
+        strides=parameters["strides"],
+        dilations=parameters["dilations"],
+        padding=parameters["padding"],
+        data_format=parameters["data_format"])
+    # Add MUL ops after Conv2D ops. These MUL ops should be fused into the
+    # weights of Conv2D.
+    result1 = result1 * 2
+    result2 = result2 * 3
+    # Add the 2 results up.
+    out = result1 + result2
+    return input_tensors, [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    # Build list of input values either containing 1 tensor (input) or 2 tensors
+    # (input, filter) based on whether filter is constant or variable input.
+    input_shape, unused_filter_shape = get_tensor_shapes(parameters)
+    values = [create_tensor_data(np.float32, input_shape)]
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+# Note: This is a regression test for a bug (b/112303004) that Toco incorrectly
+# transforms Conv into DepthwiseConv when two Conv ops share the same constant
+# weight tensor.
+def make_conv_to_depthwiseconv_with_shared_weights_tests(zip_path):
+  """Make a test where 2 Conv ops shared the same constant weight tensor."""
+
+  test_parameters = [{
+      "input_shape": [[1, 10, 10, 1]],
+      "filter_shape": [[3, 3]],
+      "strides": [[1, 1, 1, 1]],
+      "dilations": [[1, 1, 1, 1]],
+      "padding": ["SAME"],
+      "data_format": ["NHWC"],
+      "channel_multiplier": [3],
+  }]
+
+  def get_tensor_shapes(parameters):
+    input_shape = parameters["input_shape"]
+    filter_size = parameters["filter_shape"]
+    filter_shape = filter_size + [
+        input_shape[3], parameters["channel_multiplier"]
+    ]
+    return [input_shape, filter_shape]
+
+  def build_graph(parameters):
+    """Build a conv graph given `parameters`."""
+    input_shape, filter_shape = get_tensor_shapes(parameters)
+    input_tensor = tf.placeholder(
+        dtype=tf.float32, name="input", shape=input_shape)
+
+    # Construct a constant weights tensor which will be used by both Conv2D.
+    filter_tensor = tf.constant(
+        create_tensor_data(np.float32, filter_shape), dtype=tf.float32)
+    input_tensors = [input_tensor]
+
+    # Construct 2 Conv2D operations which use exactly the same input and
+    # weights.
+    result1 = tf.nn.conv2d(
+        input_tensor,
+        filter_tensor,
+        strides=parameters["strides"],
+        dilations=parameters["dilations"],
+        padding=parameters["padding"],
+        data_format=parameters["data_format"])
+    result2 = tf.nn.conv2d(
+        input_tensor,
+        filter_tensor,
+        strides=parameters["strides"],
+        dilations=parameters["dilations"],
+        padding=parameters["padding"],
+        data_format=parameters["data_format"])
+    # Add the 2 results up.
+    out = result1 + result2
+    return input_tensors, [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    # Build list of input values either containing 1 tensor (input) or 2 tensors
+    # (input, filter) based on whether filter is constant or variable input.
+    input_shape, unused_filter_shape = get_tensor_shapes(parameters)
+    values = [create_tensor_data(np.float32, input_shape)]
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
@@ -2239,7 +2400,7 @@ def make_lstm_tests(zip_path):
           "time_step_size": [1],
           "input_vec_size": [3],
           "num_cells": [4],
-          "split_tflite_lstm_inputs": [True, False],
+          "split_tflite_lstm_inputs": [False],
       },
   ]
 
@@ -3006,6 +3167,36 @@ def make_pack_tests(zip_path):
       all_values.append(input_values)
     return all_values, sess.run(
         outputs, feed_dict=dict(zip(inputs, all_values)))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_unpack_tests(zip_path):
+  """Make a set of tests to do unstack."""
+
+  test_parameters = [{
+      "base_shape": [[3, 4, 3], [3, 4], [5, 6, 7, 8]],
+      "axis": [0, 1, 2, 3],
+  }]
+
+  def get_valid_axis(parameters):
+    """Return a tweaked version of 'axis'."""
+    axis = parameters["axis"]
+    shape = parameters["base_shape"][:]
+    while axis > len(shape) - 1:
+      axis -= 1
+    return axis
+
+  def build_graph(parameters):
+    input_tensor = tf.placeholder(
+        dtype=tf.float32, name=("input"), shape=parameters["base_shape"])
+    outs = tf.unstack(input_tensor, axis=get_valid_axis(parameters))
+    return [input_tensor], outs
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(np.float32, shape=parameters["base_shape"])
+    return [input_value], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value])))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 

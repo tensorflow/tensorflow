@@ -63,11 +63,11 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, int64 window_size, int64 window_shift,
             int64 window_stride, const DatasetBase* input)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           window_size_(window_size),
           window_shift_(window_shift),
           window_stride_(window_stride),

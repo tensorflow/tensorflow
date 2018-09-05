@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -119,7 +120,7 @@ TEST_F(LayoutAssignmentTest, BatchNormInference) {
 
   for (const Shape& input_shape : AllLayoutsOf(shape)) {
     for (const Shape& result_shape : AllLayoutsOf(shape)) {
-      SCOPED_TRACE(tensorflow::strings::StrCat(
+      SCOPED_TRACE(absl::StrCat(
           "input_shape=", ShapeUtil::HumanStringWithLayout(input_shape),
           ", result_shape=", ShapeUtil::HumanStringWithLayout(result_shape)));
 
@@ -192,7 +193,7 @@ TEST_F(LayoutAssignmentTest, BatchNormTraining) {
   // Enumerate all combinations of shapes.
   for (const Shape& input_shape : AllLayoutsOf(shape)) {
     for (const Shape& result_shape : AllLayoutsOf(shape)) {
-      SCOPED_TRACE(tensorflow::strings::StrCat(
+      SCOPED_TRACE(absl::StrCat(
           "input_shape=", ShapeUtil::HumanStringWithLayout(input_shape),
           ", result_shape=", ShapeUtil::HumanStringWithLayout(result_shape)));
 
@@ -265,7 +266,7 @@ TEST_F(LayoutAssignmentTest, BatchNormGrad) {
   for (const Shape& input_shape : AllLayoutsOf(shape)) {
     for (const Shape& result_shape : AllLayoutsOf(shape)) {
       for (int constrained_param_no : {0, 4}) {
-        SCOPED_TRACE(tensorflow::strings::StrCat(
+        SCOPED_TRACE(absl::StrCat(
             "input_shape=", ShapeUtil::HumanStringWithLayout(input_shape),
             ", result_shape=", ShapeUtil::HumanStringWithLayout(result_shape)));
 

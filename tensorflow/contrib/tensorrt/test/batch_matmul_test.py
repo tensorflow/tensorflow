@@ -37,6 +37,7 @@ class BatchMatMulTest(trt_test.TfTrtIntegrationTestBase):
     dtype = dtypes.float32
     input_name = "input"
     input_dims = [12, 5, 8, 12]
+    output_name = "output"
     w1_name = "matmul_w1"
     w1_dims = [12, 5, 12, 7]
     w2_name = "matmul_w2"
@@ -61,15 +62,46 @@ class BatchMatMulTest(trt_test.TfTrtIntegrationTestBase):
         x3 = x3 + f
         x3 = gen_array_ops.reshape(x3, [12, 5, 8, 7])
         out = x1 + x2 + x3
-      array_ops.squeeze(out, name=self.output_name)
+      array_ops.squeeze(out, name=output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name, w1_name, w2_name],
         input_dims=[input_dims, w1_dims, w2_dims],
-        expected_engines=["my_trt_op_0"],
-        expected_output_dims=(12, 5, 8, 7),
-        allclose_atol=1.e-03,
-        allclose_rtol=1.e-03)
+        output_names=[output_name],
+        expected_output_dims=[(12, 5, 8, 7)])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    if (run_params.dynamic_engine and
+        not trt_test.IsQuantizationMode(run_params.precision_mode)):
+      return ["my_trt_op_0", "my_trt_op_1"]
+    return ["my_trt_op_1"]
+
+  def ExpectedEnginesToRun(self, run_params):
+    """Return the expected engines to run."""
+    return ["my_trt_op_1"]
+
+  def ShouldRunTest(self, run_params):
+    """Whether to run the test."""
+    # TODO(aaroey): Trt library will fail like:
+    #
+    # ../builder/cudnnBuilder2.cpp:685:
+    # virtual std::vector<nvinfer1::query::Ports<
+    #     nvinfer1::query::TensorRequirements>>
+    # nvinfer1::builder::Node::getSupportedFormats(
+    #     const nvinfer1::query::Ports<nvinfer1::query::AbstractTensor>&,
+    #     const nvinfer1::cudnn::HardwareContext&,
+    #     nvinfer1::builder::Format::Type,
+    #     const nvinfer1::builder::FormatTypeHack&) const:
+    # Assertion `sf' failed.
+    #
+    # To reproduce, run:
+    # bazel test -c opt --copt=-mavx \
+    #   --test_arg=BatchMatMulTest.testTfTrt_ToolConversion_INT8_DynamicEngine \
+    #   tensorflow/contrib/tensorrt:batch_matmul_test
+    #
+    # Investigate and fix it.
+    return not trt_test.IsQuantizationMode(run_params.precision_mode)
 
 
 if __name__ == "__main__":

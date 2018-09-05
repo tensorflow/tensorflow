@@ -18,6 +18,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -27,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/notification.h"
 
-using ::tensorflow::strings::StrCat;
+using absl::StrCat;
 
 namespace xla {
 /* static */ tensorflow::mutex
@@ -61,7 +63,7 @@ StatusOr<std::unique_ptr<Literal>> TransferManager::TransferLiteralFromDevice(
   if (!s.ok()) {
     return s;
   }
-  return MakeUnique<Literal>(std::move(literal));
+  return absl::make_unique<Literal>(std::move(literal));
 }
 
 Status TransferManager::TransferLiteralFromDevice(
@@ -120,7 +122,7 @@ StatusOr<std::unique_ptr<Literal>> TransferManager::TransferArrayFromDevice(
   if (!s.ok()) {
     return s;
   }
-  return MakeUnique<Literal>(std::move(literal));
+  return absl::make_unique<Literal>(std::move(literal));
 }
 
 Status TransferManager::TransferArrayToDevice(
@@ -147,7 +149,7 @@ Status TransferManager::TransferArrayToDeviceAsync(
   if (dest.size() < GetByteSizeRequirement(on_device_shape)) {
     return FailedPrecondition(
         "Allocation on device not large enough for array: "
-        "%lld < %lld",
+        "%d < %d",
         dest.size(), GetByteSizeRequirement(on_device_shape));
   }
   ShapedBuffer shaped_buffer(/*on_host_shape=*/literal.shape(), on_device_shape,
@@ -164,12 +166,12 @@ void TransferManager::TransferArrayFromDevice(
     auto error = StrCat("Shape ", ShapeUtil::HumanString(shape),
                         " has a differently shaped representation on-device: ",
                         ShapeUtil::HumanString(HostShapeToDeviceShape(shape)));
-    return done(FailedPrecondition("%s", error.c_str()));
+    return done(FailedPrecondition("%s", error));
   }
   if (source.size() < GetByteSizeRequirement(shape)) {
     return done(
         FailedPrecondition("Allocation on device not large enough for array: "
-                           "%lld < %lld",
+                           "%d < %d",
                            source.size(), GetByteSizeRequirement(shape)));
   }
   ShapedBuffer shaped_buffer(/*on_host_shape=*/shape, shape,
@@ -201,7 +203,7 @@ void TransferManager::TransferArrayFromDevice(
     return NotFound(
         "could not find registered transfer manager for platform %s -- check "
         "target linkage",
-        platform->Name().c_str());
+        platform->Name());
   }
 
   if (it->second.manager == nullptr) {
@@ -252,7 +254,7 @@ Status TransferManager::TransferBufferFromDevice(
   if (source.size() < size) {
     return FailedPrecondition(
         "Source allocation on device not large enough for data tranfer: "
-        "%lld < %lld",
+        "%d < %d",
         source.size(), size);
   }
   stream->ThenMemcpy(destination, source, size);
@@ -265,7 +267,7 @@ Status TransferManager::TransferBufferToDevice(
   if (destination->size() < size) {
     return FailedPrecondition(
         "Destination allocation on device not large enough for data tranfer: "
-        "%lld < %lld",
+        "%d < %d",
         destination->size(), size);
   }
   stream->ThenMemcpy(destination, source, size);
@@ -276,9 +278,8 @@ StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
     const Shape& on_host_shape, DeviceMemoryAllocator* allocator,
     int device_ordinal) {
   if (!LayoutUtil::HasLayout(on_host_shape)) {
-    return InvalidArgument(
-        "Shape must have a layout: %s",
-        ShapeUtil::HumanStringWithLayout(on_host_shape).c_str());
+    return InvalidArgument("Shape must have a layout: %s",
+                           ShapeUtil::HumanStringWithLayout(on_host_shape));
   }
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(on_host_shape));
   const Shape on_device_shape = HostShapeToDeviceShape(on_host_shape);

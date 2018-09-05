@@ -30,4 +30,3 @@ RUN mkdir /usr/local/cuda-9.0/lib &&  \
 
 # Configure the build for our CUDA configuration.
 ENV TF_NEED_CUDA 1
-ENV TF_CUDA_COMPUTE_CAPABILITIES 3.0

@@ -38,6 +38,7 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
     dtype = dtypes.float32
     input_name = "input"
     input_dims = [48, 12]
+    output_name = "output"
     g = ops.Graph()
     with g.as_default():
       x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
@@ -97,18 +98,59 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
 
       out = array_ops.concat(
           [x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11], axis=-1)
-      out = array_ops.squeeze(out, name=self.output_name)
+      out = array_ops.squeeze(out, name=output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
         input_dims=[input_dims],
-        expected_engines=[
-            "my_trt_op_0", "my_trt_op_1", "my_trt_op_2", "my_trt_op_3",
-            "my_trt_op_4", "my_trt_op_5", "my_trt_op_6"
-        ],
-        expected_output_dims=(48, 89),
-        allclose_atol=1.e-03,
-        allclose_rtol=1.e-03)
+        output_names=[output_name],
+        expected_output_dims=[(48, 89)])
+
+  def GetConversionParams(self, run_params):
+    """Return a ConversionParams for test."""
+    return super(BiasaddMatMulTest,
+                 self).GetConversionParams(run_params)._replace(
+                     max_batch_size=48, maximum_cached_engines=2)
+
+  def _ValidEngines(self):
+    """Engines expected to build and run."""
+    return [
+        "my_trt_op_0", "my_trt_op_1", "my_trt_op_2", "my_trt_op_6",
+        "my_trt_op_7", "my_trt_op_8", "my_trt_op_9"
+    ]
+
+  def _InvalidEngines(self):
+    """Engines that will cause conversion error at building time."""
+    return ["my_trt_op_3", "my_trt_op_4", "my_trt_op_5"]
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    # In dynamic engine mode the engines are built in execution time, not in
+    # conversion time, so build errors occurs later. Here three of the engines
+    # will be failed to built but the corresponding engine op are still created.
+    # TODO(aaroey, jjsjann123): fix this.
+    if (run_params.dynamic_engine and
+        not trt_test.IsQuantizationMode(run_params.precision_mode)):
+      return self._ValidEngines() + self._InvalidEngines()
+    return self._ValidEngines()
+
+  def ExpectedEnginesToRun(self, run_params):
+    """Return the expected engines to run."""
+    return self._ValidEngines()
+
+  def ShouldRunTest(self, run_params):
+    """Whether to run the test."""
+    # TODO(aaroey): Trt 4.0 forbids conversion for tensors with rank <3 in int8
+    # mode, which is a bug. Re-enable this when trt library is fixed.
+    return not trt_test.IsQuantizationMode(run_params.precision_mode)
+
+  def ExpectedAbsoluteTolerance(self, run_params):
+    """The absolute tolerance to compare floating point results."""
+    return 1.e-05 if run_params.precision_mode == "FP32" else 1.e-03
+
+  def ExpectedRelativeTolerance(self, run_params):
+    """The relative tolerance to compare floating point results."""
+    return 1.e-05 if run_params.precision_mode == "FP32" else 1.e-03
 
 
 if __name__ == "__main__":

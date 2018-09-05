@@ -562,6 +562,7 @@ cc_library(
     deps = [
         ":worker_cache",
         ":worker_interface",
+        "//tensorflow/core:framework",
     ],
 )
 

@@ -137,7 +137,7 @@ class DescriptorSourceTestBase(test.TestCase):
     field_names = ['values', 'shapes', 'sizes', 'fields']
     tensor_types = [dtypes.string, dtypes.int32, dtypes.int32, dtypes.string]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sizes, field_tensors = self._decode_module.decode_proto(
           in_bufs,
           message_type=message_type,

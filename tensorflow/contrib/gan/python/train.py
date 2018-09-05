@@ -52,7 +52,6 @@ from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
 
-
 __all__ = [
     'gan_model',
     'infogan_model',
@@ -61,6 +60,7 @@ __all__ = [
     'stargan_model',
     'gan_loss',
     'cyclegan_loss',
+    'stargan_loss',
     'gan_train_ops',
     'gan_train',
     'get_sequential_train_hooks',
@@ -646,8 +646,9 @@ def gan_loss(
         type(model))
 
   # Optionally create pooled model.
-  pooled_model = (_tensor_pool_adjusted_model(model, tensor_pool_fn) if
-                  tensor_pool_fn else model)
+  pooled_model = (
+      _tensor_pool_adjusted_model(model, tensor_pool_fn)
+      if tensor_pool_fn else model)
 
   # Create standard losses.
   gen_loss = generator_loss_fn(model, add_summaries=add_summaries)
@@ -665,9 +666,10 @@ def gan_loss(
   if _use_aux_loss(mutual_information_penalty_weight):
     gen_info_loss = tfgan_losses.mutual_information_penalty(
         model, add_summaries=add_summaries)
-    dis_info_loss = (gen_info_loss if tensor_pool_fn is None else
-                     tfgan_losses.mutual_information_penalty(
-                         pooled_model, add_summaries=add_summaries))
+    dis_info_loss = (
+        gen_info_loss
+        if tensor_pool_fn is None else tfgan_losses.mutual_information_penalty(
+            pooled_model, add_summaries=add_summaries))
     gen_loss += mutual_information_penalty_weight * gen_info_loss
     dis_loss += mutual_information_penalty_weight * dis_info_loss
   if _use_aux_loss(aux_cond_generator_weight):

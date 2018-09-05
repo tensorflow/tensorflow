@@ -125,8 +125,8 @@ class TFRecordWriter(object):
     Args:
       record: str
     """
-    # TODO(sethtroisi): Failures are currently swallowed, change that.
-    self._writer.WriteRecord(record)
+    with errors.raise_exception_on_not_ok_status() as status:
+      self._writer.WriteRecord(record, status)
 
   def flush(self):
     """Flush the file."""

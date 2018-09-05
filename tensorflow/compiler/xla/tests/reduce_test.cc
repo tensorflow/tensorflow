@@ -32,6 +32,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
@@ -51,7 +54,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -113,8 +115,7 @@ class ReduceTest : public ClientLibraryTestBase {
                                ErrorSpec(0.001));
   }
 
-  void RunR1ToR0PredTest(bool and_reduce,
-                         tensorflow::gtl::ArraySlice<int> input_data) {
+  void RunR1ToR0PredTest(bool and_reduce, absl::Span<const int> input_data) {
     const int element_count = input_data.size();
     XlaBuilder builder(TestName());
     const Shape input_shape = ShapeUtil::MakeShape(S32, {element_count});
@@ -259,8 +260,8 @@ class ReduceTest : public ClientLibraryTestBase {
   void ComputeAndCompareGeneric(
       typename std::enable_if<std::is_floating_point<NativeT>::value,
                               XlaBuilder>::type* builder,
-      tensorflow::gtl::ArraySlice<NativeT> expected,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+      absl::Span<const NativeT> expected,
+      absl::Span<GlobalData* const> arguments) {
     ComputeAndCompareR1<NativeT>(builder, expected, arguments,
                                  ErrorSpec(0.01, 1e-4));
   }
@@ -269,8 +270,8 @@ class ReduceTest : public ClientLibraryTestBase {
   void ComputeAndCompareGeneric(
       typename std::enable_if<std::is_integral<NativeT>::value,
                               XlaBuilder>::type* builder,
-      tensorflow::gtl::ArraySlice<NativeT> expected,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+      absl::Span<const NativeT> expected,
+      absl::Span<GlobalData* const> arguments) {
     ComputeAndCompareR1<NativeT>(builder, expected, arguments);
   }
 
@@ -302,7 +303,7 @@ class ReduceTest : public ClientLibraryTestBase {
         client_->TransferToServer(*input_literal).ConsumeValueOrDie();
 
     // NativeT can be bool, and std::vector<bool> does not convert to
-    // ArraySlice.
+    // Span.
     std::unique_ptr<NativeT[]> expected(new NativeT[cols]);
     for (int64 colno = 0; colno < cols; ++colno) {
       NativeT column_result = initial_value;
@@ -314,7 +315,7 @@ class ReduceTest : public ClientLibraryTestBase {
     }
 
     ComputeAndCompareGeneric<NativeT>(
-        &builder, tensorflow::gtl::ArraySlice<NativeT>(expected.get(), cols),
+        &builder, absl::Span<const NativeT>(expected.get(), cols),
         {input_global_data.get()});
   }
 
@@ -556,12 +557,11 @@ struct BoundsLayout {
 };
 
 void PrintTo(const BoundsLayout& spec, std::ostream* os) {
-  *os << tensorflow::strings::Printf(
-      "R%luToR%lu%s_%s_Reduce%s", spec.bounds.size(),
-      spec.bounds.size() - spec.reduce_dims.size(),
-      tensorflow::str_util::Join(spec.bounds, "x").c_str(),
-      tensorflow::str_util::Join(spec.layout, "").c_str(),
-      tensorflow::str_util::Join(spec.reduce_dims, "").c_str());
+  *os << absl::StrFormat("R%uToR%u%s_%s_Reduce%s", spec.bounds.size(),
+                         spec.bounds.size() - spec.reduce_dims.size(),
+                         absl::StrJoin(spec.bounds, "x"),
+                         absl::StrJoin(spec.layout, ""),
+                         absl::StrJoin(spec.reduce_dims, ""));
 }
 
 // Add-reduces a broadcasted scalar matrix among dimension 1 and 0.

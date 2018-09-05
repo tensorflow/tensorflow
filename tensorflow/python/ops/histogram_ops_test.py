@@ -35,7 +35,7 @@ class BinValuesFixedWidth(test.TestCase):
     value_range = [0.0, 5.0]
     values = []
     expected_bins = []
-    with self.test_session():
+    with self.cached_session():
       bins = histogram_ops.histogram_fixed_width_bins(
           values, value_range, nbins=5)
       self.assertEqual(dtypes.int32, bins.dtype)
@@ -47,7 +47,7 @@ class BinValuesFixedWidth(test.TestCase):
     value_range = [0.0, 5.0]
     values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
     expected_bins = [0, 0, 1, 2, 4, 4]
-    with self.test_session():
+    with self.cached_session():
       bins = histogram_ops.histogram_fixed_width_bins(
           values, value_range, nbins=5, dtype=dtypes.int64)
       self.assertEqual(dtypes.int32, bins.dtype)
@@ -59,7 +59,7 @@ class BinValuesFixedWidth(test.TestCase):
     value_range = np.float64([0.0, 5.0])
     values = np.float64([-1.0, 0.0, 1.5, 2.0, 5.0, 15])
     expected_bins = [0, 0, 1, 2, 4, 4]
-    with self.test_session():
+    with self.cached_session():
       bins = histogram_ops.histogram_fixed_width_bins(
           values, value_range, nbins=5)
       self.assertEqual(dtypes.int32, bins.dtype)
@@ -72,7 +72,7 @@ class BinValuesFixedWidth(test.TestCase):
     values = constant_op.constant(
         [[-1.0, 0.0, 1.5], [2.0, 5.0, 15]], shape=(2, 3))
     expected_bins = [[0, 0, 1], [2, 4, 4]]
-    with self.test_session():
+    with self.cached_session():
       bins = histogram_ops.histogram_fixed_width_bins(
           values, value_range, nbins=5)
       self.assertEqual(dtypes.int32, bins.dtype)

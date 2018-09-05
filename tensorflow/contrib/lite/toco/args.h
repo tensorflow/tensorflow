@@ -236,8 +236,9 @@ struct ParsedTocoFlags {
   Arg<bool> drop_fake_quant = Arg<bool>(false);
   Arg<bool> reorder_across_fake_quant = Arg<bool>(false);
   Arg<bool> allow_custom_ops = Arg<bool>(false);
-  Arg<bool> quantize_weights = Arg<bool>(false);
+  Arg<bool> post_training_quantize = Arg<bool>(false);
   // Deprecated flags
+  Arg<bool> quantize_weights = Arg<bool>(false);
   Arg<string> input_type;
   Arg<string> input_types;
   Arg<bool> debug_disable_recurrent_cell_fusion = Arg<bool>(false);

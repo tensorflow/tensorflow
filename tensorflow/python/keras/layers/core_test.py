@@ -30,16 +30,16 @@ from tensorflow.python.platform import test
 class CoreLayersTest(test.TestCase):
 
   def test_masking(self):
-    with self.test_session():
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.Masking, kwargs={}, input_shape=(3, 2, 3))
 
   def test_dropout(self):
-    with self.test_session():
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.Dropout, kwargs={'rate': 0.5}, input_shape=(3, 2))
 
-    with self.test_session():
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.Dropout,
           kwargs={'rate': 0.5,
@@ -47,7 +47,7 @@ class CoreLayersTest(test.TestCase):
           input_shape=(3, 2))
 
     # https://github.com/tensorflow/tensorflow/issues/14819
-    with self.test_session():
+    with self.cached_session():
       dropout = keras.layers.Dropout(0.5)
       self.assertEqual(True, dropout.supports_masking)
 
@@ -210,7 +210,7 @@ class CoreLayersTest(test.TestCase):
         keras.layers.Dense, kwargs={'units': 3}, input_shape=(3, 4, 5, 2))
 
   def test_dense_regularization(self):
-    with self.test_session():
+    with self.cached_session():
       layer = keras.layers.Dense(
           3,
           kernel_regularizer=keras.regularizers.l1(0.01),
@@ -221,7 +221,7 @@ class CoreLayersTest(test.TestCase):
       self.assertEqual(3, len(layer.losses))
 
   def test_dense_constraints(self):
-    with self.test_session():
+    with self.cached_session():
       k_constraint = keras.constraints.max_norm(0.01)
       b_constraint = keras.constraints.max_norm(0.01)
       layer = keras.layers.Dense(
@@ -231,14 +231,14 @@ class CoreLayersTest(test.TestCase):
       self.assertEqual(layer.bias.constraint, b_constraint)
 
   def test_activity_regularization(self):
-    with self.test_session():
+    with self.cached_session():
       layer = keras.layers.ActivityRegularization(l1=0.1)
       layer(keras.backend.variable(np.ones((2, 4))))
       self.assertEqual(1, len(layer.losses))
       _ = layer.get_config()
 
   def test_lambda_output_shape(self):
-    with self.test_session():
+    with self.cached_session():
       l = keras.layers.Lambda(lambda x: x + 1, output_shape=(1, 1))
       l(keras.backend.variable(np.ones((1, 1))))
       self.assertEqual((1, 1), l.get_config()['output_shape'])
@@ -247,13 +247,13 @@ class CoreLayersTest(test.TestCase):
     def get_output_shape(input_shape):
       return 1 * input_shape
 
-    with self.test_session():
+    with self.cached_session():
       l = keras.layers.Lambda(lambda x: x + 1, output_shape=get_output_shape)
       l(keras.backend.variable(np.ones((1, 1))))
       self.assertEqual('lambda', l.get_config()['output_shape_type'])
 
   def test_lambda_config_serialization(self):
-    with self.test_session():
+    with self.cached_session():
       # test serialization with output_shape and output_shape_type
       layer = keras.layers.Lambda(lambda x: x + 1, output_shape=(1, 1))
       layer(keras.backend.variable(np.ones((1, 1))))

@@ -262,11 +262,13 @@ class Layer(base_layer.Layer):
         use_resource = (use_resource or
                         self._use_resource_variables or
                         scope.use_resource)
+        if initializer is None:
+          initializer = scope.initializer
         variable = super(Layer, self).add_weight(
             name,
             shape,
             dtype=dtypes.as_dtype(dtype),
-            initializer=initializer or scope.initializer,
+            initializer=initializer,
             trainable=trainable,
             constraint=constraint,
             partitioner=partitioner,

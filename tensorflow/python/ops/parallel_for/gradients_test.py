@@ -333,6 +333,13 @@ class GradientsTest(test.TestCase):
     for i in range(n):
       self.assertAllClose(outputs[i], outputs[i + n], rtol=rtol, atol=atol)
 
+  def test_no_path(self):
+    for grad_func in [gradients.jacobian, gradients.batch_jacobian]:
+      for use_pfor in [True, False]:
+        x = constant_op.constant([[1.0]])
+        y = constant_op.constant([[2.0]])
+        self.assertIsNone(grad_func(y, x, use_pfor=use_pfor))
+
   def test_jacobian_fixed_shape(self):
     x = random_ops.random_uniform([2, 2])
     y = math_ops.matmul(x, x, transpose_a=True)

@@ -361,7 +361,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
       // Make a GrapplerItem from a FunctionDef.
       GrapplerFunctionItem func_item;
-      TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(func, flib, &func_item));
+      TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(
+          func, flib, item.graph.versions().producer(), &func_item));
 
       // Optimize function body graph.
       GraphDef optimized_func_graph;

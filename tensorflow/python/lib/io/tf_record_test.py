@@ -358,12 +358,12 @@ class TFRecordWriterCloseAndFlushTests(test.TestCase):
     with self.assertRaises(errors_impl.FailedPreconditionError):
       self._writer.flush()
 
-  def testWriteAfterClose(self):
+  def testWriteAfterCloseIsError(self):
     self._writer.write(self._Record(0))
     self._writer.close()
 
-    # TODO(sethtroisi): No way to know this failed, changed that.
-    self._writer.write(self._Record(1))
+    with self.assertRaises(errors_impl.FailedPreconditionError):
+      self._writer.write(self._Record(1))
 
 
 class TFRecordWriterCloseAndFlushGzipTests(TFRecordWriterCloseAndFlushTests):

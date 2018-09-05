@@ -103,7 +103,7 @@ void XlaCompilationDevice::Compute(OpKernel* op_kernel,
   auto sharding_parse_result = ParseShardingFromDevice(
       op_kernel->def(), std::numeric_limits<int>::max());
   OP_REQUIRES_OK(context, sharding_parse_result.status());
-  tensorflow::gtl::optional<xla::OpSharding> op_sharding =
+  absl::optional<xla::OpSharding> op_sharding =
       sharding_parse_result.ValueOrDie();
 
   // If no sharding metadata is found, XLA is free to use whatever device it

@@ -68,6 +68,8 @@ def _regression_dataset_fn():
       "predictions": [1., .75, .25, 0.]}).repeat()
 
 
+# TODO(priyag): Add TPU Strategy to this once metrics aggregate correctly using
+# TowerLocalVariables on TPUs. Submit http://cl/208914352.
 def all_combinations():
   return combinations.combine(
       distribution=[combinations.default_strategy,

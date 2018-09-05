@@ -495,18 +495,18 @@ Status RealDivGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("RealDiv", RealDivGrad);
 
-Status UnsafeDivGrad(const AttrSlice& attrs, FunctionDef* g) {
+Status DivNoNanGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForBinaryCwise(g, {
-      {{"gx"}, "UnsafeDiv", {"dz", "y"}},
+      {{"gx"}, "DivNoNan", {"dz", "y"}},
       {{"nx"}, "Neg", {"x"}, {}, {"dz"}},
       {{"y2"}, "Square", {"y"}, {}, {"dz"}},
-      {{"nx_y2"}, "UnsafeDiv", {"nx", "y2"}},
+      {{"nx_y2"}, "DivNoNan", {"nx", "y2"}},
       {{"gy"}, "Mul", {"dz", "nx_y2"}},  // dz * (- x / y^2)
   });
   // clang-format on
 }
-REGISTER_OP_GRADIENT("UnsafeDiv", UnsafeDivGrad);
+REGISTER_OP_GRADIENT("DivNoNan", DivNoNanGrad);
 
 Status PowGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off

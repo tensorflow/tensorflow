@@ -23,10 +23,6 @@ limitations under the License.
 namespace tflite {
 namespace eager {
 
-// Checks whether the prefix of the custom name indicates the operation is an
-// Eager operation.
-bool IsEagerOp(const char* custom_name);
-
 // Converts a tensorflow:Status into a TfLiteStatus. If the original status
 // represented an error, reports it using the given 'context'.
 TfLiteStatus ConvertStatus(TfLiteContext* context,

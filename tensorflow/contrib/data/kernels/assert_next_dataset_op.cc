@@ -42,13 +42,13 @@ class AssertNextDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
             const std::vector<string>& transformations,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           transformations_(transformations),
           output_types_(output_types),

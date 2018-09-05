@@ -38,11 +38,11 @@ class ZipDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx,
                      const std::vector<DatasetBase*>& inputs)
-        : GraphDatasetBase(ctx), inputs_(inputs) {
+        : DatasetBase(DatasetContext(ctx)), inputs_(inputs) {
       for (const auto& input : inputs_) {
         input->Ref();
         for (DataType dt : input->output_dtypes()) {

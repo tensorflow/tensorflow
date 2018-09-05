@@ -21,8 +21,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
@@ -30,8 +30,8 @@ namespace xla {
 // Returns a string that represents the device in terms of platform and ordinal;
 // e.g. the first CUDA device will be "cuda:0"
 string DeviceIdentifier(se::StreamExecutor* stream_exec) {
-  return tensorflow::strings::StrCat(stream_exec->platform()->Name(), ":",
-                                     stream_exec->device_ordinal());
+  return absl::StrCat(stream_exec->platform()->Name(), ":",
+                      stream_exec->device_ordinal());
 }
 
 }  // namespace xla

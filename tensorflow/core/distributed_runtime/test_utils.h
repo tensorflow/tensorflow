@@ -18,6 +18,7 @@ limitations under the License.
 #include <unordered_map>
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
@@ -135,6 +136,19 @@ class TestWorkerCache : public WorkerCacheInterface {
     workers->clear();
     for (auto it : workers_) {
       workers->push_back(it.first);
+    }
+  }
+
+  void ListWorkersInJob(const string& job_name,
+                        std::vector<string>* workers) const override {
+    workers->clear();
+    for (auto it : workers_) {
+      DeviceNameUtils::ParsedName device_name;
+      CHECK(DeviceNameUtils::ParseFullName(it.first, &device_name));
+      CHECK(device_name.has_job);
+      if (job_name == device_name.job) {
+        workers->push_back(it.first);
+      }
     }
   }
 

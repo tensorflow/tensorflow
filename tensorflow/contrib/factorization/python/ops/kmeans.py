@@ -188,7 +188,6 @@ class _ModelFn(object):
     #   center.
     # is_initialized: scalar indicating whether the initial cluster centers
     #   have been chosen; see init_op.
-    # cluster_centers_var: a Variable containing the cluster centers.
     # init_op: an op to choose the initial cluster centers. A single worker
     #   repeatedly executes init_op until is_initialized becomes True.
     # training_op: an op that runs an iteration of training, either an entire

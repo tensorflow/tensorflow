@@ -20,4 +20,8 @@ tf_class {
     name: "save"
     argspec: "args=[\'self\', \'file_prefix\', \'session\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
+  member_method {
+    name: "write"
+    argspec: "args=[\'self\', \'file_prefix\', \'session\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
 }

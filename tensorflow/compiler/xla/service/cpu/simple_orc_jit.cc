@@ -20,13 +20,13 @@ limitations under the License.
 #include <list>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Host.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
@@ -170,15 +170,14 @@ namespace {
 bool RegisterKnownJITSymbols() {
   CustomCallTargetRegistry* registry = CustomCallTargetRegistry::Global();
 
-#define REGISTER_CPU_RUNTIME_SYMBOL(base_name)                                \
-  do {                                                                        \
-    auto* function_address =                                                  \
-        reinterpret_cast<void*>(__xla_cpu_runtime_##base_name);               \
-    registry->Register(xla::cpu::runtime::k##base_name##SymbolName,           \
-                       function_address);                                     \
-    CHECK_EQ(                                                                 \
-        tensorflow::StringPiece(xla::cpu::runtime::k##base_name##SymbolName), \
-        "__xla_cpu_runtime_" #base_name);                                     \
+#define REGISTER_CPU_RUNTIME_SYMBOL(base_name)                               \
+  do {                                                                       \
+    auto* function_address =                                                 \
+        reinterpret_cast<void*>(__xla_cpu_runtime_##base_name);              \
+    registry->Register(xla::cpu::runtime::k##base_name##SymbolName,          \
+                       function_address);                                    \
+    CHECK_EQ(absl::string_view(xla::cpu::runtime::k##base_name##SymbolName), \
+             "__xla_cpu_runtime_" #base_name);                               \
   } while (false)
 
   REGISTER_CPU_RUNTIME_SYMBOL(AcquireInfeedBufferForDequeue);

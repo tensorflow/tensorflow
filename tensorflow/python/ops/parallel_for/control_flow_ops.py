@@ -46,6 +46,7 @@ def for_loop(loop_fn, loop_fn_dtypes, iters):
   """
 
   flat_loop_fn_dtypes = nest.flatten(loop_fn_dtypes)
+  is_none_list = []
 
   def while_body(i, *ta_list):
     """Body of while loop."""
@@ -56,10 +57,13 @@ def for_loop(loop_fn, loop_fn_dtypes, iters):
           "actual outputs, %d, from loop_fn" % (len(flat_loop_fn_dtypes),
                                                 len(fn_output)))
     outputs = []
+    del is_none_list[:]
+    is_none_list.extend([x is None for x in fn_output])
     for out, ta in zip(fn_output, ta_list):
       # TODO(agarwal): support returning Operation objects from loop_fn.
-      assert isinstance(out, ops.Tensor)
-      outputs.append(ta.write(i, array_ops.expand_dims(out, 0)))
+      if out is not None:
+        ta = ta.write(i, array_ops.expand_dims(out, 0))
+      outputs.append(ta)
     return tuple([i + 1] + outputs)
 
   ta_list = control_flow_ops.while_loop(
@@ -69,7 +73,10 @@ def for_loop(loop_fn, loop_fn_dtypes, iters):
       ])[1:]
 
   # TODO(rachelim): enable this for sparse tensors
-  return nest.pack_sequence_as(loop_fn_dtypes, [ta.concat() for ta in ta_list])
+
+  output = [None if is_none else ta.concat()
+            for ta, is_none in zip(ta_list, is_none_list)]
+  return nest.pack_sequence_as(loop_fn_dtypes, output)
 
 
 def pfor(loop_fn, iters):

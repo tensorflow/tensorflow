@@ -101,7 +101,7 @@ class EagerTest(xla_test.XLATestCase):
       self.assertAllEqual(15, product)
 
     # Run some ops graphly
-    with context.graph_mode(), self.test_session() as sess:
+    with context.graph_mode(), self.cached_session() as sess:
       with self.test_scope():
         three = constant_op.constant(3)
         five = constant_op.constant(5)
@@ -351,6 +351,38 @@ class EagerFunctionTest(xla_test.XLATestCase):
       var = f(v)
       self.assertEqual(2.0, var.numpy())
 
+  def testReturnResourceHandle(self):
+    with self.test_scope():
+      v = resource_variable_ops.ResourceVariable([[1.0, 2.0], [3.0, 4.0]])
+
+      def f(v):
+        return v.handle
+
+      f = function.defun(f)
+      handle = f(v)
+      self.assertAllEqual(v.numpy(),
+                          resource_variable_ops.read_variable_op(
+                              handle, dtypes.float32).numpy())
+
+  def testReturnMultipleResourceHandles(self):
+    with self.test_scope():
+      v1 = resource_variable_ops.ResourceVariable(1.25)
+      v2 = resource_variable_ops.ResourceVariable(2.0)
+
+      def f(v):
+        return v.handle, 3.0 * v, v2.handle, v + v2
+
+      f = function.defun(f)
+      v1_handle, v1_times_3, v2_handle, variable_sum = f(v1)
+      self.assertAllEqual(v1.numpy(),
+                          resource_variable_ops.read_variable_op(
+                              v1_handle, dtypes.float32).numpy())
+      self.assertEqual(3.75, v1_times_3.numpy())
+      self.assertAllEqual(v2.numpy(),
+                          resource_variable_ops.read_variable_op(
+                              v2_handle, dtypes.float32).numpy())
+      self.assertEqual(3.25, variable_sum.numpy())
+
   def testAllArgumentKinds(self):
     """Test a complex function that takes different argument kinds.
 
@@ -443,7 +475,6 @@ class EagerFunctionTest(xla_test.XLATestCase):
       self.assertAllEqual((2, 3, 4), dz.shape.as_list())
 
   def testNestedDefun(self):
-    self.skipTest('Nested defuns do not work on TPU at the moment')
     with self.test_scope():
 
       @function.defun
@@ -457,6 +488,72 @@ class EagerFunctionTest(xla_test.XLATestCase):
       x = constant_op.constant([2, 3, 4])
       y = two_x_plus_1(x)
       self.assertAllEqual([5, 7, 9], y.numpy())
+
+  def testNestedDefunWithVariable(self):
+    with self.test_scope():
+      v0 = resource_variable_ops.ResourceVariable(5.0)
+
+      @function.defun
+      def g(x):
+        x = v0 * x
+        return x
+
+      @function.defun
+      def f(x):
+        x = g(v0 * x)
+        return x
+
+      x = constant_op.constant(3.0)
+      y = f(x)
+
+    self.assertEqual(75, y.numpy())
+
+  def testNestedDefunInGradientTape(self):
+    with self.test_scope():
+      v0 = resource_variable_ops.ResourceVariable(5.0)
+
+      @function.defun
+      def g(x):
+        x = v0 * x
+        return x
+
+      @function.defun
+      def f(x):
+        x = g(v0 * x)
+        return x
+
+      x = constant_op.constant(3.0)
+      with backprop.GradientTape() as tape:
+        y = f(x)
+      dy = tape.gradient(y, v0)
+
+    self.assertEqual(75, y.numpy())
+    self.assertEqual(30, dy.numpy())
+
+  def testNestedDefunInGradientTapeDifferentVars(self):
+    with self.test_scope():
+      v0 = resource_variable_ops.ResourceVariable(5.0)
+      v1 = resource_variable_ops.ResourceVariable(3.0)
+
+      @function.defun
+      def g(x):
+        x = v1 * x
+        return x
+
+      @function.defun
+      def f(x):
+        x = g(v0 * x)
+        return x
+
+      x = constant_op.constant(3.0)
+      with backprop.GradientTape(persistent=True) as tape:
+        y = f(x)
+      dy_v0 = tape.gradient(y, v0)
+      dy_v1 = tape.gradient(y, v1)
+
+    self.assertEqual(45, y.numpy())
+    self.assertEqual(9, dy_v0.numpy())
+    self.assertEqual(15, dy_v1.numpy())
 
 
 class ExcessivePaddingTest(xla_test.XLATestCase):

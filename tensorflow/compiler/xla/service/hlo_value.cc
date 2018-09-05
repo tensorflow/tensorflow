@@ -18,8 +18,10 @@ limitations under the License.
 #include <algorithm>
 #include <utility>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -30,16 +32,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
-using ::tensorflow::str_util::Join;
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
+using absl::StrAppend;
+using absl::StrCat;
 
 const Shape& HloPosition::shape() const {
   return ShapeUtil::GetSubshape(instruction->shape(), index);
@@ -150,7 +149,7 @@ bool MayUseOperandValue(int64 operand_number, const ShapeIndex& index,
 }  // namespace
 
 void HloValue::SetPositionsAndComputeUses(
-    tensorflow::gtl::ArraySlice<HloPosition> positions) {
+    absl::Span<const HloPosition> positions) {
   CHECK_EQ(positions_.size(), 1) << "SetPositions should only be called once.";
 
   // The positions must be unique and should not contain the defining position
@@ -216,14 +215,14 @@ void HloValueSet::SortAndUniquifyValues() {
 }
 
 string HloValueSet::ToString() const {
-  return StrCat("HloValueSet: ",
-                Join(values_, ", ", [](string* result, const HloValue* value) {
-                  result->append(value->ToShortString());
-                }));
+  return StrCat(
+      "HloValueSet: ",
+      absl::StrJoin(values_, ", ", [](string* result, const HloValue* value) {
+        result->append(value->ToShortString());
+      }));
 }
 
-bool HloValueSet::AssignUnionOf(
-    tensorflow::gtl::ArraySlice<const HloValueSet*> inputs) {
+bool HloValueSet::AssignUnionOf(absl::Span<const HloValueSet* const> inputs) {
   HloValueSet union_set;
   for (const HloValueSet* input : inputs) {
     for (const HloValue* value : input->values()) {
@@ -254,7 +253,7 @@ std::ostream& operator<<(std::ostream& out, const HloValueSet& value_set) {
 }
 
 bool InstructionValueSet::AssignUnionOf(
-    tensorflow::gtl::ArraySlice<const InstructionValueSet*> inputs) {
+    absl::Span<const InstructionValueSet* const> inputs) {
   CHECK_GT(inputs.size(), 0);
   for (int i = 1; i < inputs.size(); ++i) {
     DCHECK(ShapeUtil::Compatible(inputs[0]->shape(), inputs[i]->shape()));

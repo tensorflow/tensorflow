@@ -90,14 +90,14 @@ class StandardSingleLossStep(StandardInputStep):
 
   def __call__(self):
     with self._distribution.scope():
-      def step_fn(ctx, inputs):
+      def step_fn(ctx, *inputs):
         """Function to run one iteration with one input."""
         gradients_fn = backprop.implicit_grad(self._loss_fn)
         gradients_fn = optimizer_lib.get_filtered_grad_fn(gradients_fn)
 
         grads_and_vars = self.distribution.call_for_each_tower(
             gradients_fn,
-            ctx, inputs,
+            ctx, *inputs,
             run_concurrently=self._is_run_concurrently)
         # If threads use layers, then we need to run the first step
         # sequentially, so that layers.build() is not executed in parallel.

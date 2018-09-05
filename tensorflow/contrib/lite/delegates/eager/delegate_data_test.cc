@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/testing/util.h"
 
 namespace tflite {
@@ -29,8 +30,12 @@ TEST(DelegateDataTest, Basic) {
   // binary.
   EXPECT_TRUE(DelegateData::Create(&data).ok());
 
+  TfLiteContext dummy_context1 = {};
+  TfLiteContext dummy_context2 = {};
   EXPECT_NE(data->GetEagerContext(), nullptr);
-  EXPECT_NE(data->GetBufferMap(), nullptr);
+  EXPECT_NE(data->GetBufferMap(&dummy_context1), nullptr);
+  EXPECT_NE(data->GetBufferMap(&dummy_context1),
+            data->GetBufferMap(&dummy_context2));
 }
 
 }  // namespace

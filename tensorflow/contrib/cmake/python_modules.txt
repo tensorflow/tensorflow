@@ -4,6 +4,8 @@ tensorflow
 tensorflow/core
 tensorflow/core/example
 tensorflow/core/framework
+tensorflow/core/kernels
+tensorflow/core/kernels/boosted_trees
 tensorflow/core/lib
 tensorflow/core/lib/core
 tensorflow/core/profiler
@@ -245,10 +247,6 @@ tensorflow/contrib/kernel_methods/python
 tensorflow/contrib/kernel_methods/python/mappers
 tensorflow/contrib/kinesis/python
 tensorflow/contrib/kinesis/python/ops
-tensorflow/contrib/kfac
-tensorflow/contrib/kfac/examples
-tensorflow/contrib/kfac/python
-tensorflow/contrib/kfac/python/ops
 tensorflow/contrib/labeled_tensor
 tensorflow/contrib/labeled_tensor/python
 tensorflow/contrib/labeled_tensor/python/ops

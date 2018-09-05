@@ -18,6 +18,10 @@ limitations under the License.
 #include <limits>
 #include <memory>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -35,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -54,7 +57,7 @@ class ReduceWindowTestBase : public ClientLibraryTestBase {
  public:
   ErrorSpec DefaultErrorSpec() const {
     if (use_bfloat16()) {
-      return ErrorSpec(1e-1, 5e-2);
+      return ErrorSpec(2e-1, 6e-2);
     } else {
       return ErrorSpec(1e-3, 1e-3);
     }
@@ -67,8 +70,8 @@ class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
   ReduceWindowTest() : builder_(TestName()) { set_use_bfloat16(GetParam()); }
 
   void ReduceWindowAdd(const XlaOp& input,
-                       tensorflow::gtl::ArraySlice<int64> window_dimensions,
-                       tensorflow::gtl::ArraySlice<int64> window_strides,
+                       absl::Span<const int64> window_dimensions,
+                       absl::Span<const int64> window_strides,
                        Padding padding) {
     auto init = CreateConstantFromLiteral(*LiteralUtil::CreateR0<float>(0.0f),
                                           &builder_);
@@ -78,8 +81,8 @@ class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
   }
 
   void ReduceWindowMax(const XlaOp& input,
-                       tensorflow::gtl::ArraySlice<int64> window_dimensions,
-                       tensorflow::gtl::ArraySlice<int64> window_strides,
+                       absl::Span<const int64> window_dimensions,
+                       absl::Span<const int64> window_strides,
                        Padding padding) {
     auto init =
         CreateConstantFromLiteral(LiteralUtil::MinValue(F32), &builder_);
@@ -89,8 +92,8 @@ class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
   }
 
   void ReduceWindowMin(const XlaOp& input,
-                       tensorflow::gtl::ArraySlice<int64> window_dimensions,
-                       tensorflow::gtl::ArraySlice<int64> window_strides,
+                       absl::Span<const int64> window_dimensions,
+                       absl::Span<const int64> window_strides,
                        Padding padding) {
     auto init =
         CreateConstantFromLiteral(LiteralUtil::MaxValue(F32), &builder_);
@@ -357,7 +360,7 @@ XLA_TEST_P(ReduceWindowTest, R6AddMultipleStrides) {
   std::vector<int64> input_dims(6, 8);
   auto shape = ShapeUtil::MakeShape(F32, input_dims);
 
-  auto arg_literal = MakeUnique<Literal>(shape);
+  auto arg_literal = absl::make_unique<Literal>(shape);
   arg_literal->PopulateWithValue(1.0f);
   const auto input = CreateConstantFromLiteral(*arg_literal, &builder_);
 
@@ -368,7 +371,7 @@ XLA_TEST_P(ReduceWindowTest, R6AddMultipleStrides) {
   std::vector<int64> output_dims = {6, 8, 6, 6, 8, 8};
   Shape result_shape =
       ShapeUtil::MakeShapeWithLayout(F32, output_dims, output_layout);
-  auto expected = MakeUnique<Literal>(result_shape);
+  auto expected = absl::make_unique<Literal>(result_shape);
   expected->PopulateWithValue(27.0f);
   ComputeAndCompareLiteral(&builder_, *expected, {}, DefaultErrorSpec());
 }
@@ -578,21 +581,20 @@ string R4ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<R4ReduceWindowTestData, bool>>& data) {
   const auto& param = ::testing::get<0>(data.param);
-  string str = tensorflow::strings::StrCat(
-      "base_bounds_", tensorflow::str_util::Join(param.base_bounds, "x"),  //
-      "__window_bounds_",
-      tensorflow::str_util::Join(param.window_bounds, "x"),            //
-      "__strides_", tensorflow::str_util::Join(param.strides, "x"),    //
-      "__pad_low_", tensorflow::str_util::Join(param.pad_low, "x"),    //
-      "__pad_high_", tensorflow::str_util::Join(param.pad_high, "x"),  //
-      "__layout_", tensorflow::str_util::Join(param.layout, "_"),      //
+  string str = absl::StrCat(
+      "base_bounds_", absl::StrJoin(param.base_bounds, "x"),        //
+      "__window_bounds_", absl::StrJoin(param.window_bounds, "x"),  //
+      "__strides_", absl::StrJoin(param.strides, "x"),              //
+      "__pad_low_", absl::StrJoin(param.pad_low, "x"),              //
+      "__pad_high_", absl::StrJoin(param.pad_high, "x"),            //
+      "__layout_", absl::StrJoin(param.layout, "_"),                //
       (param.reducer == kAdd) ? "_add" : "_max");
   CHECK(param.reducer == kAdd || param.reducer == kMax);
 
   // Test names are not allowed to contain the '-' character.
   std::replace(str.begin(), str.end(), '-', 'n');
   if (::testing::get<1>(data.param)) {
-    str = tensorflow::strings::StrCat(str, "_bfloat16");
+    str = absl::StrCat(str, "_bfloat16");
   }
   return str;
 }
@@ -934,15 +936,15 @@ string R3ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<R3ReduceWindowTestData, bool>>& data) {
   const auto& param = ::testing::get<0>(data.param);
-  string str = tensorflow::strings::StrCat(
-      "base_bounds_", tensorflow::str_util::Join(param.base_bounds, "x"),
-      "__window_bounds_", tensorflow::str_util::Join(param.window_bounds, "x"),
-      "__strides_", tensorflow::str_util::Join(param.strides, "x"),
-      "__padding_", param.padding == Padding::kSame ? "same" : "valid",
-      "__layout_", param.layout[0], "_", param.layout[1], "_", param.layout[2],
-      "__reducer_", param.reducer == kAdd ? "add" : "max");
+  string str = absl::StrCat(
+      "base_bounds_", absl::StrJoin(param.base_bounds, "x"), "__window_bounds_",
+      absl::StrJoin(param.window_bounds, "x"), "__strides_",
+      absl::StrJoin(param.strides, "x"), "__padding_",
+      param.padding == Padding::kSame ? "same" : "valid", "__layout_",
+      param.layout[0], "_", param.layout[1], "_", param.layout[2], "__reducer_",
+      param.reducer == kAdd ? "add" : "max");
   if (::testing::get<1>(data.param)) {
-    str = tensorflow::strings::StrCat(str, "_bfloat16");
+    str = absl::StrCat(str, "_bfloat16");
   }
   return str;
 }
@@ -1068,17 +1070,16 @@ string R2ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<R2ReduceWindowTestData, bool>>& data) {
   const auto& param = ::testing::get<0>(data.param);
-  string str = tensorflow::strings::StrCat(
-      "base_bounds_", tensorflow::str_util::Join(param.base_bounds, "x"),  //
-      "__window_bounds_",
-      tensorflow::str_util::Join(param.window_bounds, "x"),          //
-      "__strides_", tensorflow::str_util::Join(param.strides, "x"),  //
-      "__pad_low_", tensorflow::str_util::Join(param.pad_low, "x"),
-      "__pad_high_", tensorflow::str_util::Join(param.pad_high, "x"),
-      "__layout_", param.layout[0], "_", param.layout[1],  //
+  string str = absl::StrCat(
+      "base_bounds_", absl::StrJoin(param.base_bounds, "x"),        //
+      "__window_bounds_", absl::StrJoin(param.window_bounds, "x"),  //
+      "__strides_", absl::StrJoin(param.strides, "x"),              //
+      "__pad_low_", absl::StrJoin(param.pad_low, "x"), "__pad_high_",
+      absl::StrJoin(param.pad_high, "x"), "__layout_", param.layout[0], "_",
+      param.layout[1],  //
       "__reducer_", param.reducer == kAdd ? "add" : "max");
   if (::testing::get<1>(data.param)) {
-    str = tensorflow::strings::StrCat(str, "_bfloat16");
+    str = absl::StrCat(str, "_bfloat16");
   }
   return str;
 }
@@ -1261,21 +1262,27 @@ struct R1ReduceWindowTestData {
      /*pad_low=*/{5},
      /*pad_high=*/{0},
      /*reducer=*/Reducer::kAdd},
+
+    {/*base_bounds=*/{4096}, /*window_bounds=*/{4096},
+     /*strides=*/{1},
+     /*pad_low=*/{4095},
+     /*pad_high=*/{0},
+     /*reducer=*/Reducer::kMax},
 };
 
 string R1ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<R1ReduceWindowTestData, bool>>& data) {
   const auto& param = ::testing::get<0>(data.param);
-  string str = tensorflow::strings::StrCat(
-      "base_bounds_", tensorflow::str_util::Join(param.base_bounds, "x"),
-      "__window_bounds_", tensorflow::str_util::Join(param.window_bounds, "x"),
-      "__strides_", tensorflow::str_util::Join(param.strides, "x"),
-      "__pad_low_", tensorflow::str_util::Join(param.pad_low, "x"),
-      "__pad_high_", tensorflow::str_util::Join(param.pad_high, "x"),
-      "__reducer_", param.reducer == kAdd ? "add" : "max");
+  string str =
+      absl::StrCat("base_bounds_", absl::StrJoin(param.base_bounds, "x"),
+                   "__window_bounds_", absl::StrJoin(param.window_bounds, "x"),
+                   "__strides_", absl::StrJoin(param.strides, "x"),
+                   "__pad_low_", absl::StrJoin(param.pad_low, "x"),
+                   "__pad_high_", absl::StrJoin(param.pad_high, "x"),
+                   "__reducer_", param.reducer == kAdd ? "add" : "max");
   if (::testing::get<1>(data.param)) {
-    str = tensorflow::strings::StrCat(str, "_bfloat16");
+    str = absl::StrCat(str, "_bfloat16");
   }
   return str;
 }
@@ -1296,7 +1303,7 @@ TEST_P(R1ReduceWindowTest, DoIt) {
   std::vector<float> input_vector(param.base_bounds[0]);
   std::iota(std::begin(input_vector), std::end(input_vector), 0);
   std::unique_ptr<Literal> input_literal =
-      LiteralUtil::CreateR1(tensorflow::gtl::ArraySlice<float>(input_vector));
+      LiteralUtil::CreateR1(absl::Span<const float>(input_vector));
   XlaOp parameter;
   auto input_arg = CreateParameterAndTransferLiteral(0, *input_literal, "p0",
                                                      &b, &parameter);
@@ -1320,7 +1327,7 @@ TEST_P(R1ReduceWindowTest, DoIt) {
                          ? +[](float a, float b) { return a + b; }
                          : +[](float a, float b) { return std::max(a, b); };
   auto expected = ReferenceUtil::ReduceWindow1DGeneric(
-      /*operand=*/tensorflow::gtl::ArraySlice<float>(input_vector),
+      /*operand=*/absl::Span<const float>(input_vector),
       /*init=*/kInitValue,
       /*reduce_func=*/reduce_func,
       /*window=*/param.window_bounds,
@@ -1442,7 +1449,7 @@ ENTRY reduce-window-identity {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, tensorflow::gtl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowS32) {
@@ -1461,7 +1468,26 @@ ENTRY %reduce-window (parameter.0: s32[81,8], parameter.1: s32[]) -> s32[82,8] {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, tensorflow::gtl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
+}
+
+XLA_TEST_F(HloTestBase, ReduceWindowF16) {
+  const string hlo_string = R"(
+HloModule reduce-window
+
+%identity.pad_to_reduce_window (param0: f16[], param1: f16[]) -> f16[] {
+  %param0 = f16[] parameter(0)
+  ROOT %param1 = f16[] parameter(1)
+}
+
+ENTRY %reduce-window (parameter.0: f16[81,8], parameter.1: f16[]) -> f16[82,8] {
+  %parameter.0 = f16[81,8]{1,0} parameter(0)
+  %parameter.1 = f16[] parameter(1)
+  ROOT %reduce-window = f16[82,8]{1,0} reduce-window(f16[81,8]{1,0} %parameter.0, f16[] %parameter.1), window={size=1x1 pad=0_1x0_0}, to_apply=%identity.pad_to_reduce_window
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
 }
 
 }  // namespace
