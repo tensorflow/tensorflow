@@ -25,20 +25,10 @@ from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import function
 from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import rmsprop
-
-
-def _get_small_mlp(num_hidden, num_classes, input_dim=None):
-  model = keras.models.Sequential()
-  if input_dim:
-    model.add(keras.layers.Dense(num_hidden, activation='relu',
-                                 input_dim=input_dim))
-  else:
-    model.add(keras.layers.Dense(num_hidden, activation='relu'))
-  model.add(keras.layers.Dense(num_classes, activation='softmax'))
-  return model
 
 
 class TestSequential(test.TestCase, parameterized.TestCase):
@@ -63,7 +53,8 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     batch_size = 5
     num_classes = 2
 
-    model = _get_small_mlp(num_hidden, num_classes, input_dim)
+    model = testing_utils.get_small_sequential_mlp(
+        num_hidden, num_classes, input_dim)
     model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
     x = np.random.random((batch_size, input_dim))
     y = np.random.random((batch_size, num_classes))
@@ -94,7 +85,7 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     batch_size = 5
     num_classes = 2
 
-    model = _get_small_mlp(num_hidden, num_classes)
+    model = testing_utils.get_small_sequential_mlp(num_hidden, num_classes)
     model.compile(
         loss='mse',
         optimizer=rmsprop.RMSPropOptimizer(1e-3),
@@ -118,7 +109,7 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     num_samples = 50
     steps_per_epoch = 10
 
-    model = _get_small_mlp(num_hidden, num_classes)
+    model = testing_utils.get_small_sequential_mlp(num_hidden, num_classes)
     model.compile(
         loss='mse',
         optimizer=rmsprop.RMSPropOptimizer(1e-3),
@@ -145,9 +136,9 @@ class TestSequential(test.TestCase, parameterized.TestCase):
 
       def get_model():
         if deferred:
-          model = _get_small_mlp(10, 4)
+          model = testing_utils.get_small_sequential_mlp(10, 4)
         else:
-          model = _get_small_mlp(10, 4, input_dim=3)
+          model = testing_utils.get_small_sequential_mlp(10, 4, input_dim=3)
         model.compile(
             optimizer=rmsprop.RMSPropOptimizer(1e-3),
             loss='categorical_crossentropy',
@@ -262,7 +253,7 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     batch_size = 5
     num_classes = 2
 
-    model = _get_small_mlp(num_hidden, num_classes)
+    model = testing_utils.get_small_sequential_mlp(num_hidden, num_classes)
     model.compile(
         loss='mse',
         optimizer=rmsprop.RMSPropOptimizer(1e-3),
@@ -284,21 +275,21 @@ class TestSequential(test.TestCase, parameterized.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_sequential_shape_inference_deferred(self):
-    model = _get_small_mlp(4, 5)
+    model = testing_utils.get_small_sequential_mlp(4, 5)
     output_shape = model.compute_output_shape((None, 7))
     self.assertEqual(tuple(output_shape.as_list()), (None, 5))
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_sequential_build_deferred(self):
-    model = _get_small_mlp(4, 5)
+    model = testing_utils.get_small_sequential_mlp(4, 5)
 
     model.build((None, 10))
     self.assertTrue(model.built)
     self.assertEqual(len(model.weights), 4)
 
     # Test with nested model
-    model = _get_small_mlp(4, 3)
-    inner_model = _get_small_mlp(4, 5)
+    model = testing_utils.get_small_sequential_mlp(4, 3)
+    inner_model = testing_utils.get_small_sequential_mlp(4, 5)
     model.add(inner_model)
 
     model.build((None, 10))
@@ -308,8 +299,8 @@ class TestSequential(test.TestCase, parameterized.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_sequential_nesting(self):
-    model = _get_small_mlp(4, 3)
-    inner_model = _get_small_mlp(4, 5)
+    model = testing_utils.get_small_sequential_mlp(4, 3)
+    inner_model = testing_utils.get_small_sequential_mlp(4, 5)
     model.add(inner_model)
 
     model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
@@ -353,7 +344,7 @@ class TestSequentialEagerIntegration(test.TestCase):
   @tf_test_util.run_in_graph_and_eager_modes
   def test_build_before_fit(self):
     # Fix for b/112433577
-    model = _get_small_mlp(4, 5)
+    model = testing_utils.get_small_sequential_mlp(4, 5)
     model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
 
     model.build((None, 6))

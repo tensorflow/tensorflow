@@ -93,6 +93,15 @@ def _build_class_page(page_info):
 
   parts.append('\n\n')
 
+  # Sort the methods list, but make sure constructors come first.
+  constructor_names = ['__init__', '__new__']
+  constructors = sorted(
+      method for method in page_info.methods
+      if method.short_name in constructor_names)
+  other_methods = sorted(
+      method for method in page_info.methods
+      if method.short_name not in constructor_names)
+
   if len(page_info.aliases) > 1:
     parts.append('### Aliases:\n\n')
     parts.extend('* Class `%s`\n' % name for name in page_info.aliases)
@@ -108,6 +117,11 @@ def _build_class_page(page_info):
   parts.append(_build_compatibility(page_info.doc.compatibility))
 
   parts.append('\n\n')
+
+  if constructors:
+    for method_info in constructors:
+      parts.append(_build_method_section(method_info, heading_level=2))
+    parts.append('\n\n')
 
   if page_info.classes:
     parts.append('## Child Classes\n')
@@ -134,28 +148,11 @@ def _build_class_page(page_info):
 
     parts.append('\n\n')
 
-  if page_info.methods:
+  if other_methods:
     parts.append('## Methods\n\n')
-    # Sort the methods list, but make sure constructors come first.
-    constructors = ['__init__', '__new__']
-    inits = [method for method in page_info.methods
-             if method.short_name in constructors]
-    others = [method for method in page_info.methods
-              if method.short_name not in constructors]
 
-    for method_info in sorted(inits) + sorted(others):
-      h3 = ('<h3 id="{short_name}">'
-            '<code>{short_name}</code>'
-            '</h3>\n\n')
-      parts.append(h3.format(**method_info._asdict()))
-
-      if method_info.signature is not None:
-        parts.append(_build_signature(method_info, use_full_name=False))
-
-      parts.append(method_info.doc.docstring)
-      parts.append(_build_function_details(method_info.doc.function_details))
-      parts.append(_build_compatibility(method_info.doc.compatibility))
-      parts.append('\n\n')
+    for method_info in other_methods:
+      parts.append(_build_method_section(method_info))
     parts.append('\n\n')
 
   if page_info.other_members:
@@ -169,6 +166,33 @@ def _build_class_page(page_info):
                               for info in sorted(page_info.other_members))
     parts.extend(others_member_headings)
 
+  return ''.join(parts)
+
+
+def _build_method_section(method_info, heading_level=3):
+  """Generates a markdown section for a method.
+
+  Args:
+    method_info: A `MethodInfo` object.
+    heading_level: An Int, which HTML heading level to use.
+
+  Returns:
+    A markdown string.
+  """
+  parts = []
+  heading = ('<h{heading_level} id="{short_name}">'
+             '<code>{short_name}</code>'
+             '</h{heading_level}>\n\n')
+  parts.append(heading.format(heading_level=heading_level,
+                              **method_info._asdict()))
+
+  if method_info.signature is not None:
+    parts.append(_build_signature(method_info, use_full_name=False))
+
+  parts.append(method_info.doc.docstring)
+  parts.append(_build_function_details(method_info.doc.function_details))
+  parts.append(_build_compatibility(method_info.doc.compatibility))
+  parts.append('\n\n')
   return ''.join(parts)
 
 

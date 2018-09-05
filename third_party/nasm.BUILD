@@ -142,7 +142,6 @@ cc_binary(
     ],
     copts = select({
         ":windows": [],
-        ":windows_msvc": [],
         "//conditions:default": [
             "-w",
             "-std=c99",
@@ -150,20 +149,12 @@ cc_binary(
     }),
     defines = select({
         ":windows": [],
-        ":windows_msvc": [],
         "//conditions:default": [
             "HAVE_SNPRINTF",
             "HAVE_SYS_TYPES_H",
         ],
     }),
     visibility = ["@jpeg//:__pkg__"],
-)
-
-config_setting(
-    name = "windows_msvc",
-    values = {
-        "cpu": "x64_windows_msvc",
-    },
 )
 
 config_setting(

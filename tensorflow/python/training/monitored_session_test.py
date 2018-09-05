@@ -32,6 +32,7 @@ from tensorflow.contrib.testing.python.framework import util_test
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import debug_pb2
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.distribute import distribute_coordinator
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -379,6 +380,119 @@ class MonitoredTrainingSessionTest(test.TestCase):
       with monitored_session.MonitoredTrainingSession(
           is_chief=True, checkpoint_dir=logdir) as session:
         self.assertEqual(0, session.run(gstep))
+
+
+class MockStrategy(object):
+
+  def __init__(self,
+               between_graph=False,
+               should_init=True,
+               should_checkpoint=None,
+               should_save_summary=None):
+    self._between_graph = between_graph
+    self._should_init = should_init
+    self._should_checkpoint = should_checkpoint
+    self._should_save_summary = should_save_summary
+
+  @property
+  def between_graph(self):
+    return self._between_graph
+
+  @property
+  def should_init(self):
+    return self._should_init
+
+  @property
+  def should_checkpoint(self):
+    return self._should_checkpoint
+
+  @property
+  def should_save_summary(self):
+    return self._should_save_summary
+
+
+class MonitoredTrainingSessionWithDistributeCoordinatorTest(test.TestCase):
+  """Test distribute coordinator controls summary saving and checkpointing."""
+
+  def test_summary_hook_enabled(self):
+    context = distribute_coordinator._WorkerContext(
+        MockStrategy(should_save_summary=True), None, None, None)
+
+    logdir = _test_dir(self.get_temp_dir(), 'test_summaries_enabled')
+    with ops.Graph().as_default():
+      gstep = variables_lib.get_or_create_global_step()
+      new_gstep = state_ops.assign_add(gstep, 1)
+      summary.scalar('my_summary_tag', new_gstep * 2)
+      with context, monitored_session.MonitoredTrainingSession(
+          checkpoint_dir=logdir,
+          save_summaries_steps=100,
+          log_step_count_steps=10) as session:
+        for _ in range(101):
+          session.run(new_gstep)
+
+    summaries = util_test.latest_summaries(logdir)
+    tags = [s.summary.value[0].tag for s in summaries]
+    self.assertIn('my_summary_tag', tags)
+    self.assertIn('global_step/sec', tags)
+
+  def test_summary_hook_disabled(self):
+    context = distribute_coordinator._WorkerContext(
+        MockStrategy(should_save_summary=False), None, None, None)
+
+    logdir = _test_dir(self.get_temp_dir(), 'test_summaries_disabled')
+    with ops.Graph().as_default():
+      gstep = variables_lib.get_or_create_global_step()
+      new_gstep = state_ops.assign_add(gstep, 1)
+      summary.scalar('my_summary_tag', new_gstep * 2)
+      with context, monitored_session.MonitoredTrainingSession(
+          checkpoint_dir=logdir,
+          save_summaries_steps=100,
+          log_step_count_steps=10) as session:
+        for _ in range(101):
+          session.run(new_gstep)
+
+    # No summary is saved.
+    summaries = util_test.latest_summaries(logdir)
+    self.assertEqual(len(summaries), 0)
+
+  def test_checkpoint_hook_enabled(self):
+    context = distribute_coordinator._WorkerContext(
+        MockStrategy(should_checkpoint=True), None, None, None)
+
+    logdir = _test_dir(self.get_temp_dir(), 'test_save_checkpoint_enabled')
+    with ops.Graph().as_default():
+      gstep = variables_lib.get_or_create_global_step()
+      new_gstep = state_ops.assign_add(gstep, 1)
+      with context, monitored_session.MonitoredTrainingSession(
+          checkpoint_dir=logdir,
+          save_checkpoint_steps=100,
+          log_step_count_steps=10) as session:
+        for _ in range(100):
+          session.run(new_gstep)
+
+      # A restart will find the checkpoint and recover automatically.
+      with monitored_session.MonitoredTrainingSession(
+          is_chief=True, checkpoint_dir=logdir) as session:
+        self.assertEqual(100, session.run(gstep))
+
+  def test_checkpoint_hook_disabled(self):
+    context = distribute_coordinator._WorkerContext(
+        MockStrategy(should_checkpoint=False), None, None, None)
+
+    logdir = _test_dir(self.get_temp_dir(), 'test_save_checkpoint_disabled')
+    with ops.Graph().as_default():
+      gstep = variables_lib.get_or_create_global_step()
+      new_gstep = state_ops.assign_add(gstep, 1)
+      with context, monitored_session.MonitoredTrainingSession(
+          checkpoint_dir=logdir,
+          save_checkpoint_steps=100,
+          log_step_count_steps=10) as session:
+        for _ in range(100):
+          session.run(new_gstep)
+
+    # No checkpoint is saved.
+    checkpoint = checkpoint_management.latest_checkpoint(logdir)
+    self.assertIsNone(checkpoint)
 
 
 class StopAtNSession(monitored_session._WrappedSession):
@@ -1365,8 +1479,8 @@ class MonitoredSessionTest(test.TestCase):
       with monitored_session.MonitoredSession(
           session_creator=monitored_session.ChiefSessionCreator(
               scaffold,
-              checkpoint_filename_with_path=
-              checkpoint_management.latest_checkpoint(logdir))) as session:
+              checkpoint_filename_with_path=checkpoint_management.
+              latest_checkpoint(logdir))) as session:
         self.assertEqual(2, session.run(gstep))
 
   def test_retry_initialization_on_aborted_error(self):

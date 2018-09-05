@@ -1075,30 +1075,13 @@ class PartitionedCallTest(test.TestCase):
       with ops.device("/cpu:2"):
         s3 = iterator_ops.Iterator.from_structure(
             (dtypes.float32,)).string_handle()
-      with ops.device(""):
-        # TODO(akshayka): This is unfortunate and brittle. It prevents
-        # `Iterator.from_structure` from assigning the iterator op to 'cpu:0'.
-        #  Remove this hack once we have a way of obtaining metadata about
-        #  function execution.
-        s4 = iterator_ops.Iterator.from_structure(
-            (dtypes.float32,)).string_handle()
-      return s1, s2, s3, s4
+      return s1, s2, s3
 
     with self.test_session(config=config, use_gpu=True) as sess:
-      with ops.device("/cpu:3"):
-        outputs = sess.run(functional_ops.partitioned_call(args=[], f=Body))
+      outputs = sess.run(functional_ops.partitioned_call(args=[], f=Body))
     self.assertIn(compat.as_bytes("CPU:0"), outputs[0])
     self.assertIn(compat.as_bytes("CPU:1"), outputs[1])
     self.assertIn(compat.as_bytes("CPU:2"), outputs[2])
-    self.assertIn(compat.as_bytes("CPU:3"), outputs[3])
-
-    with self.test_session(config=config, use_gpu=True):
-      with ops.device("/cpu:0"):
-        outputs = sess.run(functional_ops.partitioned_call(args=[], f=Body))
-    self.assertIn(compat.as_bytes("CPU:0"), outputs[0])
-    self.assertIn(compat.as_bytes("CPU:1"), outputs[1])
-    self.assertIn(compat.as_bytes("CPU:2"), outputs[2])
-    self.assertIn(compat.as_bytes("CPU:0"), outputs[3])
 
   def testAssignAddResourceVariable(self):
 

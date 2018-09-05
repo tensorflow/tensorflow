@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
@@ -39,10 +39,8 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::UnorderedElementsAre;
 
-class HloInstructionTest : public HloTestBase {
+class HloInstructionTest : public HloVerifiedTestBase {
  protected:
-  HloInstructionTest() {}
-
   Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
 };
 
@@ -53,7 +51,7 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
  public:
   Status DefaultAction(HloInstruction* hlo_instruction) override {
     return Unimplemented("not implemented %s",
-                         HloOpcodeString(hlo_instruction->opcode()).c_str());
+                         HloOpcodeString(hlo_instruction->opcode()));
   }
 
   Status HandleParameter(HloInstruction* parameter) override {
@@ -1086,16 +1084,14 @@ TEST_F(HloInstructionTest, PartiallyElementwise) {
 
 TEST_F(HloInstructionTest, PartiallyElementwiseWithReuse) {
   // Fused expression:
-  //
-  // x     y
-  //  \   / \
-  //   min   broadcast
+  //         y
+  //        /
+  // x   broadcast
+  //  \   /  |
+  //   min   |
   //     \   /
   //      sub
   //
-  // The fusion instruction is elementwise on `x` because the only path from x
-  // to sub contains only elementwise operations. It is not elementwise on `y`
-  // because the path y->broadcast->sub is not all elementwise.
   const Shape r0f32 = ShapeUtil::MakeShape(F32, {});
   const Shape r1f32 = ShapeUtil::MakeShape(F32, {5});
 
@@ -1104,10 +1100,10 @@ TEST_F(HloInstructionTest, PartiallyElementwiseWithReuse) {
       builder.AddInstruction(HloInstruction::CreateParameter(0, r1f32, "x"));
   HloInstruction* y =
       builder.AddInstruction(HloInstruction::CreateParameter(1, r0f32, "y"));
-  HloInstruction* min = builder.AddInstruction(
-      HloInstruction::CreateBinary(r1f32, HloOpcode::kMinimum, x, y));
   HloInstruction* broadcast =
-      builder.AddInstruction(HloInstruction::CreateBroadcast(r1f32, y, {0}));
+      builder.AddInstruction(HloInstruction::CreateBroadcast(r1f32, y, {}));
+  HloInstruction* min = builder.AddInstruction(
+      HloInstruction::CreateBinary(r1f32, HloOpcode::kMinimum, x, broadcast));
   HloInstruction* sub = builder.AddInstruction(HloInstruction::CreateBinary(
       r1f32, HloOpcode::kSubtract, min, broadcast));
 
@@ -1118,10 +1114,10 @@ TEST_F(HloInstructionTest, PartiallyElementwiseWithReuse) {
   EXPECT_FALSE(fusion->IsElementwise());
   for (int64 operand_idx = 0; operand_idx < fusion->operand_count();
        ++operand_idx) {
-    if (fusion->operand(operand_idx) == x) {
-      EXPECT_TRUE(fusion->IsElementwiseOnOperand(operand_idx));
-    } else {
+    if (fusion->operand(operand_idx) == y) {
       EXPECT_FALSE(fusion->IsElementwiseOnOperand(operand_idx));
+    } else {
+      EXPECT_TRUE(fusion->IsElementwiseOnOperand(operand_idx));
     }
   }
 }
@@ -1248,7 +1244,7 @@ TEST_F(HloInstructionTest, NestedFusionEquality) {
   auto one = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto add_operand = builder.AddInstruction(
-      HloInstruction::CreateBroadcast(data_shape, one, {1}));
+      HloInstruction::CreateBroadcast(data_shape, one, {}));
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
       data_shape, HloOpcode::kAdd, dot, add_operand));
   auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -1355,7 +1351,7 @@ TEST_F(HloInstructionTest, Stringification) {
 
 TEST_F(HloInstructionTest, StringifyGather_0) {
   Shape input_tensor_shape = ShapeUtil::MakeShape(F32, {50, 49, 48, 47, 46});
-  Shape gather_indices_tensor_shape =
+  Shape start_indices_tensor_shape =
       ShapeUtil::MakeShape(S64, {10, 9, 8, 7, 5});
   Shape gather_result_shape =
       ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 30, 29, 28, 27, 26});
@@ -1363,19 +1359,18 @@ TEST_F(HloInstructionTest, StringifyGather_0) {
   HloComputation::Builder builder("Gather");
   HloInstruction* input = builder.AddInstruction(
       HloInstruction::CreateParameter(0, input_tensor_shape, "input_tensor"));
-  HloInstruction* gather_indices =
+  HloInstruction* start_indices =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          1, gather_indices_tensor_shape, "gather_indices"));
+          1, start_indices_tensor_shape, "start_indices"));
 
-  HloInstruction* gather_instruction =
-      builder.AddInstruction(HloInstruction::CreateGather(
-          gather_result_shape, input, gather_indices,
-          HloGatherInstruction::MakeGatherDimNumbers(
-              /*output_window_dims=*/{4, 5, 6, 7, 8},
-              /*elided_window_dims=*/{},
-              /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
-              /*index_vector_dim=*/4),
-          /*window_bounds=*/{30, 29, 28, 27, 26}));
+  HloInstruction* gather_instruction = builder.AddInstruction(
+      HloInstruction::CreateGather(gather_result_shape, input, start_indices,
+                                   HloGatherInstruction::MakeGatherDimNumbers(
+                                       /*offset_dims=*/{4, 5, 6, 7, 8},
+                                       /*collapsed_slice_dims=*/{},
+                                       /*start_index_map=*/{0, 1, 2, 3, 4},
+                                       /*index_vector_dim=*/4),
+                                   /*slice_sizes=*/{30, 29, 28, 27, 26}));
 
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
@@ -1383,15 +1378,15 @@ TEST_F(HloInstructionTest, StringifyGather_0) {
   EXPECT_EQ(gather_instruction->ToString(),
             "%gather = f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} "
             "gather(f32[50,49,48,47,46]{4,3,2,1,0} %input_tensor, "
-            "s64[10,9,8,7,5]{4,3,2,1,0} %gather_indices), "
-            "output_window_dims={4,5,6,7,8}, elided_window_dims={}, "
-            "gather_dims_to_operand_dims={0,1,2,3,4}, "
-            "index_vector_dim=4, window_bounds={30,29,28,27,26}");
+            "s64[10,9,8,7,5]{4,3,2,1,0} %start_indices), "
+            "offset_dims={4,5,6,7,8}, collapsed_slice_dims={}, "
+            "start_index_map={0,1,2,3,4}, "
+            "index_vector_dim=4, slice_sizes={30,29,28,27,26}");
 }
 
 TEST_F(HloInstructionTest, StringifyGather_1) {
   Shape input_tensor_shape = ShapeUtil::MakeShape(F32, {50, 49, 48, 47, 46});
-  Shape gather_indices_tensor_shape =
+  Shape start_indices_tensor_shape =
       ShapeUtil::MakeShape(S64, {10, 9, 5, 7, 6});
   Shape gather_result_shape =
       ShapeUtil::MakeShape(F32, {10, 9, 7, 6, 30, 29, 28, 27, 26});
@@ -1399,19 +1394,18 @@ TEST_F(HloInstructionTest, StringifyGather_1) {
   HloComputation::Builder builder("Gather");
   HloInstruction* input = builder.AddInstruction(
       HloInstruction::CreateParameter(0, input_tensor_shape, "input_tensor"));
-  HloInstruction* gather_indices =
+  HloInstruction* start_indices =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          1, gather_indices_tensor_shape, "gather_indices"));
+          1, start_indices_tensor_shape, "start_indices"));
 
-  HloInstruction* gather_instruction =
-      builder.AddInstruction(HloInstruction::CreateGather(
-          gather_result_shape, input, gather_indices,
-          HloGatherInstruction::MakeGatherDimNumbers(
-              /*output_window_dims=*/{4, 5, 6, 7, 8},
-              /*elided_window_dims=*/{},
-              /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
-              /*index_vector_dim=*/2),
-          /*window_bounds=*/{30, 29, 28, 27, 26}));
+  HloInstruction* gather_instruction = builder.AddInstruction(
+      HloInstruction::CreateGather(gather_result_shape, input, start_indices,
+                                   HloGatherInstruction::MakeGatherDimNumbers(
+                                       /*offset_dims=*/{4, 5, 6, 7, 8},
+                                       /*collapsed_slice_dims=*/{},
+                                       /*start_index_map=*/{0, 1, 2, 3, 4},
+                                       /*index_vector_dim=*/2),
+                                   /*slice_sizes=*/{30, 29, 28, 27, 26}));
 
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
@@ -1419,10 +1413,10 @@ TEST_F(HloInstructionTest, StringifyGather_1) {
   EXPECT_EQ(gather_instruction->ToString(),
             "%gather = f32[10,9,7,6,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} "
             "gather(f32[50,49,48,47,46]{4,3,2,1,0} %input_tensor, "
-            "s64[10,9,5,7,6]{4,3,2,1,0} %gather_indices), "
-            "output_window_dims={4,5,6,7,8}, elided_window_dims={}, "
-            "gather_dims_to_operand_dims={0,1,2,3,4}, "
-            "index_vector_dim=2, window_bounds={30,29,28,27,26}");
+            "s64[10,9,5,7,6]{4,3,2,1,0} %start_indices), "
+            "offset_dims={4,5,6,7,8}, collapsed_slice_dims={}, "
+            "start_index_map={0,1,2,3,4}, "
+            "index_vector_dim=2, slice_sizes={30,29,28,27,26}");
 }
 
 TEST_F(HloInstructionTest, StringifyScatter) {
@@ -1743,6 +1737,24 @@ TEST_F(HloInstructionTest, CloneDnumsOnCustomCall) {
   EXPECT_TRUE(protobuf_util::ProtobufEquals(
       clone->convolution_dimension_numbers(), dnums))
       << clone->convolution_dimension_numbers().DebugString();
+}
+
+TEST_F(HloInstructionTest, PreserveOperandPrecisionOnCloneConv) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  ENTRY test {
+    arg0 = f32[1,2,1] parameter(0)
+    arg1 = f32[1,1,1] parameter(1)
+    ROOT conv = f32[1,2,1] convolution(arg0, arg1), window={size=1},
+      dim_labels=b0f_0io->b0f, operand_precision={high,default}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kHloString));
+  auto* conv = module->entry_computation()->root_instruction();
+
+  auto clone = conv->Clone();
+  EXPECT_THAT(clone->precision_config().operand_precision(),
+              ::testing::ElementsAre(PrecisionConfigProto::HIGH,
+                                     PrecisionConfigProto::DEFAULT));
 }
 
 }  // namespace

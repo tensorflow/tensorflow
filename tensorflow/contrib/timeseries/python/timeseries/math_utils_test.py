@@ -290,7 +290,7 @@ class InputStatisticsTests(test.TestCase):
           time_series_reader=input_pipeline.NumpyReader(features))
       statistics = stat_object.initialize_graph(
           features=input_fn()[0])
-      with self.test_session(graph=graph) as session:
+      with self.session(graph=graph) as session:
         variables.global_variables_initializer().run()
         coordinator = coordinator_lib.Coordinator()
         queue_runner_impl.start_queue_runners(session, coord=coordinator)

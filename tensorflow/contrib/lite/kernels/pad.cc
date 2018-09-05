@@ -134,12 +134,22 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     after_padding.push_back(paddings_data[idx * 2 + 1]);
   }
 
-#define TF_LITE_PAD(type, scalar, pad_value)                                  \
-  type::PadV2(GetTensorData<scalar>(op_context.input),                        \
-              GetTensorDims(op_context.input), before_padding, after_padding, \
-              GetTensorData<scalar>(op_context.output),                       \
-              GetTensorDims(op_context.output), pad_value)
-
+#define TF_LITE_PAD(type, scalar, pad_value)                          \
+  TF_LITE_ENSURE_EQ(context, before_padding.size(), 4);               \
+  TF_LITE_ENSURE_EQ(context, after_padding.size(), 4);                \
+  tflite::PadParams op_params;                                        \
+  op_params.left_padding_count = 4;                                   \
+  op_params.right_padding_count = 4;                                  \
+  for (int i = 0; i < 4; ++i) {                                       \
+    op_params.left_padding[i] = before_padding[3 - i];                \
+    op_params.right_padding[i] = after_padding[3 - i];                \
+  }                                                                   \
+  const scalar pad_value_copy = pad_value;                            \
+                                                                      \
+  type::Pad(op_params, GetTensorShape(op_context.input),              \
+            GetTensorData<scalar>(op_context.input), &pad_value_copy, \
+            GetTensorShape(op_context.output),                        \
+            GetTensorData<scalar>(op_context.output))
   switch (op_context.input->type) {
     case kTfLiteFloat32: {
       float pad_value = op_context.constant_values == nullptr

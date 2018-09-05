@@ -303,7 +303,7 @@ class QueueRunnerTest(test.TestCase):
       init_op = variables.global_variables_initializer()
       qr = queue_runner_impl.QueueRunner(queue, [count_up_to])
       queue_runner_impl.add_queue_runner(qr)
-    with self.test_session(graph=graph) as sess:
+    with self.session(graph=graph) as sess:
       init_op.run()
       threads = queue_runner_impl.start_queue_runners(sess)
       for t in threads:

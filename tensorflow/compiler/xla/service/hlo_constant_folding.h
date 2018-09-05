@@ -25,7 +25,7 @@ namespace xla {
 // computation on constants.
 class HloConstantFolding : public HloPassInterface {
  public:
-  tensorflow::StringPiece name() const override { return "constant_folding"; }
+  absl::string_view name() const override { return "constant_folding"; }
 
   // Run constant folding operations on the given module. Returns whether the
   // module was changed (constant expressions folded).

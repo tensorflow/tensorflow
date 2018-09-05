@@ -187,6 +187,9 @@ tf_library(
     cpp_class = "MatMulAndAddCompWithProfiling",
     enable_xla_hlo_profiling = True,
     graph = "test_graph_tfmatmulandadd.pb",
+    tags = [
+        "manual",
+    ],
 )
 
 tf_library(
@@ -226,5 +229,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
     ],
 )

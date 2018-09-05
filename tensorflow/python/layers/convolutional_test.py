@@ -264,7 +264,7 @@ class ConvTest(test.TestCase):
       self.assertEqual(len(variables.trainable_variables()), 2)
 
   def testFunctionalConv2DInitializerFromScope(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'scope', initializer=init_ops.ones_initializer()):
         height, width = 7, 9
@@ -647,7 +647,7 @@ class SeparableConv2DTest(test.TestCase):
       self.assertEqual(len(variables.trainable_variables()), 3)
 
   def testFunctionalConv2DInitializerFromScope(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'scope', initializer=init_ops.ones_initializer()):
         height, width = 7, 9
@@ -882,7 +882,7 @@ class Conv2DTransposeTest(test.TestCase):
       self.assertEqual(len(variables.trainable_variables()), 2)
 
   def testFunctionalConv2DTransposeInitializerFromScope(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'scope', initializer=init_ops.ones_initializer()):
         height, width = 7, 9
@@ -1061,7 +1061,7 @@ class Conv3DTransposeTest(test.TestCase):
       self.assertEqual(len(variables.trainable_variables()), 2)
 
   def testFunctionalConv3DTransposeInitializerFromScope(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'scope', initializer=init_ops.ones_initializer()):
         depth, height, width = 5, 7, 9

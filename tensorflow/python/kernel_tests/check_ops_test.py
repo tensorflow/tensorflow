@@ -18,8 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
 import numpy as np
 
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -29,6 +33,8 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
 
@@ -743,6 +749,146 @@ class AssertPositiveTest(test.TestCase):
     with ops.control_dependencies([check_ops.assert_positive(empty)]):
       out = array_ops.identity(empty)
     self.evaluate(out)
+
+
+class EnsureShapeTest(test.TestCase):
+
+  # Static shape inference
+  def testStaticShape(self):
+    placeholder = array_ops.placeholder(dtypes.int32)
+    ensure_shape_op = check_ops.ensure_shape(placeholder, (3, 3, 3))
+    self.assertEqual(ensure_shape_op.get_shape(), (3, 3, 3))
+
+  def testStaticShape_MergesShapes(self):
+    placeholder = array_ops.placeholder(dtypes.int32, shape=(None, None, 3))
+    ensure_shape_op = check_ops.ensure_shape(placeholder, (5, 4, None))
+    self.assertEqual(ensure_shape_op.get_shape(), (5, 4, 3))
+
+  def testStaticShape_RaisesErrorWhenRankIncompatible(self):
+    placeholder = array_ops.placeholder(dtypes.int32, shape=(None, None, 3))
+    with self.assertRaises(ValueError):
+      check_ops.ensure_shape(placeholder, (2, 3))
+
+  def testStaticShape_RaisesErrorWhenDimIncompatible(self):
+    placeholder = array_ops.placeholder(dtypes.int32, shape=(None, None, 3))
+    with self.assertRaises(ValueError):
+      check_ops.ensure_shape(placeholder, (2, 2, 4))
+
+  def testStaticShape_CanSetUnknownShape(self):
+    placeholder = array_ops.placeholder(dtypes.int32)
+    derived = placeholder / 3
+    ensure_shape_op = check_ops.ensure_shape(derived, None)
+    self.assertEqual(ensure_shape_op.get_shape(), None)
+
+  # Dynamic shape check
+  def testEnsuresDynamicShape_RaisesError(self):
+    placeholder = array_ops.placeholder(dtypes.int32)
+    derived = math_ops.divide(placeholder, 3, name="MyDivide")
+    derived = check_ops.ensure_shape(derived, (3, 3, 3))
+    feed_val = [[1], [2]]
+    with self.test_session() as sess:
+      with self.assertRaisesWithPredicateMatch(
+          errors.InvalidArgumentError,
+          r"Shape of tensor MyDivide \[2,1\] is not compatible with "
+          r"expected shape \[3,3,3\]."):
+        sess.run(derived, feed_dict={placeholder: feed_val})
+
+  def testEnsuresDynamicShape_RaisesErrorDimUnknown(self):
+    placeholder = array_ops.placeholder(dtypes.int32)
+    derived = placeholder / 3
+    derived = check_ops.ensure_shape(derived, (None, None, 3))
+    feed_val = [[1], [2]]
+    with self.test_session() as sess:
+      with self.assertRaisesWithPredicateMatch(
+          errors.InvalidArgumentError,
+          r"Shape of tensor [A-Za-z_]* \[2,1\] is not compatible with "
+          r"expected shape \[\?,\?,3\]."):
+        sess.run(derived, feed_dict={placeholder: feed_val})
+
+  def testEnsuresDynamicShape(self):
+    placeholder = array_ops.placeholder(dtypes.int32)
+    derived = placeholder / 3
+    derived = check_ops.ensure_shape(derived, (2, 1))
+    feed_val = [[1], [2]]
+    with self.test_session() as sess:
+      sess.run(derived, feed_dict={placeholder: feed_val})
+
+  def testEnsuresDynamicShape_WithUnknownDims(self):
+    placeholder = array_ops.placeholder(dtypes.int32)
+    derived = placeholder / 3
+    derived = check_ops.ensure_shape(derived, (None, None))
+    feed_val = [[1], [2]]
+    with self.test_session() as sess:
+      sess.run(derived, feed_dict={placeholder: feed_val})
+
+
+class EnsureShapeBenchmark(test.Benchmark):
+
+  def _grappler_all_off_config(self):
+    config = config_pb2.ConfigProto()
+    off = rewriter_config_pb2.RewriterConfig.OFF
+    config.graph_options.optimizer_options.opt_level = -1
+    config.graph_options.rewrite_options.disable_model_pruning = 1
+    config.graph_options.rewrite_options.constant_folding = off
+    config.graph_options.rewrite_options.layout_optimizer = off
+    config.graph_options.rewrite_options.arithmetic_optimization = off
+    config.graph_options.rewrite_options.dependency_optimization = off
+    return config
+
+  def _run(self, op, feed_dict=None, num_iters=5000, name=None, **kwargs):
+    config = self._grappler_all_off_config()
+    with session.Session(config=config) as sess:
+      deltas = []
+      # Warm up the session
+      for _ in range(5):
+        sess.run(op, feed_dict=feed_dict)
+      for _ in range(num_iters):
+        start = time.time()
+        sess.run(op, feed_dict=feed_dict)
+        end = time.time()
+        deltas.append(end - start)
+      mean_time = np.median(deltas)
+      mean_us = mean_time * 1e6
+      # mean_us = (end - start) * 1e6 / num_iters
+      self.report_benchmark(
+          name=name,
+          wall_time=mean_us,
+          extras=kwargs,
+      )
+
+  def benchmark_const_op(self):
+    # In this case, we expect that the overhead of a `session.run` call
+    # far outweighs the time taken to execute the op...
+    shape = (3, 3, 100)
+    input_op = random_ops.random_normal(shape)
+    self._run(array_ops.identity(input_op), name="SingleConstOp")
+
+  def benchmark_single_ensure_op(self):
+    # In this case, we expect that the overhead of a `session.run` call
+    # far outweighs the time taken to execute the op...
+    shape = (3, 3, 100)
+    input_op = random_ops.random_normal(shape)
+    ensure_shape_op = check_ops.ensure_shape(input_op, shape)
+    self._run(ensure_shape_op, name="SingleEnsureShapeOp")
+
+  def _apply_n_times(self, op, target, n=1000):
+    for _ in range(n):
+      target = op(target)
+    return target
+
+  def benchmark_n_ops(self):
+    shape = (1000,)
+    input_op = random_ops.random_normal(shape)
+    n_ops = self._apply_n_times(array_ops.identity, input_op)
+    self._run(n_ops, name="NIdentityOps_1000")
+
+  def benchmark_n_ensure_ops(self):
+    shape = (1000,)
+    input_op = random_ops.random_normal(shape)
+    n_ensure_ops = self._apply_n_times(
+        lambda x: check_ops.ensure_shape(array_ops.identity(x), shape),
+        input_op)
+    self._run(n_ensure_ops, name="NEnsureShapeAndIdentityOps_1000")
 
 
 class AssertRankTest(test.TestCase):

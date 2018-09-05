@@ -28,7 +28,7 @@ from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -692,20 +692,24 @@ class TFOptimizer(Optimizer, checkpointable.CheckpointableBase):
   """Wrapper class for native TensorFlow optimizers.
   """
 
-  def __init__(self, optimizer):  # pylint: disable=super-init-not-called
+  def __init__(self, optimizer, iterations=None):  # pylint: disable=super-init-not-called
     self.optimizer = optimizer
     self._track_checkpointable(optimizer, name='optimizer')
-    with K.name_scope(self.__class__.__name__):
-      self.iterations = K.variable(0, dtype='int64', name='iterations')
+    if iterations is None:
+      with K.name_scope(self.__class__.__name__):
+        self.iterations = K.variable(0, dtype='int64', name='iterations')
+    else:
+      self.iterations = iterations
+    self._track_checkpointable(self.iterations, name='global_step')
 
   def apply_gradients(self, grads):
-    self.optimizer.apply_gradients(grads)
+    self.optimizer.apply_gradients(grads, global_step=self.iterations)
 
   def get_grads(self, loss, params):
     return self.optimizer.compute_gradients(loss, params)
 
   def get_updates(self, loss, params):
-    if distribute_lib.has_distribution_strategy():
+    if distribution_strategy_context.has_distribution_strategy():
       self.updates = []
 
       if not params:
@@ -813,7 +817,9 @@ def get(identifier):
   """
   # Wrap TF optimizer instances
   if isinstance(identifier, tf_optimizer_module.Optimizer):
-    return TFOptimizer(identifier)
+    opt = TFOptimizer(identifier)
+    K.track_tf_optimizer(opt)
+    return opt
   if isinstance(identifier, dict):
     return deserialize(identifier)
   elif isinstance(identifier, six.string_types):

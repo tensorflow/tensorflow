@@ -39,11 +39,11 @@ class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, BigtableTableResource* table,
                      string start_key, string end_key)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           table_(table),
           start_key_(std::move(start_key)),
           end_key_(std::move(end_key)) {
@@ -54,8 +54,8 @@ class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::BigtableRangeKeyDataset")}));
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::BigtableRangeKey")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -74,6 +74,14 @@ class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
     }
 
     BigtableTableResource* table() const { return table_; }
+
+   protected:
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      return errors::Unimplemented("%s does not support serialization",
+                                   DebugString());
+    }
 
    private:
     class Iterator : public BigtableReaderDatasetIterator<Dataset> {

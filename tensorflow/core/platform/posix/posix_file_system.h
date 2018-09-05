@@ -70,7 +70,7 @@ class LocalPosixFileSystem : public PosixFileSystem {
   string TranslateName(const string& name) const override {
     StringPiece scheme, host, path;
     io::ParseURI(name, &scheme, &host, &path);
-    return path.ToString();
+    return string(path);
   }
 };
 

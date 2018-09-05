@@ -34,7 +34,7 @@ class ForLoopTest(test.TestCase):
         extra_test=lambda s: True,
         body=lambda i, s: (s + i,),
         init_state=(0,))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual((10,), sess.run(s))
 
   def test_python(self):
@@ -52,7 +52,7 @@ class ForLoopTest(test.TestCase):
         extra_test=lambda s: True,
         body=lambda i, s: (s + i,),
         init_state=(0,))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual((10,), sess.run(s))
 
 
@@ -65,7 +65,7 @@ class WhileLoopTest(test.TestCase):
         body=lambda i, s: (i + 1, s + i,),
         init_state=(0, 0),
         extra_deps=(n,))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual((5, 10), sess.run(results))
 
   def test_python(self):
@@ -86,7 +86,8 @@ class IfStmtTest(test.TestCase):
           cond=cond,
           body=lambda: 1,
           orelse=lambda: -1)
-    with self.test_session() as sess:
+
+    with self.cached_session() as sess:
       self.assertEqual(1, sess.run(test_if_stmt(constant_op.constant(True))))
       self.assertEqual(-1, sess.run(test_if_stmt(constant_op.constant(False))))
 

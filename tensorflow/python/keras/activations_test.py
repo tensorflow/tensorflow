@@ -45,7 +45,7 @@ class KerasActivationsTest(test.TestCase):
       assert fn == ref_fn
 
   def test_softmax(self):
-    with self.test_session():
+    with self.cached_session():
       x = keras.backend.placeholder(ndim=2)
       f = keras.backend.function([x], [keras.activations.softmax(x)])
       test_values = np.random.random((2, 5))
@@ -59,7 +59,7 @@ class KerasActivationsTest(test.TestCase):
       keras.activations.softmax(x)
 
   def test_temporal_softmax(self):
-    with self.test_session():
+    with self.cached_session():
       x = keras.backend.placeholder(shape=(2, 2, 3))
       f = keras.backend.function([x], [keras.activations.softmax(x)])
       test_values = np.random.random((2, 2, 3)) * 10
@@ -73,7 +73,7 @@ class KerasActivationsTest(test.TestCase):
     alpha = 1.6732632423543772848170429916717
     scale = 1.0507009873554804934193349852946
 
-    with self.test_session():
+    with self.cached_session():
       positive_values = np.array([[1, 2]], dtype=keras.backend.floatx())
       result = f([positive_values])[0]
       self.assertAllClose(result, positive_values * scale, rtol=1e-05)
@@ -87,7 +87,7 @@ class KerasActivationsTest(test.TestCase):
     def softplus(x):
       return np.log(np.ones_like(x) + np.exp(x))
 
-    with self.test_session():
+    with self.cached_session():
       x = keras.backend.placeholder(ndim=2)
       f = keras.backend.function([x], [keras.activations.softplus(x)])
       test_values = np.random.random((2, 5))
@@ -99,7 +99,7 @@ class KerasActivationsTest(test.TestCase):
     def softsign(x):
       return np.divide(x, np.ones_like(x) + np.absolute(x))
 
-    with self.test_session():
+    with self.cached_session():
       x = keras.backend.placeholder(ndim=2)
       f = keras.backend.function([x], [keras.activations.softsign(x)])
       test_values = np.random.random((2, 5))
@@ -116,7 +116,7 @@ class KerasActivationsTest(test.TestCase):
         return z / (1 + z)
     sigmoid = np.vectorize(ref_sigmoid)
 
-    with self.test_session():
+    with self.cached_session():
       x = keras.backend.placeholder(ndim=2)
       f = keras.backend.function([x], [keras.activations.sigmoid(x)])
       test_values = np.random.random((2, 5))
@@ -130,7 +130,7 @@ class KerasActivationsTest(test.TestCase):
       z = 0.0 if x <= 0 else (1.0 if x >= 1 else x)
       return z
     hard_sigmoid = np.vectorize(ref_hard_sigmoid)
-    with self.test_session():
+    with self.cached_session():
       x = keras.backend.placeholder(ndim=2)
       f = keras.backend.function([x], [keras.activations.hard_sigmoid(x)])
       test_values = np.random.random((2, 5))
@@ -139,7 +139,7 @@ class KerasActivationsTest(test.TestCase):
     self.assertAllClose(result, expected, rtol=1e-05)
 
   def test_relu(self):
-    with self.test_session():
+    with self.cached_session():
       x = keras.backend.placeholder(ndim=2)
       f = keras.backend.function([x], [keras.activations.relu(x)])
       test_values = np.random.random((2, 5))
@@ -148,7 +148,7 @@ class KerasActivationsTest(test.TestCase):
     self.assertAllClose(result, test_values, rtol=1e-05)
 
   def test_elu(self):
-    with self.test_session():
+    with self.cached_session():
       x = keras.backend.placeholder(ndim=2)
       f = keras.backend.function([x], [keras.activations.elu(x, 0.5)])
       test_values = np.random.random((2, 5))
@@ -160,7 +160,7 @@ class KerasActivationsTest(test.TestCase):
     self.assertAllClose(result, true_result)
 
   def test_tanh(self):
-    with self.test_session():
+    with self.cached_session():
       test_values = np.random.random((2, 5))
       x = keras.backend.placeholder(ndim=2)
       exp = keras.activations.tanh(x)

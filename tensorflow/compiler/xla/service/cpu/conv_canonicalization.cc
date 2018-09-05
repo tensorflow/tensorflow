@@ -132,6 +132,7 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
       HloInstruction* new_conv = module->entry_computation()->AddInstruction(
           HloInstruction::CreateConvolve(new_conv_shape, new_input, new_kernel,
                                          hlo->window(), new_dnums));
+      new_conv->set_precision_config(hlo->precision_config());
 
       // Reshape the output back to the shape of the original convolution.
       TF_RETURN_IF_ERROR(module->entry_computation()->ReplaceWithNewInstruction(

@@ -55,12 +55,14 @@ class KernelTest : public testing::EagerModelTest {
     delegate_.data_ = delegate_data_.get();
     delegate_.FreeBufferHandle = nullptr;
     delegate_.Prepare = prepare_function;
-    delegate_.CopyFromBufferHandle = [](TfLiteDelegate* delegate,
+    delegate_.CopyFromBufferHandle = [](TfLiteContext* context,
+                                        TfLiteDelegate* delegate,
                                         TfLiteBufferHandle buffer_handle,
                                         void* data, size_t size) {
       auto* delegate_data = reinterpret_cast<DelegateData*>(delegate->data_);
-      tensorflow::StringPiece values =
-          delegate_data->GetBufferMap()->GetTensor(buffer_handle).tensor_data();
+      tensorflow::StringPiece values = delegate_data->GetBufferMap(context)
+                                           ->GetTensor(buffer_handle)
+                                           .tensor_data();
       memcpy(data, values.data(), values.size());
       return kTfLiteOk;
     };

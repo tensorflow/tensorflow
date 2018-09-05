@@ -42,7 +42,7 @@ class IdentityBijectorTest(test.TestCase):
             bijector.forward_log_det_jacobian(x, event_ndims=3)))
 
   def testScalarCongruency(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = identity_bijector.Identity()
       bijector_test_util.assert_scalar_congruency(
           bijector, lower_x=-2., upper_x=2.)

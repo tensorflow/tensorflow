@@ -43,10 +43,12 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, int64 window_size, const DatasetBase* input)
-        : GraphDatasetBase(ctx), window_size_(window_size), input_(input) {
+        : DatasetBase(DatasetContext(ctx)),
+          window_size_(window_size),
+          input_(input) {
       input_->Ref();
     }
 

@@ -211,6 +211,9 @@ py_test(
     shard_count = 2,
     srcs_version = "PY2AND3",
     tags = [
+        "manual",
+        "no_oss",
+        "notap",
         "optonly",
     ],
     deps = [

@@ -16,7 +16,8 @@
 # pylint: disable=line-too-long
 """Inputs and Readers.
 
-See the @{$python/io_ops} guide.
+See the [Inputs and
+Readers](https://tensorflow.org/api_guides/python/io_ops) guide.
 """
 
 from __future__ import absolute_import

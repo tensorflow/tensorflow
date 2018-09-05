@@ -24,6 +24,7 @@ import sys
 
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import tf_inspect
+from tensorflow.tools.docs import doc_controls
 from tensorflow.tools.docs import parser
 
 
@@ -37,11 +38,25 @@ def test_function_with_args_kwargs(unused_arg, *unused_args, **unused_kwargs):
   pass
 
 
-class TestClass(object):
+class ParentClass(object):
+
+  @doc_controls.do_not_doc_inheritable
+  def hidden_method(self):
+    pass
+
+
+class TestClass(ParentClass):
   """Docstring for TestClass itself."""
 
   def a_method(self, arg='default'):
     """Docstring for a method."""
+    pass
+
+  def hidden_method(self):
+    pass
+
+  @doc_controls.do_not_generate_docs
+  def hidden_method2(self):
     pass
 
   class ChildClass(object):
@@ -174,6 +189,104 @@ class ParserTest(googletest.TestCase):
 
     # Make sure this file is contained as the definition location.
     self.assertEqual(os.path.relpath(__file__, '/'), page_info.defined_in.path)
+
+  def test_docs_for_class_should_skip(self):
+
+    class Parent(object):
+
+      @doc_controls.do_not_doc_inheritable
+      def a_method(self, arg='default'):
+        pass
+
+    class Child(Parent):
+
+      def a_method(self, arg='default'):
+        pass
+
+    index = {
+        'Child': Child,
+        'Child.a_method': Child.a_method,
+    }
+
+    visitor = DummyVisitor(index=index, duplicate_of={})
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
+
+    tree = {
+        'Child': ['a_method'],
+    }
+
+    parser_config = parser.ParserConfig(
+        reference_resolver=reference_resolver,
+        duplicates={},
+        duplicate_of={},
+        tree=tree,
+        index=index,
+        reverse_index={},
+        guide_index={},
+        base_dir='/')
+
+    page_info = parser.docs_for_object(
+        full_name='Child', py_object=Child, parser_config=parser_config)
+
+    # Make sure the `a_method` is not present
+    self.assertEqual(0, len(page_info.methods))
+
+  def test_docs_for_message_class(self):
+
+    class CMessage(object):
+
+      def hidden(self):
+        pass
+
+    class Message(object):
+
+      def hidden2(self):
+        pass
+
+    class MessageMeta(object):
+
+      def hidden3(self):
+        pass
+
+    class ChildMessage(CMessage, Message, MessageMeta):
+
+      def my_method(self):
+        pass
+
+    index = {
+        'ChildMessage': ChildMessage,
+        'ChildMessage.hidden': ChildMessage.hidden,
+        'ChildMessage.hidden2': ChildMessage.hidden2,
+        'ChildMessage.hidden3': ChildMessage.hidden3,
+        'ChildMessage.my_method': ChildMessage.my_method,
+    }
+
+    visitor = DummyVisitor(index=index, duplicate_of={})
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
+
+    tree = {'ChildMessage': ['hidden', 'hidden2', 'hidden3', 'my_method']}
+
+    parser_config = parser.ParserConfig(
+        reference_resolver=reference_resolver,
+        duplicates={},
+        duplicate_of={},
+        tree=tree,
+        index=index,
+        reverse_index={},
+        guide_index={},
+        base_dir='/')
+
+    page_info = parser.docs_for_object(
+        full_name='ChildMessage',
+        py_object=ChildMessage,
+        parser_config=parser_config)
+
+    self.assertEqual(1, len(page_info.methods))
+    self.assertEqual('my_method', page_info.methods[0].short_name)
 
   def test_docs_for_module(self):
     # Get the current module.

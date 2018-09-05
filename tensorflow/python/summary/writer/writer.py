@@ -352,7 +352,7 @@ class FileWriter(SummaryToEventTransformer):
     @compatibility(eager)
     `FileWriter` is not compatible with eager execution. To write TensorBoard
     summaries under eager execution, use `tf.contrib.summary` instead.
-    @end_compatbility
+    @end_compatibility
     """
     if context.executing_eagerly():
       raise RuntimeError(

@@ -2218,4 +2218,121 @@ BENCHMARK(BM_FeedFetch)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
 BENCHMARK(BM_FeedFetchCallable)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
 
 }  // namespace
+
+class DirectSessionCollectiveTest : public ::testing::Test {
+ public:
+  // Creates a graph with CollectiveOps inside functions and runs it.  Returns
+  // the generated collective_graph_key.
+  Status RunGraphWithCollectiveFunctions(bool add_unused_function,
+                                         int64* collective_graph_key) {
+    GraphDef g = CreateGraph(add_unused_function);
+    const Tensor t1 =
+        test::AsTensor<float>({0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1});
+    const Tensor t2 =
+        test::AsTensor<float>({0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3});
+    auto session = CreateSession();
+    TF_RETURN_IF_ERROR(session->Create(g));
+    std::vector<Tensor> outputs;
+    TF_RETURN_IF_ERROR(
+        session->Run({{"input1:0", t1}, {"input2:0", t2}}, {},
+                     {"collective_call1:0", "collective_call2:0"}, &outputs));
+    DirectSession* direct_session = static_cast<DirectSession*>(session.get());
+    {
+      mutex_lock l(direct_session->collective_graph_key_lock_);
+      *collective_graph_key = direct_session->collective_graph_key_;
+    }
+    return Status::OK();
+  }
+
+ private:
+  // Creates a function with name `function_name` and a single CollectiveReduce
+  // node with instance key set as `instance_key`.
+  FunctionDef CollectiveFunction(const string& function_name,
+                                 int instance_key) {
+    return FunctionDefHelper::Define(
+        // Function name
+        function_name,
+        // In def
+        {"arg:float"},
+        // Out def
+        {"reduce:float"},
+        // Attr def
+        {},
+        // Node def
+        {{
+            {"reduce"},
+            "CollectiveReduce",
+            {"arg"},
+            {{"group_size", 2},
+             {"group_key", 1},
+             {"instance_key", instance_key},
+             {"subdiv_offsets", gtl::ArraySlice<int32>({0})},
+             {"merge_op", "Add"},
+             {"final_op", "Div"},
+             {"T", DT_FLOAT}},
+        }});
+  }
+
+  // Creates a GraphDef that adds two CollectiveFunctions, one each on CPU0 and
+  // CPU1, with instance_key 1, and appropriate placeholder inputs.  If
+  // `add_unused_function` is true, adds another CollectiveFunction with
+  // instance_key 2 that is not invoked in the graph.
+  GraphDef CreateGraph(bool add_unused_function) {
+    GraphDef g;
+    FunctionDef collective_function =
+        CollectiveFunction("CollectiveFunction1", 1);
+    FunctionDefLibrary* lib = g.mutable_library();
+    *lib->add_function() = collective_function;
+    if (add_unused_function) {
+      FunctionDef unused_function =
+          CollectiveFunction("CollectiveFunction2", 2);
+      *lib->add_function() = unused_function;
+    }
+
+    // Inputs.
+    AttrValue dtype_attr;
+    SetAttrValue(DT_FLOAT, &dtype_attr);
+    NodeDef input1;
+    input1.set_name("input1");
+    input1.set_op("Placeholder");
+    input1.mutable_attr()->insert({"dtype", dtype_attr});
+    NodeDef input2;
+    input2.set_name("input2");
+    input2.set_op("Placeholder");
+    input2.mutable_attr()->insert({"dtype", dtype_attr});
+
+    // CollectiveReduce on CPU0 with instance_key 1.
+    NodeDef collective_call1;
+    collective_call1.set_name("collective_call1");
+    collective_call1.set_op("CollectiveFunction1");
+    collective_call1.add_input("input1");
+    collective_call1.set_device("/job:localhost/replica:0/task:0/device:CPU:0");
+    // CollectiveReduce on CPU1 with instance_key 1.
+    NodeDef collective_call2;
+    collective_call2.set_name("collective_call2");
+    collective_call2.set_op("CollectiveFunction1");
+    collective_call2.add_input("input2");
+    collective_call1.set_device("/job:localhost/replica:0/task:0/device:CPU:1");
+
+    *g.add_node() = input1;
+    *g.add_node() = input2;
+    *g.add_node() = collective_call1;
+    *g.add_node() = collective_call2;
+
+    return g;
+  }
+};
+
+#ifndef GOOGLE_CUDA
+// TODO(ayushd): enable this test for GPU builds.
+TEST_F(DirectSessionCollectiveTest,
+       TestCollectiveGraphKeyUsesOnlyCalledFunctions) {
+  int64 key1;
+  TF_ASSERT_OK(RunGraphWithCollectiveFunctions(false, &key1));
+  int64 key2;
+  TF_ASSERT_OK(RunGraphWithCollectiveFunctions(true, &key2));
+  ASSERT_EQ(key1, key2);
+}
+#endif
+
 }  // namespace tensorflow

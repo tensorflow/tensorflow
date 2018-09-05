@@ -26,6 +26,9 @@ limitations under the License.
 #ifndef TFLITE_MCU
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
 #endif
+#if defined(TFLITE_EXTENDED)
+#include "tensorflow/contrib/lite/delegates/eager/delegate.h"
+#endif
 #include "tensorflow/contrib/lite/version.h"
 
 namespace tflite {
@@ -619,8 +622,10 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     }
     case BuiltinOperator_MEAN:
     case BuiltinOperator_REDUCE_MAX:
+    case BuiltinOperator_REDUCE_MIN:
     case BuiltinOperator_REDUCE_PROD:
-    case BuiltinOperator_SUM: {
+    case BuiltinOperator_SUM:
+    case BuiltinOperator_REDUCE_ANY: {
       auto* params = MallocPOD<TfLiteReducerParams>();
       if (auto* schema_params = op->builtin_options_as_ReducerOptions()) {
         params->keep_dims = schema_params->keep_dims();
@@ -741,6 +746,15 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = static_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_UNPACK: {
+      TfLiteUnpackParams* params = MallocPOD<TfLiteUnpackParams>();
+      if (auto* unpack_params = op->builtin_options_as_UnpackOptions()) {
+        params->num = unpack_params->num();
+        params->axis = unpack_params->axis();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
 
     // Below are the ops with no builtin_data strcture.
     case BuiltinOperator_BATCH_TO_SPACE_ND:
@@ -786,6 +800,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_LOGICAL_OR:
     case BuiltinOperator_LOGICAL_AND:
     case BuiltinOperator_LOGICAL_NOT:
+    case BuiltinOperator_FLOOR_DIV:
       break;
   }
   return kTfLiteOk;
@@ -797,6 +812,10 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
     const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators,
     Interpreter* interpreter) {
   TfLiteStatus status = kTfLiteOk;
+
+  // Reduce the number of redundant allocations
+  interpreter->ReserveNodes(operators->Length());
+
   for (int i = 0; i < operators->Length(); ++i) {
     const auto* op = operators->Get(i);
     int index = op->opcode_index();
@@ -1039,6 +1058,14 @@ TfLiteStatus InterpreterBuilder::operator()(
     }
   }
   (**interpreter).SetVariables(std::move(variables));
+
+#if defined(TFLITE_EXTENDED)
+  if (auto delegate = EagerDelegate::Create()) {
+    (**interpreter)
+        .ModifyGraphWithDelegate(std::move(delegate),
+                                 /*allow_dynamic_tensors=*/true);
+  }
+#endif
 
   return kTfLiteOk;
 }

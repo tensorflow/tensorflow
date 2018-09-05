@@ -218,11 +218,11 @@ class ToBigtableOp : public AsyncOpKernel {
       OP_REQUIRES_OK_ASYNC(
           ctx, GetDatasetFromVariantTensor(ctx->input(1), &dataset), done);
 
-      IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
       std::unique_ptr<IteratorBase> iterator;
       OP_REQUIRES_OK_ASYNC(
           ctx,
-          dataset->MakeIterator(&iter_ctx, "ToBigtableOpIterator", &iterator),
+          dataset->MakeIterator(IteratorContext(ctx), "ToBigtableOpIterator",
+                                &iterator),
           done);
 
       int64 timestamp_int;
@@ -245,9 +245,10 @@ class ToBigtableOp : public AsyncOpKernel {
         ::google::cloud::bigtable::BulkMutation mutation;
         // TODO(saeta): Make # of mutations configurable.
         for (uint64 i = 0; i < 100 && !end_of_sequence; ++i) {
-          OP_REQUIRES_OK_ASYNC(
-              ctx, iterator->GetNext(&iter_ctx, &components, &end_of_sequence),
-              done);
+          OP_REQUIRES_OK_ASYNC(ctx,
+                               iterator->GetNext(IteratorContext(ctx),
+                                                 &components, &end_of_sequence),
+                               done);
           if (!end_of_sequence) {
             OP_REQUIRES_OK_ASYNC(
                 ctx,

@@ -28,7 +28,7 @@ namespace xla {
 class BatchDotSimplification : public HloPassInterface {
  public:
   StatusOr<bool> Run(HloModule* module) override;
-  tensorflow::StringPiece name() const override;
+  absl::string_view name() const override;
 
  private:
   StatusOr<bool> ElideDegenerateBatchDimensionFromBatchDot(

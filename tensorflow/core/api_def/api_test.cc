@@ -59,8 +59,8 @@ void GetGoldenApiDefs(Env* env, const string& api_files_dir,
     file_contents = PBTxtFromMultiline(file_contents);
 
     ApiDefs api_defs;
-    CHECK(tensorflow::protobuf::TextFormat::ParseFromString(file_contents,
-                                                            &api_defs))
+    QCHECK(tensorflow::protobuf::TextFormat::ParseFromString(file_contents,
+                                                             &api_defs))
         << "Failed to load " << file_path;
     CHECK_EQ(api_defs.op_size(), 1);
     (*name_to_api_def)[api_defs.op(0).graph_op_name()] = api_defs.op(0);

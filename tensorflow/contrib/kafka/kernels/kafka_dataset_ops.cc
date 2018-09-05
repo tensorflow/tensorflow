@@ -52,12 +52,12 @@ class KafkaDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, std::vector<string> topics,
             const string& servers, const string& group, const bool eof,
             const int64 timeout)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           topics_(std::move(topics)),
           servers_(servers),
           group_(group),

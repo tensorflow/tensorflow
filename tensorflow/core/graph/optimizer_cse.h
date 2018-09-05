@@ -15,8 +15,8 @@ limitations under the License.
 
 // An optimization pass that performs common subexpression elimination.
 
-#ifndef TENSORFLOW_GRAPH_OPTIMIZER_CSE_H_
-#define TENSORFLOW_GRAPH_OPTIMIZER_CSE_H_
+#ifndef TENSORFLOW_CORE_GRAPH_OPTIMIZER_CSE_H_
+#define TENSORFLOW_CORE_GRAPH_OPTIMIZER_CSE_H_
 
 #include <sys/types.h>
 #include "tensorflow/core/graph/graph.h"
@@ -34,4 +34,4 @@ extern bool OptimizeCSE(Graph* g,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_OPTIMIZER_CSE_H_
+#endif  // TENSORFLOW_CORE_GRAPH_OPTIMIZER_CSE_H_

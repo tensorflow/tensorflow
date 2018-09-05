@@ -37,11 +37,11 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, const DatasetBase* input,
                      StatsAggregatorResource* stats_aggregator_resource)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           stats_aggregator_resource_(stats_aggregator_resource) {
       input_->Ref();
@@ -68,6 +68,14 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override {
       return "SetStatsAggregatorDatasetOp::Dataset";
+    }
+
+   protected:
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      return errors::Unimplemented("%s does not support serialization",
+                                   DebugString());
     }
 
    private:

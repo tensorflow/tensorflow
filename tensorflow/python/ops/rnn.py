@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -142,6 +143,28 @@ def _should_cache():
   # updated weights.
   ctxt = ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
   return control_flow_util.GetContainingWhileContext(ctxt) is None
+
+
+def _is_keras_rnn_cell(rnn_cell):
+  """Check whether the cell is a Keras RNN cell.
+
+  The Keras RNN cell accept the state as a list even the state is a single
+  tensor, whereas the TF RNN cell does not wrap single state tensor in list.
+  This behavior difference should be unified in future version.
+
+  Args:
+    rnn_cell: An RNN cell instance that either follow the Keras interface or TF
+      RNN interface.
+  Returns:
+    Boolean, whether the cell is an Keras RNN cell.
+  """
+  # Cell type check is not strict enough since there are cells created by other
+  # library like Deepmind that didn't inherit tf.nn.rnn_cell.RNNCell.
+  # Keras cells never had zero_state method, which was from the original
+  # interface from TF RNN cell.
+  return (not isinstance(rnn_cell, rnn_cell_impl.RNNCell)
+          and isinstance(rnn_cell, base_layer.Layer)
+          and getattr(rnn_cell, "zero_state", None) is None)
 
 
 # pylint: disable=unused-argument
@@ -608,7 +631,11 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     else:
       if not dtype:
         raise ValueError("If there is no initial_state, you must give a dtype.")
-      state = cell.zero_state(batch_size, dtype)
+      if getattr(cell, "get_initial_state", None) is not None:
+        state = cell.get_initial_state(
+            inputs=None, batch_size=batch_size, dtype=dtype)
+      else:
+        state = cell.zero_state(batch_size, dtype)
 
     def _assert_has_shape(x, shape):
       x_shape = array_ops.shape(x)
@@ -788,6 +815,10 @@ def _dynamic_rnn_loop(cell,
       input_t = tuple(ta[time.numpy()] for ta in input_ta)
 
     input_t = nest.pack_sequence_as(structure=inputs, flat_sequence=input_t)
+    # Keras RNN cells only accept state as list, even if it's a single tensor.
+    is_keras_rnn_cell = _is_keras_rnn_cell(cell)
+    if is_keras_rnn_cell and not nest.is_sequence(state):
+      state = [state]
     call_cell = lambda: cell(input_t, state)
 
     if sequence_length is not None:
@@ -804,6 +835,9 @@ def _dynamic_rnn_loop(cell,
     else:
       (output, new_state) = call_cell()
 
+    # Keras cells always wrap state as list, even if it's a single tensor.
+    if is_keras_rnn_cell and len(new_state) == 1:
+      new_state = new_state[0]
     # Pack state if using state tuples
     output = nest.flatten(output)
 
@@ -1286,7 +1320,11 @@ def static_rnn(cell,
       if not dtype:
         raise ValueError("If no initial_state is provided, "
                          "dtype must be specified")
-      state = cell.zero_state(batch_size, dtype)
+      if getattr(cell, "get_initial_state", None) is not None:
+        state = cell.get_initial_state(
+            inputs=None, batch_size=batch_size, dtype=dtype)
+      else:
+        state = cell.zero_state(batch_size, dtype)
 
     if sequence_length is not None:  # Prepare variables
       sequence_length = ops.convert_to_tensor(
@@ -1315,6 +1353,10 @@ def static_rnn(cell,
       min_sequence_length = math_ops.reduce_min(sequence_length)
       max_sequence_length = math_ops.reduce_max(sequence_length)
 
+    # Keras RNN cells only accept state as list, even if it's a single tensor.
+    is_keras_rnn_cell = _is_keras_rnn_cell(cell)
+    if is_keras_rnn_cell and not nest.is_sequence(state):
+      state = [state]
     for time, input_ in enumerate(inputs):
       if time > 0:
         varscope.reuse_variables()
@@ -1333,8 +1375,10 @@ def static_rnn(cell,
             state_size=cell.state_size)
       else:
         (output, state) = call_cell()
-
       outputs.append(output)
+    # Keras RNN cells only return state as list, even if it's a single tensor.
+    if is_keras_rnn_cell and len(state) == 1:
+      state = state[0]
 
     return (outputs, state)
 

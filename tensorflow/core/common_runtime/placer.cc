@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/util/status_util.h"
 
 namespace tensorflow {
 
@@ -934,14 +933,13 @@ bool Placer::ClientHandlesErrorFormatting() const {
 // Returns the node name in single quotes. If the client handles formatted
 // errors, appends a formatting tag which the client will reformat into, for
 // example, " (defined at filename:123)".
+// TODO(shikharagarwal): Remove this function once
+// client_handles_error_formatting flag is removed.
 string Placer::RichNodeName(const Node* node) const {
-  string quoted_name = strings::StrCat("'", node->name(), "'");
   if (ClientHandlesErrorFormatting()) {
-    string file_and_line = error_format_tag(*node, "${defined_at}");
-    return strings::StrCat(quoted_name, file_and_line);
-  } else {
-    return quoted_name;
+    return errors::FormatNodeNameForError(node->name());
   }
+  return strings::StrCat("'", node->name(), "'");
 }
 
 }  // namespace tensorflow

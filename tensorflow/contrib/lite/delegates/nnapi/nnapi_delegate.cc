@@ -238,7 +238,7 @@ class NNAPIOpBuilder {
         tensor->params.zero_point};
     CHECK_NN(context_,
              ANeuralNetworksModel_addOperand(nn_model_, &operand_type));
-    augmented_inputs_.push_back(ann_index);
+    augmented_outputs_.push_back(ann_index);
 
     *ann_tensor_index_out = ann_index;
     return kTfLiteOk;
@@ -370,8 +370,8 @@ struct NNAPIOpMappingArgs {
   TfLiteContext* context;
   NNAPIOpBuilder* builder;
   TfLiteNode* node;
-  std::vector<int>* model_state_inputs;
-  std::vector<int>* model_state_tfl_outputs;
+  std::vector<int>* model_state_outputs;
+  std::vector<int>* model_state_tfl_inputs;
 };
 
 // The kernel that represents the subgraph of TF Lite being run on NN API.
@@ -781,8 +781,7 @@ class NNAPIDelegateKernel {
         break;
       case kTfLiteBuiltinRnn:
         // NNAPI only support float32 weights.
-        // TODO(miaowang): check the number of inputs before accessing it.
-        if (version == 1 &&
+        if (version == 1 && node->inputs->size == 5 &&
             context->tensors[node->inputs->data[/*kWeightsTensor*/ 1]].type ==
                 kTfLiteFloat32) {
           return [](const NNAPIOpMappingArgs& mapping_args)
@@ -790,11 +789,11 @@ class NNAPIDelegateKernel {
             // NNAPI need both state_in and state_out.
             int ann_index;
             mapping_args.builder->AddStateFloat32Tensor(
-                mapping_args.node->outputs->data[/*kHiddenStateTensor*/ 0],
+                mapping_args.node->inputs->data[/*kHiddenStateTensor*/ 4],
                 &ann_index);
-            mapping_args.model_state_inputs->push_back(ann_index);
-            mapping_args.model_state_tfl_outputs->push_back(
-                mapping_args.node->outputs->data[/*kHiddenStateTensor*/ 0]);
+            mapping_args.model_state_outputs->push_back(ann_index);
+            mapping_args.model_state_tfl_inputs->push_back(
+                mapping_args.node->inputs->data[/*kHiddenStateTensor*/ 4]);
             auto builtin = reinterpret_cast<TfLiteRNNParams*>(
                 mapping_args.node->builtin_data);
             mapping_args.builder->AddScalarInt32Operand(builtin->activation);
@@ -806,7 +805,7 @@ class NNAPIDelegateKernel {
         break;
       case kTfLiteBuiltinSvdf:
         // NNAPI only support float32 weights.
-        if (version == 1 &&
+        if (version == 1 && node->inputs->size == 5 &&
             context->tensors[node->inputs->data[/*kWeightsFeatureTensor*/ 1]]
                     .type == kTfLiteFloat32) {
           return [](const NNAPIOpMappingArgs& mapping_args)
@@ -814,11 +813,13 @@ class NNAPIDelegateKernel {
             // NNAPI need both state_in and state_out.
             int ann_index;
             mapping_args.builder->AddStateFloat32Tensor(
-                mapping_args.node->outputs->data[/*kStateTensor*/ 0],
+                mapping_args.node->inputs
+                    ->data[/*kInputActivationStateTensor*/ 4],
                 &ann_index);
-            mapping_args.model_state_inputs->push_back(ann_index);
-            mapping_args.model_state_tfl_outputs->push_back(
-                mapping_args.node->outputs->data[/*kStateTensor*/ 0]);
+            mapping_args.model_state_outputs->push_back(ann_index);
+            mapping_args.model_state_tfl_inputs->push_back(
+                mapping_args.node->inputs
+                    ->data[/*kInputActivationStateTensor*/ 4]);
 
             auto builtin = reinterpret_cast<TfLiteSVDFParams*>(
                 mapping_args.node->builtin_data);
@@ -833,28 +834,12 @@ class NNAPIDelegateKernel {
       case kTfLiteBuiltinLstm:
         // NNAPI only support float32 weights.
         // TODO(miaowang): add loggings to indicate why the op is rejected.
-        if (version == 1 && node->inputs->size == 18 &&
+        if (version == 1 && node->inputs->size == 20 &&
             context->tensors[node->inputs
                                  ->data[/*kInputToOutputWeightsTensor*/ 4]]
                     .type == kTfLiteFloat32) {
           return [](const NNAPIOpMappingArgs& mapping_args)
                      -> ANeuralNetworksOperationType {
-            // NNAPI need both state_in and state_out for cell_state and
-            // output_state.
-            int ann_index;
-            mapping_args.builder->AddStateFloat32Tensor(
-                mapping_args.node->outputs->data[/*kOutputStateTensor*/ 0],
-                &ann_index);
-            mapping_args.model_state_inputs->push_back(ann_index);
-            mapping_args.model_state_tfl_outputs->push_back(
-                mapping_args.node->outputs->data[/*kOutputStateTensor*/ 0]);
-            mapping_args.builder->AddStateFloat32Tensor(
-                mapping_args.node->outputs->data[/*kCellStateTensor*/ 1],
-                &ann_index);
-            mapping_args.model_state_inputs->push_back(ann_index);
-            mapping_args.model_state_tfl_outputs->push_back(
-                mapping_args.node->outputs->data[/*kCellStateTensor*/ 1]);
-
             auto builtin = reinterpret_cast<TfLiteLSTMParams*>(
                 mapping_args.node->builtin_data);
             mapping_args.builder->AddScalarInt32Operand(builtin->activation);
@@ -864,6 +849,25 @@ class NNAPIDelegateKernel {
             // Current NNAPI implementation requires the sratch_buffer as
             // output.
             mapping_args.builder->AddAdditionalFloat32OutputTensor(2);
+
+            // NNAPI need both state_in and state_out for cell_state and
+            // output_state.
+            int ann_index;
+            mapping_args.builder->AddStateFloat32Tensor(
+                mapping_args.node->inputs
+                    ->data[/*kInputActivationStateTensor*/ 18],
+                &ann_index);
+            mapping_args.model_state_outputs->push_back(ann_index);
+            mapping_args.model_state_tfl_inputs->push_back(
+                mapping_args.node->inputs
+                    ->data[/*kInputActivationStateTensor*/ 18]);
+            mapping_args.builder->AddStateFloat32Tensor(
+                mapping_args.node->inputs->data[/*kInputCellStateTensor*/ 19],
+                &ann_index);
+            mapping_args.model_state_outputs->push_back(ann_index);
+            mapping_args.model_state_tfl_inputs->push_back(
+                mapping_args.node->inputs->data[/*kInputCellStateTensor*/ 19]);
+
             return ANEURALNETWORKS_LSTM;
           };
         } else {
@@ -950,12 +954,10 @@ class NNAPIDelegateKernel {
     // Set the input tensor buffers. Note: we access tflite tensors using
     // absolute indices but NN api indices inputs by relative indices.
     int relative_input_index = 0;
-    int num_optional_tensors = 0;
 
     size_t input_offset = 0;
     for (auto absolute_input_index : TfLiteIntArrayView(node->inputs)) {
       if (absolute_input_index == kOptionalTensor) {
-        num_optional_tensors++;
         continue;
       }
       TfLiteTensor* tensor = &context->tensors[absolute_input_index];
@@ -989,16 +991,16 @@ class NNAPIDelegateKernel {
 
     // The state_out of previous invocation need to be mapped to state_in of
     // current invocation.
-    for (size_t i = 0; i < model_state_tfl_outputs_.size(); i++) {
-      int state_tensor_idx = model_state_tfl_outputs_[i];
+    for (size_t i = 0; i < model_state_tfl_inputs_.size(); i++) {
+      int state_tensor_idx = model_state_tfl_inputs_[i];
       TfLiteTensor* tensor = &context->tensors[state_tensor_idx];
       // Here we are using a deep copy for state_in tensors so that we are not
       // reading and writing into the same buffer during a invocation.
       // TODO(110369471): using double shared buffer to minimize the copies.
-      CHECK_NN(context,
-               ANeuralNetworksExecution_setInput(
-                   execution, i + node->inputs->size - num_optional_tensors,
-                   nullptr, tensor->data.raw, tensor->bytes));
+      CHECK_NN(context, ANeuralNetworksExecution_setOutput(
+                            execution, relative_output_index, nullptr,
+                            tensor->data.raw, tensor->bytes));
+      relative_output_index++;
     }
     // Invoke ANN in blocking fashion.
     ANeuralNetworksEvent* event = nullptr;
@@ -1030,8 +1032,8 @@ class NNAPIDelegateKernel {
   // Track indices we use
   OperandMapping operand_mapping_;
 
-  std::vector<int> model_state_inputs_;
-  std::vector<int> model_state_tfl_outputs_;
+  std::vector<int> model_state_outputs_;
+  std::vector<int> model_state_tfl_inputs_;
 
   std::unique_ptr<NNMemory> nn_input_memory_;
   std::unique_ptr<NNMemory> nn_output_memory_;
@@ -1063,9 +1065,9 @@ class NNAPIDelegateKernel {
         }
       }
       // Get op type and operands
-      int nn_op_type = Map(context, reg->builtin_code, reg->version,
-                           node)({context, &builder, node, &model_state_inputs_,
-                                  &model_state_tfl_outputs_});
+      int nn_op_type = Map(context, reg->builtin_code, reg->version, node)(
+          {context, &builder, node, &model_state_outputs_,
+           &model_state_tfl_inputs_});
       // Map outputs to NN API tensor indices.
       for (auto output_index : TfLiteIntArrayView(node->outputs)) {
         TF_LITE_ENSURE_STATUS(builder.AddTensorOutput(output_index));
@@ -1098,15 +1100,15 @@ class NNAPIDelegateKernel {
       }
     }
 
-    // Add state input tensors as model inputs
-    for (int i : model_state_inputs_) {
-      inputs.push_back(i);
-    }
-
     size_t total_output_byte_size = 0;
     for (int i : TfLiteIntArrayView(output_tensors)) {
       outputs.push_back(operand_mapping_.lite_index_to_ann(i));
       total_output_byte_size += context->tensors[i].bytes;
+    }
+
+    // Add state output tensors as model inputs
+    for (int i : model_state_outputs_) {
+      outputs.push_back(i);
     }
 
     // Tell ANN to declare inputs/outputs

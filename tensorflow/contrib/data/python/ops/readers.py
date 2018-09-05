@@ -25,8 +25,8 @@ import numpy as np
 from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import gen_dataset_ops as contrib_gen_dataset_ops
 from tensorflow.contrib.data.python.ops import interleave_ops
+from tensorflow.contrib.data.python.ops import parsing_ops
 from tensorflow.contrib.data.python.ops import shuffle_ops
-from tensorflow.contrib.data.python.ops import stats_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import convert
@@ -37,7 +37,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import gen_dataset_ops
-from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.util import deprecation
 
@@ -326,7 +325,6 @@ def make_csv_dataset(
     shuffle_seed=None,
     prefetch_buffer_size=1,
     num_parallel_reads=1,
-    num_parallel_parser_calls=2,
     sloppy=False,
     num_rows_for_inference=100,
     compression_type=None,
@@ -393,8 +391,6 @@ def make_csv_dataset(
       batches consumed per training step.
     num_parallel_reads: Number of threads used to read CSV records from files.
       If >1, the results will be interleaved.
-    num_parallel_parser_calls: Number of parallel invocations of the CSV parsing
-      function on CSV records.
     sloppy: If `True`, reading performance will be improved at
       the cost of non-deterministic ordering. If `False`, the order of elements
       produced is deterministic prior to shuffling (elements are still
@@ -503,7 +499,7 @@ def make_csv_dataset(
   # indefinitely, and all batches will be full-sized.
   dataset = dataset.batch(batch_size=batch_size,
                           drop_remainder=num_epochs is None)
-  dataset = dataset.map(map_fn, num_parallel_calls=num_parallel_parser_calls)
+  dataset = dataset.map(map_fn)
   dataset = dataset.prefetch(prefetch_buffer_size)
 
   return dataset
@@ -663,6 +659,7 @@ def make_batched_features_dataset(file_pattern,
                                   batch_size,
                                   features,
                                   reader=core_readers.TFRecordDataset,
+                                  label_key=None,
                                   reader_args=None,
                                   num_epochs=None,
                                   shuffle=True,
@@ -674,6 +671,9 @@ def make_batched_features_dataset(file_pattern,
                                   sloppy_ordering=False,
                                   drop_final_batch=False):
   """Returns a `Dataset` of feature dictionaries from `Example` protos.
+
+  If label_key argument is provided, returns a `Dataset` of tuple
+  comprising of feature dictionaries and label.
 
   Example:
 
@@ -725,6 +725,9 @@ def make_batched_features_dataset(file_pattern,
     reader: A function or class that can be
       called with a `filenames` tensor and (optional) `reader_args` and returns
       a `Dataset` of `Example` tensors. Defaults to `tf.data.TFRecordDataset`.
+    label_key: (Optional) A string corresponding to the key labels are stored in
+      `tf.Examples`. If provided, it must be one of the `features` key,
+      otherwise results in `ValueError`.
     reader_args: Additional arguments to pass to the reader class.
     num_epochs: Integer specifying the number of times to read through the
       dataset. If None, cycles through the dataset forever. Defaults to `None`.
@@ -750,8 +753,11 @@ def make_batched_features_dataset(file_pattern,
       `False`.
 
   Returns:
-    A dataset of `dict` elements. Each `dict` maps feature keys to
-    `Tensor` or `SparseTensor` objects.
+    A dataset of `dict` elements, (or a tuple of `dict` elements and label).
+    Each `dict` maps feature keys to `Tensor` or `SparseTensor` objects.
+
+  Raises:
+    ValueError: If `label_key` is not one of the `features` keys.
   """
   # Create dataset of all matching filenames
   filenames = _get_file_names(file_pattern, False)
@@ -778,8 +784,6 @@ def make_batched_features_dataset(file_pattern,
   dataset = _maybe_shuffle_and_repeat(
       dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
 
-  dataset = dataset.apply(stats_ops.feature_stats("record_stats"))
-
   # NOTE(mrry): We set `drop_remainder=True` when `num_epochs is None` to
   # improve the shape inference, because it makes the batch dimension static.
   # It is safe to do this because in that case we are repeating the input
@@ -788,13 +792,17 @@ def make_batched_features_dataset(file_pattern,
       batch_size, drop_remainder=drop_final_batch or num_epochs is None)
 
   # Parse `Example` tensors to a dictionary of `Feature` tensors.
-  dataset = dataset.map(
-      lambda x: parsing_ops.parse_example(x, features),
-      num_parallel_calls=parser_num_threads)
+  dataset = dataset.apply(
+      parsing_ops.parse_example_dataset(
+          features, num_parallel_calls=parser_num_threads))
 
-  # TODO(rachelim): Add an optional label_name argument for extracting the label
-  # from the features dictionary, to comply with the type expected by the
-  # input_fn to a `tf.Estimator.train` or `tf.Estimator.evaluate` function.
+  if label_key:
+    if label_key not in features:
+      raise ValueError(
+          "The `label_key` provided (%r) must be one of the `features` keys." %
+          label_key)
+    dataset = dataset.map(lambda x: (x, x.pop(label_key)))
+
   dataset = dataset.prefetch(prefetch_buffer_size)
   return dataset
 
@@ -974,3 +982,49 @@ class SqlDataset(dataset_ops.Dataset):
   @property
   def output_types(self):
     return self._output_types
+
+
+class LMDBDataset(dataset_ops.Dataset):
+  """A LMDB Dataset that reads the lmdb file."""
+
+  def __init__(self, filenames):
+    """Create a `LMDBDataset`.
+
+    `LMDBDataset` allows a user to read data from a mdb file as
+    (key value) pairs sequentially.
+    For example:
+    ```python
+    dataset = tf.contrib.lmdb.LMDBDataset("/foo/bar.mdb")
+    iterator = dataset.make_one_shot_iterator()
+    next_element = iterator.get_next()
+    # Prints the (key, value) pairs inside a lmdb file.
+    while True:
+      try:
+        print(sess.run(next_element))
+      except tf.errors.OutOfRangeError:
+        break
+    ```
+    Args:
+      filenames: A `tf.string` tensor containing one or more filenames.
+    """
+    super(LMDBDataset, self).__init__()
+    self._filenames = ops.convert_to_tensor(
+        filenames, dtype=dtypes.string, name="filenames")
+
+  def _as_variant_tensor(self):
+    return contrib_gen_dataset_ops.lmdb_dataset(
+        self._filenames,
+        output_types=nest.flatten(self.output_types),
+        output_shapes=nest.flatten(self.output_shapes))
+
+  @property
+  def output_classes(self):
+    return ops.Tensor, ops.Tensor
+
+  @property
+  def output_shapes(self):
+    return (tensor_shape.TensorShape([]), tensor_shape.TensorShape([]))
+
+  @property
+  def output_types(self):
+    return dtypes.string, dtypes.string

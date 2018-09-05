@@ -24,6 +24,7 @@ import warnings
 
 import numpy as np
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
@@ -31,6 +32,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -672,6 +674,36 @@ class MapDatasetTest(test.TestCase):
         TypeError, r"Unsupported return value from function passed to "
         r"Dataset.map\(\): None."):
       _ = dataset.map(lambda x: None)
+
+  def testBrokenFunctionErrorOnInitialization(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices([1.0, 2.0, 3.0])
+
+    def broken_function(_):
+      """A function deliberately designed to fail on instantiation."""
+      value = []
+      tensor_value = attr_value_pb2.AttrValue()
+      tensor_value.tensor.CopyFrom(
+          tensor_util.make_tensor_proto(
+              value, dtype=dtypes.float32, shape=[0], verify_shape=False))
+      dtype_value = attr_value_pb2.AttrValue(type=dtypes.int32.as_datatype_enum)
+
+      # Create a "Const" op with a `tf.float32` value and a `tf.int32` type
+      # attr.
+      const_tensor = ops.get_default_graph().create_op(
+          "Const", [], [dtypes.int32],
+          attrs={
+              "value": tensor_value,
+              "dtype": dtype_value
+          },
+          name="BrokenConst").outputs[0]
+      return const_tensor
+
+    dataset = dataset.map(broken_function)
+    iterator = dataset.make_initializable_iterator()
+
+    with self.test_session() as sess:
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "BrokenConst"):
+        sess.run(iterator.initializer)
 
 
 class MapDatasetBenchmark(test.Benchmark):

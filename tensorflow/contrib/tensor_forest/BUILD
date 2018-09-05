@@ -515,6 +515,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":client_lib",
+        "//tensorflow/contrib/estimator:head",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
         "//tensorflow/python:array_ops",
@@ -533,10 +534,11 @@ py_library(
 
 py_test(
     name = "random_forest_test",
-    size = "medium",
+    size = "large",
     srcs = ["client/random_forest_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "noasan",
         "nomac",  # b/63258195
         "notsan",
     ],

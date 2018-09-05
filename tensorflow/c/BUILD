@@ -127,6 +127,15 @@ tf_cuda_library(
     ],
 )
 
+cc_library(
+    name = "c_api_headers",
+    hdrs = [
+        "c_api.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
 exports_files(
     [
         "version_script.lds",

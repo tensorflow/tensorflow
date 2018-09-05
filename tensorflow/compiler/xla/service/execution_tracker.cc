@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <utility>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -53,8 +53,8 @@ ExecutionHandle ExecutionTracker::Register(Backend* backend,
   tensorflow::mutex_lock lock(execution_mutex_);
   int64 handle = next_handle_++;
   auto inserted = handle_to_execution_.emplace(
-      handle,
-      MakeUnique<AsyncExecution>(backend, std::move(streams), profile, result));
+      handle, absl::make_unique<AsyncExecution>(backend, std::move(streams),
+                                                profile, result));
   CHECK(inserted.second);
 
   ExecutionHandle execution_handle;
@@ -66,7 +66,7 @@ Status ExecutionTracker::Unregister(const ExecutionHandle& handle) {
   tensorflow::mutex_lock lock(execution_mutex_);
   auto it = handle_to_execution_.find(handle.handle());
   if (it == handle_to_execution_.end()) {
-    return NotFound("no execution record for execution handle: %lld",
+    return NotFound("no execution record for execution handle: %d",
                     handle.handle());
   }
   handle_to_execution_.erase(handle.handle());
@@ -78,7 +78,7 @@ StatusOr<const AsyncExecution*> ExecutionTracker::Resolve(
   tensorflow::mutex_lock lock(execution_mutex_);
   auto it = handle_to_execution_.find(handle.handle());
   if (it == handle_to_execution_.end()) {
-    return NotFound("no execution record for execution handle: %lld",
+    return NotFound("no execution record for execution handle: %d",
                     handle.handle());
   }
   return it->second.get();

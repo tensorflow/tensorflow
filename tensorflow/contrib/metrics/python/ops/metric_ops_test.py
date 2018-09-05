@@ -3467,6 +3467,60 @@ class RecallAtPrecisionTest(test.TestCase):
       self.assertAlmostEqual(target_recall, sess.run(update_op))
       self.assertAlmostEqual(target_recall, recall.eval())
 
+  def _test_strict_mode(self, strict_mode, target_precision, expected_recall):
+    num_thresholds = 11
+    predictions_values = [.2, .3, .5, .6, .7, .8, .9, .9, .9, .1]
+    labels_values = [1, 1, 0, 0, 0, 0, 0, 0, 0, 1]
+    # Resulting thresholds and the corresponding precision and recall values at
+    # each threshold:
+    # Thresholds  [0.1   0.2  0.3  0.4  0.5  0.6  0.7  0.8  0.9]
+    # precisions: [0.3   0.2  0.1  0    0    0    0    0    0]
+    # recalls:    [1.0   0.7  0.3  0    0    0    0    0    0]
+    predictions = constant_op.constant(
+        predictions_values, dtype=dtypes_lib.float32)
+    labels = constant_op.constant(labels_values)
+    recall, update_op = metrics.recall_at_precision(
+        labels,
+        predictions,
+        num_thresholds=num_thresholds,
+        precision=target_precision,
+        strict_mode=strict_mode)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAlmostEqual(expected_recall, sess.run(update_op))
+      self.assertAlmostEqual(expected_recall, recall.eval())
+
+  def testStrictMode_Off(self):
+    # strict_mode is turned off and return the recall at the threshold where the
+    # precision (0.3) is closest to target precision (0.9). The recall
+    # corresponding to the threshold is 1.0.
+    self._test_strict_mode(
+        strict_mode=False, target_precision=0.9, expected_recall=1.0)
+
+  def testStrictMode_OnAndFail(self):
+    # strict_mode is turned on and we fail to reach the target precision at any
+    # threshold.
+    # Target precision: 0.9
+    # Diff:       [-0.6  -0.7  -0.8  -0.9  -0.9  -0.9  -0.9  -0.9  -0.9]
+    # Reciprocal: [-1.6  -1.4  -1.3  -1.1  -1.1  -1.1  -1.1  -1.1  -1.1]
+    # Max index: 3 and corresponding precision is: 0 which is smaller than
+    # target precsion 0.9. As a result, the expected recall is 0.
+    self._test_strict_mode(
+        strict_mode=True, target_precision=0.9, expected_recall=.0)
+
+  def testStrictMode_OnAndSucceed(self):
+    # strict_mode is on and we can reach the target precision at certain
+    # threshold.
+    # Target precision: 0.2
+    # Diff:       [0.1   0      -0.1  -0.2  -0.2  -0.2  -0.2  -0.2  -0.2]
+    # Reciprocal: [10    infty  -10.0 -5.0  -5.0  -5.0  -5.0  -5.0  -5.0]
+    # Max index: 1 and corresponding precision is: 0.2 which is no smaller than
+    # target precsion 0.2. In this case, we return the recall at index 1, which
+    # is 2.0/3 (0.7).
+    self._test_strict_mode(
+        strict_mode=True, target_precision=0.2, expected_recall=2.0 / 3)
+
 
 class PrecisionAtRecallTest(test.TestCase):
 
@@ -3963,7 +4017,7 @@ class StreamingSparsePrecisionTest(test.TestCase):
                                             expected,
                                             class_id=None,
                                             weights=None):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       if weights is not None:
         weights = constant_op.constant(weights, dtypes_lib.float32)
       metric, update = metrics.streaming_sparse_precision_at_k(
@@ -3992,7 +4046,7 @@ class StreamingSparsePrecisionTest(test.TestCase):
                                                 expected,
                                                 class_id=None,
                                                 weights=None):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       if weights is not None:
         weights = constant_op.constant(weights, dtypes_lib.float32)
       metric, update = metrics.streaming_sparse_precision_at_top_k(
@@ -4021,7 +4075,7 @@ class StreamingSparsePrecisionTest(test.TestCase):
                                                     k,
                                                     expected,
                                                     weights=None):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       if weights is not None:
         weights = constant_op.constant(weights, dtypes_lib.float32)
       predictions = constant_op.constant(predictions, dtypes_lib.float32)
@@ -4047,7 +4101,7 @@ class StreamingSparsePrecisionTest(test.TestCase):
                                                         labels,
                                                         expected,
                                                         weights=None):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       if weights is not None:
         weights = constant_op.constant(weights, dtypes_lib.float32)
       metric, update = metrics.streaming_sparse_average_precision_at_top_k(
@@ -4635,7 +4689,7 @@ class StreamingSparseRecallTest(test.TestCase):
                                          expected,
                                          class_id=None,
                                          weights=None):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       if weights is not None:
         weights = constant_op.constant(weights, dtypes_lib.float32)
       metric, update = metrics.streaming_sparse_recall_at_k(
@@ -4664,7 +4718,7 @@ class StreamingSparseRecallTest(test.TestCase):
                                    expected,
                                    class_id=None,
                                    weights=None):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       if weights is not None:
         weights = constant_op.constant(weights, dtypes_lib.float32)
       metric, update = metric_ops.sparse_recall_at_top_k(

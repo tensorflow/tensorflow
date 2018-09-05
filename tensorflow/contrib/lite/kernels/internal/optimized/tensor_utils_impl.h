@@ -86,6 +86,14 @@ void NeonBatchVectorBatchVectorDotProduct(const float* vector1,
                                           int n_batch, float* result,
                                           int result_stride);
 
+// Cwise product of a vector and a batch-vector.
+void PortableVectorBatchVectorCwiseProduct(const float* vector, int v_size,
+                                           const float* batch_vector,
+                                           int n_batch, float* result);
+void NeonVectorBatchVectorCwiseProduct(const float* vector, int v_size,
+                                       const float* batch_vector, int n_batch,
+                                       float* result);
+
 // Cwise product and accumulate of a vector and a batch-vector. Since it's a MAC
 // operation, the assumption here is that result array is initialized to valid
 // values.

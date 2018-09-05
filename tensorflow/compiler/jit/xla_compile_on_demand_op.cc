@@ -78,7 +78,8 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
       executable->Run(launch_context.arguments(), run_options);
   TF_RETURN_IF_ERROR(run_result.status());
 
-  launch_context.PopulateOutputs(ctx, result, run_result.ConsumeValueOrDie());
+  TF_RETURN_IF_ERROR(launch_context.PopulateOutputs(
+      ctx, result, run_result.ConsumeValueOrDie()));
   return Status::OK();
 }
 
@@ -176,7 +177,7 @@ Status XlaCompileOnDemandOp::Compile(
 
   std::map<int, OptionalTensor> variable_args = GetVariables(ctx);
   return cache->CompileSingleOp(options, constant_arguments, variable_args, ctx,
-                                result, executable, &compile_options);
+                                result, executable, compile_options);
 }
 
 void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {

@@ -25,10 +25,12 @@ namespace tensorflow {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class PrefetchDatasetOp::Dataset : public GraphDatasetBase {
+class PrefetchDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size)
-      : GraphDatasetBase(ctx), input_(input), buffer_size_(buffer_size) {
+      : DatasetBase(DatasetContext(ctx)),
+        input_(input),
+        buffer_size_(buffer_size) {
     input_->Ref();
   }
 

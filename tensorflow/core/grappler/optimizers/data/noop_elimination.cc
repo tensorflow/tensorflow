@@ -69,8 +69,7 @@ Status NoOpElimination::Optimize(Cluster* cluster, const GrapplerItem& item,
   for (const NodeDef& node : item.graph.node()) {
     if (!IsNoOp(node, graph)) continue;
 
-    GraphView::InputPort input_port = graph.GetInputPort(node.name(), 0);
-    NodeDef* const parent = graph.GetRegularFanin(input_port).node;
+    NodeDef* const parent = graph_utils::GetInputNode(node, graph);
     graph.ReplaceInput(node, *parent);
 
     nodes_to_delete.insert(node.name());

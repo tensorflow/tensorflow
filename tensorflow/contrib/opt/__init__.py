@@ -24,12 +24,14 @@ from tensorflow.contrib.opt.python.training.addsign import *
 from tensorflow.contrib.opt.python.training.drop_stale_gradient_optimizer import *
 from tensorflow.contrib.opt.python.training.elastic_average_optimizer import *
 from tensorflow.contrib.opt.python.training.external_optimizer import *
+from tensorflow.contrib.opt.python.training.lars_optimizer import *
 from tensorflow.contrib.opt.python.training.ggt import *
 from tensorflow.contrib.opt.python.training.lazy_adam_optimizer import *
 from tensorflow.contrib.opt.python.training.model_average_optimizer import *
 from tensorflow.contrib.opt.python.training.moving_average_optimizer import *
 from tensorflow.contrib.opt.python.training.multitask_optimizer_wrapper import *
 from tensorflow.contrib.opt.python.training.nadam_optimizer import *
+from tensorflow.contrib.opt.python.training.reg_adagrad_optimizer import *
 from tensorflow.contrib.opt.python.training.shampoo import *
 from tensorflow.contrib.opt.python.training.weight_decay_optimizers import *
 from tensorflow.contrib.opt.python.training.powersign import *
@@ -46,6 +48,7 @@ _allowed_symbols = [
     'DelayCompensatedGradientDescentOptimizer',
     'DropStaleGradientOptimizer',
     'ExternalOptimizerInterface',
+    'LARSOptimizer',
     'LazyAdamOptimizer',
     'NadamOptimizer',
     'MovingAverageOptimizer',
@@ -63,6 +66,7 @@ _allowed_symbols = [
     'ModelAverageCustomGetter',
     'GGTOptimizer',
     'ShampooOptimizer',
+    'RegAdagradOptimizer',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

@@ -61,14 +61,14 @@ std::vector<PartialTensorShape> PrependQueueShapeWithBatch(
 
 class EnqueueInQueueDatasetOp;
 
-class PrependFromQueueAndPaddedBatchDataset : public GraphDatasetBase {
+class PrependFromQueueAndPaddedBatchDataset : public DatasetBase {
  public:
   PrependFromQueueAndPaddedBatchDataset(
       OpKernelContext* ctx, const int64 batch_size, const DatasetBase* input,
       const DataTypeVector& dtypes,
       const std::vector<PartialTensorShape>& shapes,
       std::vector<Tensor> padding_values)
-      : GraphDatasetBase(ctx),
+      : DatasetBase(DatasetContext(ctx)),
         batch_size_(batch_size),
         input_(input),
         dtypes_(dtypes),

@@ -116,8 +116,8 @@ class CapturedFunction {
   CapturedFunction(const NameAttrList& func,
                    std::vector<Tensor> captured_inputs);
 
-  Status MaybeInstantiate(IteratorContext* ctx,
-                          FunctionLibraryRuntime::Handle* out_handle);
+  Status GetHandle(IteratorContext* ctx,
+                   FunctionLibraryRuntime::Handle* out_handle);
 
   mutex mu_;
   const NameAttrList func_;

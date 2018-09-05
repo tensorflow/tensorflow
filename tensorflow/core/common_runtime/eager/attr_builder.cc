@@ -103,7 +103,6 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out) {
     return *this;                                                            \
   }
 
-DEFINE_SET_ATTR(StringPiece, string_attrs_);
 DEFINE_SET_ATTR(float, float_attrs_);
 DEFINE_SET_ATTR(int, int_attrs_);
 DEFINE_SET_ATTR(bool, bool_attrs_);
@@ -119,9 +118,6 @@ AttrBuilder& AttrBuilder::NumInputs(int n) {
 
 void AttrBuilder::FillAttrValueMap(AttrValueMap* m,
                                    bool include_those_in_node_def) const {
-  for (const auto& p : string_attrs_) {
-    SetInAttrValueMap(m, p.first, p.second);
-  }
   for (const auto& p : int_attrs_) {
     SetInAttrValueMap(m, p.first, p.second);
   }
@@ -210,10 +206,6 @@ tensorflow::Fprint128 AttrBuilder::CacheKey(const string& device) const {
     // when the creation was triggered by a call to Set, but BuildNodeDef has
     // not been called.
     if (node_def_finalized_) return f;
-  }
-  for (const auto& p : string_attrs_) {
-    CombineUnordered(
-        CacheKeyHelper(p.first, tensorflow::Fingerprint128(p.second)), &f);
   }
   for (const auto& p : int_attrs_) {
     CombineUnordered(CacheKeyHelper(p.first, static_cast<uint64>(p.second)),

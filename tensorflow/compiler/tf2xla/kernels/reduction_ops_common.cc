@@ -15,6 +15,7 @@ limitations under the License.
 
 // XLA-specific reduction Ops.
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/tf2xla/kernels/reduction_ops.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -29,9 +30,6 @@ namespace tensorflow {
 XlaReductionOp::XlaReductionOp(OpKernelConstruction* ctx,
                                DataType reduction_type)
     : XlaOpKernel(ctx), reduction_type_(reduction_type) {
-  const DataType dt = BaseType(input_type(0));
-  OP_REQUIRES_OK(ctx, ctx->MatchSignature({dt, DT_INT32}, {dt}));
-
   OP_REQUIRES_OK(ctx, ctx->GetAttr("keep_dims", &keep_dims_));
   OP_REQUIRES_OK(
       ctx, DataTypeToPrimitiveType(reduction_type_, &xla_reduction_type_));
@@ -58,20 +56,24 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
     return;
   }
 
+  OP_REQUIRES(ctx, axes_tensor_shape.dims() <= 1,
+              errors::InvalidArgument(
+                  "Expected scalar or vector as index argument, got ",
+                  axes_tensor_shape.DebugString()));
+
   // Evaluate the constant, reshaping to a 1-vector if it is a scalar.
+  std::vector<int64> axes;
   xla::Literal axes_literal;
-  OP_REQUIRES_OK(
-      ctx, ctx->ConstantInputReshaped(1, {axes_tensor_shape.num_elements()},
-                                      &axes_literal));
+  OP_REQUIRES_OK(ctx, ctx->ConstantInputReshapedToIntVector(1, &axes));
 
   VLOG(1) << "data shape: " << data_shape.DebugString();
-  VLOG(1) << "axes      : " << axes_literal.ToString();
+  VLOG(1) << "axes      : " << absl::StrJoin(axes, ",");
 
   gtl::InlinedVector<bool, 4> bitmap(data_shape.dims(), false);
   std::vector<int64> xla_axes;
   int64 num_elements_reduced = 1LL;
   for (int64 i = 0; i < axes_tensor_shape.num_elements(); ++i) {
-    int32 index = axes_literal.Get<int>({i});
+    int64 index = axes[i];
     OP_REQUIRES(ctx,
                 !(index < -data_shape.dims() || index >= data_shape.dims()),
                 errors::InvalidArgument("Invalid reduction dimension (", index,

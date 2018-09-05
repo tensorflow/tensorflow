@@ -149,7 +149,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "core_rnn_test",
-    size = "large",
+    size = "medium",
     srcs = ["python/kernel_tests/core_rnn_test.py"],
     additional_deps = [
         ":rnn_py",
@@ -175,7 +175,7 @@ cuda_py_tests(
 
 tf_py_test(
     name = "fused_rnn_cell_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/fused_rnn_cell_test.py"],
     additional_deps = [
         ":rnn_py",
@@ -191,10 +191,6 @@ tf_py_test(
         "//tensorflow/python:rnn_cell",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-    ],
-    tags = [
-        "manual",
-        "notap",
     ],
 )
 

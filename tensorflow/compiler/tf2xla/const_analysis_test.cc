@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -38,17 +39,23 @@ TEST(ConstAnalysisTest, Basics) {
   auto c = ops::Reshape(root, arg2, b);
   auto d = ops::Mul(root, c, ops::Sum(root, arg3, arg3));
 
-  Graph graph(OpRegistry::Global());
-  TF_ASSERT_OK(root.ToGraph(&graph));
+  FixupSourceAndSinkEdges(root.graph());
 
   std::vector<bool> const_args(4, false);
-  TF_ASSERT_OK(BackwardsConstAnalysis(graph, &const_args));
+  std::vector<bool> const_nodes(root.graph()->num_node_ids(), false);
+  TF_ASSERT_OK(
+      BackwardsConstAnalysis(*root.graph(), &const_args, &const_nodes));
 
   // Arg 0 doesn't need to be constant since the graph only uses its shape.
   // Arg 1 must be constant because it flows to the shape argument of a Reshape.
   // Arg 2 is used only as the value input to a Reshape and need not be const.
   // Arg 3 is used as the reduction-indices argument to Sum and must be const.
   EXPECT_EQ(const_args, std::vector<bool>({false, true, false, true}));
+
+  EXPECT_FALSE(const_nodes[arg0.node()->id()]);
+  EXPECT_TRUE(const_nodes[arg1.node()->id()]);
+  EXPECT_FALSE(const_nodes[arg2.node()->id()]);
+  EXPECT_TRUE(const_nodes[arg3.node()->id()]);
 }
 
 // Regression test for a case where the backward const analysis did
@@ -73,7 +80,8 @@ TEST(ConstAnalysisTest, TopologicalOrder) {
     TF_ASSERT_OK(root.ToGraph(&graph));
 
     std::vector<bool> const_args(3, false);
-    TF_ASSERT_OK(BackwardsConstAnalysis(graph, &const_args));
+    TF_ASSERT_OK(BackwardsConstAnalysis(graph, &const_args,
+                                        /*compile_time_const_nodes=*/nullptr));
 
     EXPECT_EQ(const_args, std::vector<bool>({true, true, false}));
   }
@@ -93,7 +101,8 @@ TEST(ConstAnalysisTest, DontFollowControlDependencies) {
   TF_ASSERT_OK(root.ToGraph(&graph));
 
   std::vector<bool> const_args(2, false);
-  TF_ASSERT_OK(BackwardsConstAnalysis(graph, &const_args));
+  TF_ASSERT_OK(BackwardsConstAnalysis(graph, &const_args,
+                                      /*compile_time_const_nodes=*/nullptr));
 
   EXPECT_EQ(const_args, std::vector<bool>({false, true}));
 }
