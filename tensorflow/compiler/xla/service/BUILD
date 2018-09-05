@@ -989,7 +989,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:test",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -1037,7 +1036,6 @@ tf_cc_test(
         ":flatten_call_graph",
         ":hlo",
         ":hlo_ordering",
-        ":hlo_schedule",
         ":hlo_scheduling",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -1051,7 +1049,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -1065,7 +1062,6 @@ cc_library(
         ":hlo",
         ":hlo_dataflow_analysis",
         ":hlo_proto",
-        ":hlo_schedule",
         ":hlo_value",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -1086,7 +1082,6 @@ tf_cc_test(
         ":hlo",
         ":hlo_dataflow_analysis",
         ":hlo_ordering",
-        ":hlo_schedule",
         ":hlo_scheduling",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
@@ -1094,7 +1089,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:test",
     ],
 )
 
@@ -1108,7 +1102,6 @@ cc_library(
         ":hlo",
         ":hlo_ordering",
         ":hlo_proto",
-        ":hlo_schedule",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -1132,7 +1125,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -1178,43 +1170,6 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_schedule",
-    srcs = ["hlo_schedule.cc"],
-    hdrs = ["hlo_schedule.h"],
-    deps = [
-        ":hlo",
-        "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:lib_internal",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-tf_cc_test(
-    name = "hlo_schedule_test",
-    srcs = ["hlo_schedule_test.cc"],
-    deps = [
-        ":heap_simulator",
-        ":hlo",
-        ":hlo_dce",
-        ":hlo_ordering",
-        ":hlo_parser",
-        ":hlo_schedule",
-        ":hlo_scheduling",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:test",
-        "@com_google_absl//absl/algorithm:container",
-    ],
-)
-
-cc_library(
     name = "hlo_scheduling",
     srcs = ["hlo_scheduling.cc"],
     hdrs = ["hlo_scheduling.h"],
@@ -1222,7 +1177,6 @@ cc_library(
         ":heap_simulator",
         ":hlo",
         ":hlo_ordering",
-        ":hlo_schedule",
         ":logical_buffer",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:shape_util",
@@ -1251,7 +1205,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
-        "@com_google_absl//absl/algorithm:container",
     ],
 )
 
@@ -2413,7 +2366,6 @@ cc_library(
         ":hlo",
         ":hlo_dce",
         ":hlo_ordering",
-        ":hlo_schedule",
         ":hlo_scheduling",
         ":logical_buffer",
         ":tuple_points_to_analysis",

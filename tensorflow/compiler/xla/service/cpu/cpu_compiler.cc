@@ -584,14 +584,16 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // computation. Using this sequence enables tighter buffer liveness analysis
   // and reduced memory usage (as compared to using DependencyHloOrdering).
   TF_ASSIGN_OR_RETURN(
-      HloSchedule schedule,
-      ScheduleModule(*module, BufferSizeBytesFunction(), DFSMemoryScheduler));
+      SequentialHloOrdering::HloModuleSequence module_sequence,
+      ScheduleComputationsInModule(*module, BufferSizeBytesFunction(),
+                                   DFSMemoryScheduler));
 
   // Run buffer allocation on the HLO graph.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(module.get(),
-                          absl::make_unique<SequentialHloOrdering>(schedule),
+                          absl::make_unique<SequentialHloOrdering>(
+                              module.get(), module_sequence),
                           BufferSizeBytesFunction(), memory_alignment,
                           /*allow_input_output_aliasing=*/false,
                           /*allocate_buffers_for_constants=*/true));
@@ -625,10 +627,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     }
     TF_RETURN_IF_ERROR(
         ir_emitter
-            .EmitComputation(
-                embedded_computation, embedded_computation->name(),
-                /*is_top_level_computation=*/false,
-                &schedule.sequence(embedded_computation).instructions())
+            .EmitComputation(embedded_computation, embedded_computation->name(),
+                             /*is_top_level_computation=*/false,
+                             &module_sequence.at(embedded_computation))
             .status());
   }
   string function_name_prefix = entry_computation->name().empty()
@@ -636,10 +637,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
                                     : entry_computation->name();
   TF_ASSIGN_OR_RETURN(
       llvm::Function * entry_function,
-      ir_emitter.EmitComputation(
-          entry_computation, function_name_prefix,
-          /*is_top_level_computation=*/true,
-          &schedule.sequence(entry_computation).instructions()));
+      ir_emitter.EmitComputation(entry_computation, function_name_prefix,
+                                 /*is_top_level_computation=*/true,
+                                 &module_sequence.at(entry_computation)));
 
   string function_name = [&]() {
     llvm::SmallVector<char, 40> function_name_vector;
@@ -771,18 +771,20 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     VLOG(2) << "After optimization:";
     XLA_VLOG_LINES(2, module->ToString());
 
-    TF_ASSIGN_OR_RETURN(HloSchedule schedule,
-                        ScheduleModule(*module, BufferSizeBytesFunction()));
+    TF_ASSIGN_OR_RETURN(
+        SequentialHloOrdering::HloModuleSequence module_sequence,
+        ScheduleComputationsInModule(*module, BufferSizeBytesFunction()));
 
     // Run buffer analysis on the HLO graph. This analysis figures out which
     // temporary buffers are required to run the computation.
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<BufferAssignment> assignment,
-        BufferAssigner::Run(module,
-                            absl::make_unique<SequentialHloOrdering>(schedule),
-                            BufferSizeBytesFunction(), memory_alignment,
-                            /*allow_input_output_aliasing=*/false,
-                            /*allocate_buffers_for_constants=*/true));
+        BufferAssigner::Run(
+            module,
+            absl::make_unique<SequentialHloOrdering>(module, module_sequence),
+            BufferSizeBytesFunction(), memory_alignment,
+            /*allow_input_output_aliasing=*/false,
+            /*allocate_buffers_for_constants=*/true));
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
@@ -822,18 +824,18 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
       }
       TF_RETURN_IF_ERROR(
           ir_emitter
-              .EmitComputation(
-                  embedded_computation, embedded_computation->name(),
-                  /*is_top_level_computation=*/false,
-                  &schedule.sequence(embedded_computation).instructions())
+              .EmitComputation(embedded_computation,
+                               embedded_computation->name(),
+                               /*is_top_level_computation=*/false,
+                               &module_sequence.at(embedded_computation))
               .status());
     }
     const string& entry_point_name = options.entry_point_name();
-    TF_ASSIGN_OR_RETURN(llvm::Function * entry_function,
-                        ir_emitter.EmitComputation(
-                            computation, entry_point_name,
-                            /*is_top_level_computation=*/true,
-                            &schedule.sequence(computation).instructions()));
+    TF_ASSIGN_OR_RETURN(
+        llvm::Function * entry_function,
+        ir_emitter.EmitComputation(computation, entry_point_name,
+                                   /*is_top_level_computation=*/true,
+                                   &module_sequence.at(computation)));
 
     CHECK(entry_function->getName() == llvm_ir::AsStringRef(entry_point_name));
 

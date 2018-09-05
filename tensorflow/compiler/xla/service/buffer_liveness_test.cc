@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -167,12 +166,12 @@ TEST_F(BufferLivenessTest, MultipleEntryParameters_Sequential) {
   auto module = CreateNewModule();
   HloComputation* entry = module->AddEntryComputation(builder.Build());
 
-  HloSchedule schedule(module.get());
-  schedule.set_sequence(entry, {param0, negate, param1, exp, add});
-  auto liveness =
-      BufferLiveness::Run(module.get(),
-                          absl::make_unique<SequentialHloOrdering>(schedule))
-          .ConsumeValueOrDie();
+  SequentialHloOrdering::HloModuleSequence sequence;
+  sequence.insert({entry, {param0, negate, param1, exp, add}});
+  auto liveness = BufferLiveness::Run(module.get(),
+                                      absl::make_unique<SequentialHloOrdering>(
+                                          module.get(), sequence))
+                      .ConsumeValueOrDie();
 
   // Entry parameters interfere as if they are defined simultaneously at
   // the very beginning.
@@ -292,12 +291,13 @@ TEST_F(BufferLivenessTest, OverlappedBuffersSequentialOrder) {
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  HloSchedule schedule(module.get());
-  schedule.set_sequence(computation, {param, negate, exp, add});
-  auto liveness =
-      BufferLiveness::Run(module.get(),
-                          absl::make_unique<SequentialHloOrdering>(schedule))
-          .ConsumeValueOrDie();
+  SequentialHloOrdering::HloModuleSequence module_sequence;
+  std::vector<const HloInstruction*> order = {param, negate, exp, add};
+  module_sequence.emplace(computation, order);
+  auto liveness = BufferLiveness::Run(module.get(),
+                                      absl::make_unique<SequentialHloOrdering>(
+                                          module.get(), module_sequence))
+                      .ConsumeValueOrDie();
 
   EXPECT_TRUE(InstructionsMayInterfere(*liveness, param, negate));
   EXPECT_FALSE(InstructionsMayInterfere(*liveness, param, exp));
@@ -339,14 +339,14 @@ TEST_F(BufferLivenessTest, RootInstructionIsNotLastInSequentialOrder) {
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build(add));
 
-  HloSchedule schedule(module.get());
-  schedule.set_sequence(computation,
-                        {param, add, token, recv, recv_done, send, send_done});
-  TF_ASSERT_OK(schedule.Verify());
-  auto liveness =
-      BufferLiveness::Run(module.get(),
-                          absl::make_unique<SequentialHloOrdering>(schedule))
-          .ConsumeValueOrDie();
+  SequentialHloOrdering::HloModuleSequence module_sequence;
+  std::vector<const HloInstruction*> order = {param,     add,  recv,
+                                              recv_done, send, send_done};
+  module_sequence.emplace(computation, order);
+  auto liveness = BufferLiveness::Run(module.get(),
+                                      absl::make_unique<SequentialHloOrdering>(
+                                          module.get(), module_sequence))
+                      .ConsumeValueOrDie();
 
   EXPECT_FALSE(InstructionsMayInterfere(*liveness, param, add));
   // Check the root instruction (add) buffer interferes with the recv buffer.
