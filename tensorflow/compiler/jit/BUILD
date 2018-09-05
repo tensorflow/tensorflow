@@ -410,6 +410,7 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:bounds_check",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -566,6 +567,7 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "@com_google_absl//absl/strings",
     ],
 )
 

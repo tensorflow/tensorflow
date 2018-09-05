@@ -374,6 +374,9 @@ class LayerRNNCell(RNNCell):
 class BasicRNNCell(LayerRNNCell):
   """The most basic RNN cell.
 
+  Note that this cell is not optimized for performance. Please use
+  `tf.contrib.cudnn_rnn.CudnnRNNTanh` for better performance on GPU.
+
   Args:
     num_units: int, The number of units in the RNN cell.
     activation: Nonlinearity to use.  Default: `tanh`. It could also be string
@@ -399,6 +402,10 @@ class BasicRNNCell(LayerRNNCell):
                **kwargs):
     super(BasicRNNCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
+    if context.executing_eagerly() and context.num_gpus() > 0:
+      logging.warn("%s: Note that this cell is not optimized for performance. "
+                   "Please use tf.contrib.cudnn_rnn.CudnnRNNTanh for better "
+                   "performance on GPU.", self)
 
     # Inputs must be 2-dimensional.
     self.input_spec = base_layer.InputSpec(ndim=2)
@@ -457,6 +464,10 @@ class BasicRNNCell(LayerRNNCell):
 class GRUCell(LayerRNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078).
 
+  Note that this cell is not optimized for performance. Please use
+  `tf.contrib.cudnn_rnn.CudnnGRU` for better performance on GPU, or
+  `tf.contrib.rnn.GRUBlockCellV2` for better performance on CPU.
+
   Args:
     num_units: int, The number of units in the GRU cell.
     activation: Nonlinearity to use.  Default: `tanh`.
@@ -487,6 +498,10 @@ class GRUCell(LayerRNNCell):
     super(GRUCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
 
+    if context.executing_eagerly() and context.num_gpus() > 0:
+      logging.warn("%s: Note that this cell is not optimized for performance. "
+                   "Please use tf.contrib.cudnn_rnn.CudnnGRU for better "
+                   "performance on GPU.", self)
     # Inputs must be 2-dimensional.
     self.input_spec = base_layer.InputSpec(ndim=2)
 
@@ -610,6 +625,11 @@ class BasicLSTMCell(LayerRNNCell):
 
   For advanced models, please use the full `tf.nn.rnn_cell.LSTMCell`
   that follows.
+
+  Note that this cell is not optimized for performance. Please use
+  `tf.contrib.cudnn_rnn.CudnnLSTM` for better performance on GPU, or
+  `tf.contrib.rnn.LSTMBlockCell` and `tf.contrib.rnn.LSTMBlockFusedCell` for
+  better performance on CPU.
   """
 
   @deprecated(None, "This class is deprecated, please use "
@@ -656,6 +676,10 @@ class BasicLSTMCell(LayerRNNCell):
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
                    "deprecated.  Use state_is_tuple=True.", self)
+    if context.executing_eagerly() and context.num_gpus() > 0:
+      logging.warn("%s: Note that this cell is not optimized for performance. "
+                   "Please use tf.contrib.cudnn_rnn.CudnnLSTM for better "
+                   "performance on GPU.", self)
 
     # Inputs must be 2-dimensional.
     self.input_spec = base_layer.InputSpec(ndim=2)
@@ -774,6 +798,11 @@ class LSTMCell(LayerRNNCell):
 
   The class uses optional peep-hole connections, optional cell clipping, and
   an optional projection layer.
+
+  Note that this cell is not optimized for performance. Please use
+  `tf.contrib.cudnn_rnn.CudnnLSTM` for better performance on GPU, or
+  `tf.contrib.rnn.LSTMBlockCell` and `tf.contrib.rnn.LSTMBlockFusedCell` for
+  better performance on CPU.
   """
 
   def __init__(self, num_units,
@@ -833,6 +862,10 @@ class LSTMCell(LayerRNNCell):
           "%s: The num_unit_shards and proj_unit_shards parameters are "
           "deprecated and will be removed in Jan 2017.  "
           "Use a variable scope with a partitioner instead.", self)
+    if context.executing_eagerly() and context.num_gpus() > 0:
+      logging.warn("%s: Note that this cell is not optimized for performance. "
+                   "Please use tf.contrib.cudnn_rnn.CudnnLSTM for better "
+                   "performance on GPU.", self)
 
     # Inputs must be 2-dimensional.
     self.input_spec = base_layer.InputSpec(ndim=2)

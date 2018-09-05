@@ -183,6 +183,14 @@ class Mirrored(DistributedDelegate):
       return self._index[device]
     return list(self._index.values())[0]
 
+  def _as_graph_element(self):
+    obj = self.get()
+    # pylint: disable=protected-access
+    conv_fn = getattr(obj, "_as_graph_element", None)
+    if conv_fn and callable(conv_fn):
+      return conv_fn()
+    return obj
+
 
 def _assign_on_device(device, variable, tensor):
   with ops.device(device):
@@ -296,6 +304,10 @@ class DistributedVariable(DistributedDelegate):
                               self._primary_var.op.type)
     return self.get().op
 
+  @property
+  def _in_graph_mode(self):
+    return self._primary_var._in_graph_mode   # pylint: disable=protected-access
+
   def read_value(self):
     return distribution_strategy_context.get_distribution_strategy().read_var(
         self)
@@ -328,10 +340,6 @@ class MirroredVariable(DistributedVariable, Mirrored,
   """Holds a map from device to variables whose values are kept in sync."""
 
   def __init__(self, index, primary_var, aggregation):
-    # Use a weakref to make it easy to map from the contained values
-    # to the container without introducing a reference cycle.
-    for v in six.itervalues(index):
-      v._mirrored_container = weakref.ref(self)  # pylint: disable=protected-access
     self._primary_var = primary_var
     self._aggregation = aggregation
     super(MirroredVariable, self).__init__(index)
@@ -354,8 +362,19 @@ class MirroredVariable(DistributedVariable, Mirrored,
 
       # We are calling assign on the mirrored variable in cross tower context,
       # use update to update the variable.
-      return distribution_strategy_context.get_distribution_strategy().update(
-          self, f, *args, **kwargs)
+      strategy = distribution_strategy_context.get_distribution_strategy()
+      updates = strategy.update(self, f, *args, **kwargs)
+      grouped = strategy.group(updates)
+      if isinstance(updates, DistributedValues) and updates.is_tensor_like:
+        # Make sure we run all updates. Without this, something like
+        # session.run(mirrored_var.assign*(...)) may only update one tower.
+        index = {}
+        for d in updates.devices:
+          with ops.device(d), ops.control_dependencies([grouped]):
+            index[d] = array_ops.identity(updates.get(d))
+        return Mirrored(index)
+      else:
+        return grouped
     else:
       _assert_tower_context()
       # We are calling an assign function on the mirrored variable in tower
@@ -500,6 +519,8 @@ class TowerLocalVariable(DistributedVariable, PerDevice,
     return self._aggregation
 
   def _get_cross_tower(self):
+    if self._aggregation == vs.VariableAggregation.ONLY_FIRST_TOWER:
+      return self._primary_var
     all_components = tuple(self._index.values())
     # TODO(josh11b): Use a strategy-specific method.
     total = math_ops.add_n(all_components)

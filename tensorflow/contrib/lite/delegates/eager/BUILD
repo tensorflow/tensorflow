@@ -132,6 +132,8 @@ cc_library(
         ],
         "//conditions:default": [
             "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:tensorflow",
         ],
     }),
 )

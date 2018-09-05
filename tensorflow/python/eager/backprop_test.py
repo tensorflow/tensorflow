@@ -23,7 +23,6 @@ import numpy as np
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -65,7 +64,7 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(fn, [0])(var)[0]
     grad = self.evaluate(ops.convert_to_tensor(grad))
 
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode():
       tf_var = array_ops.constant(var_np, dtypes.float32)
       tf_ind1 = array_ops.constant([0, 1])
       tf_ind2 = array_ops.constant([2, 3])
@@ -80,14 +79,13 @@ class BackpropTest(test.TestCase):
       tf_dense_grad = math_ops.unsorted_segment_sum(
           tf_grad.values, tf_grad.indices, tf_grad.dense_shape[0])
 
-      self.assertAllClose(grad, tf_dense_grad.eval())
+      self.assertAllClose(grad, self.evaluate(tf_dense_grad))
 
   def testImplicitGradWithResourceVariable(self):
     x = resource_variable_ops.ResourceVariable(
         initial_value=constant_op.constant(1.0), name='x')
 
     def fn():
-      tape.watch_variable(x)
       b = constant_op.constant(2.0)
       c = math_ops.add(x.value(), b)
       return math_ops.add(c, constant_op.constant(3.0))
@@ -194,14 +192,13 @@ class BackpropTest(test.TestCase):
         initial_value=random_init, dtype=dtypes.float32, name='embedding')
 
     def f():
-      tape.watch_variable(embedding)
       embedded_x = embedding_ops.embedding_lookup(embedding, x)
       return constant_op.constant(1.0, dtypes.float32) - embedded_x
 
     grad = backprop.implicit_grad(f)()[0][0]
     opt = training.GradientDescentOptimizer(lrn_rate)
 
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       tf_x = array_ops.ones((batch_size), dtypes.int64)
       # TODO(ashankar,apassos): Change to ResourceVariable.
       tf_embedding = variables.Variable(
@@ -316,6 +313,24 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(second, [0])(f)[0]
     self.assertAllEqual([[0.0]], grad)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testWatchingIsTapeLocal(self):
+    x1 = resource_variable_ops.ResourceVariable(2.0, trainable=False)
+    x2 = resource_variable_ops.ResourceVariable(2.0, trainable=False)
+
+    with backprop.GradientTape() as tape1:
+      with backprop.GradientTape() as tape2:
+        tape1.watch(x1)
+        tape2.watch([x1, x2])
+        y = x1 ** 3
+        z = x2 ** 2
+        dy, dz = tape2.gradient([y, z], [x1, x2])
+      d2y, d2z = tape1.gradient([dy, dz], [x1, x2])
+
+    self.evaluate([x1.initializer, x2.initializer])
+    self.assertEqual(self.evaluate(d2y), 12.0)
+    self.assertIsNone(d2z)
+
   @test_util.assert_no_new_tensors
   def testMakeVJP(self):
 
@@ -404,7 +419,6 @@ class BackpropTest(test.TestCase):
 
     def f():
       with context.device('gpu:0'):
-        tape.watch_variable(v)
         return v.read_value()
 
     self.assertEqual(
@@ -784,7 +798,6 @@ class BackpropTest(test.TestCase):
         initial_value=array_ops.constant([1.0]), name='x')
 
     def fn():
-      tape.watch_variable(x)
       a = math_ops.add(x.value(), 1.0)
       # Make sure convert_to_tensor works correctly with list of TensorNodes.
       b = array_ops.stack([a, a], axis=0)
@@ -928,15 +941,15 @@ class BackpropTest(test.TestCase):
   def testZerosCacheDoesntLeakAcrossGraphs(self):
     with context.graph_mode():
       def get_grad():
-        with ops.Graph().as_default(), self.test_session():
+        with ops.Graph().as_default(), self.cached_session():
           t = constant_op.constant(1, dtype=dtypes.float32, shape=(10, 4))
           x = constant_op.constant(2, dtype=dtypes.float32, shape=(10, 4))
-          with backprop.GradientTape() as gt:
+          with backprop.GradientTape() as tape:
             tape.watch(x)
             x1, _ = array_ops.split(x, num_or_size_splits=2, axis=1)
             y1 = x1**2
             y = array_ops.concat([y1, t], axis=1)
-          return self.evaluate(gt.gradient(y, x))
+          return self.evaluate(tape.gradient(y, x))
 
       grad1 = get_grad()
       grad2 = get_grad()

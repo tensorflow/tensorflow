@@ -366,8 +366,8 @@ TEST_F(HeapSimulatorTest, MultiplyDot) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto dot = builder.AddInstruction(
-      HloInstruction::CreateDot(f32vec4_, mul, paramY, dot_dnums));
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      f32vec4_, mul, paramY, dot_dnums, DefaultPrecisionConfig(2)));
 
   // The buffer for dot is the output, and it cannot be shared with the buffer
   // for mul, since dot isn't elementwise.
@@ -402,8 +402,8 @@ TEST_F(HeapSimulatorTest, MultiplyDotAdd) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto dot = builder.AddInstruction(
-      HloInstruction::CreateDot(f32vec4_, mul, paramY, dot_dnums));
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      f32vec4_, mul, paramY, dot_dnums, DefaultPrecisionConfig(2)));
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(f32vec4_, HloOpcode::kAdd, dot, paramA));
 
@@ -440,10 +440,10 @@ TEST_F(HeapSimulatorTest, MultiplyDotDot) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto dot0 = builder.AddInstruction(
-      HloInstruction::CreateDot(f32vec4_, mul, paramY, dot_dnums));
-  auto dot1 = builder.AddInstruction(
-      HloInstruction::CreateDot(f32vec4_, dot0, paramY, dot_dnums));
+  auto dot0 = builder.AddInstruction(HloInstruction::CreateDot(
+      f32vec4_, mul, paramY, dot_dnums, DefaultPrecisionConfig(2)));
+  auto dot1 = builder.AddInstruction(HloInstruction::CreateDot(
+      f32vec4_, dot0, paramY, dot_dnums, DefaultPrecisionConfig(2)));
 
   // The buffer for dot1 is the output.  No buffers can be shared.  The buffer
   // for mul is freed before the end, since it's no longer used after dot0
@@ -481,10 +481,10 @@ TEST_F(HeapSimulatorTest, MultiplyDotDotTuple) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto dot0 = builder.AddInstruction(
-      HloInstruction::CreateDot(f32vec4_, mul, paramY, dot_dnums));
-  auto dot1 = builder.AddInstruction(
-      HloInstruction::CreateDot(f32vec4_, dot0, paramY, dot_dnums));
+  auto dot0 = builder.AddInstruction(HloInstruction::CreateDot(
+      f32vec4_, mul, paramY, dot_dnums, DefaultPrecisionConfig(2)));
+  auto dot1 = builder.AddInstruction(HloInstruction::CreateDot(
+      f32vec4_, dot0, paramY, dot_dnums, DefaultPrecisionConfig(2)));
   auto tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({dot0, dot1}));
 

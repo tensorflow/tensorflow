@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -204,6 +205,22 @@ class SparseMergeTest(test_util.TensorFlowTestCase):
 
       output = sess.run(sp_output)
       self._AssertResultsNotSorted(output, vocab_size)
+
+  def testShouldSetLastDimensionInDynamicShape(self):
+    with ops.Graph().as_default():
+      shape = constant_op.constant([2, 2], dtype=dtypes.int64)
+      dynamic_shape = array_ops.placeholder_with_default(shape, shape=[2])
+      ids = sparse_tensor.SparseTensor(
+          indices=[[0, 0], [0, 1]],
+          values=[1, 3],
+          dense_shape=dynamic_shape)
+      values = sparse_tensor.SparseTensor(
+          indices=[[0, 0], [0, 1]],
+          values=[0.4, 0.7],
+          dense_shape=dynamic_shape)
+      merged = sparse_ops.sparse_merge(
+          sp_ids=ids, sp_values=values, vocab_size=5)
+      self.assertEqual(5, merged.get_shape()[1])
 
 
 class SparseMergeHighDimTest(test_util.TensorFlowTestCase):

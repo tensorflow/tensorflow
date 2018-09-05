@@ -41,8 +41,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  optimized_ops::Floor(GetTensorData<float>(input), GetTensorDims(input),
-                       GetTensorData<float>(output), GetTensorDims(output));
+  optimized_ops::Floor(GetTensorShape(input), GetTensorData<float>(input),
+                       GetTensorShape(output), GetTensorData<float>(output));
+
   return kTfLiteOk;
 }
 }  // namespace floor

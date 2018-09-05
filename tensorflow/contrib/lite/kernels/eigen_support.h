@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/context.h"
 
 namespace EigenForTFLite {
-class ThreadPoolDevice;
+struct ThreadPoolDevice;
 }
 
 namespace tflite {

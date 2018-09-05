@@ -1482,6 +1482,12 @@ class CheckpointCompatibilityTests(test.TestCase):
       status = object_saver.restore(save_path)
       status.initialize_or_restore()
       self._check_sentinels(root)
+      # Check that there is no error when keys are missing from the name-based
+      # checkpoint.
+      root.not_in_name_checkpoint = resource_variable_ops.ResourceVariable([1.])
+      status = object_saver.restore(save_path)
+      with self.assertRaises(AssertionError):
+        status.assert_existing_objects_matched()
 
   def testSaveGraphLoadEager(self):
     checkpoint_directory = self.get_temp_dir()

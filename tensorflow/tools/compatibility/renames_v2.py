@@ -67,6 +67,7 @@ renames = {
     'tf.gather_nd': 'tf.manip.gather_nd',
     'tf.greater': 'tf.math.greater',
     'tf.greater_equal': 'tf.math.greater_equal',
+    'tf.GraphKeys.VARIABLES': 'tf.GraphKeys.GLOBAL_VARIABLES',
     'tf.ifft': 'tf.spectral.ifft',
     'tf.igamma': 'tf.math.igamma',
     'tf.igammac': 'tf.math.igammac',

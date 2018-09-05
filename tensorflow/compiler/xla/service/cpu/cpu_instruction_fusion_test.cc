@@ -19,11 +19,11 @@ limitations under the License.
 #include <set>
 
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -38,7 +38,11 @@ std::unique_ptr<HloInstruction> MakeDot(const Shape& shape, HloInstruction* lhs,
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  return HloInstruction::CreateDot(shape, lhs, rhs, dot_dnums);
+  PrecisionConfig precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      2, PrecisionConfig::DEFAULT);
+  return HloInstruction::CreateDot(shape, lhs, rhs, dot_dnums,
+                                   precision_config);
 }
 
 TEST_F(InstructionFusionTest, DotOperationFusion_Basic_0) {
@@ -567,7 +571,7 @@ TEST_F(OpcodeFusionTest, DynamicSliceWithDynamicUpdateSlice) {
                      HloOpcode::kParameter, HloOpcode::kParameter});
 }
 
-TEST_F(OpcodeFusionTest, MessOfFusileNodes) {
+TEST_F(OpcodeFusionTest, MessOfFusibleNodes) {
   auto module = CreateNewModule();
   HloComputation::Builder builder(TestName());
 

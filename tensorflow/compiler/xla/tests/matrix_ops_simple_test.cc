@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -136,8 +136,7 @@ class TestLinspaceMaxParametric
         MakeLinspaceArray2D<T>(from, to, rows, cols);
     auto arhs = absl::make_unique<Array2D<T>>(rows, cols, static_cast<T>(1.0f));
 
-    XlaBuilder builder(
-        tensorflow::strings::Printf("max_%lldx%lld_linspace", rows, cols));
+    XlaBuilder builder(absl::StrFormat("max_%dx%d_linspace", rows, cols));
     auto lhs = ConstantR2FromArray2D<T>(&builder, *alhs);
     auto rhs = ConstantR2FromArray2D<T>(&builder, *arhs);
     Max(lhs, rhs);

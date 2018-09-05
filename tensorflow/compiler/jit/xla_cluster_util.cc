@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/control_flow.h"
@@ -52,8 +53,8 @@ string DescribeCycle(const GraphCycles* cycles, const Graph& graph, int src,
   };
 
   string description;
-  strings::StrAppend(&description, "Edge from ", node_name(src), " to ",
-                     node_name(dst), " would create a cycle.\n");
+  absl::StrAppend(&description, "Edge from ", node_name(src), " to ",
+                  node_name(dst), " would create a cycle.\n");
   path.resize(path_size);
   for (int32 node_id : path) {
     string ascii_art;
@@ -64,7 +65,7 @@ string DescribeCycle(const GraphCycles* cycles, const Graph& graph, int src,
     } else {
       ascii_art = "+-- ";
     }
-    strings::StrAppend(&description, ascii_art, node_name(node_id), "\n");
+    absl::StrAppend(&description, ascii_art, node_name(node_id), "\n");
   }
   return description;
 }
@@ -186,7 +187,7 @@ Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles) {
   return Status::OK();
 }
 
-absl::optional<StringPiece> GetXlaClusterForNode(const Node& node) {
+absl::optional<absl::string_view> GetXlaClusterForNode(const Node& node) {
   const AttrValue* attr_value = node.attrs().Find(kXlaClusterAttr);
   if (attr_value == nullptr) {
     return absl::nullopt;

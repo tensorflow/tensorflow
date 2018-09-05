@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
-#include "tensorflow/compiler/xla/service/convolution_feature_group_converter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
@@ -45,9 +44,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
@@ -208,9 +207,11 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     HloPassPipeline pipeline("conv_canonicalization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
-    // TODO(b/31709653): Directly use the grouped convolution support of Cudnn.
-    pipeline.AddPass<ConvolutionFeatureGroupConverter>();
     pipeline.AddPass<CudnnConvolutionRewriter>();
+    // CudnnConvolutionRewriter may add instructions of the form
+    // reverse(constant), which it expects will be simplified by constant
+    // folding.
+    pipeline.AddPass<HloConstantFolding>();
     pipeline.AddPass<PadInsertion>();
     if (IsVoltaOrLater(*stream_exec)) {
       pipeline.AddPass<PadForTensorCores>();
@@ -565,8 +566,8 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   // must also be used to determine the thunk launch schedule.
   std::unique_ptr<StreamAssignment> stream_assignment = AssignStreams(*module);
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloSchedule> hlo_schedule,
-      HloSchedule::Build(*module, *stream_assignment, pointer_size_));
+      std::unique_ptr<GpuHloSchedule> hlo_schedule,
+      GpuHloSchedule::Build(*module, *stream_assignment, pointer_size_));
 
   // Run buffer analysis on the HLO graph. This analysis figures out which
   // temporary buffers are required to run the computation.

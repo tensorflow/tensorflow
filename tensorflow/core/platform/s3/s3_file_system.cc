@@ -150,13 +150,13 @@ Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
     return errors::InvalidArgument("S3 path doesn't start with 's3://': ",
                                    fname);
   }
-  *bucket = bucketp.ToString();
+  *bucket = string(bucketp);
   if (bucket->empty() || *bucket == ".") {
     return errors::InvalidArgument("S3 path doesn't contain a bucket name: ",
                                    fname);
   }
   str_util::ConsumePrefix(&objectp, "/");
-  *object = objectp.ToString();
+  *object = string(objectp);
   if (!empty_object_ok && object->empty()) {
     return errors::InvalidArgument("S3 path doesn't contain an object name: ",
                                    fname);

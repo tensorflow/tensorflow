@@ -18,6 +18,7 @@ limitations under the License.
 #include <map>
 
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
@@ -42,7 +43,7 @@ void RecvOutputsFromRendezvousAsync(
     Rendezvous* rendezvous, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
     const std::vector<string>& keys, std::vector<Tensor>* received_tensors,
-    const StatusCallback& done);
+    StatusCallback done);
 
 Status RecvOutputsFromRendezvous(Rendezvous* rendezvous, NamedTensors* out,
                                  const Rendezvous::Args& args);

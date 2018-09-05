@@ -53,7 +53,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util import tf_decorator
@@ -393,8 +393,8 @@ class Metric(Layer):
   def add_weight(self,
                  name,
                  shape=(),
-                 aggregation=vs.VariableAggregation.SUM,
-                 synchronization=vs.VariableSynchronization.ON_READ,
+                 aggregation=tf_variables.VariableAggregation.SUM,
+                 synchronization=tf_variables.VariableSynchronization.ON_READ,
                  initializer=None):
     """Adds state variable. Only for use by subclasses."""
     return super(Metric, self).add_weight(
@@ -585,11 +585,15 @@ def categorical_accuracy(y_true, y_pred):
 
 
 def sparse_categorical_accuracy(y_true, y_pred):
-  return math_ops.cast(
-      math_ops.equal(
-          math_ops.reduce_max(y_true, axis=-1),
-          math_ops.cast(math_ops.argmax(y_pred, axis=-1), K.floatx())),
-      K.floatx())
+  y_true = math_ops.reduce_max(y_true, axis=-1)
+  y_pred = math_ops.argmax(y_pred, axis=-1)
+
+  # If the expected labels are float, we need to cast the int returned by
+  # argmax to compare.
+  if K.dtype(y_true) == K.floatx():
+    y_pred = math_ops.cast(y_pred, K.floatx())
+
+  return math_ops.cast(math_ops.equal(y_true, y_pred), K.floatx())
 
 
 @tf_export('keras.metrics.top_k_categorical_accuracy')

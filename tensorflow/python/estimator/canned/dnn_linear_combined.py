@@ -31,10 +31,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
-from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
 from tensorflow.python.util.tf_export import estimator_export
@@ -161,8 +161,8 @@ def _dnn_linear_combined_model_fn(features,
     with variable_scope.variable_scope(
         dnn_parent_scope,
         values=tuple(six.itervalues(features)),
-        partitioner=dnn_partitioner):
-
+        partitioner=dnn_partitioner) as scope:
+      dnn_absolute_scope = scope.name
       dnn_logit_fn = dnn._dnn_logit_fn_builder(  # pylint: disable=protected-access
           units=head.logits_dimension,
           hidden_units=dnn_hidden_units,
@@ -186,6 +186,7 @@ def _dnn_linear_combined_model_fn(features,
         linear_parent_scope,
         values=tuple(six.itervalues(features)),
         partitioner=input_layer_partitioner) as scope:
+      linear_absolute_scope = scope.name
       logit_fn = linear._linear_logit_fn_builder(  # pylint: disable=protected-access
           units=head.logits_dimension,
           feature_columns=linear_feature_columns,
@@ -211,18 +212,18 @@ def _dnn_linear_combined_model_fn(features,
               loss,
               var_list=ops.get_collection(
                   ops.GraphKeys.TRAINABLE_VARIABLES,
-                  scope=dnn_parent_scope)))
+                  scope=dnn_absolute_scope)))
     if linear_logits is not None:
       train_ops.append(
           linear_optimizer.minimize(
               loss,
               var_list=ops.get_collection(
                   ops.GraphKeys.TRAINABLE_VARIABLES,
-                  scope=linear_parent_scope)))
+                  scope=linear_absolute_scope)))
 
     train_op = control_flow_ops.group(*train_ops)
     with ops.control_dependencies([train_op]):
-      return distribute_lib.increment_var(global_step)
+      return state_ops.assign_add(global_step, 1).op
 
   return head.create_estimator_spec(
       features=features,

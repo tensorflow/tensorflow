@@ -88,11 +88,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   if (output->type == kTfLiteFloat32) {
-#define TF_LITE_RESIZE_BILINEAR(type, datatype)                                \
-  type::ResizeBilinear(GetTensorData<datatype>(input), GetTensorDims(input),   \
-                       GetTensorData<int32>(size), GetTensorDims(size),        \
-                       GetTensorData<datatype>(output), GetTensorDims(output), \
-                       params->align_corners)
+#define TF_LITE_RESIZE_BILINEAR(type, datatype)                              \
+  tflite::ResizeBilinearParams op_params;                                    \
+  op_params.align_corners = params->align_corners;                           \
+  type::ResizeBilinear(op_params, GetTensorShape(input),                     \
+                       GetTensorData<datatype>(input), GetTensorShape(size), \
+                       GetTensorData<int32>(size), GetTensorShape(output),   \
+                       GetTensorData<datatype>(output))
 
     if (kernel_type == kReference) {
       TF_LITE_RESIZE_BILINEAR(reference_ops, float);

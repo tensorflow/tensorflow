@@ -310,6 +310,7 @@ class CallOp : public AsyncOpKernel {
     opts.step_container = ctx->step_container();
     opts.stats_collector = ctx->stats_collector();
     opts.runner = ctx->runner();
+    opts.collective_executor = ctx->collective_executor();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -346,9 +347,10 @@ const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
     return nullptr;
   }
 
-  mutex_lock l(mu_);
-  CHECK_EQ(1, items_.count(local_handle));
-  return items_[local_handle]->func_graph;
+  tf_shared_lock l(mu_);
+  auto iter = items_.find(local_handle);
+  CHECK(iter != items_.end());
+  return iter->second->func_graph;
 }
 
 Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
@@ -633,7 +635,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   const FunctionLibraryDefinition* lib_def;
   string executor_type;
   {
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     fbody = (*item)->func_graph;
     lib_def = (*item)->overlay_lib;
     executor_type = (*item)->executor_type;
@@ -682,12 +684,13 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
 Status FunctionLibraryRuntimeImpl::GetOrCreateItem(Handle handle, Item** item) {
   LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
   {
-    mutex_lock l(mu_);
-    if (items_.count(local_handle) == 0) {
+    tf_shared_lock l(mu_);
+    auto iter = items_.find(local_handle);
+    if (iter == items_.end()) {
       return errors::NotFound("Function handle ", handle,
                               " is not valid. Likely an internal error.");
     }
-    *item = items_[local_handle].get();
+    *item = iter->second.get();
     if ((*item)->exec != nullptr) {
       return Status::OK();
     }

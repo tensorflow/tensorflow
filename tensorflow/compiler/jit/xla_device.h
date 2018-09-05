@@ -88,6 +88,10 @@ class XlaDevice : public LocalDevice {
   // Sets `*metadata` to the XlaDevice Metadata in the XLA device used by `ctx`.
   static Status GetMetadata(OpKernelContext* ctx, const Metadata** metadata);
 
+  // Sets `*metadata` to the XlaDevice Metadata in the XLA device used by `ctx`.
+  static Status GetMetadata(OpKernelConstruction* ctx,
+                            const Metadata** metadata);
+
   // Factory function. 'platform_name' is the name of the XLA platform.
   // 'device_name' is the name of the Tensorflow device to create.
   // 'jit_device_name' is the name of the corresponding JIT device.
@@ -157,6 +161,9 @@ class XlaDevice : public LocalDevice {
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
   xla::StatusOr<XlaDeviceContext*> GetDeviceContextLocked()
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  static Status GetMetadataFromDevice(DeviceBase* device,
+                                      const XlaDevice::Metadata** metadata);
 
   mutex mu_;
   // The metadata of this XlaDevice.

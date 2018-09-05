@@ -14,6 +14,7 @@ py_library(
         ":datasets",
         ":metrics",
         ":network",
+        ":remote",
         ":saver",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
@@ -223,11 +224,24 @@ py_test(
     ],
 )
 
+py_library(
+    name = "remote",
+    srcs = ["remote.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
 py_test(
     name = "remote_test",
     srcs = ["remote_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":remote",
         "//tensorflow/contrib/eager/python:tfe",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",

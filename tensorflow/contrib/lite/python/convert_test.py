@@ -17,9 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.contrib.lite.python import convert
 from tensorflow.contrib.lite.python import lite_constants
 from tensorflow.contrib.lite.python import op_hint
+from tensorflow.contrib.lite.python.interpreter import Interpreter
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -37,9 +40,12 @@ class ConvertTest(test_util.TensorFlowTestCase):
                                       dtype=dtypes.float32)
     out_tensor = in_tensor + in_tensor
     sess = session.Session()
+
     # Try running on valid graph
-    result = convert.toco_convert(sess.graph_def, [in_tensor], [out_tensor])
-    self.assertTrue(result)
+    tflite_model = convert.toco_convert(sess.graph_def, [in_tensor],
+                                        [out_tensor])
+    self.assertTrue(tflite_model)
+
     # TODO(aselle): remove tests that fail (we must get TOCO to not fatal
     # all the time).
     # Try running on identity graph (known fail)
@@ -52,11 +58,85 @@ class ConvertTest(test_util.TensorFlowTestCase):
     out_tensor = array_ops.fake_quant_with_min_max_args(in_tensor + in_tensor,
                                                         min=0., max=1.)
     sess = session.Session()
-    result = convert.toco_convert(
+
+    tflite_model = convert.toco_convert(
         sess.graph_def, [in_tensor], [out_tensor],
         inference_type=lite_constants.QUANTIZED_UINT8,
         quantized_input_stats=[(0., 1.)])
-    self.assertTrue(result)
+    self.assertTrue(tflite_model)
+
+  def testGraphDefBasic(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32, name="input")
+    _ = in_tensor + in_tensor
+    sess = session.Session()
+
+    tflite_model = convert.toco_convert_graph_def(
+        sess.graph_def, [("input", [1, 16, 16, 3])], ["add"],
+        inference_type=lite_constants.FLOAT)
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual("input", input_details[0]["name"])
+    self.assertEqual(np.float32, input_details[0]["dtype"])
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]["shape"]).all())
+    self.assertEqual((0., 0.), input_details[0]["quantization"])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual("add", output_details[0]["name"])
+    self.assertEqual(np.float32, output_details[0]["dtype"])
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]["shape"]).all())
+    self.assertEqual((0., 0.), output_details[0]["quantization"])
+
+  def testGraphDefQuantization(self):
+    in_tensor_1 = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32, name="inputA")
+    in_tensor_2 = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32, name="inputB")
+    _ = array_ops.fake_quant_with_min_max_args(
+        in_tensor_1 + in_tensor_2, min=0., max=1., name="output")
+    sess = session.Session()
+
+    input_arrays_map = [("inputA", [1, 16, 16, 3]), ("inputB", [1, 16, 16, 3])]
+    output_arrays = ["output"]
+    tflite_model = convert.toco_convert_graph_def(
+        sess.graph_def,
+        input_arrays_map,
+        output_arrays,
+        inference_type=lite_constants.QUANTIZED_UINT8,
+        quantized_input_stats=[(0., 1.), (0., 1.)])
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(2, len(input_details))
+    self.assertEqual("inputA", input_details[0]["name"])
+    self.assertEqual(np.uint8, input_details[0]["dtype"])
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]["shape"]).all())
+    self.assertEqual((1., 0.),
+                     input_details[0]["quantization"])  # scale, zero_point
+
+    self.assertEqual("inputB", input_details[1]["name"])
+    self.assertEqual(np.uint8, input_details[1]["dtype"])
+    self.assertTrue(([1, 16, 16, 3] == input_details[1]["shape"]).all())
+    self.assertEqual((1., 0.),
+                     input_details[1]["quantization"])  # scale, zero_point
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual("output", output_details[0]["name"])
+    self.assertEqual(np.uint8, output_details[0]["dtype"])
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]["shape"]).all())
+    self.assertTrue(output_details[0]["quantization"][0] > 0)  # scale
 
 
 class ConvertTestOpHint(test_util.TensorFlowTestCase):
@@ -243,7 +323,6 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
     with self.test_session() as sess:
       stubbed_graphdef = op_hint.convert_op_hints_to_stubs(
           graph_def=sess.graph_def)
-      print(stubbed_graphdef)
       self.assertCountEqual(
           self._getGraphOpTypes(
               stubbed_graphdef,

@@ -16,13 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
 namespace gpu {
@@ -98,7 +98,7 @@ TEST_F(StreamAssignmentTest, LatticeMatMul) {
   params.reserve(6);
   for (int i = 0; i < 6; ++i) {
     params.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
-        i, f32_2x2_, /*name=*/tensorflow::strings::Printf("param%d", i))));
+        i, f32_2x2_, /*name=*/absl::StrFormat("param%d", i))));
   }
   HloInstruction* d00 = builder.AddInstruction(
       HloInstruction::CreateCanonicalDot(f32_2x2_, params[2], params[3]));

@@ -130,6 +130,22 @@ class MapDefunTest(test.TestCase):
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(result)
 
+  def testMapDefunCancelledCorrectly(self):
+
+    @function.Defun(dtypes.int64)
+    def defun(x):
+      # x has leading dimension 5, this will raise an error
+      return array_ops.gather(x, 10)
+
+    c = array_ops.tile(
+        array_ops.expand_dims(
+            constant_op.constant([1, 2, 3, 4, 5], dtype=dtypes.int64), 0),
+        [100, 1])
+    map_defun_op = map_defun.map_defun(defun, [c], [dtypes.int64], [()])[0]
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 r"indices = 10 is not in \[0, 5\)"):
+      self.evaluate(map_defun_op)
+
 
 if __name__ == "__main__":
   test.main()

@@ -107,7 +107,7 @@ std::vector<string> AllTensorKeys(BundleReader* reader) {
   reader->Seek(kHeaderEntryKey);
   reader->Next();
   for (; reader->Valid(); reader->Next()) {
-    ret.push_back(std::string(reader->key()));
+    ret.emplace_back(reader->key());
   }
   return ret;
 }

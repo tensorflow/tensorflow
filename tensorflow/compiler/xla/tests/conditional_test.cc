@@ -642,5 +642,57 @@ XLA_TEST_F(ConditionalOpTest, SwappedInputsInSequentialConditionals) {
   test_swap(11.24f, 5.55f);
 }
 
+// Test conditional that duplicates tuple elements in the then and else
+// computations. This is a regression test for b/112550242.
+XLA_TEST_F(ConditionalOpTest, DuplicateElementsConditional) {
+  const Shape scalar = ShapeUtil::MakeShape(S32, {});
+  const Shape tuple2 = ShapeUtil::MakeTupleShape({scalar, scalar});
+  XlaComputation then_comp;
+  {
+    XlaBuilder builder(TestName() + ".then");
+    auto p = Parameter(&builder, 0, tuple2, "then.p");
+    auto e0 = GetTupleElement(p, 0);
+    auto e1 = GetTupleElement(p, 1);
+    Tuple(&builder, {e0, e1, e0});
+    then_comp = builder.Build().ConsumeValueOrDie();
+  }
+  XlaComputation else_comp;
+  {
+    XlaBuilder builder(TestName() + ".else");
+    auto p = Parameter(&builder, 0, tuple2, "else.p");
+    auto e0 = GetTupleElement(p, 0);
+    auto e1 = GetTupleElement(p, 1);
+    Tuple(&builder, {e0, e1, e1});
+    else_comp = builder.Build().ConsumeValueOrDie();
+  }
+
+  {
+    // Pred is true case.
+    std::vector<Literal> args;
+    args.push_back(std::move(
+        *LiteralUtil::MakeTuple({LiteralUtil::CreateR0<int32>(123).get(),
+                                 LiteralUtil::CreateR0<int32>(-42).get()})));
+    args.push_back(std::move(*LiteralUtil::CreateR0<bool>(true)));
+    XlaBuilder builder(TestName() + ".main");
+    auto p = Parameter(&builder, 0, tuple2, "p0");
+    auto p_pred = Parameter(&builder, 1, ShapeUtil::MakeShape(PRED, {}), "p1");
+    Conditional(p_pred, p, then_comp, p, else_comp);
+    ComputeAndCompare(&builder, args);
+  }
+  {
+    // Pred is false case.
+    std::vector<Literal> args;
+    args.push_back(std::move(
+        *LiteralUtil::MakeTuple({LiteralUtil::CreateR0<int32>(123).get(),
+                                 LiteralUtil::CreateR0<int32>(-42).get()})));
+    args.push_back(std::move(*LiteralUtil::CreateR0<bool>(false)));
+    XlaBuilder builder(TestName() + ".main");
+    auto p = Parameter(&builder, 0, tuple2, "p0");
+    auto p_pred = Parameter(&builder, 1, ShapeUtil::MakeShape(PRED, {}), "p1");
+    Conditional(p_pred, p, then_comp, p, else_comp);
+    ComputeAndCompare(&builder, args);
+  }
+}
+
 }  // namespace
 }  // namespace xla

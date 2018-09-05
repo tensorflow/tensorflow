@@ -353,7 +353,7 @@ bool IsUsedOutsideSubcomputation(
 }  // anonymous namespace
 
 HloInstruction* HloModule::OutlineExpressionFromComputation(
-    tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_outline,
+    absl::Span<HloInstruction* const> instructions_to_outline,
     const string& outlined_computation_name, HloComputation* computation) {
   auto builder = HloComputation::Builder(outlined_computation_name);
 

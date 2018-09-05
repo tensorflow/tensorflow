@@ -263,6 +263,14 @@ typedef struct EagerTensor {
   TF_Status* status;
 
   PyObject* weakreflist; /* List of weak references */
+
+  // Per-instance attribute dictionary, to support monkey patching
+  // (e.g. EagerTensor.assign when slicing variables). This dictionary is
+  // created by CPython the first time an attribute is assigned, pointed to by
+  // tp_dictoffset. Note that garbage collection is not enabled for
+  // EagerTensors, so assigning objects to EagerTensor attributes which require
+  // garbage collection is likely to cause issues.
+  PyObject* dict;
 } EagerTensor;
 
 namespace {
@@ -311,6 +319,7 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   Py_INCREF(Py_None);
   self->tensor_shape = Py_None;
   self->status = TF_NewStatus();
+  self->dict = nullptr;
   self->weakreflist = nullptr;
   PyObject* value;
   PyObject* context = nullptr;
@@ -410,6 +419,10 @@ void EagerTensor_dealloc(EagerTensor* self) {
   Py_DECREF(self->handle_data);
   Py_DECREF(self->keras_mask);
   Py_DECREF(self->tensor_shape);
+  // If an attribute dictionary has been created, release it. Note that this
+  // is only ever created by CPython's attribute setting methods; we don't
+  // create it ourselves.
+  Py_CLEAR(self->dict);
   if (self->handle != nullptr) {
     TFE_DeleteTensorHandle(self->handle);
     self->handle = nullptr;
@@ -472,6 +485,30 @@ static PyObject* EagerTensor_rank(EagerTensor* self) {
 #else
   return PyLong_FromLong(num_dims);
 #endif
+}
+
+// Getter for `_num_elements`.
+static PyObject* EagerTensor_num_elements(EagerTensor* self) {
+  auto handle = self->handle;
+  int n = TFE_TensorHandleNumDims(handle, self->status);
+  if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError)) {
+    // Cleanup self->status before returning.
+    TF_SetStatus(self->status, TF_OK, "");
+    return nullptr;
+  }
+  tensorflow::int64 value = 1;
+  if (PyErr_Occurred()) return nullptr;
+  for (int i = 0; i < n; ++i) {
+    int64_t dim = TFE_TensorHandleDim(handle, i, self->status);
+    if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError)) {
+      // Cleanup self->status before returning.
+      TF_SetStatus(self->status, TF_OK, "");
+      PyErr_SetString(PyExc_RuntimeError, "Error while iterating dimensions");
+      return nullptr;
+    }
+    value *= dim;
+  }
+  return PyLong_FromLongLong(value);
 }
 
 static PyObject* EagerTensor_tensor_handle(EagerTensor* self, void* unused) {
@@ -592,6 +629,8 @@ static PyMethodDef EagerTensor_methods[] = {
     {"_rank", (PyCFunction)EagerTensor_rank, METH_NOARGS, PyDoc_STR("_rank")},
     {"_copy_to_device", (PyCFunction)EagerTensor_copy_to_device,
      METH_VARARGS | METH_KEYWORDS, PyDoc_STR("_copy_to_device")},
+    {"_num_elements", (PyCFunction)EagerTensor_num_elements, METH_NOARGS,
+     PyDoc_STR("_num_elements")},
     {nullptr, nullptr},
 };
 
@@ -660,7 +699,7 @@ static PyTypeObject _EagerTensorType = {
     nullptr,                            /* tp_dict */
     nullptr,                            /* tp_descr_get */
     nullptr,                            /* tp_descr_set */
-    0,                                  /* tp_dictoffset */
+    offsetof(EagerTensor, dict),        /* tp_dictoffset */
     (initproc)EagerTensor_init,         /* tp_init */
     nullptr,                            /* tp_alloc */
     nullptr,                            /* tp_new */
@@ -788,6 +827,7 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
     PyErr_SetString(PyExc_RuntimeError, "Error while creating EagerTensorType");
     return nullptr;
   }
+  EagerTensorType->tp_dictoffset = offsetof(EagerTensor, dict);
 #else
   _EagerTensorType.tp_base = reinterpret_cast<PyTypeObject*>(base_class);
 

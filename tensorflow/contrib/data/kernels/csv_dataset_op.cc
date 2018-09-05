@@ -713,7 +713,7 @@ class CSVDatasetOp : public DatasetOpKernel {
               component.scalar<string>()() =
                   dataset()->record_defaults_[output_idx].flat<string>()(0);
             } else {
-              component.scalar<string>()() = field.ToString();
+              component.scalar<string>()() = string(field);
             }
             break;
           }

@@ -319,12 +319,12 @@ void ComputeComputationPostOrder(
   }
 }
 
-enum State { kVisiting, kVisited };
+}  // namespace
 
-void ComputeInstructionPostOrder(
-    std::map<int64, std::vector<HloInstruction*>> channel_dependency_map,
+void HloComputation::ComputeInstructionPostOrder(
+    const HloComputation::ChannelDependencyMap& channel_dependency_map,
     std::vector<HloInstruction*>* post_order, HloInstruction* root,
-    tensorflow::gtl::FlatMap<HloInstruction*, State>* visited) {
+    tensorflow::gtl::FlatMap<HloInstruction*, VisitState>* visited) const {
   std::vector<HloInstruction*> dfs_stack;
   dfs_stack.push_back(root);
   while (!dfs_stack.empty()) {
@@ -362,20 +362,22 @@ void ComputeInstructionPostOrder(
     // dependencies.
     switch (current->opcode()) {
       case HloOpcode::kRecvDone: {
-        const auto& dependencies =
-            channel_dependency_map[current->channel_id()];
-        for (HloInstruction* op : dependencies) {
-          dfs_stack.emplace_back(op);
+        auto it = channel_dependency_map.find(current->channel_id());
+        if (it != channel_dependency_map.end()) {
+          for (HloInstruction* op : it->second) {
+            dfs_stack.emplace_back(op);
+          }
         }
         break;
       }
       case HloOpcode::kCrossReplicaSum: {
         auto all_reduce_id = current->all_reduce_id();
         if (all_reduce_id) {
-          const auto& dependencies =
-              channel_dependency_map[all_reduce_id.value()];
-          for (HloInstruction* op : dependencies) {
-            dfs_stack.emplace_back(op);
+          auto it = channel_dependency_map.find(all_reduce_id.value());
+          if (it != channel_dependency_map.end()) {
+            for (HloInstruction* op : it->second) {
+              dfs_stack.emplace_back(op);
+            }
           }
         }
         break;
@@ -386,11 +388,9 @@ void ComputeInstructionPostOrder(
   }
 }
 
-}  // namespace
-
-std::map<int64, std::vector<HloInstruction*>>
+HloComputation::ChannelDependencyMap
 HloComputation::ComputeChannelDependencies() const {
-  std::map<int64, std::vector<HloInstruction*>> channel_dependency_map;
+  ChannelDependencyMap channel_dependency_map;
   for (const auto& instruction : instructions_) {
     switch (instruction->opcode()) {
       case HloOpcode::kSend: {
@@ -421,7 +421,7 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   std::vector<HloInstruction*> post_order;
   post_order.reserve(instruction_count());
   std::vector<HloInstruction*> trace_instructions;
-  tensorflow::gtl::FlatMap<HloInstruction*, State> visited;
+  tensorflow::gtl::FlatMap<HloInstruction*, VisitState> visited;
   for (auto& instruction : instructions_) {
     if (instruction->opcode() == HloOpcode::kTrace) {
       // Trace instructions aren't handled by the DFS visitor. Add trace
@@ -558,7 +558,7 @@ HloComputation::CreateFromProto(
 }
 
 void HloComputation::FuseInstructionsInto(
-    tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
+    absl::Span<HloInstruction* const> instructions_to_fuse,
     HloInstruction* fusion_instruction) {
   CHECK_EQ(HloOpcode::kFusion, fusion_instruction->opcode());
   HloInstruction* root = instructions_to_fuse.front();
@@ -577,7 +577,7 @@ void HloComputation::FuseInstructionsInto(
 }
 
 HloInstruction* HloComputation::CreateFusionInstruction(
-    tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
+    absl::Span<HloInstruction* const> instructions_to_fuse,
     HloInstruction::FusionKind fusion_kind) {
   HloInstruction* root = instructions_to_fuse.front();
   HloInstruction* fusion_instruction = AddInstruction(
@@ -625,16 +625,15 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
   if (instruction->parent() != this) {
     return FailedPrecondition(
         "Can't deep copy instruction %s: instruction is not in computation %s",
-        instruction->name().c_str(), name().c_str());
+        instruction->name(), name());
   }
   if (indices_to_copy != nullptr &&
       !ShapeUtil::Compatible(instruction->shape(), indices_to_copy->shape())) {
     return FailedPrecondition(
         "Can't deep copy instruction %s: given shape tree of indices to copy "
         "has incompatible shapes: %s vs. %s",
-        instruction->name().c_str(),
-        ShapeUtil::HumanString(instruction->shape()).c_str(),
-        ShapeUtil::HumanString(indices_to_copy->shape()).c_str());
+        instruction->name(), ShapeUtil::HumanString(instruction->shape()),
+        ShapeUtil::HumanString(indices_to_copy->shape()));
   }
 
   ShapeIndex index;
@@ -664,7 +663,7 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyInstructionWithCustomCopier(
   if (instruction->parent() != this) {
     return FailedPrecondition(
         "Can't deep copy instruction %s: instruction is not in computation %s",
-        instruction->name().c_str(), name().c_str());
+        instruction->name(), name());
   }
   ShapeIndex index;
   return DeepCopyHelper(instruction, &index, copy_leaf);
@@ -747,16 +746,19 @@ std::unique_ptr<HloReachabilityMap> HloComputation::ComputeReachability()
 
     switch (hlo->opcode()) {
       case HloOpcode::kRecvDone: {
-        const auto& dependencies = channel_dependency_map[hlo->channel_id()];
-        absl::c_copy(dependencies, std::back_inserter(inputs));
+        auto it = channel_dependency_map.find(hlo->channel_id());
+        if (it != channel_dependency_map.end()) {
+          absl::c_copy(it->second, std::back_inserter(inputs));
+        }
         break;
       }
       case HloOpcode::kCrossReplicaSum: {
         auto all_reduce_id = hlo->all_reduce_id();
         if (all_reduce_id) {
-          const auto& dependencies =
-              channel_dependency_map[all_reduce_id.value()];
-          absl::c_copy(dependencies, std::back_inserter(inputs));
+          auto it = channel_dependency_map.find(all_reduce_id.value());
+          if (it != channel_dependency_map.end()) {
+            absl::c_copy(it->second, std::back_inserter(inputs));
+          }
         }
         break;
       }

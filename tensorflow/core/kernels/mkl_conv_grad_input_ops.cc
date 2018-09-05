@@ -174,7 +174,6 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
     }
   };
 
-
   void Setup(const MklConvBwdInputParams& convBwdInputDims) {
     // create memory descriptors for convolution data w/ no specified format
     context_.diff_src_md.reset(new memory::desc(
@@ -242,19 +241,23 @@ class MklConvBwdInputPrimitiveFactory : public MklPrimitiveFactory<T> {
 
  public:
   static MklConvBwdInputPrimitive<T>* Get(
-      const MklConvBwdInputParams& convBwdInputDims) {
+      const MklConvBwdInputParams& convBwdInputDims, bool do_not_cache) {
     MklConvBwdInputPrimitive<T>* conv_bwd_input = nullptr;
 
-    // look into the pool for reusable primitive
-    conv_bwd_input = dynamic_cast<MklConvBwdInputPrimitive<T>*>(
-        MklConvBwdInputPrimitiveFactory<T>::GetInstance().GetConvBwdInput(
-            convBwdInputDims));
-
-    if (conv_bwd_input == nullptr) {
+    if (do_not_cache) { /* Always allocate primitive */
       conv_bwd_input = new MklConvBwdInputPrimitive<T>(convBwdInputDims);
-      MklConvBwdInputPrimitiveFactory<T>::GetInstance().SetConvBwdInput(
-          convBwdInputDims, conv_bwd_input);
+    } else {
+      // look into the pool for reusable primitive
+      conv_bwd_input = dynamic_cast<MklConvBwdInputPrimitive<T>*>(
+          MklConvBwdInputPrimitiveFactory<T>::GetInstance().GetConvBwdInput(
+              convBwdInputDims));
+      if (conv_bwd_input == nullptr) {
+        conv_bwd_input = new MklConvBwdInputPrimitive<T>(convBwdInputDims);
+        MklConvBwdInputPrimitiveFactory<T>::GetInstance().SetConvBwdInput(
+            convBwdInputDims, conv_bwd_input);
+      }
     }
+
     return conv_bwd_input;
   }
 
@@ -708,8 +711,18 @@ class MklConvCustomBackpropInputOp : public MklConvBackpropCommonOp<Device, T> {
       MklConvBwdInputParams convBwdInputDims(fwd_src_dims, fwd_filter_dims,
           diff_dst_dims, strides, dilations, padding_left, padding_right,
           TFPaddingToMklDnnPadding(this->padding_));
-      conv_bwd_input =
-          MklConvBwdInputPrimitiveFactory<T>::Get(convBwdInputDims);
+
+      // We don't cache those primitves if the env variable
+      // TF_MKL_OPTIMIZE_PRIMITVE_MEMUSE is true and if primitve descriptor
+      // includes potentialy large buffers. MKL DNN allocates buffers
+      // in the following cases
+      //   1. Legacy CPU without AVX512/AVX2, or
+      //   2. 1x1 convolution with stride != 1
+      bool do_not_cache = MklPrimitiveFactory<T>::IsPrimitiveMemOptEnabled() &&
+                   (MklPrimitiveFactory<T>::IsLegacyPlatform() ||
+                    IsConv1x1StrideNot1(fwd_filter_dims, strides));
+      conv_bwd_input = MklConvBwdInputPrimitiveFactory<T>::Get(convBwdInputDims,
+                                                               do_not_cache);
       auto bwd_input_pd = conv_bwd_input->GetPrimitiveDesc();
 
       // allocate output tensor
@@ -755,6 +768,11 @@ class MklConvCustomBackpropInputOp : public MklConvBackpropCommonOp<Device, T> {
 
       // execute convolution input bwd
       conv_bwd_input->Execute(diff_src_data, filter_data, diff_dst_data);
+
+      // delete primitive since it is not cached.
+      if (do_not_cache) {
+        delete conv_bwd_input;
+      }
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +

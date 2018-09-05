@@ -44,13 +44,9 @@ def push_tape(tape):
   pywrap_tensorflow.TFE_Py_TapeSetAdd(tape._tape)  # pylint: disable=protected-access
 
 
-def watch(tensor):
-  """Marks this tensor to be watched by all tapes in the stack.
-
-  Args:
-    tensor: tensor to be watched.
-  """
-  pywrap_tensorflow.TFE_Py_TapeSetWatch(tensor)
+def watch(tape, tensor):
+  """Marks this tensor to be watched by the given tape."""
+  pywrap_tensorflow.TFE_Py_TapeWatch(tape._tape, tensor)  # pylint: disable=protected-access
 
 
 def watch_variable(variable):

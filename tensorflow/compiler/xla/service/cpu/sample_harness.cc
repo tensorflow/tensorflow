@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -67,8 +67,8 @@ int main(int argc, char** argv) {
           /*execution_profile=*/&profile);
   std::unique_ptr<xla::Literal> actual = result.ConsumeValueOrDie();
 
-  LOG(INFO) << tensorflow::strings::Printf("computation took %lldns",
-                                           profile.compute_time_ns());
+  LOG(INFO) << absl::StrFormat("computation took %dns",
+                               profile.compute_time_ns());
   LOG(INFO) << actual->ToString();
 
   return 0;

@@ -217,7 +217,7 @@ class ControlFlowTransformer(converter.Base):
 
     cond_scope = anno.getanno(node, annos.NodeAnno.COND_SCOPE)
     cond_closure = set()
-    for s in cond_scope.referenced:
+    for s in cond_scope.used:
       for root in s.support_set:
         if root not in body_scope.created:
           cond_closure.add(root)
@@ -250,6 +250,7 @@ class ControlFlowTransformer(converter.Base):
     node_body = ast_util.rename_symbols(node.body, ssf_map)
     test = ast_util.rename_symbols(node.test, ssf_map)
 
+    # TODO(b/113118541) investigate the need-for and correctness-of extra_deps
     template = """
       def test_name(state_ssf):
         return test

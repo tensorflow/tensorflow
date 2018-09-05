@@ -39,6 +39,7 @@ _IMAGE_DTYPES = set(
 
 ops.RegisterShape("ImageConnectedComponents")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ImageProjectiveTransform")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ImageProjectiveTransformV2")(common_shapes.call_cpp_shape_fn)
 
 
 # TODO(ringwalt): Support a "reshape" (name used by SciPy) or "expand" (name
@@ -290,7 +291,7 @@ def transform(images,
     else:
       raise TypeError("Transforms should have rank 1 or 2.")
 
-    output = gen_image_ops.image_projective_transform(
+    output = gen_image_ops.image_projective_transform_v2(
         images,
         output_shape=output_shape,
         transforms=transforms,
@@ -391,7 +392,7 @@ def matrices_to_flat_transforms(transform_matrices):
     return transforms[:, :8]
 
 
-@ops.RegisterGradient("ImageProjectiveTransform")
+@ops.RegisterGradient("ImageProjectiveTransformV2")
 def _image_projective_transform_grad(op, grad):
   """Computes the gradient for ImageProjectiveTransform."""
   images = op.inputs[0]
@@ -415,7 +416,7 @@ def _image_projective_transform_grad(op, grad):
   transforms = flat_transforms_to_matrices(transforms=transforms)
   inverse = linalg_ops.matrix_inverse(transforms)
   transforms = matrices_to_flat_transforms(inverse)
-  output = gen_image_ops.image_projective_transform(
+  output = gen_image_ops.image_projective_transform_v2(
       images=grad,
       transforms=transforms,
       output_shape=array_ops.shape(image_or_images)[1:3],

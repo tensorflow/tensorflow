@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from google.protobuf import text_format
 from tensorflow.contrib import layers
+from tensorflow.contrib import learn
 from tensorflow.contrib.boosted_trees.proto import learner_pb2
 from tensorflow.contrib.boosted_trees.proto import tree_config_pb2
 from tensorflow.contrib.boosted_trees.python.ops import model_ops
@@ -309,6 +310,162 @@ class GbdtTest(test_util.TensorFlowTestCase):
             leaf {
               vector {
                 value: 0.0
+              }
+            }
+          }"""
+      self.assertProtoEquals(expected_tree, output.trees[0])
+
+  def testObliviousDecisionTreeAsWeakLearner(self):
+    with self.test_session():
+      ensemble_handle = model_ops.tree_ensemble_variable(
+          stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
+      learner_config = learner_pb2.LearnerConfig()
+      learner_config.num_classes = 2
+      learner_config.learning_rate_tuner.fixed.learning_rate = 1
+      learner_config.regularization.l1 = 0
+      learner_config.regularization.l2 = 0
+      learner_config.constraints.max_tree_depth = 2
+      learner_config.constraints.min_node_weight = 0
+      learner_config.weak_learner_type = (
+          learner_pb2.LearnerConfig.OBLIVIOUS_DECISION_TREE)
+      learner_config.pruning_mode = learner_pb2.LearnerConfig.PRE_PRUNE
+      learner_config.growing_mode = learner_pb2.LearnerConfig.LAYER_BY_LAYER
+      features = {}
+      features["dense_float"] = array_ops.constant([[-2], [-1], [1], [2]],
+                                                   dtypes.float32)
+
+      gbdt_model = gbdt_batch.GradientBoostedDecisionTreeModel(
+          is_chief=True,
+          num_ps_replicas=0,
+          center_bias=False,
+          ensemble_handle=ensemble_handle,
+          examples_per_layer=1,
+          learner_config=learner_config,
+          logits_dimension=1,
+          features=features)
+
+      predictions_dict = gbdt_model.predict(learn.ModeKeys.TRAIN)
+      predictions = predictions_dict["predictions"]
+      labels = array_ops.constant([[-2], [-1], [1], [2]], dtypes.float32)
+      weights = array_ops.ones([4, 1], dtypes.float32)
+
+      train_op = gbdt_model.train(
+          loss=math_ops.reduce_mean(
+              _squared_loss(labels, weights, predictions)),
+          predictions_dict=predictions_dict,
+          labels=labels)
+      variables.global_variables_initializer().run()
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      # On first run, expect no splits to be chosen because the quantile
+      # buckets will not be ready.
+      train_op.run()
+      stamp_token, serialized = model_ops.tree_ensemble_serialize(
+          ensemble_handle)
+      output = tree_config_pb2.DecisionTreeEnsembleConfig()
+      output.ParseFromString(serialized.eval())
+      self.assertEquals(len(output.trees), 0)
+      self.assertEquals(len(output.tree_weights), 0)
+      self.assertEquals(stamp_token.eval(), 1)
+
+      # Second run.
+      train_op.run()
+      stamp_token, serialized = model_ops.tree_ensemble_serialize(
+          ensemble_handle)
+      output = tree_config_pb2.DecisionTreeEnsembleConfig()
+      output.ParseFromString(serialized.eval())
+      self.assertEquals(len(output.trees), 1)
+      self.assertAllClose(output.tree_weights, [1])
+      self.assertEquals(stamp_token.eval(), 2)
+      expected_tree = """
+          nodes {
+            oblivious_dense_float_binary_split {
+              threshold: -1.0
+            }
+            node_metadata {
+              gain: 4.5
+              original_oblivious_leaves {
+              }
+            }
+          }
+          nodes {
+            leaf {
+              vector {
+                value: -1.5
+              }
+            }
+          }
+          nodes {
+            leaf {
+              vector {
+                value: 1.5
+              }
+            }
+          }"""
+      self.assertProtoEquals(expected_tree, output.trees[0])
+      # Third run.
+      train_op.run()
+      stamp_token, serialized = model_ops.tree_ensemble_serialize(
+          ensemble_handle)
+      output = tree_config_pb2.DecisionTreeEnsembleConfig()
+      output.ParseFromString(serialized.eval())
+      self.assertEquals(len(output.trees), 1)
+      self.assertAllClose(output.tree_weights, [1])
+      self.assertEquals(stamp_token.eval(), 3)
+      expected_tree = """
+          nodes {
+            oblivious_dense_float_binary_split {
+              threshold: -1.0
+            }
+            node_metadata {
+              gain: 4.5
+              original_oblivious_leaves {
+              }
+            }
+          }
+          nodes {
+            oblivious_dense_float_binary_split {
+              threshold: -2.0
+            }
+            node_metadata {
+              gain: 0.25
+              original_oblivious_leaves {
+                vector {
+                  value: -1.5
+                }
+              }
+              original_oblivious_leaves {
+                vector {
+                  value: 1.5
+                }
+              }
+            }
+          }
+          nodes {
+            leaf {
+              vector {
+                value: -2.0
+              }
+            }
+          }
+          nodes {
+            leaf {
+              vector {
+                value: -1.0
+              }
+            }
+          }
+          nodes {
+            leaf {
+              vector {
+                value: 1.5
+              }
+            }
+          }
+          nodes {
+            leaf {
+              vector {
+                value: 1.5
               }
             }
           }"""

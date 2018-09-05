@@ -113,17 +113,16 @@ def main(_):
       n_classes=3,
       model_dir=model_dir)
 
-  hooks = None
   if FLAGS.debug and FLAGS.tensorboard_debug_address:
     raise ValueError(
         "The --debug and --tensorboard_debug_address flags are mutually "
         "exclusive.")
+  hooks = []
   if FLAGS.debug:
-    debug_hook = tf_debug.LocalCLIDebugHook(ui_type=FLAGS.ui_type,
-                                            dump_root=FLAGS.dump_root)
+    hooks.append(tf_debug.LocalCLIDebugHook(ui_type=FLAGS.ui_type,
+                                            dump_root=FLAGS.dump_root))
   elif FLAGS.tensorboard_debug_address:
-    debug_hook = tf_debug.TensorBoardDebugHook(FLAGS.tensorboard_debug_address)
-  hooks = [debug_hook]
+    hooks.append(tf_debug.TensorBoardDebugHook(FLAGS.tensorboard_debug_address))
 
   # Train model, using tfdbg hook.
   classifier.train(training_input_fn,

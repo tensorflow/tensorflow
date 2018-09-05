@@ -23,8 +23,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 
@@ -44,7 +44,7 @@ class HloModuleTest : public HloTestBase {
 
   // Creates a computation which calls the given zero-parameter computations.
   std::unique_ptr<HloComputation> CreateCallComputation(
-      tensorflow::gtl::ArraySlice<HloComputation*> computations) {
+      absl::Span<HloComputation* const> computations) {
     auto builder = HloComputation::Builder("Call");
     for (auto computation : computations) {
       builder.AddInstruction(

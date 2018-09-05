@@ -209,7 +209,7 @@ filegroup(
     ) + if_ngraph([
         "@ngraph//:LICENSE",
         "@ngraph_tf//:LICENSE",
-        "@nlohmann_json_lib//:LICENSE",
+        "@nlohmann_json_lib//:LICENSE.MIT",
     ]) + tf_additional_license_deps(),
 )
 

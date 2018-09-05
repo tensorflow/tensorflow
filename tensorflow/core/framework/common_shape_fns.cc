@@ -432,9 +432,9 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
   DimensionHandle batch_size_dim;
   DimensionHandle input_depth_dim;
   gtl::InlinedVector<DimensionHandle, 2> input_spatial_dims(2);
-  TF_RETURN_IF_ERROR(DimensionsFromShape(conv_input_shape, data_format,
-                                         &batch_size_dim, &input_spatial_dims,
-                                         &input_depth_dim, c));
+  TF_RETURN_IF_ERROR(DimensionsFromShape(
+      conv_input_shape, data_format, &batch_size_dim,
+      absl::MakeSpan(input_spatial_dims), &input_depth_dim, c));
 
   DimensionHandle output_depth_dim = c->Dim(
       filter_shape, GetFilterDimIndex<num_spatial_dims>(filter_format, 'O'));

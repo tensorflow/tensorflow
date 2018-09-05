@@ -91,6 +91,7 @@ cc_library(
         "//tensorflow/contrib/lite/schema:schema_fbs",
         "//tensorflow/contrib/lite/toco:model",
         "//tensorflow/contrib/lite/toco:tooling_util",
+        "//tensorflow/contrib/lite/tools/optimize:quantize_weights",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
     ],

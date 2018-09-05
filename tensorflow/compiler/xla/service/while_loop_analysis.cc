@@ -211,8 +211,7 @@ optional<int64> ComputeWhileLoopTripCount(HloInstruction* while_op,
       VLOG(2) << "Couldn't evaluate while cond: " << result.status();
       return nullopt;
     }
-    if (result.ValueOrDie()->data<bool>() ==
-        tensorflow::gtl::ArraySlice<bool>{false}) {
+    if (result.ValueOrDie()->data<bool>() == absl::Span<const bool>{false}) {
       VLOG(2) << "Loop has static trip count of " << trip_count;
       return trip_count;
     }
