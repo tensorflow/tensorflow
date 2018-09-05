@@ -57,6 +57,7 @@ def tflite_linkopts_unstripped():
             "-Wl,--as-needed",  # Don't link unused libs.
         ],
         "//tensorflow:darwin": [],
+        "//tensorflow:ios": [],
         "//tensorflow/contrib/lite:mips": [],
         "//tensorflow/contrib/lite:mips64": [],
         "//conditions:default": [
