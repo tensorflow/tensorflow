@@ -684,8 +684,10 @@ py_test(
     shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
+        "manual",  # b/112769036, b/113907597
+        "no_oss",  # b/112769036, b/113907597
         "no_windows",
-        "notsan",
+        "notsan",  # b/67510291
     ],
     deps = [
         ":keras",
