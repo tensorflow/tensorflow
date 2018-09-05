@@ -45,6 +45,11 @@ from tensorflow.contrib.autograph.operators.data_structures import list_stack
 from tensorflow.contrib.autograph.operators.data_structures import ListPopOpts
 from tensorflow.contrib.autograph.operators.data_structures import ListStackOpts
 from tensorflow.contrib.autograph.operators.data_structures import new_list
+from tensorflow.contrib.autograph.operators.py_builtins import float_
+from tensorflow.contrib.autograph.operators.py_builtins import int_
+from tensorflow.contrib.autograph.operators.py_builtins import len_
+from tensorflow.contrib.autograph.operators.py_builtins import print_
+from tensorflow.contrib.autograph.operators.py_builtins import range_
 from tensorflow.contrib.autograph.operators.slices import get_item
 from tensorflow.contrib.autograph.operators.slices import GetItemOpts
 from tensorflow.contrib.autograph.operators.slices import set_item
