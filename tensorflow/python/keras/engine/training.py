@@ -406,6 +406,8 @@ class Model(Network):
     self._distribution_strategy = distribute
     if self._distribution_strategy is not None:
       self._grouped_model = None
+      distributed_training_utils.configure_and_create_session(
+          self._distribution_strategy)
     if not self.built:
       # Model is not compilable because it does not know its number of inputs
       # and outputs, nor their shapes and names. We will compile after the first
