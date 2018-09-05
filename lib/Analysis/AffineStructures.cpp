@@ -38,9 +38,8 @@ static AffineExpr *toAffineExpr(ArrayRef<int64_t> eq, unsigned numDims,
                                 unsigned numSymbols,
                                 ArrayRef<AffineExpr *> localExprs,
                                 MLIRContext *context) {
-  unsigned numLocals = eq.size() - numDims - numSymbols - 1;
-
-  assert(numLocals == localExprs.size() &&
+  // Assert expected numLocals = eq.size() - numDims - numSymbols - 1
+  assert(eq.size() - numDims - numSymbols - 1 == localExprs.size() &&
          "unexpected number of local expressions");
 
   AffineExpr *expr = AffineConstantExpr::get(0, context);
