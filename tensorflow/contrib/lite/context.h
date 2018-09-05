@@ -39,6 +39,12 @@ extern "C" {
 
 typedef enum { kTfLiteOk = 0, kTfLiteError = 1 } TfLiteStatus;
 
+// Forward declarations for use with dependent types.
+struct TfLiteContext;
+struct TfLiteNode;
+struct _TfLiteRegistration;
+struct _TfLiteDelegate;
+
 // The list of external context types known to TF Lite. This list exists solely
 // to avoid conflicts and to ensure ops can share the external contexts they
 // need. Access to the external contexts is controled by one of the
@@ -59,10 +65,6 @@ typedef struct {
   TfLiteExternalContextType type;
   TfLiteStatus (*Refresh)(struct TfLiteContext* context);
 } TfLiteExternalContext;
-
-// Forward declare so GetNode can use this is in Context.
-typedef struct _TfLiteRegistration TfLiteRegistration;
-typedef struct _TfLiteDelegate TfLiteDelegate;
 
 #define kOptionalTensor (-1)
 
@@ -240,7 +242,7 @@ typedef struct {
 
   // The delegate which knows how to handle `buffer_handle`.
   // WARNING: This is an experimental interface that is subject to change.
-  TfLiteDelegate* delegate;
+  struct _TfLiteDelegate* delegate;
 
   // An integer buffer handle that can be handled by `delegate`.
   // The value is valid only when delegate is not null.
@@ -278,7 +280,7 @@ void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
 // A structure representing an instance of a node.
 // This structure only exhibits the inputs, outputs and user defined data, not
 // other features like the type.
-typedef struct {
+typedef struct TfLiteNode {
   // Inputs to this node expressed as indices into the simulator's tensors.
   TfLiteIntArray* inputs;
 
@@ -305,7 +307,7 @@ typedef struct {
   // The pointer to the delegate. This is non-null only when the node is
   // created by calling `interpreter.ModifyGraphWithDelegate`.
   // WARNING: This is an experimental interface that is subject to change.
-  TfLiteDelegate* delegate;
+  struct _TfLiteDelegate* delegate;
 } TfLiteNode;
 
 typedef struct TfLiteContext {
@@ -351,15 +353,15 @@ typedef struct TfLiteContext {
 
   // Get a Tensor node by node_index.
   // WARNING: This is an experimental interface that is subject to change.
-  TfLiteStatus (*GetNodeAndRegistration)(struct TfLiteContext*, int node_index,
-                                         TfLiteNode** node,
-                                         TfLiteRegistration** registration);
+  TfLiteStatus (*GetNodeAndRegistration)(
+      struct TfLiteContext*, int node_index, struct TfLiteNode** node,
+      struct _TfLiteRegistration** registration);
 
   // Replace ops with one or more stub delegate operations. This function
   // does not take ownership of `nodes_to_replace`.
   TfLiteStatus (*ReplaceSubgraphsWithDelegateKernels)(
-      struct TfLiteContext*, TfLiteRegistration registration,
-      const TfLiteIntArray* nodes_to_replace, TfLiteDelegate* delegate);
+      struct TfLiteContext*, struct _TfLiteRegistration registration,
+      const TfLiteIntArray* nodes_to_replace, struct _TfLiteDelegate* delegate);
 
   // Number of threads that are recommended to subsystems like gemmlowp and
   // eigen.
@@ -447,19 +449,20 @@ typedef struct _TfLiteDelegate {
   // will look at the nodes and call ReplaceSubgraphsWithDelegateKernels()
   // to ask the TensorFlow lite runtime to create macro-nodes to represent
   // delegated subgraphs of the original graph.
-  TfLiteStatus (*Prepare)(TfLiteContext* context, TfLiteDelegate* delegate);
+  TfLiteStatus (*Prepare)(struct TfLiteContext* context,
+                          struct _TfLiteDelegate* delegate);
 
   // Copy the data from delegate buffer handle to raw memory.
   // This can be null if the delegate doesn't use its own buffer.
-  TfLiteStatus (*CopyFromBufferHandle)(TfLiteContext* context,
-                                       TfLiteDelegate* delegate,
+  TfLiteStatus (*CopyFromBufferHandle)(struct TfLiteContext* context,
+                                       struct _TfLiteDelegate* delegate,
                                        TfLiteBufferHandle buffer_handle,
                                        void* data, size_t size);
 
   // Copy the data from raw memory to delegate buffer handle.
   // This can be null if the delegate doesn't use its own buffer.
-  TfLiteStatus (*CopyToBufferHandle)(TfLiteContext* context,
-                                     TfLiteDelegate* delegate,
+  TfLiteStatus (*CopyToBufferHandle)(struct TfLiteContext* context,
+                                     struct _TfLiteDelegate* delegate,
                                      TfLiteBufferHandle buffer_handle,
                                      void* data, size_t size);
 
@@ -467,7 +470,8 @@ typedef struct _TfLiteDelegate {
   // this doesn't release the underlying resource (e.g. textures). The
   // resources are either owned by application layer or the delegate.
   // This can be null if the delegate doesn't use its own buffer.
-  void (*FreeBufferHandle)(TfLiteContext* context, TfLiteDelegate* delegate,
+  void (*FreeBufferHandle)(struct TfLiteContext* context,
+                           struct _TfLiteDelegate* delegate,
                            TfLiteBufferHandle* handle);
 } TfLiteDelegate;
 
