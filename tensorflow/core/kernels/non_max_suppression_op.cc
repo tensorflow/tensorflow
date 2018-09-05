@@ -77,8 +77,7 @@ static inline void ParseAndCheckBoxSizes(OpKernelContext* context,
 // Return intersection-over-union overlap between boxes i and j
 template <typename T>
 static inline bool IOUGreaterThanThreshold(
-    typename TTypes<T, 2>::ConstTensor boxes, int i, int j,
-    T iou_threshold) {
+    typename TTypes<T, 2>::ConstTensor boxes, int i, int j, T iou_threshold) {
   const T ymin_i = std::min<T>(boxes(i, 0), boxes(i, 2));
   const T xmin_i = std::min<T>(boxes(i, 1), boxes(i, 3));
   const T ymax_i = std::max<T>(boxes(i, 0), boxes(i, 2));
@@ -111,8 +110,9 @@ template <typename T>
 static inline std::function<bool(int, int)> CreateIOUSuppressCheckFn(
     const Tensor& boxes, float threshold) {
   typename TTypes<T, 2>::ConstTensor boxes_data = boxes.tensor<T, 2>();
-  return std::bind(&IOUGreaterThanThreshold<T>, boxes_data, std::placeholders::_1,
-                   std::placeholders::_2, static_cast<T>(threshold));
+  return std::bind(&IOUGreaterThanThreshold<T>, boxes_data,
+                   std::placeholders::_1, std::placeholders::_2,
+                   static_cast<T>(threshold));
 }
 
 static inline std::function<bool(int, int)> CreateOverlapsSuppressCheckFn(
@@ -224,11 +224,12 @@ class NonMaxSuppressionOp : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    auto suppress_check_fn = CreateIOUSuppressCheckFn<float>(boxes, iou_threshold_);
+    auto suppress_check_fn =
+        CreateIOUSuppressCheckFn<float>(boxes, iou_threshold_);
 
     const float score_threshold_val = std::numeric_limits<float>::lowest();
     DoNonMaxSuppressionOp<float>(context, scores, num_boxes, max_output_size,
-                          score_threshold_val, suppress_check_fn);
+                                 score_threshold_val, suppress_check_fn);
   }
 
  private:
@@ -267,11 +268,12 @@ class NonMaxSuppressionV2Op : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    auto suppress_check_fn = CreateIOUSuppressCheckFn<T>(boxes, iou_threshold_val);
+    auto suppress_check_fn =
+        CreateIOUSuppressCheckFn<T>(boxes, iou_threshold_val);
 
     const float score_threshold_val = std::numeric_limits<float>::lowest();
     DoNonMaxSuppressionOp<T>(context, scores, num_boxes, max_output_size,
-                          score_threshold_val, suppress_check_fn);
+                             score_threshold_val, suppress_check_fn);
   }
 };
 
@@ -340,7 +342,7 @@ class NonMaxSuppressionV3Op : public NonMaxSuppressionV3V4Base {
         CreateIOUSuppressCheckFn<T>(boxes_, iou_threshold_val_);
 
     DoNonMaxSuppressionOp<T>(context, scores_, num_boxes_, max_output_size_,
-                          score_threshold_val_, suppress_check_fn);
+                             score_threshold_val_, suppress_check_fn);
   }
 };
 
@@ -360,8 +362,8 @@ class NonMaxSuppressionV4Op : public NonMaxSuppressionV3V4Base {
     int num_valid_outputs;
 
     DoNonMaxSuppressionOp<T>(context, scores_, num_boxes_, max_output_size_,
-                          score_threshold_val_, suppress_check_fn,
-                          pad_to_max_output_size_, &num_valid_outputs);
+                             score_threshold_val_, suppress_check_fn,
+                             pad_to_max_output_size_, &num_valid_outputs);
 
     // Allocate scalar output tensor for number of indices computed.
     Tensor* num_outputs_t = nullptr;
@@ -417,26 +419,35 @@ class NonMaxSuppressionWithOverlapsOp : public OpKernel {
         CreateOverlapsSuppressCheckFn(overlaps, overlap_threshold_val);
 
     DoNonMaxSuppressionOp<float>(context, scores, num_boxes, max_output_size,
-                          score_threshold_val, suppress_check_fn);
+                                 score_threshold_val, suppress_check_fn);
   }
 };
 
 REGISTER_KERNEL_BUILDER(Name("NonMaxSuppression").Device(DEVICE_CPU),
                         NonMaxSuppressionOp<CPUDevice>);
 
-REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV2").TypeConstraint<float>("T").Device(DEVICE_CPU),
-                        NonMaxSuppressionV2Op<CPUDevice, float>);
-REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV2").TypeConstraint<Eigen::half>("T").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(
+    Name("NonMaxSuppressionV2").TypeConstraint<float>("T").Device(DEVICE_CPU),
+    NonMaxSuppressionV2Op<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV2")
+                            .TypeConstraint<Eigen::half>("T")
+                            .Device(DEVICE_CPU),
                         NonMaxSuppressionV2Op<CPUDevice, Eigen::half>);
 
-REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV3").TypeConstraint<float>("T").Device(DEVICE_CPU),
-                        NonMaxSuppressionV3Op<CPUDevice, float>);
-REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV3").TypeConstraint<Eigen::half>("T").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(
+    Name("NonMaxSuppressionV3").TypeConstraint<float>("T").Device(DEVICE_CPU),
+    NonMaxSuppressionV3Op<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV3")
+                            .TypeConstraint<Eigen::half>("T")
+                            .Device(DEVICE_CPU),
                         NonMaxSuppressionV3Op<CPUDevice, Eigen::half>);
 
-REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV4").TypeConstraint<float>("T").Device(DEVICE_CPU),
-                        NonMaxSuppressionV4Op<CPUDevice, float>);
-REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV4").TypeConstraint<Eigen::half>("T").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(
+    Name("NonMaxSuppressionV4").TypeConstraint<float>("T").Device(DEVICE_CPU),
+    NonMaxSuppressionV4Op<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV4")
+                            .TypeConstraint<Eigen::half>("T")
+                            .Device(DEVICE_CPU),
                         NonMaxSuppressionV4Op<CPUDevice, Eigen::half>);
 
 REGISTER_KERNEL_BUILDER(
