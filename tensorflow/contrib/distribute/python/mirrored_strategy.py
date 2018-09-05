@@ -572,6 +572,10 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
                 task_type=None,
                 task_id=None):
     del task_type, task_id
+
+    if session_config:
+      session_config.isolate_session_state = True
+
     if cluster_spec:
       self._initialize_multi_worker(self._num_gpus, cluster_spec)
 
