@@ -133,7 +133,8 @@ class MklSmallSizeAllocator : public VisitableAllocator {
 
  private:
   // Increment statistics for the allocator handling small allocations.
-  inline void IncrementStats(size_t alloc_size) GUARDED_BY(mutex_) {
+  inline void
+  IncrementStats(size_t alloc_size) EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
     ++stats_.num_allocs;
     stats_.bytes_in_use += alloc_size;
     stats_.max_bytes_in_use = std::max(stats_.max_bytes_in_use,
@@ -143,7 +144,8 @@ class MklSmallSizeAllocator : public VisitableAllocator {
   }
 
   // Decrement statistics for the allocator handling small allocations.
-  inline void DecrementStats(size_t dealloc_size) GUARDED_BY(mutex_) {
+  inline void
+  DecrementStats(size_t dealloc_size) EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
     stats_.bytes_in_use -= dealloc_size;
   }
 
