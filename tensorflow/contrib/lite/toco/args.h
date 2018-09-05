@@ -236,8 +236,9 @@ struct ParsedTocoFlags {
   Arg<bool> drop_fake_quant = Arg<bool>(false);
   Arg<bool> reorder_across_fake_quant = Arg<bool>(false);
   Arg<bool> allow_custom_ops = Arg<bool>(false);
-  Arg<bool> quantize_weights = Arg<bool>(false);
+  Arg<bool> post_training_quantize = Arg<bool>(false);
   // Deprecated flags
+  Arg<bool> quantize_weights = Arg<bool>(false);
   Arg<string> input_type;
   Arg<string> input_types;
   Arg<bool> debug_disable_recurrent_cell_fusion = Arg<bool>(false);
@@ -246,6 +247,10 @@ struct ParsedTocoFlags {
   Arg<bool> allow_nudging_weights_to_use_fast_gemm_kernel = Arg<bool>(false);
   Arg<int64> dedupe_array_min_size_bytes = Arg<int64>(64);
   Arg<bool> split_tflite_lstm_inputs = Arg<bool>(true);
+  // WARNING: Experimental interface, subject to change
+  Arg<bool> allow_eager_ops = Arg<bool>(false);
+  // WARNING: Experimental interface, subject to change
+  Arg<bool> force_eager_ops = Arg<bool>(false);
 };
 
 }  // namespace toco

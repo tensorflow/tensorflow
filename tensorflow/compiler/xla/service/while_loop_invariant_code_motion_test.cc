@@ -28,10 +28,6 @@ namespace op = xla::testing::opcode_matchers;
 
 class WhileLoopInvariantCodeMotionTest : public HloVerifiedTestBase {
  public:
-  WhileLoopInvariantCodeMotionTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false) {}
-
   // Makes a computation which has one parameter, of the given shape, and always
   // returns PRED[]{true}.  This is useful as a dummy loop condition.
   HloComputation* MakeAlwaysTrueComputation(const Shape& param_shape,

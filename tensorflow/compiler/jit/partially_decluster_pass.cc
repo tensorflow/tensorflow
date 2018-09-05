@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/partially_decluster_pass.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -22,7 +23,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 Status FindNodesToDecluster(const Graph& graph, gtl::FlatSet<Node*>* result,
-                            gtl::ArraySlice<Node*> post_order) {
+                            absl::Span<Node* const> post_order) {
   // Find nodes that have at least one user outside their cluster that expects
   // hostmem output.  These nodes should be cloned to outside the cluster to
   // avoid the device-host copy we'd otherwise need.
@@ -30,7 +31,7 @@ Status FindNodesToDecluster(const Graph& graph, gtl::FlatSet<Node*>* result,
   MemoryTypeVector input_mtypes, output_mtypes;
 
   for (Node* n : post_order) {
-    absl::optional<StringPiece> from_cluster = GetXlaClusterForNode(*n);
+    absl::optional<absl::string_view> from_cluster = GetXlaClusterForNode(*n);
     if (!from_cluster) {
       continue;
     }
@@ -79,7 +80,7 @@ Status FindNodesToDecluster(const Graph& graph, gtl::FlatSet<Node*>* result,
       // Check if `dst` is in a different cluster, unclustered, or about to be
       // partially declustered (here we rely on the post-order traversal order).
       // If yes, decluster `n` to avoid the device-to-host memcpy.
-      absl::optional<StringPiece> dst_cluster =
+      absl::optional<absl::string_view> dst_cluster =
           result->count(dst) ? absl::nullopt : GetXlaClusterForNode(*dst);
       if (from_cluster != dst_cluster) {
         CHECK(result->insert(n).second);
@@ -91,15 +92,16 @@ Status FindNodesToDecluster(const Graph& graph, gtl::FlatSet<Node*>* result,
 }
 
 Status PartiallyDeclusterNode(Graph* graph, Node* n) {
-  StringPiece cluster_name = *GetXlaClusterForNode(*n);
-  gtl::InlinedVector<const Edge*, 6> out_edges_to_clone;
+  absl::string_view cluster_name = *GetXlaClusterForNode(*n);
+  absl::InlinedVector<const Edge*, 6> out_edges_to_clone;
   for (const Edge* out_edge : n->out_edges()) {
     if (out_edge->IsControlEdge()) {
       continue;
     }
 
     Node* dst = out_edge->dst();
-    absl::optional<StringPiece> dst_cluster_name = GetXlaClusterForNode(*dst);
+    absl::optional<absl::string_view> dst_cluster_name =
+        GetXlaClusterForNode(*dst);
     if (dst_cluster_name != cluster_name) {
       out_edges_to_clone.push_back(out_edge);
     }
@@ -108,7 +110,7 @@ Status PartiallyDeclusterNode(Graph* graph, Node* n) {
   CHECK(!out_edges_to_clone.empty()) << n->DebugString();
 
   NodeDef ndef = n->def();
-  ndef.set_name(strings::StrCat(n->name(), "/declustered"));
+  ndef.set_name(absl::StrCat(n->name(), "/declustered"));
   RemoveFromXlaCluster(&ndef);
   Status s;
   Node* cloned_node = graph->AddNode(ndef, &s);

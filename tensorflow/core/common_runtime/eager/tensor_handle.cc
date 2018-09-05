@@ -193,7 +193,6 @@ Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
   // has device type XLA_CPU, and the other CPU.
   const bool both_on_cpu = src_cpu && dst_cpu;
   if (is_same_device || both_on_cpu) {
-    dstd = dst_cpu ? nullptr : dstd;
     *output = new tensorflow::TensorHandle(*src, dstd, dstd, ctx);
     return tensorflow::Status::OK();
   }

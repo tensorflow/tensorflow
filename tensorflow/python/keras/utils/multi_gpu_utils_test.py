@@ -180,6 +180,23 @@ class TestMultiGPUModel(test.TestCase):
           target_tensors=[targets])
       parallel_model.fit(epochs=1, steps_per_epoch=3)
 
+  def test_multi_gpu_with_multi_input_layers(self):
+    gpus = 2
+
+    if not check_if_compatible_devices(gpus=gpus):
+      return
+
+    with self.test_session():
+      inputs = keras.Input((4, 3))
+      init_state = keras.Input((3,))
+      outputs = keras.layers.SimpleRNN(
+          3, return_sequences=True)(inputs, initial_state=init_state)
+      x = [np.random.randn(2, 4, 3), np.random.randn(2, 3)]
+      y = np.random.randn(2, 4, 3)
+      model = keras.Model([inputs, init_state], outputs)
+      parallel_model = keras.utils.multi_gpu_model(model, gpus=gpus)
+      parallel_model.compile(loss='mean_squared_error', optimizer='adam')
+      parallel_model.train_on_batch(x, y)
 
 if __name__ == '__main__':
   test.main()

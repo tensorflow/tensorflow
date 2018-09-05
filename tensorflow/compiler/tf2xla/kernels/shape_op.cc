@@ -115,7 +115,7 @@ class ExpandDimsOp : public XlaOpKernel {
     // accept legacy scalars, even when they should be forbidden by the graphdef
     // version.
     OP_REQUIRES(ctx, dim_shape.num_elements() == 1,
-                errors::InvalidArgument(strings::StrCat(
+                errors::InvalidArgument(absl::StrCat(
                     "dim input to ExpandDims must be a scalar; got ",
                     dim_shape.DebugString())));
 

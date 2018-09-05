@@ -4,36 +4,41 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_protos_all")
 
 cc_library(
-    name = "function_rename",
-    srcs = ["function_rename.cc"],
+    name = "filter_fusion",
+    srcs = ["filter_fusion.cc"],
     hdrs = [
-        "function_rename.h",
+        "filter_fusion.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
         ":graph_utils",
+        ":fusion_utils",
+        "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core:lib",
-        "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/grappler/utils:topological_sort",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
     ] + tf_protos_all(),
 )
 
 tf_cc_test(
-    name = "function_rename_test",
-    srcs = ["function_rename_test.cc"],
+    name = "filter_fusion_test",
+    srcs = ["filter_fusion_test.cc"],
     visibility = ["//visibility:public"],
     deps = [
-        ":function_rename",
+        ":filter_fusion",
+        ":graph_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
-    ] + tf_protos_all(),
+    ],
 )
 
 cc_library(
@@ -46,11 +51,13 @@ cc_library(
     deps = [
         ":graph_utils",
         "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/kernels:functional_ops",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core:lib_internal",
     ] + tf_protos_all(),
@@ -343,7 +350,7 @@ cc_library(
     name = "data",
     visibility = ["//visibility:public"],
     deps = [
-        ":function_rename",
+        ":filter_fusion",
         ":latency_all_edges",
         ":map_and_batch_fusion",
         ":map_and_filter_fusion",

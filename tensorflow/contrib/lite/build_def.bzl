@@ -57,6 +57,7 @@ def tflite_linkopts_unstripped():
             "-Wl,--as-needed",  # Don't link unused libs.
         ],
         "//tensorflow:darwin": [],
+        "//tensorflow:ios": [],
         "//tensorflow/contrib/lite:mips": [],
         "//tensorflow/contrib/lite:mips64": [],
         "//conditions:default": [
@@ -235,6 +236,7 @@ def generated_test_models():
         "exp",
         "expand_dims",
         "floor",
+        "floor_div",
         "fully_connected",
         "fused_batch_norm",
         "gather",
@@ -266,6 +268,7 @@ def generated_test_models():
         "padv2",
         "prelu",
         "pow",
+        "reduce_any",
         "reduce_max",
         "reduce_min",
         "reduce_prod",

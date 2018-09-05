@@ -1071,11 +1071,13 @@ static bool IdentifySwappingCandidates(
         // ensure that swapping the tensor back in won't recreate the memory
         // bottleneck. Last but not least, we want the tensor to have as few
         // remaining uses as possible.
+        //
+        // Note that we must perform the arithmetic inexactly as "double", since
+        // the values do not fit into any integral type.
         mem_info.fitness =
-            MathUtil::IPow((earliest_use - peak_time).count(), 2);
-        mem_info.fitness /= MathUtil::IPow(mem_info.uses_left.size(), 2);
-        mem_info.fitness +=
-            MathUtil::IPow((allocation_time - peak_time).count(), 2);
+            MathUtil::IPow<double>((earliest_use - peak_time).count(), 2) /
+            MathUtil::IPow<double>(mem_info.uses_left.size(), 2) +
+            MathUtil::IPow<double>((allocation_time - peak_time).count(), 2);
         mem_info.fitness = -mem_info.fitness;
         mem_state.push_back(mem_info);
       }

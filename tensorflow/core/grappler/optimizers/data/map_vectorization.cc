@@ -112,10 +112,10 @@ bool HasCapturedInputs(const NodeDef& map_node) {
   return map_node.attr().at("Targuments").list().type_size() > 0;
 }
 
-NodeDef make_new_batch_node(const NodeDef& old_batch_node,
-                            const NodeDef& input_node,
-                            const FunctionDef& vectorized_func,
-                            MutableGraphView* graph) {
+NodeDef MakeNewBatchNode(const NodeDef& old_batch_node,
+                         const NodeDef& input_node,
+                         const FunctionDef& vectorized_func,
+                         MutableGraphView* graph) {
   NodeDef batch_node;
   batch_node.set_op(old_batch_node.op());
   graph_utils::SetUniqueGraphNodeName(batch_node.op(), graph->GetGraph(),
@@ -151,11 +151,11 @@ NodeDef make_new_batch_node(const NodeDef& old_batch_node,
   return batch_node;
 }
 
-NodeDef make_new_map_node(const NodeDef& old_map_node,
-                          const NodeDef& old_batch_node,
-                          const NodeDef& new_batch_node,
-                          const FunctionDef& vectorized_func,
-                          MutableGraphView* graph) {
+NodeDef MakeNewMapNode(const NodeDef& old_map_node,
+                       const NodeDef& old_batch_node,
+                       const NodeDef& new_batch_node,
+                       const FunctionDef& vectorized_func,
+                       MutableGraphView* graph) {
   NodeDef map_node;
   map_node.set_op(old_map_node.op());
   graph_utils::SetUniqueGraphNodeName(map_node.op(), graph->GetGraph(),
@@ -232,9 +232,9 @@ Status MapVectorization::Optimize(Cluster* cluster, const GrapplerItem& item,
     CHECK_NOTNULL(vectorized_func);
 
     auto* new_batch_node = graph.AddNode(
-        make_new_batch_node(batch_node, *input_node, *vectorized_func, &graph));
+        MakeNewBatchNode(batch_node, *input_node, *vectorized_func, &graph));
 
-    auto* new_map_node = graph.AddNode(make_new_map_node(
+    auto* new_map_node = graph.AddNode(MakeNewMapNode(
         *map_node, batch_node, *new_batch_node, *vectorized_func, &graph));
     graph.ReplaceInput(batch_node, *new_map_node);
 

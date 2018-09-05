@@ -114,14 +114,14 @@ class DynamicSliceTest : public ClientLibraryTestBase {
   }
 
   template <typename IndexT, typename DataT>
-  void RunR1(tensorflow::gtl::ArraySlice<int> input_values_int,
+  void RunR1(absl::Span<const int> input_values_int,
              const std::vector<IndexT> slice_starts,
              const std::vector<int64>& slice_sizes,
-             tensorflow::gtl::ArraySlice<int> expected_values_int) {
+             absl::Span<const int> expected_values_int) {
     // bfloat16 has explicit constructors, so it does not implicitly convert the
     // way built-in types do, which is why we can't take the parameter as an
-    // ArraySlice<DataT>. We also can't convert it to a vector, because
-    // vector<bool> is special so that it cannot be an ArraySlice<bool>, which
+    // Span<DataT>. We also can't convert it to a vector, because
+    // vector<bool> is special so that it cannot be a Span<bool>, which
     // is what the code below wants. So instead we do this.
     Literal input_values =
         std::move(*LiteralUtil::CreateR1(input_values_int)
@@ -385,10 +385,10 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
   }
 
   template <typename IndexT, typename DataT>
-  void RunR1(tensorflow::gtl::ArraySlice<int> input_values_int,
-             tensorflow::gtl::ArraySlice<int> update_values_int,
+  void RunR1(absl::Span<const int> input_values_int,
+             absl::Span<const int> update_values_int,
              const std::vector<IndexT> slice_starts,
-             tensorflow::gtl::ArraySlice<int> expected_values_int) {
+             absl::Span<const int> expected_values_int) {
     Literal input_values =
         std::move(*LiteralUtil::CreateR1(input_values_int)
                        ->Convert(primitive_util::NativeToPrimitiveType<DataT>())

@@ -311,12 +311,14 @@ class MklCPUAllocator : public VisitableAllocator {
     Status s = Status(error::Code::UNIMPLEMENTED,
                       "Unimplemented case for hooking MKL function.");
     TF_CHECK_OK(s);  // way to assert with an error message
+    return nullptr; // return a value and make static code analyzers happy
   }
 
   static inline void* ReallocHook(void* ptr, size_t size) {
     Status s = Status(error::Code::UNIMPLEMENTED,
                       "Unimplemented case for hooking MKL function.");
     TF_CHECK_OK(s);  // way to assert with an error message
+    return nullptr; // return a value and make static code analyzers happy
   }
 
   // Do we allow growth in BFC Allocator
@@ -336,6 +338,9 @@ class MklCPUAllocator : public VisitableAllocator {
   // Size in bytes that defines the upper-bound for "small" allocations.
   // Any allocation below this threshold is "small" allocation.
   static constexpr const size_t kSmallAllocationsThreshold = 4096;
+  
+  // Prevent copying and assignment
+  TF_DISALLOW_COPY_AND_ASSIGN(MklCPUAllocator);
 };
 
 }  // namespace tensorflow

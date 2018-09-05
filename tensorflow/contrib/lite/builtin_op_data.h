@@ -25,6 +25,11 @@ extern "C" {
 
 // TODO(aselle): Consider using "if this then that" for testing.
 
+// Useful placeholder to put in otherwise empty structs to avoid size warnings.
+typedef struct {
+  char dummy_;
+} EmptyStructPlaceholder;
+
 // Possible padding types (for convolutions)
 typedef enum {
   kTfLitePaddingUnknown = 0,
@@ -129,9 +134,11 @@ typedef struct {
 } TfLiteAddParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder_;
 } TfLiteSpaceToBatchNDParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder_;
 } TfLiteBatchToSpaceNDParams;
 
 typedef struct {
@@ -178,9 +185,11 @@ typedef struct {
 } TfLiteResizeBilinearParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder_;
 } TfLitePadParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder_;
 } TfLitePadV2Params;
 
 typedef struct {
@@ -220,6 +229,7 @@ typedef struct {
 } TfLiteGatherParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder_;
 } TfLiteTransposeParams;
 
 typedef struct {

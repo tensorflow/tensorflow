@@ -407,7 +407,7 @@ void BFloat16Propagation::AdjustCalledComputationParameters(
     HloInstruction* hlo) {
   auto adjust_computation =
       [this, hlo](HloComputation* computation,
-                  tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+                  absl::Span<HloInstruction* const> operands) {
         // Adjust parameters.
         CHECK_EQ(operands.size(), computation->num_parameters());
         for (int64 i = 0; i < operands.size(); ++i) {

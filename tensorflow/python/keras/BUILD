@@ -102,7 +102,6 @@ py_library(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
-        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
 )
@@ -389,7 +388,7 @@ py_test(
 
 py_test(
     name = "embeddings_test",
-    size = "small",
+    size = "medium",
     srcs = ["layers/embeddings_test.py"],
     srcs_version = "PY2AND3",
     deps = [

@@ -116,6 +116,7 @@ tf_cc_test(
     shard_count = 5,
     deps = [
         ":constant_folding",
+        ":dependency_optimizer",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core:all_kernels",

@@ -186,22 +186,22 @@ class GdrMemoryManager : public RemoteMemoryManager {
 // TODO(byronyi): remove this class and its registration when the default
 // cpu_allocator() returns visitable allocator, or cpu_allocator() is no
 // longer in use.
-class BFCRdmaAllocator : public BFCAllocator {
+class BFCGdrAllocator : public BFCAllocator {
  public:
-  BFCRdmaAllocator()
+  BFCGdrAllocator()
       : BFCAllocator(new BasicCPUAllocator(port::kNUMANoAffinity), 1LL << 36,
-                     true, "cpu_rdma_bfc") {}
+                     true, "cpu_gdr_bfc") {}
 };
-class BFCRdmaAllocatorFactory : public AllocatorFactory {
+class BFCGdrAllocatorFactory : public AllocatorFactory {
  public:
-  Allocator* CreateAllocator() override { return new BFCRdmaAllocator; }
+  Allocator* CreateAllocator() override { return new BFCGdrAllocator; }
 
   virtual SubAllocator* CreateSubAllocator(int numa_node) {
     return new BasicCPUAllocator(numa_node);
   }
 };
 
-REGISTER_MEM_ALLOCATOR("BFCRdmaAllocator", 101, BFCRdmaAllocatorFactory);
+REGISTER_MEM_ALLOCATOR("BFCGdrAllocator", 102, BFCGdrAllocatorFactory);
 
 GdrMemoryManager::GdrMemoryManager(const string& host, const string& port)
     : host_(host),

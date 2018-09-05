@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/bitmap.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -71,8 +71,7 @@ class LiteralUtil {
   template <typename NativeT>
   static std::unique_ptr<Literal> CreateR0(NativeT value);
   template <typename NativeT>
-  static std::unique_ptr<Literal> CreateR1(
-      tensorflow::gtl::ArraySlice<NativeT> values);
+  static std::unique_ptr<Literal> CreateR1(absl::Span<const NativeT> values);
   static std::unique_ptr<Literal> CreateR1(
       const tensorflow::core::Bitmap& values);
   template <typename NativeT>
@@ -141,8 +140,8 @@ class LiteralUtil {
   //
   template <typename NativeT>
   static std::unique_ptr<Literal> CreateSparse(
-      tensorflow::gtl::ArraySlice<int64> dimensions, SparseIndexArray indices,
-      tensorflow::gtl::ArraySlice<NativeT> values, bool sort = true);
+      absl::Span<const int64> dimensions, SparseIndexArray indices,
+      absl::Span<const NativeT> values, bool sort = true);
 
   // Creates a scalar literal value zero of the given primitive type.
   static Literal Zero(PrimitiveType primitive_type);
@@ -157,7 +156,7 @@ class LiteralUtil {
   // Creates a literal of the given shape where each element is `value`.
   template <typename NativeT>
   static std::unique_ptr<Literal> CreateFullWithDescendingLayout(
-      tensorflow::gtl::ArraySlice<int64> dimensions, NativeT value);
+      absl::Span<const int64> dimensions, NativeT value);
 
   // Creates a new literal from an Array type. The variants not ending with
   // WithLayout use the default XLA layout for the literal's linear
@@ -215,10 +214,10 @@ class LiteralUtil {
   // Returns a tuple literal composed of given literals. Data is copied from the
   // given elements into the returned literal.
   static std::unique_ptr<Literal> MakeTuple(
-      tensorflow::gtl::ArraySlice<const Literal*> elements);
+      absl::Span<const Literal* const> elements);
 
   static std::unique_ptr<Literal> MakeTupleFromSlices(
-      tensorflow::gtl::ArraySlice<LiteralSlice> elements);
+      absl::Span<const LiteralSlice> elements);
 
   // As above, but intended to be invoked with move semantics; i.e.
   //
@@ -259,8 +258,7 @@ class LiteralUtil {
   // The content of the literal values is the default value of the primitive
   // type of literal itself (0 for numeric types, and false for predicates).
   static std::unique_ptr<Literal> CreateFromDimensions(
-      PrimitiveType primitive_type,
-      tensorflow::gtl::ArraySlice<int64> dimensions);
+      PrimitiveType primitive_type, absl::Span<const int64> dimensions);
 
   // If the given literal's data type is bfloat16, converts it to a float
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
@@ -279,9 +277,8 @@ class LiteralUtil {
   // buffer of the input literal is assumed to have the given minor_to_major
   // layout order.
   static std::unique_ptr<Literal> ReshapeSlice(
-      tensorflow::gtl::ArraySlice<int64> new_dimensions,
-      tensorflow::gtl::ArraySlice<int64> minor_to_major,
-      const LiteralSlice& literal);
+      absl::Span<const int64> new_dimensions,
+      absl::Span<const int64> minor_to_major, const LiteralSlice& literal);
 
   // Creates a literal with the supplied shape, and uses the provided value
   // generator to populate the literal's values.
@@ -291,7 +288,7 @@ class LiteralUtil {
       typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
   static StatusOr<std::unique_ptr<Literal>> CreateRandomLiteral(
       const Shape& shape,
-      const std::function<T(tensorflow::gtl::ArraySlice<int64>)>& generator);
+      const std::function<T(absl::Span<const int64>)>& generator);
 
   // Creates a literal with the supplied shape, and initializes the literal
   // values using a normal distribution with given mean and stddev standard
@@ -319,8 +316,7 @@ class LiteralUtil {
   // Returns a multi-dimensional index as a string. For example: '{7, 8}' will
   // be returned for a 2-dimensional index with dimension 0 index equal to 7,
   // dimension 1 equal to 8.
-  static string MultiIndexAsString(
-      tensorflow::gtl::ArraySlice<int64> multi_index);
+  static string MultiIndexAsString(absl::Span<const int64> multi_index);
 };
 
 std::ostream& operator<<(std::ostream& out, const Literal& literal);
@@ -335,7 +331,7 @@ template <typename NativeT>
 
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> LiteralUtil::CreateR1(
-    tensorflow::gtl::ArraySlice<NativeT> values) {
+    absl::Span<const NativeT> values) {
   auto literal = absl::make_unique<Literal>(
       ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<NativeT>(),
                            {static_cast<int64>(values.size())}));
@@ -427,8 +423,8 @@ template <typename NativeT>
 
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> LiteralUtil::CreateSparse(
-    tensorflow::gtl::ArraySlice<int64> dimensions, SparseIndexArray indices,
-    tensorflow::gtl::ArraySlice<NativeT> values, bool sort) {
+    absl::Span<const int64> dimensions, SparseIndexArray indices,
+    absl::Span<const NativeT> values, bool sort) {
   int64 num_elements = values.size();
   int64 rank = dimensions.size();
   CHECK_EQ(num_elements, indices.index_count());
@@ -570,8 +566,8 @@ template <typename NativeT>
 
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal>
-LiteralUtil::CreateFullWithDescendingLayout(
-    tensorflow::gtl::ArraySlice<int64> dimensions, NativeT value) {
+LiteralUtil::CreateFullWithDescendingLayout(absl::Span<const int64> dimensions,
+                                            NativeT value) {
   auto literal =
       absl::make_unique<Literal>(ShapeUtil::MakeShapeWithDescendingLayout(
           primitive_util::NativeToPrimitiveType<NativeT>(), dimensions));
@@ -583,14 +579,12 @@ template <PrimitiveType type, typename T>
 /* static */ StatusOr<std::unique_ptr<Literal>>
 LiteralUtil::CreateRandomLiteral(
     const Shape& shape,
-    const std::function<T(tensorflow::gtl::ArraySlice<int64>)>& generator) {
+    const std::function<T(absl::Span<const int64>)>& generator) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
   TF_RET_CHECK(shape.element_type() == type);
   auto literal = absl::make_unique<Literal>(shape);
   TF_RETURN_IF_ERROR(literal.get()->Populate<NativeT>(
-      [&](tensorflow::gtl::ArraySlice<int64> indexes) {
-        return generator(indexes);
-      }));
+      [&](absl::Span<const int64> indexes) { return generator(indexes); }));
   return std::move(literal);
 }
 
@@ -601,9 +595,8 @@ LiteralUtil::CreateRandomLiteral(const Shape& shape, E* engine, T mean,
   using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
   std::normal_distribution<NativeT> generator(mean, stddev);
   return CreateRandomLiteral<type, NativeT>(
-      shape, [&](tensorflow::gtl::ArraySlice<int64> /*indexes*/) {
-        return generator(*engine);
-      });
+      shape,
+      [&](absl::Span<const int64> /*indexes*/) { return generator(*engine); });
 }
 
 template <PrimitiveType type, typename T>

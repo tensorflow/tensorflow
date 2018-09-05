@@ -136,6 +136,27 @@ bool MaybeRemoveControlInput(const string& old_input, NodeDef* node,
   return removed_input;
 }
 
+bool GetConcatAxis(const GraphProperties& properties, NodeDef* node,
+                   int* axis) {
+  if (node->op() != "ConcatV2" ||
+      properties.GetInputProperties(node->name()).empty()) {
+    return false;
+  }
+  const auto& axis_input = properties.GetInputProperties(node->name()).back();
+  if (!TensorShape::IsValid(axis_input.shape()) || !axis_input.has_value()) {
+    return false;
+  }
+
+  Tensor axis_tensor(axis_input.dtype(), axis_input.shape());
+  if (!axis_tensor.FromProto(axis_input.value())) {
+    return false;
+  }
+  *axis = axis_input.dtype() == DT_INT64
+              ? static_cast<int>(axis_tensor.scalar<int64>()())
+              : axis_tensor.scalar<int32>()();
+  return true;
+}
+
 }  // namespace
 
 ConstantFolding::ConstantFolding(RewriterConfig::Toggle opt_level,
@@ -1719,6 +1740,11 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
     return Status::OK();
   }
 
+  if (MergeConcat(*properties, use_shape_info, optimized_graph, node)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
   return Status::OK();
 }
 
@@ -2908,6 +2934,55 @@ bool ConstantFolding::PartialConcatConstFolding(GraphDef* optimized_graph,
     }
   }
   return false;
+}
+
+bool ConstantFolding::MergeConcat(const GraphProperties& properties,
+                                  bool use_shape_info,
+                                  GraphDef* optimized_graph, NodeDef* node) {
+  // We only optimize for ConcatV2.
+  int axis;
+  if (!use_shape_info || !GetConcatAxis(properties, node, &axis) ||
+      nodes_to_preserve_.find(node->name()) != nodes_to_preserve_.end() ||
+      node_map_->GetOutputs(node->name()).size() != 1) {
+    return false;
+  }
+
+  NodeDef* parent = *node_map_->GetOutputs(node->name()).begin();
+  int parent_axis;
+  if (!GetConcatAxis(properties, parent, &parent_axis) || axis != parent_axis) {
+    return false;
+  }
+
+  const int index = NumNonControlInputs(*node) - 1;
+  auto inputs = parent->input();
+  parent->clear_input();
+  for (int i = 0; i < inputs.size(); ++i) {
+    if (IsSameInput(inputs.Get(i), node->name())) {
+      for (int j = 0; j < node->input_size(); ++j) {
+        if (j < index) {
+          // Input tensors (non axis), add to input list of parent.
+          parent->add_input(node->input(j));
+          node_map_->RemoveOutput(node->input(j), node->name());
+          node_map_->AddOutput(node->input(j), parent->name());
+        }
+        // Skip j == index, which means axis tensor.
+        if (j > index) {
+          // Control Dependencies, push back to inputs so they can be forwarded
+          // to parent.
+          *inputs.Add() = node->input(j);
+        }
+      }
+    } else {
+      parent->add_input(inputs.Get(i));
+    }
+  }
+  node->clear_input();
+  node->set_op("NoOp");
+  node->clear_attr();
+  node_map_->RemoveNode(node->name());
+  (*parent->mutable_attr())["N"].set_i(NumNonControlInputs(*parent) - 1);
+
+  return true;
 }
 
 Status ConstantFolding::RunOptimizationPass(Cluster* cluster,

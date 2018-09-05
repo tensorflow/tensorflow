@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/numpy_bridge.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -150,9 +151,7 @@ static int NumpyTypenum(PyObject* o) {
 //
 // NOTE: this is an internal helper for conversion to a C++, and so decrefs r.
 static string ExtractStringAndDecref(PyObject* r) {
-  auto error = [r] {
-    return tensorflow::strings::Printf("<failed conversion of %p>", r);
-  };
+  auto error = [r] { return absl::StrFormat("<failed conversion of %p>", r); };
   if (r == nullptr) {
     return error();
   }

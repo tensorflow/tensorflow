@@ -30,6 +30,11 @@ inline const TfLiteTensor* GetInput(TfLiteContext* context, TfLiteNode* node,
                                     int index) {
   return &context->tensors[node->inputs->data[index]];
 }
+inline TfLiteTensor* GetVariableInput(TfLiteContext* context, TfLiteNode* node,
+                                      int index) {
+  TfLiteTensor* tensor = &context->tensors[node->inputs->data[index]];
+  return (tensor->is_variable) ? tensor : nullptr;
+}
 inline TfLiteTensor* GetOutput(TfLiteContext* context, TfLiteNode* node,
                                int index) {
   return &context->tensors[node->outputs->data[index]];

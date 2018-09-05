@@ -418,8 +418,8 @@ class _GenerateGuideIndex(py_guide_parser.PyGuideParser):
     self.section_tag = tag
 
   def process_line(self, _, line):
-    """Index @{symbol} references as in the current file & section."""
-    for match in parser.SYMBOL_REFERENCE_RE.finditer(line):
+    """Index the file and section of each `symbol` reference."""
+    for match in parser.AUTO_REFERENCE_RE.finditer(line):
       val = self.index.get(match.group(1), [])
       val.append(
           _GuideRef(self.base_name, self.title, self.section_title,

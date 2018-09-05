@@ -89,7 +89,7 @@ int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
                                   PyObject* exception);
 
 // Returns the string associated with the passed-in python object.
-char* TFE_GetPythonString(PyObject* o);
+const char* TFE_GetPythonString(PyObject* o);
 
 // Returns a unique id on each call.
 int64_t get_uid();
@@ -138,7 +138,7 @@ void TFE_Py_TapeSetAdd(PyObject* tape);
 PyObject* TFE_Py_TapeSetIsEmpty();
 
 PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors);
-void TFE_Py_TapeSetWatch(PyObject* tensor);
+void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor);
 void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id);
 
 // Stops any gradient recording on the current thread.

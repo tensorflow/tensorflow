@@ -126,9 +126,8 @@ INSTANTIATE_TEST_CASE_P(half, UnaryPredTest,
                         ::testing::Values(UnaryPredTestParam{
                             [](half x) { return isfinite(x); }, &IsFinite}));
 
-using BinaryBuildFuncTy =
-    std::function<void(const xla::XlaOp& x, const xla::XlaOp& y,
-                       tensorflow::gtl::ArraySlice<int64>)>;
+using BinaryBuildFuncTy = std::function<void(
+    const xla::XlaOp& x, const xla::XlaOp& y, absl::Span<const int64>)>;
 
 struct BinaryOpTestParam {
   std::function<half(half, half)> compute_func;

@@ -367,7 +367,7 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
     A `TensorProto`. Depending on the type, it may contain data in the
     "tensor_content" attribute, which is not directly useful to Python programs.
     To access the values you should convert the proto back to a numpy ndarray
-    with `tensor_util.MakeNdarray(proto)`.
+    with `tf.make_ndarray(proto)`.
 
     If `values` is a `TensorProto`, it is immediately returned; `dtype` and
     `shape` are ignored.

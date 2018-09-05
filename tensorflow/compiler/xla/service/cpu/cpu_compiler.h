@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/types/span.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/tf2xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 

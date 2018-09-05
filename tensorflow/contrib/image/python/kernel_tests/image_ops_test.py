@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib.image.ops import gen_image_ops
 from tensorflow.contrib.image.python.ops import image_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -261,6 +262,15 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
     self._test_grad_different_shape([16, 16], [8, 8])
     self._test_grad_different_shape([4, 12, 3], [8, 24, 3])
     self._test_grad_different_shape([3, 4, 12, 3], [3, 8, 24, 3])
+
+  def test_projective_transform_v1(self):
+    """The original ImageProjectiveTransform op should take 2 arguments."""
+    image = constant_op.constant([[[[1], [0]], [[0], [1]]]])
+    transform = constant_op.constant([[1., 0., 0., 0., 1., 0., 0., 0.]])
+    result = gen_image_ops.image_projective_transform(
+        image, transform, interpolation="NEAREST")
+    with self.cached_session():
+      self.assertAllEqual([[[[1], [0]], [[0], [1]]]], result.eval())
 
 
 class BipartiteMatchTest(test_util.TensorFlowTestCase):

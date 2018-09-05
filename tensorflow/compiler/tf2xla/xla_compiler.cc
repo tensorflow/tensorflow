@@ -198,14 +198,14 @@ Status XlaCompiler::CompileFunction(const XlaCompiler::CompileOptions& options,
   // lowest-numbered core that consumes the argument. We choose the
   // lowest-numbered core so the assignment is deterministic.
   for (Node* n : graph->nodes()) {
-    if (StringPiece(n->type_string()) == "_Arg") {
+    if (absl::string_view(n->type_string()) == "_Arg") {
       TF_RETURN_IF_ERROR(SetNodeShardingFromNeighbors(n, /*out_edges=*/true));
     }
   }
   // Do _Retval as a second loop, in case the retval's input is an _Arg (which
   // may have gotten a device assignment from the first loop).
   for (Node* n : graph->nodes()) {
-    if (StringPiece(n->type_string()) == "_Retval") {
+    if (absl::string_view(n->type_string()) == "_Retval") {
       TF_RETURN_IF_ERROR(SetNodeShardingFromNeighbors(n, /*out_edges=*/false));
     }
   }
@@ -213,8 +213,7 @@ Status XlaCompiler::CompileFunction(const XlaCompiler::CompileOptions& options,
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileFunction: "
             << dump_graph::DumpGraphToFile(
-                   strings::StrCat("xla_compile_function_", function_id),
-                   *graph);
+                   absl::StrCat("xla_compile_function_", function_id), *graph);
   }
 
   VLOG(1) << "====================================================";
@@ -361,6 +360,9 @@ Status BuildComputation(
     if (retval.has_constant_value()) {
       output.is_constant = true;
       output.constant_value = retval.constant_value();
+    } else if (retval.resource() != nullptr) {
+      output.is_constant = false;
+      output.input_index = retval.resource()->arg_num();
     } else {
       output.is_constant = false;
       elems.push_back(retval.handle());
@@ -465,8 +467,6 @@ Status XlaCompiler::BuildArguments(
   // XLA computation as runtime parameters.
   input_mapping->clear();
   input_mapping->reserve(args.size());
-  std::vector<int> resources;
-  resources.reserve(args.size());
 
   // Fills in constant arguments, and computes non-constant argument order.
   for (std::vector<XlaCompiler::Argument>::size_type i = 0; i < args.size();
@@ -485,8 +485,9 @@ Status XlaCompiler::BuildArguments(
             /*tensor_array_gradients=*/arg.tensor_array_gradients, &resource));
         arg_expression.set_resource(resource);
         if (arg.initialized) {
-          resources.push_back(i);
+          input_mapping->push_back(i);
         }
+
         break;
       case XlaCompiler::Argument::kParameter: {
         input_mapping->push_back(i);
@@ -496,14 +497,11 @@ Status XlaCompiler::BuildArguments(
         arg_expression.set_constant_value(arg.constant_value);
         break;
       case XlaCompiler::Argument::kInvalid:
-        return errors::Internal("Unreachable case in BuildArguments()");
+        return errors::Internal(
+            "Unreachable case in BuildArguments() while filling constant args");
     }
   }
 
-  // Append parameters containing variable values after the other runtime
-  // parameters.
-  input_mapping->insert(input_mapping->end(), resources.begin(),
-                        resources.end());
   if (input_mapping->empty()) {
     return Status::OK();
   }
@@ -523,7 +521,7 @@ Status XlaCompiler::BuildArguments(
 
   // Use the _Arg nodes in the graph to resolve core assignments.
   for (const Node* n : graph.nodes()) {
-    if (StringPiece(n->type_string()) != "_Arg") continue;
+    if (absl::string_view(n->type_string()) != "_Arg") continue;
     int index;
     TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
     TF_RET_CHECK(index >= 0 && index < args.size())
@@ -582,7 +580,7 @@ Status XlaCompiler::BuildArguments(
           builder, core == -1 ? absl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
       arg_handles[i] = xla::Parameter(builder, i, (*input_shapes)[i],
-                                      strings::StrCat("arg", i));
+                                      absl::StrCat("arg", i));
     }
   }
 
@@ -620,7 +618,8 @@ Status XlaCompiler::BuildArguments(
         break;
       case XlaCompiler::Argument::kConstant:
       case XlaCompiler::Argument::kInvalid:
-        return errors::Internal("Unreachable case in BuildArguments()");
+        return errors::Internal(
+            "Unreachable case in BuildArguments() while filling handles");
     }
   }
 
@@ -644,7 +643,7 @@ Status XlaCompiler::CompileSingleOp(
   // dependency edge to the _SOURCE node.
   for (int64 i = 0; i < ctx->num_inputs(); ++i) {
     Node* node;
-    string name = strings::StrCat(ctx->op_kernel().name(), "_", i, "_arg");
+    string name = absl::StrCat(ctx->op_kernel().name(), "_", i, "_arg");
     Status status = NodeBuilder(name, "_Arg")
                         .ControlInput(graph->source_node())
                         .Attr("T", ctx->input_dtype(i))
@@ -657,7 +656,7 @@ Status XlaCompiler::CompileSingleOp(
   // Similarly with return values, create dummy _Retval nodes fed by `node`.
   for (int64 i = 0; i < ctx->num_outputs(); ++i) {
     Node* node;
-    string name = strings::StrCat(ctx->op_kernel().name(), "_", i, "_retval");
+    string name = absl::StrCat(ctx->op_kernel().name(), "_", i, "_retval");
     Status status = NodeBuilder(name, "_Retval")
                         .Input(main_node, i)
                         .Attr("T", ctx->expected_output_dtype(i))
@@ -693,7 +692,7 @@ Status ValidateGraph(const Graph* graph,
                      const DeviceType& device_type, const string& name) {
   auto maybe_error = [&](const Node* node, const Status& s) -> Status {
     if (!s.ok()) {
-      return errors::InvalidArgument(strings::StrCat(
+      return errors::InvalidArgument(absl::StrCat(
           "Detected unsupported operations when trying to compile graph ", name,
           " on ", device_type.type_string(), ": ", node->def().op(), " (",
           s.error_message(), ")", FormatNodeForError(*node)));
@@ -734,7 +733,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileGraph: "
             << dump_graph::DumpGraphToFile(
-                   strings::StrCat("xla_compile_graph_", name), *graph);
+                   absl::StrCat("xla_compile_graph_", name), *graph);
   }
 
   // Report the error here if initialization failed.
@@ -835,8 +834,8 @@ Status XlaCompiler::GetDeviceToHostChannelHandle(const string& key,
 
 namespace {
 
-void SetTransfer(const string& key, gtl::ArraySlice<DataType> types,
-                 gtl::ArraySlice<TensorShape> shapes,
+void SetTransfer(const string& key, absl::Span<const DataType> types,
+                 absl::Span<const TensorShape> shapes,
                  tf2xla::HostTransferMetadata* transfer) {
   transfer->set_key(key);
   CHECK(types.size() == shapes.size());
@@ -850,8 +849,8 @@ void SetTransfer(const string& key, gtl::ArraySlice<DataType> types,
 }  // namespace
 
 Status XlaCompiler::SetDeviceToHostMetadata(
-    const string& key, gtl::ArraySlice<DataType> types,
-    gtl::ArraySlice<TensorShape> shapes) {
+    const string& key, absl::Span<const DataType> types,
+    absl::Span<const TensorShape> shapes) {
   if (host_compute_sends_.find(key) != host_compute_sends_.end()) {
     return errors::InvalidArgument(
         "Duplicate calls to SetDeviceToHostMetadata with key ", key);
@@ -877,8 +876,8 @@ Status XlaCompiler::GetDeviceToHostShapes(
 }
 
 Status XlaCompiler::SetHostToDeviceMetadata(
-    const string& key, gtl::ArraySlice<DataType> types,
-    gtl::ArraySlice<TensorShape> shapes) {
+    const string& key, absl::Span<const DataType> types,
+    absl::Span<const TensorShape> shapes) {
   if (host_compute_recvs_.find(key) != host_compute_sends_.end()) {
     return errors::InvalidArgument(
         "Duplicate calls to SetHostToDeviceMetadata with key ", key);

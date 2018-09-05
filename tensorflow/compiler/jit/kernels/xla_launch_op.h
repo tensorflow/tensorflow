@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_KERNELS_XLA_LAUNCH_OP_H_
 
 #include "tensorflow/compiler/jit/xla_compilation_cache.h"
+#include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -58,7 +59,9 @@ class XlaLocalLaunchBase : public OpKernel {
 
   DeviceType device_type_;
   NameAttrList function_;
-  se::Platform::Id platform_id_;
+  se::Platform::Id platform_id_ = nullptr;
+  bool use_multiple_streams_ = false;
+  const XlaDevice::Metadata* xla_device_metadata_ = nullptr;
 };
 
 // XlaLocalLaunchOp is used to replace a region of the TensorFlow graph

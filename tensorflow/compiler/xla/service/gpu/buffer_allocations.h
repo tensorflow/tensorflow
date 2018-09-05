@@ -20,10 +20,10 @@ limitations under the License.
 #include <set>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {

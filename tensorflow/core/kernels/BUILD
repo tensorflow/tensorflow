@@ -1280,6 +1280,7 @@ tf_cuda_cc_test(
     srcs = ["gather_op_test.cc"],
     deps = [
         ":gather_op",
+        ":host_constant_op",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -2292,6 +2293,31 @@ tf_cc_tests(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "eigen_benchmark",
+    testonly = 1,
+    hdrs = [
+        "eigen_benchmark.h",
+        ":eigen_helpers",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "eigen_benchmark_cpu_test",
+    srcs = ["eigen_benchmark_cpu_test.cc"],
+    deps = [
+        ":eigen_benchmark",
+        ":eigen_helpers",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//third_party/eigen3",
     ],
 )
 
@@ -4195,6 +4221,7 @@ cc_library(
         "hinge-loss.h",
         "logistic-loss.h",
         "loss.h",
+        "poisson-loss.h",
         "smooth-hinge-loss.h",
         "squared-loss.h",
     ],

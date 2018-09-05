@@ -122,15 +122,12 @@ class MapVectorizationTest(test_utils.DatasetTestBase, parameterized.TestCase):
 
     base_dataset = dataset_ops.Dataset.from_tensor_slices([[1, 2],
                                                            [3, 4]]).repeat(5)
-    _, optimized = self._get_test_datasets(
+    unoptimized, optimized = self._get_test_datasets(
         base_dataset, map_fn, expect_optimized=False)
-    nxt = optimized.make_one_shot_iterator().get_next()
-
-    # NOTE: Right now, it raises an error because we can't save datasets that
-    # are stateful, and we rely on this saving mechanism to optimize datasets,
-    # so stateful functions can't be optimized.
-    with self.assertRaisesRegexp(errors.InvalidArgumentError, "[Ss]tateful"):
-      self.evaluate(nxt)
+    self._assert_datasets_raise_same_error(
+        unoptimized, optimized, errors.InvalidArgumentError,
+        [("OneShotIterator", "OneShotIterator_1", 1),
+         ("IteratorGetNext", "IteratorGetNext_1", 1)])
 
   def testOptimizationIgnoreRagged(self):
     # Make sure we ignore inputs that might not be uniformly sized
@@ -151,8 +148,10 @@ class MapVectorizationTest(test_utils.DatasetTestBase, parameterized.TestCase):
     base_dataset = dataset_ops.Dataset.range(20).batch(1, drop_remainder=True)
     unoptimized, optimized = self._get_test_datasets(
         base_dataset, map_fn, expect_optimized=False)
-    self._assert_datasets_raise_same_error(unoptimized, optimized,
-                                           errors.InvalidArgumentError)
+    self._assert_datasets_raise_same_error(
+        unoptimized, optimized, errors.InvalidArgumentError,
+        [("OneShotIterator", "OneShotIterator_1", 1),
+         ("IteratorGetNext", "IteratorGetNext_1", 1)])
 
 
 class MapVectorizationBenchmark(test.Benchmark):

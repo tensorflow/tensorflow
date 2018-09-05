@@ -148,7 +148,7 @@ Status RunMainOp(const RunOptions& run_options, const string& export_dir,
     AddAssetsTensorsToInputs(export_dir, asset_file_defs, &inputs);
     RunMetadata run_metadata;
     const StringPiece main_op_name = main_op_it->second.node_list().value(0);
-    return RunOnce(run_options, inputs, {}, {main_op_name.ToString()},
+    return RunOnce(run_options, inputs, {}, {string(main_op_name)},
                    nullptr /* outputs */, &run_metadata, session);
   }
   return Status::OK();
@@ -187,7 +187,7 @@ Status RunRestore(const RunOptions& run_options, const string& export_dir,
   AddAssetsTensorsToInputs(export_dir, asset_file_defs, &inputs);
 
   RunMetadata run_metadata;
-  return RunOnce(run_options, inputs, {}, {restore_op_name.ToString()},
+  return RunOnce(run_options, inputs, {}, {string(restore_op_name)},
                  nullptr /* outputs */, &run_metadata, session);
 }
 

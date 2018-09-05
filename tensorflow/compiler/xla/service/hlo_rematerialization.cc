@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -202,8 +202,8 @@ class InstructionList {
   // On object construction this ordinal is precisely the instruction's index
   // in the list. Later, instructions inserted via InsertBefore receive
   // duplicate values. However, monotonicity is preserved.
-  void InsertBeforeInstructions(
-      Item* to_insert, tensorflow::gtl::ArraySlice<Item*> before_instructions) {
+  void InsertBeforeInstructions(Item* to_insert,
+                                absl::Span<Item* const> before_instructions) {
     VLOG(3) << "InsertBeforeInstructions: " << to_insert->instruction->name()
             << " before {"
             << absl::StrJoin(before_instructions, ", ",
@@ -1203,6 +1203,49 @@ StatusOr<bool> HloRematerialization::Run(
 
   VLOG(1) << "HloRematerialization() with memory limit of "
           << HumanReadableNumBytes(memory_limit_bytes);
+  XLA_VLOG_LINES(3, "Before HloRematerialization:\n" + module->ToString());
+
+  // Create initial sequence of HLO instructions.
+  TF_ASSIGN_OR_RETURN(*sequence, ScheduleComputationsInModule(
+                                     *module,
+                                     [this](const BufferValue& buffer) {
+                                       return size_function_(buffer.shape());
+                                     },
+                                     scheduler_algorithm_));
+  if (copy_insertion) {
+    // We run a separate pass of copy elision here because the sequential
+    // ordering from the HLO schedule allows for more copies to be eliminated.
+    // TODO(b/80249101): Instead of a separate copy elision pass, use the
+    // ordering from the HLO schedule directly for copy insertion.
+
+    // First create a copy of the schedule which contains HloInstruction unique
+    // ids instead of HloInstruction*. This is necessary for updating the
+    // schedule below.
+    // TODO(b/113175018): Remove this when the HLO schedule is self-contained
+    // and can update itself.
+    tensorflow::gtl::FlatMap<const HloComputation*, std::vector<int>>
+        id_sequence = ComputeIdSchedule(*sequence);
+
+    SequentialHloOrdering ordering(module, *sequence);
+    TF_RETURN_IF_ERROR(
+        copy_insertion->RemoveUnnecessaryCopies(ordering, module));
+
+    // RemoveUnnecessaryCopies only considers interference when determining
+    // whether it is legal to remove a copy. However, copies in the graph may be
+    // necessary for other reason such as preventing a constant from being live
+    // out of the graph. So run AddSpecialCaseCopies to re-insert these copies.
+    // TODO(b/80249101): Break copy insertion into several passes and run each
+    // one once in the regular HLO pipeline.
+    TF_RETURN_IF_ERROR(copy_insertion->AddSpecialCaseCopies(module));
+
+    // The passes above can add and remove copies, update the schedule to
+    // account for these transformations. Newly added instructions will be
+    // placed ASAP in the schedule.
+    TF_RETURN_IF_ERROR(UpdateSchedule(*module, id_sequence, sequence));
+
+    TF_DCHECK_OK(copy_insertion->VerifyNoLiveRangeInterference(
+        SequentialHloOrdering(module, *sequence), module));
+  }
 
   TF_ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module));
 
@@ -1223,24 +1266,6 @@ StatusOr<bool> HloRematerialization::Run(
   VLOG(1) << "Adjusted memory limit accounting for output ("
           << HumanReadableNumBytes(module_output_size)
           << "): " << HumanReadableNumBytes(adjusted_memory_limit_bytes);
-
-  XLA_VLOG_LINES(3, "Before HloRematerialization:\n" + module->ToString());
-  // Create initial sequence of HLO instructions.
-  TF_ASSIGN_OR_RETURN(*sequence, ScheduleComputationsInModule(
-                                     *module,
-                                     [this](const BufferValue& buffer) {
-                                       return size_function_(buffer.shape());
-                                     },
-                                     scheduler_algorithm_));
-  if (copy_insertion) {
-    // We run a separate pass of copy elision here because the sequential
-    // ordering from the HLO schedule allows for more copies to be eliminated.
-    // TODO(b/80249101): Instead of a separate copy elision pass, use the
-    // ordering from the HLO schedule directly for copy insertion.
-    SequentialHloOrdering ordering(module, *sequence);
-    TF_RETURN_IF_ERROR(
-        copy_insertion->RemoveUnnecessaryCopies(ordering, module));
-  }
 
   // Compute peak memory usage of all computations in the module called in a
   // sequential context.
@@ -1328,12 +1353,11 @@ StatusOr<bool> HloRematerialization::Run(
   XLA_VLOG_LINES(3, "After HloRematerialization:\n" + module->ToString());
 
   if (current_peak_memory > memory_limit_bytes) {
-    LOG(WARNING) << tensorflow::strings::Printf(
-        "Can't reduce memory use below %s (%lld bytes) by rematerialization; "
-        "only reduced to %s (%lld bytes)",
-        HumanReadableNumBytes(memory_limit_bytes).c_str(), memory_limit_bytes,
-        HumanReadableNumBytes(current_peak_memory).c_str(),
-        current_peak_memory);
+    LOG(WARNING) << absl::StrFormat(
+        "Can't reduce memory use below %s (%d bytes) by rematerialization; "
+        "only reduced to %s (%d bytes)",
+        HumanReadableNumBytes(memory_limit_bytes), memory_limit_bytes,
+        HumanReadableNumBytes(current_peak_memory), current_peak_memory);
   }
 
   return changed;

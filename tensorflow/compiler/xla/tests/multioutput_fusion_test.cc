@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -46,8 +46,6 @@ limitations under the License.
 
 namespace xla {
 namespace {
-
-using ::tensorflow::gtl::ArraySlice;
 
 class MultiOutputFusionTest : public HloTestBase {
  protected:
@@ -91,13 +89,13 @@ class MultiOutputFusionTest : public HloTestBase {
     DotDimensionNumbers dot_dnums;
     dot_dnums.add_lhs_contracting_dimensions(1);
     dot_dnums.add_rhs_contracting_dimensions(0);
-    HloInstruction* dot = builder.AddInstruction(
-        HloInstruction::CreateDot(elem_shape2, sub, add2, dot_dnums));
+    HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+        elem_shape2, sub, add2, dot_dnums, DefaultPrecisionConfig(2)));
     auto computation = hlo_module->AddEntryComputation(builder.Build(dot));
 
     if (manual_fusion) {
-      auto tuple = computation->AddInstruction(HloInstruction::CreateTuple(
-          ArraySlice<HloInstruction*>({sub, add2}, 0, 2)));
+      auto tuple =
+          computation->AddInstruction(HloInstruction::CreateTuple({sub, add2}));
       auto gte0 = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(elem_shape2, tuple, 0));
       auto gte1 = computation->AddInstruction(
@@ -155,12 +153,12 @@ class MultiOutputFusionTest : public HloTestBase {
     dot_dnums.add_rhs_contracting_dimensions(0);
     HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
         ShapeUtil::MakeShapeWithDescendingLayout(F32, {1}), sub, reshape,
-        dot_dnums));
+        dot_dnums, DefaultPrecisionConfig(2)));
     auto computation = hlo_module->AddEntryComputation(builder.Build(dot));
 
     if (manual_fusion) {
-      auto tuple = computation->AddInstruction(HloInstruction::CreateTuple(
-          ArraySlice<HloInstruction*>({sub_U8, add}, 0, 2)));
+      auto tuple = computation->AddInstruction(
+          HloInstruction::CreateTuple({sub_U8, add}));
 
       auto gte0 = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(elem_shape_U8, tuple, 0));

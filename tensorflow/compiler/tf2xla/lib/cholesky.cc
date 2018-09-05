@@ -50,20 +50,21 @@ namespace {
 //                       l[..., j, j]
 //   return l
 xla::XlaOp CholeskyUnblocked(xla::XlaOp a,
-                             xla::PrecisionConfigProto::Precision precision) {
+                             xla::PrecisionConfig::Precision precision) {
   xla::XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
     TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));
     const int n_dims = xla::ShapeUtil::Rank(a_shape);
     const int64 n = xla::ShapeUtil::GetDimension(a_shape, -1);
-    gtl::ArraySlice<int64> major_dims(xla::AsInt64Slice(a_shape.dimensions()),
-                                      /*pos=*/0,
-                                      /*len=*/n_dims - 2);
+    auto major_dims = xla::AsInt64Slice(a_shape.dimensions())
+                          .subspan(
+                              /*pos=*/0,
+                              /*len=*/n_dims - 2);
 
     xla::XlaOp l = xla::ZerosLike(a);
 
     // Construct the for loop body to iterate over rows.
-    auto body_fn = [&](xla::XlaOp i, gtl::ArraySlice<xla::XlaOp> loop_vars,
+    auto body_fn = [&](xla::XlaOp i, absl::Span<const xla::XlaOp> loop_vars,
                        xla::XlaBuilder* body_builder)
         -> xla::StatusOr<std::vector<xla::XlaOp>> {
       xla::Shape col_shape;
@@ -149,7 +150,7 @@ xla::XlaOp CholeskyUnblocked(xla::XlaOp a,
 }  // namespace
 
 xla::XlaOp Cholesky(xla::XlaOp a, int64 block_size,
-                    xla::PrecisionConfigProto::Precision precision) {
+                    xla::PrecisionConfig::Precision precision) {
   xla::XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
     TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));

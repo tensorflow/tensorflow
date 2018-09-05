@@ -26,11 +26,6 @@ namespace xla {
 namespace {
 
 class ImplicitBroadcastRemoverTest : public HloVerifiedTestBase {
- public:
-  ImplicitBroadcastRemoverTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false) {}
-
  protected:
   ImplicitBroadcastRemover remover_;
 };

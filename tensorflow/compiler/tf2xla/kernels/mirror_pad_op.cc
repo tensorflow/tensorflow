@@ -29,7 +29,14 @@ class MirrorPadOp : public XlaOpKernel {
   xla::StatusOr<xla::XlaOp> DoMirrorPad(const xla::XlaOp& t,
                                         const xla::Shape& original_shape,
                                         const xla::LiteralSlice& pad_literal,
+                                        const MirrorPadMode mode,
                                         xla::XlaBuilder* b) {
+    // The difference in the semantics of REFLECT and SYMMETRIC is that REFLECT
+    // will not mirror the border values while symmetric does.
+    // e.g. input is [1, 2, 3] and paddings is [0, 2], then the output is:
+    // - [1, 2, 3, 2, 1] in reflect mode
+    // - [1, 2, 3, 3, 2] in symmetric mode.
+    int64 excluded_edges = mode == MirrorPadMode::REFLECT ? 1 : 0;
     xla::XlaOp accum = t;
     for (int64 dimno = xla::ShapeUtil::Rank(original_shape) - 1; dimno >= 0;
          --dimno) {
@@ -39,9 +46,19 @@ class MirrorPadOp : public XlaOpKernel {
       TF_ASSIGN_OR_RETURN(int64 rhs_padding,
                           pad_literal.GetIntegralAsS64({dimno, 1}));
       int64 dim_size = original_shape.dimensions(dimno);
-      auto lhs_pad = xla::SliceInDim(t_rev, dim_size - 1 - lhs_padding,
-                                     dim_size - 1, 1, dimno);
-      auto rhs_pad = xla::SliceInDim(t_rev, 1, 1 + rhs_padding, 1, dimno);
+
+      // Padding amounts on each side must be no more than the size of the
+      // original shape.
+      TF_RET_CHECK(lhs_padding >= 0 &&
+                   lhs_padding <= dim_size - excluded_edges);
+      TF_RET_CHECK(rhs_padding >= 0 &&
+                   rhs_padding <= dim_size - excluded_edges);
+
+      auto lhs_pad =
+          xla::SliceInDim(t_rev, dim_size - excluded_edges - lhs_padding,
+                          dim_size - excluded_edges, 1, dimno);
+      auto rhs_pad = xla::SliceInDim(t_rev, excluded_edges,
+                                     excluded_edges + rhs_padding, 1, dimno);
       accum = xla::ConcatInDim(b, {lhs_pad, accum, rhs_pad}, dimno);
     }
     return accum;
@@ -53,9 +70,10 @@ class MirrorPadOp : public XlaOpKernel {
 
     MirrorPadMode mode;
     OP_REQUIRES_OK(ctx, GetNodeAttr(def(), "mode", &mode));
-    OP_REQUIRES(ctx, mode == MirrorPadMode::REFLECT,
-                xla::Unimplemented(
-                    "Only REFLECT MirrorPad mode is currently supported"));
+    OP_REQUIRES(
+        ctx, mode == MirrorPadMode::REFLECT || mode == MirrorPadMode::SYMMETRIC,
+        xla::Unimplemented("Unsupported MirrorPad mode. Only SYMMETRIC and "
+                           "REFLECT modes are currently supported"));
 
     const int dims = input_shape.dims();
     OP_REQUIRES(
@@ -83,7 +101,7 @@ class MirrorPadOp : public XlaOpKernel {
     xla::StatusOr<xla::Shape> in0_shape = b->GetShape(in0);
     OP_REQUIRES(ctx, in0_shape.ok(), in0_shape.status());
     xla::StatusOr<xla::XlaOp> accum_status =
-        DoMirrorPad(in0, in0_shape.ValueOrDie(), pad_literal, b);
+        DoMirrorPad(in0, in0_shape.ValueOrDie(), pad_literal, mode, b);
 
     OP_REQUIRES_OK(ctx, accum_status.status());
 

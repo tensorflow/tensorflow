@@ -377,6 +377,10 @@ else
   if [[ ${IS_MAC} == "1" ]]; then
     EXTRA_ARGS="${EXTRA_ARGS},-nomac"
   fi
+  EXTRA_ARGS="${EXTRA_ARGS} --build_tag_filters=-no_oss,-oss_serial,-benchmark-test"
+  if [[ ${IS_MAC} == "1" ]]; then
+    EXTRA_ARGS="${EXTRA_ARGS},-nomac"
+  fi
 fi
 
 # For any "tool" dependencies in genrules, Bazel will build them for host

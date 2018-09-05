@@ -37,7 +37,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 26.
+// Next ID to use: 29.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -173,6 +173,7 @@ message TocoFlags {
   // Store weights as quantized weights followed by dequantize operations.
   // Computation is still done in float, but reduces model size (at the cost of
   // accuracy and latency).
+  // DEPRECATED: Please use post_training_quantize instead.
   optional bool quantize_weights = 20 [default = false];
 
   // Full filepath of folder to dump the graphs at various stages of processing
@@ -183,4 +184,22 @@ message TocoFlags {
   // Boolean indicating whether to dump the graph after every graph
   // transformation.
   optional bool dump_graphviz_include_video = 25;
+
+  // Boolean indicating whether to quantize the weights of the converted float
+  // model. Model size will be reduced and there will be latency improvements
+  // (at the cost of accuracy).
+  optional bool post_training_quantize = 26 [default = false];
+
+  // When enabled, unsupported ops will be converted to TFLite Eager ops.
+  // TODO(ycling): Consider to rename the following 2 flags and don't call it
+  // "Eager".
+  // `allow_eager_ops` should always be used with `allow_custom_ops`.
+  // WARNING: Experimental interface, subject to change
+  optional bool allow_eager_ops = 27 [default = false];
+
+  // When enabled, all TensorFlow ops will be converted to TFLite Eager
+  // ops directly. This will force `allow_eager_ops` to true.
+  // `force_eager_ops` should always be used with `allow_eager_ops`.
+  // WARNING: Experimental interface, subject to change
+  optional bool force_eager_ops = 28 [default = false];
 }

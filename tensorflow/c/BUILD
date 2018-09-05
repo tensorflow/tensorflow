@@ -117,6 +117,7 @@ tf_cuda_library(
     deps = [
         ":c_api",
         ":c_api_internal",
+        "//tensorflow/c/eager:c_api",
         "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
         "//tensorflow/contrib/tpu:all_ops",
         "//tensorflow/core:core_cpu",
@@ -125,6 +126,15 @@ tf_cuda_library(
         "//tensorflow/core:lib_platform",
         "//tensorflow/core:protos_all_cc",
     ],
+)
+
+cc_library(
+    name = "c_api_headers",
+    hdrs = [
+        "c_api.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//tensorflow:__subpackages__"],
 )
 
 exports_files(

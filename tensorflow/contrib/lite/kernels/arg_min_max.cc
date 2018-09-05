@@ -96,11 +96,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
   const TfLiteTensor* axis = GetInput(context, node, kAxis);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-#define TF_LITE_ARG_MIN_MAX(data_type, axis_type, output_type)         \
-  optimized_ops::ArgMinMax(                                            \
-      GetTensorData<axis_type>(axis), GetTensorData<data_type>(input), \
-      GetTensorDims(input), GetTensorData<output_type>(output),        \
-      GetTensorDims(output), GetComparefunction<data_type>(is_arg_max))
+#define TF_LITE_ARG_MIN_MAX(data_type, axis_type, output_type) \
+  optimized_ops::ArgMinMax(                                    \
+      GetTensorShape(input), GetTensorData<data_type>(input),  \
+      GetTensorData<axis_type>(axis), GetTensorShape(output),  \
+      GetTensorData<output_type>(output),                      \
+      GetComparefunction<data_type>(is_arg_max))
   if (axis->type == kTfLiteInt32) {
     switch (output->type) {
       case kTfLiteInt32: {

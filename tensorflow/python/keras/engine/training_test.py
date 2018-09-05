@@ -36,7 +36,6 @@ from tensorflow.python.keras.engine.training_utils import weighted_masked_object
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -392,7 +391,8 @@ class TrainingTest(test.TestCase):
   def test_compile_with_sparse_placeholders(self):
     with self.test_session():
       input_layer = keras.layers.Input(shape=(10,), sparse=True)
-      weights = variable_scope.get_variable(name='weights', shape=(10, 1))
+      weights = variables_lib.Variable(
+          np.ones((10, 1)).astype(np.float32), name='weights')
       weights_mult = lambda x: sparse_ops.sparse_tensor_dense_matmul(x, weights)
       output_layer = keras.layers.Lambda(weights_mult)(input_layer)
       model = keras.Model([input_layer], output_layer)

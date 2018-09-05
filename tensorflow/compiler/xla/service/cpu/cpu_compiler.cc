@@ -588,8 +588,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       ScheduleComputationsInModule(*module, BufferSizeBytesFunction(),
                                    DFSMemoryScheduler));
 
-  // Run buffer analysis on the HLO graph. This analysis figures out which
-  // temporary buffers are required to run the computation.
+  // Run buffer allocation on the HLO graph.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(module.get(),
@@ -705,8 +704,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
   const llvm::Target* target =
       llvm::TargetRegistry::lookupTarget(triple.getTriple(), error);
   if (target == nullptr) {
-    return InternalError("TargetRegistry::lookupTarget failed: %s",
-                         error.c_str());
+    return InternalError("TargetRegistry::lookupTarget failed: %s", error);
   }
 
   llvm::Reloc::Model reloc_model = llvm::Reloc::Static;

@@ -127,7 +127,7 @@ Status GraphCompiler::Compile() {
     TF_RET_CHECK(!n->IsRecv() && !n->IsSend() && !n->IsSwitch())
         << "Not supported node: " << n->DebugString();
     params.op_kernel = op_kernel.get();
-    gtl::InlinedVector<AllocatorAttributes, 4> output_attr(n->num_outputs());
+    absl::InlinedVector<AllocatorAttributes, 4> output_attr(n->num_outputs());
     params.output_attr_array = output_attr.data();
 
     // tensor_inputs_ is a buffer reused across graph traversal. We clean up and
@@ -146,6 +146,7 @@ Status GraphCompiler::Compile() {
     }
 
     OpKernelContext op_context(&params, n->num_outputs());
+    VLOG(3) << "Translating " << params.op_kernel->name();
     if (IsFunctional(n)) {
       TF_RETURN_IF_ERROR(CompileFunctionalNode(n, &op_context));
     } else {

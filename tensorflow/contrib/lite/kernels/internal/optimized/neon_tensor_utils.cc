@@ -236,6 +236,35 @@ void NeonVectorVectorCwiseProductAccumulate(const float* vector1,
   }
 }
 
+void NeonVectorBatchVectorCwiseProduct(const float* vector, int v_size,
+                                       const float* batch_vector, int n_batch,
+                                       float* result) {
+  // If v_size is not divisible by kWeightsPerNeonLane, we cannot use the main
+  // vectorized loop, and we need to process sequentially. postamble_start shows
+  // the start index where this should happen.
+  const int postamble_start =
+      v_size - (v_size & (kFloatWeightsPerNeonLane - 1));
+
+  for (int b = 0; b < n_batch; b++) {
+    for (int v = 0; v < postamble_start; v += kFloatWeightsPerNeonLane) {
+      // Load from memory to vectors.
+      float32x4_t batch_vector_f32x4 = vld1q_f32(batch_vector + v);
+      float32x4_t vector_f32x4 = vld1q_f32(vector + v);
+      // Multiply.
+      float32x4_t result_f32x4 = vmulq_f32(batch_vector_f32x4, vector_f32x4);
+      // Store.
+      vst1q_f32(result + v, result_f32x4);
+    }
+    // Postamble loop
+    for (int v = postamble_start; v < v_size; v++) {
+      result[v] = vector[v] * batch_vector[v];
+    }
+    // Update the pointers.
+    result += v_size;
+    batch_vector += v_size;
+  }
+}
+
 void NeonVectorBatchVectorCwiseProductAccumulate(const float* vector,
                                                  int v_size,
                                                  const float* batch_vector,

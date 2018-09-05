@@ -34,8 +34,7 @@ class GatherOperationTest : public HloTestBase {
     RunTest(hlo_text, {operand, start_indices});
   }
 
-  void RunTest(const string& hlo_text,
-               tensorflow::gtl::ArraySlice<Literal*> args) {
+  void RunTest(const string& hlo_text, absl::Span<Literal* const> args) {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
