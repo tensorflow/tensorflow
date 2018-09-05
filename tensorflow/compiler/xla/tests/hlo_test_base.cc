@@ -120,6 +120,14 @@ StatusOr<bool> HloTestBase::RunHloPass(HloPassInterface* hlo_pass,
   return status_or;
 }
 
+/* static */
+PrecisionConfigProto HloTestBase::DefaultPrecisionConfig(int operands) {
+  PrecisionConfigProto precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      operands, PrecisionConfigProto::DEFAULT);
+  return precision_config;
+}
+
 DebugOptions HloTestBase::GetDebugOptionsForTest() {
   auto debug_options = legacy_flags::GetDebugOptionsFromFlags();
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.

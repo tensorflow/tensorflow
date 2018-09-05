@@ -80,6 +80,8 @@ class HloTestBase : public ::testing::Test {
   static StatusOr<bool> RunHloPass(HloPassInterface* hlo_pass,
                                    HloModule* module);
 
+  static PrecisionConfigProto DefaultPrecisionConfig(int operands);
+
  protected:
   // This uses the interpreter backend as the reference backend and
   // automatically finds another supported backend as the test backend. If the

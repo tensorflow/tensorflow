@@ -95,13 +95,6 @@ class CudnnConvolutionRewriterTest : public HloVerifiedTestBase {
   ConvolutionDimensionNumbers tf_default_dnums_for_backward_input_;
 };
 
-PrecisionConfigProto DefaultPrecisionConfig(int operands) {
-  PrecisionConfigProto precision_config;
-  precision_config.mutable_operand_precision()->Resize(
-      operands, PrecisionConfigProto::DEFAULT);
-  return precision_config;
-}
-
 TEST_F(CudnnConvolutionRewriterTest, BackwardFilterConvolve) {
   HloComputation::Builder builder(TestName());
   HloInstruction* activations =

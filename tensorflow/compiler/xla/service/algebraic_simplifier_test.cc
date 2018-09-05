@@ -1013,13 +1013,6 @@ TEST_F(AlgebraicSimplifierTest, PowNegative1) {
             1);
 }
 
-PrecisionConfigProto DefaultPrecisionConfig(int operands) {
-  PrecisionConfigProto precision_config;
-  precision_config.mutable_operand_precision()->Resize(
-      operands, PrecisionConfigProto::DEFAULT);
-  return precision_config;
-}
-
 TEST_F(AlgebraicSimplifierTest, ZeroSizedConvolution) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* lhs = builder.AddInstruction(HloInstruction::CreateParameter(
