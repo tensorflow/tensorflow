@@ -170,9 +170,8 @@ class ListOpsTest(test_util.TensorFlowTestCase):
             list_ops.tensor_list_pop_back(
                 l_cpu, element_dtype=dtypes.float32)[1]), 2.0)
 
-  @test_util.run_in_graph_and_eager_modes
   def testGraphStack(self):
-    with context.graph_mode(), self.test_session():
+    with self.cached_session():
       tl = list_ops.empty_tensor_list(
           element_shape=constant_op.constant([1], dtype=dtypes.int32),
           element_dtype=dtypes.int32)
@@ -182,9 +181,8 @@ class ListOpsTest(test_util.TensorFlowTestCase):
               list_ops.tensor_list_stack(tl, element_dtype=dtypes.int32)),
           [[1]])
 
-  @test_util.run_in_graph_and_eager_modes
   def testGraphStackInLoop(self):
-    with context.graph_mode(), self.test_session():
+    with self.cached_session():
       t1 = list_ops.empty_tensor_list(
           element_shape=constant_op.constant([], dtype=dtypes.int32),
           element_dtype=dtypes.int32)
@@ -200,9 +198,8 @@ class ListOpsTest(test_util.TensorFlowTestCase):
       s1 = list_ops.tensor_list_stack(t1, element_dtype=dtypes.int32)
       self.assertAllEqual(self.evaluate(s1), [0, 1, 2, 3])
 
-  @test_util.run_in_graph_and_eager_modes
   def testGraphStackSwitchDtype(self):
-    with context.graph_mode(), self.test_session():
+    with self.cached_session():
       list_ = list_ops.empty_tensor_list(
           element_shape=constant_op.constant([], dtype=dtypes.int32),
           element_dtype=dtypes.int32)
@@ -222,9 +219,8 @@ class ListOpsTest(test_util.TensorFlowTestCase):
       np_s1 = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.float32)
       self.assertAllEqual(self.evaluate(s1), np_s1)
 
-  @test_util.run_in_graph_and_eager_modes
   def testGraphStackInLoopSwitchDtype(self):
-    with context.graph_mode(), self.test_session():
+    with self.cached_session():
       t1 = list_ops.empty_tensor_list(
           element_shape=constant_op.constant([], dtype=dtypes.int32),
           element_dtype=dtypes.int32)
