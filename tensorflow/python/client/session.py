@@ -1132,7 +1132,7 @@ class BaseSession(SessionInterface):
         for details of the allowable fetch types.
       feed_list: (Optional.) A list of `feed_dict` keys. See
         `tf.Session.run` for details of the allowable feed key types.
-      accept_options: (Optional.) Iff `True`, the returned `Callable` will be
+      accept_options: (Optional.) If `True`, the returned `Callable` will be
         able to accept `tf.RunOptions` and `tf.RunMetadata` as optional
         keyword arguments `options` and `run_metadata`, respectively, with
         the same syntax and semantics as `tf.Session.run`, which is useful
