@@ -141,11 +141,18 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
       # The bias is computed on gradients and hessians (and not
       # filtered_gradients) which have exactly one value per example, so we
       # don't double count a gradient in multivalent columns.
+      # Since unsorted_segment_sum can be numerically unstable, use 64bit
+      # operation.
+      gradients64 = math_ops.cast(gradients, dtypes.float64)
+      hessians64 = math_ops.cast(hessians, dtypes.float64)
       per_partition_gradients = math_ops.unsorted_segment_sum(
-          gradients, mapped_partitions, array_ops.size(unique_partitions))
+          gradients64, mapped_partitions, array_ops.size(unique_partitions))
       per_partition_hessians = math_ops.unsorted_segment_sum(
-          hessians, mapped_partitions, array_ops.size(unique_partitions))
-
+          hessians64, mapped_partitions, array_ops.size(unique_partitions))
+      per_partition_gradients = math_ops.cast(per_partition_gradients,
+                                              dtypes.float32)
+      per_partition_hessians = math_ops.cast(per_partition_hessians,
+                                             dtypes.float32)
       # Prepend a bias feature per partition that accumulates the stats for all
       # examples in that partition.
       # Bias is added to the stats even if there are no examples with values in
