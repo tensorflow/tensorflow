@@ -695,6 +695,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":lib_internal",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
@@ -3220,7 +3221,6 @@ tf_cc_tests(
         "lib/gtl/edit_distance_test.cc",
         "lib/gtl/flatmap_test.cc",
         "lib/gtl/flatset_test.cc",
-        "lib/gtl/inlined_vector_test.cc",
         "lib/gtl/int_type_test.cc",
         "lib/gtl/iterator_range_test.cc",
         "lib/gtl/manual_constructor_test.cc",
