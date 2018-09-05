@@ -566,6 +566,18 @@ class PyFuncTest(test.TestCase):
     dy_dx = gradients_impl.gradients(y, x)[0]
     self.assertEqual(self.evaluate(dy_dx), 6.0)
 
+  def testEagerGradientGraphTwoOutputs(self):
+
+    def f(x, y):
+      return x * y, x / y
+
+    x = constant_op.constant(3.0)
+    y = constant_op.constant(2.0)
+    fa, fb = script_ops.eager_py_func(f, inp=[x, y],
+                                      Tout=[dtypes.float32, dtypes.float32])
+    dy_dx = gradients_impl.gradients(fa + fb, x)[0]
+    self.assertEqual(self.evaluate(dy_dx), 2.5)
+
   @test_util.run_in_graph_and_eager_modes
   def testEagerGradientTapeMultipleArgs(self):
 
