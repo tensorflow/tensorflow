@@ -67,7 +67,12 @@ genrule(
         "test_graph_tfmatmulandadd.pb",
         "test_graph_tfsplits.pb",
     ],
-    cmd = "$(location :make_test_graphs) --out_dir $(@D)",
+    # Set CUDA_VISIBLE_DEVICES='' to prevent the code we launch from using any
+    # GPUs which might be present.  This is important because builds may run
+    # concurrently with tests, and tests need to be able to assume that they
+    # have control of the full GPU.
+    cmd = "CUDA_VISIBLE_DEVICES='' " +
+          "$(location :make_test_graphs) --out_dir $(@D)",
     tags = ["manual"],
     tools = [":make_test_graphs"],
 )
