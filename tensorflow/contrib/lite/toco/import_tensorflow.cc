@@ -2061,8 +2061,14 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
   }
 
   Model* model = new Model;
-  const internal::ConverterMapType& converter_map =
-      internal::GetTensorFlowNodeConverterMap();
+  internal::ConverterMapType converter_map;
+
+  // This is used for the TFLite "Full Eager Mode" conversion. All the ops are
+  // imported as `TensorFlowUnsupportedOperator`, and later all these ops are
+  // converted to TFLite Eager ops.
+  if (!tf_import_flags.import_all_ops_as_unsupported) {
+    converter_map = internal::GetTensorFlowNodeConverterMap();
+  }
 
   for (auto node : inlined_graph.node()) {
     StripZeroOutputIndexFromInputs(&node);
