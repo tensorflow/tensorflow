@@ -53,7 +53,6 @@ namespace xla {
 
 namespace {
 
-
 template <typename OperandT>
 StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
                                            LiteralSlice lhs_literal,
@@ -345,7 +344,8 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateElementwiseUnaryOp(
 }
 
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateDotOp(
-    const DotDimensionNumbers& dim_numbers, const Literal& lhs,
+    const DotDimensionNumbers& dim_numbers,
+    const PrecisionConfigProto& precision_config, const Literal& lhs,
     const Literal& rhs) {
   std::unique_ptr<HloInstruction> lhs_instr =
       HloInstruction::CreateConstant(lhs.CloneToUnique());
@@ -358,7 +358,7 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateDotOp(
 
   std::unique_ptr<HloInstruction> cloned_instruction =
       HloInstruction::CreateDot(dot_shape, lhs_instr.get(), rhs_instr.get(),
-                                dim_numbers);
+                                dim_numbers, precision_config);
   return Evaluate(cloned_instruction.get());
 }
 

@@ -99,6 +99,8 @@ class OpNameMetadata : public DomainMetadata {
 
   static absl::string_view KindName() { return "opname"; }
 
+  size_t Hash() const override { return std::hash<string>()(opname_); }
+
  private:
   string opname_;
 };

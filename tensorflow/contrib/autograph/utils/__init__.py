@@ -18,9 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.autograph.utils.builtins import dynamic_builtin
-from tensorflow.contrib.autograph.utils.builtins import dynamic_print
-from tensorflow.contrib.autograph.utils.builtins import dynamic_range
 from tensorflow.contrib.autograph.utils.context_managers import control_dependency_on_returns
 from tensorflow.contrib.autograph.utils.misc import alias_tensors
 from tensorflow.contrib.autograph.utils.multiple_dispatch import dynamic_is

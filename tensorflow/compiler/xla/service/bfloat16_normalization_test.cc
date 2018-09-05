@@ -308,8 +308,11 @@ TEST_F(BFloat16NormalizationTest, DoNotAddUnsupportedMixedPrecision) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
+  PrecisionConfigProto precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      2, PrecisionConfigProto::DEFAULT);
   HloInstruction* dot = builder.AddInstruction(
-      HloInstruction::CreateDot(bf16_shape, a, b, dot_dnums));
+      HloInstruction::CreateDot(bf16_shape, a, b, dot_dnums, precision_config));
 
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());

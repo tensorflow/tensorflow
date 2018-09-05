@@ -14542,6 +14542,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "use_inter_op_parallelism"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
 }
 op {
   name: "MapDefun"

@@ -123,6 +123,7 @@ void SpatialConvolutionBackwardKernel(int iters, int num_threads,
 #define BM_SpatialConvolution(NT, N, H, W, C, FC, FH, FW, LABEL)          \
   static void BM_SPATIAL_NAME(SpatialConvolution, NT, N, H, W, C, FC, FH, \
                               FW)(int iters) {                            \
+    ::tensorflow::testing::SetLabel(LABEL);                               \
     SpatialConvolution(iters, NT, N, H, W, C, FC, FH, FW);                \
   }                                                                       \
   BENCHMARK(BM_SPATIAL_NAME(SpatialConvolution, NT, N, H, W, C, FC, FH, FW))
@@ -130,6 +131,7 @@ void SpatialConvolutionBackwardKernel(int iters, int num_threads,
 #define BM_SpatialConvolutionBwdInput(NT, N, H, W, C, FC, FH, FW, LABEL)      \
   static void BM_SPATIAL_NAME(SpatialConvolutionBwdInput, NT, N, H, W, C, FC, \
                               FH, FW)(int iters) {                            \
+    ::tensorflow::testing::SetLabel(LABEL);                                   \
     SpatialConvolutionBackwardInput(iters, NT, N, H, W, C, FC, FH, FW);       \
   }                                                                           \
   BENCHMARK(                                                                  \
@@ -138,6 +140,7 @@ void SpatialConvolutionBackwardKernel(int iters, int num_threads,
 #define BM_SpatialConvolutionBwdKernel(NT, N, H, W, C, FC, FH, FW, LABEL)      \
   static void BM_SPATIAL_NAME(SpatialConvolutionBwdKernel, NT, N, H, W, C, FC, \
                               FH, FW)(int iters) {                             \
+    ::tensorflow::testing::SetLabel(LABEL);                                    \
     SpatialConvolutionBackwardKernel(iters, NT, N, H, W, C, FC, FH, FW);       \
   }                                                                            \
   BENCHMARK(BM_SPATIAL_NAME(SpatialConvolutionBwdKernel, NT, N, H, W, C, FC,   \
@@ -348,6 +351,7 @@ void CuboidConvolutionBackwardKernel(int iters, int num_threads,
 #define BM_CuboidConvolution(NT, N, H, W, P, C, FC, FH, FW, FP, LABEL)         \
   static void BM_CUBOID_NAME(CuboidConvolution, NT, N, H, W, P, C, FC, FH, FW, \
                              FP)(int iters) {                                  \
+    ::tensorflow::testing::SetLabel(LABEL);                                    \
     CuboidConvolution(iters, NT, N, H, W, P, C, FC, FH, FW, FP);               \
   }                                                                            \
   BENCHMARK(                                                                   \
@@ -356,6 +360,7 @@ void CuboidConvolutionBackwardKernel(int iters, int num_threads,
 #define BM_CuboidConvolutionBwdInput(NT, N, H, W, P, C, FC, FH, FW, FP, LABEL) \
   static void BM_CUBOID_NAME(CuboidConvolutionBwdInput, NT, N, H, W, P, C, FC, \
                              FH, FW, FP)(int iters) {                          \
+    ::tensorflow::testing::SetLabel(LABEL);                                    \
     CuboidConvolutionBackwardInput(iters, NT, N, H, W, P, C, FC, FH, FW, FP);  \
   }                                                                            \
   BENCHMARK(BM_CUBOID_NAME(CuboidConvolutionBwdInput, NT, N, H, W, P, C, FC,   \
@@ -365,6 +370,7 @@ void CuboidConvolutionBackwardKernel(int iters, int num_threads,
                                       LABEL)                                   \
   static void BM_CUBOID_NAME(CuboidConvolutionBwdKernel, NT, N, H, W, P, C,    \
                              FC, FH, FW, FP)(int iters) {                      \
+    ::tensorflow::testing::SetLabel(LABEL);                                    \
     CuboidConvolutionBackwardKernel(iters, NT, N, H, W, P, C, FC, FH, FW, FP); \
   }                                                                            \
   BENCHMARK(BM_CUBOID_NAME(CuboidConvolutionBwdKernel, NT, N, H, W, P, C, FC,  \
@@ -395,8 +401,11 @@ void CuboidConvolutionBackwardKernel(int iters, int num_threads,
 BM_CuboidConvolutions(8,              // batch size
                       25, 25, 25, 4,  // input: height, width, panes, depth
                       16, 5, 5, 5,    // filter: count, height, width, panes
-                      "conv3d");
+                      "conv3d_depth4");
+BM_CuboidConvolutions(8, 25, 25, 25, 8, 16, 5, 5, 5, "conv3d_depth8");
 
-BM_CuboidConvolutionsBwdInput(8, 25, 25, 25, 4, 16, 5, 5, 5, "conv3d");
+BM_CuboidConvolutionsBwdInput(8, 25, 25, 25, 4, 16, 5, 5, 5, "conv3d_depth4");
+BM_CuboidConvolutionsBwdInput(8, 25, 25, 25, 8, 16, 5, 5, 5, "conv3d_depth8");
 
-BM_CuboidConvolutionsBwdKernel(8, 25, 25, 25, 4, 16, 5, 5, 5, "conv3d");
+BM_CuboidConvolutionsBwdKernel(8, 25, 25, 25, 4, 16, 5, 5, 5, "conv3d_depth4");
+BM_CuboidConvolutionsBwdKernel(8, 25, 25, 25, 8, 16, 5, 5, 5, "conv3d_depth8");

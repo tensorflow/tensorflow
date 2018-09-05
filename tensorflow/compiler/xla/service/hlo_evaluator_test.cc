@@ -622,6 +622,13 @@ TEST_P(HloEvaluatorTest, NegativeAndInteriorPadding2D) {
   EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
 }
 
+PrecisionConfigProto DefaultPrecisionConfig(int operands) {
+  PrecisionConfigProto precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      operands, PrecisionConfigProto::DEFAULT);
+  return precision_config;
+}
+
 TEST_P(HloEvaluatorTest, DotRank2AndRank1) {
   HloComputation::Builder b(TestName());
 
@@ -649,7 +656,8 @@ TEST_P(HloEvaluatorTest, DotRank2AndRank1) {
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   b.AddInstruction(HloInstruction::CreateDot(shape, lhs_instruction,
-                                             rhs_instruction, dot_dnums));
+                                             rhs_instruction, dot_dnums,
+                                             DefaultPrecisionConfig(2)));
   module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result = Evaluate();
@@ -694,7 +702,8 @@ TEST_P(HloEvaluatorTest, DotRank1AndRank2) {
   dot_dnums.add_lhs_contracting_dimensions(0);
   dot_dnums.add_rhs_contracting_dimensions(0);
   b.AddInstruction(HloInstruction::CreateDot(shape, lhs_instruction,
-                                             rhs_instruction, dot_dnums));
+                                             rhs_instruction, dot_dnums,
+                                             DefaultPrecisionConfig(2)));
   module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result = Evaluate();
@@ -737,7 +746,8 @@ TEST_P(HloEvaluatorTest, DotRank2AndRank2) {
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   b.AddInstruction(HloInstruction::CreateDot(shape, lhs_instruction,
-                                             rhs_instruction, dot_dnums));
+                                             rhs_instruction, dot_dnums,
+                                             DefaultPrecisionConfig(2)));
   module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result = Evaluate();
@@ -788,9 +798,10 @@ TEST_P(HloEvaluatorTest, SimpleConv1D) {
   dnums.set_kernel_input_feature_dimension(1);
   dnums.add_kernel_spatial_dimensions(2);
 
-  const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 3});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 3});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, window, dnums));
+      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      window, dnums, DefaultPrecisionConfig(2)));
   module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result = Evaluate();
@@ -842,9 +853,10 @@ TEST_P(HloEvaluatorTest, Simple4x4Conv2DWith2x2Kernel) {
   ConvolutionDimensionNumbers dnums =
       XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
-  const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, window, dnums));
+      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      window, dnums, DefaultPrecisionConfig(2)));
   module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result = Evaluate();
@@ -925,9 +937,10 @@ TEST_P(HloEvaluatorTest, Conv2DGeneralDimensionsReversed) {
   dnums.add_kernel_spatial_dimensions(3);
   dnums.add_kernel_spatial_dimensions(1);
 
-  const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, window, dnums));
+      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      window, dnums, DefaultPrecisionConfig(2)));
   module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result = Evaluate();
@@ -1002,9 +1015,10 @@ TEST_P(HloEvaluatorTest, Conv2DGeneralDimensions) {
   dnums.add_kernel_spatial_dimensions(3);
   dnums.add_kernel_spatial_dimensions(1);
 
-  const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, window, dnums));
+      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      window, dnums, DefaultPrecisionConfig(2)));
   module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result = Evaluate();
@@ -1061,9 +1075,10 @@ TEST_P(HloEvaluatorTest, DilatedBaseConv2DWithHighPadding) {
   ConvolutionDimensionNumbers dnums =
       XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
-  const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 7, 7});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 7, 7});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, window, dnums));
+      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      window, dnums, DefaultPrecisionConfig(2)));
   module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result = Evaluate();
@@ -1124,9 +1139,10 @@ TEST_P(HloEvaluatorTest, DilatedBaseConv2DWithLowAndHighPadding) {
   ConvolutionDimensionNumbers dnums =
       XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
-  const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 8, 8});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 8, 8});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, window, dnums));
+      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      window, dnums, DefaultPrecisionConfig(2)));
   module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result = Evaluate();
@@ -1195,9 +1211,10 @@ TEST_P(HloEvaluatorTest,
   ConvolutionDimensionNumbers dnums =
       XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
-  const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 9, 3});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 9, 3});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, window, dnums));
+      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      window, dnums, DefaultPrecisionConfig(2)));
   module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result = Evaluate();
@@ -1216,6 +1233,67 @@ TEST_P(HloEvaluatorTest,
   }));
   auto expected = LiteralUtil::CreateR4FromArray4D<float>(expected_array);
 
+  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+}
+
+TEST_P(HloEvaluatorTest, Conv2DGroupedConvolution) {
+  HloComputation::Builder b(TestName());
+  std::vector<int64> input_dims = {1, 2, 2, 4};
+  std::vector<int64> filter_dims = {2, 2, 2, 8};
+  Shape input_shape = ShapeUtil::MakeShapeWithType<float>(input_dims);
+  Shape filter_shape = ShapeUtil::MakeShapeWithType<float>(filter_dims);
+  // Tensorflow dimension numbers for 2D convolution.
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
+  dnums.add_input_spatial_dimensions(1);
+  dnums.add_output_spatial_dimensions(1);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(2);
+  dnums.set_input_feature_dimension(3);
+  dnums.set_output_feature_dimension(3);
+  dnums.add_kernel_spatial_dimensions(0);
+  dnums.add_kernel_spatial_dimensions(1);
+  dnums.set_kernel_input_feature_dimension(2);
+  dnums.set_kernel_output_feature_dimension(3);
+
+  Window window;
+  WindowDimension dim;
+  dim.set_size(2);
+  dim.set_stride(1);
+  dim.set_padding_low(0);
+  dim.set_padding_high(0);
+  dim.set_window_dilation(1);
+  dim.set_base_dilation(1);
+  *window.add_dimensions() = dim;
+  *window.add_dimensions() = dim;
+
+  std::vector<float> input_elems(ShapeUtil::ElementsIn(input_shape));
+  std::iota(input_elems.begin(), input_elems.end(), -7);
+  auto input_r1 = LiteralUtil::CreateR1<float>(input_elems);
+  auto input_r4 = input_r1->Reshape(input_dims).ConsumeValueOrDie();
+  HloInstruction* lhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(input_r4)));
+
+  std::vector<float> filter_elems(ShapeUtil::ElementsIn(filter_shape));
+  std::iota(filter_elems.begin(), filter_elems.end(), -31);
+  auto filter_r1 = LiteralUtil::CreateR1<float>(filter_elems);
+  auto filter_r4 = filter_r1->Reshape(filter_dims).ConsumeValueOrDie();
+  HloInstruction* rhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(filter_r4)));
+
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 8});
+  b.AddInstruction(HloInstruction::CreateConvolve(
+      shape, lhs_instruction, rhs_instruction,
+      /*feature_group_count=*/2, window, dnums, DefaultPrecisionConfig(2)));
+  module().AddEntryComputation(b.Build());
+
+  std::unique_ptr<Literal> result = Evaluate();
+
+  Array4D<float> expected_array(1, 1, 1, 8);
+  expected_array.FillWithYX(
+      Array2D<float>({{668, 664, 660, 656, 668, 680, 692, 704}}));
+  auto expected = LiteralUtil::CreateR4FromArray4D<float>(expected_array);
   EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
 }
 

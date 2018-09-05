@@ -254,9 +254,11 @@ class ColocationGraph {
                                               old_root_member.device_name,
                                               allow_soft_placement_);
     if (!s.ok()) {
-      return errors::InvalidArgument("Cannot colocate nodes '", x.name(),
-                                     "' and '", y.name(), ": ",
-                                     s.error_message());
+      return errors::InvalidArgument(
+          "Cannot colocate nodes ",
+          errors::FormatColocationNodeForError(x.name()), " and ",
+          errors::FormatColocationNodeForError(y.name()), ": ",
+          s.error_message());
     }
 
     // Ensure that the common root has at least one supported device
@@ -267,8 +269,10 @@ class ColocationGraph {
                           old_root_member.supported_device_types);
     if (new_root_member.supported_device_types.empty()) {
       return errors::InvalidArgument(
-          "Cannot colocate nodes '", x.name(), "' and '", y.name(),
-          "' because no device type supports both of those nodes and the "
+          "Cannot colocate nodes ",
+          errors::FormatColocationNodeForError(x.name()), " and ",
+          errors::FormatColocationNodeForError(y.name()),
+          " because no device type supports both of those nodes and the "
           "other nodes colocated with them.",
           DebugInfo(x_root), DebugInfo(y_root));
     }
@@ -376,8 +380,9 @@ class ColocationGraph {
           // merged set device is different, so print both.
           return errors::InvalidArgument(
               "Could not satisfy explicit device specification '",
-              node->requested_device(),
-              "' because the node was colocated with a group of nodes that "
+              node->requested_device(), "' because the node ",
+              errors::FormatColocationNodeForError(node->name()),
+              " was colocated with a group of nodes that ",
               "required incompatible device '",
               DeviceNameUtils::ParsedNameToString(
                   members_[node_root].device_name),
@@ -809,10 +814,10 @@ Status Placer::Run() {
     std::vector<Device*>* devices;
     Status status = colocation_graph.GetDevicesForNode(node, &devices);
     if (!status.ok()) {
-      return AttachDef(errors::InvalidArgument(
-                           "Cannot assign a device for operation ",
-                           RichNodeName(node), ": ", status.error_message()),
-                       *node);
+      return AttachDef(
+          errors::InvalidArgument("Cannot assign a device for operation ",
+                                  node->name(), ": ", status.error_message()),
+          *node);
     }
 
     // Returns the first device in sorted devices list so we will always
@@ -856,10 +861,10 @@ Status Placer::Run() {
     std::vector<Device*>* devices;
     Status status = colocation_graph.GetDevicesForNode(node, &devices);
     if (!status.ok()) {
-      return AttachDef(errors::InvalidArgument(
-                           "Cannot assign a device for operation ",
-                           RichNodeName(node), ": ", status.error_message()),
-                       *node);
+      return AttachDef(
+          errors::InvalidArgument("Cannot assign a device for operation ",
+                                  node->name(), ": ", status.error_message()),
+          *node);
     }
 
     int assigned_device = -1;
@@ -923,23 +928,6 @@ void Placer::LogDeviceAssignment(const Node* node) const {
               << "(" << node->type_string() << ")"
               << node->assigned_device_name();
   }
-}
-
-bool Placer::ClientHandlesErrorFormatting() const {
-  return options_ != nullptr &&
-         options_->config.experimental().client_handles_error_formatting();
-}
-
-// Returns the node name in single quotes. If the client handles formatted
-// errors, appends a formatting tag which the client will reformat into, for
-// example, " (defined at filename:123)".
-// TODO(shikharagarwal): Remove this function once
-// client_handles_error_formatting flag is removed.
-string Placer::RichNodeName(const Node* node) const {
-  if (ClientHandlesErrorFormatting()) {
-    return errors::FormatNodeNameForError(node->name());
-  }
-  return strings::StrCat("'", node->name(), "'");
 }
 
 }  // namespace tensorflow

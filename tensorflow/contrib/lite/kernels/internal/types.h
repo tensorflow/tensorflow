@@ -720,12 +720,12 @@ struct ConcatenationParams {
 struct ComparisonParams {
   // uint8 inference params.
   int left_shift;
-  int32 input0_offset;
-  int32 input0_multiplier;
-  int input0_shift;
   int32 input1_offset;
   int32 input1_multiplier;
   int input1_shift;
+  int32 input2_offset;
+  int32 input2_multiplier;
+  int input2_shift;
   // Shape dependent / common to inference types.
   bool is_broadcast;
 };
@@ -889,6 +889,7 @@ struct SplitParams {
   // Graphs that split into, say, 2000 nodes are encountered.  The indices in
   // OperatorEdges are of type uint16.
   uint16 num_split;
+  int16 axis;
 };
 
 struct SqueezeParams {

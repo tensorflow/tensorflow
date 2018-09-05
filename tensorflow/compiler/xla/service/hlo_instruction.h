@@ -405,9 +405,9 @@ class HloInstruction {
   // and window describes how the filter is applied to lhs.
   static std::unique_ptr<HloInstruction> CreateConvolve(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-      const Window& window,
+      int64 feature_group_count, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      int64 feature_group_count = 1);
+      const PrecisionConfigProto& precision_config);
 
   // Creates an FFT op, of the type indicated by fft_type.
   static std::unique_ptr<HloInstruction> CreateFft(
@@ -418,7 +418,8 @@ class HloInstruction {
   // dimensions specified in 'dimension_numbers'.
   static std::unique_ptr<HloInstruction> CreateDot(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-      const DotDimensionNumbers& dimension_numbers);
+      const DotDimensionNumbers& dimension_numbers,
+      const PrecisionConfigProto& precision_config);
 
   // Creates a dot op with operands 'lhs' and 'rhs' that contracts dimension 1
   // of the LHS with dimension 0 of the RHS with no batch dimensions.  Both LHS

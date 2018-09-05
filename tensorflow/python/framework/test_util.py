@@ -535,15 +535,16 @@ def assert_no_new_tensors(f):
 
     tensors_before = set(
         id(obj) for obj in gc.get_objects() if _is_tensorflow_object(obj))
-    if context.executing_eagerly():
-      f(self, **kwargs)
-      ops.reset_default_graph()
-    else:
-      # Run the test in a new graph so that collections get cleared when it's
-      # done, but inherit the graph key so optimizers behave.
-      outside_graph_key = ops.get_default_graph()._graph_key
-      with ops.Graph().as_default():
-        ops.get_default_graph()._graph_key = outside_graph_key
+    outside_executed_eagerly = context.executing_eagerly()
+    # Run the test in a new graph so that collections get cleared when it's
+    # done, but inherit the graph key so optimizers behave.
+    outside_graph_key = ops.get_default_graph()._graph_key
+    with ops.Graph().as_default():
+      ops.get_default_graph()._graph_key = outside_graph_key
+      if outside_executed_eagerly:
+        with context.eager_mode():
+          f(self, **kwargs)
+      else:
         f(self, **kwargs)
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.

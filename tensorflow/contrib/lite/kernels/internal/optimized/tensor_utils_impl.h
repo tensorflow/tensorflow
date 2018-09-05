@@ -117,6 +117,10 @@ void PortableClipVector(const float* vector, int v_size, float abs_limit,
 void NeonClipVector(const float* vector, int v_size, float abs_limit,
                     float* result);
 
+// Add another vector for each batch in the batch vector.
+void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
+                                  float* batch_vector);
+
 // Batch vector initialization with another vector.
 void PortableVectorBatchVectorAssign(const float* vector, int v_size,
                                      int n_batch, float* batch_vector);
@@ -171,6 +175,10 @@ void PortableReductionSumVector(const float* input_vector, float* output_vector,
                                 int output_size, int reduction_size);
 void NeonReductionSumVector(const float* input_vector, float* output_vector,
                             int output_size, int reduction_size);
+
+void PortableMeanStddevNormalization(const float* input_vector,
+                                     float* output_vector, int v_size,
+                                     int n_batch, float normalization_epsilon);
 
 }  // namespace tensor_utils
 }  // namespace tflite

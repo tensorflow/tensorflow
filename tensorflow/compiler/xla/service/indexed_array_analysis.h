@@ -267,15 +267,17 @@ class IndexedArrayAnalysis {
 
   StatusOr<Array*> ComputeArrayForDotWithIndexedLhs(
       const Shape& shape, const DotDimensionNumbers& dim_numbers,
+      const PrecisionConfigProto& precision_config,
       ScalarIndexedConstantArray* lhs, ConstantArray* rhs);
 
   StatusOr<Array*> ComputeArrayForDotWithIndexedRhs(
       const Shape& shape, const DotDimensionNumbers& dim_numbers,
-      ConstantArray* lhs, ScalarIndexedConstantArray* rhs);
+      const PrecisionConfigProto& precision_config, ConstantArray* lhs,
+      ScalarIndexedConstantArray* rhs);
 
-  StatusOr<Array*> ComputeArrayForDot(const Shape& shape,
-                                      const DotDimensionNumbers& dim_numbers,
-                                      Array* lhs, Array* rhs);
+  StatusOr<Array*> ComputeArrayForDot(
+      const Shape& shape, const DotDimensionNumbers& dim_numbers,
+      const PrecisionConfigProto& precision_config, Array* lhs, Array* rhs);
 
   // This tries to fold a ScalarIndexedArray which has another
   // ScalarIndexedArray as a source into a ScalarIndexedArray that instead has a

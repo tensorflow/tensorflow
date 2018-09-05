@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import functools
 import os
 import sys
@@ -189,6 +190,50 @@ class ParserTest(googletest.TestCase):
 
     # Make sure this file is contained as the definition location.
     self.assertEqual(os.path.relpath(__file__, '/'), page_info.defined_in.path)
+
+  def test_namedtuple_field_order(self):
+    namedtupleclass = collections.namedtuple('namedtupleclass',
+                                             {'z', 'y', 'x', 'w', 'v', 'u'})
+
+    index = {
+        'namedtupleclass': namedtupleclass,
+        'namedtupleclass.u': namedtupleclass.u,
+        'namedtupleclass.v': namedtupleclass.v,
+        'namedtupleclass.w': namedtupleclass.w,
+        'namedtupleclass.x': namedtupleclass.x,
+        'namedtupleclass.y': namedtupleclass.y,
+        'namedtupleclass.z': namedtupleclass.z,
+    }
+
+    visitor = DummyVisitor(index=index, duplicate_of={})
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
+
+    tree = {'namedtupleclass': {'u', 'v', 'w', 'x', 'y', 'z'}}
+    parser_config = parser.ParserConfig(
+        reference_resolver=reference_resolver,
+        duplicates={},
+        duplicate_of={},
+        tree=tree,
+        index=index,
+        reverse_index={},
+        guide_index={},
+        base_dir='/')
+
+    page_info = parser.docs_for_object(
+        full_name='namedtupleclass',
+        py_object=namedtupleclass,
+        parser_config=parser_config)
+
+    # Each namedtiple field has a docstring of the form:
+    #   'Alias for field number ##'. These props are returned sorted.
+
+    def sort_key(prop_info):
+      return int(prop_info.obj.__doc__.split(' ')[-1])
+
+    self.assertSequenceEqual(page_info.properties,
+                             sorted(page_info.properties, key=sort_key))
 
   def test_docs_for_class_should_skip(self):
 
@@ -735,7 +780,6 @@ class TestGenerateSignature(googletest.TestCase):
 
     sig = parser._generate_signature(example_fun, reverse_index={})
     self.assertEqual(sig, ['arg1=a.b.c.d', 'arg2=a.b.c.d(1, 2)', "arg3=e['f']"])
-
 
 if __name__ == '__main__':
   googletest.main()

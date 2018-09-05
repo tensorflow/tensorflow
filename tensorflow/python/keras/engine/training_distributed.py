@@ -30,13 +30,11 @@ from tensorflow.python.platform import tf_logging as logging
 
 def fit_loop(
     model,
-    inputs,
-    targets,
+    iterator,
     epochs=100,
     verbose=1,
     callbacks=None,
-    val_inputs=None,
-    val_targets=None,
+    val_iterator=None,
     initial_epoch=0,
     steps_per_epoch=None,
     validation_steps=None):
@@ -44,13 +42,11 @@ def fit_loop(
 
   Arguments:
       model: Keras Model instance.
-      inputs: List of input arrays.
-      targets: List of target arrays.
+      iterator: Iterator for input data.
       epochs: Number of times to iterate over the data
       verbose: Verbosity mode, 0, 1 or 2
       callbacks: List of callbacks to be called during training
-      val_inputs: List of input arrays.
-      val_targets: List of target arrays.
+      val_iterator: Iterator for validation data.
       initial_epoch: Epoch at which to start training
           (useful for resuming a previous training run)
       steps_per_epoch: Total number of steps (batches of samples)
@@ -67,6 +63,10 @@ def fit_loop(
       ValueError: in case of invalid arguments.
   """
   current_strategy = model._distribution_strategy
+
+  clone_model_on_towers(
+      model, current_strategy, make_callback_model=True)
+
   def _per_device_train_function(model):
     model._make_train_function()
     return (model.train_function.inputs,
@@ -74,6 +74,7 @@ def fit_loop(
             model.train_function.updates_op,
             model.train_function.session_kwargs)
 
+  inputs, targets = _get_input_from_iterator(iterator, model)
   with current_strategy.scope():
     # Create train ops on each of the devices when we call
     # `_per_device_train_function`.
@@ -169,8 +170,7 @@ def fit_loop(
       if do_validation:
         val_outs = test_loop(
             model,
-            val_inputs,
-            val_targets,
+            val_iterator,
             steps=validation_steps,
             verbose=0)
         if not isinstance(val_outs, list):
@@ -192,13 +192,12 @@ def fit_loop(
   return model.history
 
 
-def test_loop(model, inputs, targets, verbose=0, steps=None):
+def test_loop(model, iterator, verbose=0, steps=None):
   """evaluate method to validate a model that uses DistributionStrategy.
 
   Arguments:
       model: Keras Model instance.
-      inputs: List of input arrays.
-      targets: List of target arrays.
+      iterator: Iterator for input data.
       verbose: verbosity mode.
       steps: Total number of steps (batches of samples)
           before declaring predictions finished.
@@ -211,6 +210,9 @@ def test_loop(model, inputs, targets, verbose=0, steps=None):
       the display labels for the scalar outputs.
   """
   current_strategy = model._distribution_strategy
+
+  clone_model_on_towers(model, current_strategy)
+
   def _per_device_test_function(model):
     model._make_test_function()
     return (model.test_function.inputs,
@@ -218,6 +220,7 @@ def test_loop(model, inputs, targets, verbose=0, steps=None):
             model.test_function.updates_op,
             model.test_function.session_kwargs)
 
+  inputs, targets = _get_input_from_iterator(iterator, model)
   with current_strategy.scope():
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.call_for_each_tower(
@@ -284,12 +287,12 @@ def test_loop(model, inputs, targets, verbose=0, steps=None):
   return outs
 
 
-def predict_loop(model, inputs, verbose=0, steps=None):
+def predict_loop(model, iterator, verbose=0, steps=None):
   """Abstract method to loop over some data in batches.
 
   Arguments:
       model: Keras Model instance.
-      inputs: list of tensors to be fed to `f`.
+      iterator: Iterator for input data.
       verbose: verbosity mode.
       steps: Total number of steps (batches of samples)
           before declaring `_predict_loop` finished.
@@ -301,6 +304,9 @@ def predict_loop(model, inputs, verbose=0, steps=None):
       (if the model has multiple outputs).
   """
   current_strategy = model._distribution_strategy
+
+  clone_model_on_towers(model, current_strategy)
+
   def _per_device_predict_function(model):
     model._make_predict_function()
     return (model.predict_function.inputs,
@@ -308,6 +314,7 @@ def predict_loop(model, inputs, verbose=0, steps=None):
             model.predict_function.updates_op,
             model.predict_function.session_kwargs)
 
+  inputs, _ = _get_input_from_iterator(iterator, model)
   with current_strategy.scope():
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.call_for_each_tower(
@@ -366,7 +373,7 @@ def predict_loop(model, inputs, verbose=0, steps=None):
     ]
 
 
-def clone_and_build_model(model):
+def _clone_and_build_model(model):
   """Clone and build the given keras_model."""
   # We need to set the import here since we run into a circular dependency
   # error.
@@ -388,6 +395,16 @@ def clone_and_build_model(model):
       sample_weight_mode=model.sample_weight_mode,
       weighted_metrics=model.weighted_metrics)
   return cloned_model
+
+
+def clone_model_on_towers(model, strategy, make_callback_model=False):
+  """Create a cloned model on each tower, unless already created."""
+  if not model._grouped_model:
+    with strategy.scope():
+      model._grouped_model = strategy.call_for_each_tower(
+          _clone_and_build_model, model)
+    if make_callback_model:
+      model._make_callback_model()
 
 
 def _aggregate_metrics_across_towers(num_devices, out_labels, outs):
@@ -419,3 +436,25 @@ def _aggregate_metrics_across_towers(num_devices, out_labels, outs):
     merged_output.append(m)
     current_index += num_devices
   return merged_output
+
+
+def _get_input_from_iterator(iterator, model):
+  """Get elements from the iterator and verify the input shape and type."""
+  next_element = iterator.get_next()
+  # TODO(anjalisridhar): Support predict input correctly as it will not contain
+  # targets, only inputs.
+  if not isinstance(next_element, (list, tuple)) or len(next_element) != 2:
+    raise ValueError('Please provide model inputs as a list or tuple of 2 '
+                     'elements: input and target pair. '
+                     'Received %s' % next_element)
+
+  x, y = next_element
+  # Validate that all the elements in x and y are of the same type and shape.
+  # We can then pass the first element of x and y to `_standardize_weights`
+  # below and be confident of the output.
+  x_values, y_values = distributed_training_utils.\
+    validate_distributed_dataset_inputs(model._distribution_strategy, x, y)
+  # TODO(sourabhbajaj): Add support for sample weights in distribution
+  # strategy.
+  model._standardize_weights(x_values, y_values)
+  return x, y
