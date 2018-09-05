@@ -7,7 +7,7 @@ package(
     ],
 )
 
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_gpu_cc_test", "tf_cc_test")
 
 cc_library(
     name = "raw_api_test_lib",
@@ -52,7 +52,7 @@ tf_cc_test(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "raw_api_test_gpu",
     size = "medium",
     srcs = [],
