@@ -687,6 +687,7 @@ py_test(
         "manual",  # b/112769036, b/113907597
         "no_oss",  # b/112769036, b/113907597
         "no_windows",
+        "nomsan",
         "notsan",  # b/67510291
     ],
     deps = [
