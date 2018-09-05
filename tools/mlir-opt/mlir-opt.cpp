@@ -22,6 +22,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/MLIRContext.h"
@@ -29,6 +30,7 @@
 #include "mlir/Parser.h"
 #include "mlir/TensorFlow/ControlFlowOps.h"
 #include "mlir/TensorFlow/Passes.h"
+#include "mlir/Transforms/CFGFunctionViewGraph.h"
 #include "mlir/Transforms/Pass.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/Support/CommandLine.h"
@@ -66,6 +68,7 @@ enum Passes {
   ConvertToCFG,
   LoopUnroll,
   LoopUnrollAndJam,
+  PrintCFGGraph,
   SimplifyAffineExpr,
   TFRaiseControlFlow,
 };
@@ -77,6 +80,8 @@ static cl::list<Passes> passList(
                clEnumValN(LoopUnroll, "loop-unroll", "Unroll loops"),
                clEnumValN(LoopUnrollAndJam, "loop-unroll-jam",
                           "Unroll and jam loops"),
+               clEnumValN(PrintCFGGraph, "print-cfg-graph",
+                          "Print CFG graph per function"),
                clEnumValN(SimplifyAffineExpr, "simplify-affine-expr",
                           "Simplify affine expressions"),
                clEnumValN(TFRaiseControlFlow, "tf-raise-control-flow",
@@ -168,6 +173,9 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
       break;
     case LoopUnrollAndJam:
       pass = createLoopUnrollAndJamPass();
+      break;
+    case PrintCFGGraph:
+      pass = createPrintCFGGraphPass();
       break;
     case SimplifyAffineExpr:
       pass = createSimplifyAffineExprPass();

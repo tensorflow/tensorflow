@@ -18,8 +18,8 @@
 #ifndef MLIR_IR_CFGFUNCTION_H
 #define MLIR_IR_CFGFUNCTION_H
 
-#include "mlir/IR/Function.h"
 #include "mlir/IR/BasicBlock.h"
+#include "mlir/IR/Function.h"
 
 namespace mlir {
 
@@ -82,10 +82,15 @@ public:
     return func->getKind() == Kind::CFGFunc;
   }
 
+  /// Displays the CFG in a window. This is for use from the debugger and
+  /// depends on Graphviz to generate the graph.
+  /// This function is defined in CFGFunctionViewGraph and only works with that
+  /// target linked.
+  void viewGraph() const;
+
 private:
   BasicBlockListType blocks;
 };
-
 
 } // end namespace mlir
 
