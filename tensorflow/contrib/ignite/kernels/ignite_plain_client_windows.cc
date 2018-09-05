@@ -103,7 +103,7 @@ Status PlainClient::ReadData(uint8_t *buf, int32_t length) {
   int recieved = 0;
 
   while (recieved < length) {
-    int res = recv(sock_, buf, length - recieved, 0);
+    int res = recv(sock_, (char*)buf, length - recieved, 0);
 
     if (res < 0)
       return errors::Internal("Error occured while reading from socket: ", res);
@@ -121,7 +121,7 @@ Status PlainClient::WriteData(uint8_t *buf, int32_t length) {
   int sent = 0;
 
   while (sent < length) {
-    int res = send(sock_, buf, length - sent, 0);
+    int res = send(sock_, (char*)buf, length - sent, 0);
 
     if (res < 0)
       return errors::Internal("Error occured while writing into socket: ", res);
