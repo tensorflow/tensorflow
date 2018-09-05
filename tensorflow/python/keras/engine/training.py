@@ -790,10 +790,7 @@ class Model(Network):
         Fraction of the training data to be used as validation data.
 
     Returns:
-      A tuple of 3 lists: input arrays, target arrays, sample-weight arrays.
-      If the model's input and targets are symbolic, these lists are empty
-      (since the model takes no user-provided data, instead the data comes
-      from the symbolic inputs/targets).
+      Iterator for reading the dataset `x`.
 
     Raises:
       ValueError: In case of invalid user-provided data.
@@ -828,30 +825,7 @@ class Model(Network):
 
     training_utils.validate_iterator_input(x, y, sample_weight,
                                            validation_split)
-    # x an y may be PerDevice objects with an input and output tensor
-    # corresponding to each device. For example, x could be
-    # PerDevice:{device: get_next tensor,...}.
-    next_element = iterator.get_next()
-
-    if not isinstance(next_element, (list, tuple)) or len(next_element) != 2:
-      raise ValueError('Please provide model inputs as a list or tuple of 2 '
-                       'elements: input and target pair. '
-                       'Received %s' % next_element)
-    x, y = next_element
-    # Validate that all the elements in x and y are of the same type and shape.
-    # We can then pass the first element of x and y to `_standardize_weights`
-    # below and be confident of the output. We need to reopen the scope since
-    # we unwrap values when we validate x and y.
-    with self._distribution_strategy.scope():
-      x_values, y_values = distributed_training_utils.\
-        validate_distributed_dataset_inputs(self._distribution_strategy, x, y)
-
-    _, _, sample_weights = self._standardize_weights(x_values,
-                                                     y_values,
-                                                     sample_weight,
-                                                     class_weight,
-                                                     batch_size)
-    return x, y, sample_weights
+    return iterator
 
   def _standardize_user_data(self,
                              x,
@@ -916,7 +890,7 @@ class Model(Network):
       RuntimeError: If the model was never compiled.
     """
     if self._distribution_strategy:
-      return self._distribution_standardize_user_data(
+      iterator = self._distribution_standardize_user_data(
           x,
           y,
           sample_weight=sample_weight,
@@ -926,6 +900,7 @@ class Model(Network):
           steps_name=steps_name,
           steps=steps,
           validation_split=validation_split)
+      return iterator, None, None
 
     if isinstance(x, dataset_ops.Dataset):
       if context.executing_eagerly():
@@ -982,6 +957,7 @@ class Model(Network):
 
   def _standardize_weights(self, x, y, sample_weight=None, class_weight=None,
                            batch_size=None,):
+    # TODO(sourabhbajaj): Split input validation from weight standardization.
     if sample_weight is not None and class_weight is not None:
       logging.warning(
           'Received both a `sample_weight` and `class_weight` argument. '
@@ -1566,12 +1542,11 @@ class Model(Network):
           validation_steps=validation_steps)
     elif self._distribution_strategy:
       return training_distributed.fit_loop(
-          self, x, y,
+          self, x,
           epochs=epochs,
           verbose=verbose,
           callbacks=callbacks,
-          val_inputs=val_x,
-          val_targets=val_y,
+          val_iterator=val_x,
           initial_epoch=initial_epoch,
           steps_per_epoch=steps_per_epoch,
           validation_steps=validation_steps)
@@ -1677,8 +1652,7 @@ class Model(Network):
     elif self._distribution_strategy:
       return training_distributed.test_loop(
           self,
-          inputs=x,
-          targets=y,
+          iterator=x,
           verbose=verbose,
           steps=steps)
     else:
