@@ -990,8 +990,8 @@ XlaOp XlaBuilder::ConvGeneralDilated(
 
     TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
                         ShapeInference::InferConvolveShape(
-                            lhs_shape, rhs_shape, instr.window(),
-                            dimension_numbers, feature_group_count));
+                            lhs_shape, rhs_shape, feature_group_count,
+                            instr.window(), dimension_numbers));
 
     *instr.mutable_convolution_dimension_numbers() = dimension_numbers;
     instr.set_feature_group_count(feature_group_count);

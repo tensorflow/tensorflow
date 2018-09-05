@@ -1355,7 +1355,9 @@ class Network(base_layer.Layer):
     ```
     """
     if not self._is_graph_network:
-      raise NotImplementedError
+      raise NotImplementedError(
+          'Currently `save` requires model to be a graph network. Consider '
+          'using `save_weights`, in order to save the weights of the model.')
 
     from tensorflow.python.keras.models import save_model  # pylint: disable=g-import-not-at-top
     save_model(self, filepath, overwrite, include_optimizer)

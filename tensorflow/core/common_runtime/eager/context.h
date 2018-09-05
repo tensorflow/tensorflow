@@ -65,10 +65,17 @@ enum ContextDevicePlacementPolicy {
 
 class EagerContext {
  public:
-  explicit EagerContext(const SessionOptions& opts,
-                        ContextDevicePlacementPolicy default_policy, bool async,
-                        std::unique_ptr<DeviceMgr> device_mgr,
-                        Rendezvous* rendezvous);
+  // TODO: remove this constructor once we migrate all callers to the next one.
+  EagerContext(const SessionOptions& opts,
+               ContextDevicePlacementPolicy default_policy, bool async,
+               std::unique_ptr<const DeviceMgr> device_mgr,
+               Rendezvous* rendezvous);
+
+  EagerContext(const SessionOptions& opts,
+               ContextDevicePlacementPolicy default_policy, bool async,
+               const DeviceMgr* device_mgr, bool device_mgr_owned,
+               Rendezvous* rendezvous);
+
   ~EagerContext();
 
   // Returns the function library runtime for the given device.
@@ -207,8 +214,8 @@ class EagerContext {
       thread_local_policies_ GUARDED_BY(policy_map_mu_);
 
   // Only one of the below is set.
-  std::unique_ptr<DeviceMgr> local_device_manager_;
-  DeviceMgr* local_unowned_device_manager_;
+  std::unique_ptr<const DeviceMgr> local_device_manager_;
+  const DeviceMgr* local_unowned_device_manager_;
   std::unique_ptr<DeviceMgr> remote_device_manager_;
 
   // Devices owned by device_manager

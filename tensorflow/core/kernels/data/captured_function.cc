@@ -28,7 +28,16 @@ namespace tensorflow {
 Status CapturedFunction::Create(
     const NameAttrList& func, std::vector<Tensor> captured_inputs,
     std::unique_ptr<CapturedFunction>* out_function) {
-  out_function->reset(new CapturedFunction(func, std::move(captured_inputs)));
+  return Create(func, std::move(captured_inputs), true, out_function);
+}
+
+/* static */
+Status CapturedFunction::Create(
+    const NameAttrList& func, std::vector<Tensor> captured_inputs,
+    bool use_inter_op_parallelism,
+    std::unique_ptr<CapturedFunction>* out_function) {
+  out_function->reset(new CapturedFunction(func, std::move(captured_inputs),
+                                           use_inter_op_parallelism));
   return Status::OK();
 }
 
@@ -272,6 +281,9 @@ Status CapturedFunction::Instantiate(IteratorContext* ctx) {
     inst_opts.overlay_lib = ctx->function_library().get();
     inst_opts.state_handle = std::to_string(random::New64());
     inst_opts.create_kernels_eagerly = true;
+    if (!use_inter_op_parallelism_) {
+      inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
+    }
     Status s = (lib_->Instantiate(func_.name(), AttrSlice(&func_.attr()),
                                   inst_opts, &f_handle_));
     TF_RETURN_IF_ERROR(s);
@@ -398,10 +410,12 @@ void CapturedFunction::RunAsync(IteratorContext* ctx,
 }
 
 CapturedFunction::CapturedFunction(const NameAttrList& func,
-                                   std::vector<Tensor> captured_inputs)
+                                   std::vector<Tensor> captured_inputs,
+                                   bool use_inter_op_parallelism)
     : func_(func),
       lib_(nullptr),
       f_handle_(kInvalidHandle),
-      captured_inputs_(std::move(captured_inputs)) {}
+      captured_inputs_(std::move(captured_inputs)),
+      use_inter_op_parallelism_(use_inter_op_parallelism) {}
 
 }  // namespace tensorflow

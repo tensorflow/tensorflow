@@ -530,10 +530,6 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
   attrs["backend_config"] = {/*required=*/false, AttrTy::kString,
                              &backend_config};
 
-  optional<std::vector<PrecisionConfigProto::Precision>> operand_precision;
-  attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
-                                &operand_precision};
-
   HloInstruction* instruction;
   switch (opcode) {
     case HloOpcode::kParameter: {
@@ -913,6 +909,9 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
       attrs["feature_group_count"] = {/*required=*/false, AttrTy::kInt64,
                                       &feature_group_count};
+      optional<std::vector<PrecisionConfigProto::Precision>> operand_precision;
+      attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
+                                    &operand_precision};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
@@ -923,9 +922,17 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       if (!feature_group_count) {
         feature_group_count = 1;
       }
+      PrecisionConfigProto precision_config;
+      if (operand_precision) {
+        *precision_config.mutable_operand_precision() = {
+            operand_precision->begin(), operand_precision->end()};
+      } else {
+        precision_config.mutable_operand_precision()->Resize(
+            operands.size(), PrecisionConfigProto::DEFAULT);
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateConvolve(
-          shape, /*lhs=*/operands[0], /*rhs=*/operands[1], *window, *dnums,
-          feature_group_count.value()));
+          shape, /*lhs=*/operands[0], /*rhs=*/operands[1],
+          feature_group_count.value(), *window, *dnums, precision_config));
       break;
     }
     case HloOpcode::kFft: {
@@ -1272,6 +1279,9 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       optional<std::vector<tensorflow::int64>> rhs_batch_dims;
       attrs["rhs_batch_dims"] = {/*required=*/false, AttrTy::kBracedInt64List,
                                  &rhs_batch_dims};
+      optional<std::vector<PrecisionConfigProto::Precision>> operand_precision;
+      attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
+                                    &operand_precision};
 
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
@@ -1296,8 +1306,17 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
                                                 rhs_batch_dims->end()};
       }
 
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateDot(shape, operands[0], operands[1], dnum));
+      PrecisionConfigProto precision_config;
+      if (operand_precision) {
+        *precision_config.mutable_operand_precision() = {
+            operand_precision->begin(), operand_precision->end()};
+      } else {
+        precision_config.mutable_operand_precision()->Resize(
+            operands.size(), PrecisionConfigProto::DEFAULT);
+      }
+
+      instruction = builder->AddInstruction(HloInstruction::CreateDot(
+          shape, operands[0], operands[1], dnum, precision_config));
       break;
     }
     case HloOpcode::kGather: {
@@ -1413,12 +1432,6 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
   }
   if (backend_config) {
     instruction->set_raw_backend_config_string(std::move(*backend_config));
-  }
-  if (operand_precision) {
-    PrecisionConfigProto precision_config;
-    *precision_config.mutable_operand_precision() = {operand_precision->begin(),
-                                                     operand_precision->end()};
-    instruction->set_precision_config(precision_config);
   }
   return AddInstruction(name, instruction, name_loc);
 }  // NOLINT(readability/fn_size)

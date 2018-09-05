@@ -120,12 +120,19 @@ class NodeFilter {
   std::function<NodeFilterResult(const HloInstruction* instr)> filter_;
 };
 
+// We arbitrarily set this as the boundary between "large" and "small"
+// instructions.
+bool IsSmall(const HloInstruction* instr) {
+  return ShapeUtil::ElementsInRecursive(instr->shape()) < 4096;
+}
+
 // Node color schemes, used by NodeColorAttributes.
 enum ColorScheme {
   kBlue,
   kBrown,
   kDarkBlue,
   kDarkGreen,
+  kDarkOrange,
   kDarkRed,
   kGray,
   kGreen,
@@ -158,6 +165,10 @@ NodeColors NodeColorsForScheme(ColorScheme color) {
       return NodeColors{"filled", "#1565c0", "#003c8f", "white"};
     case kDarkGreen:
       return NodeColors{"filled", "#2e7d32", "#005005", "white"};
+    case kDarkOrange:
+      // This is more of a "medium" orange, made to look close to kOrange;
+      // there's probably room for a darker weight if desired.
+      return NodeColors{"filled", "#ffb74d", "#c88719", "black"};
     case kDarkRed:
       return NodeColors{"filled", "#b71c1c", "#7f0000", "white"};
     case kGray:
@@ -893,7 +904,10 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     sharding_colors_.emplace(instr->sharding(), color);
     return color;
   }
-  const auto kParameterColor = kOrange;
+
+  // Choose different weights of orange for small vs large parameters.  This
+  // distinction is often important, especially in fusion nodes.
+  auto parameter_color = IsSmall(instr) ? kOrange : kDarkOrange;
 
   // Special case: If this instruction has a parameter merged into it, paint it
   // the same color as a parameter.  Unless the merged-in parameter is a
@@ -905,7 +919,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
                            ShouldMergeIntoUsers(operand) &&
                            TryGetFusionParameterConstant(operand) == nullptr;
                   })) {
-    return kParameterColor;
+    return parameter_color;
   }
 
   // Pick different colors or shapes for instructions which are particularly
@@ -1015,7 +1029,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kReducePrecision:
       return kRed;
     case HloOpcode::kParameter:
-      return kParameterColor;
+      return parameter_color;
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
@@ -1160,20 +1174,6 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
   return StrJoin(lines, "<br/>");
 }
 
-// Gets the total number of array elements in the given shape.  For tuples, this
-// is the sum of all the sizes of all of the array elements recursively in the
-// tuple.
-static int64 TotalElementsInShape(const Shape& shape) {
-  int64 elems = 0;
-  ShapeUtil::ForEachSubshape(
-      shape, [&](const Shape& subshape, const ShapeIndex& /*index*/) {
-        if (ShapeUtil::IsArray(subshape)) {
-          elems += ShapeUtil::ElementsIn(subshape);
-        }
-      });
-  return elems;
-}
-
 void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
   auto add_edge = [&](const HloInstruction* from, const HloInstruction* to,
                       int64 operand_num, bool control_edge = false) {
@@ -1196,14 +1196,11 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
     }
 
     // We print "small" arrays using a hollow arrowhead and "large" arrays using
-    // a filled arrowhead.  For now, we use an arbitrary cutoff for what "big"
-    // means.
-    bool is_big_array = TotalElementsInShape(from->shape()) >= 4096;
-
+    // a filled arrowhead.
     constexpr char kEdgeFmt[] =
         R"(%s -> %s [arrowhead=%s tooltip="%s -> %s" %s];)";
     edges_.push_back(StrFormat(kEdgeFmt, InstructionId(from), InstructionId(to),
-                               (is_big_array ? "normal" : "empty"),
+                               (IsSmall(from) ? "empty" : "normal"),
                                from->name(), to->name(), edge_label));
   };
 

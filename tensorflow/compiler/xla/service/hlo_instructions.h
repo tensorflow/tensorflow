@@ -942,9 +942,9 @@ class HloConvolutionInstruction : public HloInstruction {
  public:
   explicit HloConvolutionInstruction(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-      const Window& window,
+      int64 feature_group_count, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      int64 feature_group_count);
+      const PrecisionConfigProto& precision_config);
   const Window& window() const override { return window_; }
   void set_window(const Window& window) override { window_ = window; }
   const ConvolutionDimensionNumbers& convolution_dimension_numbers() const {
@@ -972,12 +972,13 @@ class HloConvolutionInstruction : public HloInstruction {
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
-  Window window_;
-  // Describes the dimension numbers used for a convolution.
-  ConvolutionDimensionNumbers convolution_dimension_numbers_;
   // The number of feature groups. Must be a divisor of the input feature
   // dimension and output feature dimension.
   int64 feature_group_count_;
+  // Describes the window used for a convolution.
+  Window window_;
+  // Describes the dimension numbers used for a convolution.
+  ConvolutionDimensionNumbers convolution_dimension_numbers_;
 };
 
 class HloReduceWindowInstruction : public HloInstruction {

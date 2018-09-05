@@ -136,7 +136,7 @@ def _build_class_page(page_info):
 
   if page_info.properties:
     parts.append('## Properties\n\n')
-    for prop_info in sorted(page_info.properties):
+    for prop_info in page_info.properties:
       h3 = '<h3 id="{short_name}"><code>{short_name}</code></h3>\n\n'
       parts.append(h3.format(short_name=prop_info.short_name))
 

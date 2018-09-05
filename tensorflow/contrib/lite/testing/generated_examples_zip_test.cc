@@ -58,12 +58,6 @@ tensorflow::Env* env = tensorflow::Env::Default();
 // Key is a substring of the test name and value is a bug number.
 // TODO(ahentz): make sure we clean this list up frequently.
 std::map<string, string> kBrokenTests = {
-    // Pad and PadV2 only supports 4D tensors.
-    {R"(^\/pad.*,input_shape=\[.,.\],paddings=\[\[.,.\],\[.,.\]\])",
-     "70527055"},
-    {R"(^\/padv2.*,input_shape=\[.,.\],paddings=\[\[.,.\],\[.,.\]\])",
-     "70527055"},
-
     // L2Norm only supports tensors with 4D or fewer.
     {R"(^\/l2norm_dim=.*,epsilon=.*,input_shape=\[.,.,.,.,.*\])", "67963684"},
 

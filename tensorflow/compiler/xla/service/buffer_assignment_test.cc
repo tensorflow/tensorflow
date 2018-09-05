@@ -1490,10 +1490,13 @@ TEST_F(BufferAssignmentTest, OneTempAllocation) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto dot_ab = builder.AddInstruction(
-      HloInstruction::CreateDot(shape_2x4, param_a, param_b, dot_dnums));
-  auto dot_bc = builder.AddInstruction(
-      HloInstruction::CreateDot(shape_3x4, param_b, param_c, dot_dnums));
+  PrecisionConfigProto precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      2, PrecisionConfigProto::DEFAULT);
+  auto dot_ab = builder.AddInstruction(HloInstruction::CreateDot(
+      shape_2x4, param_a, param_b, dot_dnums, precision_config));
+  auto dot_bc = builder.AddInstruction(HloInstruction::CreateDot(
+      shape_3x4, param_b, param_c, dot_dnums, precision_config));
   builder.AddInstruction(
       HloInstruction::CreateConcatenate(shape_5x4, {dot_ab, dot_bc}, 0));
 

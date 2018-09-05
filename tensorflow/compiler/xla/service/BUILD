@@ -3289,6 +3289,8 @@ tf_cc_test(
     size = "small",
     srcs = ["hlo_parser_test.cc"],
     deps = [
+        ":hlo",
+        ":hlo_casting_utils",
         ":hlo_matchers",
         ":hlo_parser",
         "//tensorflow/compiler/xla:window_util",
