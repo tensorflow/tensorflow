@@ -9,8 +9,8 @@ message ClippingLimits {
   google.protobuf.FloatValue upper = 2;  // +inf if not set
 }
 
-// Get the learning rate from a <yet to be determined> source that can change
-// dynamically.
+// Get the learning rate from the parameters of the SendTPUEmbeddingGradients
+// op.
 message DynamicLearningRate {
 }
 
@@ -18,10 +18,8 @@ message DynamicLearningRate {
 message LearningRate {
   oneof learning_rate {
     float constant = 1;
-    // DynamicLearningRate dynamic = 2; -- disabled while code is being
-    // rewritten.
+    DynamicLearningRate dynamic = 2;
   }
-  reserved 2;
 }
 
 message AdagradParameters {
