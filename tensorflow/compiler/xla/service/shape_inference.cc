@@ -1672,6 +1672,16 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
         dnums.DebugString());
   }
+  if (kernel_output_features % feature_group_count > 0) {
+    return InvalidArgument(
+        "Expected output feature dimension (value %d) to be divisible by "
+        "feature_group_count (value %d); "
+        "got <conv>(%s, %s)\n"
+        "Dimension numbers: {%s}.",
+        kernel_output_features, feature_group_count,
+        ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
+        dnums.DebugString());
+  }
   std::vector<int64> window_dims(num_spatial_dims);
   for (int i = 0; i < num_spatial_dims; ++i) {
     window_dims[i] = window.dimensions(i).size();
