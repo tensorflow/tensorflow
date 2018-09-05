@@ -50,9 +50,9 @@ class MklSubAllocator : public SubAllocator {
   void Free(void* ptr, size_t num_bytes) override { port::AlignedFree(ptr); }
 };
 
-/// CPU allocator that handles small-size allocations by calling
-/// suballocator directly. Mostly, it is just a wrapper around a suballocator
-/// (that calls malloc and free directly) with support for bookkeeping.
+// CPU allocator that handles small-size allocations by calling
+// suballocator directly. Mostly, it is just a wrapper around a suballocator
+// (that calls malloc and free directly) with support for bookkeeping.
 class MklSmallSizeAllocator : public VisitableAllocator {
  public:
   MklSmallSizeAllocator(SubAllocator* sub_allocator, size_t total_memory,
@@ -67,12 +67,12 @@ class MklSmallSizeAllocator : public VisitableAllocator {
   inline string Name() override { return name_; }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
-    void* ptr = nullptr;
-    if ((ptr = sub_allocator_->Alloc(alignment, num_bytes)) != nullptr) {
+    void* ptr = sub_allocator_->Alloc(alignment, num_bytes);
+    if (ptr != nullptr) {
       std::pair<void*, size_t> map_val(ptr, num_bytes);
       mutex_lock l(mutex_);
       // Check that insertion in the hash map was successful.
-      CHECK_EQ(map_.insert(map_val).second, true);
+      CHECK(map_.insert(map_val).second);
       // Increment statistics for small-size allocations.
       IncrementStats(num_bytes);
       // Call alloc visitors.
@@ -100,6 +100,9 @@ class MklSmallSizeAllocator : public VisitableAllocator {
       sub_allocator_->Free(ptr, dealloc_bytes);
       DecrementStats(dealloc_bytes);
       map_.erase(map_iter);
+    } else {
+      LOG(ERROR) << "tried to deallocate invalid pointer";
+      return;
     }
   }
 
@@ -129,8 +132,8 @@ class MklSmallSizeAllocator : public VisitableAllocator {
   }
 
  private:
-  /// Increment statistics for the allocator handling small allocations.
-  inline void IncrementStats(size_t alloc_size) {
+  // Increment statistics for the allocator handling small allocations.
+  inline void IncrementStats(size_t alloc_size) GUARDED_BY(mutex_) {
     ++stats_.num_allocs;
     stats_.bytes_in_use += alloc_size;
     stats_.max_bytes_in_use = std::max(stats_.max_bytes_in_use,
@@ -139,27 +142,27 @@ class MklSmallSizeAllocator : public VisitableAllocator {
                                     static_cast<size_t>(stats_.max_alloc_size));
   }
 
-  /// Decrement statistics for the allocator handling small allocations.
-  inline void DecrementStats(size_t dealloc_size) {
+  // Decrement statistics for the allocator handling small allocations.
+  inline void DecrementStats(size_t dealloc_size) GUARDED_BY(mutex_) {
     stats_.bytes_in_use -= dealloc_size;
   }
 
   SubAllocator* sub_allocator_;  // Not owned by this class.
 
-  /// Mutex for protecting updates to map of allocations.
+  // Mutex for protecting updates to map of allocations.
   mutable mutex mutex_;
 
-  /// Allocator name
+  // Allocator name
   string name_;
 
-  /// Hash map to keep track of "small" allocations
-  /// We do not use BFC allocator for small allocations.
+  // Hash map to keep track of "small" allocations
+  // We do not use BFC allocator for small allocations.
   std::unordered_map<const void*, size_t> map_ GUARDED_BY(mutex_);
 
-  /// Allocator stats for small allocs
+  // Allocator stats for small allocs
   AllocatorStats stats_ GUARDED_BY(mutex_);
 
-  /// Visitors
+  // Visitors
   std::vector<Visitor> alloc_visitors_ GUARDED_BY(mutex_);
   std::vector<Visitor> free_visitors_ GUARDED_BY(mutex_);
 };
@@ -217,6 +220,9 @@ class MklCPUAllocator : public VisitableAllocator {
     VLOG(1) << "MklCPUAllocator: Setting max_mem_bytes: " << max_mem_bytes;
 
     sub_allocator_ = new MklSubAllocator();
+
+    // SubAllocator is owned by BFCAllocator, so we do not need to deallocate
+    // it in MklSmallSizeAllocator.
     small_size_allocator_ = new MklSmallSizeAllocator(sub_allocator_,
                                                       max_mem_bytes, kName);
     large_size_allocator_ = new BFCAllocator(sub_allocator_, max_mem_bytes,
@@ -264,8 +270,11 @@ class MklCPUAllocator : public VisitableAllocator {
     stats->bytes_in_use = l_stats.bytes_in_use + s_stats.bytes_in_use;
     stats->max_bytes_in_use = l_stats.max_bytes_in_use +
                               s_stats.max_bytes_in_use;
-    stats->max_alloc_size = std::max(l_stats.max_alloc_size,
-                                     s_stats.max_alloc_size);
+
+    // Since small-size allocations go to MklSmallSizeAllocator,
+    // max_alloc_size from large_size_allocator would be the maximum
+    // size allocated by MklCPUAllocator.
+    stats->max_alloc_size = l_stats.max_alloc_size;
   }
 
   void ClearStats() override {
@@ -308,13 +317,13 @@ class MklCPUAllocator : public VisitableAllocator {
     TF_CHECK_OK(s);  // way to assert with an error message
   }
 
-  /// Do we allow growth in BFC Allocator
+  // Do we allow growth in BFC Allocator
   static const bool kAllowGrowth = true;
 
-  /// Name
+  // Name
   static constexpr const char* kName = "mklcpu";
 
-  /// The alignment that we need for the allocations
+  // The alignment that we need for the allocations
   static constexpr const size_t kAlignment = 64;
 
   VisitableAllocator* large_size_allocator_;  // owned by this class
@@ -322,8 +331,8 @@ class MklCPUAllocator : public VisitableAllocator {
 
   SubAllocator* sub_allocator_;  // not owned by this class
 
-  /// Size in bytes that defines the upper-bound for "small" allocations.
-  /// Any allocation below this threshold is "small" allocation.
+  // Size in bytes that defines the upper-bound for "small" allocations.
+  // Any allocation below this threshold is "small" allocation.
   static constexpr const size_t kSmallAllocationsThreshold = 4096;
 };
 
