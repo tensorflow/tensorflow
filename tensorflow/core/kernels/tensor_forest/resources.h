@@ -53,11 +53,50 @@ class TensorForestTreeResource : public ResourceBase {
   const int32 TraverseTree(const TTypes<float>::ConstMatrix* dense_data,
                            const int32 example_id) const;
 
+  void SplitNode(node, best, new_children);
+
+  const bool node_has_leaf(const int32 node_id);
+
  protected:
   mutex mu_;
   protobuf::Arena arena_;
   boosted_trees::Tree* decision_tree_;
 };
+
+class TensorForestFertileStatsResource : public ResourceBase {
+ public:
+  TensorForestFertileStatsResource()
+      : fertile_stats_(
+            protobuf::Arena::CreateMessage<boosted_trees::FertilStats>(
+                &arena_)){};
+
+  string DebugString() override { return "TensorForestFertilStats"; }
+
+  const boosted_trees::FertilStats& fertile_stats() const {
+    return *fertile_stats_;
+  }
+  mutex* get_mutex() { return &mu_; }
+
+  bool InitFromSerialized(const string& serialized);
+
+  // Resets the resource and frees the proto.
+  // Caller needs to hold the mutex lock while calling this.
+  void Reset();
+
+  void AddExampleToStats(const TTypes<float>::ConstMatrix* dense_data,
+                         const TTypes<float>::ConstMatrix* label,
+                         const int32 example_id, const int32 leaf_id,
+                         bool* is_finished);
+  void Allocate(new_children);
+
+  const bool BestSplit(node, SplitCandidate& best);
+
+ protected:
+  mutex mu_;
+  protobuf::Arena arena_;
+  boosted_trees::FertileStats* fertile_stats_;
+  std::unique_ptr<SplitCollection> collection_op_;
+}
 
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_KERNELS_TENSOR_FOREST_RESOURCES_H_

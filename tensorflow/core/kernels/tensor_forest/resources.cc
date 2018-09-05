@@ -56,4 +56,15 @@ void TensorForestTreeResource::Reset() {
   decision_tree_ = protobuf::Arena::CreateMessage<boosted_trees::Tree>(&arena_);
 }
 
+bool TensorForestFertileStatsResource::InitFromSerialized(
+    const string& serialized) {
+  return ParseProtoUnlimited(fertile_stats_, serialized);
+}
+void TensorForestFertileStatsResource::Reset() {
+  arena_.Reset();
+  CHECK_EQ(0, arena_.SpaceAllocated());
+  fertile_stats_ =
+      protobuf::Arena::CreateMessage<boosted_trees::FertileStats>(&arena_);
+}
+
 }  // namespace tensorflow
