@@ -138,7 +138,7 @@ class GraphAnalyzer {
   // The entries are owned by collation_map_, so must be removed from
   // ordered_collation_ before removing them from collation_map_.
   struct ReverseLessByCount {
-    bool operator()(CollationEntry* left, CollationEntry* right) {
+    bool operator()(CollationEntry* left, CollationEntry* right) const {
       return left->count > right->count;  // Reverse order.
     }
   };
