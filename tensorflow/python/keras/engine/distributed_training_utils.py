@@ -17,8 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.client import session as session_module
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras import backend
+from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import distribute as distribute_lib
@@ -46,7 +47,7 @@ def set_weights(distribution_strategy, dist_model, weights):
       assign_ops.append(distribution_strategy.unwrap(sw.assign(w)))
 
     weights = weights[num_param:]
-  backend.get_session().run(assign_ops)
+  K.get_session().run(assign_ops)
 
 
 def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
@@ -269,3 +270,20 @@ def validate_all_tensor_shapes(x, x_values):
     if x_shape != x_values[i].get_shape().as_list():
       raise ValueError('Input tensor shapes do not match for distributed tensor'
                        ' inputs {}'.format(x))
+
+
+def configure_and_create_session(distribution_strategy):
+  """Configure session config and create a session with it."""
+  # TODO(priyag): Throw error if a session already exists.
+  session_config = K.get_default_session_config()
+  distribution_strategy.configure(session_config)
+
+  if distribution_strategy.__class__.__name__ == 'TPUStrategy':
+    # TODO(priyag): Remove this workaround when Distributed Coordinator is
+    # integrated with keras and we can create a session from there.
+    master = distribution_strategy._tpu_cluster_resolver.master()  # pylint: disable=protected-access
+    session = session_module.Session(config=session_config, target=master)
+  else:
+    session = session_module.Session(config=session_config)
+
+  K.set_session(session)
