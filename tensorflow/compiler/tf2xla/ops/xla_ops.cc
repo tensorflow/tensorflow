@@ -83,7 +83,7 @@ lhs_dilation: dilation to apply between input elements
 rhs_dilation: dilation to apply between kernel elements
 feature_group_count: number of feature groups for grouped convolution.
 dimension_numbers: a serialized xla::ConvolutionDimensionNumbers proto.
-precision_config: a serialized xla::PrecisionConfigProto proto.
+precision_config: a serialized xla::PrecisionConfig proto.
 )doc");
 
 REGISTER_OP("XlaDot")
@@ -102,7 +102,7 @@ Wraps the XLA ConvGeneralDilated operator, documented at
 lhs: the LHS tensor
 rhs: the RHS tensor
 dimension_numbers: a serialized xla::DotDimensionNumbers proto.
-precision_config: a serialized xla::PrecisionConfigProto proto.
+precision_config: a serialized xla::PrecisionConfig proto.
 )doc");
 
 REGISTER_OP("XlaDynamicUpdateSlice")

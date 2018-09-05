@@ -97,9 +97,9 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         args=(np.array([0xFFFFFFFF, 16], dtype=np.uint32), np.uint32(4)),
         expected=np.array([0xFFFFFFFF, 1], dtype=np.uint32))
 
-  PRECISION_VALUES = (None, xla_data_pb2.PrecisionConfigProto.DEFAULT,
-                      xla_data_pb2.PrecisionConfigProto.HIGH,
-                      xla_data_pb2.PrecisionConfigProto.HIGHEST)
+  PRECISION_VALUES = (None, xla_data_pb2.PrecisionConfig.DEFAULT,
+                      xla_data_pb2.PrecisionConfig.HIGH,
+                      xla_data_pb2.PrecisionConfig.HIGHEST)
 
   @parameterized.parameters(*PRECISION_VALUES)
   def testConv(self, precision):
@@ -120,7 +120,7 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         dnums.output_spatial_dimensions.extend(range(2, 2 + num_spatial_dims))
         precision_config = None
         if precision:
-          precision_config = xla_data_pb2.PrecisionConfigProto()
+          precision_config = xla_data_pb2.PrecisionConfig()
           precision_config.operand_precision.extend([precision, precision])
         return xla.conv(
             lhs,
@@ -151,7 +151,7 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         dnums.rhs_batch_dimensions.append(0)
         precision_config = None
         if precision:
-          precision_config = xla_data_pb2.PrecisionConfigProto()
+          precision_config = xla_data_pb2.PrecisionConfig()
           precision_config.operand_precision.extend([precision, precision])
         return xla.dot_general(
             lhs,

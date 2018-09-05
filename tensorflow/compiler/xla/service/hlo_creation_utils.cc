@@ -63,7 +63,7 @@ StatusOr<HloInstruction*> MakeSliceHlo(HloInstruction* operand,
 StatusOr<HloInstruction*> MakeConvolveHlo(
     HloInstruction* lhs, HloInstruction* rhs, int64 feature_group_count,
     const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
-    const PrecisionConfigProto& precision_config) {
+    const PrecisionConfig& precision_config) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
   TF_ASSIGN_OR_RETURN(Shape convolve_shape,
@@ -167,10 +167,9 @@ StatusOr<HloInstruction*> MakeConcatHlo(
       HloInstruction::CreateConcatenate(concat_shape, operands, dimension));
 }
 
-StatusOr<HloInstruction*> MakeDotHlo(
-    HloInstruction* lhs, HloInstruction* rhs,
-    const DotDimensionNumbers& dim_numbers,
-    const PrecisionConfigProto& precision_config) {
+StatusOr<HloInstruction*> MakeDotHlo(HloInstruction* lhs, HloInstruction* rhs,
+                                     const DotDimensionNumbers& dim_numbers,
+                                     const PrecisionConfig& precision_config) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
   TF_ASSIGN_OR_RETURN(

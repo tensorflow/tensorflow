@@ -345,7 +345,7 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateElementwiseUnaryOp(
 
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateDotOp(
     const DotDimensionNumbers& dim_numbers,
-    const PrecisionConfigProto& precision_config, const Literal& lhs,
+    const PrecisionConfig& precision_config, const Literal& lhs,
     const Literal& rhs) {
   std::unique_ptr<HloInstruction> lhs_instr =
       HloInstruction::CreateConstant(lhs.CloneToUnique());

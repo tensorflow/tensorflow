@@ -347,9 +347,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << proto.operand_ids_size();
       TF_RET_CHECK(proto.has_window());
       TF_RET_CHECK(proto.has_convolution_dimension_numbers());
-      PrecisionConfigProto precision_config = proto.precision_config();
+      PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
-          proto.operand_ids_size(), PrecisionConfigProto::DEFAULT);
+          proto.operand_ids_size(), PrecisionConfig::DEFAULT);
       instruction = CreateConvolve(
           proto.shape(), operands(0), operands(1),
           std::max<int64>(proto.feature_group_count(), 1), proto.window(),
@@ -475,7 +475,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (instruction->opcode() == HloOpcode::kDot) {
         instruction->precision_config_ = proto.precision_config();
         instruction->precision_config_.mutable_operand_precision()->Resize(
-            instruction->operand_count(), PrecisionConfigProto::DEFAULT);
+            instruction->operand_count(), PrecisionConfig::DEFAULT);
         TF_RET_CHECK(proto.has_dot_dimension_numbers());
         instruction->dot_dimension_numbers_ =
             absl::make_unique<DotDimensionNumbers>(
@@ -657,7 +657,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     int64 feature_group_count, const Window& window,
     const ConvolutionDimensionNumbers& dimension_numbers,
-    const PrecisionConfigProto& precision_config) {
+    const PrecisionConfig& precision_config) {
   return absl::make_unique<HloConvolutionInstruction>(
       shape, lhs, rhs, feature_group_count, window, dimension_numbers,
       precision_config);
@@ -673,7 +673,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDot(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     const DotDimensionNumbers& dimension_numbers,
-    const PrecisionConfigProto& precision_config) {
+    const PrecisionConfig& precision_config) {
   auto instruction =
       absl::WrapUnique(new HloInstruction(HloOpcode::kDot, shape));
   instruction->AppendOperand(lhs);
@@ -2888,8 +2888,8 @@ string RandomDistributionToString(const RandomDistribution& distribution) {
   return absl::AsciiStrToLower(RandomDistribution_Name(distribution));
 }
 
-string PrecisionToString(const PrecisionConfigProto::Precision& precision) {
-  return absl::AsciiStrToLower(PrecisionConfigProto::Precision_Name(precision));
+string PrecisionToString(const PrecisionConfig::Precision& precision) {
+  return absl::AsciiStrToLower(PrecisionConfig::Precision_Name(precision));
 }
 
 string ConvolutionDimensionNumbersToString(
@@ -2967,32 +2967,31 @@ StatusOr<RandomDistribution> StringToRandomDistribution(const string& name) {
 string HloInstruction::PrecisionConfigToString() const {
   if (absl::c_all_of(
           precision_config_.operand_precision(), [](int32 precision) {
-            return static_cast<PrecisionConfigProto::Precision>(precision) ==
-                   PrecisionConfigProto::DEFAULT;
+            return static_cast<PrecisionConfig::Precision>(precision) ==
+                   PrecisionConfig::DEFAULT;
           })) {
     return "";
   }
   return StrCat(
       "operand_precision={",
-      StrJoin(precision_config_.operand_precision(), ",",
-              [](string* out, int32 precision) {
-                CHECK(PrecisionConfigProto::Precision_IsValid(precision))
-                    << precision;
-                StrAppend(out, PrecisionToString(
-                                   static_cast<PrecisionConfigProto::Precision>(
-                                       precision)));
-              }),
+      StrJoin(
+          precision_config_.operand_precision(), ",",
+          [](string* out, int32 precision) {
+            CHECK(PrecisionConfig::Precision_IsValid(precision)) << precision;
+            StrAppend(out,
+                      PrecisionToString(
+                          static_cast<PrecisionConfig::Precision>(precision)));
+          }),
       "}");
 }
 
-StatusOr<PrecisionConfigProto::Precision> StringToPrecision(
-    const string& name) {
-  static std::unordered_map<string, PrecisionConfigProto::Precision>* map = [] {
+StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name) {
+  static std::unordered_map<string, PrecisionConfig::Precision>* map = [] {
     static auto* map =
-        new std::unordered_map<string, PrecisionConfigProto::Precision>;
-    for (int i = 0; i < PrecisionConfigProto::Precision_ARRAYSIZE; i++) {
-      if (PrecisionConfigProto::Precision_IsValid(i)) {
-        auto value = static_cast<PrecisionConfigProto::Precision>(i);
+        new std::unordered_map<string, PrecisionConfig::Precision>;
+    for (int i = 0; i < PrecisionConfig::Precision_ARRAYSIZE; i++) {
+      if (PrecisionConfig::Precision_IsValid(i)) {
+        auto value = static_cast<PrecisionConfig::Precision>(i);
         (*map)[PrecisionToString(value)] = value;
       }
     }

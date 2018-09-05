@@ -2379,9 +2379,9 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
 
   // Add a PrecisionConfig and check that AlgebraicSimplifier keeps it in place
   // after the transformation.
-  PrecisionConfigProto precision_config;
-  precision_config.add_operand_precision(PrecisionConfigProto::HIGH);
-  precision_config.add_operand_precision(PrecisionConfigProto::HIGHEST);
+  PrecisionConfig precision_config;
+  precision_config.add_operand_precision(PrecisionConfig::HIGH);
+  precision_config.add_operand_precision(PrecisionConfig::HIGHEST);
   orig_conv->set_precision_config(precision_config);
 
   auto module = CreateNewModule();
@@ -2401,9 +2401,8 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
                               conv->operand(1)->shape().dimensions(2),
                               conv->operand(1)->shape().dimensions(3),
                               testcase.expected_conv_window));
-    EXPECT_THAT(
-        conv->precision_config().operand_precision(),
-        ElementsAre(PrecisionConfigProto::HIGH, PrecisionConfigProto::HIGHEST));
+    EXPECT_THAT(conv->precision_config().operand_precision(),
+                ElementsAre(PrecisionConfig::HIGH, PrecisionConfig::HIGHEST));
   }
 }
 

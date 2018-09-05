@@ -1630,7 +1630,7 @@ HloConvolutionInstruction::HloConvolutionInstruction(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     int64 feature_group_count, const Window& window,
     const ConvolutionDimensionNumbers& dimension_numbers,
-    const PrecisionConfigProto& precision_config)
+    const PrecisionConfig& precision_config)
     : HloInstruction(HloOpcode::kConvolution, shape),
       feature_group_count_(feature_group_count),
       window_(window),
