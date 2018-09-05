@@ -192,6 +192,7 @@ cc_library(
         "pooling.cc",
         "pow.cc",
         "reduce.cc",
+        "relu1.cc",
         "reshape.cc",
         "resize_bilinear.cc",
         "select.cc",
@@ -291,6 +292,23 @@ tf_cc_test(
     name = "detection_postprocess_test",
     size = "small",
     srcs = ["detection_postprocess_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
+    name = "relu1_test",
+    size = "small",
+    srcs = ["relu1_test.cc"],
     tags = [
         "no_oss",
         "tflite_not_portable_ios",
