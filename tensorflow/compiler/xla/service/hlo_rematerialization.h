@@ -21,7 +21,6 @@
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 
@@ -51,7 +50,7 @@ class HloRematerialization {
   //
   //   hlo_module: HLO module to rematerialize instructions in.
   //
-  //   schedule: Should point to an empty HloSchedule. Upon return
+  //   sequence: Should point to an empty HloModuleSequence. Upon return
   //     contains the HLO instruction order which was used for
   //     rematerialization. This is the order in which HLO instructions should
   //     be emitted to minimize memory use.
@@ -76,8 +75,8 @@ class HloRematerialization {
   static StatusOr<bool> RematerializeAndSchedule(
       const ShapeSizeFunction& size_function, int64 memory_limit_bytes,
       HloModule* hlo_module, MemorySchedulerAlgorithm scheduler_algorithm,
-      HloSchedule* schedule, RematerializationSizes* sizes,
-      CopyInsertion* copy_insertion = nullptr);
+      SequentialHloOrdering::HloModuleSequence* sequence,
+      RematerializationSizes* sizes, CopyInsertion* copy_insertion = nullptr);
 
  protected:
   HloRematerialization(MemorySchedulerAlgorithm scheduler_algorithm,
@@ -88,9 +87,10 @@ class HloRematerialization {
 
   // Runs rematerialization on the given module. Returns whether the module was
   // changed. memory_limit is the target maximum peak memory usage by the
-  // module. schedule should be an empty HloSchedule. Upon return sequence
+  // module. sequence should be an empty HloModuleSequence. Upon return sequence
   // contains the memory-minimizing order in which to emit the HLO instructions.
-  StatusOr<bool> Run(HloModule* module, HloSchedule* schedule,
+  StatusOr<bool> Run(HloModule* module,
+                     SequentialHloOrdering::HloModuleSequence* sequence,
                      int64 memory_limit, RematerializationSizes* sizes,
                      CopyInsertion* copy_insertion);
 
@@ -98,9 +98,10 @@ class HloRematerialization {
   // order in which the computation's instructions will be emitted in the
   // backend. Rematerialized instructions will be added to the HLO computation
   // and inserted into 'order'.
-  StatusOr<bool> RematerializeComputation(HloComputation* computation,
-                                          HloSchedule* schedule,
-                                          int64 memory_limit_bytes);
+  StatusOr<bool> RematerializeComputation(
+      HloComputation* computation,
+      SequentialHloOrdering::HloModuleSequence* sequence,
+      int64 computation_memory_limit);
 
   // Computes and returns the peak memory used by the given computation. The
   // peak memory is the maximum total size of all live HLO instruction values at

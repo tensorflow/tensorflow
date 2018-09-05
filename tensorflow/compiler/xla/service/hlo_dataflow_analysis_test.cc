@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -1262,10 +1261,9 @@ TEST_P(HloDataflowAnalysisTest, MultipleEntryParameters_Sequential) {
   auto entry = module_->AddEntryComputation(builder.Build());
   RunAnalysis(GetParam());
 
-  HloSchedule schedule(module_.get());
-  schedule.set_sequence(entry, {param0, negate, param1, exp, add});
-  TF_ASSERT_OK(schedule.Verify());
-  SequentialHloOrdering ordering(schedule);
+  SequentialHloOrdering::HloModuleSequence sequence;
+  sequence.insert({entry, {param0, negate, param1, exp, add}});
+  SequentialHloOrdering ordering(module_.get(), sequence);
 
   // Entry parameters interfere as if they are defined simultaneously at
   // the very beginning.
@@ -1341,16 +1339,14 @@ TEST_P(HloDataflowAnalysisTest, WhileParameters_Sequential) {
   bool ssa_form = GetParam();
   RunAnalysis(ssa_form);
 
-  HloSchedule schedule(module_.get());
-  schedule.set_sequence(entry, {param, xla_while});
-  schedule.set_sequence(condition, {cond_param, cond_constant});
+  SequentialHloOrdering::HloModuleSequence sequence;
+  sequence.insert({entry, {param, xla_while}});
+  sequence.insert({condition, {cond_param, cond_constant}});
   // Construct the order such that 'constant' and its use 'exp' are before
   // body_param.
-  schedule.set_sequence(
-      body, {constant, exp, body_param, add, dead_constant, dead_negate});
-  TF_ASSERT_OK(schedule.Verify());
+  sequence.insert({body, {constant, exp, body_param, add}});
 
-  SequentialHloOrdering ordering(schedule);
+  SequentialHloOrdering ordering(module_.get(), sequence);
 
   // 'add' is live out of the body and will interfere with an later instructions
   // such as 'dead_constant' and 'dead_negate'.
@@ -1480,10 +1476,11 @@ TEST_P(HloDataflowAnalysisTest, OverlappedValuesSequentialOrder) {
   auto entry = module_->AddEntryComputation(builder.Build());
   RunAnalysis(GetParam());
 
-  HloSchedule schedule(module_.get());
-  schedule.set_sequence(entry, {param, negate, exp, add});
-  TF_ASSERT_OK(schedule.Verify());
-  SequentialHloOrdering ordering(schedule);
+  SequentialHloOrdering::HloModuleSequence sequence;
+  std::vector<const HloInstruction*> order = {param, negate, exp, add};
+  sequence.emplace(entry, order);
+
+  SequentialHloOrdering ordering(module_.get(), sequence);
 
   EXPECT_TRUE(InstructionsMayInterfere(ordering, param, negate));
   EXPECT_FALSE(InstructionsMayInterfere(ordering, param, exp));

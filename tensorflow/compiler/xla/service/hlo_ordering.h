@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -184,8 +183,17 @@ class DependencyHloOrdering : public PredecessorHloOrdering {
 // interference is reduced relative to DependencyHloOrdering.
 class SequentialHloOrdering : public HloOrdering {
  public:
-  SequentialHloOrdering(const HloSchedule& schedule);
-  SequentialHloOrdering(HloSchedule&& schedule);
+  // TODO(dimvar): HloModuleSequence is not a good name because it sounds like
+  // a sequence of modules, instead of a map of schedules for all computations
+  // in a module. We should change it at some point.
+  //
+  // A sequence of instructions for each computation in the module.
+  using HloModuleSequence =
+      tensorflow::gtl::FlatMap<const HloComputation*,
+                               std::vector<const HloInstruction*>>;
+
+  SequentialHloOrdering(const HloModule* module,
+                        const HloModuleSequence& module_sequence);
   ~SequentialHloOrdering() override = default;
 
   // Returns the sequential instruction order for the given computation.
@@ -195,12 +203,10 @@ class SequentialHloOrdering : public HloOrdering {
   string ToString() const override;
 
  protected:
-  void Initialize();
-
   bool ExecutesBeforeInSameComputation(const HloInstruction* a,
                                        const HloInstruction* b) const override;
 
-  const HloSchedule schedule_;
+  const HloModuleSequence module_sequence_;
 
   // The position of every instruction in the HLO module in its respective
   // computation sequence (a value of zero indicates the instruction is first in
@@ -210,6 +216,10 @@ class SequentialHloOrdering : public HloOrdering {
   // instructions are in the same computation.
   tensorflow::gtl::FlatMap<const HloInstruction*, int> order_position_;
 };
+
+std::ostream& operator<<(
+    std::ostream& out,
+    const SequentialHloOrdering::HloModuleSequence& module_sequence);
 
 }  // namespace xla
 

@@ -33,9 +33,7 @@ namespace gpu {
 // launches, because thunks may be scheduled onto concurrent streams. This
 // schedule is used by BufferAssigner to determine buffer liveness (i.e. to
 // minimize allocations), and also by ThunkSchedule to determine the thunk
-// launch order. This class differs from xla::HloSchedule in that HloSchedule
-// represents a total order of all instructions in the module for backends which
-// execute HLO instructions strictly sequentially.
+// launch order.
 class GpuHloSchedule {
  public:
   // Constructs an GpuHloSchedule for the given module, based on the given

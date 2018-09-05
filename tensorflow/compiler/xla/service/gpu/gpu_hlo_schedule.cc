@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/types.h"
 
@@ -199,12 +198,11 @@ StatusOr<std::unique_ptr<GpuHloSchedule>> GpuHloSchedule::Build(
     // All kernels are launched on a single stream, so there's no loss of
     // concurrency by optimizing for minimal memory usage.
     TF_ASSIGN_OR_RETURN(
-        HloInstructionSequence sequence,
-        ScheduleComputation(
+        schedule->thunk_launch_order_,
+        ScheduleOneComputation(
             *entry_computation, [pointer_size](const BufferValue& buffer) {
               return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
             }));
-    schedule->thunk_launch_order_ = sequence.instructions();
   } else {
     // BFS tends to increase concurrency, but also increases memory usage.
     BFSLaunchOrder(entry_computation, &schedule->thunk_launch_order_);
