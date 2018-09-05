@@ -259,7 +259,7 @@ Status XlaCompilationCache::CompileImpl(
     const XlaCompiler::CompileOptions& compile_options,
     bool compile_single_op) {
   CHECK_NE(executable, nullptr);
-  VLOG(1) << "XlaCompilationCache::Compile " << DebugString();
+  VLOG(2) << "XlaCompilationCache::Compile " << DebugString();
 
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "num_inputs=" << ctx->num_inputs()
@@ -310,7 +310,7 @@ Status XlaCompilationCache::CompileImpl(
   // cache eviction.
   mutex_lock entry_lock(entry->mu);
   if (!entry->compiled) {
-    VLOG(1) << "Compilation cache miss for signature: "
+    VLOG(2) << "Compilation cache miss for signature: "
             << SignatureDebugString(signature);
     tensorflow::Env* env = tensorflow::Env::Default();
     const uint64 compile_start_us = env->NowMicros();
