@@ -2,9 +2,10 @@
 
 ## Major Features and Improvements
 
-* Prebuilt binaries are now (as of TensorFlow 1.11) built against cuDNN 7.2. See updated install guides: [Installing TensorFlow on Ubuntu](https://www.tensorflow.org/install/install_linux#tensorflow_gpu_support)
-* Cloud TPU:
-  * Experimental tf.data integration for Keras on Cloud TPUs.
+* Nvidia GPU:
+  * Prebuilt binaries are now (as of TensorFlow 1.11) built against cuDNN 7.2 and TensorRT 4. See updated install guides: [Installing TensorFlow on Ubuntu](https://www.tensorflow.org/install/install_linux#tensorflow_gpu_support)
+* Google Cloud TPU:
+  * Experimental tf.data integration for Keras on Google Cloud TPUs.
 * DistributionStrategy
   * Add multi-GPU DistributionStrategy support in tf.keras. Users can now use `fit`, `evaluate` and `predict` to distribute their model on multiple GPUs.
   * Add multi-worker DistributionStrategy and standalone client support in Estimator. See [README] (https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/distribute) for more details.
@@ -54,7 +55,7 @@
   * Performance improvements for regex replace operations.
   * TFRecordWriter now raises an error if .write() fails.
   * TPU: More helpful error messages in TPUClusterResolvers.
-  * The legacy_init_op argument to SavedModelBuilder methods for adding MetaGraphs has been deprecated. Please use the equivalent main_op argument instead. As part of this, we now explicitly check for a single main_op or legacy_init_op at the time of SavedModel building, whereas the check on main_op was previously only done at load time. SKIP_ATC=Ignoring the Tap cnn_e2e_test error as per the recommendations of chendouble@, who says they will regenerate the SavedModel protos in question after the fact.
+  * The legacy_init_op argument to SavedModelBuilder methods for adding MetaGraphs has been deprecated. Please use the equivalent main_op argument instead. As part of this, we now explicitly check for a single main_op or legacy_init_op at the time of SavedModel building, whereas the check on main_op was previously only done at load time.
   * The protocol used for Estimator training is now configurable in RunConfig.
   * Triangular solve performance improvements.
   * Unify RNN cell interface between TF and Keras. Add new get_initial_state() to Keras and TF RNN cell, which will use to replace the existing zero_state() method.
