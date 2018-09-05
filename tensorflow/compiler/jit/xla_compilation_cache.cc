@@ -67,12 +67,12 @@ string XlaCompilationCache::DebugString() {
 string XlaCompilationCache::SignatureDebugString(const Signature& sig) {
   string result = sig.name;
   for (const auto& a : sig.arg_types) {
-    strings::StrAppend(&result, ",", DataTypeString(a.first),
-                       a.second.DebugString());
+    absl::StrAppend(&result, ",", DataTypeString(a.first),
+                    a.second.DebugString());
   }
 
   for (const auto& v : sig.arg_values) {
-    strings::StrAppend(&result, "; ", v.DebugString());
+    absl::StrAppend(&result, "; ", v.DebugString());
   }
   return result;
 }

@@ -26,7 +26,7 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
                   absl::Span<const int64> block_shape,
                   const xla::Literal& paddings) {
   const int input_rank = input_tensor_shape.dims();
-  const gtl::InlinedVector<int64, 4> input_shape =
+  const absl::InlinedVector<int64, 4> input_shape =
       input_tensor_shape.dim_sizes();
   const int block_rank = block_shape.size();
 

@@ -154,7 +154,7 @@ class AndPredicate : public Predicate {
                    std::back_inserter(operands_str),
                    [](Predicate* pred) { return pred->ToString(); });
 
-    return strings::StrCat("(", absl::StrJoin(operands_str, " & "), ")");
+    return absl::StrCat("(", absl::StrJoin(operands_str, " & "), ")");
   }
 
   Kind kind() const override { return Kind::kAnd; }
@@ -185,7 +185,7 @@ class OrPredicate : public Predicate {
                    std::back_inserter(operands_str),
                    [](Predicate* pred) { return pred->ToString(); });
 
-    return strings::StrCat("(", absl::StrJoin(operands_str, " | "), ")");
+    return absl::StrCat("(", absl::StrJoin(operands_str, " | "), ")");
   }
 
   Kind kind() const override { return Kind::kOr; }
@@ -206,7 +206,7 @@ class NotPredicate : public Predicate {
         operands_({operand}) {}
 
   string ToString() const override {
-    return strings::StrCat("~", operand()->ToString());
+    return absl::StrCat("~", operand()->ToString());
   }
 
   Kind kind() const override { return Kind::kNot; }
@@ -240,8 +240,8 @@ class AndRecurrencePredicate : public Predicate {
   Predicate* step() const { return operands_[1]; }
 
   string ToString() const override {
-    return strings::StrCat("{", start()->ToString(), ",&,", step()->ToString(),
-                           "}");
+    return absl::StrCat("{", start()->ToString(), ",&,", step()->ToString(),
+                        "}");
   }
 
   Kind kind() const override { return Kind::kAndRecurrence; }
@@ -267,7 +267,7 @@ class SymbolPredicate : public Predicate {
         must_be_true_(must_be_true) {}
 
   string ToString() const override {
-    return must_be_true() ? strings::StrCat("*", tensor_id_.ToString())
+    return must_be_true() ? absl::StrCat("*", tensor_id_.ToString())
                           : tensor_id_.ToString();
   }
 
