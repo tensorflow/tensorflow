@@ -278,7 +278,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TfLiteTensor* tensor = &context->tensors[tensor_index];
     TF_LITE_ENSURE_OK(
         context,
-        CopyShape(context, buffer_map->GetTensor(tensor_index), tensor));
+        CopyShapeAndType(context, buffer_map->GetTensor(tensor_index), tensor));
     tensor->buffer_handle = tensor_index;
     tensor->data_is_stale = true;
   }
