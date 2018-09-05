@@ -67,7 +67,7 @@ def package_hook(parent_package_str, child_package_str, error_msg=None):
     """
     child_pkg_path = [os.path.join(os.path.dirname(child_pkg.__file__), "..")]
     try:
-      parent_pkg.__path__ = child_pkg_path + parent_pkg.__path__
+      parent_pkg.__path__ += child_pkg_path
     except AttributeError:
       parent_pkg.__path__ = child_pkg_path
 
