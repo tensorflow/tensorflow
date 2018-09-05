@@ -121,10 +121,10 @@ StatusOr<bool> HloTestBase::RunHloPass(HloPassInterface* hlo_pass,
 }
 
 /* static */
-PrecisionConfigProto HloTestBase::DefaultPrecisionConfig(int operands) {
-  PrecisionConfigProto precision_config;
+PrecisionConfig HloTestBase::DefaultPrecisionConfig(int operands) {
+  PrecisionConfig precision_config;
   precision_config.mutable_operand_precision()->Resize(
-      operands, PrecisionConfigProto::DEFAULT);
+      operands, PrecisionConfig::DEFAULT);
   return precision_config;
 }
 

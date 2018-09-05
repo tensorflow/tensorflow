@@ -1031,8 +1031,8 @@ bool CanFoldDotIntoIndexedArray(
 StatusOr<Analysis::Array*>
 IndexedArrayAnalysis::ComputeArrayForDotWithIndexedLhs(
     const Shape& shape, const DotDimensionNumbers& dim_numbers,
-    const PrecisionConfigProto& precision_config,
-    ScalarIndexedConstantArray* lhs, ConstantArray* rhs) {
+    const PrecisionConfig& precision_config, ScalarIndexedConstantArray* lhs,
+    ConstantArray* rhs) {
   VLOG(3) << "ComputeArrayForDotWithIndexedLhs(" << ToString(lhs) << " "
           << ToString(rhs);
   if (!CanFoldDotIntoIndexedArray(
@@ -1066,7 +1066,7 @@ IndexedArrayAnalysis::ComputeArrayForDotWithIndexedLhs(
 StatusOr<Analysis::Array*>
 IndexedArrayAnalysis::ComputeArrayForDotWithIndexedRhs(
     const Shape& shape, const DotDimensionNumbers& dim_numbers,
-    const PrecisionConfigProto& precision_config, ConstantArray* lhs,
+    const PrecisionConfig& precision_config, ConstantArray* lhs,
     ScalarIndexedConstantArray* rhs) {
   VLOG(3) << "ComputeArrayForDotWithIndexedRhs(" << ToString(lhs) << " "
           << ToString(rhs);
@@ -1101,7 +1101,7 @@ IndexedArrayAnalysis::ComputeArrayForDotWithIndexedRhs(
 
 StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForDot(
     const Shape& shape, const DotDimensionNumbers& dim_numbers,
-    const PrecisionConfigProto& precision_config, Array* lhs, Array* rhs) {
+    const PrecisionConfig& precision_config, Array* lhs, Array* rhs) {
   // Intuitively, if
   //
   //  - The LHS of a dot product is a gathered sequence of rows from a constant

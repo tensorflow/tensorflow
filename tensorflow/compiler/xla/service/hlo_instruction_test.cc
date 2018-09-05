@@ -1752,9 +1752,9 @@ TEST_F(HloInstructionTest, PreserveOperandPrecisionOnCloneConv) {
   auto* conv = module->entry_computation()->root_instruction();
 
   auto clone = conv->Clone();
-  EXPECT_THAT(clone->precision_config().operand_precision(),
-              ::testing::ElementsAre(PrecisionConfigProto::HIGH,
-                                     PrecisionConfigProto::DEFAULT));
+  EXPECT_THAT(
+      clone->precision_config().operand_precision(),
+      ::testing::ElementsAre(PrecisionConfig::HIGH, PrecisionConfig::DEFAULT));
 }
 
 }  // namespace
