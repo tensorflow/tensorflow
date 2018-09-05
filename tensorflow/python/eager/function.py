@@ -55,6 +55,9 @@ from tensorflow.python.util import tf_inspect
 # (function -> gradients_impl -> control_flow_ops -> cond_v2_impl).
 cond_v2_impl._function = sys.modules[__name__]  # pylint: disable=protected-access
 
+# This is to avoid a circular dependency with gradients_impl
+gradients_impl._function = sys.modules[__name__]  # pylint: disable=protected-access
+
 
 def create_substitute_placeholder(value, name, dtype=None):
   """Creates a placeholder for `value` and propagates shape info to it."""

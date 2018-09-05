@@ -2090,6 +2090,18 @@ py_library(
     srcs = [
         "ops/custom_gradient.py",
         "ops/gradients.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":gradients_impl",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager:tape",
+    ],
+)
+
+py_library(
+    name = "gradients_impl",
+    srcs = [
         "ops/gradients_impl.py",
     ],
     srcs_version = "PY2AND3",
