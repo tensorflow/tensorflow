@@ -63,6 +63,10 @@ def fit_loop(
       ValueError: in case of invalid arguments.
   """
   current_strategy = model._distribution_strategy
+
+  clone_model_on_towers(
+      model, current_strategy, make_callback_model=True)
+
   def _per_device_train_function(model):
     model._make_train_function()
     return (model.train_function.inputs,
@@ -206,6 +210,9 @@ def test_loop(model, iterator, verbose=0, steps=None):
       the display labels for the scalar outputs.
   """
   current_strategy = model._distribution_strategy
+
+  clone_model_on_towers(model, current_strategy)
+
   def _per_device_test_function(model):
     model._make_test_function()
     return (model.test_function.inputs,
@@ -297,6 +304,9 @@ def predict_loop(model, iterator, verbose=0, steps=None):
       (if the model has multiple outputs).
   """
   current_strategy = model._distribution_strategy
+
+  clone_model_on_towers(model, current_strategy)
+
   def _per_device_predict_function(model):
     model._make_predict_function()
     return (model.predict_function.inputs,
@@ -363,7 +373,7 @@ def predict_loop(model, iterator, verbose=0, steps=None):
     ]
 
 
-def clone_and_build_model(model):
+def _clone_and_build_model(model):
   """Clone and build the given keras_model."""
   # We need to set the import here since we run into a circular dependency
   # error.
@@ -385,6 +395,16 @@ def clone_and_build_model(model):
       sample_weight_mode=model.sample_weight_mode,
       weighted_metrics=model.weighted_metrics)
   return cloned_model
+
+
+def clone_model_on_towers(model, strategy, make_callback_model=False):
+  """Create a cloned model on each tower, unless already created."""
+  if not model._grouped_model:
+    with strategy.scope():
+      model._grouped_model = strategy.call_for_each_tower(
+          _clone_and_build_model, model)
+    if make_callback_model:
+      model._make_callback_model()
 
 
 def _aggregate_metrics_across_towers(num_devices, out_labels, outs):

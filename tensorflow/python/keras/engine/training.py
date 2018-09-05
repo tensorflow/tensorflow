@@ -405,20 +405,7 @@ class Model(Network):
     # Set DistributionStrategy specific parameters.
     self._distribution_strategy = distribute
     if self._distribution_strategy is not None:
-      self._grouped_model = self._compile_distributed_model(
-          self._distribution_strategy)
-      with self._distribution_strategy.scope():
-        first_replicated_model = self._distribution_strategy.unwrap(
-            self._grouped_model)[0]
-        # If the specified metrics in `compile` are stateful, raise an error
-        # since we currently don't support stateful metrics.
-        if first_replicated_model.stateful_metric_names:
-          raise NotImplementedError('Stateful metrics are not supported with '
-                                    'DistributionStrategy.')
-
-      # We initialize the callback model with the first replicated model.
-      self._replicated_model = DistributedCallbackModel(first_replicated_model)
-      self._replicated_model.set_original_model(self)
+      self._grouped_model = None
     if not self.built:
       # Model is not compilable because it does not know its number of inputs
       # and outputs, nor their shapes and names. We will compile after the first
@@ -636,6 +623,12 @@ class Model(Network):
         skip_target_indices=skip_target_indices,
         sample_weights=self.sample_weights)
 
+    # If using distribution strategy and stateful_metrics, raise an error
+    # since we currently don't support stateful metrics.
+    if self._distribution_strategy is not None and self.stateful_metric_names:
+      raise NotImplementedError('Stateful metrics are not supported with '
+                                'DistributionStrategy.')
+
     # Prepare gradient updates and state updates.
     self.total_loss = total_loss
 
@@ -651,19 +644,6 @@ class Model(Network):
     # Collected trainable weights, sorted in topological order.
     trainable_weights = self.trainable_weights
     self._collected_trainable_weights = trainable_weights
-
-  def _compile_distributed_model(self, distribution_strategy):
-    # TODO(anjalisridhar): Can we move the clone_and_build_model to outside the
-    # model?
-    def _clone_model_per_tower(model):
-      new_model = training_distributed.clone_and_build_model(model)
-      return new_model
-
-    with distribution_strategy.scope():
-      # Create a copy of this model on each of the devices.
-      grouped_models = distribution_strategy.call_for_each_tower(
-          _clone_model_per_tower, self)
-    return grouped_models
 
   def _check_trainable_weights_consistency(self):
     """Check trainable weights count consistency.
@@ -2162,6 +2142,13 @@ class Model(Network):
       return self.callback_model
     return self
 
+  def _make_callback_model(self):
+    first_replicated_model = self._distribution_strategy.unwrap(
+        self._grouped_model)[0]
+    # We initialize the callback model with the first replicated model.
+    self._replicated_model = DistributedCallbackModel(first_replicated_model)
+    self._replicated_model.set_original_model(self)
+
 
 class DistributedCallbackModel(Model):
   """Model that is used for callbacks with DistributionStrategy."""
@@ -2199,6 +2186,6 @@ class DistributedCallbackModel(Model):
     # Whitelisted atttributes of the model that can be accessed by the user
     # during a callback.
     if item not in ['_setattr_tracking']:
-      logging.warning('You are accessing attribute ' + item + 'of the'
-                      'DistributedCallbackModel that may not have been set'
+      logging.warning('You are accessing attribute ' + item + 'of the '
+                      'DistributedCallbackModel that may not have been set '
                       'correctly.')
