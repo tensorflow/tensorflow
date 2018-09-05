@@ -770,7 +770,7 @@ class Network(base_layer.Layer):
       # and graph building, the variables created after building the model in
       # a Graph are still valid when executing eagerly.
       with context.graph_mode():
-        graph = eager_function.CapturingGraph()
+        graph = eager_function.FuncGraph('graph')
         with graph.as_default():
           if isinstance(input_shape, list):
             x = [base_layer.generate_placeholders_from_shape(shape)
