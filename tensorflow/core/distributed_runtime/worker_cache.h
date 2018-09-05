@@ -28,6 +28,7 @@ typedef std::function<void(const Status&)> StatusCallback;
 
 class ChannelCache;
 class StepStats;
+class WorkerCacheLogger;
 
 class WorkerCacheInterface {
  public:
@@ -71,6 +72,8 @@ class WorkerCacheInterface {
   virtual void GetDeviceLocalityAsync(const string& device,
                                       DeviceLocality* locality,
                                       StatusCallback done) = 0;
+  
+  virtual WorkerCacheLogger* GetLogger() = 0;
 
   // Start/stop logging activity.
   virtual void SetLogging(bool active) {}

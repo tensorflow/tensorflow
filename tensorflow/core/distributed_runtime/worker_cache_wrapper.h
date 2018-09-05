@@ -74,6 +74,8 @@ class WorkerCacheWrapper : public WorkerCacheInterface {
                                       StatusCallback done) {
     return wrapped_->GetDeviceLocalityAsync(device, locality, std::move(done));
   }
+  
+  virtual WorkerCacheLogger* GetLogger() { wrapped_->GetLogger(); }
 
   // Start/stop logging activity.
   virtual void SetLogging(bool active) { wrapped_->SetLogging(active); }

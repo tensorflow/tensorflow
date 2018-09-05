@@ -68,6 +68,8 @@ class WorkerFreeListCache : public WorkerCacheInterface {
     wrapped_->GetDeviceLocalityAsync(device, locality, done);
   }
 
+  WorkerCacheLogger* GetLogger() override { wrapped_->GetLogger();}
+
   void SetLogging(bool active) override { wrapped_->SetLogging(active); }
 
   void ClearLogs() override { wrapped_->ClearLogs(); }

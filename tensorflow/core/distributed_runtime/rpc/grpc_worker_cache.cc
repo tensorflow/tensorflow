@@ -80,6 +80,8 @@ class GrpcWorkerCache : public WorkerCachePartial {
     }
   }
 
+  WorkerCacheLogger* GetLogger() override {return &logger_;}
+
   void SetLogging(bool v) override { logger_.SetLogging(v); }
 
   void ClearLogs() override { logger_.ClearLogs(); }

@@ -30,7 +30,7 @@ namespace tensorflow {
 class RdmaRemoteRendezvous : public BaseRemoteRendezvous {
  public:
   RdmaRemoteRendezvous(const WorkerEnv* env, int64 step_id, RdmaMgr* rdma_mgr)
-      : BaseRemoteRendezvous(env, step_id), rdma_mgr_(rdma_mgr) {}
+      : BaseRemoteRendezvous(env, step_id), step_id_(step_id), rdma_mgr_(rdma_mgr) {}
 
  protected:
   void RecvFromRemoteAsync(const Rendezvous::ParsedKey& parsed,
@@ -39,6 +39,7 @@ class RdmaRemoteRendezvous : public BaseRemoteRendezvous {
 
  private:
   ~RdmaRemoteRendezvous() override {}
+  int64 step_id_;
   RdmaMgr* rdma_mgr_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(RdmaRemoteRendezvous);
@@ -47,6 +48,7 @@ class RdmaRemoteRendezvous : public BaseRemoteRendezvous {
 void RdmaRemoteRendezvous::RecvFromRemoteAsync(
     const Rendezvous::ParsedKey& parsed, const Rendezvous::Args& recv_args,
     DoneCallback done) {
+  int64 start_usec = Env::Default()->NowMicros();
   Status s;
   // parse src_name and dst_name
   string src_name, dst_name, unused;
@@ -61,6 +63,7 @@ void RdmaRemoteRendezvous::RecvFromRemoteAsync(
     done(s, Args(), recv_args, Tensor{}, false);
     return;
   }
+  
   CHECK(dst_name.compare(rdma_mgr_->local_worker()) == 0);
   RdmaChannel* rc = rdma_mgr_->FindChannel(src_name);
   string key(parsed.FullKey());
@@ -74,8 +77,33 @@ void RdmaRemoteRendezvous::RecvFromRemoteAsync(
     return;
   }
 
+  // Type-specialized logging for this method.
+  WorkerCacheLogger* logger = rdma_mgr_->GetLogger();
+
+  bool logging_active = logger->LoggingActive();
+  DoneCallback wrapper_done;
+  const DoneCallback* cb_to_use;
+  if(!logging_active) { 
+    cb_to_use = &done; //No additional work to do, so just use done directly
+  } else {
+     int64 step_id = step_id_;
+     wrapper_done = [this, logger, step_id, parsed, done, start_usec] (const Status& s, const Args& send_args, const Args& recv_args,
+  	                                                               const Tensor& recv_tensor, const bool is_dead) {
+      
+      if (logger->LoggingActive()) {
+        int64 end_usec = Env::Default()->NowMicros();
+        int64 bytes = recv_tensor.TotalBytes();
+        logger->RecordRecvTensor(step_id_, start_usec, end_usec,
+                                 parsed.edge_name.ToString(), parsed.src_device.ToString(), parsed.dst_device.ToString(),
+                                 bytes);
+      }
+      done(s, send_args, recv_args, recv_tensor, is_dead);      
+    };
+    cb_to_use = &wrapper_done;
+  }
+
   RdmaTensorRequest* request =
-      rc->InsertTensorRequest(key, step_id_, dst_dev, recv_args, done);
+      rc->InsertTensorRequest(key, step_id_, dst_dev, recv_args, *cb_to_use);
   request->Start();
 }
 

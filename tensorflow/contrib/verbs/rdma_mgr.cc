@@ -198,6 +198,10 @@ RdmaChannel* RdmaMgr::FindChannel(const string& name) {
   return iter->second;
 }
 
+WorkerCacheLogger* RdmaMgr::GetLogger() {
+  return worker_env_->session_mgr->LegacySession()->worker_cache->GetLogger();
+}
+
 bool IsGDRAvailable() {
 #if defined(__APPLE__)
   return false;

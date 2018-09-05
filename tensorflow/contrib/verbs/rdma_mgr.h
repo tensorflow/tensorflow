@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/verbs/rdma.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
+#include "tensorflow/core/distributed_runtime/worker_cache_logger.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 
 namespace tensorflow {
@@ -40,6 +41,7 @@ class RdmaMgr {
   bool ConnectivityCheck();
   void InitAllocators();
   const string& local_worker() { return local_worker_; }
+  WorkerCacheLogger* GetLogger();
 
  private:
   string local_worker_;
