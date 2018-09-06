@@ -2553,7 +2553,7 @@ REGISTER_OP("ExtractImagePatches")
 // as the second parameter of all GetWindowedOutputSizeVerbose calls instead
 // of ksize_*.
 REGISTER_OP("ExtractVolumePatches")
-    .Input("images: T")
+    .Input("input: T")
     .Output("patches: T")
     .Attr("ksizes: list(int) >= 5")
     .Attr("strides: list(int) >= 5")
