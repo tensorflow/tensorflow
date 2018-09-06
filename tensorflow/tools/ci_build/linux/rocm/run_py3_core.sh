@@ -57,11 +57,12 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python/kernel_tests:pool_test \
     -//tensorflow/python/kernel_tests:pooling_ops_3d_test \
     -//tensorflow/python/kernel_tests:pooling_ops_test \
-    -//tensorflow/python/kernel_tests:softplus_op_test
-    -//tensorflow/python/kernel_tests:softsign_op_test    
+    -//tensorflow/python/kernel_tests:softplus_op_test \
+    -//tensorflow/python/kernel_tests:softsign_op_test \
     -//tensorflow/python/ops/parallel_for:control_flow_ops_test \
     -//tensorflow/python/ops/parallel_for:gradients_test \
     -//tensorflow/python:layers_normalization_test \
+    -//tensorflow/python:layout_optimizer_test \
     -//tensorflow/python:nn_fused_batchnorm_test \
     -//tensorflow/python:timeline_test
 
