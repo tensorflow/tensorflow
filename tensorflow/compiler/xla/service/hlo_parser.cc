@@ -1248,11 +1248,14 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       optional<string> custom_call_target;
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
+      optional<int64> feature_group_count;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["dim_labels"] = {/*required=*/false,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
+      attrs["feature_group_count"] = {/*required=*/false, AttrTy::kInt64,
+                                      &feature_group_count};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -1263,6 +1266,9 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       }
       if (dnums.has_value()) {
         instruction->set_convolution_dimension_numbers(*dnums);
+      }
+      if (feature_group_count.has_value()) {
+        instruction->set_feature_group_count(*feature_group_count);
       }
       break;
     }
