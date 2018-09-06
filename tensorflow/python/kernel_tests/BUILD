@@ -622,6 +622,7 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],
+    tags = ["notap"],
 )
 
 cuda_py_test(
