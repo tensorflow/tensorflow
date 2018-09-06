@@ -341,6 +341,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         ],
         sha256 = "95160f778a62c7a60ddeadc7bf2d83f85a23a27359814aca12cf949e896fa82c",
         strip_prefix = "abseil-py-pypi-v0.2.2",
+        system_build_file = clean_dep("//third_party/systemlibs:absl_py.BUILD"),
+        system_link_files = {
+            "//third_party/systemlibs:absl_py.absl.flags.BUILD": "absl/flags/BUILD",
+            "//third_party/systemlibs:absl_py.absl.testing.BUILD": "absl/testing/BUILD",
+        },
     )
 
     tf_http_archive(

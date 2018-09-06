@@ -10,6 +10,7 @@
 _TF_SYSTEM_LIBS = "TF_SYSTEM_LIBS"
 
 VALID_LIBS = [
+    "absl_py",
     "astor_archive",
     "boringssl",
     "com_googlesource_code_re2",
