@@ -52,10 +52,7 @@ static std::array<bool, 2> use_bf16_params{true, false};
 class HloEvaluatorTest : public ::testing::WithParamInterface<bool>,
                          public HloVerifiedTestBase {
  protected:
-  HloEvaluatorTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false),
-        use_bfloat16_(GetParam()) {
+  HloEvaluatorTest() : HloVerifiedTestBase(), use_bfloat16_(GetParam()) {
     evaluator_ = absl::make_unique<HloEvaluator>();
   }
 
