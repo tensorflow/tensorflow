@@ -5592,6 +5592,19 @@ op {
       s: ""
     }
   }
+  attr {
+    name: "reduction_type"
+    type: "string"
+    default_value {
+      s: "MEAN"
+    }
+    allowed_values {
+      list {
+        s: "MEAN"
+        s: "SUM"
+      }
+    }
+  }
   is_stateful: true
 }
 op {
@@ -29617,6 +29630,19 @@ op {
       s: ""
     }
   }
+  attr {
+    name: "reduction_type"
+    type: "string"
+    default_value {
+      s: "MEAN"
+    }
+    allowed_values {
+      list {
+        s: "MEAN"
+        s: "SUM"
+      }
+    }
+  }
   is_stateful: true
 }
 op {
@@ -32112,6 +32138,21 @@ op {
   attr {
     name: "body"
     type: "func"
+  }
+}
+op {
+  name: "StaticRegexFullMatch"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type: DT_BOOL
+  }
+  attr {
+    name: "pattern"
+    type: "string"
   }
 }
 op {
