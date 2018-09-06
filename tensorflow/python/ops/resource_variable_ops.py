@@ -954,7 +954,7 @@ class ResourceVariable(variables.RefVariable):
         handle=self._handle, dtype=self.dtype, shape=self._shape,
         in_graph_mode=self._in_graph_mode,
         deleter=self._handle_deleter if not self._in_graph_mode else None,
-        parent_op=op, parent_name=self._handle_name, unique_id=self._unique_id)
+        parent_op=op, unique_id=self._unique_id)
 
   def assign(self, value, use_locking=None, name=None, read_value=True):
     """Assigns a new value to this variable.
@@ -1293,8 +1293,7 @@ class _UnreadVariable(ResourceVariable):
   """
 
   def __init__(self, handle, dtype,  # pylint: disable=super-init-not-called
-               shape, in_graph_mode, deleter, parent_op, parent_name,
-               unique_id):
+               shape, in_graph_mode, deleter, parent_op, unique_id):
     # We do not call super init on purpose.
     self._trainable = False
     self._save_slice_info = None
