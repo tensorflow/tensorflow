@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class ParallelMapIterator : public DatasetBaseIterator {
@@ -333,4 +334,5 @@ std::unique_ptr<IteratorBase> NewParallelMapIterator(
                               std::move(map_func), num_parallel_calls));
 }
 
+}  // namespace data
 }  // namespace tensorflow

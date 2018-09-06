@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -684,7 +684,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
             {
               tf_shared_lock l(ckpt_mu_);
               worker_thread_states_[thread_index].iterator_creation_status =
-                  dataset::MakeIteratorFromInputElement(
+                  MakeIteratorFromInputElement(
                       ctx.get(), worker_thread_states_[thread_index].input,
                       thread_index, dataset()->captured_func_.get(), prefix(),
                       &worker_thread_states_[thread_index].iterator);
@@ -914,7 +914,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
           worker_thread_states_[index].iterator.reset();
         } else {
           std::unique_ptr<IteratorBase> iterator;
-          Status s = dataset::MakeIteratorFromInputElement(
+          Status s = MakeIteratorFromInputElement(
               ctx, worker_thread_states_[index].input, index,
               dataset()->captured_func_.get(), prefix(), &iterator);
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, iterator));
@@ -1068,5 +1068,5 @@ REGISTER_KERNEL_BUILDER(Name("ParallelInterleaveDataset").Device(DEVICE_CPU),
                         ParallelInterleaveDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow
