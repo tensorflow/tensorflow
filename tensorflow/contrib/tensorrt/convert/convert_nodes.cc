@@ -95,6 +95,9 @@ inline tensorflow::Status ConvertDType(tensorflow::DataType tf_dtype,
     case tensorflow::DataType::DT_INT8:
       *trt_dtype = nvinfer1::DataType::kINT8;
       break;
+    case tensorflow::DataType::DT_QINT8:
+      *trt_dtype = nvinfer1::DataType::kINT8;
+      break;
     case tensorflow::DataType::DT_HALF:
       *trt_dtype = nvinfer1::DataType::kHALF;
       break;
@@ -634,6 +637,16 @@ void ReorderCKtoKC(const TRT_ShapedWeights& iweights,
           ostrides);
       break;
     }
+    case tensorflow::DataType::DT_INT8:
+    case tensorflow::DataType::DT_UINT8:
+    case tensorflow::DataType::DT_QINT8:
+    case tensorflow::DataType::DT_QUINT8: {
+      Reorder2({k, c}, static_cast<int8_t const*>(iweights.GetValues()),
+               istrides,
+               static_cast<int8_t*>(const_cast<void*>(oweights->GetValues())),
+               ostrides);
+      break;
+    }
     default:
       LOG(FATAL) << "Unsupported type in reorder expected fp32 or fp16 but got "
                  << DataTypeString(iweights.type_);
@@ -812,13 +825,18 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
     TRT_TensorOrWeights& output = outputs[i];
     string output_name = node_def.name();
     if (i != 0) output_name = StrCat(output_name, ":", i);
-    // We need to check the name before setting it. For Identity op where the
-    // output is the input, if its input is one of the engine input, setting
-    // the name here will overwrite engine input bindings which will cause
-    // runtime error.
+    // We need to check the name before setting it. If the input is one of the
+    // engine input, setting the name here will overwrite engine input
+    // bindings which will cause runtime error. 
     if (output.is_tensor()) {
       const char* tensor_name = output.tensor()->getName();
-      if (tensor_name == nullptr || std::strlen(tensor_name) == 0) {
+      if (!tensorflow::str_util::StartsWith(tensor_name, kInputPHName)) {
+        // TRT initializes tensor names as "(Unnamed ITensor* N)". We rename
+        // them to match their corresponding TensorFlow name.
+        // Note: ITensors that we create internally within TF-TRT which are
+        // not inputs or outputs of a node will not be renamed. This is a
+        // potential cause of confusion if an error message or warning
+        // mentions the unnamed tensor.
         output.tensor()->setName(output_name.c_str());
       }
     }
@@ -930,6 +948,7 @@ Status Converter::TransposeTensor(nvinfer1::ITensor* input_tensor,
 
   nvinfer1::IShuffleLayer* layer = this->network()->addShuffle(*input_tensor);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Transpose");
+  MarkQuantizationRangesAsInferrable(input_tensor, layer->getOutput(0));
 
   nvinfer1::Permutation permutation;
   for (int32_t i = 0; i < dims.nbDims; ++i) {
@@ -976,6 +995,8 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
           *const_cast<nvinfer1::ITensor*>(input.tensor()));
       TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Reshape");
       layer->setReshapeDimensions(dims);
+      MarkQuantizationRangesAsInferrable(
+          const_cast<nvinfer1::ITensor*>(input.tensor()), layer->getOutput(0));
       *tensor = layer->getOutput(0);
     }
   } else {
@@ -985,6 +1006,95 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
     *tensor = layer->getOutput(0);
   }
   return tensorflow::Status::OK();
+}
+
+void Converter::MarkQuantizationRangesAsInferrable(nvinfer1::ITensor* input,
+                                                   nvinfer1::ITensor* output) {
+  quantization_infer_.push_back({input, output});
+  quantization_infer_.push_back({output, input});
+}
+
+void Converter::ProvideQuantizationRange(nvinfer1::ITensor* tensor,
+                                         float min_range, float max_range) {
+  float symmetric_range = std::max(std::abs(min_range), std::abs(max_range));
+  quantization_ranges_[tensor] = symmetric_range;
+}
+
+void Converter::ApplyQuantizationRanges(bool warn_missing_ranges) {
+  // Infer ranges across marked ops
+  PropagateQuantizationRanges();
+  // Get all tensors from network
+  std::set<nvinfer1::ITensor*> all_tensors;
+  std::set<nvinfer1::ITensor*> tensors_missing_ranges;
+  for (int i = 0; i < this->network()->getNbLayers(); i++) {
+    nvinfer1::ILayer* layer = this->network()->getLayer(i);
+    for (int j = 0; j < layer->getNbInputs(); j++)
+      all_tensors.insert(layer->getInput(j));
+    for (int j = 0; j < layer->getNbOutputs(); j++)
+      all_tensors.insert(layer->getOutput(j));
+  }
+  // Apply ranges
+  for (auto tensor : all_tensors) {
+    auto it = quantization_ranges_.find(tensor);
+    if (it != quantization_ranges_.end()) {
+      float range = it->second;
+      VLOG(1) << "Setting range for: " << tensor->getName() << ": " << range;
+#if NV_TENSORRT_MAJOR >= 5
+      tensor->setDynamicRange(-range, range);
+#endif
+    } else {
+      tensors_missing_ranges.insert(tensor);
+    }
+  }
+  // Warn user about tensors that are missing ranges. If TRT fuses some layers
+  // then these tensors may not actually be required, which is why this is
+  // just a warning. If we are still missing ranges even after fusion,
+  // Builder::buildCudaEngine() will return nullptr and we will catch the
+  // error at that point.
+  if (warn_missing_ranges) {
+    for (auto tensor : tensors_missing_ranges) {
+      // Note: there may be some warnings for "(Unnamed ITensor* N)". These
+      // are tensors which are created internally by TF-TRT. The ranges for
+      // these unnamed ITensors are always inferred from user provided ranges,
+      // thus there will also be a warning for the range(s) the user missed.
+      LOG(WARNING) << "Quantization range was not found for "
+                    << tensor->getName() << ". "
+                    << "This might be okay if TensorRT does not need the range"
+                    << "(e.g. due to node fusion).";
+    }
+  }
+}
+
+void Converter::PropagateQuantizationRanges() {
+  // Propagate ranges across edges in quantization_infer_ until no new
+  // information is added.
+  // Note: this function modifies quantization_infer_, it might be better to
+  // modify a copy instead if we for some reason need quantization_infer_
+  // later.
+  bool information_added = true;
+  while (information_added) {
+    information_added = false;
+    for (auto it = quantization_infer_.begin();
+        it != quantization_infer_.end();) {
+      auto input_tensor_range = quantization_ranges_.find(it->first);
+      auto output_tensor_range = quantization_ranges_.find(it->second);
+      if (input_tensor_range != quantization_ranges_.end() &&
+          output_tensor_range == quantization_ranges_.end()) {
+        // Input has range but output doesn't: copy range
+        quantization_ranges_[it->second] = input_tensor_range->second;
+        information_added = true;
+        VLOG(1) << "Copy quantization range: "
+                << it->first->getName() << " -> " << it->second->getName();
+      }
+      // We can remove edges when the output range is known
+      if (quantization_ranges_.find(it->second) !=
+          quantization_ranges_.end()) {
+        it = quantization_infer_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
 }
 
 Status Converter::GetInputs(const tensorflow::NodeDef& node_def,
@@ -1788,6 +1898,8 @@ tensorflow::Status ConvertPool(OpConverterParams* params) {
         nvinfer1::DimsHW(padding[0].first, padding[1].first),
         nvinfer1::DimsHW(padding[0].second, padding[1].second));
     TFTRT_RETURN_ERROR_IF_NULLPTR(pad_layer, node_def.name());
+    params->converter->MarkQuantizationRangesAsInferrable(
+        const_cast<nvinfer1::ITensor*>(tensor), pad_layer->getOutput(0));
     padding = {{0, 0}, {0, 0}};
     tensor = pad_layer->getOutput(0);
   }
@@ -1795,6 +1907,11 @@ tensorflow::Status ConvertPool(OpConverterParams* params) {
   nvinfer1::IPoolingLayer* layer = params->converter->network()->addPooling(
       *const_cast<nvinfer1::ITensor*>(tensor), type, ksize);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  // TODO(tmorris): Average pooling may not be entirely safe to infer
+  // quantization range through (at least forwards - backwards should be fine).
+  // Max pooling is okay.
+  params->converter->MarkQuantizationRangesAsInferrable(
+      const_cast<nvinfer1::ITensor*>(tensor), layer->getOutput(0));
 
   layer->setStride(stride);
   layer->setPadding({padding[0].first, padding[1].first});
@@ -1819,6 +1936,101 @@ tensorflow::Status ConvertActivation(OpConverterParams* params) {
           nvinfer1::ActivationType::kRELU);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, params->node_def.name());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertQuantize(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  if (inputs.at(0).is_weights()) {
+    params->outputs->push_back(inputs.at(0));
+    return tensorflow::Status::OK();
+  }
+  nvinfer1::ITensor* tensor = const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor());
+  // Min
+  TRT_ShapedWeights weights_min = inputs.at(1).weights();
+  auto weights_min_ptr = static_cast<float*>(const_cast<void*>(weights_min.GetValues()));
+  float min_range = weights_min_ptr[0];
+  // Max
+  TRT_ShapedWeights weights_max = inputs.at(2).weights();
+  auto weights_max_ptr = static_cast<float*>(const_cast<void*>(weights_max.GetValues()));
+  float max_range = weights_max_ptr[0];
+  // Store ranges for tensor
+  params->converter->ProvideQuantizationRange(tensor, min_range, max_range);
+  // Sometimes, TRT may not quantize a tensor, either because it chooses to
+  // execute a higher precision kernel or because of op fusion. In these cases,
+  // accuracy will suffer if the model was trained to expect quantization at
+  // that tensor. We should consider adding a clip(tensor, min_range, max_range)
+  // operation here to ensure that any arbitrarily placed quantize node will
+  // execute as expected. However, this will negatively affect performance. If
+  // users train their models in a way which models inference as close as
+  // possible (i.e. not quantizing in place where fusion will occur), then there
+  // is no problem with the current implementation.
+  params->outputs->push_back(inputs.at(0));
+  return tensorflow::Status::OK();
+}
+
+// TODO(pdavoodi): we should update relu6 implementation once TensorRT supports
+// Relu6 natively.
+tensorflow::Status ConvertRelu6(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  // ***************************************************************************
+  // TensorRT does not implement Relu6 natively. This function converts Relu6 op
+  // to available TensorRT ops: Relu6(x) = min(Relu(x), 6)
+  // ***************************************************************************
+
+  // Input Tensor 
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
+  
+  // Relu operation i.e. Relu(x) = max(0, x)
+  nvinfer1::IActivationLayer* relu_layer = 
+      params->converter->network()->addActivation(
+          *const_cast<nvinfer1::ITensor*>(tensor),
+          nvinfer1::ActivationType::kRELU);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(relu_layer, node_def.name());
+  
+  // Large range of relu is problematic during quantization in INT8 precision mode.
+  // Setting dynamic range of relu = [0.f, 6.0f] helps with quantization.
+  // TRT only uses dynamic ranges in INT8 precision mode,
+  // and this does not affect the FP32 path.
+  params->converter->ProvideQuantizationRange(
+      relu_layer->getOutput(0), 0.0f, 6.0f);
+  
+  // Create a constant layer to store the floating point weight i.e. 6.0f This
+  // tensor will be broadcasted uniformly during elementwise `min` operation.
+  // The constant has to have the same rank as the input in order for TRT to
+  // broadcast
+  nvinfer1::Dims dims;
+  dims.nbDims = relu_layer->getOutput(0)->getDimensions().nbDims;
+  for (int i = 0; i < dims.nbDims; i++)
+    dims.d[i] = 1;
+  TRT_ShapedWeights weights = params->weight_store->GetTempWeights(
+      tensorflow::DataType::DT_FLOAT, dims);
+  auto weights_ptr = static_cast<float*>(const_cast<void*>(
+      weights.GetValues()));
+  weights_ptr[0] = 6.f;
+  nvinfer1::IConstantLayer* const6_layer = 
+      params->converter->network()->addConstant(dims, weights.GetTrtWeights());
+  TFTRT_RETURN_ERROR_IF_NULLPTR(const6_layer, node_def.name());
+  params->converter->ProvideQuantizationRange(
+      const6_layer->getOutput(0), 0.0f, 6.0f);
+  
+  // ElementWise Min Operation
+  // Min op is a nop for INT8 execution path, as the input tensor
+  // to this layer will only have values in range [0.f, 6.0f].
+  const nvinfer1::ITensor* tensor_l  = relu_layer->getOutput(0);
+  const nvinfer1::ITensor* tensor_r = const6_layer->getOutput(0);
+  nvinfer1::IElementWiseLayer* relu6_layer = 
+      params->converter->network()->addElementWise(
+          *const_cast<nvinfer1::ITensor*>(tensor_l),
+          *const_cast<nvinfer1::ITensor*>(tensor_r),
+          nvinfer1::ElementWiseOperation::kMIN);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(relu6_layer, node_def.name());
+  nvinfer1::ITensor* output_tensor = relu6_layer->getOutput(0);
+  params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 6.0f);
+
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return tensorflow::Status::OK();
 }
@@ -1872,6 +2084,9 @@ tensorflow::Status ConvertScale(OpConverterParams* params) {
         params->converter->network()->addShuffle(
             *const_cast<nvinfer1::ITensor*>(tensor));
     TFTRT_RETURN_ERROR_IF_NULLPTR(shuffle_layer, node_def.name());
+    params->converter->MarkQuantizationRangesAsInferrable(
+        const_cast<nvinfer1::ITensor*>(tensor), shuffle_layer->getOutput(0));
+
     nvinfer1::Dims reshape_dims;
     reshape_dims.nbDims = 3;
     reshape_dims.d[0] = 0;                          // 0 copy from the input
@@ -1911,6 +2126,8 @@ tensorflow::Status ConvertScale(OpConverterParams* params) {
     if (channel_index != 0) {
       shuffle_layer->setSecondTranspose(permutation);
     }
+    params->converter->MarkQuantizationRangesAsInferrable(
+        const_cast<nvinfer1::ITensor*>(output_tensor), shuffle_layer->getOutput(0));
     output_tensor = shuffle_layer->getOutput(0);
   }
 
@@ -2069,6 +2286,9 @@ tensorflow::Status ConvertConst(OpConverterParams* params) {
 }
 
 tensorflow::Status ConvertIdentity(OpConverterParams* params) {
+  // TODO(tmorris): TRT's Identity layer does not get optimized away as of TRT
+  // 5.0, however once we know that it does it would be nice to use that
+  // instead.
   params->outputs->push_back(params->inputs.at(0));
   return tensorflow::Status::OK();
 }
@@ -2691,6 +2911,8 @@ tensorflow::Status ConvertSoftmax(OpConverterParams* params) {
   layer->setAxes(1 << (nbDims - 1));
 
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  // Quantization range for SoftMax is always (0, 1)
+  params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 1.0f);
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return tensorflow::Status::OK();
 }
@@ -2787,6 +3009,14 @@ void Converter::RegisterOpConverters() {
   op_registry_["MatMul"] = ConvertMatMul;
   op_registry_["BatchMatMul"] = ConvertBatchMatMul;
   op_registry_["TopKV2"] = ConvertTopK;
+  op_registry_["Relu6"] = ConvertRelu6;
+# if NV_TENSORRT_MAJOR >= 5
+  op_registry_["QuantizeV2"] = ConvertQuantize;
+  op_registry_["Dequantize"] = ConvertQuantize;
+  op_registry_["QuantizeAndDequantizeV2"] = ConvertQuantize;
+  op_registry_["QuantizeAndDequantizeV3"] = ConvertQuantize;
+  op_registry_["FakeQuantWithMinMaxVars"] = ConvertQuantize;
+#endif
 
   plugin_converter_ = ConvertPlugin;
 }
@@ -2798,6 +3028,7 @@ tensorflow::Status ConvertGraphDefToEngine(
     Logger* logger, nvinfer1::IGpuAllocator* allocator,
     TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine,
+    bool use_calibration,
     bool* convert_successfully) {
   engine->reset();
   if (convert_successfully) *convert_successfully = false;
@@ -2812,7 +3043,11 @@ tensorflow::Status ConvertGraphDefToEngine(
     builder->setHalf2Mode(true);
   } else if (precision_mode == INT8MODE) {
     builder->setInt8Mode(true);
-    builder->setInt8Calibrator(calibrator);
+    if (use_calibration) {
+      builder->setInt8Calibrator(calibrator);
+    } else {
+      builder->setInt8Calibrator(nullptr);
+    }
   }
 
   // Create the network.
@@ -2880,6 +3115,11 @@ tensorflow::Status ConvertGraphDefToEngine(
   }
   TF_RETURN_IF_ERROR(converter.RenameAndMarkOutputTensors(output_tensors));
   if (convert_successfully) *convert_successfully = true;
+
+  // Apply user provided quantization ranges to tensors
+  const bool warn_missing_ranges = (precision_mode == INT8MODE &&
+                                    !use_calibration);
+  converter.ApplyQuantizationRanges(warn_missing_ranges);
 
   // Build the engine.
   VLOG(1) << "Starting engine creation";
