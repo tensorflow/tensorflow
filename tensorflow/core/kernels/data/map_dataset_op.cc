@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -196,5 +196,5 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
 REGISTER_KERNEL_BUILDER(Name("MapDataset").Device(DEVICE_CPU), MapDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

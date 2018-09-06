@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 
 namespace tensorflow {
+namespace data {
 
 class IteratorResource;
 
@@ -142,6 +143,7 @@ class IteratorFromStringHandleOp : public OpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };
 
+}  // namespace data
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_DATA_ITERATOR_OPS_H_

@@ -28,7 +28,7 @@ namespace tensorflow {
 
 xla::XlaOp BatchDot(xla::XlaOp x, xla::XlaOp y, bool transpose_x,
                     bool transpose_y, bool conjugate_x, bool conjugate_y,
-                    xla::PrecisionConfigProto::Precision precision) {
+                    xla::PrecisionConfig::Precision precision) {
   xla::XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
     TF_ASSIGN_OR_RETURN(xla::Shape x_shape, builder->GetShape(x));
@@ -96,7 +96,7 @@ xla::XlaOp BatchDot(xla::XlaOp x, xla::XlaOp y, bool transpose_x,
       y = xla::Conj(y);
     }
 
-    xla::PrecisionConfigProto precision_proto;
+    xla::PrecisionConfig precision_proto;
     precision_proto.add_operand_precision(precision);
     precision_proto.add_operand_precision(precision);
 

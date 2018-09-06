@@ -38,9 +38,9 @@ std::unique_ptr<HloInstruction> MakeDot(const Shape& shape, HloInstruction* lhs,
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  PrecisionConfigProto precision_config;
+  PrecisionConfig precision_config;
   precision_config.mutable_operand_precision()->Resize(
-      2, PrecisionConfigProto::DEFAULT);
+      2, PrecisionConfig::DEFAULT);
   return HloInstruction::CreateDot(shape, lhs, rhs, dot_dnums,
                                    precision_config);
 }

@@ -769,6 +769,11 @@ struct DepthwiseParams {
   int32 output_activation_max;
 };
 
+struct DequantizationParams {
+  double scale;
+  int32 zero_point;
+};
+
 struct FakeQuantParams {
   MinMax minmax;
   int32 num_bits;

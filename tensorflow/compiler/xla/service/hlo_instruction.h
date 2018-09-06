@@ -407,7 +407,7 @@ class HloInstruction {
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       int64 feature_group_count, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      const PrecisionConfigProto& precision_config);
+      const PrecisionConfig& precision_config);
 
   // Creates an FFT op, of the type indicated by fft_type.
   static std::unique_ptr<HloInstruction> CreateFft(
@@ -419,7 +419,7 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateDot(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       const DotDimensionNumbers& dimension_numbers,
-      const PrecisionConfigProto& precision_config);
+      const PrecisionConfig& precision_config);
 
   // Creates a dot op with operands 'lhs' and 'rhs' that contracts dimension 1
   // of the LHS with dimension 0 of the RHS with no batch dimensions.  Both LHS
@@ -1262,10 +1262,8 @@ class HloInstruction {
   // information. Transformations to other HLOs will not preserve this
   // information but it is presumed that the alternate lowering is strictly
   // superior.
-  const PrecisionConfigProto& precision_config() const {
-    return precision_config_;
-  }
-  void set_precision_config(const PrecisionConfigProto& precision_config) {
+  const PrecisionConfig& precision_config() const { return precision_config_; }
+  void set_precision_config(const PrecisionConfig& precision_config) {
     precision_config_ = precision_config;
   }
 
@@ -1680,7 +1678,7 @@ class HloInstruction {
 
   // Information used to communicate to the implementation about the algorithm
   // used to produce results. See the documentation on precision_config().
-  PrecisionConfigProto precision_config_;
+  PrecisionConfig precision_config_;
 
   // String identifier for instruction.
   string name_;
@@ -1704,12 +1702,12 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
 string PaddingConfigToString(const PaddingConfig& padding);
 string OpMetadataToString(const OpMetadata& metadata);
 string RandomDistributionToString(const RandomDistribution& distribution);
-string PrecisionToString(const PrecisionConfigProto::Precision& precision);
+string PrecisionToString(const PrecisionConfig::Precision& precision);
 string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
 
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name);
-StatusOr<PrecisionConfigProto::Precision> StringToPrecision(const string& name);
+StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name);
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 

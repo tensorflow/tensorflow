@@ -622,13 +622,6 @@ TEST_P(HloEvaluatorTest, NegativeAndInteriorPadding2D) {
   EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
 }
 
-PrecisionConfigProto DefaultPrecisionConfig(int operands) {
-  PrecisionConfigProto precision_config;
-  precision_config.mutable_operand_precision()->Resize(
-      operands, PrecisionConfigProto::DEFAULT);
-  return precision_config;
-}
-
 TEST_P(HloEvaluatorTest, DotRank2AndRank1) {
   HloComputation::Builder b(TestName());
 

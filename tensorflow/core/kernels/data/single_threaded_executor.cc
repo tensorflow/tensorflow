@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 typedef gtl::InlinedVector<TensorValue, 4> TensorValueVec;
@@ -375,4 +376,5 @@ Status NewSingleThreadedExecutor(const LocalExecutorParams& params,
   return Status::OK();
 }
 
+}  // namespace data
 }  // namespace tensorflow

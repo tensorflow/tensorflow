@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
 
@@ -617,7 +616,7 @@ Status MarkForCompilationPass::Run(
 }
 
 static string RatioToString(int numerator, int denominator) {
-  return strings::Printf("%d / %d (%.2f%%)", numerator, denominator,
+  return absl::StrFormat("%d / %d (%.2f%%)", numerator, denominator,
                          (100.0 * numerator) / denominator);
 }
 
@@ -626,14 +625,14 @@ static void VLogClusteringSummary(const Graph& g) {
     return;
   }
 
-  std::map<StringPiece, int> cluster_name_to_size;
-  std::map<StringPiece, std::map<StringPiece, int>>
+  std::map<absl::string_view, int> cluster_name_to_size;
+  std::map<absl::string_view, std::map<absl::string_view, int>>
       cluster_name_to_op_histogram;
-  std::map<StringPiece, int> unclustered_op_histogram;
+  std::map<absl::string_view, int> unclustered_op_histogram;
   int clustered_node_count = 0;
 
   for (Node* n : g.nodes()) {
-    absl::optional<StringPiece> cluster_name = GetXlaClusterForNode(*n);
+    absl::optional<absl::string_view> cluster_name = GetXlaClusterForNode(*n);
     if (cluster_name) {
       clustered_node_count++;
       cluster_name_to_size[*cluster_name]++;
@@ -650,7 +649,7 @@ static void VLogClusteringSummary(const Graph& g) {
           << RatioToString(clustered_node_count, g.num_nodes());
 
   for (const auto& cluster_name_size_pair : cluster_name_to_size) {
-    StringPiece cluster_name = cluster_name_size_pair.first;
+    absl::string_view cluster_name = cluster_name_size_pair.first;
     int size = cluster_name_size_pair.second;
     VLOG(2) << "  " << cluster_name << " "
             << RatioToString(size, g.num_nodes());
@@ -670,14 +669,15 @@ static void VLogClusteringSummary(const Graph& g) {
   }
 
   struct EdgeInfo {
-    StringPiece node_name;
-    absl::optional<StringPiece> cluster_name;
+    absl::string_view node_name;
+    absl::optional<absl::string_view> cluster_name;
 
-    StringPiece GetClusterName() const {
+    absl::string_view GetClusterName() const {
       return cluster_name ? *cluster_name : "[none]";
     }
 
-    std::pair<StringPiece, absl::optional<StringPiece>> AsPair() const {
+    std::pair<absl::string_view, absl::optional<absl::string_view>> AsPair()
+        const {
       return {node_name, cluster_name};
     }
 
@@ -686,19 +686,21 @@ static void VLogClusteringSummary(const Graph& g) {
     }
   };
 
-  using EdgeInfoMap = std::map<StringPiece, std::map<EdgeInfo, int64>>;
+  using EdgeInfoMap = std::map<absl::string_view, std::map<EdgeInfo, int64>>;
 
   EdgeInfoMap incoming_edge_infos;
   EdgeInfoMap outgoing_edge_infos;
 
-  std::set<StringPiece> cluster_names_to_print;
+  std::set<absl::string_view> cluster_names_to_print;
 
   for (const Edge* e : g.edges()) {
     const Node* from = e->src();
-    absl::optional<StringPiece> from_cluster_name = GetXlaClusterForNode(*from);
+    absl::optional<absl::string_view> from_cluster_name =
+        GetXlaClusterForNode(*from);
 
     const Node* to = e->dst();
-    absl::optional<StringPiece> to_cluster_name = GetXlaClusterForNode(*to);
+    absl::optional<absl::string_view> to_cluster_name =
+        GetXlaClusterForNode(*to);
 
     if (to_cluster_name == from_cluster_name) {
       continue;
@@ -721,9 +723,9 @@ static void VLogClusteringSummary(const Graph& g) {
     VLOG(2) << "   [none]";
   }
 
-  auto print_edge_info_set_for_cluster = [&](StringPiece cluster_name,
+  auto print_edge_info_set_for_cluster = [&](absl::string_view cluster_name,
                                              const EdgeInfoMap& edge_info_map,
-                                             StringPiece desc) {
+                                             absl::string_view desc) {
     auto it = edge_info_map.find(cluster_name);
     if (it != edge_info_map.end()) {
       VLOG(2) << "  " << it->second.size() << " " << desc << " edges";
@@ -737,7 +739,7 @@ static void VLogClusteringSummary(const Graph& g) {
     }
   };
 
-  for (StringPiece cluster_name : cluster_names_to_print) {
+  for (absl::string_view cluster_name : cluster_names_to_print) {
     VLOG(2) << " ** Cluster " << cluster_name;
     print_edge_info_set_for_cluster(cluster_name, incoming_edge_infos,
                                     "incoming");
@@ -966,7 +968,7 @@ Status MarkForCompilationPass::RunImpl(
       string& name = cluster_names[cluster];
 
       if (name.empty()) {
-        name = strings::StrCat("cluster_", cluster_sequence_num++);
+        name = absl::StrCat("cluster_", cluster_sequence_num++);
       }
       n->AddAttr(kXlaClusterAttr, name);
       VLOG(3) << "Assigning node " << n->name() << " to cluster " << name;

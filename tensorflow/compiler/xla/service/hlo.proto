@@ -172,7 +172,7 @@ message HloInstructionProto {
   xla.ScatterDimensionNumbers scatter_dimension_numbers = 48;
 
   // Precision configuration for the instruction. Has backend-specific meaning.
-  xla.PrecisionConfigProto precision_config = 51;
+  xla.PrecisionConfig precision_config = 51;
 
   // Collective permute field.
   repeated SourceTarget source_target_pairs = 52;

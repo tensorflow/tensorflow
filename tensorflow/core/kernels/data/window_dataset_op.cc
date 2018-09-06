@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/window_dataset.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -195,5 +195,5 @@ REGISTER_KERNEL_BUILDER(Name("WindowDataset").Device(DEVICE_CPU),
                         WindowDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

@@ -198,14 +198,14 @@ Status XlaCompiler::CompileFunction(const XlaCompiler::CompileOptions& options,
   // lowest-numbered core that consumes the argument. We choose the
   // lowest-numbered core so the assignment is deterministic.
   for (Node* n : graph->nodes()) {
-    if (StringPiece(n->type_string()) == "_Arg") {
+    if (absl::string_view(n->type_string()) == "_Arg") {
       TF_RETURN_IF_ERROR(SetNodeShardingFromNeighbors(n, /*out_edges=*/true));
     }
   }
   // Do _Retval as a second loop, in case the retval's input is an _Arg (which
   // may have gotten a device assignment from the first loop).
   for (Node* n : graph->nodes()) {
-    if (StringPiece(n->type_string()) == "_Retval") {
+    if (absl::string_view(n->type_string()) == "_Retval") {
       TF_RETURN_IF_ERROR(SetNodeShardingFromNeighbors(n, /*out_edges=*/false));
     }
   }
@@ -213,8 +213,7 @@ Status XlaCompiler::CompileFunction(const XlaCompiler::CompileOptions& options,
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileFunction: "
             << dump_graph::DumpGraphToFile(
-                   strings::StrCat("xla_compile_function_", function_id),
-                   *graph);
+                   absl::StrCat("xla_compile_function_", function_id), *graph);
   }
 
   VLOG(1) << "====================================================";
@@ -522,7 +521,7 @@ Status XlaCompiler::BuildArguments(
 
   // Use the _Arg nodes in the graph to resolve core assignments.
   for (const Node* n : graph.nodes()) {
-    if (StringPiece(n->type_string()) != "_Arg") continue;
+    if (absl::string_view(n->type_string()) != "_Arg") continue;
     int index;
     TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
     TF_RET_CHECK(index >= 0 && index < args.size())
@@ -581,7 +580,7 @@ Status XlaCompiler::BuildArguments(
           builder, core == -1 ? absl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
       arg_handles[i] = xla::Parameter(builder, i, (*input_shapes)[i],
-                                      strings::StrCat("arg", i));
+                                      absl::StrCat("arg", i));
     }
   }
 
@@ -644,7 +643,7 @@ Status XlaCompiler::CompileSingleOp(
   // dependency edge to the _SOURCE node.
   for (int64 i = 0; i < ctx->num_inputs(); ++i) {
     Node* node;
-    string name = strings::StrCat(ctx->op_kernel().name(), "_", i, "_arg");
+    string name = absl::StrCat(ctx->op_kernel().name(), "_", i, "_arg");
     Status status = NodeBuilder(name, "_Arg")
                         .ControlInput(graph->source_node())
                         .Attr("T", ctx->input_dtype(i))
@@ -657,7 +656,7 @@ Status XlaCompiler::CompileSingleOp(
   // Similarly with return values, create dummy _Retval nodes fed by `node`.
   for (int64 i = 0; i < ctx->num_outputs(); ++i) {
     Node* node;
-    string name = strings::StrCat(ctx->op_kernel().name(), "_", i, "_retval");
+    string name = absl::StrCat(ctx->op_kernel().name(), "_", i, "_retval");
     Status status = NodeBuilder(name, "_Retval")
                         .Input(main_node, i)
                         .Attr("T", ctx->expected_output_dtype(i))
@@ -693,7 +692,7 @@ Status ValidateGraph(const Graph* graph,
                      const DeviceType& device_type, const string& name) {
   auto maybe_error = [&](const Node* node, const Status& s) -> Status {
     if (!s.ok()) {
-      return errors::InvalidArgument(strings::StrCat(
+      return errors::InvalidArgument(absl::StrCat(
           "Detected unsupported operations when trying to compile graph ", name,
           " on ", device_type.type_string(), ": ", node->def().op(), " (",
           s.error_message(), ")", FormatNodeForError(*node)));
@@ -734,7 +733,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileGraph: "
             << dump_graph::DumpGraphToFile(
-                   strings::StrCat("xla_compile_graph_", name), *graph);
+                   absl::StrCat("xla_compile_graph_", name), *graph);
   }
 
   // Report the error here if initialization failed.

@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor.h"
 
 namespace tensorflow {
+namespace data {
 
 // Creates a new `Executor` for executing `graph` synchronously on the caller
 // thread.
@@ -55,6 +56,7 @@ Status NewSingleThreadedExecutor(const LocalExecutorParams& params,
                                  std::unique_ptr<const Graph> graph,
                                  Executor** executor);
 
+}  // namespace data
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_DATA_SINGLE_THREADED_EXECUTOR_H_

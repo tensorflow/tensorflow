@@ -43,13 +43,12 @@ xla::StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index);
 // Returns a textual representation of the names of the nodes in the input.
 template <typename T>
 string NodesToString(const T& nodes) {
-  return strings::StrCat("{",
-                         absl::StrJoin(nodes, ",",
-                                       [](string* output, const Node* node) {
-                                         strings::StrAppend(output,
-                                                            node->name());
-                                       }),
-                         "}");
+  return absl::StrCat("{",
+                      absl::StrJoin(nodes, ",",
+                                    [](string* output, const Node* node) {
+                                      absl::StrAppend(output, node->name());
+                                    }),
+                      "}");
 }
 
 }  // namespace tensorflow

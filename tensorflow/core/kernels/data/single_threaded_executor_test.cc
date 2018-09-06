@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class ExecutorTest : public ::testing::Test {
@@ -327,4 +328,5 @@ BENCHMARK(BM_FeedInputFetchOutput);
 #endif
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

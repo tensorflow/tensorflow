@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level description of
@@ -891,5 +891,5 @@ REGISTER_KERNEL_BUILDER(Name("CacheDataset").Device(DEVICE_CPU),
                         CacheDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

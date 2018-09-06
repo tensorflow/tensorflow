@@ -168,10 +168,15 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(
 
   bool eval_hybrid = use_hybrid_evaluation && IsHybridEvaluationOp(op, op_code);
 
-  bool skipped_tensor = false;
   std::vector<int32_t> op_input_indices = GetWeightInputIndices(op_code);
   for (const int32_t op_input_idx : op_input_indices) {
     int32_t tensor_idx = op->inputs[op_input_idx];
+
+    if (tensor_idx == -1) {
+      LOG(INFO) << "Skipping optional tensor input " << op_input_idx
+                << " of operation " << EnumNameBuiltinOperator(op_code);
+      continue;
+    }
 
     TensorT* tensor = subgraph->tensors[tensor_idx].get();
     // TODO(suharshs): Support shared weights, i.e. If two tensors share the
@@ -180,14 +185,12 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(
         CountTensorConsumers(model, subgraph, tensor_idx) != 1) {
       LOG(INFO) << "Skipping quantization of tensor " << tensor->name
                 << " that is shared between multiple multiple operations.";
-      skipped_tensor = true;
       continue;
     }
 
     if (tensor->type != TensorType_FLOAT32) {
       LOG(INFO) << "Skipping quantization of tensor " << tensor->name
                 << " that is not type float.";
-      skipped_tensor = true;
       continue;
     }
 
@@ -196,7 +199,9 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(
       LOG(INFO) << "Skipping quantization of tensor " << tensor->name
                 << " because it has fewer than " << weights_min_num_elements
                 << " elements (" << num_elements << ").";
-      skipped_tensor = true;
+      // If one of the weights isn't quantized, then we cannot use the hybrid
+      // kernel for this operation, since it expects everything to be quantized.
+      eval_hybrid = false;
       continue;
     }
 
@@ -207,12 +212,6 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(
     tensor_info.tensor = tensor;
 
     tensor_infos.push_back(tensor_info);
-  }
-
-  // For hybrid operations we either need to quantize all tensors or none. So
-  // if we skipped any tensors we need to return no quantized tensors.
-  if (eval_hybrid && skipped_tensor) {
-    return {};
   }
 
   return tensor_infos;

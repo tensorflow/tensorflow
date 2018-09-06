@@ -47,13 +47,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-PrecisionConfigProto DefaultPrecisionConfig(int operands) {
-  PrecisionConfigProto precision_config;
-  precision_config.mutable_operand_precision()->Resize(
-      operands, PrecisionConfigProto::DEFAULT);
-  return precision_config;
-}
-
 class MultiOutputFusionTest : public HloTestBase {
  protected:
   MultiOutputFusionTest() { error_spec_ = ErrorSpec{0.0001, 1e-2}; }

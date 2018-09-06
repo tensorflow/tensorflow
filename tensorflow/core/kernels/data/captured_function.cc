@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/notification.h"
 
 namespace tensorflow {
+namespace data {
 
 /* static */
 Status CapturedFunction::Create(
@@ -418,4 +419,5 @@ CapturedFunction::CapturedFunction(const NameAttrList& func,
       captured_inputs_(std::move(captured_inputs)),
       use_inter_op_parallelism_(use_inter_op_parallelism) {}
 
+}  // namespace data
 }  // namespace tensorflow
