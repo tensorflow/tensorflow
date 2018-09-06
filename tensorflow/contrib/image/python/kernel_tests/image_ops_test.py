@@ -277,7 +277,9 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
       image = constant_op.constant([[1, 2], [3, 4]], dtype=dtype)
       value = image_ops.transform(image, [1] * 8)
       with self.test_session(use_gpu=True):
-        self.assertAllEqual(value.eval(), np.array([[4, 4], [4, 4]]).astype(dtype.as_numpy_dtype()))
+        self.assertAllEqual(
+            value.eval(),
+            np.array([[4, 4], [4, 4]]).astype(dtype.as_numpy_dtype()))
 
 
 class BipartiteMatchTest(test_util.TensorFlowTestCase):
