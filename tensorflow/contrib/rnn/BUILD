@@ -212,6 +212,7 @@ cuda_py_tests(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    tags = ["noasan"],
 )
 
 tf_custom_op_library(
@@ -279,7 +280,10 @@ cuda_py_tests(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "noasan",
+    ],
 )
 
 tf_cc_test(
