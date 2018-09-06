@@ -925,29 +925,18 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   }
   DCHECK(run_opts.runner != nullptr);
 
-  Executor::Args* exec_args = new Executor::Args;
+  Executor::Args exec_args;
   // Inherit the step_id from the caller.
-  exec_args->step_id = run_opts.step_id;
-  exec_args->rendezvous = run_opts.rendezvous;
-  exec_args->stats_collector = run_opts.stats_collector;
-  exec_args->cancellation_manager = run_opts.cancellation_manager;
-  exec_args->collective_executor = run_opts.collective_executor;
-  exec_args->step_container = run_opts.step_container;
-  exec_args->runner = *run_opts.runner;
-  exec_args->call_frame = frame;
+  exec_args.step_id = run_opts.step_id;
+  exec_args.rendezvous = run_opts.rendezvous;
+  exec_args.stats_collector = run_opts.stats_collector;
+  exec_args.cancellation_manager = run_opts.cancellation_manager;
+  exec_args.collective_executor = run_opts.collective_executor;
+  exec_args.step_container = run_opts.step_container;
+  exec_args.runner = *run_opts.runner;
+  exec_args.call_frame = frame;
 
-  item->exec->RunAsync(
-      // Executor args
-      *exec_args,
-      // Done callback.
-      std::bind(
-          [item, frame, exec_args](DoneCallback done,
-                                   // Start unbound arguments.
-                                   const Status& status) {
-            delete exec_args;
-            done(status);
-          },
-          std::move(done), std::placeholders::_1));
+  item->exec->RunAsync(exec_args, std::move(done));
 }
 
 bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) {
