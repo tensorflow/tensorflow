@@ -394,10 +394,16 @@ class AnfTransformer(transformer.Base):
   # just recur.
 
   def visit_List(self, node):
-    return self._visit_strict_expression(node)
+    node = self.generic_visit(node)
+    if not isinstance(node.ctx, gast.Store):
+      self._ensure_fields_trivial(node)
+    return node
 
   def visit_Tuple(self, node):
-    return self._visit_strict_expression(node)
+    node = self.generic_visit(node)
+    if not isinstance(node.ctx, gast.Store):
+      self._ensure_fields_trivial(node)
+    return node
 
 
 def transform(node, entity_info, gensym_source=None):
