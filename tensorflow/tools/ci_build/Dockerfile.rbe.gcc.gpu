@@ -1,0 +1,43 @@
+# To push a new version, run:
+# $ docker build -f Dockerfile.rbe.gcc.gpu \
+#       --tag "gcr.io/asci-toolchain/nosla-nvidia-gcc" .
+# $ docker push gcr.io/asci-toolchain/nosla-nvidia-gcc
+FROM nvidia/cuda:9.0-cudnn7-devel-ubuntu16.04
+
+LABEL maintainer="Manuel Klimek <klimek@google.com>"
+
+# TODO(b/110903506): Fix the nvidia docker image by providing a link to the
+# SONAME of libcuda.so.  Alternatively, consider using gold or lld which do not
+# run into the same problem - that will only work once the tensorflow build does
+# not link to libcuda from generators anymore.
+# https://github.com/NVIDIA/nvidia-docker/issues/775
+RUN ln -s libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
+
+# TODO(klimek): Once the TODO in tensorflow's configure.py to correctly find
+# libnccl is resolved, delete this block.
+RUN ln -s /usr/lib/x86_64-linux-gnu/libnccl.so /usr/lib/libnccl.so \
+ && ln -s /usr/lib/x86_64-linux-gnu/libnccl.so /usr/lib/libnccl.so.2
+
+# TODO(b/110903506): Fix tensorflow to not require the use of LD_LIBRARY_PATH.
+# The stubs/libcuda.so is not meant to used at runtime. The correct way to
+# pass the path to bfd-ld is to pass -Wl,-rpath-link=/usr/local/cuda/lib64/stubs
+# to all binaries transitively depending on libcuda. Optimally the tensorflow
+# build would do that internally.
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs
+
+# Copy and run the install scripts.
+COPY install/*.sh /install/
+ARG DEBIAN_FRONTEND=noninteractive
+RUN /install/install_bootstrap_deb_packages.sh
+RUN add-apt-repository -y ppa:openjdk-r/ppa && \
+    add-apt-repository -y ppa:george-edison55/cmake-3.x
+RUN /install/install_deb_packages.sh
+RUN /install/install_pip_packages.sh
+RUN /install/install_golang.sh
+
+# Install nccl2.
+RUN apt-get update && apt-get install -y \
+    libnccl2 \
+    libnccl-dev \
+ && rm -rf /var/lib/apt-lists/*
+
