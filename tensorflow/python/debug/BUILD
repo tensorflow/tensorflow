@@ -610,6 +610,7 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    tags = ["notsan"],
 )
 
 py_test(
