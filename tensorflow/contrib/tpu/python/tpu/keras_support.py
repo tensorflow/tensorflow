@@ -1657,7 +1657,7 @@ class KerasTPUModel(models.Model):
                       'make sure your paths are correct and you have '
                       'permissions to read the files. Skipping validation')
 
-    for step_index in range(steps_per_epoch - 1):
+    for step_index in range(steps_per_epoch):
       batch_logs = {'batch': step_index, 'size': 1}
       callbacks.on_batch_begin(step_index, batch_logs)
       try:
