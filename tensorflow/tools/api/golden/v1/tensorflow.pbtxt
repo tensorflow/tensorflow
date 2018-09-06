@@ -1062,7 +1062,7 @@ tf_module {
   }
   member_method {
     name: "extract_volume_patches"
-    argspec: "args=[\'images\', \'ksizes\', \'strides\', \'padding\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'ksizes\', \'strides\', \'padding\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "eye"
