@@ -170,6 +170,11 @@ class HloComputation {
   string ToString() const { return ToString(HloPrintOptions()); }
   string ToString(const HloPrintOptions& options) const;
 
+  // Overload which accepts an order to emit the instructions in.
+  string ToString(
+      const HloPrintOptions& options,
+      absl::Span<const HloInstruction* const> instruction_order) const;
+
   // Returns a serialized representation of this computation.
   HloComputationProto ToProto() const;
 

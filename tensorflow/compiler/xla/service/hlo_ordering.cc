@@ -293,23 +293,6 @@ bool HloOrdering::MayInterfere(const HloValue& a, const HloValue& b,
          !LiveRangeStrictlyBefore(b, a, dataflow);
 }
 
-HloOrderingProto HloOrdering::ToProto() const {
-  HloOrderingProto proto;
-  for (const auto& computation : module_->computations()) {
-    const std::vector<const HloInstruction*>* sequence =
-        SequentialOrder(*computation);
-    if (sequence != nullptr) {
-      HloOrderingProto::SequentialComputation* proto_computation =
-          proto.add_sequential_computations();
-      proto_computation->set_computation_name(computation->name());
-      for (const HloInstruction* instruction : *sequence) {
-        *proto_computation->add_instruction_names() = instruction->name();
-      }
-    }
-  }
-  return proto;
-}
-
 PredecessorHloOrdering::PredecessorHloOrdering(const HloModule* module)
     : HloOrdering(module) {}
 
