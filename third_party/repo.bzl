@@ -119,6 +119,10 @@ def _tf_http_archive(ctx):
             "%prefix%": ".." if _repos_are_siblings() else "external",
         }, False)
 
+    if use_syslib:
+        for internal_src, external_dest in ctx.attr.system_link_files.items():
+            ctx.symlink(Label(internal_src), ctx.path(external_dest))
+
 tf_http_archive = repository_rule(
     implementation = _tf_http_archive,
     attrs = {
@@ -130,6 +134,7 @@ tf_http_archive = repository_rule(
         "patch_file": attr.label(),
         "build_file": attr.label(),
         "system_build_file": attr.label(),
+        "system_link_files": attr.string_dict(),
     },
     environ = [
         "TF_SYSTEM_LIBS",
@@ -180,7 +185,16 @@ def _third_party_http_archive(ctx):
             _apply_patch(ctx, ctx.attr.patch_file)
         ctx.symlink(Label(ctx.attr.build_file), buildfile_path)
 
+    link_dict = dict()
+    if use_syslib:
+        link_dict.update(ctx.attr.system_link_files)
+
     for internal_src, external_dest in ctx.attr.link_files.items():
+        # if syslib and link exists in both, use the system one
+        if external_dest not in link_dict.values():
+            link_dict[internal_src] = external_dest
+
+    for internal_src, external_dest in link_dict.items():
         ctx.symlink(Label(internal_src), ctx.path(external_dest))
 
 # Downloads and creates Bazel repos for dependencies.
@@ -201,6 +215,7 @@ third_party_http_archive = repository_rule(
         "system_build_file": attr.string(mandatory = False),
         "patch_file": attr.label(),
         "link_files": attr.string_dict(),
+        "system_link_files": attr.string_dict(),
     },
     environ = [
         "TF_SYSTEM_LIBS",
