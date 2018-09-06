@@ -32,7 +32,7 @@ REGISTER_OP("CTCLoss")
     .Attr("preprocess_collapse_repeated: bool = false")
     .Attr("ctc_merge_repeated: bool = true")
     .Attr("ignore_longer_outputs_than_inputs: bool = false")
-    .Attr("T: {half, float}")
+    .Attr("T: {half, float} = DT_FLOAT")
     .Output("loss: T")
     .Output("gradient: T")
     .SetShapeFn([](InferenceContext* c) {
