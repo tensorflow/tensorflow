@@ -138,9 +138,9 @@ class MklSmallSizeAllocator : public VisitableAllocator {
     ++stats_.num_allocs;
     stats_.bytes_in_use += alloc_size;
     stats_.max_bytes_in_use =
-      std::max(stats_.max_bytes_in_use, stats_.bytes_in_use);
+        std::max(stats_.max_bytes_in_use, stats_.bytes_in_use);
     stats_.max_alloc_size =
-      std::max(alloc_size, static_cast<size_t>(stats_.max_alloc_size));
+        std::max(alloc_size, static_cast<size_t>(stats_.max_alloc_size));
   }
 
   // Decrement statistics for the allocator handling small allocations.
@@ -226,9 +226,9 @@ class MklCPUAllocator : public VisitableAllocator {
     // SubAllocator is owned by BFCAllocator, so we do not need to deallocate
     // it in MklSmallSizeAllocator.
     small_size_allocator_ =
-      new MklSmallSizeAllocator(sub_allocator_, max_mem_bytes, kName);
+        new MklSmallSizeAllocator(sub_allocator_, max_mem_bytes, kName);
     large_size_allocator_ =
-      new BFCAllocator(sub_allocator_, max_mem_bytes, kAllowGrowth, kName);
+        new BFCAllocator(sub_allocator_, max_mem_bytes, kAllowGrowth, kName);
 #ifndef INTEL_MKL_DNN_ONLY
     // For redirecting all allocations from MKL to this allocator
     // From: http://software.intel.com/en-us/node/528565
@@ -248,8 +248,8 @@ class MklCPUAllocator : public VisitableAllocator {
     // does not deliver good performance for small allocations when
     // inter_op_parallelism_threads is high.
     return (num_bytes < kSmallAllocationsThreshold)
-              ? small_size_allocator_->AllocateRaw(alignment, num_bytes)
-              : large_size_allocator_->AllocateRaw(alignment, num_bytes);
+               ? small_size_allocator_->AllocateRaw(alignment, num_bytes)
+               : large_size_allocator_->AllocateRaw(alignment, num_bytes);
   }
 
   inline void DeallocateRaw(void* ptr) override {
