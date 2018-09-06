@@ -325,12 +325,36 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   PyObject* context = nullptr;
   PyObject* device = nullptr;
   PyObject* dtype = Py_None;
-  const char* kwlist[] = {"value", "context", "device", "dtype", nullptr};
-  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOO|O",
+  PyObject* other_value = nullptr;
+  const char* kwlist[] = {"value", "context",     "device",
+                          "dtype", "other_value", nullptr};
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOO|OO",
                                    const_cast<char**>(kwlist), &value, &context,
-                                   &device, &dtype)) {
+                                   &device, &dtype, &other_value)) {
     return -1;
   }
+
+  if (other_value != nullptr) {
+    if (!EagerTensor_CheckExact(other_value)) {
+      PyErr_SetString(PyExc_TypeError,
+                      tensorflow::strings::StrCat(
+                          "Expecting an EagerTensor for other_value, got ",
+                          Py_TYPE(other_value)->tp_name)
+                          .c_str());
+
+      return -1;
+    }
+    EagerTensor* other = reinterpret_cast<EagerTensor*>(other_value);
+    self->handle =
+        TFE_TensorHandleCopySharingTensor(other->handle, self->status);
+
+    if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError)) {
+      return -1;
+    }
+
+    return 0;
+  }
+
   // Extract dtype
   int desired_dtype = -1;
   if (dtype != Py_None) {
