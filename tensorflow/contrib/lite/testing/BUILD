@@ -173,6 +173,7 @@ tf_cc_test(
     srcs = ["tflite_driver_test.cc"],
     data = ["//tensorflow/contrib/lite:testdata/multi_add.bin"],
     tags = [
+        "no_oss",  # b/112769036
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
     ],
