@@ -31,6 +31,16 @@ Status InitializableLookupTable::Find(OpKernelContext* ctx, const Tensor& keys,
   return DoFind(keys, values, default_value);
 }
 
+Status InitializableLookupTable::Contain(OpKernelContext* ctx, const Tensor& keys,
+                                      Tensor* values) {
+  if (!is_initialized()) {
+    return errors::FailedPrecondition("Table not initialized.");
+  }
+  // Do not let the use migrate before the check;  table is used without
+  // a lock by the readers.
+  std::atomic_thread_fence(std::memory_order_acquire);
+  return DoContain(keys, values);
+
 Status InitializableLookupTable::ImportValues(OpKernelContext* ctx,
                                               const Tensor& keys,
                                               const Tensor& values) {

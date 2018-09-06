@@ -36,7 +36,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
 
-
 def _clip(params, ids, max_norm):
   """Helper function for _embedding_lookup_and_transform.
 
@@ -486,7 +485,6 @@ def embedding_lookup_sparse(params,
         assert False, "Unrecognized combiner"
 
     return embeddings
-
 
 @tf_export("nn.safe_embedding_lookup_sparse")
 def safe_embedding_lookup_sparse(embedding_weights,

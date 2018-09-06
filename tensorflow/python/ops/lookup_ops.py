@@ -1308,6 +1308,8 @@ def index_to_string_table_from_tensor(vocabulary_list,
 
 ops.NotDifferentiable("LookupTableFind")
 ops.NotDifferentiable("LookupTableFindV2")
+ops.NotDifferentiable("LookupTableContain")
+ops.NotDifferentiable("LookupTableContainV2")
 ops.NotDifferentiable("LookupTableInsert")
 ops.NotDifferentiable("LookupTableInsertV2")
 ops.NotDifferentiable("LookupTableSize")
