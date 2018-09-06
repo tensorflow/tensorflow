@@ -36,23 +36,6 @@ from tensorflow.tools.docs import pretty_docs
 from tensorflow.tools.docs import py_guide_parser
 
 
-def _is_free_function(py_object, full_name, index):
-  """Check if input is a free function (and not a class- or static method)."""
-  if not tf_inspect.isfunction(py_object):
-    return False
-
-  # Static methods are functions to tf_inspect (in 2.7), so check if the parent
-  # is a class. If there is no parent, it's not a function.
-  if '.' not in full_name:
-    return False
-
-  parent_name = full_name.rsplit('.', 1)[0]
-  if tf_inspect.isclass(index[parent_name]):
-    return False
-
-  return True
-
-
 def write_docs(output_dir,
                parser_config,
                yaml_toc,
@@ -109,7 +92,7 @@ def write_docs(output_dir,
 
     # Methods and some routines are documented only as part of their class.
     if not (tf_inspect.ismodule(py_object) or tf_inspect.isclass(py_object) or
-            _is_free_function(py_object, full_name, parser_config.index)):
+            parser.is_free_function(py_object, full_name, parser_config.index)):
       continue
 
     sitepath = os.path.join('api_docs/python',
