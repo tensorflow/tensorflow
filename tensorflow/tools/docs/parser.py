@@ -153,6 +153,7 @@ class ReferenceResolver(object):
     self._doc_index = doc_index
     self._is_class = is_class
     self._is_module = is_module
+
     self._all_names = set(is_class.keys())
     self._py_module_names = py_module_names
 
@@ -210,6 +211,10 @@ class ReferenceResolver(object):
     Args:
       filepath: The file path to write the json to.
     """
+    try:
+      os.makedirs(os.path.dirname(filepath))
+    except OSError:
+      pass
     json_dict = {}
     for key, value in self.__dict__.items():
       # Drop these two fields. `_doc_index` is not serializable. `_all_names` is
@@ -223,7 +228,7 @@ class ReferenceResolver(object):
       json_dict[key.lstrip('_')] = value
 
     with open(filepath, 'w') as f:
-      json.dump(json_dict, f)
+      json.dump(json_dict, f, indent=2, sort_keys=True)
 
   def replace_references(self, string, relative_path_to_root):
     """Replace "@{symbol}" references with links to symbol's documentation page.

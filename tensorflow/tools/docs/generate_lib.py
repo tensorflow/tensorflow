@@ -548,6 +548,13 @@ class DocGenerator(object):
         help='The path from the site-root to api_docs'
              'directory for this project')
 
+    self.argument_parser.add_argument(
+        '--api_cache_out_path',
+        type=str,
+        default=None,
+        help='Path to store a json-serialized api-index, so links can be '
+        'inserted into docs without rebuilding the api_docs')
+
   def add_output_dir_argument(self):
     self.argument_parser.add_argument(
         '--output_dir',
@@ -647,6 +654,9 @@ class DocGenerator(object):
     doc_index = build_doc_index(flags.src_dir)
     visitor = self.run_extraction()
     reference_resolver = self.make_reference_resolver(visitor, doc_index)
+
+    if getattr(flags, 'api_cache_out_path', None):
+      reference_resolver.to_json_file(flags.api_cache_out_path)
 
     # Build the guide_index for the api_docs back links.
     root_title = getattr(flags, 'root_title', 'TensorFlow')
