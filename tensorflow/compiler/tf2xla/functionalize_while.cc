@@ -132,7 +132,7 @@ Status CopySubgraph(const Graph& graph, const Frame* frame,
 StatusOr<Node*> BuildArgNode(Graph* graph, DataType type, int index) {
   const char* const kArgOp = "_Arg";
   NodeDef arg_def;
-  NodeDefBuilder builder(strings::StrCat(kArgOp, index), kArgOp);
+  NodeDefBuilder builder(absl::StrCat(kArgOp, index), kArgOp);
   builder.Attr("T", type);
   builder.Attr("index", index);
   TF_RETURN_IF_ERROR(builder.Finalize(&arg_def));
@@ -487,9 +487,9 @@ Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
   static std::atomic<int64> sequence_num(0LL);
   int64 id = ++sequence_num;
   NameAttrList cond_name;
-  cond_name.set_name(strings::StrCat("_functionalize_cond_", id));
+  cond_name.set_name(absl::StrCat("_functionalize_cond_", id));
   NameAttrList body_name;
-  body_name.set_name(strings::StrCat("_functionalize_body_", id));
+  body_name.set_name(absl::StrCat("_functionalize_body_", id));
   FunctionDef cond_fdef;
   TF_RETURN_IF_ERROR(
       GraphToFunctionDef(*cond_graph, cond_name.name(), &cond_fdef));

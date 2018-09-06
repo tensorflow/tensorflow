@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
-namespace dataset {
+namespace data {
 // Registry for stateful ops that need to be used in dataset functions.
 // See below macro for usage details.
 class WhitelistedStatefulOpRegistry {
@@ -47,7 +47,7 @@ class WhitelistedStatefulOpRegistry {
   std::set<StringPiece> op_names_;
 };
 
-}  // namespace dataset
+}  // namespace data
 
 // Use this macro to whitelist an op that is marked stateful but needs to be
 // used inside a map_fn in an input pipeline. This is only needed if you wish
@@ -67,10 +67,9 @@ class WhitelistedStatefulOpRegistry {
   WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS_UNIQ_HELPER(__COUNTER__, name)
 #define WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS_UNIQ_HELPER(ctr, name) \
   WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS_UNIQ(ctr, name)
-#define WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS_UNIQ(ctr, name)        \
-  static ::tensorflow::Status whitelist_op##ctr TF_ATTRIBUTE_UNUSED =      \
-      ::tensorflow::dataset::WhitelistedStatefulOpRegistry::Global()->Add( \
-          name)
+#define WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS_UNIQ(ctr, name)   \
+  static ::tensorflow::Status whitelist_op##ctr TF_ATTRIBUTE_UNUSED = \
+      ::tensorflow::data::WhitelistedStatefulOpRegistry::Global()->Add(name)
 
 }  // namespace tensorflow
 

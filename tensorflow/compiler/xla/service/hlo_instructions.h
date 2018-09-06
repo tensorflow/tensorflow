@@ -944,7 +944,7 @@ class HloConvolutionInstruction : public HloInstruction {
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       int64 feature_group_count, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      const PrecisionConfigProto& precision_config);
+      const PrecisionConfig& precision_config);
   const Window& window() const override { return window_; }
   void set_window(const Window& window) override { window_ = window; }
   const ConvolutionDimensionNumbers& convolution_dimension_numbers() const {

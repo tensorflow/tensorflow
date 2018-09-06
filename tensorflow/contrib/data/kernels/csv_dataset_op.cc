@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class CSVDatasetOp : public DatasetOpKernel {
@@ -851,4 +852,5 @@ class CSVDatasetOp : public DatasetOpKernel {
 REGISTER_KERNEL_BUILDER(Name("CSVDataset").Device(DEVICE_CPU), CSVDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

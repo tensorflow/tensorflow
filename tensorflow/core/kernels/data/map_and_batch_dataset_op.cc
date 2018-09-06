@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -675,5 +675,5 @@ REGISTER_KERNEL_BUILDER(Name("MapAndBatchDatasetV2").Device(DEVICE_CPU),
                         MapAndBatchDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

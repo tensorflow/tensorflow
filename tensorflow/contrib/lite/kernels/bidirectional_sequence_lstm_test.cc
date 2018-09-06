@@ -177,6 +177,16 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
 
     bw_output_ = AddOutput(TensorType_FLOAT32);
 
+    aux_input_ = AddNullInput();
+    fw_aux_input_to_input_weights_ = AddNullInput();
+    fw_aux_input_to_forget_weights_ = AddNullInput();
+    fw_aux_input_to_cell_weights_ = AddNullInput();
+    fw_aux_input_to_output_weights_ = AddNullInput();
+    bw_aux_input_to_input_weights_ = AddNullInput();
+    bw_aux_input_to_forget_weights_ = AddNullInput();
+    bw_aux_input_to_cell_weights_ = AddNullInput();
+    bw_aux_input_to_output_weights_ = AddNullInput();
+
     SetBuiltinOp(BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM,
                  BuiltinOptions_LSTMOptions,
                  CreateLSTMOptions(builder_, ActivationFunctionType_TANH,
@@ -340,6 +350,16 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
   int fw_output_;
   int bw_output_;
 
+  int aux_input_;
+  int fw_aux_input_to_input_weights_;
+  int fw_aux_input_to_forget_weights_;
+  int fw_aux_input_to_cell_weights_;
+  int fw_aux_input_to_output_weights_;
+  int bw_aux_input_to_input_weights_;
+  int bw_aux_input_to_forget_weights_;
+  int bw_aux_input_to_cell_weights_;
+  int bw_aux_input_to_output_weights_;
+
   int n_batch_;
   int n_input_;
   int n_fw_cell_;
@@ -415,6 +435,16 @@ TEST(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
 
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
+
+          {n_batch, sequence_length, 0},  // aux_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_forget tensor
+          {n_cell, 0},                    // aux_fw_input_to_cell tensor
+          {n_cell, 0},                    // aux_fw_input_to_output tensor
+          {n_cell, 0},                    // aux_bw_input_to_input tensor
+          {n_cell, 0},                    // aux_bw_input_to_forget tensor
+          {n_cell, 0},                    // aux_bw_input_to_cell tensor
+          {n_cell, 0},                    // aux_bw_input_to_output tensor
       });
 
   lstm.SetInputToInputWeights({-0.45018822, -0.02338299, -0.0870589,
@@ -562,6 +592,16 @@ TEST(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClippingReverse) {
 
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
+
+          {n_batch, sequence_length, 0},  // aux_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_forget tensor
+          {n_cell, 0},                    // aux_fw_input_to_cell tensor
+          {n_cell, 0},                    // aux_fw_input_to_output tensor
+          {n_cell, 0},                    // aux_bw_input_to_input tensor
+          {n_cell, 0},                    // aux_bw_input_to_forget tensor
+          {n_cell, 0},                    // aux_bw_input_to_cell tensor
+          {n_cell, 0},                    // aux_bw_input_to_output tensor
       });
 
   lstm.SetInputToInputWeights({-0.45018822, -0.02338299, -0.0870589,
@@ -709,6 +749,16 @@ TEST(LSTMOpTest, BlackBoxTestWithCifgWithPeepholeNoProjectionNoClipping) {
 
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
+
+          {n_batch, sequence_length, 0},  // aux_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_forget tensor
+          {n_cell, 0},                    // aux_fw_input_to_cell tensor
+          {n_cell, 0},                    // aux_fw_input_to_output tensor
+          {n_cell, 0},                    // aux_bw_input_to_input tensor
+          {n_cell, 0},                    // aux_bw_input_to_forget tensor
+          {n_cell, 0},                    // aux_bw_input_to_cell tensor
+          {n_cell, 0},                    // aux_bw_input_to_output tensor
       });
 
   lstm.SetInputToCellWeights({-0.49770179, -0.27711356, -0.09624726, 0.05100781,
@@ -848,6 +898,16 @@ TEST(LSTMOpTest,
 
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
+
+          {n_batch, sequence_length, 0},  // aux_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_forget tensor
+          {n_cell, 0},                    // aux_fw_input_to_cell tensor
+          {n_cell, 0},                    // aux_fw_input_to_output tensor
+          {n_cell, 0},                    // aux_bw_input_to_input tensor
+          {n_cell, 0},                    // aux_bw_input_to_forget tensor
+          {n_cell, 0},                    // aux_bw_input_to_cell tensor
+          {n_cell, 0},                    // aux_bw_input_to_output tensor
       });
 
   lstm.SetInputToCellWeights({-0.49770179, -0.27711356, -0.09624726, 0.05100781,
@@ -987,6 +1047,16 @@ TEST(LSTMOpTest, BlackBoxTestWithPeepholeWithProjectionNoClipping) {
 
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
+
+          {n_batch, sequence_length, 0},  // aux_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_forget tensor
+          {n_cell, 0},                    // aux_fw_input_to_cell tensor
+          {n_cell, 0},                    // aux_fw_input_to_output tensor
+          {n_cell, 0},                    // aux_bw_input_to_input tensor
+          {n_cell, 0},                    // aux_bw_input_to_forget tensor
+          {n_cell, 0},                    // aux_bw_input_to_cell tensor
+          {n_cell, 0},                    // aux_bw_input_to_output tensor
       });
 
   lstm.SetInputToInputWeights(

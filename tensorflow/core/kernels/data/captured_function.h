@@ -32,6 +32,8 @@ class Device;
 class OpKernelContext;
 class ResourceMgr;
 
+namespace data {
+
 // A `CapturedFunction` encapsulates a TensorFlow function and all of
 // the runtime support required to execute it.
 //
@@ -50,8 +52,8 @@ class CapturedFunction {
 
   // Creates a new instance from a list of named attributes and captured inputs.
   //
-  // If `low_latency_hint` is true, the runtime may use an executor that is
-  // optimized for small functions.
+  // If `use_inter_op_parallelism` is false, the runtime may use an executor
+  // that is optimized for small functions.
   static Status Create(const NameAttrList& func,
                        std::vector<Tensor> captured_inputs,
                        bool use_inter_op_parallelism,
@@ -140,6 +142,12 @@ class CapturedFunction {
 
   TF_DISALLOW_COPY_AND_ASSIGN(CapturedFunction);
 };
+
+}  // namespace data
+
+// TODO(b/114112161): Remove these aliases when all users have moved over to the
+// `tensorflow::data` namespace.
+using data::CapturedFunction;
 
 }  // namespace tensorflow
 

@@ -56,13 +56,6 @@ class ConvCanonicalizationTest : public HloTestBase {
   static constexpr int kOutputFeatureCount = 64;
 };
 
-PrecisionConfigProto DefaultPrecisionConfig(int operands) {
-  PrecisionConfigProto precision_config;
-  precision_config.mutable_operand_precision()->Resize(
-      operands, PrecisionConfigProto::DEFAULT);
-  return precision_config;
-}
-
 TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
   auto builder = HloComputation::Builder(TestName());
   // The input dimensions are in CNHW order.

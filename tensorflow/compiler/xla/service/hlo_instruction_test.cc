@@ -1122,13 +1122,6 @@ TEST_F(HloInstructionTest, PartiallyElementwiseWithReuse) {
   }
 }
 
-PrecisionConfigProto DefaultPrecisionConfig(int operands) {
-  PrecisionConfigProto precision_config;
-  precision_config.mutable_operand_precision()->Resize(
-      operands, PrecisionConfigProto::DEFAULT);
-  return precision_config;
-}
-
 TEST_F(HloInstructionTest, CloneOfFusionPreservesShape) {
   // Fused expression:
   //
@@ -1759,9 +1752,9 @@ TEST_F(HloInstructionTest, PreserveOperandPrecisionOnCloneConv) {
   auto* conv = module->entry_computation()->root_instruction();
 
   auto clone = conv->Clone();
-  EXPECT_THAT(clone->precision_config().operand_precision(),
-              ::testing::ElementsAre(PrecisionConfigProto::HIGH,
-                                     PrecisionConfigProto::DEFAULT));
+  EXPECT_THAT(
+      clone->precision_config().operand_precision(),
+      ::testing::ElementsAre(PrecisionConfig::HIGH, PrecisionConfig::DEFAULT));
 }
 
 }  // namespace

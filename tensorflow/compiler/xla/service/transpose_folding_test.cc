@@ -215,13 +215,6 @@ ENTRY entry_computation {
                       /*lhs_contracting_dim=*/1, /*rhs_contracting_dim=*/1));
 }
 
-PrecisionConfigProto DefaultPrecisionConfig(int operands) {
-  PrecisionConfigProto precision_config;
-  precision_config.mutable_operand_precision()->Resize(
-      operands, PrecisionConfigProto::DEFAULT);
-  return precision_config;
-}
-
 // Test that a two dimension swap of the kernel gets folded into convolution.
 TEST_F(TransposeFoldingTest, FoldConvDimSwapTransposeRhs) {
   auto builder = HloComputation::Builder("entry_computation");

@@ -49,6 +49,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_control_flow_ops
+# Import gradients to resolve circular imports
+from tensorflow.python.ops import gradients  # pylint: disable=unused-import
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.

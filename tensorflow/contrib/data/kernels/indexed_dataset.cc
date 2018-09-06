@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 Status VerifyTypesMatch(const DataTypeVector& expected,
@@ -367,6 +367,7 @@ REGISTER_KERNEL_BUILDER(Name("IndexedDatasetMaterialize").Device(DEVICE_CPU),
                         MaterializeDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("IndexedDatasetGet").Device(DEVICE_CPU),
                         IndexedDatasetGet);
-}  // namespace
 
+}  // namespace
+}  // namespace data
 }  // namespace tensorflow
