@@ -30,19 +30,6 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
-def GetTestConfigs():
-  """Get all the valid tests configs to run.
-
-  Returns:
-    all the valid test configs as tuples of data_format and use_gpu.
-  """
-  test_configs = [("NHWC", False), ("NHWC", True)]
-  if test.is_gpu_available(cuda_only=True):
-    # "NCHW" format is currently only supported on CUDA.
-    test_configs += [("NCHW", True)]
-  return test_configs
-
-
 class BiasAddTest(test.TestCase):
 
   def _npBias(self, inputs, bias):
@@ -199,7 +186,9 @@ class BiasAddTest(test.TestCase):
       self.assertAllClose(grad_jacob_t, grad_jacob_n, threshold, threshold)
 
   def testGradientTensor(self):
-    for (data_format, use_gpu) in GetTestConfigs():
+    # TODO (yongtang): BiasAddGrad with NCHW only works 4D. Reenable once
+    # all dimensions are supported.
+    for (data_format, use_gpu) in ("NHWC", False), ("NHWC", True):
       for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
         np_input = np.array(
             [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
@@ -208,7 +197,9 @@ class BiasAddTest(test.TestCase):
         self._testGradient(np_input, bias, dtype, data_format, use_gpu)
 
   def testGradientTensor4D(self):
-    for (data_format, use_gpu) in GetTestConfigs():
+    # BiasAddGrad with NCHW support 4D so all are enabled.
+    for (data_format, use_gpu) in [("NHWC", False), ("NHWC", True),
+                                   ("NCHW", False), ("NCHW", True)]:
       for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
         np_input = np.arange(
             1.0, 49.0, dtype=dtype.as_numpy_dtype).reshape(
@@ -222,7 +213,9 @@ class BiasAddTest(test.TestCase):
       self._testAll(np.random.randn(*shape), np.random.randn(shape[-1]))
 
   def testEmptyGradient(self):
-    for data_format, use_gpu in GetTestConfigs():
+    # TODO (yongtang): BiasAddGrad with NCHW only works 4D. Reenable once
+    # all dimensions are supported.
+    for (data_format, use_gpu) in ("NHWC", False), ("NHWC", True):
       for shape in (0, 0), (2, 0), (0, 2), (4, 3, 0), (4, 0, 3), (0, 4, 3):
         self._testGradient(
             np.random.randn(*shape),
