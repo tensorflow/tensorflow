@@ -1,0 +1,80 @@
+Backported from
+https://github.com/libjpeg-turbo/libjpeg-turbo/commit/43e84cff1bb2bd8293066f6ac4eb0df61ddddbc6
+https://github.com/libjpeg-turbo/libjpeg-turbo/commit/909a8cfc7bca9b2e6707425bdb74da997e8fa499
+
+From 43e84cff1bb2bd8293066f6ac4eb0df61ddddbc6 Mon Sep 17 00:00:00 2001
+From: DRC <information@libjpeg-turbo.org>
+Date: Tue, 12 Jun 2018 20:27:00 -0500
+Subject: [PATCH] tjLoadImage(): Fix FPE triggered by malformed BMP
+
+In rdbmp.c, it is necessary to guard against 32-bit overflow/wraparound
+when allocating the row buffer, because since BMP files have 32-bit
+width and height fields, the value of biWidth can be up to 4294967295.
+Specifically, if biWidth is 1073741824 and cinfo->input_components = 4,
+then the samplesperrow argument in alloc_sarray() would wrap around to
+0, and a division by zero error would occur at line 458 in jmemmgr.c.
+
+If biWidth is set to a higher value, then samplesperrow would wrap
+around to a small number, which would likely cause a buffer overflow
+(this has not been tested or verified.)
+
+From 909a8cfc7bca9b2e6707425bdb74da997e8fa499 Mon Sep 17 00:00:00 2001
+From: DRC <information@libjpeg-turbo.org>
+Date: Tue, 12 Jun 2018 16:08:26 -0500
+Subject: [PATCH] Fix CVE-2018-11813
+
+Refer to change log for details.
+
+Fixes #242
+---
+ ChangeLog.md | 5 +++++
+ rdbmp.c      | 8 +++++++-
+ 2 files changed, 12 insertions(+), 1 deletion(-)
+
+--- libjpeg-turbo-1.5.3/rdbmp.c
++++ libjpeg-turbo-1.5.3/rdbmp.c
+@@ -434,6 +434,12 @@
+     progress->total_extra_passes++; /* count file input as separate pass */
+   }
+ 
++  /* Ensure that biWidth * cinfo->input_components doesn't exceed the maximum
++     value of the JDIMENSION type.  This is only a danger with BMP files, since
++     their width and height fields are 32-bit integers. */
++  if ((unsigned long long)biWidth *
++      (unsigned long long)cinfo->input_components > 0xFFFFFFFFULL)
++    ERREXIT(cinfo, JERR_WIDTH_OVERFLOW);
+   /* Allocate one-row buffer for returned data */
+   source->pub.buffer = (*cinfo->mem->alloc_sarray)
+     ((j_common_ptr) cinfo, JPOOL_IMAGE,
+--- libjpeg-turbo-1.5.3/rdtarga.c
++++ libjpeg-turbo-1.5.3/rdtarga.c
+@@ -125,11 +125,10 @@
+ read_non_rle_pixel (tga_source_ptr sinfo)
+ /* Read one Targa pixel from the input file; no RLE expansion */
+ {
+-  register FILE *infile = sinfo->pub.input_file;
+   register int i;
+ 
+   for (i = 0; i < sinfo->pixel_size; i++) {
+-    sinfo->tga_pixel[i] = (U_CHAR) getc(infile);
++    sinfo->tga_pixel[i] = (U_CHAR) read_byte(sinfo);
+   }
+ }
+ 
+@@ -138,7 +137,6 @@
+ read_rle_pixel (tga_source_ptr sinfo)
+ /* Read one Targa pixel from the input file, expanding RLE data as needed */
+ {
+-  register FILE *infile = sinfo->pub.input_file;
+   register int i;
+ 
+   /* Duplicate previously read pixel? */
+@@ -160,7 +158,7 @@
+ 
+   /* Read next pixel */
+   for (i = 0; i < sinfo->pixel_size; i++) {
+-    sinfo->tga_pixel[i] = (U_CHAR) getc(infile);
++    sinfo->tga_pixel[i] = (U_CHAR) read_byte(sinfo);
+   }
+ }
+ 

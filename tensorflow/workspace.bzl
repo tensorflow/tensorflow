@@ -246,6 +246,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         sha256 = "f892fff427ab3adffc289363eac26d197ce3ccacefe5f5822377348a8166069b",
         strip_prefix = "libjpeg-turbo-2.0.0",
         build_file = clean_dep("//third_party/jpeg:jpeg.BUILD"),
+        patch_file = clean_dep("//third_party/jpeg:libjpeg-turbo-1.5.3-cve_fix.patch"),
         system_build_file = clean_dep("//third_party/systemlibs:jpeg.BUILD"),
     )
 
