@@ -82,8 +82,8 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
         # check shape inference when shape input is constant
         self.assertAllEqual(shape, v_np.shape)
 
-  def testGradient(self):
-    x = constant_op.constant([[1, 2, 3], [4, 5, 6]], dtype=dtypes.float32)
+  def testGradientForScalar(self):
+    x = constant_op.constant(1, dtype=dtypes.float32)
     v = array_ops.broadcast_to(x, [2, 4, 3])
     out = 2 * v
     with self.test_session():
@@ -91,9 +91,29 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
                                                     out, out.get_shape())
     self.assertLess(err, 1e-4)
 
-  def testGradientForScalar(self):
-    x = constant_op.constant(1, dtype=dtypes.float32)
-    v = array_ops.broadcast_to(x, [2, 4, 3])
+  def testGradientWithSameRank(self):
+    x = constant_op.constant(np.reshape(np.arange(6), (2, 1, 3)),
+                             dtype=dtypes.float32)
+    v = array_ops.broadcast_to(x, [2, 5, 3])
+    out = 2 * v
+    with self.test_session():
+      err = gradient_checker.compute_gradient_error(x, x.get_shape(),
+                                                    out, out.get_shape())
+    self.assertLess(err, 1e-4)
+
+  def testGradientWithIncreasingRank(self):
+    x = constant_op.constant([[1], [2]],
+                             dtype=dtypes.float32)
+    v = array_ops.broadcast_to(x, [5, 2, 3])
+    out = 2 * v
+    with self.test_session():
+      err = gradient_checker.compute_gradient_error(x, x.get_shape(),
+                                                    out, out.get_shape())
+    self.assertLess(err, 1e-4)
+
+  def testGradientWithBroadcastAllDimensions(self):
+    x = constant_op.constant([[1, 2, 3], [4, 5, 6]], dtype=dtypes.float32)
+    v = array_ops.broadcast_to(x, [5, 4, 6])
     out = 2 * v
     with self.test_session():
       err = gradient_checker.compute_gradient_error(x, x.get_shape(),
