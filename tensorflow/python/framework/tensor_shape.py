@@ -606,8 +606,8 @@ class TensorShape(object):
       slice.
 
     Raises:
-      ValueError: If `key` is a slice, and any of its elements are negative, or
-        if `self` is completely unknown and the step is set.
+      ValueError: If `key` is a slice and `self` is completely unknown and
+        the step is set.
     """
     if self._dims is not None:
       if isinstance(key, slice):
