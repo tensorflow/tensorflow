@@ -1634,6 +1634,7 @@ cuda_py_test(
     srcs = ["functional_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
