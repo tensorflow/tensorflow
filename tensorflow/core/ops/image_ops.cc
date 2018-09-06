@@ -688,7 +688,7 @@ REGISTER_OP("NonMaxSuppressionV2")
     .Input("max_output_size: int32")
     .Input("iou_threshold: float")
     .Output("selected_indices: int32")
-    .Attr("T: {half, float}")
+    .Attr("T: {half, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       // Get inputs and validate ranks.
       ShapeHandle boxes;
@@ -718,7 +718,7 @@ REGISTER_OP("NonMaxSuppressionV3")
     .Input("iou_threshold: float")
     .Input("score_threshold: float")
     .Output("selected_indices: int32")
-    .Attr("T: {half, float}")
+    .Attr("T: {half, float} = DT_FLOAT")
     .SetShapeFn(NMSShapeFn);
 
 REGISTER_OP("NonMaxSuppressionV4")
@@ -729,7 +729,7 @@ REGISTER_OP("NonMaxSuppressionV4")
     .Input("score_threshold: float")
     .Output("selected_indices: int32")
     .Output("valid_outputs: int32")
-    .Attr("T: {half, float}")
+    .Attr("T: {half, float} = DT_FLOAT")
     .Attr("pad_to_max_output_size: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(NMSShapeFn(c));
