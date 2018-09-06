@@ -70,6 +70,10 @@ tf_cc_test(
         "test/graph_rewrites/assign_clusters.cc",
         "test/test_utilities.h",
         "test/test_utilities.cpp",
+        "test/test_math_ops.cpp",
+        "test/test_nn_ops.cpp",
+        "test/opexecuter.h",
+        "test/opexecuter.cpp",
         "test/main.cpp",
     ],
     deps = [
