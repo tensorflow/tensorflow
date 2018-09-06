@@ -187,7 +187,18 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
 
     pass->runOnModule(module.get());
     delete pass;
-    module->verify();
+
+    // Verify that the result of the pass is still valid.
+    std::string errorResult;
+    module->verify(&errorResult);
+
+    // We don't have location information for general verifier errors, so emit
+    // the error with an unknown location.
+    if (!errorResult.empty()) {
+      context->emitDiagnostic(UnknownLoc::get(context), errorResult,
+                              MLIRContext::DiagnosticKind::Error);
+      return OptFailure;
+    }
   }
 
   // Print the output.

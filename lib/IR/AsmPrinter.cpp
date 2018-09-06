@@ -1147,6 +1147,10 @@ void CFGFunctionPrinter::print(const BasicBlock *block) {
 }
 
 void CFGFunctionPrinter::print(const Instruction *inst) {
+  if (!inst) {
+    os << "<<null instruction>>\n";
+    return;
+  }
   switch (inst->getKind()) {
   case Instruction::Kind::Operation:
     return print(cast<OperationInst>(inst));

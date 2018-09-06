@@ -473,10 +473,10 @@ public:
   }
 
   ArrayRef<InstOperand> getTrueInstOperands() const {
-    return {&operands[0], &operands[0] + getNumTrueOperands()};
+    return const_cast<CondBranchInst *>(this)->getTrueInstOperands();
   }
   MutableArrayRef<InstOperand> getTrueInstOperands() {
-    return {&operands[0], &operands[0] + getNumTrueOperands()};
+    return {operands.data(), operands.data() + getNumTrueOperands()};
   }
 
   InstOperand &getTrueInstOperand(unsigned idx) { return operands[idx]; }
@@ -526,12 +526,11 @@ public:
   }
 
   ArrayRef<InstOperand> getFalseInstOperands() const {
-    return {&operands[0] + getNumTrueOperands(),
-            &operands[0] + getNumOperands()};
+    return const_cast<CondBranchInst *>(this)->getFalseInstOperands();
   }
   MutableArrayRef<InstOperand> getFalseInstOperands() {
-    return {&operands[0] + getNumTrueOperands(),
-            &operands[0] + getNumOperands()};
+    return {operands.data() + getNumTrueOperands(),
+            operands.data() + getNumOperands()};
   }
 
   InstOperand &getFalseInstOperand(unsigned idx) {

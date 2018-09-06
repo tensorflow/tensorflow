@@ -178,19 +178,12 @@ struct CFGFuncVerifier : public Verifier {
   bool verify();
   bool verifyBlock(const BasicBlock &block);
   bool verifyTerminator(const TerminatorInst &term);
+
+  bool verifyBBArguments(ArrayRef<InstOperand> operands,
+                         const BasicBlock *destBB, const TerminatorInst &term);
   bool verifyReturn(const ReturnInst &inst);
   bool verifyBranch(const BranchInst &inst);
   bool verifyCondBranch(const CondBranchInst &inst);
-
-  // Given a list of "operands" and "arguments" that are the same length, verify
-  // that the types of operands pointwise match argument types. The iterator
-  // types must expose the "getType()" function when dereferenced twice; that
-  // is, the iterator's value_type must be equivalent to SSAValue*.
-  template <typename OperandIteratorTy, typename ArgumentIteratorTy>
-  bool verifyOperandsMatchArguments(OperandIteratorTy opBegin,
-                                    OperandIteratorTy opEnd,
-                                    ArgumentIteratorTy argBegin,
-                                    const Instruction &instContext);
 };
 } // end anonymous namespace
 
@@ -251,8 +244,20 @@ bool CFGFuncVerifier::verifyTerminator(const TerminatorInst &term) {
   if (term.getFunction() != &fn)
     return failure("terminator in the wrong function", term);
 
-  // TODO: Check that operands are structurally ok.
-  // TODO: Check that successors are in the right function.
+  // Check that operands are non-nil and structurally ok.
+  for (const auto *operand : term.getOperands()) {
+    if (!operand)
+      return failure("null operand found", term);
+
+    if (operand->getFunction() != &fn)
+      return failure("reference to operand defined in another function", term);
+  }
+
+  // Check that successors are in the right function.
+  for (auto *succ : term.getBlock()->getSuccessors()) {
+    if (succ->getFunction() != &fn)
+      return failure("reference to block defined in another function", term);
+  }
 
   if (auto *ret = dyn_cast<ReturnInst>(&term))
     return verifyReturn(*ret);
@@ -262,6 +267,24 @@ bool CFGFuncVerifier::verifyTerminator(const TerminatorInst &term) {
 
   if (auto *br = dyn_cast<CondBranchInst>(&term))
     return verifyCondBranch(*br);
+
+  return false;
+}
+
+/// Check a set of basic block arguments against the expected list in in the
+/// destination basic block.
+bool CFGFuncVerifier::verifyBBArguments(ArrayRef<InstOperand> operands,
+                                        const BasicBlock *destBB,
+                                        const TerminatorInst &term) {
+  if (operands.size() != destBB->getNumArguments())
+    return failure("branch has " + Twine(operands.size()) +
+                       " operands, but target block has " +
+                       Twine(destBB->getNumArguments()),
+                   term);
+
+  for (unsigned i = 0, e = operands.size(); i != e; ++i)
+    if (operands[i].get()->getType() != destBB->getArgument(i)->getType())
+      return failure("type mismatch in bb argument #" + Twine(i), term);
 
   return false;
 }
@@ -287,63 +310,20 @@ bool CFGFuncVerifier::verifyReturn(const ReturnInst &inst) {
 bool CFGFuncVerifier::verifyBranch(const BranchInst &inst) {
   // Verify that the number of operands lines up with the number of BB arguments
   // in the successor.
-  auto dest = inst.getDest();
-  if (inst.getNumOperands() != dest->getNumArguments())
-    return failure("branch has " + Twine(inst.getNumOperands()) +
-                       " operands, but target block has " +
-                       Twine(dest->getNumArguments()),
-                   inst);
+  if (verifyBBArguments(inst.getInstOperands(), inst.getDest(), inst))
+    return true;
 
-  for (unsigned i = 0, e = inst.getNumOperands(); i != e; ++i)
-    if (inst.getOperand(i)->getType() != dest->getArgument(i)->getType())
-      return failure("type of branch operand " + Twine(i) +
-                         " doesn't match target bb argument type",
-                     inst);
-
-  return false;
-}
-
-template <typename OperandIteratorTy, typename ArgumentIteratorTy>
-bool CFGFuncVerifier::verifyOperandsMatchArguments(
-    OperandIteratorTy opBegin, OperandIteratorTy opEnd,
-    ArgumentIteratorTy argBegin, const Instruction &instContext) {
-  OperandIteratorTy opIt = opBegin;
-  ArgumentIteratorTy argIt = argBegin;
-  for (; opIt != opEnd; ++opIt, ++argIt) {
-    if ((*opIt)->getType() != (*argIt)->getType())
-      return failure("type of operand " + Twine(std::distance(opBegin, opIt)) +
-                         " doesn't match argument type",
-                     instContext);
-  }
   return false;
 }
 
 bool CFGFuncVerifier::verifyCondBranch(const CondBranchInst &inst) {
   // Verify that the number of operands lines up with the number of BB arguments
   // in the true successor.
-  auto trueDest = inst.getTrueDest();
-  if (inst.getNumTrueOperands() != trueDest->getNumArguments())
-    return failure("branch has " + Twine(inst.getNumTrueOperands()) +
-                       " true operands, but true target block has " +
-                       Twine(trueDest->getNumArguments()),
-                   inst);
-
-  if (verifyOperandsMatchArguments(inst.true_operand_begin(),
-                                   inst.true_operand_end(),
-                                   trueDest->args_begin(), inst))
+  if (verifyBBArguments(inst.getTrueInstOperands(), inst.getTrueDest(), inst))
     return true;
 
   // And the false successor.
-  auto falseDest = inst.getFalseDest();
-  if (inst.getNumFalseOperands() != falseDest->getNumArguments())
-    return failure("branch has " + Twine(inst.getNumFalseOperands()) +
-                       " false operands, but false target block has " +
-                       Twine(falseDest->getNumArguments()),
-                   inst);
-
-  if (verifyOperandsMatchArguments(inst.false_operand_begin(),
-                                   inst.false_operand_end(),
-                                   falseDest->args_begin(), inst))
+  if (verifyBBArguments(inst.getFalseInstOperands(), inst.getFalseDest(), inst))
     return true;
 
   if (inst.getCondition()->getType() != Type::getInteger(1, fn.getContext()))
