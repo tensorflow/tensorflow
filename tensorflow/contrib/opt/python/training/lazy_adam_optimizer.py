@@ -25,11 +25,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import adam
 
@@ -48,12 +46,7 @@ class LazyAdamOptimizer(adam.AdamOptimizer):
   may lead to different empirical results.
   """
 
-  def _apply_sparse_shared(self,
-                           grad,
-                           var,
-                           indices,
-                           scatter_update,
-                           scatter_sub):
+  def _apply_sparse(self, grad, var):
     beta1_power, beta2_power = self._get_beta_accumulators()
     beta1_power = math_ops.cast(beta1_power, var.dtype.base_dtype)
     beta2_power = math_ops.cast(beta2_power, var.dtype.base_dtype)
@@ -65,51 +58,23 @@ class LazyAdamOptimizer(adam.AdamOptimizer):
 
     # \\(m := beta1 * m + (1 - beta1) * g_t\\)
     m = self.get_slot(var, "m")
-    m_t = scatter_update(m, indices,
-                         beta1_t * array_ops.gather(m, indices) +
-                         (1 - beta1_t) * grad)
+    m_t = state_ops.scatter_update(m, grad.indices,
+                                   beta1_t * array_ops.gather(m, grad.indices) +
+                                   (1 - beta1_t) * grad.values,
+                                   use_locking=self._use_locking)
 
     # \\(v := beta2 * v + (1 - beta2) * (g_t * g_t)\\)
     v = self.get_slot(var, "v")
-    v_t = scatter_update(v, indices,
-                         beta2_t * array_ops.gather(v, indices) +
-                         (1 - beta2_t) * math_ops.square(grad))
+    v_t = state_ops.scatter_update(v, grad.indices,
+                                   beta2_t * array_ops.gather(v, grad.indices) +
+                                   (1 - beta2_t) * math_ops.square(grad.values),
+                                   use_locking=self._use_locking)
 
     # \\(variable -= learning_rate * m_t / (epsilon_t + sqrt(v_t))\\)
-    m_t_slice = array_ops.gather(m_t, indices)
-    v_t_slice = array_ops.gather(v_t, indices)
+    m_t_slice = array_ops.gather(m_t, grad.indices)
+    v_t_slice = array_ops.gather(v_t, grad.indices)
     denominator_slice = math_ops.sqrt(v_t_slice) + epsilon_t
-    var_update = scatter_sub(var, indices,
-                             lr * m_t_slice / denominator_slice)
+    var_update = state_ops.scatter_sub(var, grad.indices,
+                                       lr * m_t_slice / denominator_slice,
+                                       use_locking=self._use_locking)
     return control_flow_ops.group(var_update, m_t, v_t)
-
-  def _apply_sparse(self, grad, var):
-    return self._apply_sparse_shared(
-        grad.values, var, grad.indices,
-        self._scatter_update,
-        self._scatter_sub)
-
-  def _resource_apply_sparse(self, grad, var, indices):
-    return self._apply_sparse_shared(
-        grad, var, indices,
-        self._resource_scatter_update,
-        self._resource_scatter_sub)
-
-  # Utility functions for updating resource or non-resource variables.
-  def _scatter_update(self, x, i, v):
-    return state_ops.scatter_update(
-        x, i, v, use_locking=self._use_locking)
-
-  def _scatter_sub(self, x, i, v):
-    return state_ops.scatter_sub(
-        x, i, v, use_locking=self._use_locking)
-
-  def _resource_scatter_update(self, x, i, v):
-    update_op = resource_variable_ops.resource_scatter_update(x.handle, i, v)
-    with ops.control_dependencies([update_op]):
-      return x.value()
-
-  def _resource_scatter_sub(self, x, i, v):
-    sub_op = resource_variable_ops.resource_scatter_sub(x.handle, i, v)
-    with ops.control_dependencies([sub_op]):
-      return x.value()

@@ -27,7 +27,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -52,7 +51,7 @@ def adam_update_numpy(param,
 
 class AdamOptimizerTest(test.TestCase):
 
-  def doTestSparse(self, use_resource=False):
+  def testSparse(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
         # Initialize variables for numpy implementation.
@@ -62,12 +61,8 @@ class AdamOptimizerTest(test.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-        if use_resource:
-          var0 = resource_variable_ops.ResourceVariable(var0_np)
-          var1 = resource_variable_ops.ResourceVariable(var1_np)
-        else:
-          var0 = variables.Variable(var0_np)
-          var1 = variables.Variable(var1_np)
+        var0 = variables.Variable(var0_np)
+        var1 = variables.Variable(var1_np)
         grads0_np_indices = np.array([0, 1], dtype=np.int32)
         grads0 = ops.IndexedSlices(
             constant_op.constant(grads0_np),
@@ -98,12 +93,6 @@ class AdamOptimizerTest(test.TestCase):
           # Validate updated params
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
-
-  def testSparse(self):
-    self.doTestSparse(use_resource=False)
-
-  def testResourceSparse(self):
-    self.doTestSparse(use_resource=True)
 
   def testSparseDevicePlacement(self):
     for index_dtype in [dtypes.int32, dtypes.int64]:
