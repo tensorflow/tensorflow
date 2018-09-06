@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 const int64 kLogIntervalMicros = 10 * 1000000;  // 10 seconds.
@@ -620,5 +620,5 @@ REGISTER_KERNEL_BUILDER(Name("ShuffleAndRepeatDataset").Device(DEVICE_CPU),
                         ShuffleAndRepeatDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

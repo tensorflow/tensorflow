@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/util/reffed_status_callback.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 void SetRunOptions(OpKernelContext* ctx, FunctionLibraryRuntime::Options* opts,
@@ -191,8 +192,9 @@ class MapDefunOp : public AsyncOpKernel {
     const OpKernel* kernel_;
     const size_t iter_;
   };
-};  // namespace
+};
 
 REGISTER_KERNEL_BUILDER(Name("MapDefun").Device(DEVICE_CPU), MapDefunOp);
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow
