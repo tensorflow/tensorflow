@@ -51,6 +51,8 @@ class ConditionalAccumulatorBaseOp : public OpKernel {
                                                 &accumulator_handle_, nullptr));
     OP_REQUIRES_OK(context, context->GetAttr("shape", &shape_));
     OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("reduction_type", &reduction_type_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -81,6 +83,7 @@ class ConditionalAccumulatorBaseOp : public OpKernel {
   DataType dtype_;
   PartialTensorShape shape_;
   ContainerInfo cinfo_;
+  string reduction_type_;
 
  private:
   Status SetAccumulatorHandle(OpKernelContext* ctx)
