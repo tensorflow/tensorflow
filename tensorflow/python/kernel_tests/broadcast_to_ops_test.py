@@ -21,6 +21,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
@@ -83,12 +84,15 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(shape, v_np.shape)
 
   def testGradientForScalar(self):
-    x = constant_op.constant(1, dtype=dtypes.float32)
-    v = array_ops.broadcast_to(x, [2, 4, 3])
-    out = 2 * v
-    with self.test_session():
-      err = gradient_checker.compute_gradient_error(x, x.get_shape(),
-                                                    out, out.get_shape())
+    # TODO(alextp): There is a bug with broadcast_to on GPU from scalars,
+    # hence we make this test cpu-only.
+    with ops.device("cpu:0"):
+      x = constant_op.constant(1, dtype=dtypes.float32)
+      v = array_ops.broadcast_to(x, [2, 4, 3])
+      out = 2 * v
+      with self.test_session():
+        err = gradient_checker.compute_gradient_error(x, x.get_shape(),
+                                                      out, out.get_shape())
     self.assertLess(err, 1e-4)
 
   def testGradientWithSameRank(self):
