@@ -146,7 +146,7 @@ void DoNonMaxSuppressionOp(
   std::priority_queue<Candidate, std::deque<Candidate>, decltype(cmp)>
       candidate_priority_queue(cmp);
   for (int i = 0; i < scores_data.size(); ++i) {
-    if (scores_data[i] > static_cast<T>(score_threshold)) {
+    if (static_cast<float>(scores_data[i]) > score_threshold) {
       candidate_priority_queue.emplace(Candidate({i, scores_data[i]}));
     }
   }
