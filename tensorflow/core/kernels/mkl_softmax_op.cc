@@ -88,6 +88,7 @@ class MklSoftmaxOp : public OpKernel {
           break;
         default:
           OP_REQUIRES_OK(context, errors::Aborted("Input dims must be <= 5 and >=1"));
+          return;
       }
       // Create softmax memory for src, dst: both are defined in mkl_util.h,
       // they are wrapper
