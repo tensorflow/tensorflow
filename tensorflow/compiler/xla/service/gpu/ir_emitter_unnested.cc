@@ -2819,10 +2819,7 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
   }
 
   // For multioutput fusion, we need to emit each operand and the root.
-  std::vector<IrArray> output_arrays;
-  for (int64 i = 0; i < ShapeUtil::TupleElementCount(hlo.shape()); ++i) {
-    output_arrays.push_back(GetIrArray(hlo, hlo, {i}));
-  }
+  std::vector<IrArray> output_arrays = ConstructIrArrayForOutputs(hlo);
   TF_RETURN_IF_ERROR(
       ParallelLoopEmitter(element_generator, output_arrays, launch_dimensions,
                           &b_, unroll_factor)
@@ -2830,12 +2827,9 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
                     GetIndexTypeForKernel(
                         &hlo, launch_dimensions.launch_bound(), &b_)));
 
-  std::vector<llvm::Value*> tuple_operand_ptrs;
-  for (int64 i = 0; i < output_arrays.size(); ++i) {
-    tuple_operand_ptrs.push_back(output_arrays[i].GetBasePointer());
-  }
   b_.SetInsertPoint(b_.GetInsertBlock()->getTerminator());
-  llvm_ir::EmitTuple(GetIrArray(hlo, hlo), tuple_operand_ptrs, &b_, module_);
+  llvm_ir::EmitTuple(GetIrArray(hlo, hlo), output_arrays, &b_, module_);
+
   return Status::OK();
 }
 
@@ -2847,29 +2841,14 @@ Status IrEmitterUnnested::EmitTargetElementLoop(
                                       static_cast<KernelThunk*>(LastThunk()));
 }
 
-int IrEmitterUnnested::ConstructIrArrayForOutputs(
-    const HloInstruction& hlo, std::vector<IrArray>* output_arrays) {
-  int64 num_outputs = 1;
-  if (hlo.IsMultiOutputFusion()) {
-    num_outputs = ShapeUtil::TupleElementCount(hlo.shape());
-    output_arrays->reserve(num_outputs);
-    for (int64 i = 0; i < num_outputs; ++i) {
-      output_arrays->push_back(GetIrArray(hlo, hlo, {i}));
-    }
-  } else {
-    output_arrays->push_back(GetIrArray(hlo, hlo));
-  }
-  return num_outputs;
-}
-
-int IrEmitterUnnested::ConstructIrArrayForInputs(
-    const HloInstruction& hlo, std::vector<IrArray>* param_arrays) {
-  int64 num_params = hlo.operands().size();
-  param_arrays->reserve(num_params);
+std::vector<IrArray> IrEmitterUnnested::ConstructIrArrayForInputs(
+    const HloInstruction& hlo) {
+  std::vector<IrArray> param_arrays;
+  param_arrays.reserve(hlo.operands().size());
   for (const HloInstruction* param : hlo.operands()) {
-    param_arrays->push_back(GetIrArray(*param, hlo));
+    param_arrays.push_back(GetIrArray(*param, hlo));
   }
-  return num_params;
+  return param_arrays;
 }
 
 int IrEmitterUnnested::ConstructOutputReducedShapeAndCastOutputIrArrayToShape(
@@ -3050,10 +3029,10 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
   constexpr int64 kThreadsPerTile = kTileSize * kNumRows;
 
   // Construct IrArrays for the inputs and outputs.
-  std::vector<IrArray> output_arrays;
-  int64 num_outputs = ConstructIrArrayForOutputs(*hlo, &output_arrays);
-  std::vector<IrArray> param_arrays;
-  int64 num_params = ConstructIrArrayForInputs(*hlo, &param_arrays);
+  std::vector<IrArray> output_arrays = ConstructIrArrayForOutputs(*hlo);
+  int64 num_outputs = output_arrays.size();
+  std::vector<IrArray> param_arrays = ConstructIrArrayForInputs(*hlo);
+  int64 num_params = param_arrays.size();
 
   // Allocate shared memory buffers to store the tiled inputs.
   std::vector<llvm::Value*> param_shmem_buffers(num_params, nullptr);
@@ -3251,12 +3230,7 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
 
   // For multioutput fusion, emit a tuple with all the individual outputs.
   if (hlo->IsMultiOutputFusion()) {
-    std::vector<llvm::Value*> tuple_operand_ptrs;
-    for (int64 i = 0; i < output_arrays.size(); ++i) {
-      tuple_operand_ptrs.push_back(output_arrays[i].GetBasePointer());
-    }
-    llvm_ir::EmitTuple(GetIrArray(*hlo, *hlo), tuple_operand_ptrs, &b_,
-                       module_);
+    llvm_ir::EmitTuple(GetIrArray(*hlo, *hlo), output_arrays, &b_, module_);
   }
 
   return launch_dimensions;
