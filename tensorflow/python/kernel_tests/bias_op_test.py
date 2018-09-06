@@ -74,16 +74,16 @@ class BiasAddTest(test.TestCase):
   def _NHWCToNCHW(self, np_value):
     # fill the input value to at least 3-dimension
     np_value = self._AtLeast3d(np_value)
-    # move the last dimension to third-to-last
+    # move the last dimension to second
     np_dim = list(range(np_value.ndim))
-    np_dim_new = list(np_dim[0:-3]) + list(np_dim[-1:]) + list(np_dim[-3:-1])
+    np_dim_new = list(np_dim[0:1]) + list(np_dim[-1:]) + list(np_dim[1:-1])
     return np.transpose(np_value, np_dim_new)
 
   def _NCHWToNHWC(self, np_value):
     assert len(np_value.shape) >= 3
     np_dim = list(range(np_value.ndim))
-    # move the third-to-last dimension to the last
-    np_dim_new = list(np_dim[0:-3]) + list(np_dim[-2:]) + list(np_dim[-3:-2])
+    # move the second dimension to the last
+    np_dim_new = list(np_dim[0:1]) + list(np_dim[2:]) + list(np_dim[1:2])
     return np.transpose(np_value, np_dim_new)
 
   def _testBiasNCHW(self, np_inputs, np_bias, use_gpu):
