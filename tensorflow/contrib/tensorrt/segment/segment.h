@@ -38,6 +38,8 @@ struct SegmentOptions {
   // Segment must contain at least this many nodes.
   int minimum_segment_size = 2;
   std::set<string> exclude_node_list;
+  // Quantization nodes are only included for quantized precisions
+  int precision_mode;
 };
 
 // Get the subgraphs of a graph that can be handled by TensorRT.
@@ -51,7 +53,7 @@ struct SegmentOptions {
 // @return the status.
 tensorflow::Status SegmentGraph(
     const tensorflow::Graph* tf_graph,
-    const std::function<Status(const tensorflow::Node*)>& candidate_fn,
+    const std::function<Status(const tensorflow::Node*, int)>& candidate_fn,
     const std::function<bool(const tensorflow::Edge*)>& input_candidate_fn,
     const std::function<bool(const tensorflow::Edge*)>& output_candidate_fn,
     const SegmentOptions& options, SegmentNodesVector* segments);
