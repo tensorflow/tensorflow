@@ -28,6 +28,7 @@
 #include "llvm/ADT/PointerIntPair.h"
 
 namespace mlir {
+class Function;
 class OperationInst;
 class OperationStmt;
 class Operation;
@@ -57,6 +58,14 @@ public:
   /// there are zero uses of 'this'.
   void replaceAllUsesWith(SSAValue *newValue) {
     IRObjectWithUseList::replaceAllUsesWith(newValue);
+  }
+
+  /// Return the function that this SSAValue is defined in.
+  Function *getFunction();
+
+  /// Return the function that this SSAValue is defined in.
+  const Function *getFunction() const {
+    return const_cast<SSAValue *>(this)->getFunction();
   }
 
   /// If this value is the result of an OperationInst, return the instruction

@@ -27,6 +27,7 @@
 namespace mlir {
 class BasicBlock;
 class CFGValue;
+class CFGFunction;
 class Instruction;
 
 /// This enum contains all of the SSA value kinds that are valid in a CFG
@@ -56,6 +57,14 @@ public:
     }
   }
 
+  /// Return the function that this CFGValue is defined in.
+  CFGFunction *getFunction();
+
+  /// Return the function that this CFGValue is defined in.
+  const CFGFunction *getFunction() const {
+    return const_cast<CFGValue *>(this)->getFunction();
+  }
+
 protected:
   CFGValue(CFGValueKind kind, Type *type) : SSAValueImpl(kind, type) {}
 };
@@ -66,6 +75,9 @@ public:
   static bool classof(const SSAValue *value) {
     return value->getKind() == SSAValueKind::BBArgument;
   }
+
+  /// Return the function that this argument is defined in.
+  CFGFunction *getFunction() const;
 
   BasicBlock *getOwner() { return owner; }
   const BasicBlock *getOwner() const { return owner; }

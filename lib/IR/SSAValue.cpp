@@ -16,7 +16,9 @@
 // =============================================================================
 
 #include "mlir/IR/SSAValue.h"
+#include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/Instructions.h"
+#include "mlir/IR/MLFunction.h"
 #include "mlir/IR/StandardOps.h"
 #include "mlir/IR/Statements.h"
 using namespace mlir;
@@ -45,9 +47,50 @@ Operation *SSAValue::getDefiningOperation() {
   return nullptr;
 }
 
+/// Return the function that this SSAValue is defined in.
+Function *SSAValue::getFunction() {
+  switch (getKind()) {
+  case SSAValueKind::BBArgument:
+    return cast<BBArgument>(this)->getFunction();
+  case SSAValueKind::InstResult:
+    return getDefiningInst()->getFunction();
+  case SSAValueKind::MLFuncArgument:
+    return cast<MLFuncArgument>(this)->getFunction();
+  case SSAValueKind::StmtResult:
+    return getDefiningStmt()->findFunction();
+  case SSAValueKind::ForStmt:
+    return cast<ForStmt>(this)->findFunction();
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// CFGValue implementation.
+//===----------------------------------------------------------------------===//
+
+/// Return the function that this CFGValue is defined in.
+CFGFunction *CFGValue::getFunction() {
+  return cast<CFGFunction>(static_cast<SSAValue *>(this)->getFunction());
+}
+
+//===----------------------------------------------------------------------===//
+// BBArgument implementation.
+//===----------------------------------------------------------------------===//
+
+/// Return the function that this argument is defined in.
+CFGFunction *BBArgument::getFunction() const {
+  if (auto *owner = getOwner())
+    return owner->getFunction();
+  return nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // MLValue implementation.
 //===----------------------------------------------------------------------===//
+
+/// Return the function that this MLValue is defined in.
+MLFunction *MLValue::getFunction() {
+  return cast<MLFunction>(static_cast<SSAValue *>(this)->getFunction());
+}
 
 // MLValue can be used a a dimension id if it is valid as a symbol, or
 // it is an induction variable, or it is a result of affine apply operation
@@ -62,8 +105,8 @@ bool MLValue::isValidDim() const {
       return op->isValidDim();
     return false;
   }
-  // This value is either a function argument or an induction variable. Both are
-  // ok.
+  // This value is either a function argument or an induction variable. Both
+  // are ok.
   return true;
 }
 

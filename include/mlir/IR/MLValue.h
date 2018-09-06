@@ -63,6 +63,14 @@ public:
     }
   }
 
+  /// Return the function that this MLValue is defined in.
+  MLFunction *getFunction();
+
+  /// Return the function that this MLValue is defined in.
+  const MLFunction *getFunction() const {
+    return const_cast<MLValue *>(this)->getFunction();
+  }
+
 protected:
   MLValue(MLValueKind kind, Type *type) : SSAValueImpl(kind, type) {}
 };
@@ -76,6 +84,11 @@ public:
 
   MLFunction *getOwner() { return owner; }
   const MLFunction *getOwner() const { return owner; }
+
+  /// Return the function that this MLFuncArgument is defined in.
+  const MLFunction *getFunction() const { return getOwner(); }
+
+  MLFunction *getFunction() { return getOwner(); }
 
 private:
   friend class MLFunction; // For access to private constructor.

@@ -137,7 +137,14 @@ bool Verifier::verifyOperation(const Operation &op) {
   if (op.getOperationFunction() != &fn)
     return opFailure("operation in the wrong function", op);
 
-  // TODO: Check that operands are non-nil and structurally ok.
+  // Check that operands are non-nil and structurally ok.
+  for (const auto *operand : op.getOperands()) {
+    if (!operand)
+      return opFailure("null operand found", op);
+
+    if (operand->getFunction() != &fn)
+      return opFailure("reference to operand defined in another function", op);
+  }
 
   // Verify all attributes are ok.  We need to check Function attributes, since
   // they are actually mutable (the function they refer to can be deleted), and
