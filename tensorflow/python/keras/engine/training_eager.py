@@ -417,11 +417,12 @@ def iterator_predict_loop(model, inputs, steps, verbose=0):
   """
   assert isinstance(inputs, iterator_ops.EagerIterator)
   if not isinstance(inputs.output_shapes,
-                    (list, tuple)) or len(inputs.output_shapes) > 2:
+                    (list, tuple)) or len(inputs.output_shapes) > 3:
     raise ValueError(
-        'Please provide data as a list or tuple of 1 or 2 elements '
-        ' - input or input and target pair. Received %s. We do not use the '
-        '`target` value here.' % inputs.output_shapes)
+        'Please provide data as a list or tuple of 1, 2, or 3 elements '
+        ' - `(input)`, or `(input, target)`, or `(input, target,'
+        'sample_weights)`. Received %s. We do not use the `target` or'
+        '`sample_weights` value here.' % inputs.output_shapes)
   outs = []
   if verbose == 1:
     progbar = generic_utils.Progbar(target=steps)
