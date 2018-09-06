@@ -71,15 +71,15 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
               const KernelArgsArrayBase &args) override;
 
   int CalculateOccupancy(const DeviceDescription& device_description,
+                         uint64 registers_per_thread,
+                         uint64 shared_memory_per_block,
+                         const ThreadDim& thread_dims, CUfunction func);
+
+  int CompareOccupancy(int* initial_blocks,
+                       const DeviceDescription& device_description,
                        uint64 registers_per_thread,
                        uint64 shared_memory_per_block,
                        const ThreadDim& thread_dims, CUfunction func);
-
-  int CompareOccupancy(int* initial_blocks,
-                     const DeviceDescription& device_description,
-                     uint64 registers_per_thread,
-                     uint64 shared_memory_per_block,
-                     const ThreadDim& thread_dims, CUfunction func);
 
   void *Allocate(uint64 size) override;
 
