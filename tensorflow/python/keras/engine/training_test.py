@@ -2097,6 +2097,43 @@ class TestTrainingWithDataset(test.TestCase):
                                  'you should specify the `steps` argument'):
       model.predict(dataset, verbose=0)
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_dataset_with_sample_weights(self):
+    model = testing_utils.get_small_functional_mlp(1, 4, input_dim=3)
+    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    loss = 'mse'
+    metrics = ['mae', metrics_module.CategoricalAccuracy()]
+    model.compile(optimizer, loss, metrics=metrics)
+
+    inputs = np.zeros((10, 3), np.float32)
+    targets = np.zeros((10, 4), np.float32)
+    sample_weights = np.ones((10), np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets,
+                                                      sample_weights))
+    dataset = dataset.repeat(100)
+    dataset = dataset.batch(10)
+
+    model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
+    model.evaluate(dataset, steps=2, verbose=1)
+    model.predict(dataset, steps=2)
+    model.train_on_batch(dataset)
+    model.predict_on_batch(dataset)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_dataset_with_sparse_labels(self):
+    model = testing_utils.get_small_functional_mlp(1, 4, input_dim=3)
+    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    loss = 'sparse_categorical_crossentropy'
+    model.compile(optimizer, loss)
+
+    inputs = np.zeros((10, 3))
+    targets = np.random.randint(0, 4, size=10, dtype=np.int32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+    dataset = dataset.repeat(100)
+    dataset = dataset.batch(10)
+
+    model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
+
   def test_dataset_input_shape_validation(self):
     with self.test_session():
       model = testing_utils.get_small_functional_mlp(1, 4, input_dim=3)
@@ -2108,8 +2145,10 @@ class TestTrainingWithDataset(test.TestCase):
       dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
       dataset = dataset.repeat(100)
 
-      with self.assertRaisesRegexp(ValueError,
-                                   r'expected (.*?) to have 2 dimensions'):
+      with self.assertRaisesRegexp(
+          ValueError,
+          r'expected (.*?) to have shape \(3,\) but got array with shape \(1,\)'
+      ):
         model.train_on_batch(dataset)
 
       # Wrong input shape

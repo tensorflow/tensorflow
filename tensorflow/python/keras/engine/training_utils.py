@@ -210,10 +210,11 @@ def check_num_samples(ins,
 def standardize_single_array(x):
   if x is None:
     return None
-  elif tensor_util.is_tensor(x):
-    return x
-  elif x.ndim == 1:
-    x = np.expand_dims(x, 1)
+  if x.shape is not None and len(x.shape) == 1:
+    if tensor_util.is_tensor(x):
+      return array_ops.expand_dims(x, axis=1)
+    else:
+      return np.expand_dims(x, 1)
   return x
 
 
@@ -341,7 +342,7 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
   Raises:
       ValueError: In case of invalid user-provided argument.
   """
-  if x_weight is None or len(x_weight) == 0:  # pylint: disable=g-explicit-length-test
+  if x_weight is None or (isinstance(x_weight, list) and len(x_weight) == 0):  # pylint: disable=g-explicit-length-test
     return [None for _ in output_names]
   if len(output_names) == 1:
     if isinstance(x_weight, list) and len(x_weight) == 1:
@@ -675,7 +676,8 @@ def standardize_weights(y,
           'Expected sample_weight with rank '
           'less than or equal to ' + str(len(y.shape)))
 
-    if y.shape[:sample_weight.ndim] != sample_weight.shape:
+    if (not tensor_util.is_tensor(sample_weight) and
+        y.shape[:sample_weight.ndim] != sample_weight.shape):
       raise ValueError(
           'Found a sample_weight array with shape ' + str(sample_weight.shape) +
           ' for an input with shape ' + str(y.shape) + '. '
@@ -777,7 +779,9 @@ def validate_iterator_input(x, y, sample_weight, validation_split=None):
                      'Received: %s' % (x, y))
   if sample_weight is not None:
     raise ValueError('`sample_weight` argument is not supported when input '
-                     '`x` is a dataset or a dataset iterator. '
+                     '`x` is a dataset or a dataset iterator. Instead, you'
+                     'can provide sample_weight as the third element  of your'
+                     'dataset, i.e. (inputs, targets, sample_weight). '
                      'Received: x=%s, sample_weight=%s' % (x, sample_weight))
   if validation_split is not None and validation_split != 0.0:
     raise ValueError(

@@ -928,11 +928,16 @@ class Model(Network):
                            'Make sure that your dataset can generate '
                            'required number of samples.')
 
-      if not isinstance(next_element, (list, tuple)) or len(next_element) != 2:
-        raise ValueError('Please provide model inputs as a list or tuple of 2 '
-                         'elements: input and target pair. '
-                         'Received %s' % next_element)
-      x, y = next_element
+      if (not isinstance(next_element, (list, tuple)) or
+          len(next_element) not in [2, 3]):
+        raise ValueError(
+            'Please provide model inputs as a list or tuple of 2  or 3'
+            'elements: (input, target) or (input, target, sample_weights)'
+            'Received %s' % next_element)
+      if len(next_element) == 2:
+        x, y = next_element
+      else:
+        x, y, sample_weight = next_element
     x, y, sample_weights = self._standardize_weights(x, y, sample_weight,
                                                      class_weight, batch_size)
     return x, y, sample_weights
@@ -1331,7 +1336,8 @@ class Model(Network):
             (in case the model has multiple inputs).
           - A dict mapping input names to the corresponding array/tensors,
             if the model has named inputs.
-          - A `tf.data` dataset or a dataset iterator.
+          - A `tf.data` dataset or a dataset iterator. Should return a tuple
+            of either (inputs, targets) or (inputs, targets, sample_weights).
         y: Target data. Like the input data `x`,
           it could be either Numpy array(s) or TensorFlow tensor(s).
           It should be consistent with `x` (you cannot have Numpy inputs and
@@ -1396,7 +1402,8 @@ class Model(Network):
             to apply a different weight to every timestep of every sample.
             In this case you should make sure to specify
             `sample_weight_mode="temporal"` in `compile()`. This argument is not
-            supported when `x` is a dataset or a dataset iterator.
+            supported when `x` is a dataset or a dataset iterator, instead
+            provide the sample_weights as the third element of `x`.
         initial_epoch: Integer.
             Epoch at which to start training
             (useful for resuming a previous training run).
