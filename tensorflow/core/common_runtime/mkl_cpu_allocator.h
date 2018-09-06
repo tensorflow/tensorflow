@@ -24,10 +24,10 @@ limitations under the License.
 #include <cstdlib>
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/visitable_allocator.h"
+#include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/platform/mutex.h"
 
 #ifndef INTEL_MKL_DNN_ONLY
@@ -56,8 +56,8 @@ class MklSubAllocator : public SubAllocator {
 class MklSmallSizeAllocator : public VisitableAllocator {
  public:
   MklSmallSizeAllocator(SubAllocator* sub_allocator, size_t total_memory,
-                        const string& name) : sub_allocator_(sub_allocator),
-                        name_(name) {
+                        const string& name)
+      : sub_allocator_(sub_allocator), name_(name) {
     stats_.bytes_limit = total_memory;
   }
   ~MklSmallSizeAllocator() override {}
@@ -133,19 +133,19 @@ class MklSmallSizeAllocator : public VisitableAllocator {
 
  private:
   // Increment statistics for the allocator handling small allocations.
-  inline void
-  IncrementStats(size_t alloc_size) EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+  inline void IncrementStats(size_t alloc_size)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
     ++stats_.num_allocs;
     stats_.bytes_in_use += alloc_size;
-    stats_.max_bytes_in_use = std::max(stats_.max_bytes_in_use,
-                                       stats_.bytes_in_use);
-    stats_.max_alloc_size = std::max(alloc_size,
-                                    static_cast<size_t>(stats_.max_alloc_size));
+    stats_.max_bytes_in_use =
+      std::max(stats_.max_bytes_in_use, stats_.bytes_in_use);
+    stats_.max_alloc_size =
+      std::max(alloc_size, static_cast<size_t>(stats_.max_alloc_size));
   }
 
   // Decrement statistics for the allocator handling small allocations.
-  inline void
-  DecrementStats(size_t dealloc_size) EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+  inline void DecrementStats(size_t dealloc_size)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
     stats_.bytes_in_use -= dealloc_size;
   }
 
@@ -225,10 +225,10 @@ class MklCPUAllocator : public VisitableAllocator {
 
     // SubAllocator is owned by BFCAllocator, so we do not need to deallocate
     // it in MklSmallSizeAllocator.
-    small_size_allocator_ = new MklSmallSizeAllocator(sub_allocator_,
-                                                      max_mem_bytes, kName);
-    large_size_allocator_ = new BFCAllocator(sub_allocator_, max_mem_bytes,
-                                  kAllowGrowth, kName);
+    small_size_allocator_ =
+      new MklSmallSizeAllocator(sub_allocator_, max_mem_bytes, kName);
+    large_size_allocator_ =
+      new BFCAllocator(sub_allocator_, max_mem_bytes, kAllowGrowth, kName);
 #ifndef INTEL_MKL_DNN_ONLY
     // For redirecting all allocations from MKL to this allocator
     // From: http://software.intel.com/en-us/node/528565
@@ -247,9 +247,9 @@ class MklCPUAllocator : public VisitableAllocator {
     // otherwise call large-size allocator (BFC). We found that BFC allocator
     // does not deliver good performance for small allocations when
     // inter_op_parallelism_threads is high.
-    return (num_bytes < kSmallAllocationsThreshold) ?
-          small_size_allocator_->AllocateRaw(alignment, num_bytes) :
-          large_size_allocator_->AllocateRaw(alignment, num_bytes);
+    return (num_bytes < kSmallAllocationsThreshold)
+              ? small_size_allocator_->AllocateRaw(alignment, num_bytes)
+              : large_size_allocator_->AllocateRaw(alignment, num_bytes);
   }
 
   inline void DeallocateRaw(void* ptr) override {
@@ -270,8 +270,8 @@ class MklCPUAllocator : public VisitableAllocator {
     // Combine statistics from small-size and large-size allocator.
     stats->num_allocs = l_stats.num_allocs + s_stats.num_allocs;
     stats->bytes_in_use = l_stats.bytes_in_use + s_stats.bytes_in_use;
-    stats->max_bytes_in_use = l_stats.max_bytes_in_use +
-                              s_stats.max_bytes_in_use;
+    stats->max_bytes_in_use =
+        l_stats.max_bytes_in_use + s_stats.max_bytes_in_use;
 
     // Since small-size allocations go to MklSmallSizeAllocator,
     // max_alloc_size from large_size_allocator would be the maximum
@@ -311,14 +311,14 @@ class MklCPUAllocator : public VisitableAllocator {
     Status s = Status(error::Code::UNIMPLEMENTED,
                       "Unimplemented case for hooking MKL function.");
     TF_CHECK_OK(s);  // way to assert with an error message
-    return nullptr; // return a value and make static code analyzers happy
+    return nullptr;  // return a value and make static code analyzers happy
   }
 
   static inline void* ReallocHook(void* ptr, size_t size) {
     Status s = Status(error::Code::UNIMPLEMENTED,
                       "Unimplemented case for hooking MKL function.");
     TF_CHECK_OK(s);  // way to assert with an error message
-    return nullptr; // return a value and make static code analyzers happy
+    return nullptr;  // return a value and make static code analyzers happy
   }
 
   // Do we allow growth in BFC Allocator
@@ -330,7 +330,7 @@ class MklCPUAllocator : public VisitableAllocator {
   // The alignment that we need for the allocations
   static constexpr const size_t kAlignment = 64;
 
-  VisitableAllocator* large_size_allocator_;  // owned by this class
+  VisitableAllocator* large_size_allocator_;     // owned by this class
   MklSmallSizeAllocator* small_size_allocator_;  // owned by this class.
 
   SubAllocator* sub_allocator_;  // not owned by this class
@@ -338,7 +338,7 @@ class MklCPUAllocator : public VisitableAllocator {
   // Size in bytes that defines the upper-bound for "small" allocations.
   // Any allocation below this threshold is "small" allocation.
   static constexpr const size_t kSmallAllocationsThreshold = 4096;
-  
+
   // Prevent copying and assignment
   TF_DISALLOW_COPY_AND_ASSIGN(MklCPUAllocator);
 };
