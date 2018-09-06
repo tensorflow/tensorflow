@@ -25,15 +25,16 @@ using shape_inference::ShapeHandle;
 // CTC is Connectionist Temporal Classification.  See util/ctc/ for details.
 
 REGISTER_OP("CTCLoss")
-    .Input("inputs: float")
+    .Input("inputs: T")
     .Input("labels_indices: int64")
     .Input("labels_values: int32")
     .Input("sequence_length: int32")
     .Attr("preprocess_collapse_repeated: bool = false")
     .Attr("ctc_merge_repeated: bool = true")
     .Attr("ignore_longer_outputs_than_inputs: bool = false")
-    .Output("loss: float")
-    .Output("gradient: float")
+    .Attr("T: {half, float}")
+    .Output("loss: T")
+    .Output("gradient: T")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle inputs;
       ShapeHandle labels_indices;
