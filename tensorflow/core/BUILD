@@ -702,6 +702,21 @@ cc_library(
 )
 
 cc_library(
+    name = "feature_util",
+    srcs = ["example/feature_util.cc"],
+    hdrs = [
+        "example/feature_util.h",
+        "platform/types.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":core_stringpiece",
+        ":platform_protobuf",
+        ":protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "abi",
     srcs = ["platform/abi.cc"],
     hdrs = ["platform/abi.h"],
