@@ -96,10 +96,11 @@ class BiasAddTest(test.TestCase):
 
   def _testAll(self, np_inputs, np_bias):
     self._testBias(np_inputs, np_bias, use_gpu=False)
+    self._testBiasNCHW(np_inputs, np_bias, use_gpu=False)
     if np_inputs.dtype in [np.float16, np.float32, np.float64]:
       self._testBias(np_inputs, np_bias, use_gpu=True)
-      if test.is_gpu_available(cuda_only=True):
-        self._testBiasNCHW(np_inputs, np_bias, use_gpu=True)
+      self._testBiasNCHW(np_inputs, np_bias, use_gpu=True)
+
 
   def testInputDims(self):
     with self.assertRaises(ValueError):
@@ -131,6 +132,16 @@ class BiasAddTest(test.TestCase):
     for t in [np.float16, np.float32, np.float64]:
       self._testAll(
           np.random.rand(4, 3, 3).astype(t), np.random.rand(3).astype(t))
+
+  def test4DFloatTypes(self):
+    for t in [np.float16, np.float32, np.float64]:
+      self._testAll(
+          np.random.rand(4, 3, 2, 3).astype(t), np.random.rand(3).astype(t))
+
+  def test5DFloatTypes(self):
+    for t in [np.float16, np.float32, np.float64]:
+      self._testAll(
+          np.random.rand(4, 3, 2, 3, 4).astype(t), np.random.rand(4).astype(t))
 
   def _testGradient(self, np_input, bias, dtype, data_format, use_gpu):
     with self.test_session(use_gpu=use_gpu):
