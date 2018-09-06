@@ -32,18 +32,18 @@ from tensorflow.python.platform import test
 
 class SlideDatasetTest(test.TestCase, parameterized.TestCase):
 
-  @parameterized.parameters(
-      (20, 14, 7, 1),
-      (20, 17, 9, 1),
-      (20, 14, 14, 1),
-      (20, 10, 14, 1),
-      (20, 14, 19, 1),
-      (20, 4, 1, 2),
-      (20, 2, 1, 6),
-      (20, 4, 7, 2),
-      (20, 2, 7, 6),
-      (1, 10, 4, 1),
-      (0, 10, 4, 1),
+  @parameterized.named_parameters(
+      ("1", 20, 14, 7, 1),
+      ("2", 20, 17, 9, 1),
+      ("3", 20, 14, 14, 1),
+      ("4", 20, 10, 14, 1),
+      ("5", 20, 14, 19, 1),
+      ("6", 20, 4, 1, 2),
+      ("7", 20, 2, 1, 6),
+      ("8", 20, 4, 7, 2),
+      ("9", 20, 2, 7, 6),
+      ("10", 1, 10, 4, 1),
+      ("11", 0, 10, 4, 1),
   )
   def testSlideDataset(self, count, window_size, window_shift, window_stride):
     """Tests a dataset that slides a window its input elements."""
@@ -96,18 +96,18 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  @parameterized.parameters(
-      (20, 14, 7, 1),
-      (20, 17, 9, 1),
-      (20, 14, 14, 1),
-      (20, 10, 14, 1),
-      (20, 14, 19, 1),
-      (20, 4, 1, 2),
-      (20, 2, 1, 6),
-      (20, 4, 7, 2),
-      (20, 2, 7, 6),
-      (1, 10, 4, 1),
-      (0, 10, 4, 1),
+  @parameterized.named_parameters(
+      ("1", 20, 14, 7, 1),
+      ("2", 20, 17, 9, 1),
+      ("3", 20, 14, 14, 1),
+      ("4", 20, 10, 14, 1),
+      ("5", 20, 14, 19, 1),
+      ("6", 20, 4, 1, 2),
+      ("7", 20, 2, 1, 6),
+      ("8", 20, 4, 7, 2),
+      ("9", 20, 2, 7, 6),
+      ("10", 1, 10, 4, 1),
+      ("11", 0, 10, 4, 1),
   )
   def testSlideDatasetDeprecated(self, count, window_size, stride,
                                  window_stride):
@@ -160,10 +160,10 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  @parameterized.parameters(
-      (14, 0, 3, 1),
-      (14, 3, 0, 1),
-      (14, 3, 3, 0),
+  @parameterized.named_parameters(
+      ("1", 14, 0, 3, 1),
+      ("2", 14, 3, 0, 1),
+      ("3", 14, 3, 3, 0),
   )
   def testSlideDatasetInvalid(self, count, window_size, window_shift,
                               window_stride):
