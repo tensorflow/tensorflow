@@ -1354,6 +1354,7 @@ cc_library(
         "//tensorflow/core/kernels:mkl_relu_op",
         "//tensorflow/core/kernels:mkl_reshape_op",
         "//tensorflow/core/kernels:mkl_softmax_op",
+        "//tensorflow/core/kernels:mkl_transpose_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
         "//tensorflow/core/kernels:mkl_aggregate_ops",
     ]) + if_cuda([
