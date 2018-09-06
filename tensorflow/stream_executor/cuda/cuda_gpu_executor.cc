@@ -472,7 +472,7 @@ void CUDAExecutor::VlogOccupancyInfo(const KernelBase &kernel,
   const DeviceDescription &device_description =
       kernel.parent()->GetDeviceDescription();
 
-  const CUDAKernel* cuda_kernel = AsCUDAKernel(&kernel);
+  const CUDAKernel *cuda_kernel = AsCUDAKernel(&kernel);
   CUfunction cufunc = cuda_kernel->AsCUDAFunctionValue();
 
   int blocks_per_sm = CalculateOccupancy(device_description, regs_per_thread,
@@ -494,8 +494,8 @@ void CUDAExecutor::VlogOccupancyInfo(const KernelBase &kernel,
 // device description, some kernel characteristics and the number of threads per
 // block.  If unable to compute occupancy, zero is returned.
 int CUDAExecutor::CalculateOccupancy(
-    const DeviceDescription& device_description, uint64 registers_per_thread,
-    uint64 shared_memory_per_block, const ThreadDim& thread_dims,
+    const DeviceDescription &device_description, uint64 registers_per_thread,
+    uint64 shared_memory_per_block, const ThreadDim &thread_dims,
     CUfunction func) {
   int suggested_blocks = 0;
   int suggested_threads = 0;
@@ -508,11 +508,11 @@ int CUDAExecutor::CalculateOccupancy(
 
 // Compute and return the suggested thread count to acheive ideal occupancy.
 // If the provided thread dimensions match this number, zero is returned.
-int CUDAExecutor::CompareOccupancy(int* initial_blocks,
-                                   const DeviceDescription& device_description,
+int CUDAExecutor::CompareOccupancy(int *initial_blocks,
+                                   const DeviceDescription &device_description,
                                    uint64 registers_per_thread,
                                    uint64 shared_memory_per_block,
-                                   const ThreadDim& thread_dims,
+                                   const ThreadDim &thread_dims,
                                    CUfunction func) {
   int suggested_blocks = 0;
   int suggested_threads = 0;
