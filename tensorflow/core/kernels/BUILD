@@ -643,14 +643,7 @@ cc_library(
         ":split_v_op",
         ":strided_slice_op",
         ":tile_ops",
-    ] + if_mkl(
-        [
-            ":mkl_transpose_op",
-        ],
-        [
-            ":transpose_op",
-        ],
-    ) + [
+        ":transpose_op",
         ":unique_op",
         ":unpack_op",
         ":unravel_index_op",
@@ -893,24 +886,13 @@ tf_kernel_library(
     deps = ARRAY_DEPS,
 )
 
-if_mkl(
-    [tf_mkl_kernel_library(
-        name = "mkl_transpose_op",
-        srcs = [
-            "mkl_transpose_op.cc",
-            "transpose_op.cc",
-        ],
-        hdrs = ["transpose_op.h"],
-        deps = ARRAY_DEPS + mkl_deps(),
-    )],
-    [tf_kernel_library(
-        name = "transpose_op",
-        srcs = [
-            "transpose_op.cc",
-        ],
-        hdrs = ["transpose_op.h"],
-        deps = ARRAY_DEPS,
-    )],
+tf_kernel_library(
+    name = "transpose_op",
+    srcs = [
+        "transpose_op.cc",
+    ],
+    hdrs = ["transpose_op.h"],
+    deps = ARRAY_DEPS + if_mkl([":mkl_transpose_op"]),
 )
 
 tf_kernel_library(
@@ -6349,6 +6331,15 @@ tf_mkl_kernel_library(
     ],
     prefix = "mkl_cwise_ops_common",
     deps = NN_DEPS + mkl_deps() + [":cwise_op"],
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_transpose_op",
+    srcs = [
+        "mkl_transpose_op.cc",
+    ],
+    hdrs = ["transpose_op.h"],
+    deps = ARRAY_DEPS + mkl_deps(),
 )
 
 # NOTE(lespeholt): This rule is deprecated, please use:
