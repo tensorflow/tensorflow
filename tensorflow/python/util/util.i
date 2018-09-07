@@ -104,9 +104,36 @@ Raises:
 %unignore tensorflow::swig::Flatten;
 %noexception tensorflow::swig::Flatten;
 
+%feature("docstring") tensorflow::swig::IsSequenceForData
+"""Returns a true if `seq` is a Sequence or dict (except strings/lists).
+
+NOTE(mrry): This differs from `tensorflow.python.util.nest.is_sequence()`,
+which *does* treat a Python list as a sequence. For ergonomic
+reasons, `tf.data` users would prefer to treat lists as
+implicit `tf.Tensor` objects, and dicts as (nested) sequences.
+
+Args:
+  seq: an input sequence.
+
+Returns:
+  True if the sequence is a not a string or list and is a
+  collections.Sequence.
+"""
 %unignore tensorflow::swig::IsSequenceForData;
 %noexception tensorflow::swig::IsSequenceForData;
 
+%feature("docstring") tensorflow::swig::FlattenForData
+"""Returns a flat sequence from a given nested structure.
+
+If `nest` is not a sequence, this returns a single-element list: `[nest]`.
+
+Args:
+  nest: an arbitrarily nested structure or a scalar object.
+    Note, numpy arrays are considered scalars.
+
+Returns:
+  A Python list, the flattened version of the input.
+"""
 %unignore tensorflow::swig::FlattenForData;
 %noexception tensorflow::swig::FlattenForData;
 
