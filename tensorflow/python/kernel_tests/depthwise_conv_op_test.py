@@ -210,8 +210,11 @@ class DepthwiseConv2DTest(test.TestCase):
     with self.test_session(use_gpu=True):
       x = array_ops.placeholder(dtypes.float32)
       f = np.ones([1, 1, 1, 1], np.float32)
-      v = nn_impl.depthwise_conv2d(x, f, [1, 1, 1, 1], "VALID", rate=[2, 1], data_format="NCHW")
-      self.assertAllEqual(np.ones([1, 1, 1, 1], np.float32), v.eval(feed_dict={x: np.ones([1, 1, 1, 1], np.float32)}))
+      v = nn_impl.depthwise_conv2d(
+          x, f, [1, 1, 1, 1], "VALID", rate=[2, 1], data_format="NCHW")
+      self.assertAllEqual(
+          np.ones([1, 1, 1, 1], np.float32),
+          v.eval(feed_dict={x: np.ones([1, 1, 1, 1], np.float32)}))
 
   def testDepthwiseConv2DFormat(self):
     if not test.is_gpu_available():
