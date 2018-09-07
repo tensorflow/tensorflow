@@ -880,7 +880,7 @@ REGISTER_OP("MapDefun")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("f: func")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      std::vector<TensorShape> output_shapes;
+      std::vector<PartialTensorShape> output_shapes;
       TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
       if (output_shapes.size() != c->num_outputs()) {
         return errors::InvalidArgument(
@@ -890,6 +890,10 @@ REGISTER_OP("MapDefun")
 
       int64 dim_zero = -1;
       for (size_t i = 0; i < static_cast<size_t>(c->num_inputs()); ++i) {
+        if (c->Rank(c->input(i)) == 0) {
+          return errors::InvalidArgument(
+              "Inputs must have rank at least 1. Input ", i, " has rank of 0");
+        }
         auto dim_handle = c->Dim(c->input(i), 0);
         if (c->ValueKnown(dim_handle)) {
           if (dim_zero == -1) {
