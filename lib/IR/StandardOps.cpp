@@ -714,6 +714,48 @@ const char *ReturnOp::verify() const {
 }
 
 //===----------------------------------------------------------------------===//
+// ShapeCastOp
+//===----------------------------------------------------------------------===//
+
+void ShapeCastOp::build(Builder *builder, OperationState *result,
+                        SSAValue *input, Type *resultType) {
+  result->addOperands(input);
+  result->addTypes(resultType);
+}
+
+const char *ShapeCastOp::verify() const {
+  auto *opType = dyn_cast<TensorType>(getOperand()->getType());
+  auto *resType = dyn_cast<TensorType>(getResult()->getType());
+  if (!opType || !resType)
+    return "requires input and result types to be tensors";
+
+  if (opType == resType)
+    return "requires the input and result type to be different";
+
+  if (opType->getElementType() != resType->getElementType())
+    return "requires input and result element types to be the same";
+
+  // If the source or destination are unranked, then the cast is valid.
+  auto *opRType = dyn_cast<RankedTensorType>(opType);
+  auto *resRType = dyn_cast<RankedTensorType>(resType);
+  if (!opRType || !resRType)
+    return nullptr;
+
+  // If they are both ranked, they have to have the same rank, and any specified
+  // dimensions must match.
+  if (opRType->getRank() != resRType->getRank())
+    return "requires input and result ranks to match";
+
+  for (unsigned i = 0, e = opRType->getRank(); i != e; ++i) {
+    int opDim = opRType->getDimSize(i), resultDim = resRType->getDimSize(i);
+    if (opDim != -1 && resultDim != -1 && opDim != resultDim)
+      return "requires static dimensions to match";
+  }
+
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // StoreOp
 //===----------------------------------------------------------------------===//
 
@@ -788,6 +830,6 @@ const char *StoreOp::verify() const {
 void mlir::registerStandardOperations(OperationSet &opSet) {
   opSet.addOperations<AddFOp, AffineApplyOp, AllocOp, CallOp, CallIndirectOp,
                       ConstantOp, DeallocOp, DimOp, ExtractElementOp, LoadOp,
-                      ReturnOp, StoreOp>(
+                      ReturnOp, ShapeCastOp, StoreOp>(
       /*prefix=*/"");
 }

@@ -413,6 +413,65 @@ private:
   explicit LoadOp(const Operation *state) : OpBase(state) {}
 };
 
+/// The "return" operation represents a return statement of an ML function.
+/// The operation takes variable number of operands and produces no results.
+/// The operand number and types must match the signature of the ML function
+/// that contains the operation. For example:
+///
+///   mlfunc @foo() : (i32, f8) {
+///   ...
+///   return %0, %1 : i32, f8
+///
+class ReturnOp
+    : public OpBase<ReturnOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
+public:
+  static StringRef getOperationName() { return "return"; }
+
+  // Hooks to customize behavior of this op.
+  static bool parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p) const;
+  const char *verify() const;
+
+private:
+  friend class Operation;
+  explicit ReturnOp(const Operation *state) : OpBase(state) {}
+};
+
+/// The "shape_cast" operation converts a tensor from one type to an equivalent
+/// type without changing any data elements.  The source and destination types
+/// must both be tensor types with the same element type, and the source and
+/// destination types may not be the same.  They must either have the same rank,
+/// or one may be an unknown rank.  The operation is invalid if converting to a
+/// mismatching constant dimension.
+///
+/// Convert from unknown rank to rank 2 with unknown dimension sizes.
+///    %2 = shape_cast %1 : tensor<??f32> to tensor<?x?xf32>
+///
+class ShapeCastOp
+    : public OpBase<ShapeCastOp, OpTrait::OneOperand, OpTrait::OneResult> {
+public:
+  static StringRef getOperationName() { return "shape_cast"; }
+
+  static void build(Builder *builder, OperationState *result, SSAValue *input,
+                    Type *resultType);
+
+  /// The result of a shape_cast is always a tensor.
+  TensorType *getType() const {
+    return cast<TensorType>(getResult()->getType());
+  }
+
+  // Hooks to customize behavior of this op.
+  // TODO(clattner): Add parse/print hooks when we agree about the concrete
+  // syntax.
+  // static bool parse(OpAsmParser *parser, OperationState *result);
+  // void print(OpAsmPrinter *p) const;
+  const char *verify() const;
+
+private:
+  friend class Operation;
+  explicit ShapeCastOp(const Operation *state) : OpBase(state) {}
+};
+
 /// The "store" op writes an element to a memref specified by an index list.
 /// The arity of indices is the rank of the memref (i.e. if the memref being
 /// stored to is of rank 3, then 3 indices are required for the store following
@@ -453,30 +512,6 @@ public:
 private:
   friend class Operation;
   explicit StoreOp(const Operation *state) : OpBase(state) {}
-};
-
-/// The "return" operation represents a return statement of an ML function.
-/// The operation takes variable number of operands and produces no results.
-/// The operand number and types must match the signature of the ML function
-/// that contains the operation. For example:
-///
-///   mlfunc @foo() : (i32, f8) {
-///   ...
-///   return %0, %1 : i32, f8
-///
-class ReturnOp
-    : public OpBase<ReturnOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
-public:
-  static StringRef getOperationName() { return "return"; }
-
-  // Hooks to customize behavior of this op.
-  static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
-  const char *verify() const;
-
-private:
-  friend class Operation;
-  explicit ReturnOp(const Operation *state) : OpBase(state) {}
 };
 
 /// Install the standard operations in the specified operation set.

@@ -162,7 +162,8 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
     return OptFailure;
 
   // Run each of the passes that were selected.
-  for (auto passKind : passList) {
+  for (unsigned i = 0, e = passList.size(); i != e; ++i) {
+    auto passKind = passList[i];
     Pass *pass = nullptr;
     switch (passKind) {
     case ConvertToCFG:
@@ -197,6 +198,10 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
     if (!errorResult.empty()) {
       context->emitDiagnostic(UnknownLoc::get(context), errorResult,
                               MLIRContext::DiagnosticKind::Error);
+
+      auto output = getOutputStream();
+      module->print(output->os());
+      output->keep();
       return OptFailure;
     }
   }

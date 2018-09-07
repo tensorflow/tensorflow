@@ -289,11 +289,14 @@ class VectorType : public VectorOrTensorType {
 public:
   static VectorType *get(ArrayRef<unsigned> shape, Type *elementType);
 
+  unsigned getRank() const { return getSubclassData(); }
+
   ArrayRef<unsigned> getShape() const {
     return ArrayRef<unsigned>(shapeElements, getSubclassData());
   }
 
-  unsigned getRank() const { return getSubclassData(); }
+  /// Return the size of the specified dimension.
+  unsigned getDimSize(unsigned i) const { return getShape()[i]; }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Type *type) {
@@ -326,17 +329,20 @@ protected:
 
 /// Ranked tensor types represent multi-dimensional arrays that have a shape
 /// with a fixed number of dimensions. Each shape element can be a positive
-/// integer or unknown (represented by any negative integer).
+/// integer or unknown (represented -1).
 class RankedTensorType : public TensorType {
 public:
   static RankedTensorType *get(ArrayRef<int> shape,
                                Type *elementType);
 
+  unsigned getRank() const { return getSubclassData(); }
+
   ArrayRef<int> getShape() const {
     return ArrayRef<int>(shapeElements, getSubclassData());
   }
 
-  unsigned getRank() const { return getSubclassData(); }
+  /// Return the size of the specified dimension, or -1 if unspecified.
+  int getDimSize(unsigned i) const { return getShape()[i]; }
 
   static bool classof(const Type *type) {
     return type->getKind() == Kind::RankedTensor;
@@ -377,12 +383,15 @@ public:
                          ArrayRef<AffineMap*> affineMapComposition,
                          unsigned memorySpace);
 
+  unsigned getRank() const { return getShape().size(); }
+
   /// Returns an array of memref shape dimension sizes.
   ArrayRef<int> getShape() const {
     return ArrayRef<int>(shapeElements, getSubclassData());
   }
 
-  unsigned getRank() const { return getShape().size(); }
+  /// Return the size of the specified dimension, or -1 if unspecified.
+  int getDimSize(unsigned i) const { return getShape()[i]; }
 
   /// Returns the elemental type for this memref shape.
   Type *getElementType() const { return elementType; }
