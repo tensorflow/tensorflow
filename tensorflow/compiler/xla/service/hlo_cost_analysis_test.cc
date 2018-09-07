@@ -203,6 +203,35 @@ TEST_F(HloCostAnalysisTest, Convolution) {
             sizeof(float) * (10 * 20 + 3 * 3 + 8 * 18));
 }
 
+TEST_F(HloCostAnalysisTest, ConvolutionWithFeatureGroup) {
+  XlaBuilder builder("convolution");
+  auto input = Parameter(
+      &builder, 0,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/120, /*y_dim=*/10,
+                                 /*x_dim=*/20}),
+      "input");
+  auto kernel = Parameter(
+      &builder, 1,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/120, /*z_dim=*/1, /*y_dim=*/3,
+                                 /*x_dim=*/3}),
+      "kernel");
+  Conv(input, kernel, {1, 1}, Padding::kValid, /*feature_group_count=*/120);
+
+  // Run HLO cost analysis.
+  auto hlo_module = BuildHloGraph(&builder);
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  // Output shape is [1x120x8x18] and each output element requires (3x3)
+  // FMAs and one FMA is 2 flops.
+  EXPECT_EQ(analysis.flop_count(), 120 * 8 * 18 * 2 * 3 * 3);
+
+  // Bytes accessed is sum of inputs and output.
+  EXPECT_EQ(analysis.bytes_accessed(),
+            sizeof(float) * (120 * 10 * 20 + 120 * 3 * 3 + 120 * 8 * 18));
+}
+
 TEST_F(HloCostAnalysisTest, Reduce) {
   XlaBuilder builder("reduce");
   auto input =
