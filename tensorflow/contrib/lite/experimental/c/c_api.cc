@@ -133,6 +133,8 @@ void* TFL_TensorData(const TFL_Tensor* tensor) {
   return static_cast<void*>(tensor->data.raw);
 }
 
+const char* TFL_TensorName(const TFL_Tensor* tensor) { return tensor->name; }
+
 TFL_Status TFL_TensorCopyFromBuffer(TFL_Tensor* tensor, const void* input_data,
                                     size_t input_data_size) {
   if (tensor->bytes != input_data_size) {
