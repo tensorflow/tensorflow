@@ -694,7 +694,7 @@ void ReturnOp::print(OpAsmPrinter *p) const {
     p->printOperands(operand_begin(), operand_end());
     *p << " : ";
     interleave(operand_begin(), operand_end(),
-               [&](auto *e) { p->printType(e->getType()); },
+               [&](const SSAValue *e) { p->printType(e->getType()); },
                [&]() { *p << ", "; });
   }
 }
