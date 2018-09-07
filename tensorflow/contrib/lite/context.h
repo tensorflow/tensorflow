@@ -148,7 +148,7 @@ void TfLiteIntArrayFree(TfLiteIntArray* v);
 #define TF_LITE_ENSURE_OK(context, status) \
   do {                                     \
     if ((status) != kTfLiteOk) {           \
-      return status;                       \
+      return kTfLiteError;                 \
     }                                      \
   } while (0)
 
