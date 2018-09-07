@@ -128,9 +128,10 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class);
 // To unset the profiler, pass Py_None as the value of `profiler`.
 PyObject* TFE_Py_SetEagerTensorProfiler(PyObject* profiler);
 
-// Creates a new tape and adds it to the active set. `persistent` must be a
-// PyBool_Type, i.e either Py_True or Py_False
-PyObject* TFE_Py_TapeSetNew(PyObject* persistent);
+// Creates a new tape and adds it to the active set. `persistent` and
+// `watch_accessed_variables` must be `PyBool_Type` (`Py_True` or `Py_False`).
+PyObject* TFE_Py_TapeSetNew(PyObject* persistent,
+                            PyObject* watch_accessed_variables);
 
 // Removes the passed tape from the set of active tapes.
 void TFE_Py_TapeSetRemove(PyObject* tape);
@@ -162,8 +163,11 @@ void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
                                    PyObject* input_tensor_ids,
                                    PyObject* backward_function);
 
+// Notifies all tapes that a variable has been accessed.
+void TFE_Py_TapeVariableAccessed(PyObject* variable);
+
 // Watches the given variable object on the given tape.
-void TFE_Py_TapeSetWatchVariable(PyObject* variable);
+void TFE_Py_TapeWatchVariable(PyObject* tape, PyObject* variable);
 
 // Computes a gradient based on information recorded on the tape.`tape` must
 // have been produced by TFE_Py_NewTape. `target` and `sources` must be python

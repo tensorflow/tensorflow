@@ -27,7 +27,6 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
-from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -616,7 +615,6 @@ class FunctionTest(test.TestCase):
 
     @function.defun
     def g(x):
-      tape.watch_variable(x)
       y = math_ops.add(x, three)
       f(y)
 
@@ -630,7 +628,6 @@ class FunctionTest(test.TestCase):
       return math_ops.add(x, three)
 
     def g(x):
-      tape.watch_variable(three)
       return f(x)
 
     g = backprop.implicit_grad(g)(constant_op.constant(1.0))[0][0]
@@ -1427,14 +1424,14 @@ class FunctionTest(test.TestCase):
     grad_t, = backprop.gradients_function(sq, [0])(t)
     self.assertAllEqual(grad_t, [[6, 6], [14, 14]])
 
-    with backprop.GradientTape(persistent=True) as gtape:
-      gtape.watch(t)
+    with backprop.GradientTape(persistent=True) as tape:
+      tape.watch(t)
       one = matmul(t, b=t, transpose_a=True)
       two = matmul(b=t, a=t, transpose_a=True)
       three = matmul(a=t, b=t, transpose_a=True)
 
     for output in [one, two, three]:
-      self.assertAllEqual(gtape.gradient(output, t), [[6, 6], [14, 14]])
+      self.assertAllEqual(tape.gradient(output, t), [[6, 6], [14, 14]])
 
   def testGradientInFunctionWithKeywordArguments(self):
 

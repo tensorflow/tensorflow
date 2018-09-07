@@ -519,7 +519,7 @@ class Function(object):
 
     for v in self._func_graph.variables:
       if v.trainable:
-        tape.watch_variable(v)
+        tape.variable_accessed(v)
 
     captures = self._resolve_captured_inputs()
     tensor_inputs = [x for x in nest.flatten(args) if isinstance(x, ops.Tensor)]

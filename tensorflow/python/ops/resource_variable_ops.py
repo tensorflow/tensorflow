@@ -750,7 +750,7 @@ class ResourceVariable(variables.RefVariable):
 
   def _read_variable_op(self):
     if self.trainable:
-      tape.watch_variable(self)
+      tape.variable_accessed(self)
     result = gen_resource_variable_ops.read_variable_op(self._handle,
                                                         self._dtype)
     if not context.executing_eagerly():
@@ -781,7 +781,7 @@ class ResourceVariable(variables.RefVariable):
     """Reads the value of this variable sparsely, using `gather`."""
     with ops.name_scope("Gather" if name is None else name) as name:
       if self.trainable:
-        tape.watch_variable(self)
+        tape.variable_accessed(self)
       value = gen_resource_variable_ops.resource_gather(
           self._handle, indices, dtype=self._dtype, name=name)
     return array_ops.identity(value)
@@ -949,7 +949,7 @@ class ResourceVariable(variables.RefVariable):
 
   def _lazy_read(self, op):
     if self.trainable:
-      tape.watch_variable(self)
+      tape.variable_accessed(self)
     return _UnreadVariable(
         handle=self._handle, dtype=self.dtype, shape=self._shape,
         in_graph_mode=self._in_graph_mode,
