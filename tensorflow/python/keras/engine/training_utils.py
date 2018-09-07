@@ -22,18 +22,22 @@ import copy
 import math
 
 import numpy as np
+import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import weights_broadcast_ops
+from tensorflow.python.util import nest
 
 
 def _map_nested(data, func):
@@ -246,7 +250,8 @@ def standardize_input_data(data,
       ValueError: in case of improperly formatted user-provided data.
   """
   if not names:
-    if data is not None and hasattr(data, '__len__') and len(data):
+    if (data is not None and hasattr(data, '__len__') and len(data) and
+        not isinstance(data, dict)):
       raise ValueError('Error when checking model ' + exception_prefix + ': '
                        'expected no data, but got:', data)
     return []
@@ -719,6 +724,8 @@ def has_symbolic_tensors(ls):
 def has_tensors(ls):
   if isinstance(ls, (list, tuple)):
     return any(tensor_util.is_tensor(v) for v in ls)
+  if isinstance(ls, dict):
+    return any(tensor_util.is_tensor(v) for _, v in six.iteritems(ls))
   return tensor_util.is_tensor(ls)
 
 
@@ -829,6 +836,12 @@ def check_steps_argument(input_data, steps, steps_name):
   return False
 
 
+def cast_single_tensor(x):
+  if tensor_util.is_tensor(x) and x.dtype.is_floating:
+    return math_ops.cast(x, dtype=K.floatx())
+  return x
+
+
 def cast_if_floating_dtype(x):
   """Casts the given data tensors to the default floating point type.
 
@@ -846,13 +859,7 @@ def cast_if_floating_dtype(x):
     raise RuntimeError(
         'Please provide tensors for casting, got: {x}'.format(x=x))
 
-  if isinstance(x, (list, tuple)):
-    return [
-        math_ops.cast(val, dtype=K.floatx())
-        if tensor_util.is_tensor(val) and val.dtype.is_floating else val
-        for val in x
-    ]
-  return math_ops.cast(x, dtype=K.floatx()) if x.dtype.is_floating else x
+  return nest.map_structure(cast_single_tensor, x)
 
 
 def get_output_sample_weight_and_mode(skip_target_weighing_indices,
@@ -933,3 +940,103 @@ def prepare_sample_weights(output_names, sample_weight_mode,
       sample_weights.append(weight)
       sample_weight_modes.append(mode)
   return sample_weights, sample_weight_modes
+
+
+# TODO(rohanj): This is a hack to get around not depending on feature_column and
+# create a cyclical dependency. Figure out a cleaner solution
+def is_feature_layer(layer):
+  """Returns whether `layer` is a FeatureLayer or not."""
+  return getattr(layer, '_is_feature_layer', False)
+
+
+class ModelInputs(object):
+  """Encapsulates model inputs.
+
+  Allows for transforming model inputs while keeping the same structure.
+  """
+
+  def __init__(self, inputs):
+    self._inputs = inputs
+    self._is_dict = isinstance(self._inputs, dict)
+    self._is_single_input = not isinstance(self._inputs, (list, tuple, dict))
+    self._flattened_inputs = []
+    self._input_names = []
+    if isinstance(self._inputs, dict):
+      for k in sorted(self._inputs.keys()):
+        self._flattened_inputs.append(self._inputs[k])
+        self._input_names.append(k)
+    else:
+      self._flattened_inputs = nest.flatten(self._inputs)
+      self._input_names = [
+          'input_%d' % (i + 1) for i in range(len(self._flattened_inputs))
+      ]
+    assert len(self._input_names) == len(self._flattened_inputs)
+
+  def get_input_names(self):
+    """Returns keys to name inputs by.
+
+    In case inputs provided were a list, tuple or single entry, we make up a
+    key 'input_%d'. For dictionary case, we return a sorted list of keys.
+    """
+    return self._input_names
+
+  def _get(self, return_single_as_list=False):
+    """Returns provided inputs, potentially transformed.
+
+    Inputs are returned in the same format they were provided i.e. lists
+    are returned as lists, single entries as single entries (unless
+    `return_single_as_list` is true), dictionaries as dictionaries.
+
+    Args:
+      return_single_as_list: Returns a list of size 1 for single entry case.
+    """
+    if self._is_dict:
+      return dict(zip(self._input_names, self._flattened_inputs))
+    if self._is_single_input and not return_single_as_list:
+      return self._flattened_inputs[0]
+    return self._flattened_inputs
+
+  def get_input_values(self):
+    """Returns input values passed in."""
+    if context.executing_eagerly():
+      for i in range(len(self._flattened_inputs)):
+        v = self._flattened_inputs[i]
+        if tensor_util.is_tensor(v):
+          v = cast_single_tensor(v)
+        else:
+          v = ops.convert_to_tensor(v, dtype=K.floatx())
+        self._flattened_inputs[i] = v
+    return self._get(return_single_as_list=False)
+
+  def get_symbolic_inputs(self, return_single_as_list=False):
+    """Returns inputs to be set as self.inputs for a model."""
+    for i in range(len(self._flattened_inputs)):
+      k = self._input_names[i]
+      v = self._flattened_inputs[i]
+      if context.executing_eagerly():
+        v = base_layer.DeferredTensor(
+            shape=(None for _ in v.shape), dtype=v.dtype)
+      else:
+        if isinstance(v, list):
+          v = np.asarray(v)
+          if v.ndim == 1:
+            v = np.expand_dims(v, 1)
+        if isinstance(v, (np.ndarray)):
+          # We fix the placeholder shape except the batch size.
+          # This is suboptimal, but it is the best we can do with the info
+          # we have. The user should call `model._set_inputs(placeholders)`
+          # to specify custom placeholders if the need arises.
+          shape = (None,) + v.shape[1:]
+          v = K.placeholder(shape=shape, name=k)
+      self._flattened_inputs[i] = v
+
+    return self._get(return_single_as_list)
+
+  def as_dict(self):
+    """An iterable over a dictionary version of inputs."""
+    for i in range(len(self._flattened_inputs)):
+      yield self._input_names[i], self._flattened_inputs[i]
+
+  def as_list(self):
+    """Returning the inputs as a list."""
+    return self._flattened_inputs
