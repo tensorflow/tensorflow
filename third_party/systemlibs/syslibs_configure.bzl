@@ -13,6 +13,7 @@ VALID_LIBS = [
     "absl_py",
     "astor_archive",
     "boringssl",
+    "com_github_googleapis_googleapis",
     "com_github_googlecloudplatform_google_cloud_cpp",
     "com_googlesource_code_re2",
     "curl",
