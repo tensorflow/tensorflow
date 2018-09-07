@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/lite/experimental/c/c_api.h"
 
+#include <memory>
+
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/experimental/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/interpreter.h"
@@ -29,12 +31,14 @@ extern "C" {
 TFL_Model* TFL_NewModel(const void* model_data, size_t model_size) {
   auto model = tflite::FlatBufferModel::BuildFromBuffer(
       static_cast<const char*>(model_data), model_size);
-  return model ? new TFL_Model{std::move(model)} : nullptr;
+  std::shared_ptr<const tflite::FlatBufferModel> shared_model(model.release());
+  return shared_model ? new TFL_Model{std::move(shared_model)} : nullptr;
 }
 
 TFL_Model* TFL_NewModelFromFile(const char* model_path) {
   auto model = tflite::FlatBufferModel::BuildFromFile(model_path);
-  return model ? new TFL_Model{std::move(model)} : nullptr;
+  std::shared_ptr<const tflite::FlatBufferModel> shared_model(model.release());
+  return shared_model ? new TFL_Model{std::move(shared_model)} : nullptr;
 }
 
 void TFL_DeleteModel(TFL_Model* model) { delete model; }
@@ -72,7 +76,7 @@ TFL_Interpreter* TFL_NewInterpreter(
     }
   }
 
-  return new TFL_Interpreter{std::move(interpreter)};
+  return new TFL_Interpreter{model->impl, std::move(interpreter)};
 }
 
 void TFL_DeleteInterpreter(TFL_Interpreter* interpreter) { delete interpreter; }
