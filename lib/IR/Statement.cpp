@@ -343,6 +343,24 @@ int64_t ForStmt::getConstantUpperBound() const {
   return ubMap->getSingleConstantValue();
 }
 
+Optional<uint64_t> ForStmt::getConstantTripCount() const {
+  // TODO(bondhugula): handle arbitrary lower/upper bounds.
+  if (!hasConstantBounds())
+    return None;
+  int64_t lb = getConstantLowerBound();
+  int64_t ub = getConstantUpperBound();
+  int64_t step = getStep();
+
+  // 0 iteration loops.
+  if ((step >= 1 && lb > ub) || (step <= -1 && lb < ub))
+    return 0;
+
+  uint64_t tripCount = static_cast<uint64_t>((ub - lb + 1) % step == 0
+                                                 ? (ub - lb + 1) / step
+                                                 : (ub - lb + 1) / step + 1);
+  return tripCount;
+}
+
 void ForStmt::setConstantLowerBound(int64_t value) {
   MLIRContext *context = getContext();
   auto *expr = AffineConstantExpr::get(value, context);

@@ -25,7 +25,9 @@
 
 namespace mlir {
 
+class ForStmt;
 class FunctionPass;
+class MLFunction;
 class MLFunctionPass;
 class ModulePass;
 
@@ -46,6 +48,14 @@ FunctionPass *createSimplifyAffineExprPass();
 /// Function references are appropriately patched to refer to the newly
 /// generated CFG functions.
 ModulePass *createConvertToCFGPass();
+
+/// Promotes the loop body of a ForStmt to its containing block if the ForStmt
+/// was known to have a single iteration. Returns false otherwise.
+bool promoteIfSingleIteration(ForStmt *forStmt);
+
+/// Promotes all single iteration ForStmt's in the MLFunction, i.e., moves
+/// their body into the containing StmtBlock.
+void promoteSingleIterationLoops(MLFunction *f);
 
 } // end namespace mlir
 

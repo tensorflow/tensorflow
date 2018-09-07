@@ -266,6 +266,9 @@ public:
   /// Sets the upper bound to the given constant value.
   void setConstantUpperBound(int64_t value);
 
+  /// Returns the trip count if it's a constant.
+  Optional<uint64_t> getConstantTripCount() const;
+
   //===--------------------------------------------------------------------===//
   // Operands
   //===--------------------------------------------------------------------===//

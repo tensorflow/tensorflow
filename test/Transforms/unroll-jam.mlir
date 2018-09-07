@@ -4,7 +4,8 @@
 
 // CHECK-LABEL: mlfunc @unroll_jam_imperfect_nest() {
 mlfunc @unroll_jam_imperfect_nest() {
-  // CHECK: for %i0 = 0 to 99 step 2 {
+  // CHECK: %c100 = constant 100 : affineint
+  // CHECK-NEXT: for %i0 = 0 to 99 step 2 {
   for %i = 0 to 100 {
     // CHECK: %0 = "addi32"(%i0, %i0) : (affineint, affineint) -> i32
     // CHECK-NEXT: %1 = affine_apply #map0(%i0)
@@ -24,14 +25,12 @@ mlfunc @unroll_jam_imperfect_nest() {
     // CHECK-NEXT: %10 = "addi32"(%9, %9) : (affineint, affineint) -> i32
     %w = "addi32"(%i, %i) : (affineint, affineint) -> i32
   } // CHECK }
-  // cleanup loop.
-  // CHECK: for %i2 = 100 to 100 {
-    // CHECK-NEXT: %11 = "addi32"(%i2, %i2) : (affineint, affineint) -> i32
-    // CHECK-NEXT: for %i3 = 0 to 17 {
-      // CHECK-NEXT: %12 = "addi32"(%i2, %i2) : (affineint, affineint) -> i32
-      // CHECK-NEXT: %13 = "addi32"(%12, %12) : (i32, i32) -> i32
-    // CHECK-NEXT: }
-    // CHECK-NEXT: %14 = "addi32"(%i2, %i2) : (affineint, affineint) -> i32
+  // cleanup loop (single iteration)
+  // CHECK: %11 = "addi32"(%c100, %c100) : (affineint, affineint) -> i32
+  // CHECK-NEXT: for %i2 = 0 to 17 {
+    // CHECK-NEXT: %12 = "addi32"(%c100, %c100) : (affineint, affineint) -> i32
+    // CHECK-NEXT: %13 = "addi32"(%12, %12) : (i32, i32) -> i32
   // CHECK-NEXT: }
+  // CHECK-NEXT: %14 = "addi32"(%c100, %c100) : (affineint, affineint) -> i32
   return
 }
