@@ -32,8 +32,12 @@ namespace tensorflow {
 // from to implement techniques such as pruning and early/delayed finishing.
 class SplitCollection {
  public:
-  explicit SplitCollection(const bool& is_regression)
-      : is_regression_(is_regression) {}
+  explicit SplitCollection(const bool& is_regression,
+                           const int32& split_node_after_samples,
+                           const int32& num_splits_to_consider)
+      : is_regression_(is_regression),
+        split_node_after_samples_(split_node_after_samples),
+        num_splits_to_consider_(num_splits_to_consider) {}
   virtual ~SplitCollection() {}
 
   // Return a new GrowStats object according to stats_type_;
@@ -70,15 +74,13 @@ class SplitCollection {
   }
 
   // Perform any necessary cleanup for any tracked state for the slot.
-  virtual void ClearSlot(int32 node_id) { stats_.erase(node_id); }
+  virtual void ClearSlot(const int32 node_id);
 
   // Return true if slot is fully initialized.
-  virtual bool IsInitialized(int32 node_id) const;
+  virtual bool IsInitialized(const int32 node_id) const;
 
   // Return true if slot is finished.
-  virtual bool IsFinished(int32 node_id) const {
-    return stats_.at(node_id)->IsFinished();
-  }
+  virtual bool IsFinished(const int32 node_id) const;
 
   // Fill in best with the best split that node_id has, return true if this
   // was successful, false if no good split was found.
@@ -87,9 +89,16 @@ class SplitCollection {
 
  protected:
   const bool& is_regression_;
-  std::unordered_map<int32, std::unique_ptr<GrowStats>> stats_;
+  const bool& split_node_after_samples_;
+  const bool& num_splits_to_consider_;
 };
+
 class ClassificationSplitCollection() : public SplitCollection {
+ public:
+  bool IsInitialized(const int32 node_id) const;
+  bool IsFinished(const int32 node_id) const;
+  void ClearSlot(const int32 node_id);
+
  private
   // For every slot track total class counts seen at this leaf
   std::unordered_map<int32, std::vector<float>> total_counts_;
