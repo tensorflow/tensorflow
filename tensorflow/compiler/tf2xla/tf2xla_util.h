@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"

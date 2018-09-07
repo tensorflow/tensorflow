@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -64,7 +65,7 @@ StatusOr<std::unique_ptr<Literal>> PackedLiteralReader::Read(
   absl::Span<const float> field = result->data<float>();
   char* data = absl::bit_cast<char*>(field.data());
   uint64 bytes = elements * sizeof(float);
-  absl::string_view sp;
+  tensorflow::StringPiece sp;
   auto s = file_->Read(offset_, bytes, &sp, data);
   offset_ += sp.size();
   if (!s.ok()) {
@@ -85,7 +86,7 @@ bool PackedLiteralReader::IsExhausted() const {
   // Try to read a single byte from offset_.  If we can't, we've
   // exhausted the data.
   char single_byte[1];
-  absl::string_view sp;
+  tensorflow::StringPiece sp;
   auto s = file_->Read(offset_, sizeof(single_byte), &sp, single_byte);
   return !s.ok();
 }
