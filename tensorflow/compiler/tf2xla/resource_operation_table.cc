@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "absl/algorithm/container.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace tensorflow {
@@ -31,8 +32,7 @@ namespace tensorflow {
 }
 
 static gtl::FlatMap<StringPiece, XlaResourceOpInfo>* CreateResourceOpInfoMap() {
-  gtl::FlatMap<StringPiece, XlaResourceOpInfo>* result =
-      new gtl::FlatMap<StringPiece, XlaResourceOpInfo>;
+  auto* result = new gtl::FlatMap<StringPiece, XlaResourceOpInfo>;
 
   auto add = [&](StringPiece op, XlaResourceOpKind op_kind,
                  XlaResourceKind resource_kind) {
@@ -110,10 +110,10 @@ GetStaticResourceOpInfoMap() {
   return *op_info_map;
 }
 
-const XlaResourceOpInfo* GetResourceOpInfoForOp(StringPiece op) {
+const XlaResourceOpInfo* GetResourceOpInfoForOp(absl::string_view op) {
   const gtl::FlatMap<StringPiece, XlaResourceOpInfo>& op_infos =
       GetStaticResourceOpInfoMap();
-  auto it = op_infos.find(op);
+  auto it = op_infos.find(StringPiece(op.data(), op.length()));
   return it == op_infos.end() ? nullptr : &it->second;
 }
 
@@ -121,7 +121,7 @@ namespace resource_op_table_internal {
 std::vector<StringPiece> GetKnownResourceOps() {
   std::vector<StringPiece> result;
   for (const auto& p : GetStaticResourceOpInfoMap()) {
-    result.push_back(p.first);
+    result.push_back(absl::string_view(p.first));
   }
   absl::c_sort(result);
   return result;
