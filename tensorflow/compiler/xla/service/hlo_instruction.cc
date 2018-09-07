@@ -465,6 +465,14 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           proto.dot_dimension_numbers(), precision_config);
       break;
     }
+    case HloOpcode::kDomain:
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "Domain instruction should have 1 operands but sees "
+          << proto.operand_ids_size();
+      instruction = absl::make_unique<HloDomainInstruction>(
+          proto.shape(), operands(0), /*operand_side_metadata=*/nullptr,
+          /*user_side_metadata=*/nullptr);
+      break;
     default: {
       instruction = absl::WrapUnique(new HloInstruction(opcode, proto.shape()));
       for (const int64 operand_id : proto.operand_ids()) {
@@ -567,7 +575,6 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kClz:
-    case HloOpcode::kDomain:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
@@ -1137,12 +1144,9 @@ bool HloInstruction::HasSideEffect() const {
     const Shape& shape, HloInstruction* operand,
     std::unique_ptr<DomainMetadata> operand_side_metadata,
     std::unique_ptr<DomainMetadata> user_side_metadata) {
-  auto instruction =
-      absl::WrapUnique(new HloInstruction(HloOpcode::kDomain, shape));
-  instruction->operand_side_metadata_ = std::move(operand_side_metadata);
-  instruction->user_side_metadata_ = std::move(user_side_metadata);
-  instruction->AppendOperand(operand);
-  return instruction;
+  return absl::make_unique<HloDomainInstruction>(
+      shape, operand, std::move(operand_side_metadata),
+      std::move(user_side_metadata));
 }
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
@@ -1199,6 +1203,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kScatter:
     case HloOpcode::kIota:
     case HloOpcode::kDot:
+    case HloOpcode::kDomain:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
     // Unary ops.
@@ -1294,12 +1299,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       clone = CreateConditional(shape, new_operands[0], new_operands[1],
                                 true_computation(), new_operands[2],
                                 false_computation());
-      break;
-    case HloOpcode::kDomain:
-      CHECK_EQ(new_operands.size(), 1);
-      clone =
-          CreateDomain(shape, new_operands[0], operand_side_metadata_->Clone(),
-                       user_side_metadata_->Clone());
       break;
     case HloOpcode::kAfterAll:
       if (new_operands.empty()) {
@@ -1611,10 +1610,6 @@ bool HloInstruction::IdenticalSlowPath(
       return false;
     }
 
-    case HloOpcode::kDomain:
-      return operand_side_metadata().Matches(other.operand_side_metadata()) &&
-             user_side_metadata().Matches(other.user_side_metadata());
-
     // Ops migrated to subclasses should never come to this line.
     // TODO(b/80131774): Remove this switch when migration is complete.
     case HloOpcode::kBatchNormTraining:
@@ -1655,6 +1650,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kGather:
     case HloOpcode::kScatter:
     case HloOpcode::kDot:
+    case HloOpcode::kDomain:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -2113,11 +2109,6 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
                                                PrintName(pre->name(), options));
                                    }),
                            "}"));
-  }
-  if (operand_side_metadata_ != nullptr && user_side_metadata_ != nullptr) {
-    extra.push_back(StrCat("domain={kind=\"", operand_side_metadata_->Kind(),
-                           "\", entry=", user_side_metadata_->ToString(),
-                           ", exit=", operand_side_metadata_->ToString(), "}"));
   }
 
   return extra;
@@ -3288,4 +3279,11 @@ const DotDimensionNumbers& HloInstruction::dot_dimension_numbers() const {
   return Cast<HloDotInstruction>(this)->dot_dimension_numbers();
 }
 
+const DomainMetadata& HloInstruction::operand_side_metadata() const {
+  return Cast<HloDomainInstruction>(this)->operand_side_metadata();
+}
+
+const DomainMetadata& HloInstruction::user_side_metadata() const {
+  return Cast<HloDomainInstruction>(this)->user_side_metadata();
+}
 }  // namespace xla
