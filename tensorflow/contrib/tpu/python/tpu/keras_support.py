@@ -282,9 +282,9 @@ def _valid_name(tensor_name):
 
 def _replicated_optimizer(opt):
   """Wrap the optimizer `opt` with CrossShardOptimizer if applicable."""
-  if tpu_function.get_tpu_context().number_of_shards == 1:
-    return opt
-
+  # Always wrap `opt` with CrossShardOptimizer, even if we are running on a
+  # single core.  This ensures Keras properly tracks and initializes optimizer
+  # variables.
   if isinstance(opt, keras_optimizers.TFOptimizer):
     return tpu_optimizer.CrossShardOptimizer(opt.optimizer)
   else:
