@@ -342,8 +342,9 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
 static OptResult
 splitAndProcessFile(std::unique_ptr<MemoryBuffer> originalBuffer) {
   const char marker[] = "-----";
+  auto *origMemBuffer = originalBuffer.get();
   SmallVector<StringRef, 8> sourceBuffers;
-  originalBuffer->getBuffer().split(sourceBuffers, marker);
+  origMemBuffer->getBuffer().split(sourceBuffers, marker);
 
   // Add the original buffer to the source manager.
   SourceMgr fileSourceMgr;
@@ -354,7 +355,11 @@ splitAndProcessFile(std::unique_ptr<MemoryBuffer> originalBuffer) {
   // Process each chunk in turn.  If any fails, then return a failure of the
   // tool.
   for (auto &subBuffer : sourceBuffers) {
-    auto subMemBuffer = MemoryBuffer::getMemBufferCopy(subBuffer);
+    auto splitLoc = SMLoc::getFromPointer(subBuffer.data());
+    unsigned splitLine = fileSourceMgr.getLineAndColumn(splitLoc).first;
+    auto subMemBuffer = MemoryBuffer::getMemBufferCopy(
+        subBuffer, origMemBuffer->getBufferIdentifier() +
+                       Twine(" split at line #") + Twine(splitLine));
     if (processFile(std::move(subMemBuffer)))
       hadUnexpectedResult = true;
   }

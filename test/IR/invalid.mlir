@@ -277,13 +277,13 @@ mlfunc @malformed_type(%a : intt) { // expected-error {{expected type}}
 
 cfgfunc @resulterror() -> i32 {
 bb42:
-  return    // expected-error@-4{{return has 0 operands, but enclosing function returns 1}}
+  return    // expected-error {{return has 0 operands, but enclosing function returns 1}}
 }
 
 // -----
 
-mlfunc @mlfunc_resulterror() -> i32 {  // expected-error@-2 {{return has 0 operands, but enclosing function returns 1}}
-  return
+mlfunc @mlfunc_resulterror() -> i32 {
+  return // expected-error {{return has 0 operands, but enclosing function returns 1}}
 }
 
 // -----
@@ -304,9 +304,10 @@ bb42(%0: f32):
 
 // -----
 
-cfgfunc @br_mismatch() {  // expected-error @-2 {{branch has 2 operands, but target block has 1}}
+cfgfunc @br_mismatch() {
 bb0:
   %0 = "foo"() : () -> (i1, i17)
+  // expected-error @+1 {{branch has 2 operands, but target block has 1}}
   br bb1(%0#1, %0#0 : i17, i1)
 
 bb1(%x: i17):
@@ -380,9 +381,8 @@ mlfunc @dominance_failure() {
 // -----
 
 mlfunc @return_type_mismatch() -> i32 {
-  // expected-error@-3 {{type of return operand 0 doesn't match function result type}}
   %0 = "foo"() : ()->f32
-  return %0 : f32
+  return %0 : f32  // expected-error {{type of return operand 0 doesn't match function result type}}
 }
 
 // -----

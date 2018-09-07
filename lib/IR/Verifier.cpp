@@ -63,7 +63,7 @@ public:
   }
 
   template <typename T>
-  bool failure(const Twine &message, const T &value) {
+  bool otherFailure(const Twine &message, const T &value) {
     // If the caller isn't trying to collect failure information, just print
     // the result and abort.
     if (!errorResult) {
@@ -78,9 +78,22 @@ public:
     return true;
   }
 
-  bool opFailure(const Twine &message, const Operation &value) {
+  bool failure(const Twine &message, const Operation &value) {
     value.emitError(message);
     return true;
+  }
+
+  bool failure(const Twine &message, const Instruction &inst) {
+    inst.emitError(message);
+    return true;
+  }
+
+  bool failure(const Twine &message, const Function &fn) {
+    return otherFailure(message, fn);
+  }
+
+  bool failure(const Twine &message, const BasicBlock &bb) {
+    return otherFailure(message, bb);
   }
 
   bool verifyOperation(const Operation &op);
@@ -113,13 +126,13 @@ bool Verifier::verifyAttribute(Attribute *attr, const Operation &op) {
   // same module as the operation that refers to it.
   if (auto *fnAttr = dyn_cast<FunctionAttr>(attr)) {
     if (!fnAttr->getValue())
-      return opFailure("attribute refers to deallocated function!", op);
+      return failure("attribute refers to deallocated function!", op);
 
     if (fnAttr->getValue()->getModule() != fn.getModule())
-      return opFailure("attribute refers to function '" +
-                           Twine(fnAttr->getValue()->getName()) +
-                           "' defined in another module!",
-                       op);
+      return failure("attribute refers to function '" +
+                         Twine(fnAttr->getValue()->getName()) +
+                         "' defined in another module!",
+                     op);
     return false;
   }
 
@@ -135,15 +148,15 @@ bool Verifier::verifyAttribute(Attribute *attr, const Operation &op) {
 /// Check the invariants of the specified operation instruction or statement.
 bool Verifier::verifyOperation(const Operation &op) {
   if (op.getOperationFunction() != &fn)
-    return opFailure("operation in the wrong function", op);
+    return failure("operation in the wrong function", op);
 
   // Check that operands are non-nil and structurally ok.
   for (const auto *operand : op.getOperands()) {
     if (!operand)
-      return opFailure("null operand found", op);
+      return failure("null operand found", op);
 
     if (operand->getFunction() != &fn)
-      return opFailure("reference to operand defined in another function", op);
+      return failure("reference to operand defined in another function", op);
   }
 
   // Verify all attributes are ok.  We need to check Function attributes, since
@@ -157,8 +170,8 @@ bool Verifier::verifyOperation(const Operation &op) {
   // If we can get operation info for this, check the custom hook.
   if (auto *opInfo = op.getAbstractOperation()) {
     if (auto *errorMessage = opInfo->verifyInvariants(&op))
-      return opFailure(Twine("'") + op.getName().str() + "' op " + errorMessage,
-                       op);
+      return failure(Twine("'") + op.getName().str() + "' op " + errorMessage,
+                     op);
   }
 
   return false;
