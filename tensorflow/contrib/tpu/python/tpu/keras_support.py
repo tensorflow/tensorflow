@@ -1422,7 +1422,7 @@ class KerasTPUModel(models.Model):
         y,
         sample_weights,
         batch_size)
-    self._pipeline_fit_loop(
+    return self._pipeline_fit_loop(
         x,
         y,
         sample_weights=sample_weights,
