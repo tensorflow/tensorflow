@@ -55,6 +55,8 @@ TEST(CApiSimple, Smoke) {
   EXPECT_EQ(TFL_TensorNumDims(input_tensor), 1);
   EXPECT_EQ(TFL_TensorDim(input_tensor, 0), 2);
   EXPECT_EQ(TFL_TensorByteSize(input_tensor), sizeof(float) * 2);
+  EXPECT_NE(TFL_TensorData(input_tensor), nullptr);
+  EXPECT_STREQ(TFL_TensorName(input_tensor), "input");
 
   std::array<float, 2> input = {1.f, 3.f};
   ASSERT_EQ(TFL_TensorCopyFromBuffer(input_tensor, input.data(),
@@ -70,6 +72,8 @@ TEST(CApiSimple, Smoke) {
   EXPECT_EQ(TFL_TensorNumDims(output_tensor), 1);
   EXPECT_EQ(TFL_TensorDim(output_tensor, 0), 2);
   EXPECT_EQ(TFL_TensorByteSize(output_tensor), sizeof(float) * 2);
+  EXPECT_NE(TFL_TensorData(output_tensor), nullptr);
+  EXPECT_STREQ(TFL_TensorName(output_tensor), "output");
 
   std::array<float, 2> output;
   ASSERT_EQ(TFL_TensorCopyToBuffer(output_tensor, output.data(),
