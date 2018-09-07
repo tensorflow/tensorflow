@@ -258,6 +258,8 @@ class KerasCrossShardOptimizer(keras_optimizers.Optimizer):
     return [tpu_ops.cross_replica_sum(grad) / num_shards for grad in grads]
 
   def set_weights(self, weights):
+    # TODO(power): Figure out whether we really need this given there is no
+    # caller for this API yet.
     self._opt.set_weights()
 
   def get_weights(self):
