@@ -1271,6 +1271,41 @@ class HloIotaInstruction : public HloInstruction {
   const int64 iota_dimension_;
 };
 
+class HloDotInstruction : public HloInstruction {
+ public:
+  // Creates a dot op with operands 'lhs' and 'rhs' with contracting and batch
+  // dimensions specified in 'dimension_numbers'.
+  explicit HloDotInstruction(const Shape& shape, HloInstruction* lhs,
+                             HloInstruction* rhs,
+                             const DotDimensionNumbers& dimension_numbers,
+                             const PrecisionConfig& precision_config);
+
+  // Returns data on the dimension numbers used for a dot operation.
+  const DotDimensionNumbers& dot_dimension_numbers() const {
+    return dot_dimension_numbers_;
+  }
+
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+  // Returns the dump string of the dot dimension numbers.
+  string DotDimensionNumbersToString() const;
+
+  // Describes the dimension numbers used for a dot.
+  DotDimensionNumbers dot_dimension_numbers_;
+};
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTIONS_H_
