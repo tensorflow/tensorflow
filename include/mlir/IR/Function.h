@@ -30,6 +30,7 @@
 
 namespace mlir {
 class FunctionType;
+class Location;
 class MLIRContext;
 class Module;
 
@@ -38,10 +39,13 @@ class Function : public llvm::ilist_node_with_parent<Function, Module> {
 public:
   enum class Kind { ExtFunc, CFGFunc, MLFunc };
 
-  Kind getKind() const { return kind; }
+  Kind getKind() const { return (Kind)nameAndKind.getInt(); }
+
+  /// The source location the operation was defined or derived from.
+  Location *getLoc() const { return location; }
 
   /// Return the name of this function, without the @.
-  Identifier getName() const { return name; }
+  Identifier getName() const { return nameAndKind.getPointer(); }
 
   /// Return the type of this function.
   FunctionType *getType() const { return type; }
@@ -57,21 +61,42 @@ public:
   void destroy();
 
   /// Perform (potentially expensive) checks of invariants, used to detect
-  /// compiler bugs.  On error, this fills in the string and return true,
-  /// or aborts if the string was not provided.
-  bool verify(std::string *errorResult = nullptr) const;
+  /// compiler bugs.  On error, this reports the error through the MLIRContext
+  /// and returns true.
+  bool verify() const;
 
   void print(raw_ostream &os) const;
   void dump() const;
 
+  /// Emit an error about fatal conditions with this operation, reporting up to
+  /// any diagnostic handlers that may be listening.  NOTE: This may terminate
+  /// the containing application, only use when the IR is in an inconsistent
+  /// state.
+  void emitError(const Twine &message) const;
+
+  /// Emit a warning about this operation, reporting up to any diagnostic
+  /// handlers that may be listening.
+  void emitWarning(const Twine &message) const;
+
+  /// Emit a note about this operation, reporting up to any diagnostic
+  /// handlers that may be listening.
+  void emitNote(const Twine &message) const;
+
 protected:
-  Function(StringRef name, FunctionType *type, Kind kind);
+  Function(Kind kind, Location *location, StringRef name, FunctionType *type);
   ~Function();
 
 private:
-  Kind kind;
+  /// The name of the function and the kind of function this is.
+  llvm::PointerIntPair<Identifier, 2, Kind> nameAndKind;
+
+  /// The module this function is embedded into.
   Module *module = nullptr;
-  Identifier name;
+
+  /// The source location the function was defined or derived from.
+  Location *location;
+
+  /// The type of the function.
   FunctionType *const type;
 
   void operator=(const Function &) = delete;
@@ -82,7 +107,7 @@ private:
 /// defined in some other module.
 class ExtFunction : public Function {
 public:
-  ExtFunction(StringRef name, FunctionType *type);
+  ExtFunction(Location *location, StringRef name, FunctionType *type);
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Function *func) {

@@ -68,9 +68,8 @@ public:
   llvm::StringMap<IntegerSet *> integerSetDefinitions;
 
   // This keeps track of all forward references to functions along with the
-  // temporary function used to represent them and the location of the first
-  // reference.
-  llvm::DenseMap<Identifier, std::pair<Function *, SMLoc>> functionForwardRefs;
+  // temporary function used to represent them.
+  llvm::DenseMap<Identifier, Function *> functionForwardRefs;
 
 private:
   ParserState(const ParserState &) = delete;
@@ -605,11 +604,9 @@ Function *Parser::resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
   // If not, get or create a forward reference to one.
   if (!function) {
     auto &entry = state.functionForwardRefs[name];
-    if (!entry.first) {
-      entry.first = new ExtFunction(name, type);
-      entry.second = nameLoc;
-    }
-    function = entry.first;
+    if (!entry)
+      entry = new ExtFunction(getEncodedSourceLocation(nameLoc), name, type);
+    function = entry;
   }
 
   if (function->getType() != type)
@@ -2771,7 +2768,7 @@ ParseResult ModuleParser::parseExtFunc() {
     return ParseFailure;
 
   // Okay, the external function definition was parsed correctly.
-  auto *function = new ExtFunction(name, type);
+  auto *function = new ExtFunction(getEncodedSourceLocation(loc), name, type);
   getModule()->getFunctions().push_back(function);
 
   // Verify no name collision / redefinition.
@@ -2796,7 +2793,7 @@ ParseResult ModuleParser::parseCFGFunc() {
     return ParseFailure;
 
   // Okay, the CFG function signature was parsed correctly, create the function.
-  auto *function = new CFGFunction(name, type);
+  auto *function = new CFGFunction(getEncodedSourceLocation(loc), name, type);
   getModule()->getFunctions().push_back(function);
 
   // Verify no name collision / redefinition.
@@ -2823,7 +2820,8 @@ ParseResult ModuleParser::parseMLFunc() {
     return ParseFailure;
 
   // Okay, the ML function signature was parsed correctly, create the function.
-  auto *function = MLFunction::create(name, type);
+  auto *function =
+      MLFunction::create(getEncodedSourceLocation(loc), name, type);
   getModule()->getFunctions().push_back(function);
 
   // Verify no name collision / redefinition.
@@ -2907,11 +2905,13 @@ ParseResult ModuleParser::finalizeModule() {
 
     // Resolve the reference.
     auto *resolvedFunction = getModule()->getNamedFunction(name);
-    if (!resolvedFunction)
-      return emitError(forwardRef.second.second,
-                       "reference to undefined function '" + name.str() + "'");
+    if (!resolvedFunction) {
+      forwardRef.second->emitError("reference to undefined function '" +
+                                   name.str() + "'");
+      return ParseFailure;
+    }
 
-    remappingTable[builder.getFunctionAttr(forwardRef.second.first)] =
+    remappingTable[builder.getFunctionAttr(forwardRef.second)] =
         builder.getFunctionAttr(resolvedFunction);
   }
 
@@ -2951,7 +2951,7 @@ ParseResult ModuleParser::finalizeModule() {
   // Now that all references to the forward definition placeholders are
   // resolved, we can deallocate the placeholders.
   for (auto forwardRef : getState().functionForwardRefs)
-    forwardRef.second.first->destroy();
+    forwardRef.second->destroy();
   return ParseSuccess;
 }
 
@@ -3018,19 +3018,8 @@ Module *mlir::parseSourceFile(llvm::SourceMgr &sourceMgr,
 
   // Make sure the parse module has no other structural problems detected by the
   // verifier.
-  //
-  // TODO(clattner): The verifier should always emit diagnostics when we have
-  // more location information available.  We shouldn't need this hook.
-  std::string errorResult;
-  module->verify(&errorResult);
-
-  // We don't have location information for general verifier errors, so emit the
-  // error with an unknown location.
-  if (!errorResult.empty()) {
-    context->emitDiagnostic(UnknownLoc::get(context), errorResult,
-                            MLIRContext::DiagnosticKind::Error);
+  if (module->verify())
     return nullptr;
-  }
 
   return module.release();
 }

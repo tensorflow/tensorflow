@@ -40,7 +40,8 @@ class MLFunction final
       private llvm::TrailingObjects<MLFunction, MLFuncArgument> {
 public:
   /// Creates a new MLFunction with the specific type.
-  static MLFunction *create(StringRef name, FunctionType *type);
+  static MLFunction *create(Location *location, StringRef name,
+                            FunctionType *type);
 
   /// Destroys this statement and its subclass data.
   void destroy();
@@ -93,7 +94,7 @@ public:
   }
 
 private:
-  MLFunction(StringRef name, FunctionType *type);
+  MLFunction(Location *location, StringRef name, FunctionType *type);
 
   // This stuff is used by the TrailingObjects template.
   friend llvm::TrailingObjects<MLFunction, MLFuncArgument>;

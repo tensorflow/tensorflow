@@ -103,14 +103,12 @@ mlfunc @bar() // expected-error {{expected '{' before statement list}}
 
 // -----
 
-mlfunc @empty() {
-  //expected-error@-3 {{ML function must end with return statement}}
+mlfunc @empty() { // expected-error {{ML function must end with return statement}}
 }
 
 // -----
 
-mlfunc @no_return() {
-  // expected-error@-3 {{ML function must end with return statement}}
+mlfunc @no_return() {  // expected-error {{ML function must end with return statement}}
   "foo"() : () -> ()
 }
 
@@ -297,7 +295,7 @@ bb2(%a: i64):  // expected-error{{redefinition of SSA value '%a'}}
 
 // -----
 
-cfgfunc @bbargMismatch(i32, f32) { // expected-error @-2 {{first block of cfgfunc must have 2 arguments to match function signature}}
+cfgfunc @bbargMismatch(i32, f32) { // expected-error {{first block of cfgfunc must have 2 arguments to match function signature}}
 bb42(%0: f32):
   return
 }

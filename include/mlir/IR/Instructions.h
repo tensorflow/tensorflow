@@ -151,8 +151,8 @@ private:
   Kind kind;
   BasicBlock *block = nullptr;
 
-  /// This holds information about the source location the operation was defined
-  /// or derived from.
+  /// This holds information about the source location the instruction was
+  /// defined or derived from.
   Location *location;
 
   friend struct llvm::ilist_traits<OperationInst>;

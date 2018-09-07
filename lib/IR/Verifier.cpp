@@ -53,33 +53,13 @@ namespace {
 ///
 class Verifier {
 public:
-  template <typename T>
-  static void failure(const Twine &message, const T &value, raw_ostream &os) {
-    // Print the error message and flush the stream in case printing the value
-    // causes a crash.
-    os << "MLIR verification failure: " + message + "\n";
-    os.flush();
-    value.print(os);
-  }
-
-  template <typename T>
-  bool otherFailure(const Twine &message, const T &value) {
-    // If the caller isn't trying to collect failure information, just print
-    // the result and abort.
-    if (!errorResult) {
-      failure(message, value, llvm::errs());
-      abort();
-    }
-
-    // Otherwise, emit the error into the string and return true.
-    llvm::raw_string_ostream os(*errorResult);
-    failure(message, value, os);
-    os.flush();
+  bool failure(const Twine &message, const Operation &value) {
+    value.emitError(message);
     return true;
   }
 
-  bool failure(const Twine &message, const Operation &value) {
-    value.emitError(message);
+  bool failure(const Twine &message, const Function &fn) {
+    fn.emitError(message);
     return true;
   }
 
@@ -88,27 +68,28 @@ public:
     return true;
   }
 
-  bool failure(const Twine &message, const Function &fn) {
-    return otherFailure(message, fn);
-  }
-
   bool failure(const Twine &message, const BasicBlock &bb) {
-    return otherFailure(message, bb);
+    // Take the location information for the first instruction in the block.
+    if (!bb.empty())
+      return failure(message, static_cast<const Instruction &>(bb.front()));
+
+    // If the code is properly formed, there will be a terminator.  Use its
+    // location.
+    if (auto *termInst = bb.getTerminator())
+      return failure(message, *termInst);
+
+    // Worst case, fall back to using the function's location.
+    return failure(message, fn);
   }
 
   bool verifyOperation(const Operation &op);
   bool verifyAttribute(Attribute *attr, const Operation &op);
 
 protected:
-  explicit Verifier(std::string *errorResult, const Function &fn)
-      : errorResult(errorResult), fn(fn),
-        operationSet(OperationSet::get(fn.getContext())) {}
+  explicit Verifier(const Function &fn)
+      : fn(fn), operationSet(OperationSet::get(fn.getContext())) {}
 
 private:
-  /// If the verifier is returning errors back to a client, this is the error to
-  /// fill in.
-  std::string *errorResult;
-
   /// The function being checked.
   const Function &fn;
 
@@ -185,8 +166,7 @@ namespace {
 struct CFGFuncVerifier : public Verifier {
   const CFGFunction &fn;
 
-  CFGFuncVerifier(const CFGFunction &fn, std::string *errorResult)
-      : Verifier(errorResult, fn), fn(fn) {}
+  CFGFuncVerifier(const CFGFunction &fn) : Verifier(fn), fn(fn) {}
 
   bool verify();
   bool verifyBlock(const BasicBlock &block);
@@ -354,8 +334,7 @@ struct MLFuncVerifier : public Verifier, public StmtWalker<MLFuncVerifier> {
   const MLFunction &fn;
   bool hadError = false;
 
-  MLFuncVerifier(const MLFunction &fn, std::string *errorResult)
-      : Verifier(errorResult, fn), fn(fn) {}
+  MLFuncVerifier(const MLFunction &fn) : Verifier(fn), fn(fn) {}
 
   void visitOperationStmt(OperationStmt *opStmt) {
     hadError |= verifyOperation(*opStmt);
@@ -487,33 +466,30 @@ bool MLFuncVerifier::verifyReturn() {
 //===----------------------------------------------------------------------===//
 
 /// Perform (potentially expensive) checks of invariants, used to detect
-/// compiler bugs.  On error, this fills in the string and return true,
-/// or aborts if the string was not provided.
-bool Function::verify(std::string *errorResult) const {
+/// compiler bugs.  On error, this reports the error through the MLIRContext and
+/// returns true.
+bool Function::verify() const {
   switch (getKind()) {
   case Kind::ExtFunc:
     // No body, nothing can be wrong here.
     return false;
   case Kind::CFGFunc:
-    return CFGFuncVerifier(*cast<CFGFunction>(this), errorResult).verify();
+    return CFGFuncVerifier(*cast<CFGFunction>(this)).verify();
   case Kind::MLFunc:
-    return MLFuncVerifier(*cast<MLFunction>(this), errorResult).verify();
+    return MLFuncVerifier(*cast<MLFunction>(this)).verify();
   }
 }
 
 /// Perform (potentially expensive) checks of invariants, used to detect
-/// compiler bugs.  On error, this fills in the string and return true,
-/// or aborts if the string was not provided.
-bool Module::verify(std::string *errorResult) const {
+/// compiler bugs.  On error, this reports the error through the MLIRContext and
+/// returns true.
+bool Module::verify() const {
 
   /// Check that each function is correct.
   for (auto &fn : *this) {
-    if (fn.verify(errorResult))
+    if (fn.verify())
       return true;
   }
 
-  // Make sure the error string is empty on success.
-  if (errorResult)
-    errorResult->clear();
   return false;
 }

@@ -18,6 +18,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLFunction.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/StmtVisitor.h"
 #include "mlir/IR/Types.h"
@@ -25,8 +26,10 @@
 #include "llvm/ADT/StringRef.h"
 using namespace mlir;
 
-Function::Function(StringRef name, FunctionType *type, Kind kind)
-    : kind(kind), name(Identifier::get(name, type->getContext())), type(type) {}
+Function::Function(Kind kind, Location *location, StringRef name,
+                   FunctionType *type)
+    : nameAndKind(Identifier::get(name, type->getContext()), kind),
+      location(location), type(type) {}
 
 Function::~Function() {
   // Clean up function attributes referring to this function.
@@ -66,7 +69,7 @@ void llvm::ilist_traits<Function>::addNodeToList(Function *function) {
 
   // Add this function to the symbol table of the module, uniquing the name if
   // a conflict is detected.
-  if (!module->symbolTable.insert({function->name, function}).second) {
+  if (!module->symbolTable.insert({function->getName(), function}).second) {
     // If a conflict was detected, then the function will not have been added to
     // the symbol table.  Try suffixes until we get to a unique name that works.
     SmallString<128> nameBuffer(function->getName().begin(),
@@ -79,8 +82,10 @@ void llvm::ilist_traits<Function>::addNodeToList(Function *function) {
       nameBuffer.resize(originalLength);
       nameBuffer += '_';
       nameBuffer += std::to_string(module->uniquingCounter++);
-      function->name = Identifier::get(nameBuffer, module->getContext());
-    } while (!module->symbolTable.insert({function->name, function}).second);
+      function->nameAndKind.setPointer(
+          Identifier::get(nameBuffer, module->getContext()));
+    } while (
+        !module->symbolTable.insert({function->getName(), function}).second);
   }
 }
 
@@ -118,21 +123,41 @@ void Function::eraseFromModule() {
   getModule()->getFunctions().erase(this);
 }
 
+/// Emit a note about this instruction, reporting up to any diagnostic
+/// handlers that may be listening.
+void Function::emitNote(const Twine &message) const {
+  getContext()->emitDiagnostic(getLoc(), message,
+                               MLIRContext::DiagnosticKind::Note);
+}
+
+/// Emit a warning about this operation, reporting up to any diagnostic
+/// handlers that may be listening.
+void Function::emitWarning(const Twine &message) const {
+  getContext()->emitDiagnostic(getLoc(), message,
+                               MLIRContext::DiagnosticKind::Warning);
+}
+
+/// Emit an error about fatal conditions with this instruction, reporting up to
+/// any diagnostic handlers that may be listening.  NOTE: This may terminate
+/// the containing application, only use when the IR is in an inconsistent
+/// state.
+void Function::emitError(const Twine &message) const {
+  getContext()->emitDiagnostic(getLoc(), message,
+                               MLIRContext::DiagnosticKind::Error);
+}
 //===----------------------------------------------------------------------===//
 // ExtFunction implementation.
 //===----------------------------------------------------------------------===//
 
-ExtFunction::ExtFunction(StringRef name, FunctionType *type)
-  : Function(name, type, Kind::ExtFunc) {
-}
+ExtFunction::ExtFunction(Location *location, StringRef name, FunctionType *type)
+    : Function(Kind::ExtFunc, location, name, type) {}
 
 //===----------------------------------------------------------------------===//
 // CFGFunction implementation.
 //===----------------------------------------------------------------------===//
 
-CFGFunction::CFGFunction(StringRef name, FunctionType *type)
-  : Function(name, type, Kind::CFGFunc) {
-}
+CFGFunction::CFGFunction(Location *location, StringRef name, FunctionType *type)
+    : Function(Kind::CFGFunc, location, name, type) {}
 
 CFGFunction::~CFGFunction() {
   // Instructions may have cyclic references, which need to be dropped before we
@@ -150,13 +175,14 @@ CFGFunction::~CFGFunction() {
 //===----------------------------------------------------------------------===//
 
 /// Create a new MLFunction with the specific fields.
-MLFunction *MLFunction::create(StringRef name, FunctionType *type) {
+MLFunction *MLFunction::create(Location *location, StringRef name,
+                               FunctionType *type) {
   const auto &argTypes = type->getInputs();
   auto byteSize = totalSizeToAlloc<MLFuncArgument>(argTypes.size());
   void *rawMem = malloc(byteSize);
 
   // Initialize the MLFunction part of the function object.
-  auto function = ::new (rawMem) MLFunction(name, type);
+  auto function = ::new (rawMem) MLFunction(location, name, type);
 
   // Initialize the arguments.
   auto arguments = function->getArgumentsInternal();
@@ -165,8 +191,9 @@ MLFunction *MLFunction::create(StringRef name, FunctionType *type) {
   return function;
 }
 
-MLFunction::MLFunction(StringRef name, FunctionType *type)
-    : Function(name, type, Kind::MLFunc), StmtBlock(StmtBlockKind::MLFunc) {}
+MLFunction::MLFunction(Location *location, StringRef name, FunctionType *type)
+    : Function(Kind::MLFunc, location, name, type),
+      StmtBlock(StmtBlockKind::MLFunc) {}
 
 MLFunction::~MLFunction() {
   // Explicitly erase statements instead of relying of 'StmtBlock' destructor
