@@ -92,7 +92,7 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testGraphModeWithGradients(self):
-    v = resource_variable_ops.ResourceVariable(1.0, name='v')
+    v = variables.Variable(1.0, name='v')
 
     @function.defun
     def step():
@@ -105,7 +105,7 @@ class FunctionTest(test.TestCase):
 
   def testGraphGradientVariable(self):
     with ops.Graph().as_default(), self.test_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
+      v = variables.Variable(1.0)
 
       @function.defun
       def f():
@@ -121,13 +121,18 @@ class FunctionTest(test.TestCase):
 
     @function.defun
     def f():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      return v.read_value()
+      with ops.init_scope():
+        t = constant_op.constant(1.0)
+      return t + constant_op.constant(1.0)
 
-    self.assertAllEqual(f(), 1.0)
+    self.assertAllEqual(f(), 2.0)
+    self.assertEqual(len(f._function_cache), 1)
 
     with ops.Graph().as_default():
+      # Reinvoking `f()` in graph-mode should re-trace (to avoid using
+      # the captured eager tensor).
       self.assertEqual(f().shape, ())
+      self.assertEqual(len(f._function_cache), 2)
 
   def testBasicGraphFunction(self):
     matmul = function.defun(math_ops.matmul)
@@ -173,7 +178,7 @@ class FunctionTest(test.TestCase):
 
   def testExecutingStatefulDefunConcurrently(self):
 
-    v = resource_variable_ops.ResourceVariable(1.0)
+    v = variables.Variable(1.0)
 
     @function.defun
     def stateful(x):
@@ -186,7 +191,7 @@ class FunctionTest(test.TestCase):
 
   def testExecutingManyStatefulDefunsConcurrently(self):
 
-    v = resource_variable_ops.ResourceVariable(1.0)
+    v = variables.Variable(1.0)
 
     @function.defun
     def stateful(x):
@@ -258,7 +263,7 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(b['b'].numpy(), 1.0)
 
   def testGraphFunctionWithGradients(self):
-    v = resource_variable_ops.ResourceVariable(1.0, name='v')
+    v = variables.Variable(1.0, name='v')
 
     @function.defun
     def step():
@@ -337,7 +342,7 @@ class FunctionTest(test.TestCase):
     self.assertEqual(2, int(add_int32s()))
 
   def testDefunReadVariable(self):
-    v = resource_variable_ops.ResourceVariable(1.0)
+    v = variables.Variable(1.0)
 
     @function.defun
     def f():
@@ -346,7 +351,7 @@ class FunctionTest(test.TestCase):
     self.assertEqual(1.0, float(f()))
 
   def testDefunAssignAddVariable(self):
-    v = resource_variable_ops.ResourceVariable(1.0)
+    v = variables.Variable(1.0)
     x = constant_op.constant(2.0)
 
     @function.defun
@@ -364,7 +369,7 @@ class FunctionTest(test.TestCase):
     @function.defun
     def tensor_init():
       with self.assertRaisesRegexp(ValueError, error_msg):
-        resource_variable_ops.ResourceVariable(constant_op.constant(2.0))
+        variables.Variable(constant_op.constant(2.0))
 
     tensor_init()
 
@@ -373,7 +378,7 @@ class FunctionTest(test.TestCase):
 
     @function.defun
     def tensor_init():
-      v = resource_variable_ops.ResourceVariable(
+      v = variables.Variable(
           lambda: constant_op.constant(2.0))
       return v.read_value()
 
@@ -389,7 +394,7 @@ class FunctionTest(test.TestCase):
     def tensor_init():
       with ops.init_scope():
         const = constant_op.constant(2.0)
-      v = resource_variable_ops.ResourceVariable(const)
+      v = variables.Variable(const)
       return v.read_value()
 
     value = tensor_init()
@@ -397,8 +402,40 @@ class FunctionTest(test.TestCase):
       self.evaluate(variables.global_variables_initializer())
     self.assertEqual(self.evaluate(value), 2.0)
 
+  def testCreatingVariablesOnNoninitialTraceFails(self):
+
+    @function.defun
+    def create_var(param):
+      del param
+      v = variables.Variable(1.0)
+      return v.read_value()
+
+    create_var('one')
+    self.assertEqual(len(create_var.variables), 1)
+
+    with self.assertRaisesRegexp(
+        ValueError, 'A `tf.Variable` was created on '
+        'a noninitial trace of the Python function.*'):
+      create_var('two')
+
+    @function.defun
+    def maybe_create_var(param):
+      if param == 'two':
+        v = variables.Variable(1.0)
+        return v.read_value()
+      else:
+        return constant_op.constant(1.0)
+
+    maybe_create_var('one')
+    self.assertEqual(len(maybe_create_var.variables), 0)
+
+    with self.assertRaisesRegexp(
+        ValueError, 'A `tf.Variable` was created on '
+        'a noninitial trace of the Python function.*'):
+      maybe_create_var('two')
+
   def testDefunShapeInferenceWithCapturedResourceVariable(self):
-    v = resource_variable_ops.ResourceVariable([[1, 2], [3, 4]])
+    v = variables.Variable([[1, 2], [3, 4]])
 
     def f():
       x = constant_op.constant([[1, 2], [3, 4]])
@@ -425,7 +462,7 @@ class FunctionTest(test.TestCase):
 
   def testDefunShapeInferenceWithCapturedResourceVariableInGraphMode(self):
     with context.graph_mode():
-      v = resource_variable_ops.ResourceVariable([[1, 2], [3, 4]])
+      v = variables.Variable([[1, 2], [3, 4]])
 
       def f():
         x = constant_op.constant([[1, 2], [3, 4]])
@@ -458,10 +495,10 @@ class FunctionTest(test.TestCase):
     defined()  # Create the variable.
     self.assertEqual(len(defined.variables), 1)
     self.assertIsInstance(
-        defined.variables[0], resource_variable_ops.ResourceVariable)
+        defined.variables[0], variables.Variable)
 
   def testDefunDifferentiable(self):
-    v = resource_variable_ops.ResourceVariable(1.0)
+    v = variables.Variable(1.0)
 
     @function.defun
     def f():
@@ -470,7 +507,7 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(backprop.implicit_grad(f)()[0][0], 2.0)
 
   def testDefunCanBeDifferentiatedTwice(self):
-    v = resource_variable_ops.ResourceVariable(1.0)
+    v = variables.Variable(1.0)
 
     @function.defun
     def f():
@@ -486,7 +523,7 @@ class FunctionTest(test.TestCase):
       class HasAVar(object):
 
         def __init__(self):
-          self.v = resource_variable_ops.ResourceVariable(1.0)
+          self.v = variables.Variable(1.0)
 
         def call(self):
           return self.v * 2
@@ -499,7 +536,7 @@ class FunctionTest(test.TestCase):
 
   def testSymbolicGradientVariableZerosLike(self):
     with ops.Graph().as_default():
-      v = resource_variable_ops.ResourceVariable(1.0)
+      v = variables.Variable(1.0)
 
       @function.defun
       def f(x, v):
@@ -605,7 +642,7 @@ class FunctionTest(test.TestCase):
     g(constant_op.constant(1.0))
 
   def testNestedDefunWithNoOutputAndTapedInput(self):
-    three = resource_variable_ops.ResourceVariable(3.0, name='v')
+    three = variables.Variable(3.0, name='v')
 
     @function.defun
     def f(x):
@@ -621,7 +658,7 @@ class FunctionTest(test.TestCase):
     g(three)
 
   def testGradientTensorConversionWithDefun(self):
-    three = resource_variable_ops.ResourceVariable(3.0, name='v')
+    three = variables.Variable(3.0, name='v')
 
     @function.defun
     def f(x):
@@ -653,7 +690,7 @@ class FunctionTest(test.TestCase):
 
   def testGatherResourceWithDefun(self):
     with ops.device('cpu:0'):
-      v = resource_variable_ops.ResourceVariable([0.0, 1.0, 2.0])
+      v = variables.Variable([0.0, 1.0, 2.0])
 
     def sum_gather():
       return math_ops.reduce_sum(array_ops.gather(v, [1, 2]))
@@ -662,7 +699,7 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(sum_gather(), defined())
 
   def testGradientOfGatherWithDefun(self):
-    v = resource_variable_ops.ResourceVariable([0.0, 1.0, 2.0])
+    v = variables.Variable([0.0, 1.0, 2.0])
 
     def sum_gather():
       return math_ops.reduce_sum(array_ops.gather(v, [1, 2]))
@@ -749,10 +786,10 @@ class FunctionTest(test.TestCase):
       self.skipTest('No GPUs found.')
 
     with ops.device('/cpu:0'):
-      v_cpu = resource_variable_ops.ResourceVariable([0.0, 1.0, 2.0])
+      v_cpu = variables.Variable([0.0, 1.0, 2.0])
 
     with ops.device('/gpu:0'):
-      v_gpu = resource_variable_ops.ResourceVariable([0.0, 1.0, 2.0])
+      v_gpu = variables.Variable([0.0, 1.0, 2.0])
 
     def sum_gather():
       cpu_result = math_ops.reduce_sum(array_ops.gather(v_cpu, [1, 2]))
@@ -771,14 +808,13 @@ class FunctionTest(test.TestCase):
       self.skipTest('No GPUs found.')
 
     with ops.device('/cpu:0'):
-      v_cpu = resource_variable_ops.ResourceVariable(
-          [0.0, 1.0, 2.0], name='cpu')
-      v_also_cpu = resource_variable_ops.ResourceVariable(
-          [0.0, 1.0, 2.0], name='also_cpu')
+      v_cpu = variables.Variable(
+          [0.0, 1.0, 2.0], name='cpu', use_resource=True)
+      v_also_cpu = variables.Variable(
+          [0.0, 1.0, 2.0], name='also_cpu', use_resource=True)
 
     with ops.device('/gpu:0'):
-      v_gpu = resource_variable_ops.ResourceVariable(
-          [0.0, 1.0, 2.0], name='gpu')
+      v_gpu = variables.Variable([0.0, 1.0, 2.0], name='gpu', use_resource=True)
 
     @function.defun
     def resource_apply_adam():
@@ -912,7 +948,7 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(3, add_one(constant_op.constant(2)))
 
   def testVariableCaptureInNestedFunctions(self):
-    v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.int32)
+    v = variables.Variable(1, dtype=dtypes.int32)
 
     @function.defun
     def inner_read():
@@ -980,7 +1016,7 @@ class FunctionTest(test.TestCase):
     @function.defun
     def create_variable():
       with ops.name_scope('foo'):
-        v = resource_variable_ops.ResourceVariable(0.0, name='bar')
+        v = variables.Variable(0.0, name='bar')
       self.assertEqual(v.name, 'foo/bar:0')
 
     create_variable()
@@ -990,7 +1026,7 @@ class FunctionTest(test.TestCase):
       @function.defun
       def create_variable():
         with ops.name_scope('foo'):
-          v = resource_variable_ops.ResourceVariable([1.0, 2.0], name='bar')
+          v = variables.Variable([1.0, 2.0], name='bar')
         self.assertEqual(v.name, 'foo/bar:0')
 
       with ops.get_default_graph().as_default():
@@ -1122,7 +1158,7 @@ class FunctionTest(test.TestCase):
       self.assertIn(compat.as_bytes('GPU:0'), self.evaluate(foo()))
 
   def testVariablesAreTracked(self):
-    v = resource_variable_ops.ResourceVariable(1.0)
+    v = variables.Variable(1.0)
 
     def foo(x):
       return v * x
