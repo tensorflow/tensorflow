@@ -1079,15 +1079,6 @@ class HloInstruction {
     return other->has_sharding() ? sharding() == other->sharding() : false;
   }
 
-  // Retrieves the operand side metadata of a kDomain instruction.
-  const DomainMetadata& operand_side_metadata() const {
-    return *operand_side_metadata_;
-  }
-  // Retrieves the user side metadata of a kDomain instruction.
-  const DomainMetadata& user_side_metadata() const {
-    return *user_side_metadata_;
-  }
-
   // When creating a new instruction which either replaces, or shifts up (kCopy
   // insertion case), another instruction, we need to make sure the certain
   // properties of the new instruction are copied into the derived one. As of
@@ -1496,6 +1487,12 @@ class HloInstruction {
   // Delegates to HloDotInstruction::dot_dimension_numbers().
   const DotDimensionNumbers& dot_dimension_numbers() const;
 
+  // Delegates to HloDomainInstruction::operand_side_metadata().
+  const DomainMetadata& operand_side_metadata() const;
+
+  // Delegates to HloDomainInstruction::user_side_metadata().
+  const DomainMetadata& user_side_metadata() const;
+
   // Old methods kept for smooth subclassing transition END.
 
  protected:
@@ -1640,10 +1637,6 @@ class HloInstruction {
   // HloInstructions and other components as HloSharding can be very large for
   // many element tuples.
   std::shared_ptr<const HloSharding> sharding_;
-
-  // Fields used by the kDomain instruction.
-  std::unique_ptr<DomainMetadata> operand_side_metadata_;
-  std::unique_ptr<DomainMetadata> user_side_metadata_;
 
   // Computations called by this instruction.
   std::vector<HloComputation*> called_computations_;
