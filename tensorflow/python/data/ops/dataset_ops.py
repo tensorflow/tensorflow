@@ -2257,9 +2257,14 @@ class MapDataset(Dataset):
 class ParallelMapDataset(MapDataset):
   """A `Dataset` that maps a function over elements in its input in parallel."""
 
-  def __init__(self, input_dataset, map_func, num_parallel_calls):
+  def __init__(self,
+               input_dataset,
+               map_func,
+               num_parallel_calls,
+               use_inter_op_parallelism=True):
     """See `Dataset.map()` for details."""
-    super(ParallelMapDataset, self).__init__(input_dataset, map_func)
+    super(ParallelMapDataset, self).__init__(input_dataset, map_func,
+                                             use_inter_op_parallelism)
 
     self._num_parallel_calls = ops.convert_to_tensor(
         num_parallel_calls, dtype=dtypes.int32, name="num_parallel_calls")
@@ -2272,6 +2277,7 @@ class ParallelMapDataset(MapDataset):
         self._map_func.captured_inputs,
         f=self._map_func,
         num_parallel_calls=self._num_parallel_calls,
+        use_inter_op_parallelism=self._use_inter_op_parallelism,
         **flat_structure(self))
     # pylint: enable=protected-access
 

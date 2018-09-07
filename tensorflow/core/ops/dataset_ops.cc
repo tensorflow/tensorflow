@@ -210,6 +210,7 @@ REGISTER_OP("ParallelMapDataset")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("use_inter_op_parallelism: bool = true")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("MapAndBatchDataset")
