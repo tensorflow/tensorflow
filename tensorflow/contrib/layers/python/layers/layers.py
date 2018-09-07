@@ -23,6 +23,7 @@ from __future__ import print_function
 
 import functools
 import six
+import numpy
 
 from tensorflow.contrib.framework.python.ops import add_arg_scope
 from tensorflow.contrib.framework.python.ops import variables
@@ -2205,7 +2206,8 @@ def layer_norm(inputs,
                trainable=True,
                begin_norm_axis=1,
                begin_params_axis=-1,
-               scope=None):
+               scope=None,
+               use_fused_batch_norm=False):
   """Adds a Layer Normalization layer.
 
   Based on the paper:
@@ -2256,6 +2258,8 @@ def layer_norm(inputs,
       `begin_params_axis : rank(inputs)` and will be broadcast with the
       normalized inputs accordingly.
     scope: Optional scope for `variable_scope`.
+    use_fused_batch_norm: If True, calls nn.fused_batch_norm, which utilizes
+      cudnn to speed up performance on GPUs.
 
   Returns:
     A `Tensor` representing the output of the operation, having the same
@@ -2307,19 +2311,57 @@ def layer_norm(inputs,
           initializer=init_ops.ones_initializer(),
           collections=gamma_collections,
           trainable=trainable)
-    # Calculate the moments on the last axis (layer activations).
-    norm_axes = list(range(begin_norm_axis, inputs_rank))
-    mean, variance = nn.moments(inputs, norm_axes, keep_dims=True)
-    # Compute layer normalization using the batch_normalization function.
-    variance_epsilon = 1e-12
-    outputs = nn.batch_normalization(
-        inputs,
-        mean,
-        variance,
-        offset=beta,
-        scale=gamma,
-        variance_epsilon=variance_epsilon)
-    outputs.set_shape(inputs_shape)
+    if use_fused_batch_norm:
+      # get static TensorShape if fully defined,
+      # otherwise retrieve shape tensor
+      norm_shape = inputs.shape[begin_norm_axis:]
+      if norm_shape.is_fully_defined():
+        bn_shape = [1, -1, 1, numpy.prod(norm_shape.as_list())]
+      else:
+        norm_shape = tf.shape(inputs)[begin_norm_axis:]
+        bn_shape = [1, -1, 1, tf.reduce_prod(norm_shape)]
+      if inputs.get_shape().is_fully_defined():
+        outputs_shape = inputs.get_shape()
+      else:
+        outputs_shape = tf.shape(inputs)
+      inputs = array_ops.reshape(inputs, bn_shape)
+      if inputs.get_shape().is_fully_defined():
+        # static inputs TensorShape fully defined after reshape.
+        ones = array_ops.ones(inputs.get_shape()[1], dtype=dtypes.float32)
+        zeros = array_ops.zeros(inputs.get_shape()[1], dtype=dtypes.float32)
+      else:
+        # static inputs TensorShape NOT fully defined after reshape.
+        # must use dynamic shape, which means these input tensors
+        # have to be created at runtime, which causes a slowdown.
+        scale_shape = tf.shape(inputs)[1]
+        ones = array_ops.ones(scale_shape, dtype=dtypes.float32)
+        zeros = array_ops.zeros(scale_shape, dtype=dtypes.float32)
+      outputs, mean, variance = nn.fused_batch_norm(
+          inputs,
+          ones, zeros,
+          epsilon=1e-12,
+          data_format="NCHW")
+      outputs = array_ops.reshape(outputs, outputs_shape)
+      if center and scale:
+        outputs = outputs * gamma + beta
+      elif center:
+        outputs = outputs + beta
+      elif scale:
+        outputs = outputs * gamma
+    else:
+      # Calculate the moments on the last axis (layer activations).
+      norm_axes = list(range(begin_norm_axis, inputs_rank))
+      mean, variance = nn.moments(inputs, norm_axes, keep_dims=True)
+      # Compute layer normalization using the batch_normalization function.
+      variance_epsilon = 1e-12
+      outputs = nn.batch_normalization(
+          inputs,
+          mean,
+          variance,
+          offset=beta,
+          scale=gamma,
+          variance_epsilon=variance_epsilon)
+      outputs.set_shape(inputs_shape)
     if activation_fn is not None:
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
