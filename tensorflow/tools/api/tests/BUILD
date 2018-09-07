@@ -15,7 +15,10 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 py_test(
     name = "api_compatibility_test",
-    srcs = ["api_compatibility_test.py"],
+    srcs = [
+        "api_compatibility_test.py",
+        "//tensorflow:tf_python_api_gen_v2",
+    ],
     data = [
         "//tensorflow/tools/api/golden:api_golden_v1",
         "//tensorflow/tools/api/golden:api_golden_v2",
