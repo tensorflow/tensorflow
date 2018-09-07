@@ -18,7 +18,6 @@ py_library(
     deps = [
         ":baseline",
         ":boosted_trees",
-        ":tensor_forest",
         ":dnn",
         ":dnn_linear_combined",
         ":estimator",
@@ -30,6 +29,7 @@ py_library(
         ":model_fn",
         ":parsing_utils",
         ":run_config",
+        ":tensor_forest",
         ":training",
         "//tensorflow:tensorflow_py_no_contrib",
     ],
@@ -246,8 +246,8 @@ py_test(
         "optonly",
     ],
     deps = [
-        ":tensor_forest",
         ":inputs",
+        ":tensor_forest",
         "//tensorflow:tensorflow_py_no_contrib",
     ],
 )

@@ -29,6 +29,7 @@ from tensorflow.python.platform import googletest
 
 
 class TensorForestModelFnTest(test_util.TensorFlowTestCase):
+  """ Test tensor forest model function"""
 
   def testInfrenceFromRestoredModel(self):
     input_data = [[-1., 0.], [-1., 2.],  # node 1
@@ -53,9 +54,10 @@ class TensorForestModelFnTest(test_util.TensorFlowTestCase):
                              {'value': [7.5, -1.0]}}},
                    {'leaf': {'vector':
                              {'value': [0.0, 1.0]}}},
-                   ]}
+                  ]}
     restored_tree_param = ParseDict(tree_proto,
-                                    boosted_trees_pb2.Tree()).SerializeToString()
+                                    boosted_trees_pb2.Tree())\
+      .SerializeToString()
 
     graph_builder = tensor_forest.RandomForestGraphs(hparams,
                                                      None,

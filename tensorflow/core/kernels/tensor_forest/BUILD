@@ -11,8 +11,8 @@ load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 cc_library(
     name = "resources",
-    hdrs = ["resources.h"],
     srcs = ["resources.cc"],
+    hdrs = ["resources.h"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -43,10 +43,11 @@ tf_kernel_library(
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
     ],
 )
+
 tf_kernel_library(
     name = "tensor_forest_ops",
     deps = [
-        ":resource_ops",
         ":prediction_ops",
+        ":resource_ops",
     ],
 )

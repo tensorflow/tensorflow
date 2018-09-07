@@ -153,7 +153,8 @@ class TensorForestClassifier(estimator.Estimator):
     feature_1 = numeric_column('feature_1')
     feature_2 = numeric_column('feature_2')
 
-    classifier = estimator.TensorForestClassifier(feature_columns=[feature_1, feature_2],
+    classifier = estimator.TensorForestClassifier(feature_columns=[feature_1,
+                                                feature_2],
 						model_dir=None,
 						n_classes=2,
 						label_vocabulary=None,
@@ -185,31 +186,35 @@ class TensorForestClassifier(estimator.Estimator):
     ```
 
     Args:
-      feature_columns: An iterable containing all the feature columns used by the model.
-        All items in the set should be instances of classes derived from FeatureColumn.
-      n_classes: Defaults to 2. The number of classes in a classification problem.
+      feature_columns: An iterable containing all the feature columns used
+        by the model.All items in the set should be instances of classes
+        derived from FeatureColumn.
+      n_classes: Defaults to 2. The number of classes in a classification
+        problem.
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into an estimator
         to continue training a previously saved model.
-      label_vocabulary: A list of strings representing all possible label values.
-        If provided, labels must be of string type and their values must be present
-        in label_vocabulary list. If label_vocabulary is omitted, it is assumed that
-        the labels are already encoded as integer values within {0, 1} for `n_classes=2`,
-        or encoded as integer values in {0, 1,..., n_classes-1} for `n_classes>2`.
-        If vocabulary is not provided and labels are of string, an error will be generated.
-      head: A `canned.Head` instance, the loss would be calculated for metrics purpose
-        and not being used for training. If not provided, one will be automatically
-        created based on `n_classes`.
-      n_trees: The number of trees to create. Defaults to 100. There usually isn't any
-        accuracy gain from using higher values (assuming deep enough trees are built).
-      max_nodes: Default to 10k. No tree is allowed to grow beyond max_nodes nodes,
-        and training stops when all trees in the forest are this large.
-      num_splits_to_consider: Defaults to sqrt(num_features). In the extremely randomized
-        tree training algorithm, only this many potential splits are evaluated
-        for each tree node.
-      split_node_after_samples: Defaults to 250. In our online version of extremely
-        randomized tree training, we pick a split for a node after it has accumulated
-        this many training samples.
+      label_vocabulary: A list of strings representing all possible label
+        values. If provided, labels must be of string type and their values
+        must be present in label_vocabulary list. If label_vocabulary is
+        omitted, it is assumed that the labels are already encoded as integer
+        values within {0, 1} for `n_classes=2`, or encoded as integer values
+        in {0, 1,..., n_classes-1} for `n_classes>2`. If vocabulary is not
+        provided and labels are of string, an error will be generated.
+      head: A `canned.Head` instance, the loss would be calculated for
+        metrics purpose and not being used for training. If not provided,
+        one will be automatically created based on `n_classes`.
+      n_trees: The number of trees to create. Defaults to 100. There usually
+        isn't any accuracy gain from using higher values (assuming deep
+        enough trees are built).
+      max_nodes: Default to 10k. No tree is allowed to grow beyond max_nodes
+        nodes, and training stops when all trees in the forest are this large.
+      num_splits_to_consider: Defaults to sqrt(num_features). In the extremely
+        randomized tree training algorithm, only this many potential splits
+        are evaluated for each tree node.
+      split_node_after_samples: Defaults to 250. In our online version of
+        extremely randomized tree training, we pick a split for a node after
+        it has accumulated this many training samples.
       config: RunConfig object to configure the runtime settings.
 
     Returns:

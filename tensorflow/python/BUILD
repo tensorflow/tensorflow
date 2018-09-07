@@ -84,7 +84,6 @@ py_library(
         ":array_ops",
         ":bitwise_ops",
         ":boosted_trees_ops",
-        ":tensor_forest_ops",
         ":check_ops",
         ":client",
         ":client_testlib",
@@ -126,6 +125,7 @@ py_library(
         ":subscribe",
         ":summary",
         ":tensor_array_ops",
+        ":tensor_forest_ops",
         ":test_ops",  # TODO: Break testing code out into separate rule.
         ":tf_cluster",
         ":tf_item",
@@ -1852,13 +1852,14 @@ py_library(
     srcs = ["ops/tensor_forest_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":tensor_forest_ops_gen",
         ":framework",
         ":ops",
+        ":tensor_forest_ops_gen",
         ":training",
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
     ],
 )
+
 py_library(
     name = "sets",
     srcs = [
