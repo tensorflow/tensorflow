@@ -421,12 +421,6 @@ class HloInstruction {
       const DotDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config);
 
-  // Creates a dot op with operands 'lhs' and 'rhs' that contracts dimension 1
-  // of the LHS with dimension 0 of the RHS with no batch dimensions.  Both LHS
-  // and the RHS must be of rank 2.
-  static std::unique_ptr<HloInstruction> CreateCanonicalDot(
-      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs);
-
   // Creates a reduce-precision op, where operand is the data to reduce in
   // precision, and exponent_bits and mantissa_bits describe the precision to
   // reduce it to.
@@ -1101,15 +1095,6 @@ class HloInstruction {
   // instruction.
   void SetupDerivedInstruction(HloInstruction* derived_instruction) const;
 
-  // Returns data on the dimension numbers used for a dot operation.
-  const DotDimensionNumbers& dot_dimension_numbers() const {
-    CHECK(dot_dimension_numbers_ != nullptr);
-    return *dot_dimension_numbers_;
-  }
-
-  // Returns the dump string of the dot dimension numbers.
-  string DotDimensionNumbersToString() const;
-
   // Returns the dump string of the precision configuration.
   string PrecisionConfigToString() const;
 
@@ -1508,6 +1493,9 @@ class HloInstruction {
   // Delegates to HloScatterInstruction::scatter_dimension_numbers().
   const ScatterDimensionNumbers& scatter_dimension_numbers() const;
 
+  // Delegates to HloDotInstruction::dot_dimension_numbers().
+  const DotDimensionNumbers& dot_dimension_numbers() const;
+
   // Old methods kept for smooth subclassing transition END.
 
  protected:
@@ -1646,12 +1634,6 @@ class HloInstruction {
 
   // Result shape of this instruction.
   Shape shape_;
-
-  // Describes the dimension numbers used for a dot.
-  std::unique_ptr<DotDimensionNumbers> dot_dimension_numbers_;
-
-  // Used to tag kCopy instructions that are eligible for copy elision.
-  bool copy_elision_allowed_ = true;
 
   // The sharding, if one exists.
   // Uses std::shared_ptr to allow reuse of the same sharding object between

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/test_utils.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -696,8 +697,8 @@ void CreateComputationForDotAddOutputFusionTest(const string& test_name,
   auto* addend = builder.AddInstruction(
       HloInstruction::CreateParameter(2, dot_shape, "param2"));
 
-  auto* dot = builder.AddInstruction(
-      HloInstruction::CreateCanonicalDot(dot_shape, dot_lhs, dot_rhs));
+  auto* dot =
+      builder.AddInstruction(CreateCanonicalDot(dot_shape, dot_lhs, dot_rhs));
   builder.AddInstruction(
       HloInstruction::CreateBinary(dot_shape, HloOpcode::kAdd, dot, addend));
 
