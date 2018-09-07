@@ -99,6 +99,7 @@ pip3 install --upgrade termcolor
 
 # Install last working version of setuptools.
 pip3 install --upgrade setuptools==39.1.0
+pip3 install --upgrade h5py==2.8.0
 
 # Keras
 pip3 install keras_applications==1.0.5
