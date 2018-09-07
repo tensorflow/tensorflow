@@ -75,31 +75,6 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         sess.run(next_element)
       self._assertSummaryHasCount(sess.run(summary_t), "record_latency", 100.0)
 
-  def testPrefetchBufferUtilization(self):
-    stats_aggregator = stats_ops.StatsAggregator()
-    dataset = dataset_ops.Dataset.range(100).map(
-        lambda x: array_ops.tile([x], ops.convert_to_tensor([x]))).prefetch(
-            -1).apply(stats_ops.set_stats_aggregator(stats_aggregator))
-    iterator = dataset.make_initializable_iterator()
-    next_element = iterator.get_next()
-    summary_t = stats_aggregator.get_summary()
-
-    with self.test_session() as sess:
-      sess.run(iterator.initializer)
-      for i in range(100):
-        self.assertAllEqual(
-            np.array([i] * i, dtype=np.int64), sess.run(next_element))
-        summary_str = sess.run(summary_t)
-        self._assertSummaryHasCount(summary_str, "Prefetch::buffer_utilization",
-                                    float(i + 1))
-        self._assertSummaryHasRange(summary_str, "Prefetch::buffer_utilization",
-                                    0, 1)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
-      summary_str = sess.run(summary_t)
-      self._assertSummaryHasCount(summary_str, "Prefetch::buffer_utilization",
-                                  100)
-
   def testReinitialize(self):
     stats_aggregator = stats_ops.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).apply(
