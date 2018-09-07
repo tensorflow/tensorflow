@@ -59,6 +59,10 @@ PyObject* TFE_Py_RegisterExceptionClass(PyObject* e);
 // This function is not thread-safe.
 PyObject* TFE_Py_RegisterResourceVariableType(PyObject* e);
 
+// Registers e as the VSpace to use.
+// `vspace` must be a imperative_grad.py:VSpace named tuple.
+PyObject* TFE_Py_RegisterVSpace(PyObject* e);
+
 // Registers e as the Exception to be raised when the conditions of
 // TFE_Py_FastPathExecute_C have not been met. When this exception is set, it
 // is a signal to the calling code that it should fall back to the safer (and
@@ -162,14 +166,13 @@ void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
 void TFE_Py_TapeSetWatchVariable(PyObject* variable);
 
 // Computes a gradient based on information recorded on the tape.`tape` must
-// have been produced by TFE_Py_NewTape. `vspace` must be a
-// imperative_grad.py:VSpace named tuple. `target` and `sources` must be python
+// have been produced by TFE_Py_NewTape. `target` and `sources` must be python
 // lists of Tensor objects. `output_gradients` is either None or a python list
 // of either Tensor or None, and if not None should have the same length as
 // target.
-PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
-                              PyObject* target, PyObject* sources,
-                              PyObject* output_gradients, TF_Status* status);
+PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
+                              PyObject* sources, PyObject* output_gradients,
+                              TF_Status* status);
 
 // Execute a tensorflow operation assuming that all provided inputs are
 // correctly formatted (i.e. EagerTensors). If it doesn't find EagerTensors,
