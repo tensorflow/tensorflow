@@ -291,6 +291,7 @@ tf_cc_test(
     size = "small",
     srcs = ["ops/gru_ops_test.cc"],
     data = [":python/ops/_gru_ops.so"],
+    tags = ["noasan"],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     # linkstatic = tf_kernel_tests_linkstatic(),
@@ -310,6 +311,7 @@ tf_cc_test(
     size = "small",
     srcs = ["ops/lstm_ops_test.cc"],
     data = [":python/ops/_lstm_ops.so"],
+    tags = ["noasan"],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     # linkstatic = tf_kernel_tests_linkstatic(),
