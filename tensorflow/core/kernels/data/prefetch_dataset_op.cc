@@ -12,14 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/kernels/data/prefetch_dataset_op.h"
-
 #include <deque>
 
-#include "absl/strings/string_view.h"
-#include "absl/strings/util.h"
+#include "tensorflow/core/kernels/data/prefetch_dataset_op.h"
+
 #include "tensorflow/core/framework/partial_tensor_shape.h"
-#include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 
@@ -74,11 +71,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
    public:
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params),
-          auto_tuner_(params.dataset->buffer_size_) {
-      std::vector<string> components =
-          std::move(absl::StrSplit(params.prefix, "::", absl::SkipEmpty()));
-      prefix_end_ = components.back();
-    }
+          auto_tuner_(params.dataset->buffer_size_) {}
 
     ~Iterator() override {
       // Signal the prefetch thread to terminate it. We will then
@@ -105,7 +98,6 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
                            bool* end_of_sequence) override {
       {
         mutex_lock l(mu_);
-        auto stats_aggregator = ctx->stats_aggregator();
         TF_RETURN_IF_ERROR(EnsurePrefetchThreadStarted(ctx));
         // Wait until the next element in the buffer has been
         // produced, or we are shutting down.
@@ -121,7 +113,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         }
 
         if (!buffer_.empty()) {
-          return Consume(out_tensors, end_of_sequence, stats_aggregator);
+          return Consume(out_tensors, end_of_sequence);
         }
 
         if (prefetch_thread_finished_) {
@@ -209,15 +201,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       std::vector<Tensor> value;
     };
 
-    Status Consume(std::vector<Tensor>* out_tensors, bool* end_of_sequence,
-                   const std::shared_ptr<StatsAggregator>& stats_aggregator)
+    Status Consume(std::vector<Tensor>* out_tensors, bool* end_of_sequence)
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if (stats_aggregator) {
-        stats_aggregator->AddToHistogram(
-            strings::StrCat(prefix_end_, "::buffer_utilization"),
-            {static_cast<float>(buffer_.size()) /
-             static_cast<float>(auto_tuner_.buffer_limit())});
-      }
       // A new element is available. Forward the status from computing it, and
       // (if we successfully got an element) the output values.
       Status s = buffer_.front().status;
@@ -341,7 +326,6 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     mutex parent_mu_ ACQUIRED_BEFORE(mu_);
     std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(parent_mu_);
     condition_variable cond_var_;
-    string prefix_end_;
     PrefetchAutotuner auto_tuner_ GUARDED_BY(mu_);
     std::deque<BufferElement> buffer_ GUARDED_BY(mu_);
     std::unique_ptr<Thread> prefetch_thread_ GUARDED_BY(mu_);
