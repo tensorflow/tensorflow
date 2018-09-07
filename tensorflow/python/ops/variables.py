@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import enum  # pylint: disable=g-bad-import-order
 
+import os
 import six
 
 from tensorflow.core.framework import attr_value_pb2
@@ -2283,7 +2284,8 @@ def report_uninitialized_variables(var_list=None,
     # Run all operations on CPU
     if var_list:
       init_vars = [state_ops.is_variable_initialized(v) for v in var_list]
-    with ops.device("/cpu:0"):
+    local_device = os.environ.get("TF_LOCAL_DEVICE", "/cpu:0")
+    with ops.device(local_device):
       if not var_list:
         # Return an empty tensor so we only need to check for returned tensor
         # size being 0 as an indication of model ready.
