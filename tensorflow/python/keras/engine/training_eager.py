@@ -67,7 +67,8 @@ def _model_loss(model, inputs, targets, sample_weights=None, training=False):
 
   Arguments:
       model: The model on which metrics are being calculated.
-      inputs: List of input arrays.
+      inputs: Either a dictionary of inputs to the model or a list of input
+        arrays.
       targets: List of target arrays.
       sample_weights: Optional list of sample weight arrays.
       training: Whether the model should be run in inference or training mode.
@@ -82,7 +83,7 @@ def _model_loss(model, inputs, targets, sample_weights=None, training=False):
   kwargs = {}
   if model._expects_training_arg:
     kwargs['training'] = training
-  if len(inputs) == 1:
+  if len(inputs) == 1 and not isinstance(inputs, dict):
     inputs = inputs[0]
 
   if model._compute_output_and_mask_jointly:
@@ -369,6 +370,8 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
     # Get current step size.
     if isinstance(x, list):
       step_size = x[0].get_shape().as_list()[0]
+    elif isinstance(x, dict):
+      step_size = list(x.values())[0].get_shape().as_list()[0]
     else:
       step_size = x.get_shape().as_list()[0]
 
@@ -445,10 +448,13 @@ def iterator_predict_loop(model, inputs, steps, verbose=0):
     x, _, _ = model._standardize_user_data(x)
     x = training_utils.cast_if_floating_dtype(x)
 
+    if isinstance(x, list) and len(x) == 1:
+      x = x[0]
+
     if model._expects_training_arg:
-      batch_outs = model.call(x[0] if len(x) == 1 else x, training=False)
+      batch_outs = model.call(x, training=False)
     else:
-      batch_outs = model.call(x[0] if len(x) == 1 else x)
+      batch_outs = model.call(x)
     if not isinstance(batch_outs, list):
       batch_outs = [batch_outs]
 
