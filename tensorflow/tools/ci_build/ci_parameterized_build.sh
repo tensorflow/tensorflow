@@ -85,8 +85,11 @@
 #                     Use the specified configurations when building.
 #                     When set, overrides TF_BUILD_IS_OPT and TF_BUILD_MAVX
 #                     options, as this will replace the two.
+#   TF_SKIP_LITE_TESTS:
+#                     If set to any non-empty or non-0 value, will skip running
+#                     contrib/lite tests, but will leave other contrib tests.
 #   TF_SKIP_CONTRIB_TESTS:
-#                     If set to any non-empty or non-0 value, will skipp running
+#                     If set to any non-empty or non-0 value, will skip running
 #                     contrib tests.
 #   TF_NIGHTLY:
 #                     If this run is being used to build the tf_nightly pip
@@ -147,10 +150,12 @@ BENCHMARK_CMD="${CI_BUILD_DIR}/builds/benchmark.sh"
 EXTRA_PARAMS=""
 BAZEL_TARGET="//tensorflow/... -//tensorflow/compiler/..."
 
+if [[ -n "$TF_SKIP_LITE_TESTS" ]]; then
+  BAZEL_TARGET="${BAZEL_TARGET} -//tensorflow/contrib/lite/..."
+fi
+
 if [[ -n "$TF_SKIP_CONTRIB_TESTS" ]]; then
-  BAZEL_TARGET="$BAZEL_TARGET -//tensorflow/contrib/..."
-else
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/..."
+  BAZEL_TARGET="${BAZEL_TARGET} -//tensorflow/contrib/..."
 fi
 
 TUT_TEST_DATA_DIR="/tmp/tf_tutorial_test_data"
