@@ -194,6 +194,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         sha256 = "824870d87a176f26bcef663e92051f532fac756d1a06b404055dc078425f4378",
         strip_prefix = "googleapis-f81082ea1e2f85c43649bee26e0d9871d4b41cdb",
         build_file = clean_dep("//third_party:googleapis.BUILD"),
+        system_build_file = clean_dep("//third_party/systemlibs:googleapis.BUILD"),
     )
 
     tf_http_archive(
