@@ -1007,7 +1007,7 @@ class Dataset(object):
       return ParallelMapDataset(self, map_func, num_parallel_calls)
 
   def flat_map(self, map_func):
-    """Maps `map_func` across this dataset and flattens the result.
+    """Maps `map_func` across this dataset and flattens the result. Will produce identical results to 'tf.data.Dataset.interleave'
 
     Args:
       map_func: A function mapping a nested structure of tensors (having shapes
@@ -1043,7 +1043,7 @@ class Dataset(object):
     elements are produced. `cycle_length` controls the number of input elements
     that are processed concurrently. If you set `cycle_length` to 1, this
     transformation will handle one input element at a time, and will produce
-    identical results = to `tf.data.Dataset.flat_map`. In general,
+    identical results to `tf.data.Dataset.flat_map`. In general,
     this transformation will apply `map_func` to `cycle_length` input elements,
     open iterators on the returned `Dataset` objects, and cycle through them
     producing `block_length` consecutive elements from each iterator, and
