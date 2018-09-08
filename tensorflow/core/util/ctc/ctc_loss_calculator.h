@@ -30,6 +30,7 @@ limitations under the License.
 namespace tensorflow {
 namespace ctc {
 
+template <typename DType>
 class CTCLossCalculator {
   // Connectionist Temporal Classification Loss
   //
@@ -50,8 +51,8 @@ class CTCLossCalculator {
   //    Neural Networks" (PhD Thesis), Technische Universit¨at M¨unchen.
  public:
   typedef std::vector<std::vector<int>> LabelSequences;
-  typedef Eigen::MatrixXf Matrix;
-  typedef Eigen::ArrayXf Array;
+  typedef Eigen::Matrix<DType, Eigen::Dynamic, Eigen::Dynamic> Matrix;
+  typedef Eigen::Array<DType, Eigen::Dynamic, 1> Array;
   typedef Eigen::Map<const Eigen::MatrixXf> InputMap;
   typedef Eigen::Map<Eigen::MatrixXf> OutputMap;
 
@@ -71,15 +72,16 @@ class CTCLossCalculator {
  private:
   void CalculateForwardVariables(const std::vector<int>& l_prime,
                                  const Matrix& y, bool ctc_merge_repeated,
-                                 Matrix* log_alpha) const;
+                                 Eigen::MatrixXf* log_alpha) const;
 
   void CalculateBackwardVariables(const std::vector<int>& l_prime,
                                   const Matrix& y, bool ctc_merge_repeated,
-                                  Matrix* log_beta) const;
+                                  Eigen::MatrixXf* log_beta) const;
 
   void CalculateGradient(const std::vector<int>& l_prime, const Matrix& y,
-                         const Matrix& log_alpha, const Matrix& log_beta,
-                         float log_p_z_x, Matrix* dy) const;
+                         const Eigen::MatrixXf& log_alpha,
+                         const Eigen::MatrixXf& log_beta, float log_p_z_x,
+                         Matrix* dy) const;
 
   void GetLPrimeIndices(const std::vector<int>& l,
                         std::vector<int>* l_prime) const;
@@ -103,9 +105,10 @@ class CTCLossCalculator {
   const int output_delay_;
 };
 
+template <typename DType>
 template <typename VectorIn, typename VectorOut, typename MatrixIn,
           typename MatrixOut>
-Status CTCLossCalculator::CalculateLoss(
+Status CTCLossCalculator<DType>::CalculateLoss(
     const VectorIn& seq_len, const LabelSequences& labels,
     const std::vector<MatrixIn>& inputs, bool preprocess_collapse_repeated,
     bool ctc_merge_repeated, bool ignore_longer_outputs_than_inputs,
@@ -130,13 +133,13 @@ Status CTCLossCalculator::CalculateLoss(
   for (int t = 1; t < num_time_steps; ++t) {
     if (inputs[t].rows() != batch_size) {
       return errors::InvalidArgument("Expected batch size at t: ", t,
-                                     " to be: ", batch_size,
-                                     " but got: ", inputs[t].rows());
+                                     " to be: ", batch_size, " but got: ",
+                                     inputs[t].rows());
     }
     if (inputs[t].cols() != num_classes) {
       return errors::InvalidArgument("Expected class count at t: ", t,
-                                     " to be: ", num_classes,
-                                     " but got: ", inputs[t].cols());
+                                     " to be: ", num_classes, " but got: ",
+                                     inputs[t].cols());
     }
   }
 
@@ -189,8 +192,10 @@ Status CTCLossCalculator::CalculateLoss(
       //   col size is: seq_len[b] - output_delay_
       const std::vector<int>& l_prime = l_primes[b];
 
-      Matrix log_alpha_b(l_prime.size(), seq_len(b) - this->output_delay_);
-      Matrix log_beta_b(l_prime.size(), seq_len(b) - this->output_delay_);
+      Eigen::MatrixXf log_alpha_b(l_prime.size(),
+                                  seq_len(b) - this->output_delay_);
+      Eigen::MatrixXf log_beta_b(l_prime.size(),
+                                 seq_len(b) - this->output_delay_);
 
       // Work matrices, pre-allocated to the size required by this batch item.
       Matrix y(num_classes, seq_len(b));
@@ -205,11 +210,11 @@ Status CTCLossCalculator::CalculateLoss(
       // Convert label from DistBelief
       // y, prob are in num_classes x seq_len(b)
       // Output activations.
-      Eigen::ArrayXf y_b_col;
+      Array y_b_col;
       for (int t = 0; t < seq_len(b); t++) {
         // Calculate the softmax of y_b.  Use double precision
         // arithmetic for the sum.
-        float max_coeff = inputs[t].row(b).maxCoeff();
+        DType max_coeff = inputs[t].row(b).maxCoeff();
         y_b_col = (inputs[t].row(b).array() - max_coeff).exp();
         y_b.col(t) = y_b_col / y_b_col.sum();
       }
@@ -228,7 +233,8 @@ Status CTCLossCalculator::CalculateLoss(
         log_p_z_x = LogSumExp(log_p_z_x, log_alpha_b(u, 0) + log_beta_b(u, 0));
       }
 
-      (*loss)(b) = -log_p_z_x;  // Use negative log loss for display.
+      (*loss)(b) =
+          static_cast<DType>(-log_p_z_x);  // Use negative log loss for display.
 
       // We compute the derivative if needed.
       if (requires_backprop) {
@@ -274,16 +280,17 @@ Status CTCLossCalculator::CalculateLoss(
   return Status::OK();
 }
 
+template <typename DType>
 template <typename Vector>
-Status CTCLossCalculator::PopulateLPrimes(
+Status CTCLossCalculator<DType>::PopulateLPrimes(
     bool preprocess_collapse_repeated, bool ignore_longer_outputs_than_inputs,
     int batch_size, int num_classes, const Vector& seq_len,
     const LabelSequences& labels, size_t* max_u_prime,
     LabelSequences* l_primes) const {
   // labels is a Label array of size batch_size
   if (labels.size() != batch_size) {
-    return errors::InvalidArgument(
-        "labels.size() != batch_size: ", labels.size(), " vs. ", batch_size);
+    return errors::InvalidArgument("labels.size() != batch_size: ",
+                                   labels.size(), " vs. ", batch_size);
   }
 
   *max_u_prime = 0;  // keep track of longest l' modified label sequence.
@@ -325,13 +332,12 @@ Status CTCLossCalculator::PopulateLPrimes(
     for (int l_i : l) {
       if (l_i < 0) {
         return errors::InvalidArgument(
-            "All labels must be nonnegative integers, batch: ", b,
-            " labels: ", str_util::Join(l, ","));
+            "All labels must be nonnegative integers, batch: ", b, " labels: ",
+            str_util::Join(l, ","));
       } else if (l_i >= num_classes) {
         return errors::InvalidArgument(
-            "No label may be greater than num_classes. ",
-            "num_classes: ", num_classes, ", batch: ", b,
-            " labels: ", str_util::Join(l, ","));
+            "No label may be greater than num_classes. ", "num_classes: ",
+            num_classes, ", batch: ", b, " labels: ", str_util::Join(l, ","));
       }
     }
     if (!ignore_longer_outputs_than_inputs) {
@@ -354,6 +360,178 @@ Status CTCLossCalculator::PopulateLPrimes(
     *max_u_prime = std::max(*max_u_prime, l_primes->at(b).size());
   }
   return Status::OK();
+}
+
+// Calculates the alpha(t, u) as described in (GravesTh) Section 7.3.
+// Starting with t = 0 instead of t = 1 used in the text.
+// Based on Kanishka's CTC.
+template <typename DType>
+void CTCLossCalculator<DType>::CalculateForwardVariables(
+    const std::vector<int>& l_prime, const Matrix& y, bool ctc_merge_repeated,
+    Eigen::MatrixXf* log_alpha) const {
+  // Number of cols is the number of time steps = number of cols in target
+  // after the output delay.
+  log_alpha->setConstant(kLogZero);
+
+  int U = l_prime.size();
+  int T = log_alpha->cols();
+
+  CHECK_EQ(U, log_alpha->rows());
+
+  // Initial alpha values in (GravesTh) Eq 7.5 and Eq 7.6.
+  log_alpha->coeffRef(0, 0) =
+      log(static_cast<float>(y(blank_index_, output_delay_)));
+  // Below, l_prime[1] == labels[0]
+  auto label_0 = (l_prime.size() > 1) ? l_prime[1] : blank_index_;
+  log_alpha->coeffRef(1, 0) =
+      log(static_cast<float>(y(label_0, output_delay_)));
+
+  for (int t = 1; t < T; ++t) {
+    // If there is not enough time to output the remaining labels or
+    // some labels have been skipped, then let log_alpha(u, t) continue to
+    // be kLogZero.
+    for (int u = std::max(0, U - (2 * (T - t))); u < std::min(U, 2 * (t + 1));
+         ++u) {
+      // Begin (GravesTh) Eq 7.9
+      // Add in the u, t - 1 term.
+      float sum_log_alpha = kLogZero;
+      if (ctc_merge_repeated || l_prime[u] == blank_index_) {
+        sum_log_alpha = log_alpha->coeff(u, t - 1);
+      }
+
+      // Add in the u - 1, t - 1 term.
+      if (u > 0) {
+        sum_log_alpha =
+            LogSumExp(sum_log_alpha, log_alpha->coeff(u - 1, t - 1));
+      }
+
+      // Add in the u - 2, t - 1 term if l_prime(u) != blank or l_prime(u-2).
+      if (u > 1) {
+        const bool matching_labels_merge =
+            ctc_merge_repeated && (l_prime[u] == l_prime[u - 2]);
+        if (l_prime[u] != blank_index_ && !matching_labels_merge) {
+          sum_log_alpha =
+              LogSumExp(sum_log_alpha, log_alpha->coeff(u - 2, t - 1));
+        }
+      }
+      // Multiply the summed alphas with the activation log probability.
+      log_alpha->coeffRef(u, t) =
+          log(static_cast<float>(y(l_prime[u], output_delay_ + t))) +
+          sum_log_alpha;
+    }  // End (GravesTh) Eq 7.9.
+  }
+}
+
+// Calculates the beta(t, u) as described in (GravesTh) Section 7.3.
+template <typename DType>
+void CTCLossCalculator<DType>::CalculateBackwardVariables(
+    const std::vector<int>& l_prime, const Matrix& y, bool ctc_merge_repeated,
+    Eigen::MatrixXf* log_beta) const {
+  // Number of cols is the number of time steps =  number of cols in target.
+  // Matrix log_beta =
+  //    Matrix::Constant(l_prime.size(), y.cols() - output_delay_,
+  // kLogZero);
+  log_beta->setConstant(kLogZero);
+  int T = log_beta->cols();
+  int U = l_prime.size();
+  CHECK_EQ(U, log_beta->rows());
+
+  // Initial beta values in (GravesTh) Eq 7.13: log of probability 1.
+  for (int u = U - 2; u < U; ++u) log_beta->coeffRef(u, T - 1) = 0;
+
+  for (int t = T - 1 - 1; t >= 0; --t) {
+    // If there is not enough time to output the remaining labels or
+    // some labels have been skipped, then let log_beta(u, t) continue to
+    // be kLogZero.
+    for (int u = std::max(0, U - (2 * (T - t))); u < std::min(U, 2 * (t + 1));
+         ++u) {
+      // Begin (GravesTh) Eq 7.15
+      // Add in the u, t + 1 term.
+      if (ctc_merge_repeated || l_prime[u] == blank_index_) {
+        log_beta->coeffRef(u, t) = LogSumExp(
+            log_beta->coeff(u, t),
+            log_beta->coeff(u, t + 1) +
+                log(static_cast<float>(y(l_prime[u], output_delay_ + t + 1))));
+      }
+
+      // Add in the u + 1, t + 1 term.
+      if (u + 1 < U) {
+        log_beta->coeffRef(u, t) =
+            LogSumExp(log_beta->coeff(u, t),
+                      log_beta->coeff(u + 1, t + 1) +
+                          log(static_cast<float>(
+                              y(l_prime[u + 1], output_delay_ + t + 1))));
+      }
+
+      // Add in the u + 2, t + 1 term if l_prime(u) != blank or l_prime(u+2).
+      if (u + 2 < U) {
+        const bool matching_labels_merge =
+            ctc_merge_repeated && (l_prime[u] == l_prime[u + 2]);
+        if (l_prime[u] != blank_index_ && !matching_labels_merge) {
+          // Add in u + 2 term.
+          log_beta->coeffRef(u, t) =
+              LogSumExp(log_beta->coeff(u, t),
+                        log_beta->coeff(u + 2, t + 1) +
+                            log(static_cast<float>(
+                                y(l_prime[u + 2], output_delay_ + t + 1))));
+        }
+      }  // End (GravesTh) Eq. 7.15
+    }
+  }
+}
+
+// Using (GravesTh) Eq 7.26 & 7.34.
+template <typename DType>
+void CTCLossCalculator<DType>::CalculateGradient(
+    const std::vector<int>& l_prime, const Matrix& y,
+    const Eigen::MatrixXf& log_alpha, const Eigen::MatrixXf& log_beta,
+    float log_p_z_x, Matrix* dy) const {
+  // Only working with the leftmost part of dy for this batch element.
+  auto dy_b = dy->leftCols(y.cols());
+
+  // It is possible that no valid path is found if the activations for the
+  // targets are zero.
+  if (log_p_z_x == kLogZero) {
+    LOG(WARNING) << "No valid path found.";
+    dy_b = y;
+    return;
+  }
+
+  int L = y.rows();
+  int T = y.cols();
+  int U = l_prime.size();
+
+  for (int t = 0; t < T - output_delay_; ++t) {
+    Eigen::ArrayXf prob_sum(L);
+    prob_sum.setConstant(kLogZero);
+
+    for (int u = 0; u < U; ++u) {
+      int l = l_prime[u];
+      prob_sum[l] = LogSumExp(prob_sum[l], log_alpha(u, t) + log_beta(u, t));
+    }
+
+    for (int l = 0; l < L; ++l) {
+      // Negative term in (GravesTh) Eq 7.28.
+      float negative_term = expf(prob_sum[l] - log_p_z_x);
+
+      dy_b(l, output_delay_ + t) =
+          y(l, output_delay_ + t) - static_cast<DType>(negative_term);
+    }
+  }
+}
+
+template <typename DType>
+void CTCLossCalculator<DType>::GetLPrimeIndices(
+    const std::vector<int>& l, std::vector<int>* l_prime) const {
+  // Assumption is that l_prime is empty.
+  l_prime->reserve(2 * l.size() + 1);
+
+  for (auto label : l) {
+    l_prime->push_back(blank_index_);
+    l_prime->push_back(label);
+  }
+  // Add final blank to l'.
+  l_prime->push_back(blank_index_);
 }
 
 }  // namespace ctc
