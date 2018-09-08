@@ -4023,9 +4023,15 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_1ch_(
     __m128 top0 = _mm_add_ps(tl0, _mm_mul_ps(x_lerp, _mm_sub_ps(tr0, tl0)));
     __m128 bot0 = _mm_add_ps(bl0, _mm_mul_ps(x_lerp, _mm_sub_ps(br0, bl0)));
 #endif
+#ifdef __AVX2__
+    __m128 res[1];
+    res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
+    this->write_1ch(ysA_output_ptr + load1_x_[current] * CHANNELS, res);
+#else
     __m128 res[1];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     this->write_1ch(ysA_output_ptr + load1_x_[current] * CHANNELS, res);
+#endif
   }
 }
 // Resize all points that fall in the 'load4from2' group for an entire row of a
@@ -4059,9 +4065,15 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_1ch_(
     __m128 top0 = _mm_add_ps(tl0, _mm_mul_ps(x_lerp, _mm_sub_ps(tr0, tl0)));
     __m128 bot0 = _mm_add_ps(bl0, _mm_mul_ps(x_lerp, _mm_sub_ps(br0, bl0)));
 #endif
+#ifdef __AVX2__
+    __m128 res[1];
+    res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
+    this->write_1ch(ysA_output_ptr + load2_x_[current] * CHANNELS, res);
+#else
     __m128 res[1];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     this->write_1ch(ysA_output_ptr + load2_x_[current] * CHANNELS, res);
+#endif
   }
 }
 // Resize all points that fall in the 'load4from4' group for an entire row of a
@@ -4096,9 +4108,15 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_1ch_(
     __m128 top0 = _mm_add_ps(tl0, _mm_mul_ps(x_lerp, _mm_sub_ps(tr0, tl0)));
     __m128 bot0 = _mm_add_ps(bl0, _mm_mul_ps(x_lerp, _mm_sub_ps(br0, bl0)));
 #endif
+#ifdef __AVX2__
+    __m128 res[1];
+    res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
+    this->write_1ch(ysA_output_ptr + load4_x_[current] * CHANNELS, res);
+#else
     __m128 res[1];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     this->write_1ch(ysA_output_ptr + load4_x_[current] * CHANNELS, res);
+#endif
   }
 }
 // Resize all points that fall in the 'load4from8' group for an entire row of a
@@ -4133,9 +4151,15 @@ void CropResizeCastImage<T, U>::ResizeRow_load8_1ch_(
     __m128 top0 = _mm_add_ps(tl0, _mm_mul_ps(x_lerp, _mm_sub_ps(tr0, tl0)));
     __m128 bot0 = _mm_add_ps(bl0, _mm_mul_ps(x_lerp, _mm_sub_ps(br0, bl0)));
 #endif
+#ifdef __AVX2__
+    __m128 res[1];
+    res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
+    this->write_1ch(ysA_output_ptr + load8_x_[current] * CHANNELS, res);
+#else
     __m128 res[1];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     this->write_1ch(ysA_output_ptr + load8_x_[current] * CHANNELS, res);
+#endif
   }
 }
 #undef CHANNELS
@@ -4181,10 +4205,17 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_2ch_(
     __m128 top1 = _mm_add_ps(tl1, _mm_mul_ps(x_lerp, _mm_sub_ps(tr1, tl1)));
     __m128 bot1 = _mm_add_ps(bl1, _mm_mul_ps(x_lerp, _mm_sub_ps(br1, bl1)));
 #endif
+#ifdef __AVX2__
+    __m128 res[2];
+    res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
+    res[1] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot1, top1), top1);
+    this->write_2ch(ysA_output_ptr + load1_x_[current] * CHANNELS, res);
+#else
     __m128 res[2];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     this->write_2ch(ysA_output_ptr + load1_x_[current] * CHANNELS, res);
+#endif
   }
 }
 // Resize all points that fall in the 'load4from2' group for an entire row of a
@@ -4227,10 +4258,17 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_2ch_(
     __m128 top1 = _mm_add_ps(tl1, _mm_mul_ps(x_lerp, _mm_sub_ps(tr1, tl1)));
     __m128 bot1 = _mm_add_ps(bl1, _mm_mul_ps(x_lerp, _mm_sub_ps(br1, bl1)));
 #endif
+#ifdef __AVX2__
+    __m128 res[2];
+    res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
+    res[1] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot1, top1), top1);
+    this->write_2ch(ysA_output_ptr + load2_x_[current] * CHANNELS, res);
+#else
     __m128 res[2];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     this->write_2ch(ysA_output_ptr + load2_x_[current] * CHANNELS, res);
+#endif
   }
 }
 // Resize all points that fall in the 'load4from4' group for an entire row of a
@@ -4274,10 +4312,17 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_2ch_(
     __m128 top1 = _mm_add_ps(tl1, _mm_mul_ps(x_lerp, _mm_sub_ps(tr1, tl1)));
     __m128 bot1 = _mm_add_ps(bl1, _mm_mul_ps(x_lerp, _mm_sub_ps(br1, bl1)));
 #endif
+#ifdef __AVX2__
+    __m128 res[2];
+    res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
+    res[1] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot1, top1), top1);
+    this->write_2ch(ysA_output_ptr + load4_x_[current] * CHANNELS, res);
+#else
     __m128 res[2];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     this->write_2ch(ysA_output_ptr + load4_x_[current] * CHANNELS, res);
+#endif
   }
 }
 // Resize all points that fall in the 'load4from8' group for an entire row of a
@@ -4321,10 +4366,17 @@ void CropResizeCastImage<T, U>::ResizeRow_load8_2ch_(
     __m128 top1 = _mm_add_ps(tl1, _mm_mul_ps(x_lerp, _mm_sub_ps(tr1, tl1)));
     __m128 bot1 = _mm_add_ps(bl1, _mm_mul_ps(x_lerp, _mm_sub_ps(br1, bl1)));
 #endif
+#ifdef __AVX2__
+    __m128 res[2];
+    res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
+    res[1] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot1, top1), top1);
+    this->write_2ch(ysA_output_ptr + load8_x_[current] * CHANNELS, res);
+#else
     __m128 res[2];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     this->write_2ch(ysA_output_ptr + load8_x_[current] * CHANNELS, res);
+#endif
   }
 }
 #undef CHANNELS
@@ -4378,11 +4430,19 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_3ch_(
     __m128 top2 = _mm_add_ps(tl2, _mm_mul_ps(x_lerp, _mm_sub_ps(tr2, tl2)));
     __m128 bot2 = _mm_add_ps(bl2, _mm_mul_ps(x_lerp, _mm_sub_ps(br2, bl2)));
 #endif
+#ifdef __AVX2__
+    __m128 res[3];
+    res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
+    res[1] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot1, top1), top1);
+    res[2] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot2, top2), top2);
+    this->write_3ch(ysA_output_ptr + load1_x_[current] * CHANNELS, res);
+#else
     __m128 res[3];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     res[2] = _mm_add_ps(top2, _mm_mul_ps(y_lerp, _mm_sub_ps(bot2, top2)));
     this->write_3ch(ysA_output_ptr + load1_x_[current] * CHANNELS, res);
+#endif
   }
 }
 // Resize all points that fall in the 'load4from2' group for an entire row of a
@@ -4433,11 +4493,19 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_3ch_(
     __m128 top2 = _mm_add_ps(tl2, _mm_mul_ps(x_lerp, _mm_sub_ps(tr2, tl2)));
     __m128 bot2 = _mm_add_ps(bl2, _mm_mul_ps(x_lerp, _mm_sub_ps(br2, bl2)));
 #endif
+#ifdef __AVX2__
+    __m128 res[3];
+    res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
+    res[1] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot1, top1), top1);
+    res[2] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot2, top2), top2);
+    this->write_3ch(ysA_output_ptr + load2_x_[current] * CHANNELS, res);
+#else
     __m128 res[3];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     res[2] = _mm_add_ps(top2, _mm_mul_ps(y_lerp, _mm_sub_ps(bot2, top2)));
     this->write_3ch(ysA_output_ptr + load2_x_[current] * CHANNELS, res);
+#endif
   }
 }
 // Resize all points that fall in the 'load4from4' group for an entire row of a
@@ -4490,11 +4558,19 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_3ch_(
     __m128 top2 = _mm_add_ps(tl2, _mm_mul_ps(x_lerp, _mm_sub_ps(tr2, tl2)));
     __m128 bot2 = _mm_add_ps(bl2, _mm_mul_ps(x_lerp, _mm_sub_ps(br2, bl2)));
 #endif
+#ifdef __AVX2__
+    __m128 res[3];
+    res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
+    res[1] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot1, top1), top1);
+    res[2] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot2, top2), top2);
+    this->write_3ch(ysA_output_ptr + load4_x_[current] * CHANNELS, res);
+#else
     __m128 res[3];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     res[2] = _mm_add_ps(top2, _mm_mul_ps(y_lerp, _mm_sub_ps(bot2, top2)));
     this->write_3ch(ysA_output_ptr + load4_x_[current] * CHANNELS, res);
+#endif
   }
 }
 // Resize all points that fall in the 'load4from8' group for an entire row of a
@@ -4547,11 +4623,19 @@ void CropResizeCastImage<T, U>::ResizeRow_load8_3ch_(
     __m128 top2 = _mm_add_ps(tl2, _mm_mul_ps(x_lerp, _mm_sub_ps(tr2, tl2)));
     __m128 bot2 = _mm_add_ps(bl2, _mm_mul_ps(x_lerp, _mm_sub_ps(br2, bl2)));
 #endif
+#ifdef __AVX2__
+    __m128 res[3];
+    res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
+    res[1] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot1, top1), top1);
+    res[2] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot2, top2), top2);
+    this->write_3ch(ysA_output_ptr + load8_x_[current] * CHANNELS, res);
+#else
     __m128 res[3];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     res[2] = _mm_add_ps(top2, _mm_mul_ps(y_lerp, _mm_sub_ps(bot2, top2)));
     this->write_3ch(ysA_output_ptr + load8_x_[current] * CHANNELS, res);
+#endif
   }
 }
 #undef CHANNELS
@@ -4615,12 +4699,21 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_4ch_(
     __m128 top3 = _mm_add_ps(tl3, _mm_mul_ps(x_lerp, _mm_sub_ps(tr3, tl3)));
     __m128 bot3 = _mm_add_ps(bl3, _mm_mul_ps(x_lerp, _mm_sub_ps(br3, bl3)));
 #endif
+#ifdef __AVX2__
+    __m128 res[4];
+    res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
+    res[1] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot1, top1), top1);
+    res[2] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot2, top2), top2);
+    res[3] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot3, top3), top3);
+    this->write_4ch(ysA_output_ptr + load1_x_[current] * CHANNELS, res);
+#else
     __m128 res[4];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     res[2] = _mm_add_ps(top2, _mm_mul_ps(y_lerp, _mm_sub_ps(bot2, top2)));
     res[3] = _mm_add_ps(top3, _mm_mul_ps(y_lerp, _mm_sub_ps(bot3, top3)));
     this->write_4ch(ysA_output_ptr + load1_x_[current] * CHANNELS, res);
+#endif
   }
 }
 // Resize all points that fall in the 'load4from2' group for an entire row of a
@@ -4681,12 +4774,21 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_4ch_(
     __m128 top3 = _mm_add_ps(tl3, _mm_mul_ps(x_lerp, _mm_sub_ps(tr3, tl3)));
     __m128 bot3 = _mm_add_ps(bl3, _mm_mul_ps(x_lerp, _mm_sub_ps(br3, bl3)));
 #endif
+#ifdef __AVX2__
+    __m128 res[4];
+    res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
+    res[1] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot1, top1), top1);
+    res[2] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot2, top2), top2);
+    res[3] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot3, top3), top3);
+    this->write_4ch(ysA_output_ptr + load2_x_[current] * CHANNELS, res);
+#else
     __m128 res[4];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     res[2] = _mm_add_ps(top2, _mm_mul_ps(y_lerp, _mm_sub_ps(bot2, top2)));
     res[3] = _mm_add_ps(top3, _mm_mul_ps(y_lerp, _mm_sub_ps(bot3, top3)));
     this->write_4ch(ysA_output_ptr + load2_x_[current] * CHANNELS, res);
+#endif
   }
 }
 // Resize all points that fall in the 'load4from4' group for an entire row of a
@@ -4748,12 +4850,21 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_4ch_(
     __m128 top3 = _mm_add_ps(tl3, _mm_mul_ps(x_lerp, _mm_sub_ps(tr3, tl3)));
     __m128 bot3 = _mm_add_ps(bl3, _mm_mul_ps(x_lerp, _mm_sub_ps(br3, bl3)));
 #endif
+#ifdef __AVX2__
+    __m128 res[4];
+    res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
+    res[1] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot1, top1), top1);
+    res[2] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot2, top2), top2);
+    res[3] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot3, top3), top3);
+    this->write_4ch(ysA_output_ptr + load4_x_[current] * CHANNELS, res);
+#else
     __m128 res[4];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     res[2] = _mm_add_ps(top2, _mm_mul_ps(y_lerp, _mm_sub_ps(bot2, top2)));
     res[3] = _mm_add_ps(top3, _mm_mul_ps(y_lerp, _mm_sub_ps(bot3, top3)));
     this->write_4ch(ysA_output_ptr + load4_x_[current] * CHANNELS, res);
+#endif
   }
 }
 // Resize all points that fall in the 'load4from8' group for an entire row of a
@@ -4815,12 +4926,21 @@ void CropResizeCastImage<T, U>::ResizeRow_load8_4ch_(
     __m128 top3 = _mm_add_ps(tl3, _mm_mul_ps(x_lerp, _mm_sub_ps(tr3, tl3)));
     __m128 bot3 = _mm_add_ps(bl3, _mm_mul_ps(x_lerp, _mm_sub_ps(br3, bl3)));
 #endif
+#ifdef __AVX2__
+    __m128 res[4];
+    res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
+    res[1] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot1, top1), top1);
+    res[2] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot2, top2), top2);
+    res[3] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot3, top3), top3);
+    this->write_4ch(ysA_output_ptr + load8_x_[current] * CHANNELS, res);
+#else
     __m128 res[4];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     res[2] = _mm_add_ps(top2, _mm_mul_ps(y_lerp, _mm_sub_ps(bot2, top2)));
     res[3] = _mm_add_ps(top3, _mm_mul_ps(y_lerp, _mm_sub_ps(bot3, top3)));
     this->write_4ch(ysA_output_ptr + load8_x_[current] * CHANNELS, res);
+#endif
   }
 }
 #undef CHANNELS
