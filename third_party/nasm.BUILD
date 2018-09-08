@@ -133,7 +133,10 @@ cc_binary(
         "x86/regs.c",
         "x86/regs.h",
         "x86/regvals.c",
-    ],
+    ] + select({
+        ":windows": ["config/msvc.h"],
+        "//conditions:default": [],
+    }),
     includes = [
         "asm",
         "include",
