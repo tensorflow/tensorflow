@@ -85,9 +85,6 @@
 #                     Use the specified configurations when building.
 #                     When set, overrides TF_BUILD_IS_OPT and TF_BUILD_MAVX
 #                     options, as this will replace the two.
-#   TF_SKIP_LITE_TESTS:
-#                     If set to any non-empty or non-0 value, will skip running
-#                     contrib/lite tests, but will leave other contrib tests.
 #   TF_SKIP_CONTRIB_TESTS:
 #                     If set to any non-empty or non-0 value, will skip running
 #                     contrib tests.
@@ -134,7 +131,13 @@ BAZEL_CMD="bazel test"
 BAZEL_BUILD_ONLY_CMD="bazel build"
 BAZEL_CLEAN_CMD="bazel clean"
 
-DEFAULT_BAZEL_CONFIGS=""
+# Default flags:
+# --test_summary=detailed: Tell us more about which targets are being built
+# --keep_going: Don't stop at the first failure; tell us all the failures
+# --build_tests_only: Don't build targets depended on by tests if the test is
+#                     disabled. Also saves some compilation time. Otherwise,
+#                     tries to build everything.
+DEFAULT_BAZEL_CONFIGS="--test_summary=detailed --build_tests_only --keep_going"
 
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
 PIP_TEST_TUTORIALS_FLAG="--test_tutorials"
@@ -149,10 +152,6 @@ BENCHMARK_CMD="${CI_BUILD_DIR}/builds/benchmark.sh"
 
 EXTRA_PARAMS=""
 BAZEL_TARGET="//tensorflow/... -//tensorflow/compiler/..."
-
-if [[ -n "$TF_SKIP_LITE_TESTS" ]]; then
-  BAZEL_TARGET="${BAZEL_TARGET} -//tensorflow/contrib/lite/..."
-fi
 
 if [[ -n "$TF_SKIP_CONTRIB_TESTS" ]]; then
   BAZEL_TARGET="${BAZEL_TARGET} -//tensorflow/contrib/..."
