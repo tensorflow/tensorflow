@@ -26,8 +26,9 @@ namespace tensorflow {
 // Backwards dataflow analysis that finds arguments to a graph that must be
 // compile-time constants.
 Status BackwardsConstAnalysis(const Graph& g,
-                              std::vector<bool>* compile_time_const_args,
-                              std::vector<bool>* compile_time_const_nodes) {
+                              std::vector<bool>* compile_time_const_arg_indices,
+                              std::vector<bool>* compile_time_const_nodes,
+                              std::function<bool(const Edge&)> edge_filter) {
   // Operators that don't look at the data of their inputs, just the shapes.
   const std::unordered_set<string> metadata_ops = {
       "Rank",
@@ -45,8 +46,7 @@ Status BackwardsConstAnalysis(const Graph& g,
   }
 
   Status status;
-  auto visit = [&status, &metadata_ops, compile_time_const_nodes,
-                compile_time_const_args](Node* node) {
+  auto visit = [&](Node* node) {
     if (!status.ok()) return;
 
     // If this is a metadata-only op, don't propagate the const requirement.
@@ -59,13 +59,13 @@ Status BackwardsConstAnalysis(const Graph& g,
         int index;
         status = GetNodeAttr(node->attrs(), "index", &index);
         if (!status.ok()) return;
-        if (compile_time_const_args) {
-          (*compile_time_const_args)[index] = true;
+        if (compile_time_const_arg_indices) {
+          (*compile_time_const_arg_indices)[index] = true;
         }
         return;
       }
       for (const Edge* pred : node->in_edges()) {
-        if (!pred->IsControlEdge()) {
+        if (!pred->IsControlEdge() && edge_filter(*pred)) {
           (*compile_time_const_nodes)[pred->src()->id()] = true;
         }
       }
@@ -88,7 +88,8 @@ Status BackwardsConstAnalysis(const Graph& g,
 
       for (Edge const* edge : node->in_edges()) {
         if (edge->dst_input() >= name_range->second.first &&
-            edge->dst_input() < name_range->second.second) {
+            edge->dst_input() < name_range->second.second &&
+            edge_filter(*edge)) {
           (*compile_time_const_nodes)[edge->src()->id()] = true;
         }
       }
@@ -97,7 +98,8 @@ Status BackwardsConstAnalysis(const Graph& g,
 
   // Post-order traversal visits nodes in reverse topological order for an
   // acyclic graph.
-  DFS(g, {}, visit);
+  DFS(g, /*enter=*/{}, /*leave=*/visit, NodeComparatorName{},
+      [](const Edge& edge) { return !edge.src()->IsNextIteration(); });
   return status;
 }
 
