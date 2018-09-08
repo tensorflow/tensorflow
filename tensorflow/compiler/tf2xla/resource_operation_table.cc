@@ -110,10 +110,10 @@ GetStaticResourceOpInfoMap() {
   return *op_info_map;
 }
 
-const XlaResourceOpInfo* GetResourceOpInfoForOp(StringPiece op) {
+const XlaResourceOpInfo* GetResourceOpInfoForOp(absl::string_view op) {
   const gtl::FlatMap<StringPiece, XlaResourceOpInfo>& op_infos =
       GetStaticResourceOpInfoMap();
-  auto it = op_infos.find(op);
+  auto it = op_infos.find(StringPiece(op.data(), op.length()));
   return it == op_infos.end() ? nullptr : &it->second;
 }
 
