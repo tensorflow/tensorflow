@@ -34,13 +34,13 @@ documentation](https://docs.docker.com/engine/reference/run/).
 # User permissions (-u) are required if you use (-v).
 
 # CPU-based images
-$ docker run -u $(id -u):$(id -g) -v $(PWD):/my-devel -it tf
+$ docker run -u $(id -u):$(id -g) -v $(pwd):/my-devel -it tf
 
 # GPU-based images (set up nvidia-docker2 first)
-$ docker run --runtime=nvidia -u $(id -u):$(id -g) -v $(PWD):/my-devel -it tf
+$ docker run --runtime=nvidia -u $(id -u):$(id -g) -v $(pwd):/my-devel -it tf
 
 # Images with Jupyter run on port 8888, and needs a volume for notebooks
-$ docker run --user $(id -u):$(id -g) -p 8888:8888 -v $(PWD):/notebooks -it tf
+$ docker run --user $(id -u):$(id -g) -p 8888:8888 -v $(pwd):/notebooks -it tf
 ```
 
 These images do not come with the TensorFlow source code -- but the development
