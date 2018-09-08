@@ -17098,11 +17098,11 @@ op {
   name: "NonMaxSuppressionV2"
   input_arg {
     name: "boxes"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "scores"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "max_output_size"
@@ -17116,16 +17116,29 @@ op {
     name: "selected_indices"
     type: DT_INT32
   }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+      }
+    }
+  }
 }
 op {
   name: "NonMaxSuppressionV3"
   input_arg {
     name: "boxes"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "scores"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "max_output_size"
@@ -17143,16 +17156,29 @@ op {
     name: "selected_indices"
     type: DT_INT32
   }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+      }
+    }
+  }
 }
 op {
   name: "NonMaxSuppressionV4"
   input_arg {
     name: "boxes"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "scores"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "max_output_size"
@@ -17173,6 +17199,19 @@ op {
   output_arg {
     name: "valid_outputs"
     type: DT_INT32
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+      }
+    }
   }
   attr {
     name: "pad_to_max_output_size"
