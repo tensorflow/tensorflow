@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_LITE_JAVA_SRC_MAIN_NATIVE_TENSOR_JNI_H_
 
 #include <jni.h>
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 
 #ifdef __cplusplus
 extern "C" {

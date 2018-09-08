@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_EIGEN_SUPPORT_H_
 #define TENSORFLOW_CONTRIB_LITE_KERNELS_EIGEN_SUPPORT_H_
 
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 
 namespace EigenForTFLite {
 struct ThreadPoolDevice;
