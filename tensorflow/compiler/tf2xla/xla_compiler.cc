@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
+#include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
@@ -291,6 +292,10 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
               "Invalid resource type in XLAShapeForArgument()");
       }
     }
+    case XlaCompiler::Argument::kToken: {
+      *xla_shape = xla::ShapeUtil::MakeTokenShape();
+      return Status::OK();
+    }
     case XlaCompiler::Argument::kInvalid:
       return errors::Internal("Invalid argument type in XLAShapeForArgument()");
   }
@@ -489,7 +494,8 @@ Status XlaCompiler::BuildArguments(
         }
 
         break;
-      case XlaCompiler::Argument::kParameter: {
+      case XlaCompiler::Argument::kParameter:
+      case XlaCompiler::Argument::kToken: {
         input_mapping->push_back(i);
         break;
       }
@@ -616,6 +622,10 @@ Status XlaCompiler::BuildArguments(
           arg_expression.set_handle(arg_handles[i]);
         }
         break;
+      case XlaCompiler::Argument::kToken: {
+        arg_expression.set_handle(arg_handles[i]);
+        break;
+      }
       case XlaCompiler::Argument::kConstant:
       case XlaCompiler::Argument::kInvalid:
         return errors::Internal(
@@ -757,23 +767,71 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
       &options_.shape_representation_fn);
   core::ScopedUnref context_unref(context);
 
+  std::vector<XlaCompiler::Argument> real_args(args);
+  int token_input_index = -1;
+  if (options.add_token_input_output) {
+    // Add extra token input.
+    token_input_index = real_args.size();
+
+    XlaCompiler::Argument token_arg;
+    token_arg.kind = XlaCompiler::Argument::kToken;
+    real_args.push_back(token_arg);
+  }
+
   std::vector<XlaExpression> arg_expressions;
   std::vector<int> arg_cores;
-  TF_RETURN_IF_ERROR(
-      BuildArguments(*graph, args, options.use_tuple_arg, &builder, context,
-                     &arg_cores, &arg_expressions, &result->input_mapping,
-                     &result->xla_input_shapes, options.is_entry_computation));
+  TF_RETURN_IF_ERROR(BuildArguments(
+      *graph, real_args, options.use_tuple_arg, &builder, context, &arg_cores,
+      &arg_expressions, &result->input_mapping, &result->xla_input_shapes,
+      options.is_entry_computation));
   context->set_args(std::move(arg_expressions));
+
+  PushNodeTokenMapping();
+  // Use std::set instead of std::unordered_set to ensure determinism.
+  std::set<std::string> output_node_token_inputs;
+  if (token_input_index != -1) {
+    // Original token comes from input.
+    auto arg_expression = context->args()[token_input_index];
+    TF_RETURN_IF_ERROR(
+        SetNodeToken(kXlaTokenArgNodeName, arg_expression.handle()));
+
+    // Calculate token inputs for output token.
+    output_node_token_inputs = CalculateTokenInputsForOutputToken(*graph);
+
+    // If there's no side-effecting op in the graph, use token input as token
+    // output.
+    if (output_node_token_inputs.empty()) {
+      output_node_token_inputs.insert(kXlaTokenArgNodeName);
+    }
+  } else if (options.is_entry_computation) {
+    // Original token is manually created.
+    if (HasSideEffectingNodes(*graph)) {
+      TF_RETURN_IF_ERROR(
+          SetNodeToken(kXlaTokenArgNodeName, xla::CreateToken(&builder)));
+    }
+  }
 
   TF_RETURN_IF_ERROR(ExecuteGraph(context, std::move(graph), device_,
                                   flib_runtime_, NextStepId()));
+  if (token_input_index != -1) {
+    // Add extra token output.
+    std::vector<xla::XlaOp> token_inputs;
+    for (const auto& node_name : output_node_token_inputs) {
+      auto token_or = GetNodeToken(node_name);
+      TF_RETURN_IF_ERROR(token_or.status());
+      token_inputs.push_back(token_or.ValueOrDie());
+    }
+    TF_RETURN_IF_ERROR(
+        context->AppendTokenRetval(xla::AfterAll(&builder, token_inputs)));
+  }
+  TF_RETURN_IF_ERROR(PopNodeTokenMapping());
 
   int num_nonconst_outputs;
   int num_computation_outputs;
   result->computation = std::make_shared<xla::XlaComputation>();
   result->outputs.resize(context->retvals().size());
   TF_RETURN_IF_ERROR(BuildComputation(
-      args, arg_cores, context->retvals(), context->resources(),
+      real_args, arg_cores, context->retvals(), context->resources(),
       options.return_updated_values_for_all_resources,
       options.always_return_tuple, &builder, result->computation.get(),
       &num_computation_outputs, &num_nonconst_outputs, &result->outputs,
@@ -910,6 +968,49 @@ Status XlaCompiler::SetHostComputeControlDependency(
   }
   host_compute_control_output_[host_compute_name] = handle;
   return Status::OK();
+}
+
+void XlaCompiler::PushNodeTokenMapping() {
+  node_token_mapping_stack_.emplace(std::map<string, xla::XlaOp>{});
+}
+
+Status XlaCompiler::PopNodeTokenMapping() {
+  if (node_token_mapping_stack_.empty()) {
+    return errors::FailedPrecondition(
+        "Calling PopNodeTokenMapping() when node_token_mapping_stack_ is "
+        "empty.");
+  }
+  node_token_mapping_stack_.pop();
+  return Status::OK();
+}
+
+Status XlaCompiler::SetNodeToken(const string& node_name,
+                                 const xla::XlaOp& op) {
+  if (node_token_mapping_stack_.empty()) {
+    return errors::FailedPrecondition(
+        "Calling SetNodeToken() when node_token_mapping_stack_ is "
+        "empty.");
+  }
+  auto insert_result = node_token_mapping_stack_.top().insert({node_name, op});
+  if (!insert_result.second) {
+    return errors::FailedPrecondition("Token mapping already exists for node ",
+                                      node_name);
+  }
+  return Status::OK();
+}
+
+xla::StatusOr<xla::XlaOp> XlaCompiler::GetNodeToken(const string& node_name) {
+  if (node_token_mapping_stack_.empty()) {
+    return errors::FailedPrecondition(
+        "Calling GetNodeToken() when node_token_mapping_stack_ is "
+        "empty.");
+  }
+  auto iter = node_token_mapping_stack_.top().find(node_name);
+  if (iter == node_token_mapping_stack_.top().end()) {
+    return errors::FailedPrecondition("Cannot find token mapping for node ",
+                                      node_name);
+  }
+  return iter->second;
 }
 
 }  // namespace tensorflow

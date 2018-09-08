@@ -178,6 +178,7 @@ tf_kernel_library(
     hdrs = ["while_op.h"],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:literal",
@@ -195,6 +196,7 @@ tf_kernel_library(
     hdrs = ["if_op.h"],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:literal",
