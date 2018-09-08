@@ -209,7 +209,7 @@ class MapDatasetBenchmark(test.Benchmark):
             end = time.time()
             chained_deltas.append(end - start)
 
-        fused_dataset = dataset = dataset.apply(
+        fused_dataset = dataset.apply(
             batching.map_and_batch(
                 math_ops.matmul,
                 num_parallel_calls=num_calls,
