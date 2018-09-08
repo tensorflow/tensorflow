@@ -147,18 +147,11 @@ func (g *Graph) Operations() []Operation {
 	return ops
 }
 
-// AddGradients adds operations to compute the partial derivatives of sum of `y`s w.r.t `x`s,
-// i.e., d(y_1 + y_2 + ...)/dx_1, d(y_1 + y_2 + ...)/dx_2...
-// This is a simplified version of AddGradientsWithPrefix() without prefix
-func (g *Graph) AddGradients(y []Output, x []Output, dx []Output) ([]Output, error) {
-	return g.AddGradientsWithPrefix("", y, x, dx)
-}
-
 // AddGradientsWithPrefix adds operations to compute the partial derivatives of sum of `y`s w.r.t `x`s,
 // i.e., d(y_1 + y_2 + ...)/dx_1, d(y_1 + y_2 + ...)/dx_2...
-// This is a variant of AddGradients that allows to caller to pass a custom
-// name prefix to the operations added to a graph to compute the gradients.
-func (g *Graph) AddGradientsWithPrefix(prefix string, y []Output, x []Output, dx []Output) ([]Output, error) {
+// This methods allows to caller to pass a custom name prefix to the operations
+// added to a graph to compute the gradients.
+func (g *Graph) AddGradients(prefix string, y []Output, x []Output, dx []Output) ([]Output, error) {
 	var (
 		cprefix = C.CString(prefix)
 
