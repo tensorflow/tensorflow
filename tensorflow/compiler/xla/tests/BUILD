@@ -75,7 +75,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_headers_lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],

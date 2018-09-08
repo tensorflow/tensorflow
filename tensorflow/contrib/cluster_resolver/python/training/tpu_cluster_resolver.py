@@ -229,6 +229,10 @@ class TPUClusterResolver(ClusterResolver):
   def get_master(self):
     return self.master()
 
+  def get_job_name(self):
+    if self._shouldResolve():
+      return self._job_name
+
   def cluster_spec(self):
     """Returns a ClusterSpec object based on the latest TPU information.
 

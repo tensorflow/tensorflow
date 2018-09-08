@@ -428,10 +428,10 @@ class BatchDatasetTest(test.TestCase, parameterized.TestCase):
     self.assertEqual([None, 30], dataset.output_shapes[1][1].as_list())
 
   @parameterized.named_parameters(
-      ("default", None, None),
-      ("sequential_calls", 1, None),
-      ("parallel_calls", 2, None),
-      ("parallel_batches", None, 10),
+      ("Default", None, None),
+      ("SequentialCalls", 1, None),
+      ("ParallelCalls", 2, None),
+      ("ParallelBatches", None, 10),
   )
   def testMapAndBatch(self, num_parallel_calls, num_parallel_batches):
     """Test a dataset that maps a TF function across its input elements."""
@@ -505,8 +505,8 @@ class BatchDatasetTest(test.TestCase, parameterized.TestCase):
         sess.run(init_op, feed_dict={count: 14, batch_size: 0})
 
   @parameterized.named_parameters(
-      ("even", False),
-      ("uneven", True),
+      ("Even", False),
+      ("Uneven", True),
   )
   def testMapAndBatchPartialBatch(self, drop_remainder):
     iterator = (
@@ -663,7 +663,14 @@ class BatchDatasetTest(test.TestCase, parameterized.TestCase):
       for _ in range(3):
         sess.run(get_next)
 
-  @parameterized.parameters(0, 5, 10, 90, 95, 99)
+  @parameterized.named_parameters(
+      ("1", 0),
+      ("2", 5),
+      ("3", 10),
+      ("4", 90),
+      ("5", 95),
+      ("6", 99),
+  )
   def testMapAndBatchOutOfRangeError(self, threshold):
 
     def raising_py_fn(i):
@@ -689,18 +696,18 @@ class BatchDatasetTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  @parameterized.parameters(
-      (False, dtypes.bool),
-      (-42, dtypes.int8),
-      (-42, dtypes.int16),
-      (-42, dtypes.int32),
-      (-42, dtypes.int64),
-      (42, dtypes.uint8),
-      (42, dtypes.uint16),
-      (42.0, dtypes.float16),
-      (42.0, dtypes.float32),
-      (42.0, dtypes.float64),
-      (b"hello", dtypes.string),
+  @parameterized.named_parameters(
+      ("1", False, dtypes.bool),
+      ("2", -42, dtypes.int8),
+      ("3", -42, dtypes.int16),
+      ("4", -42, dtypes.int32),
+      ("5", -42, dtypes.int64),
+      ("6", 42, dtypes.uint8),
+      ("7", 42, dtypes.uint16),
+      ("8", 42.0, dtypes.float16),
+      ("9", 42.0, dtypes.float32),
+      ("10", 42.0, dtypes.float64),
+      ("11", b"hello", dtypes.string),
   )
   def testMapAndBatchTypes(self, element, dtype):
     def gen():

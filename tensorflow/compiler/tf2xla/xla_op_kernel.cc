@@ -102,7 +102,8 @@ Status XlaOpKernelContext::ConstantInput(int index,
 static xla::StatusOr<int> InputIndex(XlaOpKernelContext* context,
                                      absl::string_view name) {
   int start, stop;
-  TF_RETURN_IF_ERROR(context->op_kernel().InputRange(name, &start, &stop));
+  TF_RETURN_IF_ERROR(context->op_kernel().InputRange(
+      StringPiece(name.data(), name.length()), &start, &stop));
   if (stop != start + 1) {
     return errors::InvalidArgument("OpKernel used list-valued input name '",
                                    name,
@@ -365,7 +366,8 @@ Status XlaOpKernelContext::InputList(absl::string_view name,
                                      std::vector<xla::XlaOp>* handles,
                                      std::vector<TensorShape>* shapes) {
   OpInputList inputs;
-  TF_RETURN_IF_ERROR(context_->input_list(name, &inputs));
+  TF_RETURN_IF_ERROR(
+      context_->input_list(StringPiece(name.data(), name.size()), &inputs));
   handles->clear();
   shapes->clear();
   for (const Tensor& input : inputs) {
@@ -378,7 +380,8 @@ Status XlaOpKernelContext::InputList(absl::string_view name,
 Status XlaOpKernelContext::ConstantInputList(
     absl::string_view name, std::vector<xla::Literal>* outputs) {
   int start, stop;
-  TF_RETURN_IF_ERROR(op_kernel().InputRange(name, &start, &stop));
+  TF_RETURN_IF_ERROR(op_kernel().InputRange(
+      StringPiece(name.data(), name.size()), &start, &stop));
   outputs->resize(stop - start);
   for (int i = start; i < stop; ++i) {
     TF_RETURN_IF_ERROR(ConstantInput(i, &(*outputs)[i]));
@@ -612,7 +615,7 @@ const xla::XlaComputation* XlaOpKernelContext::GetOrCreateMul(
 
 const Tensor& XlaOpKernelContext::GetInputTensorByName(absl::string_view name) {
   const Tensor* tensor;
-  CHECK(context_->input(name, &tensor).ok());
+  CHECK(context_->input(StringPiece(name.data(), name.length()), &tensor).ok());
   return *tensor;
 }
 

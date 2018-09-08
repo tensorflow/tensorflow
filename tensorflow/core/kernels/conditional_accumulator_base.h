@@ -52,7 +52,7 @@ class ConditionalAccumulatorBase : public ResourceBase {
   //   name:  A name to use for the ConditionalAccumulator.
   ConditionalAccumulatorBase(const DataType& dtype,
                              const PartialTensorShape& shape,
-                             const string& name);
+                             const string& name, const string& reduction_type);
 
   typedef AsyncOpKernel::DoneCallback DoneCallback;
 
@@ -125,6 +125,7 @@ class ConditionalAccumulatorBase : public ResourceBase {
   const DataType dtype_;
   const PartialTensorShape shape_;
   const string name_;
+  const string reduction_type_;
   mutex mu_;
   int counter_ GUARDED_BY(mu_);
   int64 current_global_step_ GUARDED_BY(mu_);

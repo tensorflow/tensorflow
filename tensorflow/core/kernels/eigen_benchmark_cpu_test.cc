@@ -48,8 +48,10 @@ void SpatialConvolution(int iters, int num_threads,
 
   benchmark.SpatialConvolution(input_dims, filter_dims);
 
-  auto output_size = input_dims.TotalSize();
-  auto flops = output_size * (input_depth * filter_height * filter_width);
+  auto num_computed_elements =
+      (input_dims.TotalSize() / input_depth) * filter_count;
+  auto flops =
+      num_computed_elements * (input_depth * filter_height * filter_width);
   ::tensorflow::testing::ItemsProcessed(flops * iters);
 }
 
@@ -75,8 +77,9 @@ void SpatialConvolutionBackwardInput(int iters, int num_threads,
 
   benchmark.SpatialConvolutionBackwardInput(input_dims, filter_dims);
 
-  auto output_size = input_dims.TotalSize();
-  auto flops = output_size * (input_depth * filter_height * filter_width);
+  auto num_computed_elements = input_dims.TotalSize();
+  auto flops =
+      num_computed_elements * (input_depth * filter_height * filter_width);
   ::tensorflow::testing::ItemsProcessed(flops * iters);
 }
 
@@ -102,8 +105,9 @@ void SpatialConvolutionBackwardKernel(int iters, int num_threads,
 
   benchmark.SpatialConvolutionBackwardKernel(input_dims, filter_dims);
 
-  auto filter_size = filter_dims.TotalSize();
-  auto flops = filter_size * (input_batches * input_height * input_width);
+  auto num_computed_elements = filter_dims.TotalSize();
+  auto flops =
+      num_computed_elements * (input_batches * input_height * input_width);
   ::tensorflow::testing::ItemsProcessed(flops * iters);
 }
 
@@ -266,8 +270,9 @@ void CuboidConvolution(int iters, int num_threads,
 
   benchmark.CuboidConvolution(input_dims, filter_dims);
 
-  auto output_size = input_dims.TotalSize();
-  auto flops = output_size *
+  auto num_computed_elements =
+      (input_dims.TotalSize() / input_depth) * filter_count;
+  auto flops = num_computed_elements *
                (input_depth * filter_height * filter_width * filter_planes);
   ::tensorflow::testing::ItemsProcessed(flops * iters);
 }
@@ -295,8 +300,8 @@ void CuboidConvolutionBackwardInput(int iters, int num_threads,
 
   benchmark.CuboidConvolutionBackwardInput(input_dims, filter_dims);
 
-  auto output_size = input_dims.TotalSize();
-  auto flops = output_size *
+  auto num_computed_elements = input_dims.TotalSize();
+  auto flops = num_computed_elements *
                (input_depth * filter_height * filter_width * filter_planes);
   ::tensorflow::testing::ItemsProcessed(flops * iters);
 }
@@ -324,9 +329,9 @@ void CuboidConvolutionBackwardKernel(int iters, int num_threads,
 
   benchmark.CuboidConvolutionBackwardKernel(input_dims, filter_dims);
 
-  auto filter_size = filter_dims.TotalSize();
-  auto flops =
-      filter_size * (input_batches * input_height * input_width * input_planes);
+  auto num_computed_elements = filter_dims.TotalSize();
+  auto flops = num_computed_elements *
+               (input_batches * input_height * input_width * input_planes);
   ::tensorflow::testing::ItemsProcessed(flops * iters);
 }
 

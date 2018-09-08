@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_UTIL_H_
 
 #include "tensorflow/c/c_api_internal.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 

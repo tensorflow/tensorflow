@@ -2,8 +2,8 @@
 
 This directory houses TensorFlow's Dockerfiles. **DO NOT EDIT THE DOCKERFILES
 MANUALLY!** They are maintained by `assembler.py`, which builds Dockerfiles from
-the files in `partials/` and the rules in `spec.yml`. See [the Maintaining
-section](#maintaining) for more information.
+the files in `partials/` and the rules in `spec.yml`. See [the Contributing
+section](#contributing) for more information.
 
 ## Building
 

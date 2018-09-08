@@ -17,7 +17,7 @@ limitations under the License.
 
 // TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
-#include "tensorflow/contrib/lite/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/tensor_utils_impl.h"
 
