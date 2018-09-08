@@ -29,6 +29,11 @@ from tensorflow.contrib.autograph.pyct import anno
 from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.contrib.autograph.pyct.static_analysis.annos import NodeAnno
 
+# TODO(aqj): Do we need this? Do other builtins fail in similar ways
+# See b/114389775 for a related bug in pyct
+# These symbols are legal in Python, but don't appear in the namespace.
+_special_symbols = {'range': range}
+
 
 class LiveValueResolver(transformer.Base):
   """Annotates nodes with live values."""
@@ -66,6 +71,8 @@ class LiveValueResolver(transformer.Base):
             # If the symbol value is for example a primitive, then it will not
             # have a name.
             pass
+        elif node.id in _special_symbols:
+          anno.setanno(node, 'live_val', _special_symbols[node.id])
         else:
           pass
           # TODO(mdan): Should we raise an error here?

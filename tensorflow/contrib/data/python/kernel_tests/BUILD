@@ -279,7 +279,9 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:function",
+        "//tensorflow/python:functional_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
     ],
 )
 

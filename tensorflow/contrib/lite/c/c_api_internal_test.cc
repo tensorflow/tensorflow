@@ -13,16 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include <gtest/gtest.h>
-#include "tensorflow/contrib/lite/testing/util.h"
 
 namespace tflite {
 
 // NOTE: this tests only the TfLiteIntArray part of context.
-// most of context.h is provided in the context of using it with interpreter.h
-// and interpreter.cc, so interpreter_test.cc tests context structures more
-// thoroughly.
+// most of c_api_internal.h is provided in the context of using it with
+// interpreter.h and interpreter.cc, so interpreter_test.cc tests context
+// structures more thoroughly.
 
 TEST(IntArray, TestIntArrayCreate) {
   TfLiteIntArray* a = TfLiteIntArrayCreate(0);
@@ -69,7 +68,6 @@ TEST(IntArray, TestIntArrayEqual) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

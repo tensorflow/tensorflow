@@ -687,6 +687,7 @@ py_test(
         "manual",  # b/112769036, b/113907597
         "no_oss",  # b/112769036, b/113907597
         "no_windows",
+        "noasan",  # b/114304340
         "nomsan",
         "notsan",  # b/67510291
     ],

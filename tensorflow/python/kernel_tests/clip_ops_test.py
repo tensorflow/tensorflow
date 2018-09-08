@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.platform import test
 
 
@@ -158,12 +159,18 @@ class ClipTest(test.TestCase):
       ans = clip_ops.clip_by_norm(x, clip_norm)
       tf_ans = ans.eval()
 
-      clip_tensor = constant_op.constant(4.0)
       ans = clip_ops.clip_by_norm(x, clip_norm)
       tf_ans_tensor = ans.eval()
 
     self.assertAllClose(np_ans, tf_ans)
     self.assertAllClose(np_ans, tf_ans_tensor)
+
+  def testClipByNormGradientZeros(self):
+    with self.test_session(use_gpu=True):
+      x = array_ops.zeros([3])
+      b = clip_ops.clip_by_norm(x, 1.)
+      grad, = gradients_impl.gradients(b, x)
+      self.assertAllEqual(grad.eval(), [1., 1., 1.])
 
   def testClipByNormBadShape(self):
     with self.test_session(use_gpu=True):

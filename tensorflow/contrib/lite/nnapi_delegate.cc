@@ -18,8 +18,8 @@ limitations under the License.
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/core/api/error_reporter.h"
 #include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/nnapi/NeuralNetworksShim.h"
 

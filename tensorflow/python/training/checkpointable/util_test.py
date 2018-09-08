@@ -560,6 +560,46 @@ class CheckpointingTests(test.TestCase):
                          self.evaluate(root.save_counter))
 
   @test_util.run_in_graph_and_eager_modes
+  def testFreezing(self):
+    with self.cached_session(use_gpu=True) as session:
+      # Save an object-based checkpoint using a frozen saver
+      directory = self.get_temp_dir()
+      prefix = os.path.join(directory, "ckpt")
+      v = resource_variable_ops.ResourceVariable(0, dtype=dtypes.int64)
+      checkpoint = checkpointable_utils.Checkpoint(v=v)
+      self.evaluate(v.assign(3))
+      # Create the save counter so assert_consumed doesn't complain about it not
+      # existing in the checkpoint on restore.
+      self.evaluate(checkpoint.save_counter.assign(12))
+      saver = checkpointable_utils.frozen_saver(checkpoint)
+      save_path = saver.save(session, prefix)
+      self.evaluate(v.assign(10))
+      # Use the frozen saver to restore the same object graph
+      saver.restore(session, save_path)
+      self.assertEqual(3, self.evaluate(v))
+
+      # Restore using another frozen saver on an identical object graph
+      del v, checkpoint, saver
+      v = resource_variable_ops.ResourceVariable(0, dtype=dtypes.int64)
+      checkpoint = checkpointable_utils.Checkpoint(v=v)
+      saver = checkpointable_utils.frozen_saver(checkpoint)
+      saver.restore(session, save_path)
+      self.assertEqual(3, self.evaluate(v))
+
+      # Restore as an object-based checkpoint
+      del v, checkpoint, saver
+      checkpoint = checkpointable_utils.Checkpoint()
+      status = checkpoint.restore(save_path)
+      v = resource_variable_ops.ResourceVariable(0, dtype=dtypes.int64)
+      if context.executing_eagerly():
+        self.assertEqual(12, self.evaluate(checkpoint.save_counter))
+        self.assertEqual(0, self.evaluate(v))
+      checkpoint.v = v
+      status.assert_consumed().run_restore_ops()
+      self.assertEqual(3, self.evaluate(v))
+      self.assertEqual(12, self.evaluate(checkpoint.save_counter))
+
+  @test_util.run_in_graph_and_eager_modes
   def testCustomNumbering(self):
     directory = self.get_temp_dir()
     prefix = os.path.join(directory, "ckpt")

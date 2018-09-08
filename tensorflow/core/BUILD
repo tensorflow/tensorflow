@@ -3728,6 +3728,7 @@ tf_cc_test_mkl(
         ":core_cpu_internal",
         ":framework",
         ":framework_internal",
+        ":lib",
         ":test",
         ":test_main",
         ":testlib",
