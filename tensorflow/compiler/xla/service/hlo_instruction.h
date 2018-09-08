@@ -860,11 +860,6 @@ class HloInstruction {
       return false;
     }
 
-    if (!absl::c_equal(precision_config_.operand_precision(),
-                       other.precision_config_.operand_precision())) {
-      return false;
-    }
-
     return IdenticalSlowPath(other, eq_computations);
   }
 
@@ -1086,9 +1081,6 @@ class HloInstruction {
   // instruction.
   void SetupDerivedInstruction(HloInstruction* derived_instruction) const;
 
-  // Returns the dump string of the precision configuration.
-  string PrecisionConfigToString() const;
-
   // Clones the HLO instruction. The clone will have the same opcode, shape, and
   // operands. After creation the clone has no uses. "this" (the instruction
   // cloned from) is not changed. Suffix is the string to append to the name of
@@ -1238,10 +1230,8 @@ class HloInstruction {
   // information. Transformations to other HLOs will not preserve this
   // information but it is presumed that the alternate lowering is strictly
   // superior.
-  const PrecisionConfig& precision_config() const { return precision_config_; }
-  void set_precision_config(const PrecisionConfig& precision_config) {
-    precision_config_ = precision_config;
-  }
+  // Precondition: opcode must be kConvolution or kDot.
+  const PrecisionConfig& precision_config() const;
 
   // Sets the debug metadata for this instruction.
   void set_metadata(const OpMetadata& metadata) { metadata_ = metadata; }
@@ -1650,10 +1640,6 @@ class HloInstruction {
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
   string backend_config_;
-
-  // Information used to communicate to the implementation about the algorithm
-  // used to produce results. See the documentation on precision_config().
-  PrecisionConfig precision_config_;
 
   // String identifier for instruction.
   string name_;

@@ -2020,11 +2020,6 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
     const HloPrintOptions& options) const {
   std::vector<string> extra = ExtraAttributesToStringImpl(options);
 
-  string precision_config_string = PrecisionConfigToString();
-  if (!precision_config_string.empty()) {
-    extra.push_back(precision_config_string);
-  }
-
   if (options.print_subcomputation_mode() ==
       HloPrintOptions::PrintSubcomputationMode::kNameOnly) {
     if (opcode() == HloOpcode::kWhile) {
@@ -2891,27 +2886,6 @@ StatusOr<RandomDistribution> StringToRandomDistribution(const string& name) {
   return found->second;
 }
 
-string HloInstruction::PrecisionConfigToString() const {
-  if (absl::c_all_of(
-          precision_config_.operand_precision(), [](int32 precision) {
-            return static_cast<PrecisionConfig::Precision>(precision) ==
-                   PrecisionConfig::DEFAULT;
-          })) {
-    return "";
-  }
-  return StrCat(
-      "operand_precision={",
-      StrJoin(
-          precision_config_.operand_precision(), ",",
-          [](string* out, int32 precision) {
-            CHECK(PrecisionConfig::Precision_IsValid(precision)) << precision;
-            StrAppend(out,
-                      PrecisionToString(
-                          static_cast<PrecisionConfig::Precision>(precision)));
-          }),
-      "}");
-}
-
 StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name) {
   static std::unordered_map<string, PrecisionConfig::Precision>* map = [] {
     static auto* map =
@@ -2969,6 +2943,16 @@ Status HloInstruction::set_backend_config(
   string ret;
   TF_RETURN_IF_ERROR(tensorflow::ProtoToHumanReadableJson(proto, &ret));
   return ret;
+}
+
+const PrecisionConfig& HloInstruction::precision_config() const {
+  if (auto* convolution = DynCast<HloConvolutionInstruction>(this)) {
+    return convolution->precision_config();
+  }
+  if (auto* dot = DynCast<HloDotInstruction>(this)) {
+    return dot->precision_config();
+  }
+  LOG(FATAL) << "Unimplemented method.";
 }
 
 HloModule* HloInstruction::GetModule() const {

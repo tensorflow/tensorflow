@@ -258,6 +258,8 @@ class KerasCrossShardOptimizer(keras_optimizers.Optimizer):
     return [tpu_ops.cross_replica_sum(grad) / num_shards for grad in grads]
 
   def set_weights(self, weights):
+    # TODO(power): Figure out whether we really need this given there is no
+    # caller for this API yet.
     self._opt.set_weights()
 
   def get_weights(self):
@@ -282,9 +284,9 @@ def _valid_name(tensor_name):
 
 def _replicated_optimizer(opt):
   """Wrap the optimizer `opt` with CrossShardOptimizer if applicable."""
-  if tpu_function.get_tpu_context().number_of_shards == 1:
-    return opt
-
+  # Always wrap `opt` with CrossShardOptimizer, even if we are running on a
+  # single core.  This ensures Keras properly tracks and initializes optimizer
+  # variables.
   if isinstance(opt, keras_optimizers.TFOptimizer):
     return tpu_optimizer.CrossShardOptimizer(opt.optimizer)
   else:
@@ -1420,7 +1422,7 @@ class KerasTPUModel(models.Model):
         y,
         sample_weights,
         batch_size)
-    self._pipeline_fit_loop(
+    return self._pipeline_fit_loop(
         x,
         y,
         sample_weights=sample_weights,

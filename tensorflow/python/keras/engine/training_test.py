@@ -481,8 +481,8 @@ class LossWeightingTest(test.TestCase):
         num_hidden=10, num_classes=num_classes, input_dim=input_dim)
     model.compile(
         loss='categorical_crossentropy',
-        metrics=['acc'],
-        weighted_metrics=['mae'],
+        metrics=['acc', metrics_module.CategoricalAccuracy()],
+        weighted_metrics=['mae', metrics_module.CategoricalAccuracy()],
         optimizer=RMSPropOptimizer(learning_rate=learning_rate))
 
     np.random.seed(1337)
@@ -569,8 +569,8 @@ class LossWeightingTest(test.TestCase):
         num_hidden=10, num_classes=num_classes, input_dim=input_dim)
     model.compile(
         RMSPropOptimizer(learning_rate=learning_rate),
-        metrics=['acc'],
-        weighted_metrics=['mae'],
+        metrics=['acc', metrics_module.CategoricalAccuracy()],
+        weighted_metrics=['mae', metrics_module.CategoricalAccuracy()],
         loss='categorical_crossentropy')
 
     np.random.seed(43)
@@ -698,8 +698,8 @@ class LossWeightingTest(test.TestCase):
       model.compile(
           RMSPropOptimizer(learning_rate=learning_rate),
           loss='binary_crossentropy',
-          metrics=['acc'],
-          weighted_metrics=['mae'],
+          metrics=['acc', metrics_module.CategoricalAccuracy()],
+          weighted_metrics=['mae', metrics_module.CategoricalAccuracy()],
           sample_weight_mode='temporal')
 
       model.fit(

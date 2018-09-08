@@ -191,6 +191,7 @@ cc_library(
         ":functionalize_control_flow",
         ":host_compute_metadata_proto",
         ":sharding_util",
+        ":side_effect_util",
         ":tf2xla_util",
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/xla:literal",
@@ -360,6 +361,7 @@ tf_cc_test(
     name = "xla_compiler_test",
     srcs = ["xla_compiler_test.cc"],
     deps = [
+        ":side_effect_util",
         ":xla_compiler",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:function_ops",
@@ -371,6 +373,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:core_cpu_internal",
@@ -630,5 +633,14 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "side_effect_util",
+    srcs = ["side_effect_util.cc"],
+    hdrs = ["side_effect_util.h"],
+    deps = [
+        "//tensorflow/core:core_cpu",
     ],
 )

@@ -29,18 +29,6 @@ cc_library(
 )
 
 cc_library(
-    name = "parallel_check_op_flags",
-    srcs = ["parallel_check_op_flags.cc"],
-    hdrs = ["parallel_check_op_flags.h"],
-    deps =
-        [
-            "//tensorflow/compiler/xla/legacy_flags:parse_flags_from_env",
-            "//tensorflow/core:framework_internal",
-            "//tensorflow/core:lib",
-        ],
-)
-
-cc_library(
     name = "xla_device_flags",
     srcs = ["xla_device_flags.cc"],
     hdrs = ["xla_device_flags.h"],

@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 int TfLiteIntArrayGetSizeInBytes(int size) {
@@ -76,7 +77,8 @@ void TfLiteTensorFree(TfLiteTensor* t) {
 void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
                        TfLiteQuantizationParams quantization, char* buffer,
                        size_t size, TfLiteAllocationType allocation_type,
-                       const void* allocation, bool is_variable, TfLiteTensor* tensor) {
+                       const void* allocation, bool is_variable,
+                       TfLiteTensor* tensor) {
   TfLiteTensorFree(tensor);
   tensor->type = type;
   tensor->name = name;

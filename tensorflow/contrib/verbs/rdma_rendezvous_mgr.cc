@@ -63,7 +63,7 @@ void RdmaRemoteRendezvous::RecvFromRemoteAsync(
   }
   CHECK(dst_name.compare(rdma_mgr_->local_worker()) == 0);
   RdmaChannel* rc = rdma_mgr_->FindChannel(src_name);
-  string key(std::move(parsed.FullKey().ToString()));
+  string key(parsed.FullKey());
   string key_with_step_id = VerbsUtil::AppendStepidToKey(key, step_id_);
 
   Device* dst_dev;

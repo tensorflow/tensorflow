@@ -50,7 +50,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
   MutableHashTableOfScalars(OpKernelContext* ctx, OpKernel* kernel) {}
 
   size_t size() const override {
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     return table_.size();
   }
 
@@ -60,7 +60,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
     const auto key_values = key.flat<K>();
     auto value_values = value->flat<V>();
 
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     for (int64 i = 0; i < key_values.size(); ++i) {
       value_values(i) = gtl::FindWithDefault(
           table_, SubtleMustCopyIfIntegral(key_values(i)), default_val);
@@ -95,7 +95,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
   }
 
   Status ExportValues(OpKernelContext* ctx) override {
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     int64 size = table_.size();
 
     Tensor* keys;
@@ -125,7 +125,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
 
   int64 MemoryUsed() const override {
     int64 ret = 0;
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     for (unsigned i = 0; i < table_.bucket_count(); ++i) {
       size_t bucket_size = table_.bucket_size(i);
       if (bucket_size == 0) {
@@ -138,7 +138,6 @@ class MutableHashTableOfScalars final : public LookupInterface {
   }
 
  private:
-  // TODO(andreasst): consider using a read/write lock or a concurrent map
   mutable mutex mu_;
   std::unordered_map<K, V> table_ GUARDED_BY(mu_);
 };
@@ -158,7 +157,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
   }
 
   size_t size() const override {
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     return table_.size();
   }
 
@@ -169,7 +168,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
     auto value_values = value->flat_inner_dims<V, 2>();
     int64 value_dim = value_shape_.dim_size(0);
 
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     for (int64 i = 0; i < key_values.size(); ++i) {
       ValueArray* value_vec =
           gtl::FindOrNull(table_, SubtleMustCopyIfIntegral(key_values(i)));
@@ -219,7 +218,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
   }
 
   Status ExportValues(OpKernelContext* ctx) override {
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     int64 size = table_.size();
     int64 value_dim = value_shape_.dim_size(0);
 
@@ -254,7 +253,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
 
   int64 MemoryUsed() const override {
     int64 ret = 0;
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     for (unsigned i = 0; i < table_.bucket_count(); ++i) {
       size_t bucket_size = table_.bucket_size(i);
       if (bucket_size == 0) {
@@ -268,7 +267,6 @@ class MutableHashTableOfTensors final : public LookupInterface {
 
  private:
   TensorShape value_shape_;
-  // TODO(andreasst): consider using a read/write lock or a concurrent map
   mutable mutex mu_;
   typedef gtl::InlinedVector<V, 4> ValueArray;
   std::unordered_map<K, ValueArray> table_ GUARDED_BY(mu_);
@@ -335,7 +333,7 @@ class MutableDenseHashTable final : public LookupInterface {
   }
 
   size_t size() const override LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     return num_entries_;
   }
 
@@ -355,7 +353,7 @@ class MutableDenseHashTable final : public LookupInterface {
     auto value_matrix = value->shaped<V, 2>({num_elements, value_size});
     const auto default_flat = default_value.flat<V>();
 
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     const auto key_buckets_matrix =
         key_buckets_.AccessTensor(ctx)->template matrix<K>();
     const auto value_buckets_matrix =
@@ -451,7 +449,7 @@ class MutableDenseHashTable final : public LookupInterface {
   }
 
   Status ExportValues(OpKernelContext* ctx) override LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     Tensor key_buckets_tensor = *key_buckets_.AccessTensor(ctx);
     Tensor value_buckets_tensor = *value_buckets_.AccessTensor(ctx);
     TF_RETURN_IF_ERROR(ctx->set_output("keys", key_buckets_tensor));
@@ -493,7 +491,7 @@ class MutableDenseHashTable final : public LookupInterface {
   TensorShape value_shape() const override { return value_shape_; }
 
   int64 MemoryUsed() const override {
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     return sizeof(MutableDenseHashTable) + key_buckets_.AllocatedBytes() +
            value_buckets_.AllocatedBytes() + empty_key_.AllocatedBytes();
   }

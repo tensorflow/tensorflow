@@ -2369,20 +2369,20 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
                                               rhs_pad->shape().dimensions(3),
                                               testcase.orig_conv_window))
                       .ValueOrDie();
-  auto* orig_conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeInference::InferConvolveShape(input->shape(), rhs_pad->shape(),
-                                         /*feature_group_count=*/1, window,
-                                         dnums)
-          .ValueOrDie(),
-      input, rhs_pad, /*feature_group_count=*/1, window, dnums,
-      DefaultPrecisionConfig(2)));
 
   // Add a PrecisionConfig and check that AlgebraicSimplifier keeps it in place
   // after the transformation.
   PrecisionConfig precision_config;
   precision_config.add_operand_precision(PrecisionConfig::HIGH);
   precision_config.add_operand_precision(PrecisionConfig::HIGHEST);
-  orig_conv->set_precision_config(precision_config);
+
+  builder.AddInstruction(HloInstruction::CreateConvolve(
+      ShapeInference::InferConvolveShape(input->shape(), rhs_pad->shape(),
+                                         /*feature_group_count=*/1, window,
+                                         dnums)
+          .ValueOrDie(),
+      input, rhs_pad, /*feature_group_count=*/1, window, dnums,
+      precision_config));
 
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
@@ -2401,7 +2401,9 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
                               conv->operand(1)->shape().dimensions(2),
                               conv->operand(1)->shape().dimensions(3),
                               testcase.expected_conv_window));
-    EXPECT_THAT(conv->precision_config().operand_precision(),
+    EXPECT_THAT(Cast<HloConvolutionInstruction>(conv)
+                    ->precision_config()
+                    .operand_precision(),
                 ElementsAre(PrecisionConfig::HIGH, PrecisionConfig::HIGHEST));
   }
 }
