@@ -20,10 +20,12 @@ limitations under the License.
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -1271,6 +1274,71 @@ TEST_F(XlaCompilerTest, SingleOpWithoutInputs) {
     TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "NoOp",
                                        std::move(graph_copy), args, &result));
     EXPECT_EQ(0, result.resource_updates.size());
+  }
+}
+
+class DummySideEffectingOp : public XlaOpKernel {
+ public:
+  explicit DummySideEffectingOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  void Compile(XlaOpKernelContext* ctx) override {
+    OP_REQUIRES_OK(ctx, ctx->compiler()->SetNodeToken(
+                            name(), xla::CreateToken(ctx->builder())));
+  }
+};
+
+REGISTER_OP("DummySideEffectingOp");
+
+REGISTER_XLA_OP(Name("DummySideEffectingOp"), DummySideEffectingOp);
+
+TEST_F(XlaCompilerTest, TokenInputAndOutput) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  NodeDef side_effecting_op;
+  side_effecting_op.set_name("DummySideEffectingOp");
+  side_effecting_op.set_op("DummySideEffectingOp");
+  AddNodeAttr(kXlaTokenInputNodesAttrName,
+              std::vector<string>{kXlaTokenArgNodeName}, &side_effecting_op);
+  Status status;
+  graph->AddNode(side_effecting_op, &status);
+  TF_ASSERT_OK(status);
+  EXPECT_TRUE(FixupSourceAndSinkEdges(graph.get()));
+
+  const std::vector<XlaCompiler::Argument> empty_args;
+  {
+    // The case for entry computation: we don't add token input/output. Instead,
+    // we use CreateToken HLO to create the entry token.
+    XlaCompiler::CompileOptions options;
+    options.is_entry_computation = true;
+    options.add_token_input_output = false;
+    XlaCompiler compiler(DefaultOptions());
+
+    std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
+    CopyGraph(*graph, graph_copy.get());
+    XlaCompiler::CompilationResult result;
+    TF_ASSERT_OK(compiler.CompileGraph(options, "NoOp", std::move(graph_copy),
+                                       empty_args, &result));
+    EXPECT_EQ(result.xla_input_shapes.size(), 0);
+    EXPECT_TRUE(xla::ShapeUtil::IsTuple(result.xla_output_shape));
+    EXPECT_EQ(xla::ShapeUtil::TupleElementCount(result.xla_output_shape), 0);
+  }
+  {
+    // The case for non-entry computation (e.g. while loop body). We add token
+    // input/output.
+    XlaCompiler::CompileOptions options;
+    options.is_entry_computation = false;
+    options.add_token_input_output = true;
+    XlaCompiler compiler(DefaultOptions());
+
+    std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
+    CopyGraph(*graph, graph_copy.get());
+    XlaCompiler::CompilationResult result;
+    TF_ASSERT_OK(compiler.CompileGraph(options, "NoOp", std::move(graph_copy),
+                                       empty_args, &result));
+    EXPECT_EQ(result.xla_input_shapes.size(), 1);
+    EXPECT_TRUE(xla::ShapeUtil::IsToken(result.xla_input_shapes[0]));
+    EXPECT_TRUE(xla::ShapeUtil::IsTuple(result.xla_output_shape));
+    EXPECT_EQ(xla::ShapeUtil::TupleElementCount(result.xla_output_shape), 1);
+    EXPECT_TRUE(xla::ShapeUtil::IsToken(
+        xla::ShapeUtil::GetTupleElementShape(result.xla_output_shape, 0)));
   }
 }
 
