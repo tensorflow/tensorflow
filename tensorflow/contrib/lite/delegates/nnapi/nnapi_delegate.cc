@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/allocation.h"
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/builtin_ops.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/context_util.h"
 #include "tensorflow/contrib/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"

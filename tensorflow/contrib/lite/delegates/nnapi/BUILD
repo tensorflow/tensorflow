@@ -13,6 +13,7 @@ cc_library(
     deps = [
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:kernel_api",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:kernel_util",
         "//tensorflow/contrib/lite/nnapi:nnapi_lib",
     ],
@@ -29,6 +30,7 @@ tf_cc_test(
     deps = [
         ":nnapi_delegate",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],

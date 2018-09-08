@@ -255,8 +255,9 @@ def _build_module_page(page_info):
     #                   at least for basic types.
     parts.append('## Other Members\n\n')
 
+    h3 = '<h3 id="{short_name}"><code>{short_name}</code></h3>\n\n'
     for item in page_info.other_members:
-      parts.append('`{short_name}`\n\n'.format(**item._asdict()))
+      parts.append(h3.format(**item._asdict()))
 
   return ''.join(parts)
 

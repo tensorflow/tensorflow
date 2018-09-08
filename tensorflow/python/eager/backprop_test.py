@@ -474,6 +474,18 @@ class BackpropTest(test.TestCase):
     self.assertEqual(backprop.implicit_grad(f)()[0][0], None)
 
   @test_util.assert_no_new_tensors
+  def testGradientTapeReEnterContext(self):
+    g = backprop.GradientTape()
+    with g:
+      x = constant_op.constant(3.0)
+      g.watch(x)
+      y = 2*x
+    with g:
+      z = 2*y
+    grad = g.gradient(target=z, sources=[x])
+    self.assertEqual(self.evaluate(grad), [4.0])
+
+  @test_util.assert_no_new_tensors
   @test_util.run_in_graph_and_eager_modes
   def testGradientTapeRepeatedSource(self):
     with backprop.GradientTape(persistent=False) as g:
@@ -955,6 +967,60 @@ class BackpropTest(test.TestCase):
       grad2 = get_grad()
 
       self.assertAllEqual(grad1, grad2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSelectivelyWatchVariables(self):
+    x1 = resource_variable_ops.ResourceVariable(1.0)
+    x2 = resource_variable_ops.ResourceVariable(1.0)
+    with backprop.GradientTape(watch_accessed_variables=False) as tape:
+      tape.watch(x2)
+      y = x1**2
+      z = x2**3
+    self.assertTupleEqual(tape.watched_variables(), (x2,))
+    dy, dz = tape.gradient([y, z], [x1, x2])
+    self.evaluate([x1.initializer, x2.initializer])
+    self.assertIsNone(dy)
+    self.assertEqual(self.evaluate(dz), 3.0)
+
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDifferentiatingScalarCache(self):
+    # In the following test, if x2 = x1 (i.e the objects are the exact same),
+    # then y is essentially, 2*x1, and dy/dx1 = 2.
+    # When we had a pure scalar cache in eager, this would be the case. This
+    # test prevents us from going back to that case.
+    with backprop.GradientTape(persistent=False) as g:
+      x1 = constant_op.constant(3.0)
+      x2 = constant_op.constant(3.0)
+      g.watch(x1)
+      g.watch(x2)
+      y = x1 + x2
+    grad = g.gradient(target=y, sources=[x1])
+    self.assertEqual(self.evaluate(grad), [1.0])
+
+  def testVariablesAndConstantsProduceTheSameGradients(self):
+
+    # In the following test, differentiating [y, z] against [a, b] gives:
+    # (dy/da + dz/da, dy/db + dz/db).
+    # If a and b are the same constant, dz/da will not be 0 (which it should
+    # be).
+    # This is solved by using variable since doing a read_value on a tensor will
+    # produce a new tensor and corresponding TensorHandle, and not reuse the
+    # same tensor (which would happen if we are using a cache and reusing
+    # EagerTensor objects).
+    def get_grads(a, b):
+      with backprop.GradientTape() as tape:
+        tape.watch([a, b])
+        y = a**3
+        z = b**2
+      return tape.gradient([y, z], [a, b])
+
+    gradients_constants = get_grads(
+        constant_op.constant(2.0), constant_op.constant(2.0))
+    gradients_variables = get_grads(
+        resource_variable_ops.ResourceVariable(2.0),
+        resource_variable_ops.ResourceVariable(2.0))
+    self.assertAllEqual(gradients_constants, gradients_variables)
 
 
 if __name__ == '__main__':

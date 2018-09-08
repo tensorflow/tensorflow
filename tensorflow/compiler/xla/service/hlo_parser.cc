@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -43,6 +44,20 @@ using absl::StrFormat;
 using absl::StrJoin;
 
 const double kF16max = 65504;
+
+// Creates and returns a schedule created using the order of the instructions in
+// the HloComputation::instructions() vectors in the module.
+HloSchedule ScheduleFromInstructionOrder(const HloModule* module) {
+  HloSchedule schedule(module);
+  for (const HloComputation* computation : module->computations()) {
+    if (!computation->IsFusionComputation()) {
+      for (const HloInstruction* instruction : computation->instructions()) {
+        schedule.GetOrCreateSequence(computation).push_back(instruction);
+      }
+    }
+  }
+  return schedule;
+}
 
 // Parser for the HloModule::ToString() format text.
 class HloParser {
@@ -366,9 +381,25 @@ bool HloParser::ParseHloModule() {
     return false;
   }
 
+  absl::optional<bool> is_scheduled;
+  std::unordered_map<string, AttrConfig> attrs;
+  attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
+  if (!ParseAttributes(attrs)) {
+    return false;
+  }
+
   module_ = absl::make_unique<HloModule>(name, config_);
 
-  return ParseComputations();
+  if (!ParseComputations()) {
+    return false;
+  }
+
+  if (is_scheduled.has_value() && *is_scheduled) {
+    TF_CHECK_OK(
+        module_->set_schedule(ScheduleFromInstructionOrder(module_.get())));
+  }
+
+  return true;
 }
 
 // computations ::= (computation)+
@@ -1248,11 +1279,14 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       optional<string> custom_call_target;
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
+      optional<int64> feature_group_count;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["dim_labels"] = {/*required=*/false,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
+      attrs["feature_group_count"] = {/*required=*/false, AttrTy::kInt64,
+                                      &feature_group_count};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -1263,6 +1297,9 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       }
       if (dnums.has_value()) {
         instruction->set_convolution_dimension_numbers(*dnums);
+      }
+      if (feature_group_count.has_value()) {
+        instruction->set_feature_group_count(*feature_group_count);
       }
       break;
     }

@@ -72,10 +72,6 @@ class HloOrdering {
 
   virtual string ToString() const = 0;
 
-  // Returns the serialized representation of this ordering.
-  // Only sequential computation orders are represented.
-  HloOrderingProto ToProto() const;
-
  protected:
   // Returns true if instruction 'a' executes before instruction 'b'.
   // Precondition: 'a' and 'b' are in the same computation.

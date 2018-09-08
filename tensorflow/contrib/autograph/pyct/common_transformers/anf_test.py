@@ -165,6 +165,46 @@ class AnfTransformerTest(test.TestCase):
 
     self.assert_body_anfs_as_expected(expected_result, test_function)
 
+  def test_nested_multi_value_assign(self):
+
+    def test_function(a, b, c):
+      x, y = a, a + b
+      (z, y), x = (c, y + b), x + a
+      return z, (y, x)
+
+    def expected_result(a, b, c):
+      tmp_1001 = a + b
+      x, y = a, tmp_1001
+      tmp_1002 = y + b
+      tmp_1003 = (c, tmp_1002)
+      tmp_1004 = x + a
+      (z, y), x = tmp_1003, tmp_1004
+      tmp_1005 = y, x
+      tmp_1006 = z, tmp_1005
+      return tmp_1006
+
+    self.assert_body_anfs_as_expected(expected_result, test_function)
+
+  def test_deeply_nested_multi_value_assign(self):
+
+    def test_function(a):
+      [([(b, c), [d, e]], (f, g)), [(h, i, j), k]] = a
+      return [([(b, c), [d, e]], (f, g)), [(h, i, j), k]]
+
+    def expected_result(a):
+      [([(b, c), [d, e]], (f, g)), [(h, i, j), k]] = a
+      tmp_1001 = b, c
+      tmp_1002 = [d, e]
+      tmp_1003 = [tmp_1001, tmp_1002]
+      tmp_1004 = f, g
+      tmp_1005 = h, i, j
+      tmp_1006 = tmp_1003, tmp_1004
+      tmp_1007 = [tmp_1005, k]
+      tmp_1008 = [tmp_1006, tmp_1007]
+      return tmp_1008
+
+    self.assert_body_anfs_as_expected(expected_result, test_function)
+
   def test_local_definition_and_binary_compare(self):
 
     def test_function():

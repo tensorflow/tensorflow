@@ -22,6 +22,7 @@ import threading
 import time
 import warnings
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
@@ -46,7 +47,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 
 
-class MapDatasetTest(test.TestCase):
+class MapDatasetTest(test.TestCase, parameterized.TestCase):
 
   def _buildMapDataset(self, components, count):
     def _map_fn(x, y, z):
@@ -704,6 +705,35 @@ class MapDatasetTest(test.TestCase):
     with self.test_session() as sess:
       with self.assertRaisesRegexp(errors.InvalidArgumentError, "BrokenConst"):
         sess.run(iterator.initializer)
+
+# pylint: disable=g-long-lambda
+  @parameterized.named_parameters(
+      ("Map", lambda dataset, func:
+       dataset_ops.MapDataset(dataset, func, use_inter_op_parallelism=False)),
+      ("ParallelMap", lambda dataset, func:
+       dataset_ops.ParallelMapDataset(dataset, func, num_parallel_calls=1,
+                                      use_inter_op_parallelism=False)),
+  )
+  def testNoInterOpParallelism(self, make_dataset_fn):
+    dataset = dataset_ops.Dataset.from_tensors(0)
+
+    def _get_tid():
+      return np.int64(threading.current_thread().ident)
+
+    def _map_fn(_):
+      tids = []
+      for _ in range(10):
+        tids.append(script_ops.py_func(_get_tid, [], dtypes.int64))
+      return tids
+
+    dataset = make_dataset_fn(dataset, _map_fn)
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      tids = sess.run(get_next)
+      self.assertTrue(all(tids[0] == tid for tid in tids))
+# pylint: enable=g-long-lambda
 
 
 class MapDatasetBenchmark(test.Benchmark):

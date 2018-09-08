@@ -19,9 +19,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -29,6 +32,8 @@ limitations under the License.
 namespace xla {
 
 namespace {
+
+namespace op = ::xla::testing::opcode_matchers;
 
 class HloModuleTest : public HloTestBase {
  protected:
@@ -192,6 +197,60 @@ TEST_F(HloModuleTest, UniqueModuleId) {
   auto module_a = CreateNewModule();
   auto module_b = CreateNewModule();
   EXPECT_NE(module_a->unique_id(), module_b->unique_id());
+}
+
+TEST_F(HloModuleTest, ProtoSerializationWithoutSchedule) {
+  const string text = R"(
+HloModule axpy_module
+
+ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
+  %alpha = f32[] parameter(0)
+  %x = f32[2,4]{1,0} parameter(1)
+  %y = f32[2,4]{1,0} parameter(2)
+  %broadcast = f32[2,4]{1,0} broadcast(f32[] %alpha), dimensions={}
+  %multiply = f32[2,4]{1,0} multiply(f32[2,4]{1,0} %broadcast, f32[2,4]{1,0} %x)
+  ROOT %add = f32[2,4]{1,0} add(f32[2,4]{1,0} %multiply, f32[2,4]{1,0} %y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(text));
+  ASSERT_FALSE(module->has_schedule());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module_copy,
+      HloModule::CreateFromProto(module->ToProto(), module->config()));
+  ASSERT_FALSE(module_copy->has_schedule());
+}
+
+TEST_F(HloModuleTest, ProtoSerializationWithSchedule) {
+  const string text = R"(
+HloModule axpy_module, is_scheduled=true
+
+ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
+  %alpha = f32[] parameter(0)
+  %x = f32[2,4]{1,0} parameter(1)
+  %y = f32[2,4]{1,0} parameter(2)
+  %broadcast = f32[2,4]{1,0} broadcast(f32[] %alpha), dimensions={}
+  %multiply = f32[2,4]{1,0} multiply(f32[2,4]{1,0} %broadcast, f32[2,4]{1,0} %x)
+  ROOT %add = f32[2,4]{1,0} add(f32[2,4]{1,0} %multiply, f32[2,4]{1,0} %y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(text));
+  ASSERT_TRUE(module->has_schedule());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module_copy,
+      HloModule::CreateFromProto(module->ToProto(), module->config()));
+  ASSERT_TRUE(module_copy->has_schedule());
+  TF_ASSERT_OK(module_copy->schedule().Verify());
+  EXPECT_EQ(module_copy->schedule().sequences().size(), 1);
+  ASSERT_TRUE(module_copy->schedule().is_computation_scheduled(
+      module_copy->entry_computation()));
+  EXPECT_THAT(
+      module_copy->schedule()
+          .sequence(module_copy->entry_computation())
+          .instructions(),
+      ::testing::ElementsAre(op::Parameter(), op::Parameter(), op::Parameter(),
+                             op::Broadcast(), op::Multiply(), op::Add()));
 }
 
 }  // namespace

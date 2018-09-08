@@ -28,6 +28,12 @@ from tensorflow.python.util import tf_inspect
 from tensorflow.tools.docs import doc_controls
 from tensorflow.tools.docs import parser
 
+# The test needs a real module. `types.ModuleType()` doesn't work, as the result
+# is a `builtin` module. Using "parser" here is arbitraty. The tests don't
+# depend on the module contents. At this point in the process the public api
+# has already been extracted.
+test_module = parser
+
 
 def test_function(unused_arg, unused_kwarg='default'):
   """Docstring for test function."""
@@ -334,15 +340,16 @@ class ParserTest(googletest.TestCase):
     self.assertEqual('my_method', page_info.methods[0].short_name)
 
   def test_docs_for_module(self):
-    # Get the current module.
-    module = sys.modules[__name__]
 
     index = {
-        'TestModule': module,
-        'TestModule.test_function': test_function,
+        'TestModule':
+            test_module,
+        'TestModule.test_function':
+            test_function,
         'TestModule.test_function_with_args_kwargs':
-        test_function_with_args_kwargs,
-        'TestModule.TestClass': TestClass,
+            test_function_with_args_kwargs,
+        'TestModule.TestClass':
+            TestClass,
     }
 
     visitor = DummyVisitor(index=index, duplicate_of={})
@@ -365,11 +372,13 @@ class ParserTest(googletest.TestCase):
         base_dir='/')
 
     page_info = parser.docs_for_object(
-        full_name='TestModule', py_object=module, parser_config=parser_config)
+        full_name='TestModule',
+        py_object=test_module,
+        parser_config=parser_config)
 
     # Make sure the brief docstring is present
-    self.assertEqual(tf_inspect.getdoc(module).split('\n')[0],
-                     page_info.doc.brief)
+    self.assertEqual(
+        tf_inspect.getdoc(test_module).split('\n')[0], page_info.doc.brief)
 
     # Make sure that the members are there
     funcs = {f_info.obj for f_info in page_info.functions}
@@ -378,8 +387,9 @@ class ParserTest(googletest.TestCase):
     classes = {cls_info.obj for cls_info in page_info.classes}
     self.assertEqual({TestClass}, classes)
 
-    # Make sure this file is contained as the definition location.
-    self.assertEqual(os.path.relpath(__file__, '/'), page_info.defined_in.path)
+    # Make sure the module's file is contained as the definition location.
+    self.assertEqual(
+        os.path.relpath(test_module.__file__, '/'), page_info.defined_in.path)
 
   def test_docs_for_function(self):
     index = {
@@ -495,6 +505,7 @@ class ParserTest(googletest.TestCase):
 
     duplicate_of = {'tf.third': 'tf.fourth'}
     index = {
+        'tf': test_module,
         'tf.fancy': test_function_with_fancy_docstring,
         'tf.reference': HasOneMember,
         'tf.reference.foo': HasOneMember.foo,
@@ -521,20 +532,18 @@ class ParserTest(googletest.TestCase):
                      'NumPy has nothing as awesome as this function.\n')
 
   def test_generate_index(self):
-    module = sys.modules[__name__]
 
     index = {
-        'TestModule': module,
-        'test_function': test_function,
-        'TestModule.test_function': test_function,
-        'TestModule.TestClass': TestClass,
-        'TestModule.TestClass.a_method': TestClass.a_method,
-        'TestModule.TestClass.a_property': TestClass.a_property,
-        'TestModule.TestClass.ChildClass': TestClass.ChildClass,
+        'tf': test_module,
+        'tf.TestModule': test_module,
+        'tf.test_function': test_function,
+        'tf.TestModule.test_function': test_function,
+        'tf.TestModule.TestClass': TestClass,
+        'tf.TestModule.TestClass.a_method': TestClass.a_method,
+        'tf.TestModule.TestClass.a_property': TestClass.a_property,
+        'tf.TestModule.TestClass.ChildClass': TestClass.ChildClass,
     }
-    duplicate_of = {
-        'TestModule.test_function': 'test_function'
-    }
+    duplicate_of = {'tf.TestModule.test_function': 'tf.test_function'}
 
     visitor = DummyVisitor(index=index, duplicate_of=duplicate_of)
 
@@ -553,7 +562,7 @@ class ParserTest(googletest.TestCase):
     self.assertIn('TestModule.test_function', docs)
     # Leading backtick to make sure it's included top-level.
     # This depends on formatting, but should be stable.
-    self.assertIn('<code>test_function', docs)
+    self.assertIn('<code>tf.test_function', docs)
 
   def test_argspec_for_functools_partial(self):
     # pylint: disable=unused-argument
@@ -665,22 +674,18 @@ class ParserTest(googletest.TestCase):
 
     duplicate_of = {'AClass': ['AClass2']}
     doc_index = {'doc': you_cant_serialize_this}
-    is_class = {
+    is_fragment = {
         'tf': False,
-        'tf.AClass': True,
-        'tf.AClass2': True,
-        'tf.function': False
-    }
-    is_module = {
-        'tf': True,
+        'tf.VERSION': True,
         'tf.AClass': False,
+        'tf.AClass.method': True,
         'tf.AClass2': False,
         'tf.function': False
     }
     py_module_names = ['tf', 'tfdbg']
 
-    resolver = parser.ReferenceResolver(duplicate_of, doc_index, is_class,
-                                        is_module, py_module_names)
+    resolver = parser.ReferenceResolver(duplicate_of, doc_index, is_fragment,
+                                        py_module_names)
 
     outdir = googletest.GetTempDir()
 
@@ -691,6 +696,23 @@ class ParserTest(googletest.TestCase):
 
     # There are no __slots__, so all fields are visible in __dict__.
     self.assertEqual(resolver.__dict__, resolver2.__dict__)
+
+  def testIsFreeFunction(self):
+
+    result = parser.is_free_function(test_function, 'test_module.test_function',
+                                     {'test_module': test_module})
+    self.assertTrue(result)
+
+    result = parser.is_free_function(test_function, 'TestClass.test_function',
+                                     {'TestClass': TestClass})
+    self.assertFalse(result)
+
+    result = parser.is_free_function(TestClass, 'TestClass', {})
+    self.assertFalse(result)
+
+    result = parser.is_free_function(test_module, 'test_module', {})
+    self.assertFalse(result)
+
 
 RELU_DOC = """Computes rectified linear: `max(features, 0)`
 

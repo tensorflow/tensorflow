@@ -21,18 +21,20 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/status.h"
 
 namespace xla {
+
+class HloModule;
 
 // Class representing a sequence of HLO instructions such as the sequential
 // execution order of an HLO computation.
 class HloInstructionSequence {
  public:
   HloInstructionSequence() = default;
-  HloInstructionSequence(absl::Span<const HloInstruction* const> instructions) {
+  explicit HloInstructionSequence(
+      absl::Span<const HloInstruction* const> instructions) {
     for (const HloInstruction* instruction : instructions) {
       push_back(instruction);
     }
@@ -77,7 +79,12 @@ class HloInstructionSequence {
 // non-fusion computation in the HLO module.
 class HloSchedule {
  public:
-  HloSchedule(const HloModule* module) : module_(module) {}
+  explicit HloSchedule(const HloModule* module) : module_(module) {}
+
+  // (De)Serialize an HloSchedule to/from a HloScheduleProto.
+  static StatusOr<HloSchedule> CreateFromProto(const HloModule* module,
+                                               const HloScheduleProto& proto);
+  StatusOr<HloScheduleProto> ToProto() const;
 
   // Returns a reference to the sequence for the given computation.
   const HloInstructionSequence& sequence(

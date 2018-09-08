@@ -1123,18 +1123,31 @@ ENTRY Iota {
 
 )"
 },
-// custom-call with window and dim_labels
+// custom-call with window, dim_labels and feature_group_count
 {
-"CustomCallWithWindowAndDimLabels",
-R"(HloModule CustomCallWithWindowAndDimLabels
+"CustomCallWithWindowAndDimLabelsAndFeatureGroupCount",
+R"(HloModule CustomCallWithWindowAndDimLabelsAndFeatureGroupCount
 
 ENTRY Computation {
-  ROOT r = f32[100]{0} custom-call(), window={size=2x2}, dim_labels=b01f_01io->b01f, custom_call_target="target"
+  ROOT r = f32[100]{0} custom-call(), window={size=2x2}, dim_labels=b01f_01io->b01f, feature_group_count=2, custom_call_target="target"
+}
+
+)"
+    },
+// is_scheduled=true attribute
+{
+"ScheduledModule",
+R"(HloModule scheduled_module, is_scheduled=true
+
+ENTRY Sort {
+  keys = f32[1024]{0} parameter(0)
+  values = s32[1024]{0} parameter(1)
+  ROOT sorted = (f32[1024]{0}, s32[1024]{0}) sort(keys, values), dimensions={0}
 }
 
 )"
 }
-  });
+});
   // clang-format on
 }
 
@@ -1788,6 +1801,95 @@ TEST(HloParserSingleOpTest, ConvolutionTrivialFeatureGroupCount) {
   auto* convolution =
       Cast<HloConvolutionInstruction>(computation->root_instruction());
   EXPECT_EQ(convolution->feature_group_count(), 1);
+}
+
+TEST_F(HloParserTest, IsScheduledIsFalse) {
+  const string text = R"(
+HloModule axpy_module, is_scheduled=false
+
+ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
+  %alpha = f32[] parameter(0)
+  %broadcast = f32[2,4]{1,0} broadcast(f32[] %alpha), dimensions={}
+  %x = f32[2,4]{1,0} parameter(1)
+  %multiply = f32[2,4]{1,0} multiply(f32[2,4]{1,0} %broadcast, f32[2,4]{1,0} %x)
+  %y = f32[2,4]{1,0} parameter(2)
+  ROOT %add = f32[2,4]{1,0} add(f32[2,4]{1,0} %multiply, f32[2,4]{1,0} %y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(text));
+  ASSERT_FALSE(module->has_schedule());
+}
+
+TEST_F(HloParserTest, IsScheduledNotPresent) {
+  const string text = R"(
+HloModule axpy_module
+
+ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
+  %alpha = f32[] parameter(0)
+  %broadcast = f32[2,4]{1,0} broadcast(f32[] %alpha), dimensions={}
+  %x = f32[2,4]{1,0} parameter(1)
+  %multiply = f32[2,4]{1,0} multiply(f32[2,4]{1,0} %broadcast, f32[2,4]{1,0} %x)
+  %y = f32[2,4]{1,0} parameter(2)
+  ROOT %add = f32[2,4]{1,0} add(f32[2,4]{1,0} %multiply, f32[2,4]{1,0} %y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(text));
+  ASSERT_FALSE(module->has_schedule());
+}
+
+TEST_F(HloParserTest, IsScheduledIsTrue) {
+  const string text = R"(
+HloModule axpy_module, is_scheduled=true
+
+ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
+  %alpha = f32[] parameter(0)
+  %broadcast = f32[2,4]{1,0} broadcast(f32[] %alpha), dimensions={}
+  %x = f32[2,4]{1,0} parameter(1)
+  %multiply = f32[2,4]{1,0} multiply(f32[2,4]{1,0} %broadcast, f32[2,4]{1,0} %x)
+  %y = f32[2,4]{1,0} parameter(2)
+  ROOT %add = f32[2,4]{1,0} add(f32[2,4]{1,0} %multiply, f32[2,4]{1,0} %y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(text));
+  ASSERT_TRUE(module->has_schedule());
+  TF_ASSERT_OK(module->schedule().Verify());
+  EXPECT_EQ(module->schedule().sequences().size(), 1);
+  ASSERT_TRUE(
+      module->schedule().is_computation_scheduled(module->entry_computation()));
+  EXPECT_THAT(
+      module->schedule().sequence(module->entry_computation()).instructions(),
+      ::testing::ElementsAre(op::Parameter(), op::Broadcast(), op::Parameter(),
+                             op::Multiply(), op::Parameter(), op::Add()));
+}
+
+TEST_F(HloParserTest, IsScheduledIsTrueDifferentOrder) {
+  // As above but in with a different schedule order.
+  const string text = R"(
+HloModule axpy_module, is_scheduled=true
+
+ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
+  %alpha = f32[] parameter(0)
+  %x = f32[2,4]{1,0} parameter(1)
+  %y = f32[2,4]{1,0} parameter(2)
+  %broadcast = f32[2,4]{1,0} broadcast(f32[] %alpha), dimensions={}
+  %multiply = f32[2,4]{1,0} multiply(f32[2,4]{1,0} %broadcast, f32[2,4]{1,0} %x)
+  ROOT %add = f32[2,4]{1,0} add(f32[2,4]{1,0} %multiply, f32[2,4]{1,0} %y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(text));
+  ASSERT_TRUE(module->has_schedule());
+  TF_ASSERT_OK(module->schedule().Verify());
+  EXPECT_EQ(module->schedule().sequences().size(), 1);
+  ASSERT_TRUE(
+      module->schedule().is_computation_scheduled(module->entry_computation()));
+  EXPECT_THAT(
+      module->schedule().sequence(module->entry_computation()).instructions(),
+      ::testing::ElementsAre(op::Parameter(), op::Parameter(), op::Parameter(),
+                             op::Broadcast(), op::Multiply(), op::Add()));
 }
 
 }  // namespace

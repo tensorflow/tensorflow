@@ -372,6 +372,7 @@ cc_library(
         ":toco_graphviz_dump_options",
         ":toco_port",
         ":types_proto_cc",
+        "//tensorflow/contrib/lite/kernels/internal:types",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",

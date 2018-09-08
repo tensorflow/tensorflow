@@ -421,12 +421,6 @@ class HloInstruction {
       const DotDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config);
 
-  // Creates a dot op with operands 'lhs' and 'rhs' that contracts dimension 1
-  // of the LHS with dimension 0 of the RHS with no batch dimensions.  Both LHS
-  // and the RHS must be of rank 2.
-  static std::unique_ptr<HloInstruction> CreateCanonicalDot(
-      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs);
-
   // Creates a reduce-precision op, where operand is the data to reduce in
   // precision, and exponent_bits and mantissa_bits describe the precision to
   // reduce it to.
@@ -866,11 +860,6 @@ class HloInstruction {
       return false;
     }
 
-    if (!absl::c_equal(precision_config_.operand_precision(),
-                       other.precision_config_.operand_precision())) {
-      return false;
-    }
-
     return IdenticalSlowPath(other, eq_computations);
   }
 
@@ -1085,33 +1074,12 @@ class HloInstruction {
     return other->has_sharding() ? sharding() == other->sharding() : false;
   }
 
-  // Retrieves the operand side metadata of a kDomain instruction.
-  const DomainMetadata& operand_side_metadata() const {
-    return *operand_side_metadata_;
-  }
-  // Retrieves the user side metadata of a kDomain instruction.
-  const DomainMetadata& user_side_metadata() const {
-    return *user_side_metadata_;
-  }
-
   // When creating a new instruction which either replaces, or shifts up (kCopy
   // insertion case), another instruction, we need to make sure the certain
   // properties of the new instruction are copied into the derived one. As of
   // today, the metadata and sharding will be propagated to the derived
   // instruction.
   void SetupDerivedInstruction(HloInstruction* derived_instruction) const;
-
-  // Returns data on the dimension numbers used for a dot operation.
-  const DotDimensionNumbers& dot_dimension_numbers() const {
-    CHECK(dot_dimension_numbers_ != nullptr);
-    return *dot_dimension_numbers_;
-  }
-
-  // Returns the dump string of the dot dimension numbers.
-  string DotDimensionNumbersToString() const;
-
-  // Returns the dump string of the precision configuration.
-  string PrecisionConfigToString() const;
 
   // Clones the HLO instruction. The clone will have the same opcode, shape, and
   // operands. After creation the clone has no uses. "this" (the instruction
@@ -1262,10 +1230,8 @@ class HloInstruction {
   // information. Transformations to other HLOs will not preserve this
   // information but it is presumed that the alternate lowering is strictly
   // superior.
-  const PrecisionConfig& precision_config() const { return precision_config_; }
-  void set_precision_config(const PrecisionConfig& precision_config) {
-    precision_config_ = precision_config;
-  }
+  // Precondition: opcode must be kConvolution or kDot.
+  const PrecisionConfig& precision_config() const;
 
   // Sets the debug metadata for this instruction.
   void set_metadata(const OpMetadata& metadata) { metadata_ = metadata; }
@@ -1508,6 +1474,15 @@ class HloInstruction {
   // Delegates to HloScatterInstruction::scatter_dimension_numbers().
   const ScatterDimensionNumbers& scatter_dimension_numbers() const;
 
+  // Delegates to HloDotInstruction::dot_dimension_numbers().
+  const DotDimensionNumbers& dot_dimension_numbers() const;
+
+  // Delegates to HloDomainInstruction::operand_side_metadata().
+  const DomainMetadata& operand_side_metadata() const;
+
+  // Delegates to HloDomainInstruction::user_side_metadata().
+  const DomainMetadata& user_side_metadata() const;
+
   // Old methods kept for smooth subclassing transition END.
 
  protected:
@@ -1647,21 +1622,11 @@ class HloInstruction {
   // Result shape of this instruction.
   Shape shape_;
 
-  // Describes the dimension numbers used for a dot.
-  std::unique_ptr<DotDimensionNumbers> dot_dimension_numbers_;
-
-  // Used to tag kCopy instructions that are eligible for copy elision.
-  bool copy_elision_allowed_ = true;
-
   // The sharding, if one exists.
   // Uses std::shared_ptr to allow reuse of the same sharding object between
   // HloInstructions and other components as HloSharding can be very large for
   // many element tuples.
   std::shared_ptr<const HloSharding> sharding_;
-
-  // Fields used by the kDomain instruction.
-  std::unique_ptr<DomainMetadata> operand_side_metadata_;
-  std::unique_ptr<DomainMetadata> user_side_metadata_;
 
   // Computations called by this instruction.
   std::vector<HloComputation*> called_computations_;
@@ -1675,10 +1640,6 @@ class HloInstruction {
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
   string backend_config_;
-
-  // Information used to communicate to the implementation about the algorithm
-  // used to produce results. See the documentation on precision_config().
-  PrecisionConfig precision_config_;
 
   // String identifier for instruction.
   string name_;

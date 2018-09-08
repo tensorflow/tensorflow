@@ -175,6 +175,11 @@ class MicroBenchmarks(test.Benchmark):
 
     self._run(func, 30000)
 
+  def benchmark_create_constant(self):
+    func = lambda: constant_op.constant(3.0)
+
+    self._run(func, 30000)
+
   def benchmark_create_float_tensor_from_list_CPU(self):
     self._benchmark_create_tensor([[3.0]], dtypes.float32.as_datatype_enum, CPU)
 
