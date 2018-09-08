@@ -210,6 +210,8 @@ void RemoveFromXlaCluster(NodeDef* node_def) {
   node_def->mutable_attr()->erase(kXlaClusterAttr);
 }
 
+void RemoveFromXlaCluster(Node* node) { node->ClearAttr(kXlaClusterAttr); }
+
 Status AdjustCycleDetectionGraphForResourceOps(
     const Graph* graph, const FunctionLibraryDefinition* flib_def,
     const std::function<Status(const Node&, bool*)>& resource_ops_to_ignore,

@@ -58,7 +58,8 @@ class DenseLayerTest(test.TestCase):
     Dense layer should be compiled into a single XlaLaunch op in auto-jit mode.
     """
 
-    os.environ["TF_XLA_FLAGS"] = ("--tf_xla_cpu_global_jit")
+    os.environ["TF_XLA_FLAGS"] = (
+        "--tf_xla_cpu_global_jit " + os.environ.get("TF_XLA_FLAGS", ""))
     config = config_pb2.ConfigProto()
     config.graph_options.optimizer_options.global_jit_level = (
         config_pb2.OptimizerOptions.ON_1)
@@ -77,7 +78,7 @@ class DenseLayerTest(test.TestCase):
 
     labels = GetRunMetadataLabels(run_metadata)
     self.assertEqual(1, XlaLaunchOpCount(labels))
-    self.assertFalse(InLabels(labels, "ListDiff"))
+    self.assertFalse(InLabels(labels, "MatMult"))
 
   def testDenseLayerJitScopeDefinedShape(self):
     """Tests that the dense layer node is properly compiled in jit scope.
@@ -128,7 +129,7 @@ class DenseLayerTest(test.TestCase):
 
     labels = GetRunMetadataLabels(run_metadata)
     self.assertEqual(2, XlaLaunchOpCount(labels))
-    self.assertFalse(InLabels(labels, "ListDiff"))
+    self.assertFalse(InLabels(labels, "MatMult"))
 
 
 if __name__ == "__main__":

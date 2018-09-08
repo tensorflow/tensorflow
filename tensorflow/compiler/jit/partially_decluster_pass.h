@@ -20,34 +20,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Clones nodes from within a cluster to outside the cluster if profitable.
+// Clones or moves nodes from within a cluster to outside the cluster if
+// profitable.  There are two reasons why we do this:
 //
-// Today this only clones to avoid device-to-host copies, but in the future we
-// may consider other reasons to clone.  For instance, we convert this:
-//
-//         .....
-//           |
-//           v
-//      A_Clustered ====> C_Unclustered
-//           |
-//           v
-//      B_Clustered
-//
-// to:
-//
-//         .....
-//          | |
-//          | +-------------+
-//          |               |
-//          v               v
-//      A_Clustered   A_Unclustered ====> C_Unclustered
-//           |
-//           v
-//      B_Clustered
-//
-// where the ===> arrow has a hostmem source and destination and would entail a
-// device to host copy if the source and destination were not in the same XLA
-// cluster.
+//  - Reducing device-to-host copies.
+//  - Reducing the number of XLA recompilations.
 class PartiallyDeclusterPass : public GraphOptimizationPass {
  public:
   Status Run(const GraphOptimizationPassOptions& options) override;
