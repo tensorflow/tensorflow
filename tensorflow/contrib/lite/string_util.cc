@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <string.h>
 #include <vector>
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/interpreter.h"
 
 namespace tflite {
