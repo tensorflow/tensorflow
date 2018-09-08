@@ -813,9 +813,9 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/service:buffer_value",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_memory_scheduler",
         "//tensorflow/compiler/xla/service:hlo_ordering",
         "//tensorflow/compiler/xla/service:hlo_reachability",
-        "//tensorflow/compiler/xla/service:hlo_scheduling",
         "@com_google_absl//absl/memory",
     ],
 )

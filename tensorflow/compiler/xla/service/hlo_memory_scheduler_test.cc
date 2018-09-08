@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_scheduling.h"
+#include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 
 #include <memory>
 #include <string>
@@ -67,22 +67,34 @@ TEST_F(HloSchedulingTest, LastUseScheduledFirst) {
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      HloSchedule schedule,
-      ScheduleModule(*module, [](const BufferValue& buffer) {
-        return ShapeUtil::ByteSizeOf(buffer.shape());
-      }));
+  HloMemoryScheduler scheduler([](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape());
+  });
+  ASSERT_FALSE(module->has_schedule());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, scheduler.Run(module.get()));
+  EXPECT_TRUE(changed);
+  ASSERT_TRUE(module->has_schedule());
+  TF_ASSERT_OK(module->schedule().Verify());
+
   // Verify that all instructions are in the sequence.
   const std::vector<const HloInstruction*>& sequence =
-      schedule.sequence(module->entry_computation()).instructions();
+      module->schedule().sequence(module->entry_computation()).instructions();
   EXPECT_EQ(module->entry_computation()->instruction_count(), sequence.size());
 
   // The first instruction should be the parameter and the last the root "sub".
   EXPECT_EQ(param, sequence.front());
   EXPECT_EQ(sub, sequence.back());
 
-  SequentialHloOrdering ordering(schedule);
+  SequentialHloOrdering ordering(module->schedule());
   EXPECT_TRUE(ordering.ExecutesBefore(add, negate));
+
+  // Clear the schedule using the descheduling pass.
+  HloDescheduler descheduler;
+  EXPECT_TRUE(module->has_schedule());
+  TF_ASSERT_OK_AND_ASSIGN(bool descheduler_changed,
+                          descheduler.Run(module.get()));
+  EXPECT_TRUE(descheduler_changed);
+  EXPECT_FALSE(module->has_schedule());
 }
 
 TEST_F(HloSchedulingTest, ListSchedulerHandlesAliasing) {
