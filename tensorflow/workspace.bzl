@@ -847,7 +847,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
             "https://mirror.bazel.build/github.com/NervanaSystems/ngraph/archive/v0.7.0.tar.gz",
             "https://github.com/NervanaSystems/ngraph/archive/v0.7.0.tar.gz",
         ],
-        sha256 = "",
+        sha256 = "34434b6d5993ac5233538c84f498840db7ac91df82e225c379ee7c8f6de644a5",
         strip_prefix = "ngraph-0.7.0",
         build_file = clean_dep("//third_party/ngraph:ngraph.BUILD"),
     )
