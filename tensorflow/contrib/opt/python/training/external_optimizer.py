@@ -26,7 +26,7 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
-__all__ = ['ExternalOptimizerInterface', 'ScipyOptimizerInterface']
+__all__ = ['ExternalOptimizerInterface', 'SklearnRidgeInterface', 'ScipyOptimizerInterface']
 
 
 class ExternalOptimizerInterface(object):
@@ -294,10 +294,11 @@ class ExternalOptimizerInterface(object):
         self._make_eval_func(tensor, session, feed_dict, fetches, callback)
         for tensor in tensors
     ]
+    
 
 
 class ScipyOptimizerInterface(ExternalOptimizerInterface):
-  """Wrapper allowing `scipy.optimize.minimize` to operate a `tf.Session`.
+  """Wrapper allowing `scipy.optimize.minimize` to operate in a `tf.Session`.
 
   Example:
 
@@ -446,3 +447,98 @@ def _compute_gradients(tensor, var_list):
       grad if grad is not None else array_ops.zeros_like(var)
       for var, grad in zip(var_list, grads)
   ]
+
+
+
+class SklearnRidgeInterface:
+  """Wrapper allowing a 'sklearn.linear_model.Ridge' optimizer to operate in a 'tf.Session'.
+
+  This optimizer minimizes the linear least squares problem
+  with l2 regularization using the sklearn.linear_model.Ridge
+  solver. It minimizes the following loss:
+
+    argmin_{W, b} L(X, y) = (y - WX - b)^2 + l|W|
+
+  Where l is a hyperparameter. 
+
+  Example:
+
+  ```python
+
+  W = tf.Variable(1., dtype=tf.float32)
+  b = tf.Variable(0., dtype=tf.float32)
+
+  X = tf.placeholder(tf.float32, [100, 1])
+  y = tf.placeholder(tf.float32, [100, 1])
+
+  optimizer = SklearnRidgeInterface(X, y, [W, b])
+
+  x_train = np.linspace(0, 100, num=100)
+  y_train = 2 * x + 5
+
+  with tf.Session() as session:
+    optimizer.minimize(session, feed_dict={X: x_train, y: y_train})
+
+  # W should be approximately 2 and b should be approximately 5
+  ```
+
+  Args:
+      X: A tf.placeholder with shape=[n_samples, n_features] acting as
+        the input to the Ridge solver.
+      y: A tf.placeholder with shape=[n_samples] or [n_samples, n_targets]
+        acting as the target variable to optimize towards.
+      var_list: A list in order of [Weights, biases] that are to be 
+        updated during the optimization 
+      **optimizer_kwargs: kwargs to pass to the Ridge model as hyperparameters.
+  """
+  def __init__(self, X, y, var_list, **optimizer_kwargs):
+      self.X = X
+      self.y = y
+      self.optimizer_kwargs = optimizer_kwargs
+
+      if var_list is None:
+          self._vars = variables.trainable_variables()
+      else:
+          self._vars = list(var_list)
+            
+      self._update_placeholders = [
+          array_ops.placeholder(var.dtype) for var in self._vars
+      ]
+
+      self._var_updates = [
+          var.assign(array_ops.reshape(placeholder, _get_shape_tuple(var)))
+          for var, placeholder in zip(self._vars, self._update_placeholders)
+      ]
+
+
+  def minimize(self, session=None, feed_dict=None, **run_kwargs):
+    """
+    Minimizes a l2-regularized linear least squares problem.
+
+    Args:
+      session: A `tf.Session` instance.
+      feed_dict: The training feed dict to be passed into `session.run`. 
+      **run_kwargs: kwargs to pass into `session.run`.
+    
+    """
+    session = session or ops.get_default_session()
+    feed_dict = feed_dict or {}
+
+    initial_values = [session.run(self.X, feed_dict=feed_dict), session.run(self.y, feed_dict=feed_dict)]
+
+    var_vals = self._minimize(initial_values)
+
+    session.run(
+        self._var_updates,
+        feed_dict=dict(zip(self._update_placeholders, var_vals)),
+        **run_kwargs)
+
+
+  def _minimize(self, initial_values):
+    _sample_weight = self.optimizer_kwargs.pop('sample_weight', None)
+    import sklearn.linear_model  # pylint: disable=g-import-not-at-top
+    clf = sklearn.linear_model.Ridge(**self.optimizer_kwargs)
+    clf.fit(initial_values[0], initial_values[1], _sample_weight)
+
+    return clf.coef_, clf.intercept_
+
