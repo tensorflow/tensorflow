@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SCHEDULING_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SCHEDULING_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MEMORY_SCHEDULER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MEMORY_SCHEDULER_H_
 
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -86,6 +87,37 @@ StatusOr<HloInstructionSequence> ScheduleComputation(
     const HloComputation& computation,
     const LogicalBuffer::SizeFunction& size_function);
 
+// A pass which schedules the HLO instructions in a module. The HloModule's
+// schedule field is set to the resulting HloSchedule using
+// HloModule::set_schedule.
+class HloMemoryScheduler : public HloPassInterface {
+ public:
+  // size_function is the function returning the number of bytes required for a
+  // LogicalBuffer. algorithm is the memory scheduling algorithm to use. If not
+  // specified, then DefaultMemoryScheduler is used.
+  HloMemoryScheduler(const LogicalBuffer::SizeFunction& size_function,
+                     const MemorySchedulerAlgorithm& algorithm = {});
+  ~HloMemoryScheduler() override = default;
+  absl::string_view name() const override { return "hlo-memory-scheduler"; }
+
+  StatusOr<bool> Run(HloModule* module) override;
+
+ private:
+  LogicalBuffer::SizeFunction size_function_;
+  MemorySchedulerAlgorithm algorithm_;
+};
+
+// A trivial pass which clears the schedule currently set on the
+// HloModule. After this pass runs HloModudle::has_schedule will return false.
+class HloDescheduler : public HloPassInterface {
+ public:
+  HloDescheduler() = default;
+  ~HloDescheduler() override = default;
+  absl::string_view name() const override { return "hlo-descheduler"; }
+
+  StatusOr<bool> Run(HloModule* module) override;
+};
+
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SCHEDULING_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MEMORY_SCHEDULER_H_

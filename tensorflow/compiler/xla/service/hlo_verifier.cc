@@ -1123,6 +1123,11 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
 
   TF_RETURN_IF_ERROR(VerifyEntryAndExitShapes(*module));
 
+  // If the module has a schedule, it must be valid.
+  if (module->has_schedule()) {
+    TF_RETURN_IF_ERROR(module->schedule().Verify());
+  }
+
   return false;
 }
 

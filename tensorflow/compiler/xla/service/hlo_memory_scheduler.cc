@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_scheduling.h"
+#include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 
 #include <map>
 #include <queue>
@@ -580,6 +580,24 @@ StatusOr<HloInstructionSequence> ScheduleComputation(
   tensorflow::gtl::FlatMap<const HloComputation*, int64> empty_map;
   return ScheduleComputationHelper(computation, *points_to_analysis,
                                    size_function, nullptr, empty_map);
+}
+
+HloMemoryScheduler::HloMemoryScheduler(
+    const LogicalBuffer::SizeFunction& size_function,
+    const MemorySchedulerAlgorithm& algorithm)
+    : size_function_(size_function), algorithm_(algorithm) {}
+
+StatusOr<bool> HloMemoryScheduler::Run(HloModule* module) {
+  TF_ASSIGN_OR_RETURN(HloSchedule schedule,
+                      ScheduleModule(*module, size_function_, algorithm_));
+  TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
+  return true;
+}
+
+StatusOr<bool> HloDescheduler::Run(HloModule* module) {
+  bool changed = module->has_schedule();
+  module->clear_schedule();
+  return changed;
 }
 
 }  // namespace xla
