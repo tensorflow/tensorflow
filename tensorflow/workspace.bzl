@@ -841,16 +841,16 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         build_file = clean_dep("//third_party/ngraph:tbb.BUILD"),
     )
 
-    # tf_http_archive(
-    #     name = "ngraph",
-    #     urls = [
-    #         "https://mirror.bazel.build/github.com/NervanaSystems/ngraph/archive/v0.5.0.tar.gz",
-    #         "https://github.com/NervanaSystems/ngraph/archive/v0.5.0.tar.gz",
-    #     ],
-    #     sha256 = "cb35d3d98836f615408afd18371fb13e3400711247e0d822ba7f306c45e9bb2c",
-    #     strip_prefix = "ngraph-0.5.0",
-    #     build_file = clean_dep("//third_party/ngraph:ngraph.BUILD"),
-    # )
+    tf_http_archive(
+        name = "ngraph",
+        urls = [
+            "https://mirror.bazel.build/github.com/NervanaSystems/ngraph/archive/v0.7.0.tar.gz",
+            "https://github.com/NervanaSystems/ngraph/archive/v0.7.0.tar.gz",
+        ],
+        sha256 = "",
+        strip_prefix = "ngraph-0.7.0",
+        build_file = clean_dep("//third_party/ngraph:ngraph.BUILD"),
+    )
 
     tf_http_archive(
         name = "nlohmann_json_lib",
@@ -863,16 +863,16 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         build_file = clean_dep("//third_party/ngraph:nlohmann_json.BUILD"),
     )
 
-    # tf_http_archive(
-    #     name = "ngraph_tf",
-    #     urls = [
-    #         "https://mirror.bazel.build/github.com/NervanaSystems/ngraph-tf/archive/v0.3.0-rc1.tar.gz",
-    #         "https://github.com/NervanaSystems/ngraph-tf/archive/v0.3.0-rc1.tar.gz",
-    #     ],
-    #     sha256 = "7919332cb15120101c3e05c1b969a5e029a6411581312583c8f80b6aaaa83072",
-    #     strip_prefix = "ngraph-tf-0.3.0-rc1",
-    #     build_file = clean_dep("//third_party/ngraph:ngraph_tf.BUILD"),
-    # )
+    tf_http_archive(
+        name = "ngraph_tf",
+        urls = [
+            "https://mirror.bazel.build/github.com/NervanaSystems/ngraph-tf/archive/v0.5.0.tar.gz",
+            "https://github.com/NervanaSystems/ngraph-tf/archive/v0.5.0.tar.gz",
+        ],
+        sha256 = "23b4566d8e40d6f1f236b0ffe3905dd964ae42ca54bacff67f24abcefd443afb",
+        strip_prefix = "ngraph-tf-0.5.0",
+        build_file = clean_dep("//third_party/ngraph:ngraph_tf.BUILD"),
+    )
 
     ##############################################################################
     # BIND DEFINITIONS
