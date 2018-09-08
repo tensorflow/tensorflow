@@ -65,6 +65,7 @@ INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/neon_2_sse \
 -I$(MAKEFILE_DIR)/downloads/farmhash/src \
+-I$(MAKEFILE_DIR)/downloads/flatbuffers/ \
 -I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
 -I$(OBJDIR)
 # This is at the end so any globally-installed frameworks like protobuf don't
