@@ -86,8 +86,8 @@ void RdmaRemoteRendezvous::RecvFromRemoteAsync(
   if(!logging_active) { 
     cb_to_use = &done; //No additional work to do, so just use done directly
   } else {
-     int64 step_id = step_id_;
-     wrapper_done = [this, logger, step_id, parsed, done, start_usec] (const Status& s, const Args& send_args, const Args& recv_args,
+    int64 step_id = step_id_;
+    wrapper_done = [this, logger, step_id, parsed, done, start_usec] (const Status& s, const Args& send_args, const Args& recv_args,
   	                                                               const Tensor& recv_tensor, const bool is_dead) {
       
       if (logger->LoggingActive()) {
