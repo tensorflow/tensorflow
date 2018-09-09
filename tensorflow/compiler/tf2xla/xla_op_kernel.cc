@@ -220,7 +220,7 @@ Status XlaOpKernelContext::ConstantInputReshaped(
   if (!computed.ok()) {
     return errors::Internal("Error evaluating ", context_->op_kernel().name(),
                             " input ", index,
-                            "as a compile-time constant.\nError: ",
+                            " as a compile-time constant.\nError: ",
                             computed.status().error_message());
   }
   *constant_literal = std::move(*computed.ValueOrDie());
