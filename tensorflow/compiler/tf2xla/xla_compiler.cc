@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
+#include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
@@ -149,9 +150,6 @@ Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         GetFunctionBody(function, flib_runtime_, fbody),
         "Local lookup failed with: ", status.error_message());
-    VLOG(4) << "Function " << function.name() << " in flib_runtime_";
-  } else {
-    VLOG(4) << "Function " << function.name() << " in local_flib_runtime_";
   }
   return Status::OK();
 }
@@ -745,12 +743,17 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileGraph: "
             << dump_graph::DumpGraphToFile(
-                   absl::StrCat("xla_compile_graph_", name), *graph,
-                   flib_runtime_->GetFunctionLibraryDefinition());
+                   absl::StrCat("xla_compile_graph_", name), *graph);
   }
 
   // Report the error here if initialization failed.
   TF_RETURN_IF_ERROR(initialization_status_);
+
+  // Converts Tensorflow's graph control-flow constructs into functional
+  // control-flow that can be compiled into XLA code.
+  TF_RETURN_IF_ERROR(
+      FunctionalizeControlFlow(flib_runtime_->GetFunctionLibraryDefinition(),
+                               graph.get(), local_flib_def_.get()));
 
   // Detect invalid nodes.
   // FunctionalizeControlFlow may remove some nodes from the graph.

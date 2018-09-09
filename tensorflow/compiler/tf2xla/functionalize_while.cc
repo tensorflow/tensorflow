@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
-#include "tensorflow/compiler/tf2xla/functionalize_cond.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -35,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 namespace {
@@ -475,21 +473,12 @@ Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
     }
   }
 
-  // Builds the condition and body functions. Notice that we call
-  // FunctionalizeCond() on cond_graph and body_graph because we might have
-  // unfunctionalized "if" in cond_graph and body_graph. Functionalize them
-  // before they are encapsulated in FunctionDef.
-  // TODO(b/114485797): current logic does not functionalize while loop in
-  // another loop cond.
+  // Builds the condition and body functions.
   std::unique_ptr<Graph> cond_graph;
   TF_RETURN_IF_ERROR(BuildLoopCondition(*graph, frame, &cond_graph));
-  FixupSourceAndSinkEdges(cond_graph.get());
-  TF_RETURN_IF_ERROR(FunctionalizeCond(cond_graph.get(), library));
   DataTypeVector arg_types;
   std::unique_ptr<Graph> body_graph;
   TF_RETURN_IF_ERROR(BuildLoopBody(*graph, frame, &arg_types, &body_graph));
-  FixupSourceAndSinkEdges(body_graph.get());
-  TF_RETURN_IF_ERROR(FunctionalizeCond(body_graph.get(), library));
 
   VLOG(2) << "Frame " << frame->name << " condition: "
           << dump_graph::DumpGraphToFile("loop_condition", *cond_graph, library)
@@ -521,7 +510,7 @@ Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
 
   // Builds a While operator.
   NodeDef while_def;
-  NodeDefBuilder builder(frame->loop_cond->name(), "XlaWhile", library);
+  NodeDefBuilder builder(frame->loop_cond->name(), "XlaWhile");
   builder.Attr("T", arg_types);
   builder.Attr("cond", cond_name);
   builder.Attr("body", body_name);
@@ -652,14 +641,8 @@ Status FunctionalizeWhileLoop(const FunctionLibraryDefinition* lookup_library,
       continue;
     }
 
-    // Nodes marked with _xla_outside_compilation are skipped, because they need
-    // to be executed on host with regular TF executor, which does not support
-    // XlaIf/XlaWhile.
-    string name;
-    if (!HasNodeAttr(frame->loop_cond->def(), kXlaOutsideCompilationAttrName)) {
-      TF_RETURN_IF_ERROR(
-          FunctionalizeLoop(lookup_library, graph, frame, library));
-    }
+    TF_RETURN_IF_ERROR(
+        FunctionalizeLoop(lookup_library, graph, frame, library));
 
     // If the parent has no remaining children, add it to the worklist.
     --frame->parent->num_children;

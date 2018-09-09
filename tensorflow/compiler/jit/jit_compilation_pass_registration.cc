@@ -21,18 +21,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// PRE_PLACEMENT passes:
-
-// from
-// third_party/tensorflow/compiler/tf2xla/functionalize_control_flow_pass_registration.cc
-// FunctionalizeControlFlowPass: 27
-//
-// This pass looks at the graph and all associated FunctionDefs, and turns
-// traditional control flow structure (Switch/Merge/etc.) into functional
-// control flow structure (XlaIf/XlaWhile). Following passes must
-// handle those FunctionDef correctly.
-
-// POST_REWRITE_FOR_EXEC passes:
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 10,
                       MarkForCompilationPass);
 
