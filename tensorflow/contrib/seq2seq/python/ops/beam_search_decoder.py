@@ -819,6 +819,8 @@ def _get_scores(log_probs, sequence_lengths, length_penalty_weight):
   """
   length_penalty_ = _length_penalty(
       sequence_lengths=sequence_lengths, penalty_factor=length_penalty_weight)
+  if not isinstance(length_penalty_, float):
+    length_penalty_ = math_ops.cast(length_penalty_, log_probs.dtype)
   return log_probs / length_penalty_
 
 
