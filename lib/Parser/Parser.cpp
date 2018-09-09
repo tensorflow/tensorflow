@@ -1832,8 +1832,8 @@ public:
     }
 
     if (requiredOperandCount != -1 && result.size() != requiredOperandCount)
-      emitError(startLoc,
-                "expected " + Twine(requiredOperandCount) + " operands");
+      return emitError(startLoc,
+                       "expected " + Twine(requiredOperandCount) + " operands");
     return false;
   }
 

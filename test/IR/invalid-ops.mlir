@@ -121,3 +121,10 @@ mlfunc @calls(%arg0 : i32) {
   %x = call @calls() : () -> i32  // expected-error {{reference to function with mismatched type}}
   return
 }
+
+// -----
+
+cfgfunc @cfgfunc_with_ops(f32) {
+bb0(%a : f32):
+  %sf = addf(%a, %a) : f32  // expected-error {{custom op 'addf' expected 2 operands}}
+}
