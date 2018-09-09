@@ -37,8 +37,8 @@ ConvolutionThunk::ConvolutionThunk(
     const BufferAllocation::Slice& tuple_result_buffer,
     const BufferAllocation::Slice& scratch_buffer, const Shape& input_shape,
     const Shape& filter_shape, const Shape& output_shape, const Window& window,
-    const ConvolutionDimensionNumbers& dim_nums, int64 algorithm,
-    bool tensor_ops_enabled, const HloInstruction* hlo)
+    const ConvolutionDimensionNumbers& dim_nums, int64 feature_group_count,
+    int64 algorithm, bool tensor_ops_enabled, const HloInstruction* hlo)
     : Thunk(Kind::kConvolution, hlo),
       convolution_kind_(convolution_kind),
       input_buffer_(input_buffer),
@@ -51,6 +51,7 @@ ConvolutionThunk::ConvolutionThunk(
       output_shape_(output_shape),
       window_(window),
       dim_nums_(dim_nums),
+      feature_group_count_(feature_group_count),
       algorithm_(algorithm),
       tensor_ops_enabled_(tensor_ops_enabled) {}
 
@@ -72,8 +73,8 @@ Status ConvolutionThunk::ExecuteOnStream(
   auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   TF_RETURN_IF_ERROR(RunCudnnConvolution(
       convolution_kind_, input_shape_, filter_shape_, output_shape_, input_data,
-      filter_data, output_data, scratch, window_, dim_nums_, algorithm_config,
-      stream));
+      filter_data, output_data, scratch, window_, dim_nums_,
+      feature_group_count_, algorithm_config, stream));
 
   // Figure out which of output/input/filter is the result produced by
   // this op, and write the result tuple.

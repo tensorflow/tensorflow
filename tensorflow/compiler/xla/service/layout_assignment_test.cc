@@ -874,18 +874,18 @@ TEST_F(LayoutAssignmentTest, CopySliceOperandToAvoidImplicitLayoutChange) {
   )";
 
   auto module = ParseHloString(module_str).ValueOrDie();
-  module =
+  auto compiled_module =
       backend()
           .compiler()
           ->RunHloPasses(std::move(module), backend().default_stream_executor(),
                          /*device_allocator=*/nullptr)
           .ConsumeValueOrDie();
-
-  auto copy = FindInstruction(module.get(), "copy.1");
-  auto slice = FindInstruction(module.get(), "slice0");
-  EXPECT_EQ(slice->operand(0), copy);
-  EXPECT_TRUE(
-      LayoutUtil::Equal(slice->shape().layout(), copy->shape().layout()));
+  HloInstruction* root =
+      compiled_module->entry_computation()->root_instruction();
+  Shape shape_copy = ShapeUtil::MakeShapeWithLayout(F32, {4, 5}, {1, 0});
+  EXPECT_THAT(root, op::Add(op::Parameter(),
+                            op::Slice(AllOf(op::Copy(op::Parameter(1)),
+                                            op::ShapeWithLayout(shape_copy)))));
 }
 
 TEST_F(LayoutAssignmentTest, CopyDSliceOperandToAvoidImplicitLayoutChange) {
@@ -902,18 +902,20 @@ TEST_F(LayoutAssignmentTest, CopyDSliceOperandToAvoidImplicitLayoutChange) {
   )";
 
   auto module = ParseHloString(module_str).ValueOrDie();
-  module =
+  auto compiled_module =
       backend()
           .compiler()
           ->RunHloPasses(std::move(module), backend().default_stream_executor(),
                          /*device_allocator=*/nullptr)
           .ConsumeValueOrDie();
-
-  auto copy = FindInstruction(module.get(), "copy.1");
-  auto dslice = FindInstruction(module.get(), "dslice0");
-  EXPECT_EQ(dslice->operand(0), copy);
-  EXPECT_TRUE(
-      LayoutUtil::Equal(dslice->shape().layout(), copy->shape().layout()));
+  HloInstruction* root =
+      compiled_module->entry_computation()->root_instruction();
+  Shape shape_copy = ShapeUtil::MakeShapeWithLayout(F32, {4, 5}, {1, 0});
+  EXPECT_THAT(root,
+              op::Add(op::Parameter(),
+                      op::DynamicSlice(AllOf(op::Copy(op::Parameter(1)),
+                                             op::ShapeWithLayout(shape_copy)),
+                                       op::Parameter(2))));
 }
 
 TEST_F(LayoutAssignmentTest, CopyConcatOperandToAvoidImplicitLayoutChange) {
@@ -931,18 +933,20 @@ TEST_F(LayoutAssignmentTest, CopyConcatOperandToAvoidImplicitLayoutChange) {
   )";
 
   auto module = ParseHloString(module_str).ValueOrDie();
-  module =
+  auto compiled_module =
       backend()
           .compiler()
           ->RunHloPasses(std::move(module), backend().default_stream_executor(),
                          /*device_allocator=*/nullptr)
           .ConsumeValueOrDie();
-
-  auto copy = FindInstruction(module.get(), "copy.1");
-  auto concat = FindInstruction(module.get(), "concat0");
-  EXPECT_EQ(concat->operand(0), copy);
-  EXPECT_TRUE(
-      LayoutUtil::Equal(concat->shape().layout(), copy->shape().layout()));
+  HloInstruction* root =
+      compiled_module->entry_computation()->root_instruction();
+  Shape shape_copy = ShapeUtil::MakeShapeWithLayout(F32, {3, 5}, {1, 0});
+  EXPECT_THAT(root,
+              op::Add(op::Parameter(),
+                      op::Concatenate(AllOf(op::Copy(op::Parameter(1)),
+                                            op::ShapeWithLayout(shape_copy)),
+                                      op::Parameter(2))));
 }
 
 TEST_F(LayoutAssignmentTest,
@@ -960,15 +964,39 @@ TEST_F(LayoutAssignmentTest,
   )";
 
   auto module = ParseHloString(module_str).ValueOrDie();
-  module =
+  auto compiled_module =
       backend()
           .compiler()
           ->RunHloPasses(std::move(module), backend().default_stream_executor(),
                          /*device_allocator=*/nullptr)
           .ConsumeValueOrDie();
+  HloInstruction* root =
+      compiled_module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Convolution(op::Parameter(0), op::Parameter(1)));
+}
 
-  auto copy = FindInstruction(module.get(), "copy.1");
-  EXPECT_EQ(copy, nullptr);
+TEST_F(LayoutAssignmentTest, PropagatingLayoutFromResultToOperand) {
+  const char* module_str = R"(
+    HloModule PropagatingLayoutFromResultToOperand
+
+    ENTRY PropagatingLayoutFromResultToOperand {
+      par0 = f32[4,5]{1,0} parameter(0)
+      ROOT slice0 = f32[3,4]{0,1} slice(par0), slice={[1:4],[1:5]}
+    }
+  )";
+
+  auto module = ParseHloString(module_str).ValueOrDie();
+  auto compiled_module =
+      backend()
+          .compiler()
+          ->RunHloPasses(std::move(module), backend().default_stream_executor(),
+                         /*device_allocator=*/nullptr)
+          .ConsumeValueOrDie();
+  HloInstruction* root =
+      compiled_module->entry_computation()->root_instruction();
+  Shape shape_copy = ShapeUtil::MakeShapeWithLayout(F32, {4, 5}, {0, 1});
+  EXPECT_THAT(root, op::Slice(AllOf(op::Copy(op::Parameter(0)),
+                                    op::ShapeWithLayout(shape_copy))));
 }
 
 }  // namespace

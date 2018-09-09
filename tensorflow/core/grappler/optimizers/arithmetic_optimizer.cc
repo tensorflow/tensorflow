@@ -1121,11 +1121,8 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
     TF_RETURN_IF_ERROR(EnsureNodeIsSupported(node));
     NodeDef* tail = node;
-    // TODO(rmlarsen): Enable after debugging breakage in Bayesflow.
-    if (ctx().opt_level == RewriterConfig::AGGRESSIVE) {
-      tail = GetTailOfIdempotentChain(*tail, *ctx().node_map,
-                                      *ctx().nodes_to_preserve);
-    }
+    tail = GetTailOfIdempotentChain(*tail, *ctx().node_map,
+                                    *ctx().nodes_to_preserve);
     NodeDef* first_transpose;
     TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &first_transpose));
 
@@ -2706,8 +2703,9 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
     // 0. inner_function is not in the preserve set,
     // 1. inner_function's Op is element-wise monotonic
     // 2. inner_function's output is not being consumed elsewhere.
+    bool is_non_decreasing = false;
     if (!IsInPreserveSet(*inner_function) &&
-        IsElementWiseMonotonic(*inner_function) &&
+        IsElementWiseMonotonic(*inner_function, &is_non_decreasing) &&
         ctx().node_map->GetOutputs(inner_function->name()).size() == 1) {
       // Swap the first inputs of the inner function Op & the reduction Op.
       NodeDef* inner_input;
@@ -2719,7 +2717,12 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
       UpdateConsumers(reduction_node, inner_function->name());
       ctx().node_map->UpdateInput(inner_function->name(), inner_input->name(),
                                   reduction_node->name());
-
+      if (!is_non_decreasing) {
+        // Flip Min<->Max if the function is non-increasing, e.g.
+        // Max(Neg(x)) = Neg(Min(x)).
+        const string opposite = IsMax(*reduction_node) ? "Min" : "Max";
+        reduction_node->set_op(opposite);
+      }
       AddToOptimizationQueue(reduction_node);
       AddToOptimizationQueue(inner_function);
       AddToOptimizationQueue(inner_input);

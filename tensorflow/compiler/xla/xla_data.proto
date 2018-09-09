@@ -580,7 +580,7 @@ message SourceTarget {
 
 // Used to indicate the precision configuration. It has backend specific
 // meaning.
-message PrecisionConfigProto {
+message PrecisionConfig {
   enum Precision {
     DEFAULT = 0;
     HIGH = 1;

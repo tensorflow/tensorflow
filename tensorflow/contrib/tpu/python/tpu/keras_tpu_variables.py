@@ -30,7 +30,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.platform import tf_logging as logging
 
 
 @contextlib.contextmanager
@@ -258,7 +257,6 @@ def replicated_scope(num_replicas):
       collections = [ops.GraphKeys.GLOBAL_VARIABLES]
     kwargs["collections"] = []
 
-    logging.info("Constructing replicated variable %s", name)
     variables = []
     index = {}
     for i in range(num_replicas):

@@ -29,9 +29,9 @@ import six
 from tensorflow.contrib.autograph.core import config
 from tensorflow.contrib.autograph.core import converter
 from tensorflow.contrib.autograph.impl import conversion
+from tensorflow.contrib.autograph.operators import py_builtins
 from tensorflow.contrib.autograph.pyct import compiler
 from tensorflow.contrib.autograph.pyct import inspect_utils
-from tensorflow.contrib.autograph.utils import builtins
 from tensorflow.contrib.autograph.utils import py_func
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
@@ -150,7 +150,7 @@ def converted_call(f, recursive, verbose, force_conversion, arg_types, *args,
   unknown_arg_value = object()  # Sentinel for arguments of unknown value
 
   if inspect_utils.isbuiltin(f):
-    return builtins.dynamic_builtin(f, *args, **kwargs)
+    return py_builtins.overload_of(f)(*args, **kwargs)
 
   if tf_inspect.isfunction(f) or tf_inspect.ismethod(f):
     # Regular functions

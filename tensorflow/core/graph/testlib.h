@@ -209,6 +209,15 @@ Node* Diag(Graph* g, Node* in, DataType type);
 // Add a DiagPart node in "g".
 Node* DiagPart(Graph* g, Node* in, DataType type);
 
+// Add a CheckNumerics node in "g".
+Node* CheckNumerics(Graph* g, Node* in, const string& message);
+
+// Add an _Arg node in "g".
+Node* Arg(Graph* g, int64 index, DataType type);
+
+// Add a _Retval node in "g".
+Node* Retval(Graph* g, int64 index, Node* in);
+
 }  // end namespace graph
 }  // end namespace test
 }  // end namespace tensorflow

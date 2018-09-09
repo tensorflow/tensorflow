@@ -28,6 +28,7 @@ limitations under the License.
 #if TOCO_SUPPORT_PORTABLE_PROTOS
 #include "third_party/protobuf/include/google/protobuf/text_format.h"
 #endif  // TOCO_SUPPORT_PORTABLE_PROTOS
+#include "tensorflow/contrib/lite/kernels/internal/types.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/runtime/types.h"
@@ -138,6 +139,10 @@ bool ShapesAgreeUpToBroadcasting(const Shape& shape0, const Shape& shape1);
 //   d0[i0] == d1[i1] for each dimension until i1 == 0 (inclusive).
 // - For the remaining indices [0..i0), d0[i0] == 1.
 bool ShapesAgreeUpToExtending(const Shape& shape0, const Shape& shape1);
+
+inline ::tflite::RuntimeShape ToRuntimeShape(const Shape& shape) {
+  return ::tflite::RuntimeShape(shape.dimensions_count(), shape.dims().data());
+}
 
 bool IsArrayFullyConnectedWeights(const Model& model, const string& name);
 

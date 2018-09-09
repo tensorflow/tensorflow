@@ -44,22 +44,22 @@ class MapAndFilterFusionTest(test.TestCase, parameterized.TestCase):
     for i, fun1 in enumerate(functions):
       for j, fun2 in enumerate(functions):
         tests.append((
-            "test_{}_{}".format(i, j),
+            "Test{}{}".format(i, j),
             [fun1, fun2],
         ))
         for k, fun3 in enumerate(functions):
           tests.append((
-              "test_{}_{}_{}".format(i, j, k),
+              "Test{}{}{}".format(i, j, k),
               [fun1, fun2, fun3],
           ))
 
     swap = lambda x, n: (n, x)
     tests.append((
-        "swap1",
+        "Swap1",
         [lambda x: (x, 42), swap],
     ))
     tests.append((
-        "swap2",
+        "Swap2",
         [lambda x: (x, 42), swap, swap],
     ))
     return tuple(tests)
@@ -109,13 +109,13 @@ class MapAndFilterFusionTest(test.TestCase, parameterized.TestCase):
 
     for x, fun in enumerate(functions):
       for y, predicate in enumerate(filters):
-        tests.append(("mixed_{}_{}".format(x, y), fun, predicate))
+        tests.append(("Mixed{}{}".format(x, y), fun, predicate))
 
     # Multi output
-    tests.append(("multiOne", lambda x: (x, x),
+    tests.append(("Multi1", lambda x: (x, x),
                   lambda x, y: constant_op.constant(True)))
     tests.append(
-        ("multiTwo", lambda x: (x, 2),
+        ("Multi2", lambda x: (x, 2),
          lambda x, y: math_ops.equal(x * math_ops.cast(y, dtypes.int64), 0)))
     return tuple(tests)
 
@@ -172,17 +172,17 @@ class MapAndFilterFusionTest(test.TestCase, parameterized.TestCase):
     identity = lambda x: x
     for x, predicate_1 in enumerate(filters):
       for y, predicate_2 in enumerate(filters):
-        tests.append(("mixed_{}_{}".format(x, y), identity,
+        tests.append(("Mixed{}{}".format(x, y), identity,
                       [predicate_1, predicate_2]))
         for z, predicate_3 in enumerate(filters):
-          tests.append(("mixed_{}_{}_{}".format(x, y, z), identity,
+          tests.append(("Mixed{}{}{}".format(x, y, z), identity,
                         [predicate_1, predicate_2, predicate_3]))
 
     take_all_multiple = lambda x, y: constant_op.constant(True)
     # Multi output
-    tests.append(("multiOne", lambda x: (x, x),
+    tests.append(("Multi1", lambda x: (x, x),
                   [take_all_multiple, take_all_multiple]))
-    tests.append(("multiTwo", lambda x: (x, 2), [
+    tests.append(("Multi2", lambda x: (x, 2), [
         take_all_multiple,
         lambda x, y: math_ops.equal(x * math_ops.cast(y, dtypes.int64), 0)
     ]))

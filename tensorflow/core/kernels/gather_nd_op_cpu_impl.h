@@ -123,10 +123,10 @@ struct GatherNdSlice<CPUDevice, T, Index, IXDIM> {
 // is considerably more efficient.
 #pragma omp parallel for
     for (Eigen::DenseIndex i = 0; i < batch_size; i++) {
-      const Eigen::array<Eigen::DenseIndex, 1> loc = i;
+      const Eigen::array<Eigen::DenseIndex, 1> loc{i};
       gather_nd_generator(loc);
     }
-#else
+#else  // INTEL_MKL
     Tscratch.device(d) = Tscratch.reshape(reshape_dims)
                              .broadcast(broadcast_dims)
                              .generate(gather_nd_generator)

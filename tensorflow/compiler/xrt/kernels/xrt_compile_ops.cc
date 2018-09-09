@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -70,7 +70,7 @@ Status CompilationCacheKey(const xrt::XLAComputation& computation,
   string serialized;
   TF_RET_CHECK(SerializeToStringDeterministic(computation, &serialized));
   uint64 fingerprint = Fingerprint64(serialized);
-  *key = strings::StrCat(fingerprint);
+  *key = absl::StrCat(fingerprint);
   return Status::OK();
 }
 

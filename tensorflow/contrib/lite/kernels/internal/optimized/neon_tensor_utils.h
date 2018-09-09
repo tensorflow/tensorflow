@@ -17,7 +17,7 @@ limitations under the License.
 
 // TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
-#include "tensorflow/contrib/lite/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/tensor_utils_impl.h"
 
@@ -79,6 +79,11 @@ void BatchVectorBatchVectorDotProduct(const float* vector1,
                    n_batch, result, result_stride);
 }
 
+void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
+                          float* batch_vector) {
+  PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
+}
+
 void VectorBatchVectorAssign(const float* vector, int v_size, int n_batch,
                              float* batch_vector) {
   PortableVectorBatchVectorAssign(vector, v_size, n_batch, batch_vector);
@@ -136,6 +141,13 @@ void ReductionSumVector(const float* input_vector, float* output_vector,
                         int output_size, int reduction_size) {
   NEON_OR_PORTABLE(ReductionSumVector, input_vector, output_vector, output_size,
                    reduction_size);
+}
+
+void MeanStddevNormalization(const float* input_vector, float* output_vector,
+                             int v_size, int n_batch,
+                             float normalization_epsilon) {
+  PortableMeanStddevNormalization(input_vector, output_vector, v_size, n_batch,
+                                  normalization_epsilon);
 }
 
 }  // namespace tensor_utils

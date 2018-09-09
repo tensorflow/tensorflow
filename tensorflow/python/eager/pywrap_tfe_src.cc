@@ -892,13 +892,20 @@ static tensorflow::DataType FastTensorDtype(PyObject* tensor) {
 class GradientTape
     : public tensorflow::eager::GradientTape<PyObject, PyBackwardFunction> {
  public:
-  explicit GradientTape(bool persistent)
+  explicit GradientTape(bool persistent, bool watch_accessed_variables)
       : tensorflow::eager::GradientTape<PyObject, PyBackwardFunction>(
-            persistent) {}
+            persistent),
+        watch_accessed_variables_(watch_accessed_variables) {}
 
   virtual ~GradientTape() {
     for (const IdAndVariable& v : watched_variables_) {
       Py_DECREF(v.variable);
+    }
+  }
+
+  void VariableAccessed(PyObject* v) {
+    if (watch_accessed_variables_) {
+      WatchVariable(v);
     }
   }
 
@@ -951,6 +958,7 @@ class GradientTape
     }
   };
 
+  bool watch_accessed_variables_;
   tensorflow::mutex watched_variables_mu_;
   std::set<IdAndVariable, CompareById> watched_variables_
       GUARDED_BY(watched_variables_mu_);
@@ -1056,11 +1064,13 @@ void TFE_Py_TapeSetStopOnThread() { *ThreadTapeIsStopped() = true; }
 
 void TFE_Py_TapeSetRestartOnThread() { *ThreadTapeIsStopped() = false; }
 
-PyObject* TFE_Py_TapeSetNew(PyObject* persistent) {
+PyObject* TFE_Py_TapeSetNew(PyObject* persistent,
+                            PyObject* watch_accessed_variables) {
   TFE_Py_Tape_Type.tp_new = PyType_GenericNew;
   if (PyType_Ready(&TFE_Py_Tape_Type) < 0) return nullptr;
   TFE_Py_Tape* tape = PyObject_NEW(TFE_Py_Tape, &TFE_Py_Tape_Type);
-  tape->tape = new GradientTape(persistent == Py_True);
+  tape->tape = new GradientTape(persistent == Py_True,
+                                watch_accessed_variables == Py_True);
   Py_INCREF(tape);
   GetTapeSet()->insert(reinterpret_cast<TFE_Py_Tape*>(tape));
   return reinterpret_cast<PyObject*>(tape);
@@ -1233,13 +1243,20 @@ std::vector<tensorflow::int64> MakeTensorIDList(PyObject* tensors) {
   return list;
 }
 
-void TFE_Py_TapeSetWatchVariable(PyObject* variable) {
+void TFE_Py_TapeVariableAccessed(PyObject* variable) {
   if (*ThreadTapeIsStopped()) {
     return;
   }
   for (TFE_Py_Tape* tape : SafeTapeSet()) {
-    tape->tape->WatchVariable(variable);
+    tape->tape->VariableAccessed(variable);
   }
+}
+
+void TFE_Py_TapeWatchVariable(PyObject* tape, PyObject* variable) {
+  if (*ThreadTapeIsStopped()) {
+    return;
+  }
+  reinterpret_cast<TFE_Py_Tape*>(tape)->tape->WatchVariable(variable);
 }
 
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape) {
@@ -1348,7 +1365,9 @@ void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id) {
 class PyVSpace
     : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction> {
  public:
-  explicit PyVSpace(PyObject* py_vspace) : py_vspace_(py_vspace) {}
+  explicit PyVSpace(PyObject* py_vspace) : py_vspace_(py_vspace) {
+    Py_INCREF(py_vspace_);
+  }
 
   tensorflow::Status Initialize() {
     num_elements_ = PyObject_GetAttrString(py_vspace_, "num_elements_fn");
@@ -1376,6 +1395,8 @@ class PyVSpace
     Py_XDECREF(aggregate_fn_);
     Py_XDECREF(zeros_);
     Py_XDECREF(ones_);
+
+    Py_DECREF(py_vspace_);
   }
 
   tensorflow::int64 NumElements(PyObject* tensor) const final {
@@ -1491,6 +1512,22 @@ class PyVSpace
   PyObject* zeros_;
   PyObject* ones_;
 };
+PyVSpace* py_vspace = nullptr;
+
+PyObject* TFE_Py_RegisterVSpace(PyObject* e) {
+  if (py_vspace != nullptr) {
+    delete py_vspace;
+  }
+
+  py_vspace = new PyVSpace(e);
+  auto status = py_vspace->Initialize();
+  if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
+    delete py_vspace;
+    return nullptr;
+  }
+
+  Py_RETURN_NONE;
+}
 
 std::vector<PyObject*> MakeTensorList(PyObject* tensors) {
   PyObject* seq = PySequence_Fast(tensors, "expected a sequence");
@@ -1507,9 +1544,9 @@ std::vector<PyObject*> MakeTensorList(PyObject* tensors) {
   return list;
 }
 
-PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
-                              PyObject* target, PyObject* sources,
-                              PyObject* output_gradients, TF_Status* status) {
+PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
+                              PyObject* sources, PyObject* output_gradients,
+                              TF_Status* status) {
   TFE_Py_Tape* tape_obj = reinterpret_cast<TFE_Py_Tape*>(tape);
   if (!tape_obj->tape->IsPersistent()) {
     auto* tape_set = GetTapeSet();
@@ -1523,10 +1560,6 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
                       "'with tf.GradientTape(persistent=true)'");
       return nullptr;
     }
-  }
-  PyVSpace c_vspace(vspace);
-  if (!c_vspace.Initialize().ok()) {
-    return nullptr;
   }
 
   std::vector<tensorflow::int64> target_vec = MakeTensorIDList(target);
@@ -1551,7 +1584,7 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
   }
   std::vector<PyObject*> result;
   status->status = tape_obj->tape->ComputeGradient(
-      c_vspace, target_vec, sources_vec, outgrad_vec, &result);
+      *py_vspace, target_vec, sources_vec, outgrad_vec, &result);
   if (!status->status.ok()) {
     if (PyErr_Occurred()) {
       // Do not propagate the erroneous status as that would swallow the
@@ -1893,14 +1926,14 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
   Py_RETURN_NONE;
 }
 
-void MaybeWatchVariable(PyObject* input) {
+void MaybeNotifyVariableAccessed(PyObject* input) {
   DCHECK(CheckResourceVariable(input));
   DCHECK(PyObject_HasAttrString(input, "_trainable"));
 
   tensorflow::Safe_PyObjectPtr trainable(
       PyObject_GetAttrString(input, "_trainable"));
   if (trainable.get() == Py_False) return;
-  TFE_Py_TapeSetWatchVariable(input);
+  TFE_Py_TapeVariableAccessed(input);
 }
 
 bool CastTensor(const FastPathOpExecInfo& op_exec_info,
@@ -1931,7 +1964,7 @@ bool CastTensor(const FastPathOpExecInfo& op_exec_info,
 bool ReadVariableOp(const FastPathOpExecInfo& parent_op_exec_info,
                     PyObject* input, tensorflow::Safe_PyObjectPtr* output,
                     TF_Status* status) {
-  MaybeWatchVariable(input);
+  MaybeNotifyVariableAccessed(input);
 
   TFE_Op* op = TFE_NewOp(parent_op_exec_info.ctx, "ReadVariableOp", status);
   auto cleaner = tensorflow::gtl::MakeCleanup([op] { TFE_DeleteOp(op); });

@@ -42,10 +42,9 @@ typedef struct {
   bool eval_hybrid;
 } TensorInfo;
 
-// The minimum number of elements a weights array must have to be quantized
-// by this transformation.
-// TODO(suharshs): Make this configurable.
-const int kWeightsMinSize = 1024;
+// The default minimum number of elements a weights array must have to be
+// quantized by this transformation.
+const int kWeightsMinNumElementsDefault = 1024;
 
 // Nudge min and max so that floating point 0 falls exactly on a quantized
 // value, returning the nudges scale and zero_point.
@@ -142,6 +141,7 @@ bool IsHybridEvaluationOp(const OperatorT* op, const BuiltinOperator& op_code) {
       op_code == BuiltinOperator_CONV_2D || op_code == BuiltinOperator_SVDF ||
       op_code == BuiltinOperator_EMBEDDING_LOOKUP ||
       op_code == BuiltinOperator_RNN ||
+      op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM ||
       op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN ||
       op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM ||
       op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN) {
@@ -158,43 +158,51 @@ bool IsHybridEvaluationOp(const OperatorT* op, const BuiltinOperator& op_code) {
 
 // Returns a vector of TensorInfos for each input tensor of op that should be
 // quantized.
-std::vector<TensorInfo> GetQuantizableTensorsFromOperator(const ModelT* model,
-                                                          const OperatorT* op) {
+std::vector<TensorInfo> GetQuantizableTensorsFromOperator(
+    const ModelT* model, const OperatorT* op, uint64_t weights_min_num_elements,
+    bool use_hybrid_evaluation) {
   SubGraphT* subgraph = model->subgraphs.at(0).get();
   const BuiltinOperator op_code =
       model->operator_codes[op->opcode_index]->builtin_code;
 
   std::vector<TensorInfo> tensor_infos;
 
-  bool eval_hybrid = IsHybridEvaluationOp(op, op_code);
+  bool eval_hybrid = use_hybrid_evaluation && IsHybridEvaluationOp(op, op_code);
 
-  bool skipped_tensor = false;
   std::vector<int32_t> op_input_indices = GetWeightInputIndices(op_code);
   for (const int32_t op_input_idx : op_input_indices) {
     int32_t tensor_idx = op->inputs[op_input_idx];
 
-    // TODO(suharshs): Support shared weights, i.e. If two tensors share the
-    // same weight array, things may break. (i.e. SSD object detection)
-    if (CountTensorConsumers(model, subgraph, tensor_idx) != 1) {
-      LOG(INFO) << "Skipping quantization of tensor that is shared between "
-                   "multiple multiple operations.";
-      skipped_tensor = true;
+    if (tensor_idx == -1) {
+      LOG(INFO) << "Skipping optional tensor input " << op_input_idx
+                << " of operation " << EnumNameBuiltinOperator(op_code);
       continue;
     }
 
     TensorT* tensor = subgraph->tensors[tensor_idx].get();
+    // TODO(suharshs): Support shared weights, i.e. If two tensors share the
+    // same weight array, things may break. (i.e. SSD object detection)
+    if (!eval_hybrid &&
+        CountTensorConsumers(model, subgraph, tensor_idx) != 1) {
+      LOG(INFO) << "Skipping quantization of tensor " << tensor->name
+                << " that is shared between multiple multiple operations.";
+      continue;
+    }
 
     if (tensor->type != TensorType_FLOAT32) {
-      LOG(INFO) << "Skipping quantization of tensor that is not type float.";
-      skipped_tensor = true;
+      LOG(INFO) << "Skipping quantization of tensor " << tensor->name
+                << " that is not type float.";
       continue;
     }
 
     const uint64_t num_elements = NumElements(tensor);
-    if (num_elements < kWeightsMinSize) {
-      LOG(INFO) << "Skipping quantization of tensor because it has fewer than "
-                << kWeightsMinSize << " elements (" << num_elements << ").";
-      skipped_tensor = true;
+    if (num_elements < weights_min_num_elements) {
+      LOG(INFO) << "Skipping quantization of tensor " << tensor->name
+                << " because it has fewer than " << weights_min_num_elements
+                << " elements (" << num_elements << ").";
+      // If one of the weights isn't quantized, then we cannot use the hybrid
+      // kernel for this operation, since it expects everything to be quantized.
+      eval_hybrid = false;
       continue;
     }
 
@@ -205,12 +213,6 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(const ModelT* model,
     tensor_info.tensor = tensor;
 
     tensor_infos.push_back(tensor_info);
-  }
-
-  // For hybrid operations we either need to quantize all tensors or none. So
-  // if we skipped any tensors we need to return no quantized tensors.
-  if (eval_hybrid && skipped_tensor) {
-    return {};
   }
 
   return tensor_infos;
@@ -331,11 +333,10 @@ void MakeTensor(const string& name, const std::vector<int32_t>& shape,
   tensor->reset(tensor_raw);
 }
 
-}  // namespace
-
-TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
-                             const Model* input_model,
-                             bool use_hybrid_evaluation) {
+TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
+                                     const Model* input_model,
+                                     bool use_hybrid_evaluation,
+                                     uint64_t weights_min_num_elements) {
   std::unique_ptr<ModelT> model;
   model.reset(input_model->UnPack());
 
@@ -352,11 +353,11 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
   for (int i = 0; i < subgraph->operators.size(); ++i) {
     OperatorT* op = subgraph->operators[i].get();
 
-    std::vector<TensorInfo> tensor_infos =
-        GetQuantizableTensorsFromOperator(model.get(), op);
+    std::vector<TensorInfo> tensor_infos = GetQuantizableTensorsFromOperator(
+        model.get(), op, weights_min_num_elements, use_hybrid_evaluation);
 
     for (const TensorInfo& tensor_info : tensor_infos) {
-      if (use_hybrid_evaluation && tensor_info.eval_hybrid) {
+      if (tensor_info.eval_hybrid) {
         // Quantize the tensor.
         TF_LITE_ENSURE_STATUS(
             SymmetricQuantizeTensor(model.get(), tensor_info.tensor));
@@ -399,9 +400,32 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
   return kTfLiteOk;
 }
 
+}  // namespace
+
+namespace internal {
+TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
+                             const Model* input_model,
+                             bool use_hybrid_evaluation) {
+  // By default we require that only weights with more than
+  // kWeightsMinSizeDefault elements are quantized.
+  return QuantizeWeightsInternal(builder, input_model, use_hybrid_evaluation,
+                                 kWeightsMinNumElementsDefault);
+}
+}  // namespace internal
+
+TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
+                             const Model* input_model,
+                             uint64_t weights_min_num_elements) {
+  return QuantizeWeightsInternal(builder, input_model, true,
+                                 weights_min_num_elements);
+}
+
 TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const Model* input_model) {
-  return QuantizeWeights(builder, input_model, true);
+  // By default we require that only weights with more than
+  // kWeightsMinSizeDefault elements are quantized.
+  return QuantizeWeightsInternal(builder, input_model, true,
+                                 kWeightsMinNumElementsDefault);
 }
 
 }  // namespace optimize

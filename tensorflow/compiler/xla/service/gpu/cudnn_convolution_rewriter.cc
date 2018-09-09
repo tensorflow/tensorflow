@@ -59,6 +59,11 @@ std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardFilter(
     HloInstruction* conv) {
   const auto no_match_result =
       std::make_tuple(false, Window(), ConvolutionDimensionNumbers());
+  // TODO(b/31709653): Figure out if we can use grouped convolutions also on
+  // backward filter.
+  if (conv->feature_group_count() > 1) {
+    return no_match_result;
+  }
   // Step 1: match the instruction pattern without considering the paddings and
   // dimension numbers just yet. We may need some generic pattern matcher
   // similar to third_party/llvm/llvm/include/llvm/IR/PatternMatch.h
@@ -217,6 +222,12 @@ std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardInput(
     HloInstruction* conv) {
   const auto no_match_result =
       std::make_tuple(false, Window(), ConvolutionDimensionNumbers());
+
+  // TODO(b/31709653): Figure out if we can use grouped convolutions also on
+  // backward input.
+  if (conv->feature_group_count() > 1) {
+    return no_match_result;
+  }
 
   // Match instruction pattern.
   CHECK_EQ(HloOpcode::kConvolution, conv->opcode());
@@ -425,7 +436,7 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
     if (match) {
       return CreateCudnnConvBackwardFilter(
           conv->shape(), conv->mutable_operand(0), conv->mutable_operand(1),
-          window, dnums);
+          window, dnums, conv->feature_group_count());
     }
 
     std::tie(match, window, dnums) = MatchBackwardInput(conv);
@@ -435,15 +446,17 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
       CHECK_EQ(reverse->opcode(), HloOpcode::kReverse);
       HloInstruction* rhs = reverse->mutable_operand(0);
 
-      return CreateCudnnConvBackwardInput(
-          conv->shape(), conv->mutable_operand(0), rhs, window, dnums);
+      return CreateCudnnConvBackwardInput(conv->shape(),
+                                          conv->mutable_operand(0), rhs, window,
+                                          dnums, conv->feature_group_count());
     }
 
     // If all else fails, try a forward convolution.
     if (CanImplementAsCudnnForwardConv(conv)) {
       return CreateCudnnConvForward(conv->shape(), conv->mutable_operand(0),
                                     conv->mutable_operand(1), conv->window(),
-                                    conv->convolution_dimension_numbers());
+                                    conv->convolution_dimension_numbers(),
+                                    conv->feature_group_count());
     }
 
     return nullptr;

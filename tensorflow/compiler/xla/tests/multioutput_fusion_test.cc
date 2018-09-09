@@ -47,7 +47,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-
 class MultiOutputFusionTest : public HloTestBase {
  protected:
   MultiOutputFusionTest() { error_spec_ = ErrorSpec{0.0001, 1e-2}; }
@@ -90,8 +89,8 @@ class MultiOutputFusionTest : public HloTestBase {
     DotDimensionNumbers dot_dnums;
     dot_dnums.add_lhs_contracting_dimensions(1);
     dot_dnums.add_rhs_contracting_dimensions(0);
-    HloInstruction* dot = builder.AddInstruction(
-        HloInstruction::CreateDot(elem_shape2, sub, add2, dot_dnums));
+    HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+        elem_shape2, sub, add2, dot_dnums, DefaultPrecisionConfig(2)));
     auto computation = hlo_module->AddEntryComputation(builder.Build(dot));
 
     if (manual_fusion) {
@@ -154,7 +153,7 @@ class MultiOutputFusionTest : public HloTestBase {
     dot_dnums.add_rhs_contracting_dimensions(0);
     HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
         ShapeUtil::MakeShapeWithDescendingLayout(F32, {1}), sub, reshape,
-        dot_dnums));
+        dot_dnums, DefaultPrecisionConfig(2)));
     auto computation = hlo_module->AddEntryComputation(builder.Build(dot));
 
     if (manual_fusion) {

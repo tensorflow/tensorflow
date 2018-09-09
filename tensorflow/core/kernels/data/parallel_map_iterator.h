@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 
 namespace tensorflow {
+namespace data {
 
 // A function that transforms elements of one dataset into another
 // asynchronously. The arguments are:
@@ -47,6 +48,7 @@ std::unique_ptr<IteratorBase> NewParallelMapIterator(
     const DatasetBase* input_dataset, ParallelMapIteratorFunction map_func,
     int32 num_parallel_calls);
 
+}  // namespace data
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_DATA_PARALLEL_MAP_ITERATOR_H_

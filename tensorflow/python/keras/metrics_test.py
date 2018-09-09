@@ -212,7 +212,7 @@ class KerasMetricsTest(test.TestCase):
       self.assertAllClose(
           val_outs[2], history.history['val_true_positives'][-1], atol=1e-5)
 
-  @test_util.run_in_graph_and_eager_modes
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def test_mean(self):
     m = metrics.Mean(name='my_mean')
 
@@ -394,7 +394,7 @@ class KerasMetricsTest(test.TestCase):
     self.assertTrue(acc_obj.stateful)
     self.assertEqual(len(acc_obj.variables), 2)
     self.assertEqual(acc_obj.dtype, dtypes.float32)
-    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(variables.variables_initializer(acc_obj.variables))
 
     # verify that correct value is returned
     update_op = acc_obj.update_state([[0, 0, 1], [0, 1, 0]],

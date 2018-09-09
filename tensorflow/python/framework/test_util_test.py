@@ -71,9 +71,6 @@ class TestUtilTest(test_util.TensorFlowTestCase):
           with self.cached_session(graph=ops.Graph()) as sess2:
             pass
         with self.assertRaises(ValueError):
-          with self.cached_session(use_gpu=True) as sess2:
-            pass
-        with self.assertRaises(ValueError):
           with self.cached_session(force_gpu=True) as sess2:
             pass
     # We make sure that test_session will cache the session even after the

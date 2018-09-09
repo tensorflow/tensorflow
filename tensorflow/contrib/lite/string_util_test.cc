@@ -15,7 +15,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/string_util.h"
 
 #include <gtest/gtest.h>
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/testing/util.h"
 

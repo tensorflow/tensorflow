@@ -38,9 +38,6 @@ class ApiTest(test.TestCase):
   def setUp(self):
     config.COMPILED_IMPORT_STATEMENTS = (
         'from __future__ import print_function',
-        'from tensorflow.contrib.autograph import utils'
-        ' as autograph_utils',
-        'tf = autograph_utils.fake_tf()',
     )
 
   def test_decorator_recurses(self):

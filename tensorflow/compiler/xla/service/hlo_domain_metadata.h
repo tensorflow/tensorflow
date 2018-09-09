@@ -72,6 +72,9 @@ class DomainMetadata {
   // two matches.
   virtual bool Matches(const DomainMetadata& other) const = 0;
 
+  // Returns the hash value of the metadata.
+  virtual size_t Hash() const = 0;
+
   // Returns a string representation of the metadata.
   virtual string ToString() const = 0;
 };

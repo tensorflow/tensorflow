@@ -665,12 +665,18 @@ class BidirectionalRNNOpModel : public SingleOpModel {
     fw_recurrent_weights_ = AddInput(TensorType_FLOAT32);
     fw_bias_ = AddInput(TensorType_FLOAT32);
     fw_hidden_state_ = AddInput(TensorType_FLOAT32, true);
-    fw_output_ = AddOutput(TensorType_FLOAT32);
     bw_weights_ = AddInput(TensorType_FLOAT32);
     bw_recurrent_weights_ = AddInput(TensorType_FLOAT32);
     bw_bias_ = AddInput(TensorType_FLOAT32);
     bw_hidden_state_ = AddInput(TensorType_FLOAT32, true);
+
+    aux_input_ = AddNullInput();
+    aux_fw_weights_ = AddNullInput();
+    aux_bw_weights_ = AddNullInput();
+
+    fw_output_ = AddOutput(TensorType_FLOAT32);
     bw_output_ = AddOutput(TensorType_FLOAT32);
+
     SetBuiltinOp(BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN,
                  BuiltinOptions_SequenceRNNOptions,
                  CreateSequenceRNNOptions(builder_, /*time_major=*/false,
@@ -685,7 +691,10 @@ class BidirectionalRNNOpModel : public SingleOpModel {
         {bw_units_, input_size_},                // bw_weights
         {bw_units_, bw_units_},                  // bw_recurrent_weights
         {bw_units_},                             // bw_bias
-        {batches_, bw_units_}                    // bw_hidden_state
+        {batches_, bw_units_},                   // bw_hidden_state
+        {batches_, sequence_len_, 0},            // aux_input
+        {fw_units_, 0},                          // aux_fw_weights
+        {bw_units_, 0},                          // aux_bw_weights
     });
   }
 
@@ -742,6 +751,9 @@ class BidirectionalRNNOpModel : public SingleOpModel {
   int bw_bias_;
   int bw_hidden_state_;
   int bw_output_;
+  int aux_input_;
+  int aux_fw_weights_;
+  int aux_bw_weights_;
 
   int batches_;
   int sequence_len_;
