@@ -1255,25 +1255,8 @@ TEST_F(XlaCompilerTest, SingleOpWithoutInputs) {
     std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
     CopyGraph(*graph, graph_copy.get());
     XlaCompiler::CompilationResult result;
-    status = compiler.CompileGraph(XlaCompiler::CompileOptions(), "NoOp",
-                                   std::move(graph_copy), args, &result);
-    ASSERT_FALSE(status.ok());
-    EXPECT_TRUE(
-        absl::StrContains(status.error_message(),
-                          "The following nodes are unreachable "
-                          "from the source in the graph: {{node NoOp}}"))
-        << status.error_message();
-  }
-
-  // Fix control edges for NoOp.
-  {
-    std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
-    CopyGraph(*graph, graph_copy.get());
-    EXPECT_TRUE(FixupSourceAndSinkEdges(graph_copy.get()));
-    XlaCompiler::CompilationResult result;
     TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "NoOp",
                                        std::move(graph_copy), args, &result));
-    EXPECT_EQ(0, result.resource_updates.size());
   }
 }
 
