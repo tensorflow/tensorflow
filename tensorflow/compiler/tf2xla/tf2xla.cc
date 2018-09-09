@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
-#include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -341,13 +340,6 @@ Status InitGraph(const GraphDef& graph_def, const tf2xla::Config& config,
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(GraphConstructorOptions(),
                                             second_copy_def, g.get()));
   TF_RETURN_IF_ERROR(RewriteAndPruneGraph(g.get(), config, feed_remapping));
-
-  // Functionalize control flow.
-  TF_RETURN_IF_ERROR(FunctionalizeControlFlow(g.get(), &flib_def));
-  // After control flow functionalization, we might have more FunctionDef's
-  // (then/else branch, loop body). Add them to the graph.
-  TF_RETURN_IF_ERROR(g->AddFunctionLibrary(flib_def.ToProto()));
-
   *graph = std::move(g);
   return Status::OK();
 }
