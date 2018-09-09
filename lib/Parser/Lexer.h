@@ -30,18 +30,10 @@ class Location;
 
 /// This class breaks up the current file into a token stream.
 class Lexer {
-  llvm::SourceMgr &sourceMgr;
-  MLIRContext *context;
-
-  StringRef curBuffer;
-  const char *curPtr;
-
-  Lexer(const Lexer&) = delete;
-  void operator=(const Lexer&) = delete;
 public:
-  explicit Lexer(llvm::SourceMgr &sourceMgr, MLIRContext *context);
+  explicit Lexer(const llvm::SourceMgr &sourceMgr, MLIRContext *context);
 
-  llvm::SourceMgr &getSourceMgr() { return sourceMgr; }
+  const llvm::SourceMgr &getSourceMgr() { return sourceMgr; }
 
   Token lexToken();
 
@@ -69,6 +61,15 @@ private:
   Token lexPrefixedIdentifier(const char *tokStart);
   Token lexNumber(const char *tokStart);
   Token lexString(const char *tokStart);
+
+  const llvm::SourceMgr &sourceMgr;
+  MLIRContext *context;
+
+  StringRef curBuffer;
+  const char *curPtr;
+
+  Lexer(const Lexer &) = delete;
+  void operator=(const Lexer &) = delete;
 };
 
 } // end namespace mlir

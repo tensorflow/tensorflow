@@ -57,7 +57,7 @@ class Parser;
 /// methods to access this.
 class ParserState {
 public:
-  ParserState(llvm::SourceMgr &sourceMgr, Module *module)
+  ParserState(const llvm::SourceMgr &sourceMgr, Module *module)
       : context(module->getContext()), module(module), lex(sourceMgr, context),
         curToken(lex.lexToken()), operationSet(OperationSet::get(context)) {}
 
@@ -113,7 +113,7 @@ public:
   MLIRContext *getContext() const { return state.context; }
   Module *getModule() { return state.module; }
   OperationSet &getOperationSet() const { return state.operationSet; }
-  llvm::SourceMgr &getSourceMgr() { return state.lex.getSourceMgr(); }
+  const llvm::SourceMgr &getSourceMgr() { return state.lex.getSourceMgr(); }
 
   /// Return the current token the parser is inspecting.
   const Token &getToken() const { return state.curToken; }
@@ -3005,7 +3005,7 @@ ParseResult ModuleParser::parseModule() {
 
 /// This parses the file specified by the indicated SourceMgr and returns an
 /// MLIR module if it was valid.  If not, it emits diagnostics and returns null.
-Module *mlir::parseSourceFile(llvm::SourceMgr &sourceMgr,
+Module *mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
                               MLIRContext *context) {
 
   // This is the result module we are parsing into.
