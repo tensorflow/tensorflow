@@ -1655,7 +1655,7 @@ class TensorFlowTestCase(googletest.TestCase):
         if any of the elements do not fall in the specified range.
     """
     target = self._GetNdArray(target)
-    if not (np.issubdtype(target.dtype, np.float) or
+    if not (np.issubdtype(target.dtype, np.floating) or
             np.issubdtype(target.dtype, np.integer)):
       raise AssertionError(
           "The value of %s does not have an ordered numeric type, instead it "
