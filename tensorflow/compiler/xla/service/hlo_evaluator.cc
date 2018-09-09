@@ -940,8 +940,14 @@ Status HloEvaluator::HandleBroadcast(HloInstruction* broadcast) {
   // Checks that operand's dimensions are the same as the broadcast's
   // dimensions along the dimensions to be broadcasted.
   for (int64 i = 0; i < broadcast->dimensions().size(); ++i) {
-    TF_RET_CHECK(broadcast->shape().dimensions(broadcast->dimensions(i)) ==
-                 operand.shape().dimensions(i));
+    auto operand_dim_size = operand.shape().dimensions(i);
+    auto broadcast_dim_size =
+        broadcast->shape().dimensions(broadcast->dimensions(i));
+    TF_RET_CHECK(operand_dim_size == broadcast_dim_size) << absl::StreamFormat(
+        "Operand dimension %d is broadcast to output dimension %d, but the "
+        "sizes of these two dims do not match (%d vs %d): %s",
+        i, broadcast->dimensions(i), operand_dim_size, broadcast_dim_size,
+        broadcast->ToString());
   }
 
   TF_ASSIGN_OR_RETURN(
