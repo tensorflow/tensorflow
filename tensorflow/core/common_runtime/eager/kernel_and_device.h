@@ -56,8 +56,11 @@ class KernelAndDevice {
   static Status InitOp(Device* device, const NodeDef& ndef,
                        KernelAndDevice* out);
 
-  KernelAndDevice(tensorflow::Rendezvous* rendez)
-      : device_(nullptr), flib_(nullptr), rendez_(rendez) {}
+  KernelAndDevice(tensorflow::Rendezvous* rendez, bool log_memory)
+      : device_(nullptr),
+        flib_(nullptr),
+        rendez_(rendez),
+        log_memory_(log_memory) {}
 
   // TODO(ashankar): Handle list-valued inputs.
   Status Run(std::vector<Tensor>* inputs, std::vector<Tensor>* outputs,
@@ -87,6 +90,7 @@ class KernelAndDevice {
   DataTypeVector output_dtypes_;
   std::function<void(std::function<void()>)>* runner_;
   std::function<void(std::function<void()>)> default_runner_;
+  const bool log_memory_;
 };
 
 }  // namespace tensorflow
