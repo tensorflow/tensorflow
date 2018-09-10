@@ -510,7 +510,7 @@ class _WithSpaceToBatch(object):
 
     # Recover channel information for output shape if channels are not last.
     if self.data_format is not None and self.data_format.startswith("NC"):
-      if not result_converted.shape[1].value:
+      if not result_converted.shape[1].value and filter is not None:
         output_shape = result_converted.shape.as_list()
         output_shape[1] = filter.shape[-1]
         result_converted.set_shape(output_shape)
