@@ -709,7 +709,7 @@ def _dynamic_rnn_loop(cell,
   Raises:
     ValueError: If the input depth cannot be inferred via shape inference
       from the inputs.
-    ValueError: If time is not the same for all the elements in the
+    ValueError: If time_step is not the same for all the elements in the
       input.
     ValueError: If batch_size is not the same for all the elements
       in the input.
