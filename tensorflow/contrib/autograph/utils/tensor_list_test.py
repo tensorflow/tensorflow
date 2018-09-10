@@ -42,18 +42,18 @@ class TensorListTest(test.TestCase):
     l = list_ops.empty_tensor_list(self._shape(()), dtypes.int32)
     l = tl.dynamic_list_append(l, 1)
     s = list_ops.tensor_list_stack(l, element_dtype=dtypes.int32)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual(sess.run(s), [1])
 
     l = tensor_array_ops.TensorArray(dtypes.int32, size=0, dynamic_size=True)
     l = tl.dynamic_list_append(l, 1)
     s = l.stack()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual(sess.run(s), [1])
 
     l = tl.TensorList(self._shape(()), dtypes.int32)
     l = tl.dynamic_list_append(l, 1)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual(sess.run(l[0]), 1)
 
   def test_list_append_python(self):
@@ -107,7 +107,7 @@ class TensorListTest(test.TestCase):
     l0 = l[0]
     l[0] = b
     l1 = l[0]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       l0, l1, a, b = sess.run([l0, l1, a, b])
       self.assertEqual(l0, a)
       self.assertEqual(l1, b)
