@@ -795,7 +795,7 @@ class SupervisorTest(test.TestCase):
 
     self.assertRaises(StopIteration, lambda: next(rr))
     # There should be a checkpoint file with the variable "foo"
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       v = variables.Variable([10.10], name="foo")
       sav = saver_lib.Saver([v])
       sav.restore(sess, save_path)
@@ -859,14 +859,14 @@ class SupervisorTest(test.TestCase):
     self.assertEquals(event_pb2.SessionLog.STOP, ev.session_log.status)
     self.assertRaises(StopIteration, lambda: next(rr))
     # There should be a checkpoint file with the variable "foo"
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       v = variables.Variable([-12], name="global_step")
       sav = saver_lib.Saver([v])
       sav.restore(sess, save_path)
       self.assertEqual(123, v.eval()[0])
 
   def testNoQueueRunners(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       sv = supervisor.Supervisor(logdir=self._test_dir("no_queue_runners"))
       self.assertEqual(0, len(sv.start_queue_runners(sess)))
       sv.stop()
