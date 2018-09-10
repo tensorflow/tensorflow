@@ -203,6 +203,7 @@ cc_library(
         "space_to_depth.cc",
         "sparse_to_dense.cc",
         "split.cc",
+        "squared_difference.cc",
         "squeeze.cc",
         "strided_slice.cc",
         "sub.cc",
@@ -1264,6 +1265,20 @@ tf_cc_test(
     name = "floor_div_test",
     size = "small",
     srcs = ["floor_div_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "squared_difference_test",
+    size = "small",
+    srcs = ["squared_difference_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",

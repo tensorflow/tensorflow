@@ -90,6 +90,7 @@ enum class OperatorType : uint8 {
   kReduceProd,  // Reduction product
   kStridedSlice,
   kSlice,
+  kSquaredDifference,
   kSqueeze,
   kMean,
   kArgMax,
@@ -1136,6 +1137,18 @@ struct FillOperator : Operator {
 struct FloorDivOperator : Operator {
   FloorDivOperator() : Operator(OperatorType::kFloorDiv) {}
 };
+
+// Element-wise Squared Difference operator.
+//
+// Inputs:
+//   inputs[0]: required: the left-hand side array
+//   inputs[1]: required: the right-hand side array
+//
+// TensorFlow equivalent: SquaredDifference
+struct SquaredDifferenceOperator : Operator {
+  SquaredDifferenceOperator() : Operator(OperatorType::kSquaredDifference) {}
+};
+
 
 // Element-wise floor mod operator.
 //

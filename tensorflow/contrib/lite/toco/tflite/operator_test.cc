@@ -144,6 +144,8 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<LogicalNotOperator>("LOGICAL_NOT",
                                           OperatorType::kLogicalNot);
   CheckSimpleOperator<FloorDivOperator>("FLOOR_DIV", OperatorType::kFloorDiv);
+  CheckSimpleOperator<SquaredDifferenceOperator>(
+      "SQUARED_DIFFERENCE", OperatorType::kSquaredDifference);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
