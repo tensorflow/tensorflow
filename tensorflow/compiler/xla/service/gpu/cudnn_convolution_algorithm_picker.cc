@@ -295,10 +295,10 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
             << instr->ToString();
 
     bool launch_ok =
-        RunCudnnConvolution(
-            kind, input_shape, filter_shape, output_shape, input_buf,
-            filter_buf, output_buf, &scratch_allocator, window, dnums,
-            feature_group_count, AlgorithmConfig(alg), &stream, &profile_result)
+        RunCudnnConvolution({kind, &input_shape, &filter_shape, &output_shape,
+                             input_buf, filter_buf, output_buf, &window, &dnums,
+                             feature_group_count, AlgorithmConfig(alg)},
+                            &scratch_allocator, &stream, &profile_result)
             .ok();
 
     if (launch_ok && profile_result.is_valid()) {
