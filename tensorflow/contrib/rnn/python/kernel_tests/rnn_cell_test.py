@@ -1217,24 +1217,6 @@ class LayerNormBasicGRUCellTest(test.TestCase):
         self.assertEqual(len(res), 2)
         self.assertAllClose(res[1], expected_h, atol=1e-5)
 
-  def testLayerNormBasicGRUCellWithoutLayerNorm(self):
-    with self.test_session() as sess:
-      with variable_scope.variable_scope("root", initializer=init_ops.constant_initializer(0.5)):
-        x = array_ops.zeros(
-          [1, 3])
-        h = array_ops.zeros([1, 3])
-        cell = contrib_rnn_cell.LayerNormBasicGRUCell(3, layer_norm=False)
-        g, out_m = cell(x, h)
-        sess.run([variables.global_variables_initializer()])
-        res = sess.run([g, out_m], {
-          x.name: np.array([[1., 2., 3.]]),
-          h.name: 0.1 * np.asarray([[4, 5, 6]]),
-        })
-
-        expected_h = np.array([[0.99140896, 0.99281532, 0.99422168]])
-        self.assertEqual(len(res), 2)
-        self.assertAllClose(res[1], expected_h, atol=1e-5)
-
         
 class LayerNormBasicLSTMCellTest(test.TestCase):
 
