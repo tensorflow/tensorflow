@@ -76,10 +76,10 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
         continue;
       }
 
-      std::unique_ptr<Literal> result = evaluator->TryEvaluate(instruction);
+      Literal result;
       // Currently we skip unimplemented operations.
       // TODO(b/35975797): Fold constant computations for more operations.
-      if (result == nullptr) {
+      if (!evaluator->TryEvaluate(instruction, &result)) {
         VLOG(2) << "Constant folding failed for instruction: "
                 << instruction->ToString();
         continue;

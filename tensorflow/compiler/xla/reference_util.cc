@@ -529,13 +529,13 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
   }
 
   ordered_input_dimensions[0] =
-      lhs_literal->shape().dimensions(dnums.input_spatial_dimensions(0));
+      lhs_literal.shape().dimensions(dnums.input_spatial_dimensions(0));
   ordered_input_dimensions[1] =
-      lhs_literal->shape().dimensions(dnums.input_spatial_dimensions(1));
+      lhs_literal.shape().dimensions(dnums.input_spatial_dimensions(1));
   ordered_kernel_dimensions[0] =
-      rhs_literal->shape().dimensions(dnums.kernel_spatial_dimensions(0));
+      rhs_literal.shape().dimensions(dnums.kernel_spatial_dimensions(0));
   ordered_kernel_dimensions[1] =
-      rhs_literal->shape().dimensions(dnums.kernel_spatial_dimensions(1));
+      rhs_literal.shape().dimensions(dnums.kernel_spatial_dimensions(1));
 
   std::vector<std::pair<int64, int64>> paddings =
       MakePadding(ordered_input_dimensions, ordered_kernel_dimensions,
@@ -546,7 +546,7 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
 
   WindowDimension dim;
   dim.set_size(
-      rhs_literal->shape().dimensions(dnums.kernel_spatial_dimensions(0)));
+      rhs_literal.shape().dimensions(dnums.kernel_spatial_dimensions(0)));
   dim.set_stride(kernel_stride.first);
   dim.set_padding_low(paddings[0].first);
   dim.set_padding_high(paddings[0].second);
@@ -556,7 +556,7 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
 
   WindowDimension dim2;
   dim2.set_size(
-      rhs_literal->shape().dimensions(dnums.kernel_spatial_dimensions(1)));
+      rhs_literal.shape().dimensions(dnums.kernel_spatial_dimensions(1)));
   dim2.set_stride(kernel_stride.second);
   dim2.set_padding_low(paddings[1].first);
   dim2.set_padding_high(paddings[1].second);
@@ -565,7 +565,7 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
   *window.add_dimensions() = dim2;
 
   const Shape& shape = ShapeInference::InferConvolveShape(
-                           lhs_literal->shape(), rhs_literal->shape(),
+                           lhs_literal.shape(), rhs_literal.shape(),
                            /*feature_group_count=*/1, window, dnums)
                            .ConsumeValueOrDie();
 
@@ -585,18 +585,18 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
   auto computation = module.AddEntryComputation(b.Build());
 
   HloEvaluator evaluator;
-  std::unique_ptr<Literal> result_literal =
+  Literal result_literal =
       evaluator.Evaluate<const Literal*>(*computation, {}).ConsumeValueOrDie();
 
-  CHECK_EQ(ShapeUtil::Rank(result_literal->shape()), 4);
+  CHECK_EQ(ShapeUtil::Rank(result_literal.shape()), 4);
   auto result =
-      absl::make_unique<Array4D<float>>(result_literal->shape().dimensions(0),
-                                        result_literal->shape().dimensions(1),
-                                        result_literal->shape().dimensions(2),
-                                        result_literal->shape().dimensions(3));
+      absl::make_unique<Array4D<float>>(result_literal.shape().dimensions(0),
+                                        result_literal.shape().dimensions(1),
+                                        result_literal.shape().dimensions(2),
+                                        result_literal.shape().dimensions(3));
 
   result->Each([&](absl::Span<const int64> indices, float* value) {
-    *value = result_literal->Get<float>(indices);
+    *value = result_literal.Get<float>(indices);
   });
 
   return result;

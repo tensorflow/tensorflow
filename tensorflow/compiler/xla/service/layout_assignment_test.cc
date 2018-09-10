@@ -145,7 +145,7 @@ TEST_F(LayoutAssignmentTest, FusionInstruction) {
         {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout(minor_to_major));
     auto constant_literal2 = LiteralUtil::CreateR2WithLayout<float>(
         {{5.0, 6.0}, {7.0, 8.0}}, LayoutUtil::MakeLayout(minor_to_major));
-    Shape ashape = constant_literal1->shape();
+    Shape ashape = constant_literal1.shape();
 
     auto constant1 = builder.AddInstruction(
         HloInstruction::CreateConstant(std::move(constant_literal1)));

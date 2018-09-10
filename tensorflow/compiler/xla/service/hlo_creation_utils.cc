@@ -321,18 +321,17 @@ StatusOr<HloInstruction*> PadVectorWithZeros(HloInstruction* operand,
   padding_config_dim.set_edge_padding_high(zeros_to_append);
   *padding_config.add_dimensions() = padding_config_dim;
 
-  HloInstruction* zero = computation->AddInstruction(
-      HloInstruction::CreateConstant(absl::make_unique<Literal>(
-          LiteralUtil::Zero(operand->shape().element_type()))));
+  HloInstruction* zero =
+      computation->AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::Zero(operand->shape().element_type())));
   return MakePadHlo(operand, zero, padding_config);
 }
 
 StatusOr<HloInstruction*> BroadcastZeros(
     HloComputation* computation, PrimitiveType element_type,
     absl::Span<const int64> broadcast_dimensions) {
-  HloInstruction* zero =
-      computation->AddInstruction(HloInstruction::CreateConstant(
-          absl::make_unique<Literal>(LiteralUtil::Zero(element_type))));
+  HloInstruction* zero = computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
   return MakeBroadcastHlo(zero, /*broadcast_dimensions=*/{},
                           /*result_shape_bounds=*/broadcast_dimensions);
 }

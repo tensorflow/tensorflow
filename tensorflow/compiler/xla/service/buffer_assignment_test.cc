@@ -1245,9 +1245,10 @@ TEST_F(BufferAssignmentTest, TupleConstantAsOutput) {
   // Test that a tuple constant which is forwarded to the computation output
   // is properly handled.
   auto builder = HloComputation::Builder(TestName());
+  Literal elements[] = {LiteralUtil::CreateR0<int64>(0),
+                        LiteralUtil::CreateR0<int64>(1)};
   builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::MakeTuple({LiteralUtil::CreateR0<int64>(0).get(),
-                              LiteralUtil::CreateR0<int64>(1).get()})));
+      LiteralUtil::MakeTuple({&elements[0], &elements[1]})));
 
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());

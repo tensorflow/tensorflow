@@ -845,8 +845,8 @@ std::unique_ptr<HloInstruction> HloSliceInstruction::CloneWithNewOperandsImpl(
       shape, new_operands[0], slice_starts_, slice_limits_, slice_strides_);
 }
 
-HloConstantInstruction::HloConstantInstruction(std::unique_ptr<Literal> literal)
-    : HloInstruction(HloOpcode::kConstant, CHECK_NOTNULL(literal)->shape()),
+HloConstantInstruction::HloConstantInstruction(Literal literal)
+    : HloInstruction(HloOpcode::kConstant, literal.shape()),
       literal_(std::move(literal)) {}
 
 HloConstantInstruction::HloConstantInstruction(const Shape& shape)
@@ -854,7 +854,7 @@ HloConstantInstruction::HloConstantInstruction(const Shape& shape)
 
 HloInstructionProto HloConstantInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
-  if (literal_ != nullptr) {
+  if (literal_.has_value()) {
     *proto.mutable_literal() = literal_->ToProto();
   }
   return proto;
@@ -876,7 +876,7 @@ void HloConstantInstruction::RelayoutConstant(const Layout& new_layout,
 
   if (!mutable_array_subshape->has_layout() ||
       !LayoutUtil::Equal(mutable_array_subshape->layout(), new_layout)) {
-    literal_ = literal_->Relayout(new_layout, shape_index);
+    *literal_ = literal_->Relayout(new_layout, shape_index);
     *mutable_array_subshape->mutable_layout() = new_layout;
   }
 }
@@ -893,7 +893,8 @@ std::unique_ptr<HloInstruction>
 HloConstantInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  return absl::make_unique<HloConstantInstruction>(literal_->CloneToUnique());
+  CHECK(literal_.has_value());
+  return absl::make_unique<HloConstantInstruction>(literal_->Clone());
 }
 
 string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
@@ -901,7 +902,7 @@ string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
     CanonicalNameMap* canonical_name_map) const {
   string operands;
   // For constants, show the actual value in place of an empty operand list.
-  if (literal_ != nullptr &&
+  if (literal_.has_value() &&
       ((ShapeUtil::IsArray(shape()) && ShapeUtil::ElementsIn(shape()) <= 10) ||
        options.print_large_constants())) {
     // Literal::ToString emits multidimensional arrays over multiple
@@ -936,7 +937,7 @@ HloTraceInstruction::HloTraceInstruction(const string& tag,
 
 HloInstructionProto HloTraceInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_literal() = literal_->ToProto();
+  *proto.mutable_literal() = literal_.ToProto();
   return proto;
 }
 

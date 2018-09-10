@@ -84,8 +84,7 @@ class LocalExecutable {
   Status RecordResult(const ShapedBuffer* result, HloSnapshot* hlo_snapshot);
 
   // Returns a literal containing the contents of the given ShapedBuffer.
-  StatusOr<std::unique_ptr<Literal>> LiteralFromShapedBuffer(
-      const ShapedBuffer& shaped_buffer);
+  StatusOr<Literal> LiteralFromShapedBuffer(const ShapedBuffer& shaped_buffer);
 
   // The ordinal of the device which this executable was compiled for. The
   // executable can run on all equivalent devices (as determined by
@@ -132,8 +131,7 @@ class LocalClient : public Client {
 
   // Copy the data from the device contained in the given ShapedBuffer and
   // return as a Literal.
-  StatusOr<std::unique_ptr<Literal>> ShapedBufferToLiteral(
-      const ShapedBuffer& shaped_buffer);
+  StatusOr<Literal> ShapedBufferToLiteral(const ShapedBuffer& shaped_buffer);
 
   // Converts a GlobalDataHandle into a pointer to a ShapedBuffer that's valid
   // as long as the handle is valid.
@@ -151,8 +149,8 @@ class LocalClient : public Client {
   // TODO(b/69670845): Remove the 'Local' from the name when LocalClient does
   // not inherit from Client and there is no possibility of confusion with
   // Client::TransferFromOutfeed.
-  StatusOr<std::unique_ptr<Literal>> TransferFromOutfeedLocal(
-      const Shape& shape, int device_ordinal);
+  StatusOr<Literal> TransferFromOutfeedLocal(const Shape& shape,
+                                             int device_ordinal);
 
   // Returns the device ordinal that corresponds to the given replica number.
   //

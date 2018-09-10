@@ -136,21 +136,21 @@ DebugOptions HloTestBase::GetDebugOptionsForTest() {
   return debug_options;
 }
 
-StatusOr<std::unique_ptr<Literal>> HloTestBase::Execute(
-    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments) {
+StatusOr<Literal> HloTestBase::Execute(std::unique_ptr<HloModule> module,
+                                       absl::Span<Literal* const> arguments) {
   return test_runner_.Execute(std::move(module), arguments);
 }
 
-std::unique_ptr<Literal> HloTestBase::ExecuteNoHloPasses(
-    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments) {
+Literal HloTestBase::ExecuteNoHloPasses(std::unique_ptr<HloModule> module,
+                                        absl::Span<Literal* const> arguments) {
   return test_runner_
       .Execute(std::move(module), arguments,
                /*run_hlo_passes=*/false)
       .ValueOrDie();
 }
 
-std::unique_ptr<Literal> HloTestBase::ExecuteAndTransfer(
-    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments) {
+Literal HloTestBase::ExecuteAndTransfer(std::unique_ptr<HloModule> module,
+                                        absl::Span<Literal* const> arguments) {
   return test_runner_.Execute(std::move(module), arguments).ValueOrDie();
 }
 
@@ -188,7 +188,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
   TF_ASSIGN_OR_RETURN(auto reference,
                       reference_runner_.Execute(std::move(reference_module),
                                                 arguments, run_hlo_passes));
-  return LiteralTestUtil::NearOrEqual(/*expected=*/*reference, /*actual=*/*test,
+  return LiteralTestUtil::NearOrEqual(/*expected=*/reference, /*actual=*/test,
                                       error);
 }
 
@@ -223,13 +223,12 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 ::testing::AssertionResult HloTestBase::RunAndCompare(
     std::unique_ptr<HloModule> module, const optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
-  const auto& fake_arguments =
-      MakeFakeArguments(module.get()).ConsumeValueOrDie();
+  auto fake_arguments = MakeFakeArguments(module.get()).ConsumeValueOrDie();
 
   std::vector<Literal*> fake_argument_ptrs;
   absl::c_transform(
       fake_arguments, std::back_inserter(fake_argument_ptrs),
-      [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
+      [](const Literal& literal) { return const_cast<Literal*>(&literal); });
 
   return RunAndCompare(std::move(module), fake_argument_ptrs, error,
                        reference_preprocessor);
@@ -243,7 +242,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
   std::vector<Literal*> fake_argument_ptrs;
   absl::c_transform(
       fake_arguments, std::back_inserter(fake_argument_ptrs),
-      [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
+      [](const Literal& literal) { return const_cast<Literal*>(&literal); });
 
   return RunAndCompareNoHloPasses(std::move(module), fake_argument_ptrs, error,
                                   reference_preprocessor);
@@ -277,7 +276,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
   std::vector<Literal*> fake_argument_ptrs;
   absl::c_transform(
       fake_arguments, std::back_inserter(fake_argument_ptrs),
-      [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
+      [](const Literal& literal) { return const_cast<Literal*>(&literal); });
   return test_runner_
                  .Execute(std::move(module_or_status.ValueOrDie()),
                           fake_argument_ptrs, /*run_hlo_passes=*/true)
