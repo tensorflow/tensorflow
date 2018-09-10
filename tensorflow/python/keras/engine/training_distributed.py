@@ -861,14 +861,12 @@ def _aggregate_metrics_across_towers(num_devices, out_labels, outs):
 def _get_input_from_iterator(iterator, model):
   """Get elements from the iterator and verify the input shape and type."""
   next_element = iterator.get_next()
-  # TODO(anjalisridhar): Support predict input correctly as it will not contain
-  # targets, only inputs.
-  if not isinstance(next_element, (list, tuple)) or len(next_element) != 2:
-    raise ValueError('Please provide model inputs as a list or tuple of 2 '
-                     'elements: input and target pair. '
-                     'Received %s' % next_element)
 
-  x, y = next_element
+  if isinstance(next_element, tuple):
+    x, y = next_element
+  else:
+    x = next_element
+    y = None
   # Validate that all the elements in x and y are of the same type and shape.
   # We can then pass the first element of x and y to `_standardize_weights`
   # below and be confident of the output.
