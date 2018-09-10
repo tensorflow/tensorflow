@@ -1292,3 +1292,9 @@ def ensure_shape(x, shape, name=None):
     shape = tensor_shape.TensorShape(shape)
 
   return array_ops.ensure_shape(x, shape, name=name)
+
+
+@ops.RegisterGradient('EnsureShape')
+def _ensure_shape_grad(op, grad):
+  del op  # Unused.
+  return grad

@@ -33,6 +33,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
@@ -818,6 +819,18 @@ class EnsureShapeTest(test.TestCase):
     feed_val = [[1], [2]]
     with self.test_session() as sess:
       sess.run(derived, feed_dict={placeholder: feed_val})
+
+  def testGradient(self):
+    placeholder = array_ops.placeholder(dtypes.float32)
+    derived = check_ops.ensure_shape(placeholder, (None, None))
+    gradient = gradients.gradients(derived, placeholder)
+
+    feed_val = [[4.0], [-1.0]]
+    with self.test_session() as sess:
+      gradient_values, = sess.run(gradient, feed_dict={placeholder: feed_val})
+
+    expected = [[1.0], [1.0]]
+    self.assertAllEqual(gradient_values, expected)
 
 
 class EnsureShapeBenchmark(test.Benchmark):
