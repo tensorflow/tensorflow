@@ -170,6 +170,8 @@ class InitializersTest(test.TestCase):
   def testVariablePlacementWithOrthogonalInitializer(self):
     if not context.context().num_gpus():
       self.skipTest('No devices other than CPUs found')
+    if test.is_built_with_rocm():
+      self.skipTest('ROCm does not yet support QR for orthogonal init')
     with ops.Graph().as_default() as g:
       with ops.device('gpu:0'):
         variable_scope.get_variable(
