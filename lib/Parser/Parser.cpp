@@ -1785,7 +1785,20 @@ public:
     // Handle delimiters.
     switch (delimiter) {
     case Delimiter::None:
-      break;
+      // Don't check for the absence of a delimiter if the number of operands
+      // is unknown (and hence the operand list could be empty).
+      if (requiredOperandCount == -1)
+        break;
+      // Token already matches an identifier and so can't be a delimiter.
+      if (parser.getToken().is(Token::percent_identifier))
+        break;
+      // Test against known delimiters.
+      if (parser.getToken().is(Token::l_paren) ||
+          parser.getToken().is(Token::l_square))
+        return emitError(startLoc, "unexpected delimiter");
+      return emitError(startLoc, "unable to parse '" +
+                                     parser.getTokenSpelling() +
+                                     "' as operand");
     case Delimiter::OptionalParen:
       if (parser.getToken().isNot(Token::l_paren))
         return false;

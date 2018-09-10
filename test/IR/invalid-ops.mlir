@@ -126,5 +126,20 @@ mlfunc @calls(%arg0 : i32) {
 
 cfgfunc @cfgfunc_with_ops(f32) {
 bb0(%a : f32):
-  %sf = addf(%a, %a) : f32  // expected-error {{custom op 'addf' expected 2 operands}}
+  %sf = addf %a, %a, %a : f32  // expected-error {{custom op 'addf' expected 2 operands}}
 }
+
+// -----
+
+cfgfunc @cfgfunc_with_ops(f32) {
+bb0(%a : f32):
+  %sf = addf(%a, %a) : f32  // expected-error {{unexpected delimiter}}
+}
+
+// -----
+
+cfgfunc @cfgfunc_with_ops(f32) {
+bb0(%a : f32):
+  %sf = addf{%a, %a} : f32  // expected-error {{unable to parse '{' as operand}}
+}
+
