@@ -216,7 +216,7 @@ class MetricsTest(test.TestCase):
     self.assertEqual(m1.numer.name, "has_space/numer:0")
 
   def testGraphWithPlaceholder(self):
-    with context.graph_mode(), self.test_session() as sess:
+    with context.graph_mode(), self.cached_session() as sess:
       m = metrics.Mean()
       p = array_ops.placeholder(dtypes.float32)
       accumulate = m(p)
@@ -309,7 +309,7 @@ class MetricsTest(test.TestCase):
     self.assertTrue(old_numer is m.numer)
 
   def testMetricsChain(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       m1 = metrics.Mean()
       m2 = metrics.Mean(name="m2")
       update_m2 = m2(3.0)
