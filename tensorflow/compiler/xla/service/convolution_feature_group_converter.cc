@@ -214,8 +214,8 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
     expanded_filter = add(HloInstruction::CreateConcatenate(
         expanded_filter_shape, concat_operands, input_feature_dim));
   }
-  auto zero = add(HloInstruction::CreateConstant(absl::make_unique<Literal>(
-      LiteralUtil::Zero(expanded_filter_shape.element_type()))));
+  auto zero = add(HloInstruction::CreateConstant(
+      LiteralUtil::Zero(expanded_filter_shape.element_type())));
   auto zero_filter =
       add(HloInstruction::CreateBroadcast(expanded_filter_shape, zero, {}));
   auto new_filter = add(

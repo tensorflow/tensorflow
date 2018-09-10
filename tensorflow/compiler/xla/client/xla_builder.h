@@ -2112,12 +2112,12 @@ XlaOp BatchNormGrad(const XlaOp& operand, const XlaOp& scale,
 
 template <typename NativeT>
 XlaOp XlaBuilder::ConstantR0(NativeT value) {
-  return ConstantLiteral(*LiteralUtil::CreateR0<NativeT>(value));
+  return ConstantLiteral(LiteralUtil::CreateR0<NativeT>(value));
 }
 
 template <typename NativeT>
 XlaOp XlaBuilder::ConstantR1(absl::Span<const NativeT> values) {
-  return ConstantLiteral(*LiteralUtil::CreateR1<NativeT>(values));
+  return ConstantLiteral(LiteralUtil::CreateR1<NativeT>(values));
 }
 
 template <typename NativeT>
@@ -2129,44 +2129,44 @@ XlaOp XlaBuilder::ConstantR1(int64 length, NativeT value) {
 }
 
 inline XlaOp XlaBuilder::ConstantR1(const tensorflow::core::Bitmap& values) {
-  return ConstantLiteral(*LiteralUtil::CreateR1(values));
+  return ConstantLiteral(LiteralUtil::CreateR1(values));
 }
 
 template <typename NativeT>
 XlaOp XlaBuilder::ConstantR2(
     std::initializer_list<std::initializer_list<NativeT>> values) {
-  return ConstantLiteral(*LiteralUtil::CreateR2<NativeT>(values));
+  return ConstantLiteral(LiteralUtil::CreateR2<NativeT>(values));
 }
 
 template <typename NativeT>
 XlaOp XlaBuilder::ConstantFromArrayWithLayout(const Array<NativeT>& values,
                                               const Layout& layout) {
   return ConstantLiteral(
-      *LiteralUtil::CreateFromArrayWithLayout<NativeT>(values, layout));
+      LiteralUtil::CreateFromArrayWithLayout<NativeT>(values, layout));
 }
 
 template <typename NativeT>
 XlaOp XlaBuilder::ConstantFromArray(const Array<NativeT>& values) {
-  return ConstantLiteral(*LiteralUtil::CreateFromArray<NativeT>(values));
+  return ConstantLiteral(LiteralUtil::CreateFromArray<NativeT>(values));
 }
 
 template <typename NativeT>
 XlaOp XlaBuilder::ConstantR2FromArray2DWithLayout(
     const Array2D<NativeT>& values, const Layout& layout) {
   return ConstantLiteral(
-      *LiteralUtil::CreateFromArrayWithLayout<NativeT>(values, layout));
+      LiteralUtil::CreateFromArrayWithLayout<NativeT>(values, layout));
 }
 
 template <typename NativeT>
 XlaOp XlaBuilder::ConstantR2FromArray2D(const Array2D<NativeT>& values) {
-  return ConstantLiteral(*LiteralUtil::CreateR2FromArray2D<NativeT>(values));
+  return ConstantLiteral(LiteralUtil::CreateR2FromArray2D<NativeT>(values));
 }
 
 template <typename NativeT>
 XlaOp XlaBuilder::ConstantR3FromArray3DWithLayout(
     const Array3D<NativeT>& values, const Layout& layout) {
   return ConstantLiteral(
-      *LiteralUtil::CreateR3FromArray3DWithLayout<NativeT>(values, layout));
+      LiteralUtil::CreateR3FromArray3DWithLayout<NativeT>(values, layout));
 }
 
 template <typename NativeT>
@@ -2189,12 +2189,12 @@ XlaOp XlaBuilder::ConstantR4FromArray4D(const Array4D<NativeT>& values) {
 
 template <typename NativeT>
 XlaOp ConstantR0(XlaBuilder* builder, NativeT value) {
-  return ConstantLiteral(builder, *LiteralUtil::CreateR0<NativeT>(value));
+  return ConstantLiteral(builder, LiteralUtil::CreateR0<NativeT>(value));
 }
 
 template <typename NativeT>
 XlaOp ConstantR1(XlaBuilder* builder, absl::Span<const NativeT> values) {
-  return ConstantLiteral(builder, *LiteralUtil::CreateR1<NativeT>(values));
+  return ConstantLiteral(builder, LiteralUtil::CreateR1<NativeT>(values));
 }
 
 template <typename NativeT>
@@ -2207,13 +2207,13 @@ XlaOp ConstantR1(XlaBuilder* builder, int64 length, NativeT value) {
 
 inline XlaOp ConstantR1(XlaBuilder* builder,
                         const tensorflow::core::Bitmap& values) {
-  return ConstantLiteral(builder, *LiteralUtil::CreateR1(values));
+  return ConstantLiteral(builder, LiteralUtil::CreateR1(values));
 }
 
 template <typename NativeT>
 XlaOp ConstantR2(XlaBuilder* builder,
                  std::initializer_list<std::initializer_list<NativeT>> values) {
-  return ConstantLiteral(builder, *LiteralUtil::CreateR2<NativeT>(values));
+  return ConstantLiteral(builder, LiteralUtil::CreateR2<NativeT>(values));
 }
 
 template <typename NativeT>
@@ -2221,14 +2221,13 @@ XlaOp ConstantFromArrayWithLayout(XlaBuilder* builder,
                                   const Array<NativeT>& values,
                                   const Layout& layout) {
   return ConstantLiteral(
-      builder,
-      *LiteralUtil::CreateFromArrayWithLayout<NativeT>(values, layout));
+      builder, LiteralUtil::CreateFromArrayWithLayout<NativeT>(values, layout));
 }
 
 template <typename NativeT>
 XlaOp ConstantFromArray(XlaBuilder* builder, const Array<NativeT>& values) {
   return ConstantLiteral(builder,
-                         *LiteralUtil::CreateFromArray<NativeT>(values));
+                         LiteralUtil::CreateFromArray<NativeT>(values));
 }
 
 template <typename NativeT>
@@ -2236,15 +2235,14 @@ XlaOp ConstantR2FromArray2DWithLayout(XlaBuilder* builder,
                                       const Array2D<NativeT>& values,
                                       const Layout& layout) {
   return ConstantLiteral(
-      builder,
-      *LiteralUtil::CreateFromArrayWithLayout<NativeT>(values, layout));
+      builder, LiteralUtil::CreateFromArrayWithLayout<NativeT>(values, layout));
 }
 
 template <typename NativeT>
 XlaOp ConstantR2FromArray2D(XlaBuilder* builder,
                             const Array2D<NativeT>& values) {
   return ConstantLiteral(builder,
-                         *LiteralUtil::CreateR2FromArray2D<NativeT>(values));
+                         LiteralUtil::CreateR2FromArray2D<NativeT>(values));
 }
 
 template <typename NativeT>
@@ -2253,7 +2251,7 @@ XlaOp ConstantR3FromArray3DWithLayout(XlaBuilder* builder,
                                       const Layout& layout) {
   return ConstantLiteral(
       builder,
-      *LiteralUtil::CreateR3FromArray3DWithLayout<NativeT>(values, layout));
+      LiteralUtil::CreateR3FromArray3DWithLayout<NativeT>(values, layout));
 }
 
 template <typename NativeT>

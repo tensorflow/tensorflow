@@ -555,10 +555,10 @@ TEST_F(TuplePointsToAnalysisTest, PointsToTupleConstantElements) {
   // Construct a tuple constant and kCopy it. Verify the points-to set of the
   // copy correctly correctly points into the nested elements of the constant.
   auto builder = HloComputation::Builder(TestName());
-  auto tuple_constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::MakeTuple(
-          {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}).get(),
-           LiteralUtil::CreateR1<float>({2.0, 42}).get()})));
+  Literal elements[] = {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}),
+                        LiteralUtil::CreateR1<float>({2.0, 42})};
+  auto tuple_constant = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::MakeTuple({&elements[0], &elements[1]})));
   auto copy = builder.AddInstruction(HloInstruction::CreateUnary(
       tuple_constant->shape(), HloOpcode::kCopy, tuple_constant));
 

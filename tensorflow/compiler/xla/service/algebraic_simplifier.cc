@@ -205,7 +205,7 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   HloInstruction* AddReduce(HloInstruction* hlo, int64 dim) {
     HloInstruction* zero =
         computation_->AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::Zero(hlo->shape().element_type()).CloneToUnique()));
+            LiteralUtil::Zero(hlo->shape().element_type()).Clone()));
     HloComputation* AddReduce_computation = GetOrCreateScalarAddComputation();
     Shape shape = ShapeUtil::DeleteDimension(dim, hlo->shape());
     return computation_->AddInstruction(HloInstruction::CreateReduce(
@@ -527,7 +527,7 @@ static HloInstruction* BuildTupleConstant(HloComputation* computation,
     return computation->AddInstruction(HloInstruction::CreateTuple(elems));
   } else {
     return computation->AddInstruction(
-        HloInstruction::CreateConstant(literal.CloneToUnique()));
+        HloInstruction::CreateConstant(literal.Clone()));
   }
 }
 
@@ -546,7 +546,7 @@ Status AlgebraicSimplifierVisitor::HandleConstant(HloInstruction* constant) {
   // If a literal is all the same element replace it with a scalar broadcast.
   if (ShapeUtil::ElementsIn(constant->shape()) > 1 &&
       constant->literal().IsAllFirst()) {
-    std::unique_ptr<Literal> unique_scalar = absl::make_unique<Literal>(
+    Literal unique_scalar(
         LiteralUtil::GetFirstScalarLiteral(constant->literal()));
     HloInstruction* scalar = computation_->AddInstruction(
         HloInstruction::CreateConstant(std::move(unique_scalar)));
@@ -676,7 +676,7 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
         return Status::OK();
     }
     auto inverse = computation_->AddInstruction(
-        HloInstruction::CreateConstant((new_literal.CloneToUnique())));
+        HloInstruction::CreateConstant((new_literal.Clone())));
     TF_ASSIGN_OR_RETURN(auto new_divide,
                         MakeBinaryHlo(HloOpcode::kMultiply, a, inverse));
     return ReplaceInstruction(divide, new_divide);
@@ -1469,7 +1469,7 @@ Status AlgebraicSimplifierVisitor::HandleIota(HloInstruction* instruction) {
   auto* iota = Cast<HloIotaInstruction>(instruction);
   if (iota->shape().dimensions(iota->iota_dimension()) <= 1) {
     auto zero = computation_->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::Zero(iota->shape().element_type()).CloneToUnique()));
+        LiteralUtil::Zero(iota->shape().element_type()).Clone()));
     return ReplaceWithNewInstruction(
         iota, HloInstruction::CreateBroadcast(iota->shape(), zero, {}));
   }
@@ -1572,7 +1572,7 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
   CHECK(Match(power, m::Power(m::Op(&lhs), m::Op(&rhs))));
   if (IsAll(rhs, 0)) {
     auto one = HloInstruction::CreateConstant(
-        LiteralUtil::One(power->shape().element_type()).CloneToUnique());
+        LiteralUtil::One(power->shape().element_type()).Clone());
     std::unique_ptr<HloInstruction> ones;
     if (ShapeUtil::IsScalar(power->shape())) {
       ones = std::move(one);
@@ -1607,7 +1607,7 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
   VLOG(10) << "trying transform [pow(A, -1) => 1/A]: " << power->ToString();
   if (IsAll(rhs, -1)) {
     auto* one = computation_->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::One(rhs->shape().element_type()).CloneToUnique()));
+        LiteralUtil::One(rhs->shape().element_type()).Clone()));
 
     // Explicitly broadcast scalar 1 to the output shape, to avoid implicit
     // broadcast in divide HLO as we are trying to eliminate implicit
@@ -2062,7 +2062,7 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
       if (!converted_pad_literal.ok()) {
         return false;
       }
-      return *converted_pad_literal.ValueOrDie() == reduce_init_literal;
+      return converted_pad_literal.ValueOrDie() == reduce_init_literal;
     };
     // The pad value is usually a constant, so we handle that case and do not
     // try to get more fancy about proving equivalence in cases beyond that.
@@ -2223,8 +2223,7 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
         HloInstruction::CreateBroadcast(
             convolution->shape(),
             computation_->AddInstruction(HloInstruction::CreateConstant(
-                LiteralUtil::Zero(convolution->shape().element_type())
-                    .CloneToUnique())),
+                LiteralUtil::Zero(convolution->shape().element_type()))),
             {}));
   }
 

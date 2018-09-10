@@ -213,16 +213,15 @@ Status XlaOpKernelContext::ConstantInputReshaped(
         context_->op_kernel().name(), " input ", index,
         ".\nError: ", constant_graph.status().error_message());
   }
-  xla::StatusOr<std::unique_ptr<xla::Literal>> computed =
-      compiler()->client()->ComputeConstant(constant_graph.ValueOrDie(),
-                                            &layout);
+  xla::StatusOr<xla::Literal> computed = compiler()->client()->ComputeConstant(
+      constant_graph.ValueOrDie(), &layout);
   if (!computed.ok()) {
     return errors::Internal("Error evaluating ", context_->op_kernel().name(),
                             " input ", index,
                             " as a compile-time constant.\nError: ",
                             computed.status().error_message());
   }
-  *constant_literal = std::move(*computed.ValueOrDie());
+  *constant_literal = std::move(computed).ValueOrDie();
 
   return Status::OK();
 }

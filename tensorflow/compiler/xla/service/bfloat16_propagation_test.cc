@@ -163,10 +163,10 @@ TEST_F(BFloat16PropagationTest, ConvertConstantLiteral) {
   EXPECT_EQ(dot->operand(0)->opcode(), HloOpcode::kConstant);
   EXPECT_EQ(dot->operand(1)->opcode(), HloOpcode::kConstant);
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *LiteralUtil::ConvertF32ToBF16(*LiteralUtil::CreateFromArray(array_a)),
+      LiteralUtil::ConvertF32ToBF16(LiteralUtil::CreateFromArray(array_a)),
       dot->operand(0)->literal()));
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *LiteralUtil::ConvertF32ToBF16(*LiteralUtil::CreateFromArray(array_b)),
+      LiteralUtil::ConvertF32ToBF16(LiteralUtil::CreateFromArray(array_b)),
       dot->operand(1)->literal()));
 }
 

@@ -81,8 +81,8 @@ Status TransferToInfeedLocalReplica(const Literal& literal,
   return client->TransferToInfeedLocal(literal, device_ordinal);
 }
 
-StatusOr<std::unique_ptr<Literal>> TransferFromOutfeedLocalReplica(
-    const Shape& shape, int replica_number) {
+StatusOr<Literal> TransferFromOutfeedLocalReplica(const Shape& shape,
+                                                  int replica_number) {
   VLOG(1) << "Outfeeding literal from replica number: " << replica_number
           << " shape: " << shape;
   LocalClient* client = GetOrCreateLocalClient();
@@ -141,9 +141,8 @@ StatusOr<LocalShapedBuffer*> LocalShapedBuffer::FromLiteral(
   LocalClient* client = GetOrCreateLocalClient();
   StatusOr<ScopedShapedBuffer> buf = [&] {
     if (shape_with_layout) {
-      std::unique_ptr<Literal> relaid =
-          argument.Relayout(shape_with_layout.value());
-      return ToBuffer(client, /*device_ordinal=*/0, *relaid);
+      Literal relaid = argument.Relayout(shape_with_layout.value());
+      return ToBuffer(client, /*device_ordinal=*/0, relaid);
     }
     return ToBuffer(client, /*device_ordinal=*/0, argument);
   }();
@@ -151,7 +150,7 @@ StatusOr<LocalShapedBuffer*> LocalShapedBuffer::FromLiteral(
   return new LocalShapedBuffer(std::move(buf).ValueOrDie());
 }
 
-StatusOr<std::unique_ptr<Literal>> LocalShapedBuffer::ToLiteral() const {
+StatusOr<Literal> LocalShapedBuffer::ToLiteral() const {
   LocalClient* client = GetOrCreateLocalClient();
   return client->ShapedBufferToLiteral(*shaped_buffer());
 }
@@ -160,7 +159,7 @@ CompiledLocalComputation::CompiledLocalComputation(
     std::unique_ptr<LocalExecutable> executable)
     : executable_(std::move(executable)) {}
 
-StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
+StatusOr<Literal> CompiledLocalComputation::Execute(
     const std::vector<Literal>& arguments,
     const std::vector<absl::optional<Shape>>& shapes_with_layout) {
   LocalClient* client = GetOrCreateLocalClient();
@@ -169,7 +168,7 @@ StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
 
   // Each replica populates a StatusOr result, but only replica zero actually
   // retrieves its literal value.
-  std::vector<StatusOr<std::unique_ptr<Literal>>> results(GetReplicaCount());
+  std::vector<StatusOr<Literal>> results(GetReplicaCount());
   {
     tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "xlarun",
                                         GetReplicaCount());
@@ -198,9 +197,8 @@ StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
 
               StatusOr<ScopedShapedBuffer> pushed;
               if (shape_with_layout) {
-                std::unique_ptr<Literal> relaid =
-                    argument.Relayout(shape_with_layout.value());
-                pushed = ToBuffer(client, device_ordinal, *relaid);
+                Literal relaid = argument.Relayout(shape_with_layout.value());
+                pushed = ToBuffer(client, device_ordinal, relaid);
               } else {
                 pushed = ToBuffer(client, device_ordinal, argument);
               }

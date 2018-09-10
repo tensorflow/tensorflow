@@ -175,7 +175,7 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   TF_ASSERT_OK_AND_ASSIGN(auto literal,
                           LiteralUtil::CreateRandomLiteral<F32>(
                               ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
-  auto literal_clone = literal->Literal::CloneToUnique();
+  auto literal_clone = literal.Clone();
   HloInstruction* literal_instruction = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
   Shape shape = ShapeUtil::MakeShape(F32, {8, 7, 11, 9, 5});
@@ -198,7 +198,7 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   root->literal().EachCell<NativeT>(
       [&](absl::Span<const int64> indices, NativeT value) {
         std::vector<int64> rindexes = Permute(permutation, indices);
-        matched = matched && (value == literal_clone->Get<NativeT>(rindexes));
+        matched = matched && (value == literal_clone.Get<NativeT>(rindexes));
       });
   EXPECT_TRUE(matched);
 }
