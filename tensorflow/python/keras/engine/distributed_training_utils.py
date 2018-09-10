@@ -287,3 +287,11 @@ def configure_and_create_session(distribution_strategy):
     session = session_module.Session(config=session_config)
 
   K.set_session(session)
+
+
+def get_batch_dimension(iterator):
+  shapes = nest.flatten(iterator.output_shapes)
+  # Take the batch size from the first element, as it should be the same for
+  # all.
+  dims = shapes[0].dims
+  return dims[0] if dims else None
