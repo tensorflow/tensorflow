@@ -62,6 +62,15 @@ git merge upstream/master --no-edit
     `#if GOOGLE_CUDA`. Apply necessary changes to kernel call sites follow
     conventions set in other operators.
 
+- upstream failures
+  - When a ROCm reason cannot be determined for a newly failing test, attempt
+    to roll back any source files related to the failing test to known working
+    commits, e.g., the previous weekly merge.  Look for any differences.  By 
+    the end of the week, look at the most recent commits in case the bug was 
+    found and fixed upstream.  Cherry-pick and verify the fix.  In the meantime, 
+    whitelist the failure and indicate it is an upstream failure so that it can 
+    be restored as soon as possible.
+
 ### Build merged TensorFlow
 - Build with either `build` or `build_python3` script. Make sure everything
   builds fine and Python PIP whl package can be built.
@@ -86,7 +95,7 @@ git merge upstream/master --no-edit
 
 - Document the list of excluded tests amending the commit. Also update:
 
-  [URL to be supplied by JeffP]
+  http://confluence.amd.com/display/MLSE/Tensorflow+Unit+Tests+Status
 
 - Push to the working branch once again to let the pull request be tested
   again. Repeat the process until we see a green check mark on the PR.
