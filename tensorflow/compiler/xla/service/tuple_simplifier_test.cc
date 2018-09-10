@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
@@ -34,7 +34,7 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace {
 
-class TupleSimplifierTest : public HloTestBase {
+class TupleSimplifierTest : public HloVerifiedTestBase {
  protected:
   void Run(HloModule* module, bool change_expected) {
     TupleSimplifier simplifier;
@@ -68,7 +68,7 @@ TEST_F(TupleSimplifierTest, TupleOfParameters) {
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
-  Run(module.get(), /*change_expected=*/false);
+  Run(module, /*change_expected=*/false);
 }
 
 TEST_F(TupleSimplifierTest, GteOfTupleOfParameter) {
@@ -81,7 +81,7 @@ TEST_F(TupleSimplifierTest, GteOfTupleOfParameter) {
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
-  Run(module.get(), /*change_expected=*/false);
+  Run(module, /*change_expected=*/false);
 }
 
 TEST_F(TupleSimplifierTest, GteOfTuple) {
@@ -103,7 +103,7 @@ TEST_F(TupleSimplifierTest, GteOfTuple) {
 
   EXPECT_THAT(computation->root_instruction(), gte);
 
-  Run(module.get(), /*change_expected=*/true);
+  Run(module, /*change_expected=*/true);
 
   EXPECT_THAT(computation->root_instruction(), param1);
 }
@@ -131,7 +131,7 @@ TEST_F(TupleSimplifierTest, GteOfTupleChain) {
   EXPECT_THAT(computation->root_instruction(),
               op::Negate(op::GetTupleElement(op::Tuple())));
 
-  Run(module.get(), /*change_expected=*/true);
+  Run(module, /*change_expected=*/true);
 
   EXPECT_THAT(computation->root_instruction(), op::Negate(op::Parameter()));
 }
@@ -162,7 +162,7 @@ TEST_F(TupleSimplifierTest, NestedGteOfTuples) {
 
   EXPECT_THAT(computation->root_instruction(), element);
 
-  Run(module.get(), /*change_expected=*/true);
+  Run(module, /*change_expected=*/true);
 
   EXPECT_THAT(computation->root_instruction(), param);
 }
@@ -187,7 +187,7 @@ TEST_F(TupleSimplifierTest, TupleOfGteInstructions) {
 
   EXPECT_THAT(computation->root_instruction(), tuple);
 
-  Run(module.get(), /*change_expected=*/true);
+  Run(module, /*change_expected=*/true);
 
   EXPECT_THAT(computation->root_instruction(), tuple_param);
 }
@@ -212,7 +212,7 @@ TEST_F(TupleSimplifierTest, IncompatibleTuples) {
 
   EXPECT_THAT(computation->root_instruction(), tuple);
 
-  Run(module.get(), /*change_expected=*/false);
+  Run(module, /*change_expected=*/false);
 
   EXPECT_THAT(computation->root_instruction(), tuple);
 }
@@ -281,7 +281,7 @@ TEST_F(TupleSimplifierTest, CanExcludeEntryComputation) {
     entry = module->AddEntryComputation(builder.Build());
   }
 
-  Run(module.get(), /*change_expected=*/true, /*exclude_entry=*/ true);
+  Run(module, /*change_expected=*/true, /*exclude_entry=*/true);
 
   EXPECT_THAT(c0->root_instruction(), p0);
   EXPECT_THAT(c1->root_instruction(), p1);
