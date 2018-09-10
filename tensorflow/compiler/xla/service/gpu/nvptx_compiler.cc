@@ -208,10 +208,6 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
     pipeline.AddPass<CudnnConvolutionRewriter>();
-    // CudnnConvolutionRewriter may add instructions of the form
-    // reverse(constant), which it expects will be simplified by constant
-    // folding.
-    pipeline.AddPass<HloConstantFolding>();
     pipeline.AddPass<PadInsertion>();
     if (IsVoltaOrLater(*stream_exec)) {
       pipeline.AddPass<PadForTensorCores>();
@@ -219,6 +215,9 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       // pairs that TupleSimplifier fixes.
       pipeline.AddPass<TupleSimplifier>();
     }
+    // CudnnConvolutionRewriter, PadInsertion and PadForTensorCores may add
+    // instructions which can be simplified by constant folding.
+    pipeline.AddPass<HloConstantFolding>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
