@@ -27,8 +27,12 @@ from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import distributed_training_utils
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import distribute as distribute_lib
+
+
+# TODO(priyag, sourabhbajaj): Refactor this file to address code duplication.
 
 
 def fit_loop(
@@ -41,13 +45,13 @@ def fit_loop(
     initial_epoch=0,
     steps_per_epoch=None,
     validation_steps=None):
-  """fit function when using DistributionStrategy for training.
+  """Fit loop for training with DistributionStrategy.
 
   Arguments:
       model: Keras Model instance.
       iterator: Iterator for input data.
       epochs: Number of times to iterate over the data
-      verbose: Verbosity mode, 0, 1 or 2
+      verbose: Integer, Verbosity mode, 0, 1 or 2
       callbacks: List of callbacks to be called during training
       val_iterator: Iterator for validation data.
       initial_epoch: Epoch at which to start training
@@ -73,8 +77,8 @@ def fit_loop(
         model, iterator, epochs, verbose, callbacks, initial_epoch,
         steps_per_epoch)
 
-  clone_model_on_towers(
-      model, current_strategy, make_callback_model=True)
+  if not model._grouped_model:
+    clone_model_on_towers(model, current_strategy, make_callback_model=True)
 
   def _per_device_train_function(model):
     model._make_train_function()
@@ -206,13 +210,13 @@ def _experimental_fit_loop(
     callbacks=None,
     initial_epoch=0,
     steps_per_epoch=None):
-  """fit function when using TPU DistributionStrategy for training.
+  """Fit loop for training with TPU DistributionStrategy.
 
   Arguments:
       model: Keras Model instance.
       iterator: Iterator that returns inputs and targets
       epochs: Number of times to iterate over the data
-      verbose: Verbosity mode, 0, 1 or 2
+      verbose: Integer, Verbosity mode, 0, 1 or 2
       callbacks: List of callbacks to be called during training
       initial_epoch: Epoch at which to start training
           (useful for resuming a previous training run)
@@ -244,7 +248,9 @@ def _experimental_fit_loop(
 
   def step_fn(ctx, inputs, targets):
     """Clones the model and calls make_train_function."""
-    # TODO(priyag, sourabhbajaj): Should cache this keyed on input shapes.
+    # TODO(priyag, sourabhbajaj): The model gets cloned every time
+    # fit/test/predict is called. We should look into caching this keyed on
+    # input shapes.
     clone_model_on_towers(
         model,
         current_strategy,
@@ -258,19 +264,22 @@ def _experimental_fit_loop(
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
          current_strategy, grouped_inputs, grouped_outputs,
-         grouped_updates, grouped_session_args, with_loss_tensor=True)
+         grouped_updates, grouped_session_args)
     combined_fn = K.Function(
         all_inputs, all_outputs,
         updates=all_updates,
         name='distributed_train_function',
         **all_session_args)
 
-    # TODO(priyag, sourabhbajaj): Perhaps the aggregation type needs to be
-    # something else for different outputs.
     out_labels = model.metrics_names or []
     for label, output in zip(out_labels, combined_fn.outputs):
-      ctx.set_last_step_output(label, output,
-                               aggregation=distribute_lib.get_loss_reduction())
+      if label == 'loss':
+        aggregation = distribute_lib.get_loss_reduction()
+      else:
+        # We aggregate all other metrics using mean for now. This is temporary
+        # workaround until new metrics are in place.
+        aggregation = variable_scope.VariableAggregation.MEAN
+      ctx.set_last_step_output(label, output, aggregation)
 
     # TODO(priyag, sourabhbajaj): Ignoring these things from the combined_fn:
     # feed_dict, session kwargs, run options, run_metadata for now. These should
@@ -324,10 +333,9 @@ def _experimental_fit_loop(
     callbacks.on_epoch_begin(epoch)
     epoch_logs = {}
     for step_index in range(0, steps_per_epoch, current_strategy.steps_per_run):
-      # TODO(sourabhbajaj): Add the size parameter in batch_logs once callbacks
-      # are fixed as we need to replace size with a combination of steps_per_run
+      # TODO(sourabhbajaj): Replace size with a combination of steps_per_run
       # and batch_size
-      batch_logs = {'batch': step_index}
+      batch_logs = {'batch': step_index, 'size': 1}
       callbacks.on_batch_begin(step_index, batch_logs)
       try:
         _, outputs = K.get_session().run([train_op, output_tensors])
@@ -360,12 +368,12 @@ def _experimental_fit_loop(
 
 
 def test_loop(model, iterator, verbose=0, steps=None):
-  """evaluate method to validate a model that uses DistributionStrategy.
+  """Test loop for evaluating with DistributionStrategy.
 
   Arguments:
       model: Keras Model instance.
       iterator: Iterator for input data.
-      verbose: verbosity mode.
+      verbose: Integer, Verbosity mode 0 or 1.
       steps: Total number of steps (batches of samples)
           before declaring predictions finished.
           Ignored with the default value of `None`.
@@ -374,11 +382,16 @@ def test_loop(model, iterator, verbose=0, steps=None):
       Scalar loss (if the model has a single output and no metrics)
       or list of scalars (if the model has multiple outputs
       and/or metrics). The attribute `model.metrics_names` will give you
-      the display labels for the scalar outputs.
+      the display labels for the outputs.
   """
   current_strategy = model._distribution_strategy
 
-  clone_model_on_towers(model, current_strategy)
+  # TODO(priyag, sourabhbajaj): Remove this when the codepaths are merged.
+  if current_strategy.__class__.__name__ == 'TPUStrategy':
+    return _experimental_test_loop(model, iterator, verbose, steps)
+
+  if not model._grouped_model:
+    clone_model_on_towers(model, current_strategy)
 
   def _per_device_test_function(model):
     model._make_test_function()
@@ -429,25 +442,136 @@ def test_loop(model, iterator, verbose=0, steps=None):
     distributed_training_utils.set_weights(
         current_strategy, distributed_model, orig_model_weights)
 
-  if steps is not None:
-    for step in range(steps):
-      batch_outs = distributed_test_function(ins)
-      batch_outs = _aggregate_metrics_across_towers(
-          current_strategy.num_towers, model.metrics_names, batch_outs)
-      if isinstance(batch_outs, list):
-        if step == 0:
-          for _ in enumerate(batch_outs):
-            outs.append(0.)
-        for i, batch_out in enumerate(batch_outs):
-          outs[i] += batch_out
+  assert steps is not None
+  for step in range(steps):
+    batch_outs = distributed_test_function(ins)
+    batch_outs = _aggregate_metrics_across_towers(
+        current_strategy.num_towers, model.metrics_names, batch_outs)
+    if isinstance(batch_outs, list):
+      if step == 0:
+        outs = [0.] * len(batch_outs)
+      for i, batch_out in enumerate(batch_outs):
+        outs[i] += batch_out
+    else:
+      if step == 0:
+        outs.append(0.)
+      outs[0] += batch_outs
+    if verbose >= 1:
+      progbar.update(step + 1)
+  for i in range(len(outs)):
+    outs[i] /= steps
+
+  if len(outs) == 1:
+    return outs[0]
+  return outs
+
+
+def _experimental_test_loop(model, iterator, verbose=0, steps=None):
+  """Test loop for evaluating with TPU DistributionStrategy.
+
+  Arguments:
+      model: Keras Model instance.
+      iterator: Iterator for input data.
+      verbose: Integer, Verbosity mode 0 or 1.
+      steps: Total number of steps (batches of samples)
+          before declaring predictions finished.
+          Ignored with the default value of `None`.
+
+  Returns:
+      Scalar loss (if the model has a single output and no metrics)
+      or list of scalars (if the model has multiple outputs
+      and/or metrics). The attribute `model.metrics_names` will give you
+      the display labels for the outputs.
+  """
+  current_strategy = model._distribution_strategy
+  K.get_session().run(current_strategy.initialize())
+
+  def _per_device_test_function(model):
+    model._make_test_function()
+    return (model.test_function.inputs,
+            model.test_function.outputs,
+            model.test_function.updates_op,
+            model.test_function.session_kwargs)
+
+  # TODO(priyag, sourabhbajaj): This should likely not be hardcoded here.
+  K.set_learning_phase(0)
+
+  def step_fn(ctx, inputs, targets):
+    """Clones the model and calls make_test_function."""
+    # TODO(priyag, sourabhbajaj): The model gets cloned every time
+    # fit/test/predict is called. We should look into caching this keyed on
+    # input shapes.
+    clone_model_on_towers(
+        model,
+        current_strategy,
+        make_callback_model=False,
+        inputs=inputs,
+        targets=targets)
+
+    (grouped_inputs, grouped_outputs, grouped_updates,
+     grouped_session_args) = current_strategy.call_for_each_tower(
+         _per_device_test_function, model._grouped_model)
+
+    (all_inputs, all_outputs, all_updates,
+     all_session_args) = distributed_training_utils.unwrap_values(
+         current_strategy, grouped_inputs, grouped_outputs, grouped_updates,
+         grouped_session_args)
+
+    combined_fn = K.Function(
+        all_inputs, all_outputs,
+        updates=all_updates,
+        name='distributed_test_function',
+        **all_session_args)
+
+    for label, output in zip(model.metrics_names, combined_fn.outputs):
+      if label == 'loss':
+        aggregation = distribute_lib.get_loss_reduction()
       else:
-        if step == 0:
-          outs.append(0.)
-        outs[0] += batch_outs
-      if verbose == 1:
-        progbar.update(step + 1)
-    for i in range(len(outs)):
-      outs[i] /= steps
+        # We aggregate all other metrics using mean for now. This is temporary
+        # workaround until new metrics are in place.
+        aggregation = variable_scope.VariableAggregation.MEAN
+      ctx.set_last_step_output(label, output, aggregation)
+
+    return combined_fn.updates_op
+
+  # Add initial dummy values for loss and other metric tensors.
+  initial_loop_values = {}
+  initial_loop_values['loss'] = constant_op.constant(1e7)
+  for name, tensor in zip(model.metrics_names[1:], model.metrics_tensors):
+    initial_loop_values[name] = array_ops.zeros(tensor.shape, tensor.dtype)
+
+  with current_strategy.scope():
+    # TODO(priyag): Use steps_per_run when we use new metrics as they will
+    # allow handling metric computation at each step using variables.
+    ctx = current_strategy.run_steps_on_dataset(
+        step_fn, iterator, iterations=1,
+        initial_loop_values=initial_loop_values)
+
+  test_op = ctx.run_op
+  output_tensors = ctx.last_step_outputs
+
+  if verbose == 1:
+    progbar = Progbar(target=steps)
+
+  # Copy the weights from the original model to each of the replicated models.
+  orig_model_weights = model.get_weights()
+  with current_strategy.scope():
+    distributed_model = current_strategy.unwrap(model._grouped_model)[0]
+    distributed_training_utils.set_weights(
+        current_strategy, distributed_model, orig_model_weights)
+
+  assert steps is not None
+  outs = [0.] * len(model.metrics_names)
+  for step in range(steps):
+    _, batch_outs = K.get_session().run([test_op, output_tensors])
+    for i, label in enumerate(model.metrics_names):
+      outs[i] += batch_outs[label]
+    if verbose >= 1:
+      progbar.update(step + 1)
+  for i in range(len(outs)):
+    outs[i] /= (steps)
+
+  K.get_session().run(current_strategy.finalize())
 
   if len(outs) == 1:
     return outs[0]
@@ -455,12 +579,12 @@ def test_loop(model, iterator, verbose=0, steps=None):
 
 
 def predict_loop(model, iterator, verbose=0, steps=None):
-  """Abstract method to loop over some data in batches.
+  """Predict loop for predicting with DistributionStrategy.
 
   Arguments:
       model: Keras Model instance.
       iterator: Iterator for input data.
-      verbose: verbosity mode.
+      verbose: Integer, Verbosity mode 0 or 1.
       steps: Total number of steps (batches of samples)
           before declaring `_predict_loop` finished.
           Ignored with the default value of `None`.
@@ -472,7 +596,12 @@ def predict_loop(model, iterator, verbose=0, steps=None):
   """
   current_strategy = model._distribution_strategy
 
-  clone_model_on_towers(model, current_strategy)
+  # TODO(priyag, sourabhbajaj): Remove this when the codepaths are merged.
+  if current_strategy.__class__.__name__ == 'TPUStrategy':
+    return _experimental_predict_loop(model, iterator, verbose, steps)
+
+  if not model._grouped_model:
+    clone_model_on_towers(model, current_strategy)
 
   def _per_device_predict_function(model):
     model._make_predict_function()
@@ -528,9 +657,11 @@ def predict_loop(model, iterator, verbose=0, steps=None):
       if step == 0:
         for _ in batch_outs:
           unconcatenated_outs.append([])
+      # TODO(anjalisridhar): Should combine the outputs from multiple towers
+      # correctly here.
       for i, batch_out in enumerate(batch_outs):
         unconcatenated_outs[i].append(batch_out)
-      if verbose == 1:
+      if verbose >= 1:
         progbar.update(step + 1)
     if len(unconcatenated_outs) == 1:
       return np.concatenate(unconcatenated_outs[0], axis=0)
@@ -538,6 +669,122 @@ def predict_loop(model, iterator, verbose=0, steps=None):
         np.concatenate(unconcatenated_outs[i], axis=0)
         for i in range(len(unconcatenated_outs))
     ]
+
+
+def _experimental_predict_loop(model, iterator, verbose=0, steps=None):
+  """Predict loop for predicting with TPU DistributionStrategy.
+
+  Arguments:
+      model: Keras Model instance.
+      iterator: Iterator for input data.
+      verbose: Integer, Verbosity mode 0 or 1.
+      steps: Total number of steps (batches of samples)
+          before declaring `_predict_loop` finished.
+          Ignored with the default value of `None`.
+
+  Returns:
+      Array of predictions (if the model has a single output)
+      or list of arrays of predictions
+      (if the model has multiple outputs).
+  """
+  current_strategy = model._distribution_strategy
+  K.get_session().run(current_strategy.initialize())
+
+  # TODO(priyag, sourabhbajaj): This should likely not be hardcoded here.
+  K.set_learning_phase(0)
+
+  def _per_device_predict_function(model):
+    model._make_predict_function()
+    return (model.predict_function.inputs,
+            model.predict_function.outputs,
+            model.predict_function.updates_op,
+            model.predict_function.session_kwargs)
+
+  def step_fn(ctx, inputs, targets):
+    """Clones the model and calls make_predict_function."""
+
+    # TODO(anjalisridhar): Support predict input correctly as it will not
+    # contain targets, only inputs.
+    del targets
+
+    # TODO(priyag, sourabhbajaj): The model gets cloned every time
+    # fit/test/predict is called. We should look into caching this keyed on
+    # input shapes.
+    clone_model_on_towers(
+        model,
+        current_strategy,
+        make_callback_model=False,
+        inputs=inputs)
+
+    (grouped_inputs, grouped_outputs, grouped_updates,
+     grouped_session_args) = current_strategy.call_for_each_tower(
+         _per_device_predict_function, model._grouped_model)
+
+    (all_inputs, all_outputs, all_updates,
+     all_session_args) = distributed_training_utils.unwrap_values(
+         current_strategy, grouped_inputs, grouped_outputs, grouped_updates,
+         grouped_session_args)
+
+    combined_fn = K.Function(
+        all_inputs, all_outputs,
+        updates=all_updates,
+        name='distributed_predict_function',
+        **all_session_args)
+
+    for label, output in zip(model.output_names, combined_fn.outputs):
+      ctx.set_last_step_output(label, output)
+
+    return combined_fn.updates_op
+
+  # Add initial dummy values for outputs.
+  initial_loop_values = {}
+  batch_dimension = distributed_training_utils.get_batch_dimension(iterator)
+  for name, tensor in zip(model.output_names, model.outputs):
+    # TODO(priyag): This is a workaround as we do not know the batch dimension
+    # of the model's output at this point.
+    tensor.shape.dims = [batch_dimension] + tensor.shape.dims[1:]
+    initial_loop_values[name] = array_ops.zeros(tensor.shape, tensor.dtype)
+
+  with current_strategy.scope():
+    # TODO(priyag, sourabhbajaj): Support steps_per_run if/when we add outfeed.
+    ctx = current_strategy.run_steps_on_dataset(
+        step_fn, iterator, iterations=1,
+        initial_loop_values=initial_loop_values)
+
+  predict_op = ctx.run_op
+  output_tensors = ctx.last_step_outputs
+
+  if verbose == 1:
+    progbar = Progbar(target=steps)
+
+  # Copy the weights from the original model to each of the replicated models.
+  orig_model_weights = model.get_weights()
+  with current_strategy.scope():
+    distributed_model = current_strategy.unwrap(model._grouped_model)[0]
+    distributed_training_utils.set_weights(
+        current_strategy, distributed_model, orig_model_weights)
+
+  assert steps is not None
+  # Since we do not know how many samples we will see, we cannot pre-allocate
+  # the returned Numpy arrays. Instead, we store one array per batch seen
+  # and concatenate them upon returning.
+  unconcatenated_outs = [[] for _ in model.outputs]
+  for step in range(steps):
+    _, batch_outs = K.get_session().run([predict_op, output_tensors])
+    # TODO(priyag): maybe need to unwrap the outputs first for MirroredStrategy.
+    for i, label in enumerate(model.output_names):
+      unconcatenated_outs[i].extend(batch_outs[label])
+    if verbose >= 1:
+      progbar.update(step + 1)
+
+  K.get_session().run(current_strategy.finalize())
+
+  if len(unconcatenated_outs) == 1:
+    return np.concatenate(unconcatenated_outs[0], axis=0)
+  return [
+      np.concatenate(unconcatenated_outs[i], axis=0)
+      for i in range(len(unconcatenated_outs))
+  ]
 
 
 def _clone_and_build_model(model, inputs=None, targets=None):
@@ -572,13 +819,12 @@ def _clone_and_build_model(model, inputs=None, targets=None):
 
 def clone_model_on_towers(
     model, strategy, make_callback_model=False, inputs=None, targets=None):
-  """Create a cloned model on each tower, unless already created."""
-  if not model._grouped_model:
-    with strategy.scope():
-      model._grouped_model = strategy.call_for_each_tower(
-          _clone_and_build_model, model, inputs, targets)
-    if make_callback_model:
-      model._make_callback_model()
+  """Create a cloned model on each tower."""
+  with strategy.scope():
+    model._grouped_model = strategy.call_for_each_tower(
+        _clone_and_build_model, model, inputs, targets)
+  if make_callback_model:
+    model._make_callback_model()
 
 
 def _aggregate_metrics_across_towers(num_devices, out_labels, outs):
