@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_rewriter.h"
 
+#include <cstdlib>
 #include <numeric>
 #include <vector>
 
@@ -59,8 +60,6 @@ std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardFilter(
     HloInstruction* conv) {
   const auto no_match_result =
       std::make_tuple(false, Window(), ConvolutionDimensionNumbers());
-  // TODO(b/31709653): Figure out if we can use grouped convolutions also on
-  // backward filter.
   if (conv->feature_group_count() > 1) {
     return no_match_result;
   }
@@ -218,13 +217,16 @@ std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardFilter(
 
 // Try to match a backward input pattern that contains "conv".
 // Precondition: "conv" is a kConvolution.
-std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardInput(
-    HloInstruction* conv) {
+std::tuple<bool, Window, ConvolutionDimensionNumbers, HloInstruction*>
+MatchBackwardInput(HloInstruction* conv) {
   const auto no_match_result =
-      std::make_tuple(false, Window(), ConvolutionDimensionNumbers());
+      std::make_tuple(false, Window(), ConvolutionDimensionNumbers(), nullptr);
 
-  // TODO(b/31709653): Figure out if we can use grouped convolutions also on
-  // backward input.
+  // TODO(b/31709653): Theoretically cuDNN supports grouped convolutions also
+  // for the backward input convolution, but at least for now with version 7.1.4
+  // it is slower. This needs to be re-evaluated for future cuDNN versions.
+  // Note that we already have the necessary code down below, the only thing to
+  // enable it is to remove the following early return.
   if (conv->feature_group_count() > 1) {
     return no_match_result;
   }
@@ -401,10 +403,18 @@ std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardInput(
     }
   }
 
-  // OK, it's a match!  Canonicalize the conv's filter so that it's a reverse.
-  // This simplifies things for our caller, and algebraic-simplifier will later
-  // remove any unnecessary reverses.
-  if (reverse_filter->opcode() != HloOpcode::kReverse) {
+  // OK, it's a match! Switch the input feature dimension with the output
+  // feature dimension. This is the way cuDNN expects it to be.
+  dnums.set_kernel_input_feature_dimension(
+      conv->convolution_dimension_numbers().kernel_output_feature_dimension());
+  dnums.set_kernel_output_feature_dimension(
+      conv->convolution_dimension_numbers().kernel_input_feature_dimension());
+
+  // If we matched against a constant, we need to add a reverse op that can be
+  // subsumed by the cuDNN call. algebraic-simplifier will later remove any
+  // unnecessary reverses.
+  if (reverse_filter->opcode() != HloOpcode::kReverse &&
+      reverse_filter->IsConstant()) {
     // Create a double-reverse, which is a nop.
     HloComputation* c = conv->parent();
     reverse_filter = c->AddInstruction(
@@ -416,11 +426,41 @@ std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardInput(
     TF_CHECK_OK(conv->ReplaceOperandWith(/*operand_no=*/1, reverse_filter));
   }
 
-  dnums.set_kernel_input_feature_dimension(
-      conv->convolution_dimension_numbers().kernel_output_feature_dimension());
-  dnums.set_kernel_output_feature_dimension(
-      conv->convolution_dimension_numbers().kernel_input_feature_dimension());
-  return std::make_tuple(true, new_window, dnums);
+  // Calculate the 'rhs' that goes into the backward input convolution.
+  HloInstruction* rhs = reverse_filter;
+  // One reverse is subsumed by the cuDNN call.
+  if (rhs->opcode() == HloOpcode::kReverse) {
+    rhs = rhs->mutable_operand(0);
+  }
+  if (conv->feature_group_count() == 1) {
+    return std::make_tuple(true, new_window, dnums, rhs);
+  }
+
+  // Handle grouped convolutions. Because we swapped the input feature dimension
+  // with the output feature dimension, we need to also reshape the kernel so
+  // that the 'feature_group_count' parameter still makes sense. The
+  // 'feature_group_count' parameter essentially specifies how often the
+  // 'kernel_input_feature_dimension' is repeated. So when we swap these
+  // dimensions, we need to divide the new 'kernel_input_feature_dimension' by
+  // 'feature_group_count' and multiply the new
+  // 'kernel_output_feature_dimension' by 'feature_group_count'.
+  Shape new_shape = rhs->shape();
+  int64 input_feature_dimension = dnums.kernel_input_feature_dimension();
+  int64 output_feature_dimension = dnums.kernel_output_feature_dimension();
+
+  // In the backward convolution case, the spatial dimensions become the
+  // feature dimensions, and we are guaranteed that the spatial dimensions are
+  // adjacent.
+  CHECK_EQ(std::abs(input_feature_dimension - output_feature_dimension), 1LL);
+  int64 input_features = new_shape.dimensions(input_feature_dimension);
+  int64 output_features = new_shape.dimensions(output_feature_dimension);
+  new_shape.set_dimensions(input_feature_dimension,
+                           input_features / conv->feature_group_count());
+  new_shape.set_dimensions(output_feature_dimension,
+                           output_features * conv->feature_group_count());
+  HloComputation* c = conv->parent();
+  rhs = c->AddInstruction(HloInstruction::CreateReshape(new_shape, rhs));
+  return std::make_tuple(true, new_window, dnums, rhs);
 }
 
 // Tries to rewrite a single convolution into a call to cudnn.
@@ -431,6 +471,7 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
     bool match;
     Window window;
     ConvolutionDimensionNumbers dnums;
+    HloInstruction* rhs;
 
     std::tie(match, window, dnums) = MatchBackwardFilter(conv);
     if (match) {
@@ -439,13 +480,8 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
           window, dnums, conv->feature_group_count());
     }
 
-    std::tie(match, window, dnums) = MatchBackwardInput(conv);
+    std::tie(match, window, dnums, rhs) = MatchBackwardInput(conv);
     if (match) {
-      // Backward input conv subsumes the conv plus the reverse in operand 1.
-      HloInstruction* reverse = conv->mutable_operand(1);
-      CHECK_EQ(reverse->opcode(), HloOpcode::kReverse);
-      HloInstruction* rhs = reverse->mutable_operand(0);
-
       return CreateCudnnConvBackwardInput(conv->shape(),
                                           conv->mutable_operand(0), rhs, window,
                                           dnums, conv->feature_group_count());
