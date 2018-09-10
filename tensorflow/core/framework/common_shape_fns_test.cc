@@ -289,7 +289,7 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
                     .Attr("data_format", "NCHW")
                     .Finalize(&def));
     InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def,
-                       {S({10, 11, 12}), S({10})}, {}, {}, {});
+                       {S({10, 11, 12}), S({11})}, {}, {}, {});
     TF_EXPECT_OK(BiasAddShape(&c));
     ShapeHandle output = c.output(0);
     EXPECT_EQ("[10,11,12]", c.DebugString(output));
@@ -369,7 +369,7 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
                        {S({8, 6, 4, 2, 3, 4, 5})}, {}, {}, {});
     TF_EXPECT_OK(BiasAddGradShape(&c));
     ShapeHandle output = c.output(0);
-    EXPECT_EQ(3, c.Value(c.Dim(output, 0)));
+    EXPECT_EQ(6, c.Value(c.Dim(output, 0)));
   }
 
   {
@@ -382,7 +382,7 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
                        {}, {}, {});
     TF_EXPECT_OK(BiasAddGradShape(&c));
     ShapeHandle output = c.output(0);
-    EXPECT_EQ(10, c.Value(c.Dim(output, 0)));
+    EXPECT_EQ(11, c.Value(c.Dim(output, 0)));
   }
 
   {
