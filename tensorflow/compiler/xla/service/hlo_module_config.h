@@ -106,9 +106,6 @@ class HloModuleConfig {
 
   absl::optional<ComputationLayout> entry_computation_layout_;
 
-  // Whether this is a 'host module'.
-  bool is_host_module_ = false;
-
   // Module/graph-level seed handle.
   uint64 seed_ = 0;
 

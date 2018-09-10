@@ -446,6 +446,7 @@ py_library(
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:head",
         "//tensorflow/python/estimator:optimizers",
+        "//tensorflow/python/ops/losses",
         "@six_archive//:six",
     ],
 )

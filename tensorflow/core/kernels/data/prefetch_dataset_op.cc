@@ -209,6 +209,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       if (s.ok()) {
         *out_tensors = std::move(buffer_.front().value);
       }
+      auto_tuner_.RecordConsumption(buffer_.size());
       buffer_.pop_front();
       *end_of_sequence = false;
 

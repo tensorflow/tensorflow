@@ -141,6 +141,7 @@ bool IsHybridEvaluationOp(const OperatorT* op, const BuiltinOperator& op_code) {
       op_code == BuiltinOperator_CONV_2D || op_code == BuiltinOperator_SVDF ||
       op_code == BuiltinOperator_EMBEDDING_LOOKUP ||
       op_code == BuiltinOperator_RNN ||
+      op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM ||
       op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN ||
       op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM ||
       op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN) {

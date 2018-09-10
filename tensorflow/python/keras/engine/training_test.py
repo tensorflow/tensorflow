@@ -481,8 +481,8 @@ class LossWeightingTest(test.TestCase):
         num_hidden=10, num_classes=num_classes, input_dim=input_dim)
     model.compile(
         loss='categorical_crossentropy',
-        metrics=['acc'],
-        weighted_metrics=['mae'],
+        metrics=['acc', metrics_module.CategoricalAccuracy()],
+        weighted_metrics=['mae', metrics_module.CategoricalAccuracy()],
         optimizer=RMSPropOptimizer(learning_rate=learning_rate))
 
     np.random.seed(1337)
@@ -536,6 +536,25 @@ class LossWeightingTest(test.TestCase):
     self.assertLess(score[0], ref_score[0])
 
   @tf_test_util.run_in_graph_and_eager_modes
+  def test_sequential_model_fails_with_dict_inputs(self):
+    num_classes = 5
+    model = testing_utils.get_small_sequential_mlp(
+        num_hidden=10, num_classes=num_classes)
+    model.compile(
+        RMSPropOptimizer(learning_rate=0.001),
+        metrics=['acc'],
+        weighted_metrics=['mae'],
+        loss='categorical_crossentropy')
+
+    x = {'dense_input': np.random.random((10, 1))}
+    y = np.random.randint(num_classes, size=(10, 1))
+
+    with self.assertRaisesRegexp(
+        ValueError, 'Passing a dictionary input to a Sequential Model which '
+        'doesnt have FeatureLayer as the first layer is an error'):
+      model.fit(x, y, batch_size=5, epochs=1)
+
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_sample_weights(self):
     num_classes = 5
     batch_size = 5
@@ -550,8 +569,8 @@ class LossWeightingTest(test.TestCase):
         num_hidden=10, num_classes=num_classes, input_dim=input_dim)
     model.compile(
         RMSPropOptimizer(learning_rate=learning_rate),
-        metrics=['acc'],
-        weighted_metrics=['mae'],
+        metrics=['acc', metrics_module.CategoricalAccuracy()],
+        weighted_metrics=['mae', metrics_module.CategoricalAccuracy()],
         loss='categorical_crossentropy')
 
     np.random.seed(43)
@@ -679,8 +698,8 @@ class LossWeightingTest(test.TestCase):
       model.compile(
           RMSPropOptimizer(learning_rate=learning_rate),
           loss='binary_crossentropy',
-          metrics=['acc'],
-          weighted_metrics=['mae'],
+          metrics=['acc', metrics_module.CategoricalAccuracy()],
+          weighted_metrics=['mae', metrics_module.CategoricalAccuracy()],
           sample_weight_mode='temporal')
 
       model.fit(

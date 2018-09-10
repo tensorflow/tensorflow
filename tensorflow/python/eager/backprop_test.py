@@ -474,6 +474,18 @@ class BackpropTest(test.TestCase):
     self.assertEqual(backprop.implicit_grad(f)()[0][0], None)
 
   @test_util.assert_no_new_tensors
+  def testGradientTapeReEnterContext(self):
+    g = backprop.GradientTape()
+    with g:
+      x = constant_op.constant(3.0)
+      g.watch(x)
+      y = 2*x
+    with g:
+      z = 2*y
+    grad = g.gradient(target=z, sources=[x])
+    self.assertEqual(self.evaluate(grad), [4.0])
+
+  @test_util.assert_no_new_tensors
   @test_util.run_in_graph_and_eager_modes
   def testGradientTapeRepeatedSource(self):
     with backprop.GradientTape(persistent=False) as g:
@@ -955,6 +967,20 @@ class BackpropTest(test.TestCase):
       grad2 = get_grad()
 
       self.assertAllEqual(grad1, grad2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSelectivelyWatchVariables(self):
+    x1 = resource_variable_ops.ResourceVariable(1.0)
+    x2 = resource_variable_ops.ResourceVariable(1.0)
+    with backprop.GradientTape(watch_accessed_variables=False) as tape:
+      tape.watch(x2)
+      y = x1**2
+      z = x2**3
+    self.assertTupleEqual(tape.watched_variables(), (x2,))
+    dy, dz = tape.gradient([y, z], [x1, x2])
+    self.evaluate([x1.initializer, x2.initializer])
+    self.assertIsNone(dy)
+    self.assertEqual(self.evaluate(dz), 3.0)
 
 
   @test_util.run_in_graph_and_eager_modes

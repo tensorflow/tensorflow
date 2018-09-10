@@ -66,7 +66,7 @@ cc_library(
     deps = [
         ":op_macros",
         "//tensorflow/contrib/lite:arena_planner",
-        "//tensorflow/contrib/lite:context",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels/internal:optimized",
     ],
 )
@@ -82,7 +82,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":op_macros",
-        "//tensorflow/contrib/lite:context",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "@gemmlowp",
     ],
 )
@@ -93,7 +93,7 @@ cc_library(
         "activation_functor.h",
     ],
     deps = [
-        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite/c:c_api_internal",
     ],
 )
 
@@ -113,9 +113,9 @@ cc_library(
         "kernel_util.h",
     ],
     deps = [
-        "//tensorflow/contrib/lite:builtin_op_data",
-        "//tensorflow/contrib/lite:context",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels/internal:round",
+        "//tensorflow/contrib/lite/kernels/internal:types",
     ],
 )
 
@@ -143,6 +143,15 @@ tf_cc_test(
         ":test_util",
         "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "padding",
+    srcs = [],
+    hdrs = ["padding.h"],
+    deps = [
+        "//tensorflow/contrib/lite/c:c_api_internal",
     ],
 )
 
@@ -217,7 +226,6 @@ cc_library(
         "unpack.cc",
     ],
     hdrs = [
-        "padding.h",
     ],
     copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
     visibility = ["//visibility:private"],
@@ -226,18 +234,19 @@ cc_library(
         ":eigen_support",
         ":kernel_util",
         ":op_macros",
-        "//tensorflow/contrib/lite:builtin_op_data",
+        ":padding",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite:util",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:gemm_support",
         "//tensorflow/contrib/lite/kernels/internal:audio_utils",
         "//tensorflow/contrib/lite/kernels/internal:kernel_utils",
         "//tensorflow/contrib/lite/kernels/internal:optimized",
         "//tensorflow/contrib/lite/kernels/internal:optimized_base",
         "//tensorflow/contrib/lite/kernels/internal:quantization_util",
-        "//tensorflow/contrib/lite/kernels/internal:reference",
         "//tensorflow/contrib/lite/kernels/internal:reference_base",
+        "//tensorflow/contrib/lite/kernels/internal:tensor",
         "//tensorflow/contrib/lite/kernels/internal:tensor_utils",
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
@@ -252,6 +261,7 @@ cc_library(
         ":builtin_op_kernels",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:util",
+        "//tensorflow/contrib/lite/c:c_api_internal",
     ],
 )
 
@@ -758,8 +768,8 @@ tf_cc_test(
     ],
     deps = [
         ":builtin_ops",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -775,8 +785,8 @@ tf_cc_test(
     ],
     deps = [
         ":builtin_ops",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -1045,8 +1055,8 @@ tf_cc_test(
     ],
     deps = [
         ":builtin_ops",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -1148,8 +1158,8 @@ tf_cc_test(
     ],
     deps = [
         ":builtin_ops",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -1165,8 +1175,8 @@ tf_cc_test(
     ],
     deps = [
         ":builtin_ops",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -1182,8 +1192,8 @@ tf_cc_test(
     ],
     deps = [
         ":builtin_ops",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -1199,8 +1209,8 @@ tf_cc_test(
     ],
     deps = [
         ":builtin_ops",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -1213,8 +1223,8 @@ tf_cc_test(
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -1240,8 +1250,8 @@ tf_cc_test(
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],

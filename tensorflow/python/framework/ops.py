@@ -5364,6 +5364,7 @@ def enable_eager_execution(config=None,
   computational graph).
 
   For example:
+
   ```python
   tf.enable_eager_execution()
 

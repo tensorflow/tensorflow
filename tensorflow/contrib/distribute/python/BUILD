@@ -708,19 +708,32 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
-    name = "keras_test",
+py_library(
+    name = "keras_test_lib",
+    testonly = 1,
     srcs = ["keras_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
+    deps = [
+        ":combinations",
         "//tensorflow/contrib/distribute/python:mirrored_strategy",
+        "//tensorflow/contrib/distribute/python:tpu_strategy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "keras_test",
+    srcs = ["keras_test.py"],
+    additional_deps = [
+        ":keras_test_lib",
     ],
     tags = [
         "multi_and_single_gpu",
+        "no_pip",
         "no_windows_gpu",
         "notsan",
     ],

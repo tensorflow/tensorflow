@@ -12,6 +12,7 @@ exports_files([
     # The leakr files are used by //third_party/cloud_tpu.
     "leakr_badwords.dic",
     "leakr_badfiles.dic",
+    "leakr_file_type_recipe.ftrcp",
 ])
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
@@ -23,6 +24,11 @@ load(
     "//tensorflow/python/tools/api/generator:api_gen.bzl",
     "gen_api_init_files",  # @unused
 )
+load("//tensorflow/python/tools/api/generator:api_gen.bzl", "get_compat_files")
+load(
+    "//tensorflow/python/tools/api/generator:api_init_files.bzl",
+    "TENSORFLOW_API_INIT_FILES",  # @unused
+)
 load(
     "//tensorflow/python/tools/api/generator:api_init_files_v1.bzl",
     "TENSORFLOW_API_INIT_FILES_V1",  # @unused
@@ -30,6 +36,11 @@ load(
 load(
     "//third_party/ngraph:build_defs.bzl",
     "if_ngraph",
+)
+
+# @unused
+TENSORFLOW_API_INIT_FILES_V2 = (
+    TENSORFLOW_API_INIT_FILES + get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
 )
 
 # Config setting used when building for products
@@ -427,6 +438,13 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# This flag specifies whether TensorFlow 2.0 API should be built instead
+# of 1.* API. Note that TensorFlow 2.0 API is currently under development.
+config_setting(
+    name = "api_version_2",
+    define_values = {"tf_api_version": "2"},
+)
+
 package_group(
     name = "internal",
     packages = [
@@ -591,11 +609,37 @@ exports_files(
 )
 
 gen_api_init_files(
-    name = "tensorflow_python_api_gen",
+    name = "tf_python_api_gen_v1",
     srcs = ["api_template.__init__.py"],
     api_version = 1,
+    output_dir = "_api/v1/",
     output_files = TENSORFLOW_API_INIT_FILES_V1,
+    output_package = "tensorflow._api.v1",
     root_init_template = "api_template.__init__.py",
+)
+
+gen_api_init_files(
+    name = "tf_python_api_gen_v2",
+    srcs = ["api_template.__init__.py"],
+    api_version = 2,
+    compat_api_versions = [1],
+    output_dir = "_api/v2/",
+    output_files = TENSORFLOW_API_INIT_FILES_V2,
+    output_package = "tensorflow._api.v2",
+    root_init_template = "api_template.__init__.py",
+)
+
+genrule(
+    name = "root_init_gen",
+    srcs = select({
+        "api_version_2": [":tf_python_api_gen_v2"],
+        "//conditions:default": [":tf_python_api_gen_v1"],
+    }),
+    outs = ["__init__.py"],
+    cmd = select({
+        "api_version_2": "cp $(@D)/_api/v2/__init__.py $(OUTS)",
+        "//conditions:default": "cp $(@D)/_api/v1/__init__.py $(OUTS)",
+    }),
 )
 
 py_library(
@@ -612,7 +656,10 @@ py_library(
 
 py_library(
     name = "tensorflow_py_no_contrib",
-    srcs = [":tensorflow_python_api_gen"],
+    srcs = select({
+        "api_version_2": [":tf_python_api_gen_v2"],
+        "//conditions:default": [":tf_python_api_gen_v1"],
+    }) + [":root_init_gen"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python:no_contrib"],

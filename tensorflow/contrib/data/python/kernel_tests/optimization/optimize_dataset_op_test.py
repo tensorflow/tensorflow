@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import optimization
@@ -29,41 +28,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
 
-class OptimizeDatasetTest(test.TestCase, parameterized.TestCase):
-
-  def testAssertSuffix(self):
-    dataset = dataset_ops.Dataset.from_tensors(0).apply(
-        optimization.assert_next(["Map"])).map(lambda x: x)
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
-
-    with self.test_session() as sess:
-      self.assertEqual(0, sess.run(get_next))
-
-  def testAssertSuffixInvalid(self):
-    dataset = dataset_ops.Dataset.from_tensors(0).apply(
-        optimization.assert_next(["Whoops"])).map(lambda x: x)
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
-
-    with self.test_session() as sess:
-      with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          "Asserted Whoops transformation at offset 0 but encountered "
-          "Map transformation instead."):
-        sess.run(get_next)
-
-  def testAssertSuffixShort(self):
-    dataset = dataset_ops.Dataset.from_tensors(0).apply(
-        optimization.assert_next(["Map", "Whoops"])).map(lambda x: x)
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
-
-    with self.test_session() as sess:
-      with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          "Asserted next 2 transformations but encountered only 1."):
-        sess.run(get_next)
+class OptimizeDatasetTest(test.TestCase):
 
   def testOptimizationDefault(self):
     dataset = dataset_ops.Dataset.range(10).apply(
