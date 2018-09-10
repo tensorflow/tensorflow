@@ -633,7 +633,7 @@ TEST(XlaCompilationTest, IllegalCycle_UsefulErrorMessage) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   Scope root = Scope::NewRootScope().ExitOnError();
   {
-    auto BuildNoopNode = [](StringPiece name, Graph* graph) {
+    auto BuildNoopNode = [](absl::string_view name, Graph* graph) {
       NodeDefBuilder builder(name, "NoOp");
       NodeDef def;
       TF_CHECK_OK(builder.Finalize(&def));

@@ -22,7 +22,6 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_base.h"
