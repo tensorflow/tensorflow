@@ -64,7 +64,65 @@ void TensorForestFertileStatsResource::Reset() {
   arena_.Reset();
   CHECK_EQ(0, arena_.SpaceAllocated());
   fertile_stats_ =
-      protobuf::Arena::CreateMessage<boosted_trees::FertileStats>(&arena_);
+      protobuf::Arena::CreateMessage<tensor_forest::FertileStats>(&arena_);
 }
 
+const bool TensorForestFertileStatsResource::IsSlotInitialized(
+    const int32 node_id) const {
+  auto slot = fertile_stats_.find(node_id);
+  return slot != fertile_stats_.end();
+}
+
+const bool TensorForestFertileStatsResource::IsSlotFinished(
+    const int32 node_id) const {
+  if (IsSlotInitialized(node_id)) {
+    auto slot = fertile_stats_.find(node_id);
+    return slot.post_init_leaf_stats().weight_sum() >
+           split_nodes_after_samples_;
+  }
+  return false;
+}
+
+void TensorForestFertileStatsResource::UpdateSlotStats(
+    const int32 node_id, const int32 example_id,
+    const TTypes<float>::ConstMatrix* dense_data,
+    const TTypes<float>::ConstMatrix* label) {
+  auto slot = fertile_stats_.get(node_id);
+  for (auto l : (*label)(example_id)) {
+    for (auto candidate : slot.candidates()) {
+      if (candidate.split.threshold >=
+          (*dense_data)(example_id, candidate.split.feature_id)) {
+        candidate.left_split_stats.sum.value(l) += 1;
+      }
+      candidate.post_init_leaf_stats.sum.value(l) += 1;
+      candidate.left_split_stats.sum.value(l) += 1;
+    }
+    slot.leaf_stats.weight_sum += 1;
+  }
+};
+
+const bool TensorForestFertileStatsResource::AddPotentialSplitToSlot(
+    const int32 node_id, const int32 example_id, const bool is_regression,
+    const TTypes<float>::ConstMatrix* dense_data,
+    const TTypes<float>::ConstMatrix* label) {
+  auto slot = fertile_stats_.get(node_id);
+  candidate = new tensor_forest::SplitCandidate();
+  auto split = candidate.mutatable_split();
+  split.feature_id = rng_.ranomd();
+  split.thredhold = (*dense_data)(example_id, featrue_id);
+
+  for (auto l : (*label)(example_id)) {
+    candidate.left_split_stats.sum.value(l) += 1;
+  }
+}
+void TensorForestFertileStatsResource::AddExample(
+    const int32 example_id, const int32 leaf_id,
+    const TTypes<float>::ConstMatrix* dense_data,
+    const TTypes<float>::ConstMatrix* label, bool* is_finished) {
+  if (IsSlotInitialized(leaf_id)) {
+    UpdateSlotStats(leaf_id, example_id, dense_data, label);
+  } else {
+    AddPotentialSplitToSlot(node_id, example_id, dense_data, label);
+  }
+}
 }  // namespace tensorflow

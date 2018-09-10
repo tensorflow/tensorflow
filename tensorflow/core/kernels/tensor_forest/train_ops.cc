@@ -36,39 +36,46 @@ void UpdateStats(FertileStatsResource* fertile_stats_resource,
                  std::unordered_set<int32>* ready_to_split) {
   const auto leaf_ids = leaf_ids_tensor.unaligned_flat<int32>();
 
-  // Stores leaf_id, leaf_depth, example_id for examples that are waiting
+  // Stores leaf_id, example_id for examples that are waiting
   // on another to finish.
   std::queue<std::tuple<int32, int32>> waiting;
 
   int32 i = start;
-  while (i < end || !waiting.empty()) {
+  while (i < end) {
     int32 leaf_id;
     int32 example_id;
-    bool was_waiting = false;
-    if (i >= end) {
-      std::tie(leaf_id, example_id) = waiting.front();
-      waiting.pop();
-      was_waiting = true;
+    leaf_id = leaf_ids(i);
+    example_id = i;
+    if (leaf_lock->try_lock()) {
+      fertile_stats_resource->AddExample(data, &target, example_id, leaf_id);
+      leaf_lock->unlock();
     } else {
-      leaf_id = leaf_ids(i);
-      example_id = i;
-      ++i;
+      waiting.emplace(leaf_id, example_id);
+      continue;
     }
-    const std::unique_ptr<mutex>& leaf_lock = (*locks)[leaf_id];
-    if (was_waiting) {
-      leaf_lock->lock();
+    ++i;
+
+    if (fertile_stats_resource->IsNodeFinished(leaf_id)) {
+      ready_to_split->insert(leaf_id);
+    }
+  };
+
+  while (!waiting.empty()) {
+    int32 leaf_id;
+    int32 example_id;
+
+    std::tie(leaf_id, example_id) = waiting.front();
+    waiting.pop();
+
+    if (leaf_lock->try_lock()) {
+      fertile_stats_resource->AddExample(data, &target, example_id, leaf_id);
+      leaf_lock->unlock();
     } else {
-      if (!leaf_lock->try_lock()) {
-        waiting.emplace(leaf_id, example_id);
-        continue;
-      }
+      waiting.emplace(leaf_id, example_id);
+      continue;
     }
 
-    bool is_finished;
-    fertile_stats_resource->AddExampleToStatsAndInitialize(
-        data, &target, {example_id}, leaf_id, &is_finished);
-    leaf_lock->unlock();
-    if (is_finished) {
+    if (fertile_stats_resource->IsNodeFinished(leaf_id)) {
       set_lock->lock();
       ready_to_split->insert(leaf_id);
       set_lock->unlock();
@@ -103,6 +110,8 @@ class TensorForestProcessInputOp : public OpKernel {
 
     core::ScopedUnref unref_stats(fertile_stats_resource);
     core::ScopedUnref unref_tree(tree_resource);
+
+    fertile_stats_resource->SetRandomSeed(random_seed_);
 
     const int32 num_data = data_set->NumItems();
 
@@ -207,12 +216,14 @@ class GrowTreeOp : public OpKernel {
       if (found) {
         std::vector<int32> new_children;
         tree_resource->SplitNode(node, best.get(), &new_children);
-        fertile_stats_resource->Allocate(parent_depth, new_children);
+
+        // fertile_stats_resource->Allocate(new_children);
+        //
         // We are done with best, so it is now safe to clear node.
         fertile_stats_resource->Clear(node);
         CHECK(tree_resource->get_mutable_tree_node(node)->has_leaf() == false);
       } else {  // reset
-        fertile_stats_resource->ResetSplitStats(node, parent_depth);
+        fertile_stats_resource->ResetSplitStats(node);
       }
     }
   }
