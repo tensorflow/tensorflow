@@ -912,6 +912,23 @@ class TopologyConstructionTest(test.TestCase):
       assert out.shape == (4, 3, 2, 1)
       self.assertAllClose(out, x * 0.2 + x * 0.3, atol=1e-4)
 
+  def test_constant_initializer_with_numpy(self):
+
+    with self.test_session():
+      initializer = keras.initializers.Constant(np.ones((3, 2)))
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_shape=(3,),
+                                   kernel_initializer=initializer))
+      model.add(keras.layers.Dense(3))
+      model.compile(loss='mse', optimizer='sgd', metrics=['acc'])
+
+      json_str = model.to_json()
+      keras.models.model_from_json(json_str)
+
+      if yaml is not None:
+        yaml_str = model.to_yaml()
+        keras.models.model_from_yaml(yaml_str)
+
 
 class DeferredModeTest(test.TestCase):
 
