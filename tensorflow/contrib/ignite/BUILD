@@ -36,20 +36,13 @@ tf_gen_op_libs(
 )
 
 cc_library(
-    name = "dataset_kernels",
+    name = "ignite_client",
     srcs = [
-        "kernels/ignite_dataset_ops.cc",
         "kernels/ignite_client.h",
         "kernels/ignite_byte_swapper.h",
         "kernels/ignite_plain_client.h",
         "kernels/ignite_ssl_wrapper.h",
-        "kernels/ignite_ssl_wrapper.cc",
-        "kernels/ignite_binary_object_parser.h",
-        "kernels/ignite_binary_object_parser.cc",
-        "kernels/ignite_dataset.h",
-        "kernels/ignite_dataset.cc",
-        "kernels/ignite_dataset_iterator.h",
-        "kernels/ignite_dataset_iterator.cc",
+        "kernels/ignite_ssl_wrapper.cc"
     ] + if_not_windows([
         "kernels/ignite_plain_client_unix.cc",
     ]) + if_windows([
@@ -59,10 +52,28 @@ cc_library(
         "-DWIN32_LEAN_AND_MEAN",
     ]),
     deps = [
-        "//tensorflow/core:framework_headers_lib",
-        "//third_party/eigen3",
         "@boringssl//:ssl",
+        "//tensorflow/core:framework_headers_lib",
         "@protobuf_archive//:protobuf_headers",
+    ],
+)
+
+cc_library(
+    name = "dataset_kernels",
+    srcs = [
+        "kernels/ignite_dataset_ops.cc",
+        "kernels/ignite_binary_object_parser.h",
+        "kernels/ignite_binary_object_parser.cc",
+        "kernels/ignite_dataset.h",
+        "kernels/ignite_dataset.cc",
+        "kernels/ignite_dataset_iterator.h",
+        "kernels/ignite_dataset_iterator.cc",
+    ],
+    deps = [
+        ":ignite_client",
+        "//tensorflow/core:framework_headers_lib",
+        "@protobuf_archive//:protobuf_headers",
+        "//third_party/eigen3",
     ],
     alwayslink = 1,
 )
