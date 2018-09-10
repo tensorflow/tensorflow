@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/mark_for_compilation_pass_test_helper.h"
 
+#include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/array_ops.h"
@@ -845,6 +846,52 @@ TEST(XlaCompilationTest, RandomShape) {
 
   std::unordered_map<string, string> clusters = GetClusters(*graph);
   EXPECT_EQ(clusters["shape"], "");
+}
+
+TEST(XlaCompilationTest, RandomShapeWithFunc) {
+  Scope root = Scope::DisabledShapeInferenceScope().ExitOnError();
+
+  FunctionDefLibrary flib_def;
+  FunctionDef func = FunctionDefHelper::Create(
+      /*function_name=*/"Stateful_func", /*in_def=*/{},
+      /*out_def=*/{"out: int32"},
+      /*attr_def*/
+      {}, /*node_def=*/
+      {FunctionDefHelper::Const("shape_shape", 2),
+       FunctionDefHelper::Const("minval", 1),
+       FunctionDefHelper::Const("maxval", 20),
+       {{"shape"},
+        "RandomUniformInt",
+        {"shape_shape:output:0", "minval:output:0", "maxval:output:0"},
+        {{"Tout", DataType::DT_INT32}, {"T", DataType::DT_INT32}}}},
+      /*ret_def=*/{{"out", "shape:output:0"}});
+
+  func.mutable_signature()->set_is_stateful(true);
+  *flib_def.add_function() = std::move(func);
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(flib_def));
+  NodeDef call_node;
+  call_node.set_name("fn_call");
+  call_node.set_op("Stateful_func");
+  Status status;
+  Node* call = root.graph()->AddNode(call_node, &status);
+  TF_ASSERT_OK(status);
+
+  Output shape = Output(call, 0);
+  Output reshape_input =
+      ops::Placeholder(root.WithOpName("reshape_input"), DT_FLOAT,
+                       ops::Placeholder::Shape(TensorShape({500, 500})));
+  Output reshape =
+      ops::Reshape(root.WithOpName("reshape"), reshape_input, shape);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+  auto fld = absl::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
+                                                          flib_def);
+  TF_ASSERT_OK(
+      MarkForCompilationPassTestHelper::MarkForCompilation(&graph, fld.get()));
+
+  std::unordered_map<string, string> clusters = GetClusters(*graph);
+  EXPECT_EQ(clusters["fn_call"], "");
 }
 
 }  // namespace
