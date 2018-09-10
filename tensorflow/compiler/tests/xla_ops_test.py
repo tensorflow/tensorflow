@@ -34,7 +34,7 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def _assertOpOutputMatchesExpected(self, op, args, expected,
                                      equality_fn=None):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       with self.test_scope():
         placeholders = [
             array_ops.placeholder(dtypes.as_dtype(arg.dtype), arg.shape)
