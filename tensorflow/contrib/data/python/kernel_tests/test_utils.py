@@ -31,7 +31,7 @@ class DatasetTestBase(test.TestCase):
     # TODO(rachelim): support sparse tensor outputs
     next1 = dataset1.make_one_shot_iterator().get_next()
     next2 = dataset2.make_one_shot_iterator().get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       while True:
         try:
           op1 = sess.run(next1)
@@ -54,7 +54,7 @@ class DatasetTestBase(test.TestCase):
                                         replacements=None):
     next1 = dataset1.make_one_shot_iterator().get_next()
     next2 = dataset2.make_one_shot_iterator().get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       try:
         sess.run(next1)
         raise ValueError(
