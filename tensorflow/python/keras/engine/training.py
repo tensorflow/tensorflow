@@ -20,9 +20,11 @@ from __future__ import print_function
 
 import weakref
 import numpy as np
+import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops.dataset_ops import Dataset
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -754,9 +756,8 @@ class Model(Network):
     the model.
 
     Args:
-      x: Input data. A `tf.data` dataset.
-      y: Since `x` is a dataset, `y` should not be specified
-        (since targets will be obtained from the iterator).
+      x: Input data. A numpy array or `tf.data` dataset.
+      y: Target data. A numpy array or None if x is a `tf.data` dataset.
       sample_weight: An optional sample-weight array passed by the user to
         weight the importance of each sample in `x`.
       class_weight: An optional class-weight array by the user to
@@ -786,12 +787,51 @@ class Model(Network):
       raise NotImplementedError('`class_weight` is currently not supported '
                                 'when using DistributionStrategy.')
 
+    # Validates `steps` argument right at the beginning since we use it to
+    # construct the dataset object.
+    # TODO(anjalisridhar): This may not be a valid error since we now accept
+    # numpy array inputs. We still want to assert that we have a populated steps
+    # parameter.
+    if check_steps:
+      if steps is None:
+        raise ValueError('When using DistributionStrategy, '
+                         'you should specify the `{steps_name}` argument.'
+                         .format(steps_name=steps_name))
+
+    first_x_value = nest.flatten(x)[0]
+    if isinstance(first_x_value, np.ndarray):
+      x_shape = first_x_value.shape
+      x_dtype = first_x_value.dtype
+      if batch_size is None:
+        batch_size = x_shape[0] // steps
+      if y is not None:
+        first_y_value = nest.flatten(y)[0]
+        x = Dataset.from_generator(lambda x=x, y=y: six.moves.zip(x, y),
+                                   output_types=(x_dtype, first_y_value.dtype),
+                                   output_shapes=(x_shape[1:],
+                                                  first_y_value.shape[1:]))
+        # TODO(anjalisridhar): What should the buffer size be?
+        x = x.shuffle(10000)
+        x = x.repeat()
+        x = x.batch(batch_size)
+        y = None
+      else:
+        # This case is for the predict call where the dataset only contains
+        # inputs and no targets i.e it does not return a tuple.
+        # TODO(anjalisridhar): Raise an error if we are not able to process
+        # all the predict samples. This can happen if the number of batches is
+        # not evenly divisible by the number of worker devices.
+        x = Dataset.from_generator(lambda x=x: x,
+                                   output_types=x_dtype,
+                                   output_shapes=x_shape[1:])
+        x = x.repeat()
+        x = x.batch(batch_size)
+
     # TODO(anjalisridhar): Can we use the iterator and getnext op cache?
     # We require users to pass Datasets since we distribute the dataset across
     # multiple devices.
-    if not isinstance(x, dataset_ops.Dataset):
-      raise ValueError('When using DistributionStrategy, model inputs should be'
-                       ' Dataset instances; found instead %s.' % type(x))
+    assert isinstance(x, dataset_ops.Dataset)
+
     # TODO(anjalisridhar): We want distribute_dataset() to accept a Dataset or a
     # function which returns a Dataset. Currently distribute_dataset() only
     # accepts a function that returns a Dataset. Once we add support for being
@@ -799,12 +839,6 @@ class Model(Network):
     result = self._distribution_strategy.distribute_dataset(lambda: x)
     iterator = result.make_initializable_iterator()
     K.get_session().run(iterator.initializer)
-    # Validates `steps` argument based on x's type.
-    if check_steps:
-      if steps is None:
-        raise ValueError('When using a Dataset instance as input to a model, '
-                         'you should specify the `{steps_name}` argument.'
-                         .format(steps_name=steps_name))
 
     training_utils.validate_iterator_input(x, y, sample_weight,
                                            validation_split)
@@ -1428,6 +1462,13 @@ class Model(Network):
     if self._distribution_strategy:
       distributed_training_utils.validate_callbacks(callbacks)
 
+      distributed_training_utils.validate_inputs(x, y)
+
+      first_x_value = nest.flatten(x)[0]
+      if not steps_per_epoch and isinstance(first_x_value, np.ndarray):
+        steps_per_epoch = distributed_training_utils.get_input_batch_params(
+            first_x_value, batch_size, self._distribution_strategy)
+
     x, y, sample_weights = self._standardize_user_data(
         x,
         y,
@@ -1462,6 +1503,13 @@ class Model(Network):
             'However we received `validation_data=%s`' % validation_data)
 
       # Validate and standardize validation data.
+      if self._distribution_strategy:
+        distributed_training_utils.validate_inputs(val_x, val_y)
+        first_valx_value = nest.flatten(val_x)[0]
+        if not validation_steps and isinstance(first_valx_value, np.ndarray):
+          validation_steps = distributed_training_utils.get_input_batch_params(
+              first_valx_value, batch_size, self._distribution_strategy)
+
       val_x, val_y, val_sample_weights = self._standardize_user_data(
           val_x,
           val_y,
@@ -1599,6 +1647,13 @@ class Model(Network):
       batch_size = 32
 
     # Validate and standardize user data.
+    if self._distribution_strategy:
+      distributed_training_utils.validate_inputs(x, y)
+      first_x_value = nest.flatten(x)[0]
+      if isinstance(first_x_value, np.ndarray) and not steps:
+        steps = distributed_training_utils.get_input_batch_params(
+            first_x_value, batch_size, self._distribution_strategy)
+
     x, y, sample_weights = self._standardize_user_data(
         x,
         y,
@@ -1669,14 +1724,22 @@ class Model(Network):
     if batch_size is None and steps is None:
       batch_size = 32
 
-    # Turn off prefetching since this is currently not deterministic. Once
-    # b/112498930 is fixed we can turn it back on.
-    # `_prefetch_on_device` is currently a property of only `MirroredStrategy`.
-    if (self._distribution_strategy and
-        hasattr(self._distribution_strategy, '_prefetch_on_device')):
-      self._distribution_strategy._prefetch_on_device = False  # pylint: disable=protected-access
+    if self._distribution_strategy:
+      # Turn off prefetching since this is currently not deterministic. Once
+      # b/112498930 is fixed we can turn it back on.
+      # `_prefetch_on_device` is currently a property of only
+      # `MirroredStrategy`.
+      if hasattr(self._distribution_strategy, '_prefetch_on_device'):
+        self._distribution_strategy._prefetch_on_device = False  # pylint: disable=protected-access
+      distributed_training_utils.validate_inputs(x, None)
+      first_x_value = nest.flatten(x)[0]
+      if isinstance(first_x_value, np.ndarray) and not steps:
+        steps = distributed_training_utils.get_input_batch_params(
+            first_x_value, batch_size, self._distribution_strategy)
 
     # Validate and standardize user data.
+    # TODO(anjalisridhar): We don't pass batch_size here for some reason. This
+    # means that we end up calculating it twice which we should avoid.
     x, _, _ = self._standardize_user_data(
         x, check_steps=True, steps_name='steps', steps=steps)
 
