@@ -26,6 +26,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@CheckpointInputPipelineHook
 @@CsvDataset
 @@LMDBDataset
+@@Optional
 @@RandomDataset
 @@Reducer
 @@SqlDataset
@@ -38,7 +39,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@copy_to_device
 @@dense_to_sparse_batch
 @@enumerate_dataset
-
+@@get_next_as_optional
 @@get_single_element
 @@group_by_reducer
 @@group_by_window
@@ -46,7 +47,6 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@make_batched_features_dataset
 @@make_csv_dataset
 @@make_saveable_from_iterator
-
 @@map_and_batch
 @@padded_batch_and_drop_remainder
 @@parallel_interleave
@@ -107,6 +107,8 @@ from tensorflow.contrib.data.python.ops.shuffle_ops import shuffle_and_repeat
 from tensorflow.contrib.data.python.ops.sliding import sliding_window_batch
 from tensorflow.contrib.data.python.ops.unique import unique
 from tensorflow.contrib.data.python.ops.writers import TFRecordWriter
+from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
+from tensorflow.python.data.ops.optional_ops import Optional
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented
