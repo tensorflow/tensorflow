@@ -896,6 +896,43 @@ XLA_TEST_F(ConvolutionTest, NoCudnnAlgorithmPicker) {
                      std::move(*LiteralUtil::CreateFromArray(filter_data))});
 }
 
+XLA_TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
+  XlaBuilder builder(TestName());
+  Shape input_shape = ShapeUtil::MakeShape(F32, {1, 64, 100, 100});
+  Array4D<float> input_data(1, 64, 100, 100);
+  input_data.FillRandom(/*value=*/0.023, 0.001, /*seed=*/45321);
+  Shape filter_shape = ShapeUtil::MakeShape(F32, {7, 7, 1, 64});
+  Array4D<float> filter_data(7, 7, 1, 64);
+  input_data.FillRandom(/*value=*/0.023, 0.001, /*seed=*/45320);
+  auto input = Parameter(&builder, 0, input_shape, "input");
+  auto filter = ConstantR4FromArray4D(&builder, filter_data);
+
+  // Specify bf01_01io->bf01 as dimension numbers.
+  ConvolutionDimensionNumbers dnums;
+  // Input
+  dnums.set_input_feature_dimension(1);
+  dnums.set_input_batch_dimension(0);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_input_spatial_dimensions(3);
+  // Kernel
+  dnums.set_kernel_input_feature_dimension(2);
+  dnums.set_kernel_output_feature_dimension(3);
+  dnums.add_kernel_spatial_dimensions(0);
+  dnums.add_kernel_spatial_dimensions(1);
+  // Output
+  dnums.set_output_batch_dimension(0);
+  dnums.set_output_feature_dimension(1);
+  dnums.add_output_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(3);
+  ConvGeneral(input, filter, /*window_strides=*/{1, 1},
+              /*padding=*/{{3, 3}, {3, 3}}, /*dimension_numbers=*/dnums,
+              /*feature_group_count=*/64);
+
+  ComputeAndCompare(&builder,
+                    {std::move(*LiteralUtil::CreateFromArray(input_data))},
+                    error_spec_);
+}
+
 class ConvolutionHloTest : public HloTestBase {};
 
 XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_CPU(ConvolveF64Forward)) {
