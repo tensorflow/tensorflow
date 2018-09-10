@@ -95,6 +95,7 @@ cc_library(
         "fold_batch_norms.cc",
         "fold_constants_lib.cc",
         "fold_old_batch_norms.cc",
+        "fold_subdivmul_batch_norms.cc",
         "freeze_requantization_ranges.cc",
         "fuse_convolutions.cc",
         "fuse_quantized_convolution.cc",
