@@ -785,7 +785,58 @@ TEST_F(GraphPropertiesTest, InferRestoreOpShape_WithTwoNodesShareSameOutput) {
   EXPECT_EQ("float: [128,256]", PropToString(prop));
 }
 
-TEST_F(GraphPropertiesTest, FunctionWithScalarInputTest) {
+TEST_F(GraphPropertiesTest, FunctionWithConstInput) {
+  FunctionDefLibrary library;
+  // This function is simply
+  // out = Fill(shape, value), but
+  // Fill requires values in the shape input, not just shape of it, to infer
+  // output shape; hence, func
+  *library.add_function() = FunctionDefHelper::Create(
+      // Name
+      "MyFillFunc",
+      // Inputs
+      {"shape: int32", "value: float"},
+      // Outputs
+      {"out: float"},
+      // Attrs
+      {},
+      // Nodes
+      {
+          {{"a"},
+           "Fill",
+           {"shape", "value"},
+           {{"T", DataType::DT_FLOAT}, {"index_type", DataType::DT_INT32}}},
+      },
+      // Returns
+      {{"out", "a:output:0"}});
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  TF_CHECK_OK(s.graph()->AddFunctionLibrary(library));
+  Output shape = ops::Const(s.WithOpName("shape"), {1, 2, 3, 4});
+  Output value = ops::Const(s.WithOpName("value"), 0.1f, {});
+  auto builder = tensorflow::NodeBuilder("MyFillFunc", "MyFillFunc",
+                                         s.graph()->op_registry());
+  tensorflow::Node* func_op;
+  auto _shape = tensorflow::ops::AsNodeOut(s, shape);
+  auto _value = tensorflow::ops::AsNodeOut(s, value);
+  TF_CHECK_OK(
+      builder.Input(_shape).Input(_value).Finalize(s.graph(), &func_op));
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+  const auto out_props = properties.GetOutputProperties("MyFillFunc");
+  const OpInfo::TensorProperties out_prop0 = out_props[0];
+  EXPECT_EQ(DT_FLOAT, out_prop0.dtype());
+  EXPECT_FALSE(out_prop0.shape().unknown_rank());
+  EXPECT_EQ(4, out_prop0.shape().dim_size());
+  EXPECT_EQ(1, out_prop0.shape().dim(0).size());
+  EXPECT_EQ(2, out_prop0.shape().dim(1).size());
+  EXPECT_EQ(3, out_prop0.shape().dim(2).size());
+  EXPECT_EQ(4, out_prop0.shape().dim(3).size());
+}
+
+TEST_F(GraphPropertiesTest, FunctionWithScalarInput) {
   // Create graph with a function that takes a scalar value so that we use
   // Placeholder with scalar as for input to the function shape inference.
   // Placeholder -> Identity -> MyFunc, where MyFunc simply takes Identity of
@@ -818,7 +869,7 @@ TEST_F(GraphPropertiesTest, FunctionWithScalarInputTest) {
 
   // MyFunc output shouldn't be unknown rank.
   GraphProperties properties(item);
-  TF_CHECK_OK(properties.InferStatically(false));
+  TF_CHECK_OK(properties.InferStatically(true));
   const auto out_props = properties.GetOutputProperties("MyFunc");
   const OpInfo::TensorProperties out_prop0 = out_props[0];
   EXPECT_EQ(DT_FLOAT, out_prop0.dtype());

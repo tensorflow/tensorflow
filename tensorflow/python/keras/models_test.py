@@ -25,7 +25,9 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import metrics
 from tensorflow.python.keras import models
 from tensorflow.python.ops import random_ops
@@ -51,7 +53,7 @@ class TestModel(keras.Model):
 class TestModelCloning(test.TestCase):
 
   def test_clone_sequential_model(self):
-    with self.test_session():
+    with self.cached_session():
       val_a = np.random.random((10, 4))
       val_out = np.random.random((10, 4))
 
@@ -64,7 +66,7 @@ class TestModelCloning(test.TestCase):
     # Everything should work in a new session.
     keras.backend.clear_session()
 
-    with self.test_session():
+    with self.cached_session():
       # With placeholder creation
       new_model = keras.models.clone_model(model)
       # update ops from batch norm needs to be included
@@ -89,7 +91,7 @@ class TestModelCloning(test.TestCase):
       new_model.train_on_batch(None, val_out)
 
   def test_clone_functional_model(self):
-    with self.test_session():
+    with self.cached_session():
       val_a = np.random.random((10, 4))
       val_b = np.random.random((10, 4))
       val_out = np.random.random((10, 4))
@@ -110,7 +112,7 @@ class TestModelCloning(test.TestCase):
     # Everything should work in a new session.
     keras.backend.clear_session()
 
-    with self.test_session():
+    with self.cached_session():
       # With placeholder creation
       new_model = keras.models.clone_model(model)
       self.assertEquals(len(new_model.get_updates_for(new_model.inputs)), 2)
@@ -137,7 +139,7 @@ class TestModelCloning(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_clone_functional_model_with_masking(self):
-    with self.test_session():
+    with self.cached_session():
       x = np.array([[[1], [1]], [[0], [0]]])
       inputs = keras.Input((2, 1))
       outputs = keras.layers.Masking(mask_value=0)(inputs)
@@ -238,7 +240,7 @@ class TestModelDeepCopy(test.TestCase):
 class TestCloneAndBuildModel(test.TestCase):
 
   def test_clone_and_build_non_compiled_model(self):
-    with self.test_session():
+    with self.cached_session():
       inp = np.random.random((10, 4))
       out = np.random.random((10, 4))
 
@@ -251,7 +253,7 @@ class TestCloneAndBuildModel(test.TestCase):
     # Everything should work in a new session.
     keras.backend.clear_session()
 
-    with self.test_session():
+    with self.cached_session():
       # With placeholder creation
       new_model = models.clone_and_build_model(model, compile_clone=True)
       with self.assertRaisesRegexp(RuntimeError, 'must compile'):
@@ -289,7 +291,7 @@ class TestCloneAndBuildModel(test.TestCase):
     # Everything should work in a new session.
     keras.backend.clear_session()
 
-    with self.test_session():
+    with self.cached_session():
       # With placeholder creation
       new_model = models.clone_and_build_model(
           model, compile_clone=True, in_place_reset=is_subclassed)
@@ -316,7 +318,7 @@ class TestCloneAndBuildModel(test.TestCase):
       new_model.evaluate(inp, out)
 
   def test_clone_and_build_compiled_sequential_model(self):
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(4, input_shape=(4,)))
       model.add(keras.layers.BatchNormalization())
@@ -328,7 +330,7 @@ class TestCloneAndBuildModel(test.TestCase):
     self._clone_and_build_test_helper(model)
 
   def test_clone_and_build_functional_model(self):
-    with self.test_session():
+    with self.cached_session():
       input_a = keras.Input(shape=(4,))
       dense_1 = keras.layers.Dense(4,)
       dense_2 = keras.layers.Dense(4,)
@@ -358,11 +360,41 @@ class TestCloneAndBuildModel(test.TestCase):
         out = self.layer2(out)
         return out
 
-    with self.test_session():
+    with self.cached_session():
       model = SubclassedModel()
       model.compile('rmsprop', 'mse',
                     metrics=['acc', metrics.categorical_accuracy])
     self._clone_and_build_test_helper(model, True)
+
+  def assert_optimizer_iterations_increases(self, optimizer):
+    with self.cached_session():
+      input_a = keras.Input(shape=(4,))
+      dense_1 = keras.layers.Dense(4,)
+      dense_2 = keras.layers.Dense(4,)
+
+      x_a = dense_1(input_a)
+      x_a = keras.layers.Dropout(0.5)(x_a)
+      x_a = keras.layers.BatchNormalization()(x_a)
+      x_a = dense_2(x_a)
+      model = keras.models.Model(input_a, x_a)
+      model.compile(optimizer, 'mse',
+                    metrics=['acc', metrics.categorical_accuracy])
+
+      global_step = keras.backend.variable(123, dtype=dtypes.int64)
+      clone_model = models.clone_and_build_model(
+          model, compile_clone=True, optimizer_iterations=global_step)
+
+      inp = np.random.random((10, 4))
+      out = np.random.random((10, 4))
+      clone_model.train_on_batch(inp, out)
+
+      self.assertEqual(K.eval(global_step), 124)
+
+  def test_replace_tf_optimizer_iterations_variable(self):
+    self.assert_optimizer_iterations_increases(adam.AdamOptimizer(0.01))
+
+  def test_replace_keras_optimizer_iterations_variable(self):
+    self.assert_optimizer_iterations_increases('adam')
 
 
 if __name__ == '__main__':

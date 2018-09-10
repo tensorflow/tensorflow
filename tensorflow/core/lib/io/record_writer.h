@@ -41,7 +41,7 @@ class RecordWriterOptions {
 
 // Options specific to zlib compression.
 #if !defined(IS_SLIM_BUILD)
-  ZlibCompressionOptions zlib_options;
+  tensorflow::io::ZlibCompressionOptions zlib_options;
 #endif  // IS_SLIM_BUILD
 };
 

@@ -20,18 +20,16 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
-
-using ::tensorflow::strings::Appendf;
 
 ShapedBuffer::ShapedBuffer(const Shape& on_host_shape,
                            const Shape& on_device_shape,
@@ -93,9 +91,9 @@ string ShapedBuffer::ToString() const {
           shape_str = ShapeUtil::HumanStringWithLayout(subshape);
         }
         const se::DeviceMemoryBase& memory = buffer(index);
-        Appendf(&s, "  %s%p (%lld bytes) : %s\n",
-                string(index.size() * 2, ' ').c_str(), memory.opaque(),
-                memory.size(), shape_str.c_str());
+        absl::StrAppendFormat(&s, "  %s%p (%d bytes) : %s\n",
+                              string(index.size() * 2, ' '), memory.opaque(),
+                              memory.size(), shape_str);
       });
   return s;
 }

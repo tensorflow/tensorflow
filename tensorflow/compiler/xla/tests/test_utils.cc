@@ -183,8 +183,8 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteralInternal(
       break;
     case PRED: {
       std::uniform_int_distribution<int> generator(0, 1);
-      TF_CHECK_OK(literal->Populate<bool>(
-          [&](tensorflow::gtl::ArraySlice<int64> /*indices*/) {
+      TF_CHECK_OK(
+          literal->Populate<bool>([&](absl::Span<const int64> /*indices*/) {
             return generator(*engine);
           }));
       break;
@@ -194,7 +194,7 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteralInternal(
       break;
     default:
       return Unimplemented("Unsupported type for fake literal generation: %s",
-                           ShapeUtil::HumanString(shape).c_str());
+                           ShapeUtil::HumanString(shape));
   }
   return std::move(literal);
 }
@@ -203,6 +203,7 @@ enum class ConstantType { kUnknown, kZero, kOne };
 
 // Return the constant type required by this computation, if known.
 ConstantType GetInitValue(const HloComputation& computation) {
+  // TODO(b/77635120): Add init values, for min, max, and their arg variants.
   const HloInstruction* const root = computation.root_instruction();
   if (computation.num_parameters() != 2 || root->operand_count() != 2 ||
       root->operand(0)->opcode() != HloOpcode::kParameter ||
@@ -227,16 +228,16 @@ bool NeedsInitValue(const HloUse& use) {
   const HloInstruction* const instruction = use.instruction;
   const HloOpcode opcode = instruction->opcode();
   const int64 op_num = use.operand_number;
-  return (
-      ((opcode == HloOpcode::kReduce || opcode == HloOpcode::kReduceWindow) &&
-       op_num == 1) ||
-      (opcode == HloOpcode::kSelectAndScatter && op_num == 2));
+  return ((opcode == HloOpcode::kReduceWindow && op_num == 1) ||
+          (opcode == HloOpcode::kSelectAndScatter && op_num == 2) ||
+          (opcode == HloOpcode::kReduce &&
+           op_num >= instruction->operand_count() / 2));
 }
 
 // Generate random values that are constrained to the input_shape minus the
 // output_shape so as not to produce wrapping slices, for instance.
-std::unique_ptr<Literal> MakeRandomIndex(
-    tensorflow::gtl::ArraySlice<int64> index_space, std::minstd_rand0* engine) {
+std::unique_ptr<Literal> MakeRandomIndex(absl::Span<const int64> index_space,
+                                         std::minstd_rand0* engine) {
   std::vector<int32> start_indices(index_space.size());
   if (engine != nullptr) {
     for (int i = 0; i < index_space.size(); ++i) {
@@ -293,7 +294,7 @@ std::vector<HloInstruction*> FindConstrainedUses(
 // generate a constrained literal (either bounded in the case of indices, or
 // zero in the case of init_values for reductions).
 StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
-    const tensorflow::gtl::ArraySlice<HloInstruction*> constrained_uses,
+    const absl::Span<HloInstruction* const> constrained_uses,
     const HloInstruction& param, std::minstd_rand0* engine) {
   std::vector<int64> index_space;
   bool no_duplicates = false;
@@ -342,7 +343,7 @@ StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
       default:
         return Unimplemented(
             "Constrained operand generation not implemented for %s.",
-            use->ToString().c_str());
+            use->ToString());
     }
   }
   int constraint_count = 0;
@@ -416,4 +417,18 @@ Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
       .status();
 }
 
+std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
+                                                      HloInstruction* lhs,
+                                                      HloInstruction* rhs) {
+  CHECK_EQ(ShapeUtil::Rank(lhs->shape()), 2);
+  CHECK_EQ(ShapeUtil::Rank(rhs->shape()), 2);
+  PrecisionConfig precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      2, PrecisionConfig::DEFAULT);
+  DotDimensionNumbers dot_dimension_numbers;
+  dot_dimension_numbers.add_lhs_contracting_dimensions(1);
+  dot_dimension_numbers.add_rhs_contracting_dimensions(0);
+  return absl::make_unique<HloDotInstruction>(
+      shape, lhs, rhs, dot_dimension_numbers, precision_config);
+}
 }  // namespace xla

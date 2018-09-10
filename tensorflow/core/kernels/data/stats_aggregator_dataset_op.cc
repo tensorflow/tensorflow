@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
@@ -135,4 +136,5 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
 REGISTER_KERNEL_BUILDER(Name("SetStatsAggregatorDataset").Device(DEVICE_CPU),
                         SetStatsAggregatorDatasetOp);
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

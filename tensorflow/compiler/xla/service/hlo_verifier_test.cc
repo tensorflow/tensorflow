@@ -34,6 +34,8 @@ namespace {
 
 using ::testing::HasSubstr;
 
+// This class cannot be converted to use HloVerifiedTestBase. It explicitly
+// uses HloTestBase to create and test malformed HLOs.
 class HloVerifierTest : public HloTestBase {
  public:
   HloVerifierTest()
@@ -275,6 +277,85 @@ TEST_F(HloVerifierTest, RngElementTypeNotSupported) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(), HasSubstr("Element type not supported"));
+}
+
+TEST_F(HloVerifierTest, NegativeInteriorPaddingNotAllowed) {
+  // This testcase can't be written using textual HLO, because it doesn't parse
+  // negative interior padding.  That's probably a feature.  :)
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {100}), "param"));
+  PaddingConfig padding_config;
+  padding_config.add_dimensions()->set_interior_padding(-1);
+  builder.AddInstruction(HloInstruction::CreatePad(
+      ShapeUtil::MakeShape(F32, {100}), param,
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::Zero(F32).CloneToUnique())),
+      padding_config));
+
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Interior padding cannot be negative"));
+}
+
+TEST_F(HloVerifierTest, PadNegativeInteriorDilationNotAllowed) {
+  // This testcase can't be written using textual HLO, because it doesn't parse
+  // negative interior padding.  That's probably a feature.  :)
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {100}), "param"));
+  PaddingConfig padding_config;
+  padding_config.add_dimensions()->set_interior_padding(-1);
+  builder.AddInstruction(HloInstruction::CreatePad(
+      ShapeUtil::MakeShape(F32, {100}), param,
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::Zero(F32).CloneToUnique())),
+      padding_config));
+
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Interior padding cannot be negative"));
+}
+
+// Simple module containing a convolution as the root.
+static const char* const kConvHloString = R"(
+HloModule module
+ENTRY entry_computation {
+  param0 = f16[128,128,56,56] parameter(0)
+  param1 = f16[3,3,128,128] parameter(1)
+  zero_f16 = f16[] constant(0)
+  ROOT conv = f16[128,128,28,28] convolution(param0, param1),
+    window={size=3x3 stride=2x2}, dim_labels=bf01_01io->bf01
+})";
+
+TEST_F(HloVerifierTest, ConvNegativeWindowDilationNotAllowed) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kConvHloString));
+  auto* conv = module->entry_computation()->root_instruction();
+  Window w = conv->window();
+  w.mutable_dimensions(0)->set_window_dilation(-1);
+  conv->set_window(w);
+
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("non-positive window dilation factor"));
+}
+
+TEST_F(HloVerifierTest, ConvNegativeBaseDilationNotAllowed) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kConvHloString));
+  auto* conv = module->entry_computation()->root_instruction();
+  Window w = conv->window();
+  w.mutable_dimensions(0)->set_base_dilation(-1);
+  conv->set_window(w);
+
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("non-positive base area dilation factor"));
 }
 
 }  // namespace

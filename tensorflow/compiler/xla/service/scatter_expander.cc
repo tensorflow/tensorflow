@@ -26,7 +26,6 @@ limitations under the License.
 
 namespace xla {
 
-using tensorflow::gtl::ArraySlice;
 
 // Transposes the given scatter_indices such that the index_vector_dim becomes
 // the most-minor dimension.
@@ -87,7 +86,7 @@ static StatusOr<HloInstruction*> CanonicalizeScatterIndices(
 // major dimensions and all the window dimensions appear in the minor
 // dimensions.
 static StatusOr<HloInstruction*> PermuteScatterAndWindowDims(
-    HloInstruction* updates, ArraySlice<int64> update_window_dims) {
+    HloInstruction* updates, absl::Span<const int64> update_window_dims) {
   std::vector<int64> permutation;
   const int64 updates_rank = ShapeUtil::Rank(updates->shape());
   permutation.reserve(updates_rank);
@@ -291,7 +290,7 @@ StatusOr<HloInstruction*> ScatterExpander::ExpandScatter(
     return Unimplemented(
         "Scatter operations with more than 2147483647 scatter indices are not "
         "supported. This error occurred for %s.",
-        scatter->ToString().c_str());
+        scatter->ToString());
   }
 
   // Canonicalize the scatter_indices, after which the size of its most-major

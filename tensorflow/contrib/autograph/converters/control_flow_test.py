@@ -48,6 +48,24 @@ class ControlFlowTest(converter_testing.TestCase):
 
     self.assertTransformedResult(test_fn, constant_op.constant(5), (10, 5, 5))
 
+  def test_while_nested(self):
+
+    def test_fn(n):
+      i = 0
+      j = 0
+      s = 0
+      while i < n:
+        while j < i:
+          j += 3
+        u = i + j  # 'u' is not defined within the inner loop
+        s += u
+        i += 1
+        j = 0
+      return s, i, j, n
+
+    self.assertTransformedResult(test_fn, constant_op.constant(5),
+                                 (25, 5, 0, 5))
+
   def test_while_single_output(self):
 
     def test_fn(n):

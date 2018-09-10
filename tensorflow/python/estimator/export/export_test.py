@@ -416,6 +416,7 @@ class ExportTest(test_util.TensorFlowTestCase):
         tensor_shape.unknown_shape(),
         v.receiver_tensors["feature_2"].shape)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_build_raw_serving_input_receiver_fn(self):
     features = {"feature_1": constant_op.constant(["hello"]),
                 "feature_2": constant_op.constant([42])}
@@ -434,6 +435,7 @@ class ExportTest(test_util.TensorFlowTestCase):
           dtypes.int32,
           serving_input_receiver.receiver_tensors["feature_2"].dtype)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_build_raw_supervised_input_receiver_fn(self):
     features = {"feature_1": constant_op.constant(["hello"]),
                 "feature_2": constant_op.constant([42])}
@@ -454,6 +456,7 @@ class ExportTest(test_util.TensorFlowTestCase):
       self.assertEqual(
           dtypes.int32, input_receiver.receiver_tensors["feature_2"].dtype)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_build_raw_supervised_input_receiver_fn_raw_tensors(self):
     features = {"feature_1": constant_op.constant(["hello"]),
                 "feature_2": constant_op.constant([42])}
@@ -477,6 +480,7 @@ class ExportTest(test_util.TensorFlowTestCase):
       self.assertEqual(set(["input", "label"]),
                        set(input_receiver.receiver_tensors.keys()))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_build_raw_supervised_input_receiver_fn_batch_size(self):
     features = {"feature_1": constant_op.constant(["hello"]),
                 "feature_2": constant_op.constant([42])}
@@ -489,6 +493,7 @@ class ExportTest(test_util.TensorFlowTestCase):
       self.assertEqual([10], input_receiver.receiver_tensors["feature_1"].shape)
       self.assertEqual([10], input_receiver.features["feature_1"].shape)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_build_raw_supervised_input_receiver_fn_overlapping_keys(self):
     features = {"feature_1": constant_op.constant(["hello"]),
                 "feature_2": constant_op.constant([42])}
@@ -497,6 +502,7 @@ class ExportTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       export.build_raw_supervised_input_receiver_fn(features, labels)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_build_supervised_input_receiver_fn_from_input_fn(self):
     def dummy_input_fn():
       return ({"x": constant_op.constant([[1], [1]]),
@@ -514,6 +520,7 @@ class ExportTest(test_util.TensorFlowTestCase):
       self.assertEqual(set(["x", "y", "label"]),
                        set(input_receiver.receiver_tensors.keys()))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_build_supervised_input_receiver_fn_from_input_fn_args(self):
     def dummy_input_fn(feature_key="x"):
       return ({feature_key: constant_op.constant([[1], [1]]),

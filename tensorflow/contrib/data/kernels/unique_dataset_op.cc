@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -219,5 +219,5 @@ REGISTER_KERNEL_BUILDER(Name("UniqueDataset").Device(DEVICE_CPU),
                         UniqueDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

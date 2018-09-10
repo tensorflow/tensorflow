@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class IdentityIndexedDatasetOp : public IndexedDatasetOpKernel {
@@ -150,4 +151,5 @@ REGISTER_KERNEL_BUILDER(Name("IdentityIndexedDataset").Device(DEVICE_CPU),
                         IdentityIndexedDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

@@ -21,12 +21,12 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -70,7 +70,7 @@ class IrArray {
 
     // Constructs an index from multi-dimensional index "multidim". The linear
     // index is set to nullptr.
-    explicit Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
+    explicit Index(absl::Span<llvm::Value* const> multidim,
                    llvm::Type* index_ty = nullptr)
         : multidim_(multidim.begin(), multidim.end()) {
       if (size() == 0) {
@@ -99,14 +99,14 @@ class IrArray {
     // that it indexes into.
     //
     // Precondition: "shape" has a layout.
-    Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
-          const Shape& shape, llvm::IRBuilder<>* b);
+    Index(absl::Span<llvm::Value* const> multidim, const Shape& shape,
+          llvm::IRBuilder<>* b);
 
     // Constructs an index from both a multi-dimensional index and a linear
     // index. "shape" has the same meaning as that in the constructor that takes
     // only a linear index.
-    Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
-          llvm::Value* linear, const Shape& shape);
+    Index(absl::Span<llvm::Value* const> multidim, llvm::Value* linear,
+          const Shape& shape);
 
     const std::vector<llvm::Value*>& multidim() const { return multidim_; }
     llvm::Value* linear() const { return linear_; }
@@ -145,17 +145,15 @@ class IrArray {
     // by starting indices `starts` and stride values `strides`.
     //
     // Precondition: "this" is an index into a slice whose shape is `shape`.
-    Index SourceIndexOfSlice(const Shape& shape,
-                             tensorflow::gtl::ArraySlice<int64> starts,
-                             tensorflow::gtl::ArraySlice<int64> strides,
+    Index SourceIndexOfSlice(const Shape& shape, absl::Span<const int64> starts,
+                             absl::Span<const int64> strides,
                              llvm::IRBuilder<>* builder) const;
 
     // Given that "this" is the target index of a transpose from `operand_shape`
     // to `shape` with the given dimension mapping, returns the source index.
-    Index SourceIndexOfTranspose(
-        const Shape& shape, const Shape& operand_shape,
-        tensorflow::gtl::ArraySlice<int64> dimension_mapping,
-        llvm::IRBuilder<>* builder) const;
+    Index SourceIndexOfTranspose(const Shape& shape, const Shape& operand_shape,
+                                 absl::Span<const int64> dimension_mapping,
+                                 llvm::IRBuilder<>* builder) const;
 
     // Given that "this" is the target index of a bitcast from `operand_shape`
     // to `shape`, returns the source index.
@@ -164,14 +162,13 @@ class IrArray {
 
     // Given that "this" is the target index of a broadcast from `operand_shape`
     // to `shape` with the given dimension mapping, returns the source index.
-    Index SourceIndexOfBroadcast(
-        const Shape& shape, const Shape& operand_shape,
-        tensorflow::gtl::ArraySlice<int64> dimension_mapping,
-        llvm::IRBuilder<>* builder) const;
+    Index SourceIndexOfBroadcast(const Shape& shape, const Shape& operand_shape,
+                                 absl::Span<const int64> dimension_mapping,
+                                 llvm::IRBuilder<>* builder) const;
 
     // Linearizes the index into the given shape, i.e. reshapes it to rank-1 and
     // returns the index into the sole dimension 0 of the new shape.
-    llvm::Value* Linearize(tensorflow::gtl::ArraySlice<int64> dimensions,
+    llvm::Value* Linearize(absl::Span<const int64> dimensions,
                            llvm::IRBuilder<>* builder) const;
 
     llvm::Type* GetType() const { return index_type_; }

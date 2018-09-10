@@ -17,82 +17,17 @@ limitations under the License.
 
 #include <complex>
 #include <vector>
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
+#include "tensorflow/contrib/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/contrib/lite/kernels/internal/types.h"
 
 namespace tflite {
-
-template <typename T>
-inline T* GetTensorData(TfLiteTensor* tensor);
-
-template <>
-inline float* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.f : nullptr;
-}
-
-template <>
-inline uint8_t* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.uint8 : nullptr;
-}
-
-template <>
-inline int16_t* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.i16 : nullptr;
-}
-
-template <>
-inline int32_t* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.i32 : nullptr;
-}
-
-template <>
-inline int64_t* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.i64 : nullptr;
-}
-
-template <>
-inline bool* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.b : nullptr;
-}
 
 template <>
 inline std::complex<float>* GetTensorData(TfLiteTensor* tensor) {
   return tensor != nullptr
              ? reinterpret_cast<std::complex<float>*>(tensor->data.c64)
              : nullptr;
-}
-
-template <typename T>
-inline const T* GetTensorData(const TfLiteTensor* tensor);
-
-template <>
-inline const float* GetTensorData(const TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.f : nullptr;
-}
-
-template <>
-inline const uint8_t* GetTensorData(const TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.uint8 : nullptr;
-}
-
-template <>
-inline const int16_t* GetTensorData(const TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.i16 : nullptr;
-}
-
-template <>
-inline const int32_t* GetTensorData(const TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.i32 : nullptr;
-}
-
-template <>
-inline const int64_t* GetTensorData(const TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.i64 : nullptr;
-}
-
-template <>
-inline const bool* GetTensorData(const TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.b : nullptr;
 }
 
 template <>
@@ -102,54 +37,12 @@ inline const std::complex<float>* GetTensorData(const TfLiteTensor* tensor) {
              : nullptr;
 }
 
-inline int RemapDim(int max_dimensions, int d) {
-  return max_dimensions - d - 1;
-}
-
-// TODO(ahentz): the implementations in kernels/internal/ take a Dims<4> object
-// even if the original tensors were not 4D. We should consider rewriting them
-// to take a more generic 'shape' object.
-inline Dims<4> GetTensorDims(const int data[], const int size) {
-  Dims<4> d;
-  for (int i = 0; i < 4; ++i) {
-    int src = size - i - 1;
-    if (src >= 0) {
-      d.sizes[i] = data[src];
-    } else {
-      d.sizes[i] = 1;
-    }
-  }
-  d.strides[0] = 1;
-  for (int i = 1; i < 4; i++) {
-    d.strides[i] = d.strides[i - 1] * d.sizes[i - 1];
-  }
-  return d;
-}
-
 inline Dims<4> GetTensorDims(std::vector<int32_t> data) {
   return GetTensorDims(data.data(), data.size());
 }
 
-inline Dims<4> GetTensorDims(const TfLiteTensor* tensor) {
-  if (tensor == nullptr) {
-    return Dims<4>();
-  }
-
-  auto* dims = tensor->dims;
-  return GetTensorDims(dims->data, dims->size);
-}
-
 inline RuntimeShape GetTensorShape(std::vector<int32_t> data) {
   return RuntimeShape(data.size(), data.data());
-}
-
-inline RuntimeShape GetTensorShape(const TfLiteTensor* tensor) {
-  if (tensor == nullptr) {
-    return RuntimeShape();
-  }
-
-  auto* dims = tensor->dims;
-  return RuntimeShape(dims->size, dims->data);
 }
 
 // A list of tensors in a format that can be used by kernels like split and

@@ -513,7 +513,7 @@ Status GraphConstructor::InitFromEdges() {
           num_control_edges++;
         } else {
           TensorId id(ParseTensorName(input_name));
-          if (next_iteration_nodes_.find(std::string(id.first)) !=
+          if (next_iteration_nodes_.find(string(id.first)) !=
               next_iteration_nodes_.end()) {
             has_loop_back_edge = true;
           }
@@ -835,7 +835,7 @@ void GraphConstructor::UniquifyNames(
     // We require that UniquifyNames() is called on all NodeDefs in topological
     // order. This guarantees that node_def's inputs will already be uniquified
     // if necessary.
-    auto iter = uniquified_names_.find(std::string(id.first));
+    auto iter = uniquified_names_.find(string(id.first));
     if (iter == uniquified_names_.end()) continue;
     id.first = iter->second;
     node_def->set_input(i, id.ToString());
@@ -854,7 +854,7 @@ void GraphConstructor::UpdateUniquifiedColocationNames() {
     for (int i = 0; i < coloc_values.size(); ++i) {
       StringPiece val(coloc_values[i]);
       if (str_util::ConsumePrefix(&val, kColocationGroupPrefix)) {
-        const auto& name_pair = uniquified_names_.find(std::string(val));
+        const auto& name_pair = uniquified_names_.find(string(val));
         if (name_pair == uniquified_names_.end()) continue;
         updated = true;
         coloc_values[i] =
@@ -880,7 +880,7 @@ bool GraphConstructor::NameExistsInGraphDef(StringPiece name) {
 }
 
 string GraphConstructor::FindUniqueName(StringPiece original_name) {
-  string name = std::string(original_name);
+  string name(original_name);
   int count = 0;
   // Check that any generated names don't collide with imported NodeDefs (as
   // well as nodes in g_).
@@ -997,7 +997,7 @@ Status GraphConstructor::Convert() {
             src_node->num_outputs(), " outputs");
       }
 
-      inputs.emplace_back(std::string(id.first), src_node, src_index);
+      inputs.emplace_back(string(id.first), src_node, src_index);
     }
 
     if (has_data_back_edge && !IsMerge(*node_def)) {

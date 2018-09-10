@@ -34,7 +34,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util.tf_export import tf_export
@@ -313,18 +313,18 @@ class BatchNormalization(Layer):
           shape=param_shape,
           dtype=param_dtype,
           initializer=self.moving_mean_initializer,
-          synchronization=variable_scope.VariableSynchronization.ON_READ,
+          synchronization=tf_variables.VariableSynchronization.ON_READ,
           trainable=False,
-          aggregation=variable_scope.VariableAggregation.MEAN)
+          aggregation=tf_variables.VariableAggregation.MEAN)
 
       self.moving_variance = self.add_weight(
           name='moving_variance',
           shape=param_shape,
           dtype=param_dtype,
           initializer=self.moving_variance_initializer,
-          synchronization=variable_scope.VariableSynchronization.ON_READ,
+          synchronization=tf_variables.VariableSynchronization.ON_READ,
           trainable=False,
-          aggregation=variable_scope.VariableAggregation.MEAN)
+          aggregation=tf_variables.VariableAggregation.MEAN)
 
       if self.renorm:
         # Create variables to maintain the moving mean and standard deviation.
@@ -340,9 +340,9 @@ class BatchNormalization(Layer):
               shape=shape,
               dtype=param_dtype,
               initializer=init_ops.zeros_initializer(),
-              synchronization=variable_scope.VariableSynchronization.ON_READ,
+              synchronization=tf_variables.VariableSynchronization.ON_READ,
               trainable=False,
-              aggregation=variable_scope.VariableAggregation.MEAN)
+              aggregation=tf_variables.VariableAggregation.MEAN)
           return var
 
         with distribution_strategy_context.get_distribution_strategy(

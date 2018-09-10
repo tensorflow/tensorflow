@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class CSVDatasetOp : public DatasetOpKernel {
@@ -713,7 +714,7 @@ class CSVDatasetOp : public DatasetOpKernel {
               component.scalar<string>()() =
                   dataset()->record_defaults_[output_idx].flat<string>()(0);
             } else {
-              component.scalar<string>()() = field.ToString();
+              component.scalar<string>()() = string(field);
             }
             break;
           }
@@ -851,4 +852,5 @@ class CSVDatasetOp : public DatasetOpKernel {
 REGISTER_KERNEL_BUILDER(Name("CSVDataset").Device(DEVICE_CPU), CSVDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

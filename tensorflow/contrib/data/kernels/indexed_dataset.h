@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
+namespace data {
 
 // TODO(saeta): Urgh, this is ugly.
 class MaterializedIndexedDataset {
@@ -112,6 +113,7 @@ Status GetIndexedDatasetFromVariantTensor(const Tensor& tensor,
 Status StoreIndexedDatasetInVariantTensor(IndexedDataset* dataset,
                                           Tensor* tensor);
 
+}  // namespace data
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CONTRIB_DATA_KERNELS_INDEXED_DATASET_H_

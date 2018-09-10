@@ -65,8 +65,8 @@ class CpuUnaryIntrinsicTest
       features = "";
     }
 
-    return absl::StrCat(opcode.c_str(), "_On_", triple.c_str(),
-                        features.empty() ? "" : "_With", features.c_str());
+    return absl::StrCat(opcode, "_On_", triple,
+                        (features.empty() ? "" : "_With"), features);
   }
 };
 

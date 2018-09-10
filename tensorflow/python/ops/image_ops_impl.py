@@ -330,6 +330,8 @@ def _random_flip(image, flip_index, seed, scope_name):
           lambda: image,
           name=scope
       )
+      if isinstance(result, tuple):
+        result = result[0]  # TODO(b/111124878) remove this logic (CondV2).
       return fix_image_flip_shape(image, result)
     elif shape.ndims == 4:
       uniform_random = random_ops.random_uniform(

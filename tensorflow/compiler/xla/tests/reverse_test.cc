@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -38,14 +39,14 @@ static std::array<bool, 1> use_bfloat16_params{false};
 #endif
 
 struct ReverseSpec {
-  tensorflow::gtl::ArraySlice<int64> input_dims;
-  tensorflow::gtl::ArraySlice<int64> reversal;
+  absl::Span<const int64> input_dims;
+  absl::Span<const int64> reversal;
   bool use_bfloat16;
 
   string ToTestCaseName() const {
-    return tensorflow::strings::Printf(
-        "reverse_%s_in_dims_%s_%s", absl::StrJoin(input_dims, "x").c_str(),
-        absl::StrJoin(reversal, "x").c_str(), use_bfloat16 ? "bf16" : "f32");
+    return absl::StrFormat(
+        "reverse_%s_in_dims_%s_%s", absl::StrJoin(input_dims, "x"),
+        absl::StrJoin(reversal, "x"), use_bfloat16 ? "bf16" : "f32");
   }
 };
 
@@ -90,17 +91,16 @@ TEST_P(FloatReverseTest, Reverses) {
 
   std::unique_ptr<Literal> expected = input_literal->CloneToUnique();
   std::vector<int64> output_indices(spec.input_dims.size());
-  expected->EachCell<float>(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, float) {
-        for (int64 i = 0; i < indices.size(); ++i) {
-          output_indices[i] = indices[i];
-        }
-        float value = input_literal->Get<float>(indices);
-        for (int64 dim : spec.reversal) {
-          output_indices[dim] = (spec.input_dims[dim] - 1) - indices[dim];
-        }
-        expected->Set<float>(output_indices, value);
-      });
+  expected->EachCell<float>([&](absl::Span<const int64> indices, float) {
+    for (int64 i = 0; i < indices.size(); ++i) {
+      output_indices[i] = indices[i];
+    }
+    float value = input_literal->Get<float>(indices);
+    for (int64 dim : spec.reversal) {
+      output_indices[dim] = (spec.input_dims[dim] - 1) - indices[dim];
+    }
+    expected->Set<float>(output_indices, value);
+  });
   ComputeAndCompareLiteral(&builder, *expected, {});
 }
 

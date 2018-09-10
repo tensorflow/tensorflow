@@ -92,10 +92,6 @@ class StringPiece {
 
   StringPiece substr(size_t pos, size_t n = npos) const;
 
-  // Return a string that contains the copy of the referenced data.
-  // DEPRECATED: use std::string(sv) instead.
-  std::string ToString() const { return std::string(data_, size_); }
-
   // Three-way comparison.  Returns value:
   //   <  0 iff "*this" <  "b",
   //   == 0 iff "*this" == "b",

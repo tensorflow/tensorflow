@@ -91,7 +91,7 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
   Example:
     ```python
-    elems = [1, 2, 3, 4, 5, 6]
+    elems = tf.constant([1, 2, 3, 4, 5, 6])
     sum = foldl(lambda a, x: a + x, elems)
     # sum == 21
     ```

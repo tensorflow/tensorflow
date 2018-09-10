@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 
 namespace tensorflow {
+namespace data {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
@@ -208,6 +209,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       if (s.ok()) {
         *out_tensors = std::move(buffer_.front().value);
       }
+      auto_tuner_.RecordConsumption(buffer_.size());
       buffer_.pop_front();
       *end_of_sequence = false;
 
@@ -346,6 +348,7 @@ void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   *output = new Dataset(ctx, input, buffer_size);
 }
 
+namespace {
 REGISTER_KERNEL_BUILDER(Name("PrefetchDataset").Device(DEVICE_CPU),
                         PrefetchDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("PrefetchDataset")
@@ -354,4 +357,7 @@ REGISTER_KERNEL_BUILDER(Name("PrefetchDataset")
                             .HostMemory("input_dataset")
                             .HostMemory("handle"),
                         PrefetchDatasetOp);
+}  // namespace
+
+}  // namespace data
 }  // namespace tensorflow

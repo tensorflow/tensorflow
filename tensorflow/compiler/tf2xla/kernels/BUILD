@@ -115,8 +115,6 @@ tf_kernel_library(
     deps = [
         ":if_op",
         ":while_op",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/lib:batch_dot",
@@ -167,14 +165,11 @@ tf_kernel_library(
         "//tensorflow/core/kernels:sparse_to_dense_op",
         "//tensorflow/core/kernels:stack_ops",
         "//tensorflow/core/kernels:training_ops",
-    ] + if_mkl(
-        [
-            "//tensorflow/core/kernels:mkl_transpose_op",
-        ],
-        [
-            "//tensorflow/core/kernels:transpose_op",
-        ],
-    ),
+        "//tensorflow/core/kernels:transpose_op",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 tf_kernel_library(
@@ -183,6 +178,7 @@ tf_kernel_library(
     hdrs = ["while_op.h"],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:literal",
@@ -200,6 +196,7 @@ tf_kernel_library(
     hdrs = ["if_op.h"],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:literal",

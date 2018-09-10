@@ -643,14 +643,7 @@ cc_library(
         ":split_v_op",
         ":strided_slice_op",
         ":tile_ops",
-    ] + if_mkl(
-        [
-            ":mkl_transpose_op",
-        ],
-        [
-            ":transpose_op",
-        ],
-    ) + [
+        ":transpose_op",
         ":unique_op",
         ":unpack_op",
         ":unravel_index_op",
@@ -893,24 +886,13 @@ tf_kernel_library(
     deps = ARRAY_DEPS,
 )
 
-if_mkl(
-    [tf_mkl_kernel_library(
-        name = "mkl_transpose_op",
-        srcs = [
-            "mkl_transpose_op.cc",
-            "transpose_op.cc",
-        ],
-        hdrs = ["transpose_op.h"],
-        deps = ARRAY_DEPS + mkl_deps(),
-    )],
-    [tf_kernel_library(
-        name = "transpose_op",
-        srcs = [
-            "transpose_op.cc",
-        ],
-        hdrs = ["transpose_op.h"],
-        deps = ARRAY_DEPS,
-    )],
+tf_kernel_library(
+    name = "transpose_op",
+    srcs = [
+        "transpose_op.cc",
+    ],
+    hdrs = ["transpose_op.h"],
+    deps = ARRAY_DEPS + if_mkl([":mkl_transpose_op"]),
 )
 
 tf_kernel_library(
@@ -1280,6 +1262,7 @@ tf_cuda_cc_test(
     srcs = ["gather_op_test.cc"],
     deps = [
         ":gather_op",
+        ":host_constant_op",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -2292,6 +2275,31 @@ tf_cc_tests(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "eigen_benchmark",
+    testonly = 1,
+    hdrs = [
+        "eigen_benchmark.h",
+        ":eigen_helpers",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "eigen_benchmark_cpu_test",
+    srcs = ["eigen_benchmark_cpu_test.cc"],
+    deps = [
+        ":eigen_benchmark",
+        ":eigen_helpers",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//third_party/eigen3",
     ],
 )
 
@@ -4195,6 +4203,7 @@ cc_library(
         "hinge-loss.h",
         "logistic-loss.h",
         "loss.h",
+        "poisson-loss.h",
         "smooth-hinge-loss.h",
         "squared-loss.h",
     ],
@@ -6322,6 +6331,15 @@ tf_mkl_kernel_library(
     ],
     prefix = "mkl_cwise_ops_common",
     deps = NN_DEPS + mkl_deps() + [":cwise_op"],
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_transpose_op",
+    srcs = [
+        "mkl_transpose_op.cc",
+    ],
+    hdrs = ["transpose_op.h"],
+    deps = ARRAY_DEPS + mkl_deps(),
 )
 
 # NOTE(lespeholt): This rule is deprecated, please use:

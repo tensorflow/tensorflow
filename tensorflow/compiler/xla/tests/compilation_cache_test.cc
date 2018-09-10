@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -38,10 +38,9 @@ namespace {
 
 class CompilationCacheTest : public ClientLibraryTestBase {
  public:
-  void ExecuteComputationR0F32(
-      const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments, float expected_result,
-      bool expect_cache_hit) {
+  void ExecuteComputationR0F32(const XlaComputation& computation,
+                               absl::Span<GlobalData* const> arguments,
+                               float expected_result, bool expect_cache_hit) {
     ExecutionProfile execution_profile;
     std::unique_ptr<Literal> result =
         client_
@@ -56,7 +55,7 @@ class CompilationCacheTest : public ClientLibraryTestBase {
 
   void ExecuteComputationR2F32(
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      absl::Span<GlobalData* const> arguments,
       std::initializer_list<std::initializer_list<float>> expected_result,
       bool expect_cache_hit) {
     ExecutionProfile execution_profile;

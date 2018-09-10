@@ -148,10 +148,9 @@ Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
   }
 
   const DeviceAttributes attrs = Device::BuildDeviceAttributes(
-      strings::StrCat(name_prefix, "/device:", device_name, ":",
-                      device_ordinal),
+      absl::StrCat(name_prefix, "/device:", device_name, ":", device_ordinal),
       DeviceType(device_name), Bytes(16ULL << 30), DeviceLocality(),
-      strings::StrCat("device: ", device_name, " device"));
+      absl::StrCat("device: ", device_name, " device"));
 
   device->reset(
       new XlaDevice(options, attrs, device_ordinal, DeviceType(jit_device_name),
@@ -185,20 +184,29 @@ const DeviceType& XlaDevice::Metadata::jit_device_type() const {
   return device_type_;
 }
 
-/* static */ Status XlaDevice::GetMetadata(OpKernelContext* ctx,
-                                           const Metadata** metadata) {
+/*static*/ Status XlaDevice::GetMetadataFromDevice(
+    DeviceBase* device, const XlaDevice::Metadata** metadata) {
   *metadata = nullptr;
-  XlaDevice* xla_device =
-      dynamic_cast<XlaDevice*>(ctx->device()->UnderlyingDevice());
+  XlaDevice* xla_device = dynamic_cast<XlaDevice*>(device->UnderlyingDevice());
   if (xla_device == nullptr) {
     return errors::Internal(
-        "Cannot get XLA metadata from non-XLA device \"", ctx->device()->name(),
+        "Cannot get XLA metadata from non-XLA device \"", device->name(),
         "\". GetMetadata must only be called on an XLA device. Either an "
         "internal bug has been triggered, or an XLA-specific op has been "
         "placed on the wrong device.");
   }
   *metadata = &(xla_device->xla_metadata_);
   return Status::OK();
+}
+
+/* static */ Status XlaDevice::GetMetadata(OpKernelContext* ctx,
+                                           const Metadata** metadata) {
+  return GetMetadataFromDevice(ctx->device(), metadata);
+}
+
+/* static */ Status XlaDevice::GetMetadata(OpKernelConstruction* ctx,
+                                           const Metadata** metadata) {
+  return GetMetadataFromDevice(ctx->device(), metadata);
 }
 
 XlaDevice::XlaDevice(
@@ -365,11 +373,7 @@ Status XlaDevice::FillContextMap(const Graph* graph,
 void XlaDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   VLOG(2) << "XlaDevice::Compute " << op_kernel->name() << ":"
           << op_kernel->type_string();
-  // When Xprof profiling is off (which is the default), constructing the
-  // activity is simple enough that its overhead is negligible.
-  tracing::ScopedActivity activity(op_kernel->name(), op_kernel->type_string(),
-                                   op_kernel->IsExpensive());
-  op_kernel->Compute(context);
+  TracingDevice::Compute(op_kernel, context);
 }
 
 void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,

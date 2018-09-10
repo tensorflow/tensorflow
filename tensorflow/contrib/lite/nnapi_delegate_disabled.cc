@@ -27,7 +27,13 @@ NNAPIAllocation::NNAPIAllocation(const char* filename,
 
 NNAPIAllocation::~NNAPIAllocation() {}
 
-NNAPIDelegate::~NNAPIDelegate() {}
+NNAPIDelegate::~NNAPIDelegate() {
+#define UNUSED_MEMBER(x) (void)(x)
+  UNUSED_MEMBER(nn_model_);
+  UNUSED_MEMBER(nn_compiled_model_);
+  UNUSED_MEMBER(model_status_);
+#undef UNUSED_MEMBER
+}
 
 TfLiteStatus NNAPIDelegate::BuildGraph(Interpreter* interpreter) {
   return kTfLiteError;

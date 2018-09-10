@@ -20,10 +20,10 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -34,11 +34,11 @@ class LayoutUtil {
  public:
   // Creates a layout with the given minor-to-major dimension order. (This is a
   // convenience function for protobuf construction.)
-  static Layout MakeLayout(tensorflow::gtl::ArraySlice<int64> minor_to_major);
+  static Layout MakeLayout(absl::Span<const int64> minor_to_major);
 
   // Similar to MakeLayout, but take indices in reverse order.
   static Layout MakeLayoutFromMajorToMinor(
-      tensorflow::gtl::ArraySlice<int64> major_to_minor);
+      absl::Span<const int64> major_to_minor);
 
   // Creates a sparse layout with the given maximum number of elements. (This is
   // a convenience function for protobuf construction.)
@@ -104,8 +104,7 @@ class LayoutUtil {
 
   // Returns the padded_dimensions array for the given Shape.  Requires that the
   // shape is an array and has a dense layout.
-  static tensorflow::gtl::ArraySlice<int64> PaddedDimensions(
-      const Shape& shape);
+  static absl::Span<const int64> PaddedDimensions(const Shape& shape);
 
   // Returns the given index of the padded_dimensions array for the given Shape.
   // Requires that the shape is an array and has a dense layout.
@@ -138,8 +137,8 @@ class LayoutUtil {
 
   // Returns the minor_to_major array for the given Shape.  Requires that the
   // shape is an array and has a dense layout.
-  static tensorflow::gtl::ArraySlice<int64> MinorToMajor(const Shape& shape);
-  static tensorflow::gtl::ArraySlice<int64> MinorToMajor(const Layout& layout);
+  static absl::Span<const int64> MinorToMajor(const Shape& shape);
+  static absl::Span<const int64> MinorToMajor(const Layout& layout);
 
   // Major(0) is the most major logical dimension number, Major(1) is the
   // second-most-major logical dimension number and so on.
@@ -196,7 +195,7 @@ class LayoutUtil {
   // Returns whether the given dimensions are consecutive in the given layout,
   // not necessarily in the order given.
   static bool AreDimensionsConsecutive(const Layout& layout,
-                                       tensorflow::gtl::ArraySlice<int64> dims);
+                                       absl::Span<const int64> dims);
 
   // Compute a hash for `layout`.
   static size_t Hash(const Layout& layout);

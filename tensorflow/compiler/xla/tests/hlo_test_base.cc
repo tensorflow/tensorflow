@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -44,7 +44,6 @@ namespace {
 
 using absl::optional;
 using absl::string_view;
-using tensorflow::gtl::ArraySlice;
 
 constexpr char kInterpreter[] = "interpreter";
 
@@ -121,6 +120,14 @@ StatusOr<bool> HloTestBase::RunHloPass(HloPassInterface* hlo_pass,
   return status_or;
 }
 
+/* static */
+PrecisionConfig HloTestBase::DefaultPrecisionConfig(int operands) {
+  PrecisionConfig precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      operands, PrecisionConfig::DEFAULT);
+  return precision_config;
+}
+
 DebugOptions HloTestBase::GetDebugOptionsForTest() {
   auto debug_options = legacy_flags::GetDebugOptionsFromFlags();
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.
@@ -130,14 +137,12 @@ DebugOptions HloTestBase::GetDebugOptionsForTest() {
 }
 
 StatusOr<std::unique_ptr<Literal>> HloTestBase::Execute(
-    std::unique_ptr<HloModule> module,
-    tensorflow::gtl::ArraySlice<Literal*> arguments) {
+    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments) {
   return test_runner_.Execute(std::move(module), arguments);
 }
 
 std::unique_ptr<Literal> HloTestBase::ExecuteNoHloPasses(
-    std::unique_ptr<HloModule> module,
-    tensorflow::gtl::ArraySlice<Literal*> arguments) {
+    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments) {
   return test_runner_
       .Execute(std::move(module), arguments,
                /*run_hlo_passes=*/false)
@@ -145,8 +150,7 @@ std::unique_ptr<Literal> HloTestBase::ExecuteNoHloPasses(
 }
 
 std::unique_ptr<Literal> HloTestBase::ExecuteAndTransfer(
-    std::unique_ptr<HloModule> module,
-    tensorflow::gtl::ArraySlice<Literal*> arguments) {
+    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments) {
   return test_runner_.Execute(std::move(module), arguments).ValueOrDie();
 }
 
@@ -169,7 +173,8 @@ StatusOr<std::unique_ptr<HloModule>> HloTestBase::MakeReferenceModule(
 }
 
 StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
-    std::unique_ptr<HloModule> module, const ArraySlice<Literal*> arguments,
+    std::unique_ptr<HloModule> module,
+    const absl::Span<Literal* const> arguments,
     const optional<ErrorSpec>& error, bool run_hlo_passes,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   TF_RETURN_IF_ERROR(hlo_verifier_->Run(module.get()).status());
@@ -188,7 +193,8 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompare(
-    std::unique_ptr<HloModule> module, const ArraySlice<Literal*> arguments,
+    std::unique_ptr<HloModule> module,
+    const absl::Span<Literal* const> arguments,
     const optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto result =
@@ -201,7 +207,8 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
-    std::unique_ptr<HloModule> module, const ArraySlice<Literal*> arguments,
+    std::unique_ptr<HloModule> module,
+    const absl::Span<Literal* const> arguments,
     const optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto result =

@@ -146,6 +146,21 @@ class KerasInitializersTest(test.TestCase):
       self._runner(keras.initializers.ones(), tensor_shape,
                    target_mean=1., target_max=1.)
 
+  def test_default_random_uniform(self):
+    ru = keras.initializers.get('uniform')
+    self.assertEqual(ru.minval, -0.05)
+    self.assertEqual(ru.maxval, 0.05)
+
+  def test_default_random_normal(self):
+    rn = keras.initializers.get('normal')
+    self.assertEqual(rn.mean, 0.0)
+    self.assertEqual(rn.stddev, 0.05)
+
+  def test_default_truncated_normal(self):
+    tn = keras.initializers.get('truncated_normal')
+    self.assertEqual(tn.mean, 0.0)
+    self.assertEqual(tn.stddev, 0.05)
+
 
 if __name__ == '__main__':
   test.main()

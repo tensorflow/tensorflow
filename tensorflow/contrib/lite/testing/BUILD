@@ -214,6 +214,7 @@ cc_library(
     deps = [
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string",
+        "//tensorflow/contrib/lite/core/api",
     ],
 )
 

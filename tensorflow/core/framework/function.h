@@ -710,9 +710,10 @@ Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
 #define REGISTER_OP_GRADIENT_UNIQ_HELPER(ctr, name, fn) \
   REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn)
 
-#define REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn)                 \
-  static bool unused_grad_##ctr = SHOULD_REGISTER_OP_GRADIENT && \
-                                  ::tensorflow::gradient::RegisterOp(name, fn)
+#define REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn)      \
+  static bool unused_grad_##ctr TF_ATTRIBUTE_UNUSED = \
+      SHOULD_REGISTER_OP_GRADIENT &&                  \
+      ::tensorflow::gradient::RegisterOp(name, fn)
 
 namespace gradient {
 // Register a gradient creator for the "op".

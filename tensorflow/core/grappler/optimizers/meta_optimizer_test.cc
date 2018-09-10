@@ -64,6 +64,13 @@ bool TestOptimizer::optimized_;
 
 REGISTER_GRAPH_OPTIMIZER(TestOptimizer);
 
+class TestGraphOptimizer : public TestOptimizer {
+ public:
+  string name() const override { return "test_graph_optimizer"; }
+};
+
+REGISTER_GRAPH_OPTIMIZER(TestGraphOptimizer);
+
 class MetaOptimizerTest : public GrapplerTest {};
 
 TEST_F(MetaOptimizerTest, RunsCustomOptimizer) {
@@ -83,6 +90,27 @@ TEST_F(MetaOptimizerTest, RunsCustomOptimizer) {
   EXPECT_TRUE(TestOptimizer::IsOptimized());
 }
 
+TEST_F(MetaOptimizerTest, RunsCustomOptimizerAndCustomGraphOptimizer) {
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  GrapplerItem item;
+  CHECK(fake_input.NextItem(&item));
+
+  TestOptimizer::SetOptimized(false);
+  TestGraphOptimizer::SetOptimized(false);
+  RewriterConfig rewriter_config;
+  rewriter_config.add_optimizers("TestOptimizer");
+  auto customGraphOptimizer = rewriter_config.add_custom_optimizers();
+  customGraphOptimizer->set_name("TestGraphOptimizer");
+  rewriter_config.set_min_graph_nodes(-1);
+
+  MetaOptimizer optimizer(nullptr, rewriter_config);
+  GraphDef output;
+  const Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  EXPECT_TRUE(TestOptimizer::IsOptimized());
+  EXPECT_TRUE(TestGraphOptimizer::IsOptimized());
+}
+
 TEST_F(MetaOptimizerTest, RunOptimizersTwice) {
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
   GrapplerItem item;
@@ -96,6 +124,24 @@ TEST_F(MetaOptimizerTest, RunOptimizersTwice) {
   GraphDef output;
   const Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
+}
+
+TEST_F(MetaOptimizerTest, RunToggleOptimizersAndCustomGraphOptimizerTwice) {
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  GrapplerItem item;
+  CHECK(fake_input.NextItem(&item));
+
+  RewriterConfig rewriter_config;
+  auto customGraphOptimizer = rewriter_config.add_custom_optimizers();
+  customGraphOptimizer->set_name("TestGraphOptimizer");
+  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
+  rewriter_config.set_min_graph_nodes(-1);
+
+  MetaOptimizer optimizer(nullptr, rewriter_config);
+  GraphDef output;
+  const Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  EXPECT_TRUE(TestGraphOptimizer::IsOptimized());
 }
 
 TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {

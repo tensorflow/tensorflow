@@ -20,10 +20,12 @@ limitations under the License.
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -278,6 +281,54 @@ TEST_F(XlaCompilerTest, OutOfOrderGraph) {
       client_->Transfer(*actual).ConsumeValueOrDie();
 
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(*param0_literal, *actual_literal));
+}
+
+// Tests that the compiler doesn't reorder the parameters.
+TEST_F(XlaCompilerTest, MixedOrderArguments) {
+  for (bool swap_order : {false, true}) {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto var =
+        ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, swap_order ? 0 : 1);
+    auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, swap_order ? 1 : 0);
+    // Adds an identity op around the resource to make sure identity ops
+    // propagate resources correctly.
+    auto identity = ops::Identity(scope.WithOpName("VIdentity"), var);
+    auto write = ops::AssignAddVariableOp(scope, identity, a);
+    auto read = ops::ReadVariableOp(
+        scope.WithControlDependencies(std::vector<Operation>{write}), var,
+        DT_INT32);
+    auto read_plus_one = ops::Add(scope, read, ops::Const<int32>(scope, 1));
+    auto d = ops::_Retval(scope.WithOpName("D"), read_plus_one, 0);
+    std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+    TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+    // Builds a description of the arguments.
+    std::vector<XlaCompiler::Argument> args(2);
+    args[0].kind = XlaCompiler::Argument::kParameter;
+    args[0].type = DT_INT32;
+    args[0].shape = TensorShape({2});
+    args[1].kind = XlaCompiler::Argument::kResource;
+    args[1].resource_kind = XlaResource::kVariable;
+    args[1].initialized = true;
+    args[1].type = DT_INT32;
+    args[1].shape = TensorShape({2});
+
+    if (swap_order) {
+      // Even after swapping arguments, the compiler should maintain the new
+      // ordering of parameters.
+      std::swap(args[0], args[1]);
+    }
+    // Compiles the graph.
+    XlaCompiler compiler(DefaultOptions());
+
+    XlaCompiler::CompileOptions compile_options;
+    compile_options.always_return_tuple = false;
+    XlaCompiler::CompilationResult result;
+    TF_ASSERT_OK(compiler.CompileGraph(compile_options, "add", std::move(graph),
+                                       args, &result));
+
+    EXPECT_THAT(result.input_mapping, ::testing::ElementsAre(0, 1));
+  }
 }
 
 TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
@@ -813,6 +864,33 @@ TEST_F(XlaCompilerTest, LocalFunctionWithWrongArgumentsFail) {
       << status.error_message();
 }
 
+void RunAndCheckVariablesComputation(
+    xla::Client* client, const XlaCompiler::CompilationResult& result) {
+  std::unique_ptr<xla::Literal> param0_literal =
+      xla::LiteralUtil::CreateR1<int32>({7, 42});
+  std::unique_ptr<xla::Literal> param1_literal =
+      xla::LiteralUtil::CreateR1<int32>({-3, 101});
+  std::unique_ptr<xla::GlobalData> param0_data =
+      client->TransferToServer(*param0_literal).ConsumeValueOrDie();
+  std::unique_ptr<xla::GlobalData> param1_data =
+      client->TransferToServer(*param1_literal).ConsumeValueOrDie();
+
+  std::unique_ptr<xla::GlobalData> actual =
+      client
+          ->Execute(*result.computation, {param0_data.get(), param1_data.get()})
+          .ConsumeValueOrDie();
+  std::unique_ptr<xla::Literal> actual_literal =
+      client->Transfer(*actual).ConsumeValueOrDie();
+
+  std::unique_ptr<xla::Literal> expected0 =
+      xla::LiteralUtil::CreateR1<int32>({5, 144});
+  std::unique_ptr<xla::Literal> expected1 =
+      xla::LiteralUtil::CreateR1<int32>({4, 143});
+  std::unique_ptr<xla::Literal> expected_literal =
+      xla::LiteralUtil::MakeTuple({expected0.get(), expected1.get()});
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected_literal, *actual_literal));
+}
+
 // Tests a simple graph that reads and writes a variable.
 TEST_F(XlaCompilerTest, Variables) {
   Scope scope = Scope::NewRootScope().ExitOnError();
@@ -847,31 +925,85 @@ TEST_F(XlaCompilerTest, Variables) {
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
                                      std::move(graph), args, &result));
+  RunAndCheckVariablesComputation(client_, result);
+}
+
+// Tests a simple graph that reads and writes a variable.
+TEST_F(XlaCompilerTest, ReturnResourceHandleOnly) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto var = ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, 0);
+  auto d = ops::_Retval(scope.WithOpName("D"), var, 0);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kResource;
+  args[0].resource_kind = XlaResource::kVariable;
+  args[0].initialized = true;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({2});
+
+  // Compiles the graph.
+  XlaCompiler compiler(DefaultOptions());
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
+                                     std::move(graph), args, &result));
 
   // Tests that the generated computation works.
-  std::unique_ptr<xla::Literal> param0_literal =
-      xla::LiteralUtil::CreateR1<int32>({7, 42});
   std::unique_ptr<xla::Literal> param1_literal =
       xla::LiteralUtil::CreateR1<int32>({-3, 101});
-  std::unique_ptr<xla::GlobalData> param0_data =
-      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
   std::unique_ptr<xla::GlobalData> param1_data =
       client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
 
   std::unique_ptr<xla::GlobalData> actual =
-      client_
-          ->Execute(*result.computation, {param0_data.get(), param1_data.get()})
+      client_->Execute(*result.computation, {param1_data.get()})
           .ConsumeValueOrDie();
   std::unique_ptr<xla::Literal> actual_literal =
       client_->Transfer(*actual).ConsumeValueOrDie();
 
-  std::unique_ptr<xla::Literal> expected0 =
-      xla::LiteralUtil::CreateR1<int32>({5, 144});
-  std::unique_ptr<xla::Literal> expected1 =
-      xla::LiteralUtil::CreateR1<int32>({4, 143});
   std::unique_ptr<xla::Literal> expected_literal =
-      xla::LiteralUtil::MakeTuple({expected0.get(), expected1.get()});
+      xla::LiteralUtil::MakeTuple({});
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected_literal, *actual_literal));
+}
+
+TEST_F(XlaCompilerTest, ReturnResourceHandle) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
+  auto var = ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, 1);
+  // Adds an identity op around the resource to make sure identity ops propagate
+  // resources correctly.
+  auto identity = ops::Identity(scope.WithOpName("VIdentity"), var);
+  auto write = ops::AssignAddVariableOp(scope, identity, a);
+  auto read = ops::ReadVariableOp(
+      scope.WithControlDependencies(std::vector<Operation>{write}), var,
+      DT_INT32);
+  auto read_plus_one = ops::Add(scope, read, ops::Const<int32>(scope, 1));
+  auto r = ops::_Retval(scope.WithOpName("R"), var, 0);
+  auto d = ops::_Retval(scope.WithOpName("D"), read_plus_one, 1);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({2});
+  args[1].kind = XlaCompiler::Argument::kResource;
+  args[1].resource_kind = XlaResource::kVariable;
+  args[1].initialized = true;
+  args[1].type = DT_INT32;
+  args[1].shape = TensorShape({2});
+
+  // Compiles the graph.
+  XlaCompiler compiler(DefaultOptions());
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
+                                     std::move(graph), args, &result));
+  RunAndCheckVariablesComputation(client_, result);
 }
 
 xla::StatusOr<std::unique_ptr<Graph>> BuildTestGraph() {
@@ -1142,6 +1274,71 @@ TEST_F(XlaCompilerTest, SingleOpWithoutInputs) {
     TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "NoOp",
                                        std::move(graph_copy), args, &result));
     EXPECT_EQ(0, result.resource_updates.size());
+  }
+}
+
+class DummySideEffectingOp : public XlaOpKernel {
+ public:
+  explicit DummySideEffectingOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  void Compile(XlaOpKernelContext* ctx) override {
+    OP_REQUIRES_OK(ctx, ctx->compiler()->SetNodeToken(
+                            name(), xla::CreateToken(ctx->builder())));
+  }
+};
+
+REGISTER_OP("DummySideEffectingOp");
+
+REGISTER_XLA_OP(Name("DummySideEffectingOp"), DummySideEffectingOp);
+
+TEST_F(XlaCompilerTest, TokenInputAndOutput) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  NodeDef side_effecting_op;
+  side_effecting_op.set_name("DummySideEffectingOp");
+  side_effecting_op.set_op("DummySideEffectingOp");
+  AddNodeAttr(kXlaTokenInputNodesAttrName,
+              std::vector<string>{kXlaTokenArgNodeName}, &side_effecting_op);
+  Status status;
+  graph->AddNode(side_effecting_op, &status);
+  TF_ASSERT_OK(status);
+  EXPECT_TRUE(FixupSourceAndSinkEdges(graph.get()));
+
+  const std::vector<XlaCompiler::Argument> empty_args;
+  {
+    // The case for entry computation: we don't add token input/output. Instead,
+    // we use CreateToken HLO to create the entry token.
+    XlaCompiler::CompileOptions options;
+    options.is_entry_computation = true;
+    options.add_token_input_output = false;
+    XlaCompiler compiler(DefaultOptions());
+
+    std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
+    CopyGraph(*graph, graph_copy.get());
+    XlaCompiler::CompilationResult result;
+    TF_ASSERT_OK(compiler.CompileGraph(options, "NoOp", std::move(graph_copy),
+                                       empty_args, &result));
+    EXPECT_EQ(result.xla_input_shapes.size(), 0);
+    EXPECT_TRUE(xla::ShapeUtil::IsTuple(result.xla_output_shape));
+    EXPECT_EQ(xla::ShapeUtil::TupleElementCount(result.xla_output_shape), 0);
+  }
+  {
+    // The case for non-entry computation (e.g. while loop body). We add token
+    // input/output.
+    XlaCompiler::CompileOptions options;
+    options.is_entry_computation = false;
+    options.add_token_input_output = true;
+    XlaCompiler compiler(DefaultOptions());
+
+    std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
+    CopyGraph(*graph, graph_copy.get());
+    XlaCompiler::CompilationResult result;
+    TF_ASSERT_OK(compiler.CompileGraph(options, "NoOp", std::move(graph_copy),
+                                       empty_args, &result));
+    EXPECT_EQ(result.xla_input_shapes.size(), 1);
+    EXPECT_TRUE(xla::ShapeUtil::IsToken(result.xla_input_shapes[0]));
+    EXPECT_TRUE(xla::ShapeUtil::IsTuple(result.xla_output_shape));
+    EXPECT_EQ(xla::ShapeUtil::TupleElementCount(result.xla_output_shape), 1);
+    EXPECT_TRUE(xla::ShapeUtil::IsToken(
+        xla::ShapeUtil::GetTupleElementShape(result.xla_output_shape, 0)));
   }
 }
 

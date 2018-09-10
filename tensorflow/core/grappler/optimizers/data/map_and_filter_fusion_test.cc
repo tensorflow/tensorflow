@@ -30,7 +30,7 @@ namespace {
 
 NodeDef MakeMapNode(StringPiece name, StringPiece input_node_name) {
   return test::function::NDef(
-      name, "MapDataset", {input_node_name.ToString()},
+      name, "MapDataset", {string(input_node_name)},
       {{"f", FunctionDefHelper::FunctionRef("XTimesTwo")},
        {"Targuments", {}},
        {"output_shapes", {}},
@@ -39,7 +39,7 @@ NodeDef MakeMapNode(StringPiece name, StringPiece input_node_name) {
 
 NodeDef MakeFilterNode(StringPiece name, StringPiece input_node_name) {
   return test::function::NDef(
-      name, "FilterDataset", {input_node_name.ToString()},
+      name, "FilterDataset", {string(input_node_name)},
       {{"predicate", FunctionDefHelper::FunctionRef("IsZero")},
        {"Targuments", {}},
        {"output_shapes", {}},
