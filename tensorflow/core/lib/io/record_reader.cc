@@ -109,9 +109,6 @@ Status RecordReader::ReadChecksummed(uint64 offset, size_t n, string* result) {
 }
 
 Status RecordReader::ReadRecord(uint64* offset, string* record) {
-  static const size_t kHeaderSize = sizeof(uint64) + sizeof(uint32);
-  static const size_t kFooterSize = sizeof(uint32);
-
   // Position the input stream.
   int64 curr_pos = input_stream_->Tell();
   int64 desired_pos = static_cast<int64>(*offset);
