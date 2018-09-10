@@ -140,6 +140,6 @@ bb0(%a : f32):
 
 cfgfunc @cfgfunc_with_ops(f32) {
 bb0(%a : f32):
-  %sf = addf{%a, %a} : f32  // expected-error {{unable to parse '{' as operand}}
+  %sf = addf{%a, %a} : f32  // expected-error {{invalid operand}}
 }
 

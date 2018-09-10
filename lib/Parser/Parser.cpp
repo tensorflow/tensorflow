@@ -1796,9 +1796,7 @@ public:
       if (parser.getToken().is(Token::l_paren) ||
           parser.getToken().is(Token::l_square))
         return emitError(startLoc, "unexpected delimiter");
-      return emitError(startLoc, "unable to parse '" +
-                                     parser.getTokenSpelling() +
-                                     "' as operand");
+      return emitError(startLoc, "invalid operand");
     case Delimiter::OptionalParen:
       if (parser.getToken().isNot(Token::l_paren))
         return false;
