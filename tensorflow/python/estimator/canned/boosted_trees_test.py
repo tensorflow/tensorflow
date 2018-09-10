@@ -1560,7 +1560,7 @@ class ModelFnTests(test_util.TensorFlowTestCase):
     ops.reset_default_graph()
     expected_first, expected_second, expected_third = (
         self._get_expected_ensembles_for_classification())
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Train with train_in_memory mode.
       with sess.graph.as_default():
         train_op, ensemble_serialized = self._get_train_op_and_ensemble(
@@ -1593,7 +1593,7 @@ class ModelFnTests(test_util.TensorFlowTestCase):
     expected_first, expected_second, expected_third, expected_forth = (
         self._get_expected_ensembles_for_classification_with_bias())
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with sess.graph.as_default():
         train_op, ensemble_serialized = self._get_train_op_and_ensemble(
             boosted_trees._create_classification_head(n_classes=2),
@@ -1633,7 +1633,7 @@ class ModelFnTests(test_util.TensorFlowTestCase):
     ops.reset_default_graph()
     expected_first, expected_second, expected_third = (
         self._get_expected_ensembles_for_classification())
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Train without train_in_memory mode.
       with sess.graph.as_default():
         train_op, ensemble_serialized = self._get_train_op_and_ensemble(
@@ -1666,7 +1666,7 @@ class ModelFnTests(test_util.TensorFlowTestCase):
     expected_first, expected_second, expected_third, expected_forth = (
         self._get_expected_ensembles_for_classification_with_bias())
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with sess.graph.as_default():
         train_op, ensemble_serialized = self._get_train_op_and_ensemble(
             boosted_trees._create_classification_head(n_classes=2),
@@ -1704,7 +1704,7 @@ class ModelFnTests(test_util.TensorFlowTestCase):
     ops.reset_default_graph()
     expected_first, expected_second, expected_third = (
         self._get_expected_ensembles_for_regression())
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Train with train_in_memory mode.
       with sess.graph.as_default():
         train_op, ensemble_serialized = self._get_train_op_and_ensemble(
@@ -1734,7 +1734,7 @@ class ModelFnTests(test_util.TensorFlowTestCase):
     ops.reset_default_graph()
     expected_first, expected_second, expected_third, expected_forth = (
         self._get_expected_ensembles_for_regression_with_bias())
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Train with train_in_memory mode.
       with sess.graph.as_default():
         train_op, ensemble_serialized = self._get_train_op_and_ensemble(
@@ -1774,7 +1774,7 @@ class ModelFnTests(test_util.TensorFlowTestCase):
     ops.reset_default_graph()
     expected_first, expected_second, expected_third = (
         self._get_expected_ensembles_for_regression())
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Train without train_in_memory mode.
       with sess.graph.as_default():
         train_op, ensemble_serialized = self._get_train_op_and_ensemble(
@@ -1804,7 +1804,7 @@ class ModelFnTests(test_util.TensorFlowTestCase):
     ops.reset_default_graph()
     expected_first, expected_second, expected_third, expected_forth = (
         self._get_expected_ensembles_for_regression_with_bias())
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Train with train_in_memory mode.
       with sess.graph.as_default():
         train_op, ensemble_serialized = self._get_train_op_and_ensemble(
