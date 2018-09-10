@@ -43,6 +43,7 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python/distribute:distribute_coordinator_test \
     -//tensorflow/python/estimator:dnn_linear_combined_test \
     -//tensorflow/python/estimator:linear_test \
+    -//tensorflow/python/estimator:keras_test \
     -//tensorflow/python/feature_column:feature_column_v2_test \
     -//tensorflow/python/keras:cudnn_recurrent_test \
     -//tensorflow/python/kernel_tests:batch_matmul_op_test \
