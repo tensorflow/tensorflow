@@ -19,14 +19,14 @@ limitations under the License.
 #include <random>
 
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 namespace cpu {
 namespace {
 
-class ShapePartitionAssignerTest : public HloTestBase {
+class ShapePartitionAssignerTest : public HloVerifiedTestBase {
  protected:
   typedef std::vector<int64> Vec;
 
@@ -91,7 +91,7 @@ TEST_F(ShapePartitionAssignerTest, Shape532WithLayout201) {
             expected_partitions);
 }
 
-class ShapePartitionIteratorTest : public HloTestBase {
+class ShapePartitionIteratorTest : public HloVerifiedTestBase {
  protected:
   typedef std::vector<std::pair<int64, int64>> Partition;
 };
@@ -145,7 +145,7 @@ TEST_F(ShapePartitionIteratorTest, Shape532WithLayout210) {
   }
 }
 
-class RandomShapePartitionIteratorTest : public HloTestBase {
+class RandomShapePartitionIteratorTest : public HloVerifiedTestBase {
  protected:
   typedef std::vector<std::pair<int64, int64>> Partition;
   RandomShapePartitionIteratorTest()
