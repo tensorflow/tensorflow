@@ -278,9 +278,7 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
                     .Finalize(&def));
     InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def,
                        {S({8, 6, 4, 2, 3, 4, 5}), S({3})}, {}, {}, {});
-    TF_EXPECT_OK(BiasAddShape(&c));
-    ShapeHandle output = c.output(0);
-    EXPECT_EQ("[8,6,4,2,3,4,5]", c.DebugString(output));
+    EXPECT_FALSE(BiasAddShape(&c).ok());
   }
 
   {
