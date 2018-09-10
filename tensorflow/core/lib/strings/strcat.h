@@ -124,6 +124,9 @@ class AlphaNum {
   AlphaNum(const StringPiece &pc) : piece_(pc) {}  // NOLINT(runtime/explicit)
   AlphaNum(const tensorflow::string &str)          // NOLINT(runtime/explicit)
       : piece_(str) {}
+  template <typename A>
+  AlphaNum(const std::basic_string<char, std::char_traits<char>, A> &str)
+      : piece_(str) {}  // NOLINT(runtime/explicit)
 
   StringPiece::size_type size() const { return piece_.size(); }
   const char *data() const { return piece_.data(); }
