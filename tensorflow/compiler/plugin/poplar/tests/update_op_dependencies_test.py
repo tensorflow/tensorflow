@@ -18,10 +18,10 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
 
   def testDontOutlineInplaceExpression(self):
     with ops.device("/device:IPU:0"):
-      pa = array_ops.placeholder(np.float16, [])
-      pb = array_ops.placeholder(np.float16, [])
-      pc = array_ops.placeholder(np.float16, [])
-      pd = array_ops.placeholder(np.float16, [])
+      pa = array_ops.placeholder(np.float32, [])
+      pb = array_ops.placeholder(np.float32, [])
+      pc = array_ops.placeholder(np.float32, [])
+      pd = array_ops.placeholder(np.float32, [])
       e = pa + pb - pc + pd
 
     with ops.device('cpu'):
@@ -52,11 +52,14 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testAddCopyToViewChangingShape(self):
+    data_a = np.array([[10, -20], [5, 1]])
+    data_b = np.array([[-12, 11], [12, -13]])
     with ops.device("/device:IPU:0"):
-      pa = array_ops.placeholder(np.float16, [2, 2])
-      b = array_ops.transpose(pa)
-      c = pa + pa
-      d = c / b
+      pa = array_ops.placeholder(np.float32, [2, 2])
+      pb = array_ops.placeholder(np.float32, [2, 2])
+      c = array_ops.transpose(pa)
+      d = pa + pb
+      e = c / d
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
@@ -64,10 +67,12 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
     with tu.ipu_session() as sess:
       sess.run(report)
       fd = {
-        pa: [[10, -20], [5, 1]],
+        pa: data_a,
+        pb: data_b,
       }
-      result = sess.run(d, fd)
-      self.assertAllClose(result, [[2, -8], [-.5, 2]])
+      result = sess.run(e, fd)
+      np_result = np.transpose(data_a) / (data_a + data_b)
+      self.assertAllClose(result, np_result)
 
       result = sess.run(report)
       self.assertTrue(len(result) == 5)
@@ -78,7 +83,49 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
             'Copy_XLA_Args/arg0.*_to_transpose.*.clone/OnTileCopy',
-            'ArithmeticOptimizer/SimplifyAggregation_Mul_add/multiply.*/Op/Multiply',
+            'add/add.*/AddTo',
+            'truediv/divide.*/Op/Divide']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
+  def testAddCopyToViewChangingShape2(self):
+    data_a = np.array([[10, -10], [-5, 5]])
+    data_b = np.array([[-15, 15], [25, -25]])
+    data_c = 2
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float32, [2, 2])
+      pb = array_ops.placeholder(np.float32, [2, 2])
+      pc = array_ops.placeholder(np.float32, [])
+      a = array_ops.transpose(pa)
+      b = pa + pb * pc
+      c = a * pb
+      d = b / c
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      sess.run(report)
+      fd = {
+        pa: data_a,
+        pb: data_b,
+        pc: data_c,
+      }
+      np_result = (data_a + data_b * data_c) / (np.transpose(data_a) * data_b)
+      result = sess.run(d, fd)
+      self.assertAllClose(result, np_result)
+
+      result = sess.run(report)
+      self.assertTrue(len(result) == 5)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
+            'Copy_XLA_Args/arg0.*_to_transpose.*.clone/OnTileCopy',
+            'mul/multiply.*/Op/Multiply',
+            'add/add.*/AddTo',
+            'mul_1/multiply.*/Op/Multiply',
             'truediv/divide.*/Op/Divide']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 

@@ -134,8 +134,8 @@ StatusOr<poplar::Tensor> AddOutputTensor(poplar::Graph& graph,
       !res.annotations.inplace_instructions.IsInPlace(inst)) {
     // If the output tensor for non inplace op intersects with the tensor for
     // inst->operand(0) and one of dependency successors of inst is an inplace
-    // op with inst as the operand 0, then we need to clone this output tensor
-    // so that the inplace op can still be performed
+    // op with inst->operand(0) as the operand 0, then we need to clone this
+    // output tensor so that the inplace op can still be performed
     poplar::Tensor in0;
     if (inst->opcode() == HloOpcode::kGetTupleElement) {
       in0 = FindTupleInInstructionInput(map, inst, 0, inst->tuple_index())[n];
@@ -147,7 +147,7 @@ StatusOr<poplar::Tensor> AddOutputTensor(poplar::Graph& graph,
       bool clone_output = false;
       for (const auto* succ : inst->control_successors()) {
         if (res.annotations.inplace_instructions.IsInPlace(succ) &&
-            succ->operand(0) == inst) {
+            succ->operand(0) == inst->operand(0)) {
           clone_output = true;
           break;
         }
