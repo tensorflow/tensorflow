@@ -103,12 +103,30 @@ public:
     state->setAttr(name, value);
   }
 
+  /// Emit an error about fatal conditions with this operation, reporting up to
+  /// any diagnostic handlers that may be listening.  NOTE: This may terminate
+  /// the containing application, only use when the IR is in an inconsistent
+  /// state.
+  void emitError(const Twine &message) const;
+
+  /// Emit an error with the op name prefixed, like "'dim' op " which is
+  /// convenient for verifiers.  This always returns true.
+  bool emitOpError(const Twine &message) const;
+
+  /// Emit a warning about this operation, reporting up to any diagnostic
+  /// handlers that may be listening.
+  void emitWarning(const Twine &message) const;
+
+  /// Emit a note about this operation, reporting up to any diagnostic
+  /// handlers that may be listening.
+  void emitNote(const Twine &message) const;
+
 protected:
   // These are default implementations of customization hooks.
 
   /// If the concrete type didn't implement a custom verifier hook, just fall
   /// back to this one which accepts everything.
-  const char *verify() const { return nullptr; }
+  bool verify() const { return false; }
 
   /// Unless overridden, the short form of an op is always rejected.  Op
   /// implementations should implement this to return boolean true on failure.
@@ -160,13 +178,16 @@ public:
     op->getAs<ConcreteType>()->print(p);
   }
 
-  /// This is the hook used by the Verifier to check out this instruction.  It
-  /// delegates to the Traits for their policy implementations, and allows the
-  /// user to specify their own verify() method.
-  static const char *verifyInvariants(const Operation *op) {
-    if (auto error = BaseVerifier<Traits<ConcreteType>...>::verifyTrait(op))
-      return error;
-    return op->getAs<ConcreteType>()->verify();
+  /// This is the hook that checks whether or not this instruction is well
+  /// formed according to the invariants of its opcode.  It delegates to the
+  /// Traits for their policy implementations, and allows the user to specify
+  /// their own verify() method.
+  ///
+  /// On success this returns false; on failure it emits an error to the
+  /// diagnostic subsystem and returns true.
+  static bool verifyInvariants(const Operation *op) {
+    return BaseVerifier<Traits<ConcreteType>...>::verifyTrait(op) ||
+           op->getAs<ConcreteType>()->verify();
   }
 
   // TODO: Provide a dump() method.
@@ -180,23 +201,21 @@ private:
 
   template <typename First, typename... Rest>
   struct BaseVerifier<First, Rest...> {
-    static const char *verifyTrait(const Operation *op) {
-      if (auto error = First::verifyTrait(op))
-        return error;
-      return BaseVerifier<Rest...>::verifyTrait(op);
+    static bool verifyTrait(const Operation *op) {
+      return First::verifyTrait(op) || BaseVerifier<Rest...>::verifyTrait(op);
     }
   };
 
   template <typename First>
   struct BaseVerifier<First> {
-    static const char *verifyTrait(const Operation *op) {
+    static bool verifyTrait(const Operation *op) {
       return First::verifyTrait(op);
     }
   };
 
   template <>
   struct BaseVerifier<> {
-    static const char *verifyTrait(const Operation *op) { return nullptr; }
+    static bool verifyTrait(const Operation *op) { return false; }
   };
 };
 
@@ -228,7 +247,7 @@ protected:
 
   /// Provide default implementations of trait hooks.  This allows traits to
   /// provide exactly the overrides they care about.
-  static const char *verifyTrait(const Operation *op) { return nullptr; }
+  static bool verifyTrait(const Operation *op) { return false; }
 };
 
 /// This class provides the API for ops that are known to have exactly one
@@ -236,10 +255,10 @@ protected:
 template <typename ConcreteType>
 class ZeroOperands : public TraitBase<ConcreteType, ZeroOperands> {
 public:
-  static const char *verifyTrait(const Operation *op) {
+  static bool verifyTrait(const Operation *op) {
     if (op->getNumOperands() != 0)
-      return "requires zero operands";
-    return nullptr;
+      return op->emitOpError("requires zero operands");
+    return false;
   }
 
 private:
@@ -263,10 +282,10 @@ public:
     this->getOperation()->setOperand(0, value);
   }
 
-  static const char *verifyTrait(const Operation *op) {
+  static bool verifyTrait(const Operation *op) {
     if (op->getNumOperands() != 1)
-      return "requires a single operand";
-    return nullptr;
+      return op->emitOpError("requires a single operand");
+    return false;
   }
 };
 
@@ -292,11 +311,10 @@ public:
       this->getOperation()->setOperand(i, value);
     }
 
-    static const char *verifyTrait(const Operation *op) {
-      // TODO(clattner): Allow verifier to return non-constant string.
+    static bool verifyTrait(const Operation *op) {
       if (op->getNumOperands() != N)
-        return "incorrect number of operands";
-      return nullptr;
+        return op->emitOpError("expected " + Twine(N) + " operands");
+      return false;
     }
   };
 };
@@ -350,11 +368,10 @@ public:
       return this->getOperation()->getOperands();
     }
 
-    static const char *verifyTrait(const Operation *op) {
-      // TODO(clattner): Allow verifier to return non-constant string.
+    static bool verifyTrait(const Operation *op) {
       if (op->getNumOperands() < N)
-        return "incorrect number of operands";
-      return nullptr;
+        return op->emitOpError("expected " + Twine(N) + " or more operands");
+      return false;
     }
   };
 };
@@ -454,11 +471,10 @@ public:
 
     Type *getType(unsigned i) const { return getResult(i)->getType(); }
 
-    static const char *verifyTrait(const Operation *op) {
-      // TODO(clattner): Allow verifier to return non-constant string.
+    static bool verifyTrait(const Operation *op) {
       if (op->getNumResults() != N)
-        return "incorrect number of results";
-      return nullptr;
+        return op->emitOpError("expected " + Twine(N) + " results");
+      return false;
     }
   };
 };
@@ -483,11 +499,10 @@ public:
 
     Type *getType(unsigned i) const { return getResult(i)->getType(); }
 
-    static const char *verifyTrait(const Operation *op) {
-      // TODO(clattner): Allow verifier to return non-constant string.
+    static bool verifyTrait(const Operation *op) {
       if (op->getNumResults() < N)
-        return "incorrect number of results";
-      return nullptr;
+        return op->emitOpError("expected " + Twine(N) + " or more results");
+      return false;
     }
   };
 };
@@ -518,17 +533,19 @@ template <typename ConcreteType>
 class SameOperandsAndResultType
     : public TraitBase<ConcreteType, SameOperandsAndResultType> {
 public:
-  static const char *verifyTrait(const Operation *op) {
+  static bool verifyTrait(const Operation *op) {
     auto *type = op->getResult(0)->getType();
     for (unsigned i = 1, e = op->getNumResults(); i < e; ++i) {
       if (op->getResult(i)->getType() != type)
-        return "requires the same type for all operands and results";
+        return op->emitOpError(
+            "requires the same type for all operands and results");
     }
     for (unsigned i = 0, e = op->getNumOperands(); i < e; ++i) {
       if (op->getOperand(i)->getType() != type)
-        return "requires the same type for all operands and results";
+        return op->emitOpError(
+            "requires the same type for all operands and results");
     }
-    return nullptr;
+    return false;
   }
 };
 

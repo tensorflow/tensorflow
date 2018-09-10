@@ -41,7 +41,6 @@
 #include "mlir/IR/Statements.h"
 #include "mlir/IR/StmtVisitor.h"
 #include "llvm/ADT/ScopedHashTable.h"
-#include "llvm/ADT/Twine.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace mlir;
@@ -150,9 +149,8 @@ bool Verifier::verifyOperation(const Operation &op) {
 
   // If we can get operation info for this, check the custom hook.
   if (auto *opInfo = op.getAbstractOperation()) {
-    if (auto *errorMessage = opInfo->verifyInvariants(&op))
-      return failure(Twine("'") + op.getName().str() + "' op " + errorMessage,
-                     op);
+    if (opInfo->verifyInvariants(&op))
+      return true;
   }
 
   return false;

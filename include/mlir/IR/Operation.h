@@ -22,6 +22,7 @@
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/PointerIntPair.h"
+#include "llvm/ADT/Twine.h"
 
 namespace mlir {
 class Attribute;
@@ -203,6 +204,10 @@ public:
   /// the containing application, only use when the IR is in an inconsistent
   /// state.
   void emitError(const Twine &message) const;
+
+  /// Emit an error with the op name prefixed, like "'dim' op " which is
+  /// convenient for verifiers.  This function always returns true.
+  bool emitOpError(const Twine &message) const;
 
   /// Emit a warning about this operation, reporting up to any diagnostic
   /// handlers that may be listening.

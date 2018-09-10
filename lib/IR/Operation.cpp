@@ -21,6 +21,7 @@
 #include "mlir/IR/Instructions.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Statements.h"
 using namespace mlir;
 
@@ -165,4 +166,41 @@ void Operation::emitWarning(const Twine &message) const {
 void Operation::emitError(const Twine &message) const {
   getContext()->emitDiagnostic(getLoc(), message,
                                MLIRContext::DiagnosticKind::Error);
+}
+
+/// Emit an error with the op name prefixed, like "'dim' op " which is
+/// convenient for verifiers.
+bool Operation::emitOpError(const Twine &message) const {
+  emitError(Twine('\'') + getName().str() + "' op " + message);
+  return true;
+}
+
+//===----------------------------------------------------------------------===//
+// OpBaseState trait class.
+//===----------------------------------------------------------------------===//
+
+/// Emit an error about fatal conditions with this operation, reporting up to
+/// any diagnostic handlers that may be listening.  NOTE: This may terminate
+/// the containing application, only use when the IR is in an inconsistent
+/// state.
+void OpBaseState::emitError(const Twine &message) const {
+  getOperation()->emitError(message);
+}
+
+/// Emit an error with the op name prefixed, like "'dim' op " which is
+/// convenient for verifiers.
+bool OpBaseState::emitOpError(const Twine &message) const {
+  return getOperation()->emitOpError(message);
+}
+
+/// Emit a warning about this operation, reporting up to any diagnostic
+/// handlers that may be listening.
+void OpBaseState::emitWarning(const Twine &message) const {
+  getOperation()->emitWarning(message);
+}
+
+/// Emit a note about this operation, reporting up to any diagnostic
+/// handlers that may be listening.
+void OpBaseState::emitNote(const Twine &message) const {
+  getOperation()->emitNote(message);
 }

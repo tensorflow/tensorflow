@@ -1618,8 +1618,8 @@ FunctionParser::parseOperation(const CreateOperationFunction &createOpFunc) {
   // is structurally as we expect.  If not, produce an error with a reasonable
   // source location.
   if (auto *opInfo = op->getAbstractOperation()) {
-    if (auto error = opInfo->verifyInvariants(op))
-      return emitError(loc, Twine("'") + op->getName().str() + "' op " + error);
+    if (opInfo->verifyInvariants(op))
+      return ParseFailure;
   }
 
   // If the instruction had a name, register it.

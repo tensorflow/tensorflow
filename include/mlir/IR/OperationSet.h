@@ -59,9 +59,10 @@ public:
   /// This hook implements the AsmPrinter for this operation.
   void (&printAssembly)(const Operation *op, OpAsmPrinter *p);
 
-  /// This hook implements the verifier for this operation.  It should return
-  /// an error message if a problem is detected or return null on success.
-  const char *(&verifyInvariants)(const Operation *op);
+  /// This hook implements the verifier for this operation.  It should emits an
+  /// error message and returns true if a problem is detected, or returns false
+  /// if everything is ok.
+  bool (&verifyInvariants)(const Operation *op);
 
   // TODO: Parsing hook.
 
@@ -70,7 +71,7 @@ private:
                     bool (&parseAssembly)(OpAsmParser *parser,
                                           OperationState *result),
                     void (&printAssembly)(const Operation *op, OpAsmPrinter *p),
-                    const char *(&verifyInvariants)(const Operation *op))
+                    bool (&verifyInvariants)(const Operation *op))
       : name(name), isClassFor(isClassFor), parseAssembly(parseAssembly),
         printAssembly(printAssembly), verifyInvariants(verifyInvariants) {}
 };

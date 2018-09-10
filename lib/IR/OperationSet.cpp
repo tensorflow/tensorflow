@@ -19,7 +19,6 @@
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 using llvm::StringMap;

@@ -28,10 +28,8 @@
 #include "mlir/IR/StandardOps.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/STLExtras.h"
-#include "third_party/llvm/llvm/include/llvm/ADT/STLExtras.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/Twine.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace mlir;

@@ -207,19 +207,20 @@ public:
   /// the result is an invalid op (the verifier hook fails), emit a the
   /// specified error message and return null.
   template <typename OpTy, typename... Args>
-  OpPointer<OpTy> createChecked(const Twine &message, Location *location,
-                                Args... args) {
+  OpPointer<OpTy> createChecked(Location *location, Args... args) {
     OperationState state(getContext(), location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
     auto *inst = createOperation(state);
-    auto result = inst->template getAs<OpTy>();
-    assert(result && "Builder didn't return the right type");
 
-    // If the operation we produce is valid, return it.
-    if (!result->verify())
+    // If the OperationInst we produce is valid, return it.
+    if (!OpTy::verifyInvariants(inst)) {
+      auto result = inst->template getAs<OpTy>();
+      assert(result && "Builder didn't return the right type");
       return result;
-    // Otherwise, emit the provided message and return null.
-    inst->emitError(message);
+    }
+
+    // Otherwise, the error message got emitted.  Just remove the instruction
+    // we made.
     inst->eraseFromBlock();
     return OpPointer<OpTy>();
   }
@@ -333,19 +334,20 @@ public:
   /// the result is an invalid op (the verifier hook fails), emit an error and
   /// return null.
   template <typename OpTy, typename... Args>
-  OpPointer<OpTy> createChecked(const Twine &message, Location *location,
-                                Args... args) {
+  OpPointer<OpTy> createChecked(Location *location, Args... args) {
     OperationState state(getContext(), location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
     auto *stmt = createOperation(state);
-    auto result = stmt->template getAs<OpTy>();
-    assert(result && "Builder didn't return the right type");
 
-    // If the operation we produce is valid, return it.
-    if (!result->verify())
+    // If the OperationStmt we produce is valid, return it.
+    if (!OpTy::verifyInvariants(stmt)) {
+      auto result = stmt->template getAs<OpTy>();
+      assert(result && "Builder didn't return the right type");
       return result;
-    // Otherwise, emit the provided message and return null.
-    stmt->emitError(message);
+    }
+
+    // Otherwise, the error message got emitted.  Just remove the statement
+    // we made.
     stmt->eraseFromBlock();
     return OpPointer<OpTy>();
   }

@@ -45,7 +45,7 @@ public:
 
   static void build(Builder *builder, OperationState *result, SSAValue *lhs,
                     SSAValue *rhs);
-  const char *verify() const;
+  bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
 
@@ -91,7 +91,7 @@ public:
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
-  const char *verify() const;
+  bool verify() const;
 
 private:
   friend class Operation;
@@ -128,7 +128,7 @@ public:
   // Hooks to customize behavior of this op.
   static void build(Builder *builder, OperationState *result,
                     MemRefType *memrefType, ArrayRef<SSAValue *> operands = {});
-  const char *verify() const;
+  bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
 
@@ -158,7 +158,7 @@ public:
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
-  const char *verify() const;
+  bool verify() const;
 
 protected:
   friend class Operation;
@@ -187,7 +187,7 @@ public:
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
-  const char *verify() const;
+  bool verify() const;
 
 protected:
   friend class Operation;
@@ -210,7 +210,7 @@ public:
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
-  const char *verify() const;
+  bool verify() const;
 
 protected:
   friend class Operation;
@@ -302,7 +302,7 @@ public:
 
   // Hooks to customize behavior of this op.
   static void build(Builder *builder, OperationState *result, SSAValue *memref);
-  const char *verify() const;
+  bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
 
@@ -327,7 +327,7 @@ public:
   static StringRef getOperationName() { return "dim"; }
 
   // Hooks to customize behavior of this op.
-  const char *verify() const;
+  bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
 
@@ -368,7 +368,7 @@ public:
   static StringRef getOperationName() { return "extract_element"; }
 
   // Hooks to customize behavior of this op.
-  const char *verify() const;
+  bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
 
@@ -404,7 +404,7 @@ public:
   // Hooks to customize behavior of this op.
   static void build(Builder *builder, OperationState *result, SSAValue *memref,
                     ArrayRef<SSAValue *> indices = {});
-  const char *verify() const;
+  bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
 
@@ -430,7 +430,7 @@ public:
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
-  const char *verify() const;
+  bool verify() const;
 
 private:
   friend class Operation;
@@ -465,7 +465,7 @@ public:
   // syntax.
   // static bool parse(OpAsmParser *parser, OperationState *result);
   // void print(OpAsmPrinter *p) const;
-  const char *verify() const;
+  bool verify() const;
 
 private:
   friend class Operation;
@@ -505,7 +505,7 @@ public:
   static void build(Builder *builder, OperationState *result,
                     SSAValue *valueToStore, SSAValue *memref,
                     ArrayRef<SSAValue *> indices = {});
-  const char *verify() const;
+  bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
 

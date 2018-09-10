@@ -89,14 +89,9 @@ void AddFOp::print(OpAsmPrinter *p) const {
   *p << " : " << *getType();
 }
 
-// TODO: Have verify functions return std::string to enable more descriptive
-// error messages.
-// Return an error message on failure.
-const char *AddFOp::verify() const {
-  // TODO: Check that the types of the LHS and RHS match.
-  // TODO: This should be a refinement of TwoOperands.
-  // TODO: There should also be a OneResultWhoseTypeMatchesFirstOperand.
-  return nullptr;
+bool AddFOp::verify() const {
+  // TODO: check that the single type is a float type.
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -132,24 +127,25 @@ void AffineApplyOp::print(OpAsmPrinter *p) const {
   p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"map");
 }
 
-const char *AffineApplyOp::verify() const {
+bool AffineApplyOp::verify() const {
   // Check that affine map attribute was specified.
   auto *affineMapAttr = getAttrOfType<AffineMapAttr>("map");
   if (!affineMapAttr)
-    return "requires an affine map";
+    return emitOpError("requires an affine map");
 
   // Check input and output dimensions match.
   auto *map = affineMapAttr->getValue();
 
   // Verify that operand count matches affine map dimension and symbol count.
   if (getNumOperands() != map->getNumDims() + map->getNumSymbols())
-    return "operand count and affine map dimension and symbol count must match";
+    return emitOpError(
+        "operand count and affine map dimension and symbol count must match");
 
   // Verify that result count matches affine map result count.
   if (getNumResults() != map->getNumResults())
-    return "result count and affine map result count must match";
+    return emitOpError("result count and affine map result count must match");
 
-  return nullptr;
+  return false;
 }
 
 // The result of the affine apply operation can be used as a dimension id if it
@@ -228,9 +224,9 @@ bool AllocOp::parse(OpAsmParser *parser, OperationState *result) {
   return false;
 }
 
-const char *AllocOp::verify() const {
+bool AllocOp::verify() const {
   // TODO(andydavis): Verify alloc.
-  return nullptr;
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -275,31 +271,31 @@ void CallOp::print(OpAsmPrinter *p) const {
   *p << " : " << *getCallee()->getType();
 }
 
-const char *CallOp::verify() const {
+bool CallOp::verify() const {
   // Check that the callee attribute was specified.
   auto *fnAttr = getAttrOfType<FunctionAttr>("callee");
   if (!fnAttr)
-    return "requires a 'callee' function attribute";
+    return emitOpError("requires a 'callee' function attribute");
 
   // Verify that the operand and result types match the callee.
   auto *fnType = fnAttr->getValue()->getType();
   if (fnType->getNumInputs() != getNumOperands())
-    return "incorrect number of operands for callee";
+    return emitOpError("incorrect number of operands for callee");
 
   for (unsigned i = 0, e = fnType->getNumInputs(); i != e; ++i) {
     if (getOperand(i)->getType() != fnType->getInput(i))
-      return "operand type mismatch";
+      return emitOpError("operand type mismatch");
   }
 
   if (fnType->getNumResults() != getNumResults())
-    return "incorrect number of results for callee";
+    return emitOpError("incorrect number of results for callee");
 
   for (unsigned i = 0, e = fnType->getNumResults(); i != e; ++i) {
     if (getResult(i)->getType() != fnType->getResult(i))
-      return "result type mismatch";
+      return emitOpError("result type mismatch");
   }
 
-  return nullptr;
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -342,30 +338,30 @@ void CallIndirectOp::print(OpAsmPrinter *p) const {
   *p << " : " << *getCallee()->getType();
 }
 
-const char *CallIndirectOp::verify() const {
+bool CallIndirectOp::verify() const {
   // The callee must be a function.
   auto *fnType = dyn_cast<FunctionType>(getCallee()->getType());
   if (!fnType)
-    return "callee must have function type";
+    return emitOpError("callee must have function type");
 
   // Verify that the operand and result types match the callee.
   if (fnType->getNumInputs() != getNumOperands() - 1)
-    return "incorrect number of operands for callee";
+    return emitOpError("incorrect number of operands for callee");
 
   for (unsigned i = 0, e = fnType->getNumInputs(); i != e; ++i) {
     if (getOperand(i + 1)->getType() != fnType->getInput(i))
-      return "operand type mismatch";
+      return emitOpError("operand type mismatch");
   }
 
   if (fnType->getNumResults() != getNumResults())
-    return "incorrect number of results for callee";
+    return emitOpError("incorrect number of results for callee");
 
   for (unsigned i = 0, e = fnType->getNumResults(); i != e; ++i) {
     if (getResult(i)->getType() != fnType->getResult(i))
-      return "result type mismatch";
+      return emitOpError("result type mismatch");
   }
 
-  return nullptr;
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -399,37 +395,39 @@ bool ConstantOp::parse(OpAsmParser *parser, OperationState *result) {
 
 /// The constant op requires an attribute, and furthermore requires that it
 /// matches the return type.
-const char *ConstantOp::verify() const {
+bool ConstantOp::verify() const {
   auto *value = getValue();
   if (!value)
-    return "requires a 'value' attribute";
+    return emitOpError("requires a 'value' attribute");
 
   auto *type = this->getType();
   if (isa<IntegerType>(type) || type->isAffineInt()) {
     if (!isa<IntegerAttr>(value))
-      return "requires 'value' to be an integer for an integer result type";
-    return nullptr;
+      return emitOpError(
+          "requires 'value' to be an integer for an integer result type");
+    return false;
   }
 
   if (isa<FloatType>(type)) {
     if (!isa<FloatAttr>(value))
-      return "requires 'value' to be a floating point constant";
-    return nullptr;
+      return emitOpError("requires 'value' to be a floating point constant");
+    return false;
   }
 
   if (type->isTFString()) {
     if (!isa<StringAttr>(value))
-      return "requires 'value' to be a string constant";
-    return nullptr;
+      return emitOpError("requires 'value' to be a string constant");
+    return false;
   }
 
   if (isa<FunctionType>(type)) {
     if (!isa<FunctionAttr>(value))
-      return "requires 'value' to be a function reference";
-    return nullptr;
+      return emitOpError("requires 'value' to be a function reference");
+    return false;
   }
 
-  return "requires a result type that aligns with the 'value' attribute";
+  return emitOpError(
+      "requires a result type that aligns with the 'value' attribute");
 }
 
 void ConstantFloatOp::build(Builder *builder, OperationState *result,
@@ -499,10 +497,10 @@ bool DeallocOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->resolveOperand(memrefInfo, type, result->operands);
 }
 
-const char *DeallocOp::verify() const {
+bool DeallocOp::verify() const {
   if (!isa<MemRefType>(getMemRef()->getType()))
-    return "operand must be a memref";
-  return nullptr;
+    return emitOpError("operand must be a memref");
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -529,28 +527,28 @@ bool DimOp::parse(OpAsmParser *parser, OperationState *result) {
                                result->types);
 }
 
-const char *DimOp::verify() const {
+bool DimOp::verify() const {
   // Check that we have an integer index operand.
   auto indexAttr = getAttrOfType<IntegerAttr>("index");
   if (!indexAttr)
-    return "requires an integer attribute named 'index'";
+    return emitOpError("requires an integer attribute named 'index'");
   uint64_t index = (uint64_t)indexAttr->getValue();
 
   auto *type = getOperand()->getType();
   if (auto *tensorType = dyn_cast<RankedTensorType>(type)) {
     if (index >= tensorType->getRank())
-      return "index is out of range";
+      return emitOpError("index is out of range");
   } else if (auto *memrefType = dyn_cast<MemRefType>(type)) {
     if (index >= memrefType->getRank())
-      return "index is out of range";
+      return emitOpError("index is out of range");
 
   } else if (isa<UnrankedTensorType>(type)) {
     // ok, assumed to be in-range.
   } else {
-    return "requires an operand with tensor or memref type";
+    return emitOpError("requires an operand with tensor or memref type");
   }
 
-  return nullptr;
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -590,27 +588,27 @@ bool ExtractElementOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->addTypeToList(type->getElementType(), result->types);
 }
 
-const char *ExtractElementOp::verify() const {
+bool ExtractElementOp::verify() const {
   if (getNumOperands() == 0)
-    return "expected an aggregate to index into";
+    return emitOpError("expected an aggregate to index into");
 
   auto *aggregateType = dyn_cast<VectorOrTensorType>(getAggregate()->getType());
   if (!aggregateType)
-    return "first operand must be a vector or tensor";
+    return emitOpError("first operand must be a vector or tensor");
 
   if (getResult()->getType() != aggregateType->getElementType())
-    return "result type must match element type of aggregate";
+    return emitOpError("result type must match element type of aggregate");
 
   for (auto *idx : getIndices())
     if (!idx->getType()->isAffineInt())
-      return "index to extract_element must have 'affineint' type";
+      return emitOpError("index to extract_element must have 'affineint' type");
 
   // Verify the # indices match if we have a ranked type.
   auto aggregateRank = aggregateType->getRankIfPresent();
   if (aggregateRank != -1 && aggregateRank != getNumOperands() - 1)
-    return "incorrect number of indices for extract_element";
+    return emitOpError("incorrect number of indices for extract_element");
 
-  return nullptr;
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -649,29 +647,29 @@ bool LoadOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->addTypeToList(type->getElementType(), result->types);
 }
 
-const char *LoadOp::verify() const {
+bool LoadOp::verify() const {
   if (getNumOperands() == 0)
-    return "expected a memref to load from";
+    return emitOpError("expected a memref to load from");
 
   auto *memRefType = dyn_cast<MemRefType>(getMemRef()->getType());
   if (!memRefType)
-    return "first operand must be a memref";
+    return emitOpError("first operand must be a memref");
 
   if (getResult()->getType() != memRefType->getElementType())
-    return "result type must match element type of memref";
+    return emitOpError("result type must match element type of memref");
 
   if (memRefType->getRank() != getNumOperands() - 1)
-    return "incorrect number of indices for load";
+    return emitOpError("incorrect number of indices for load");
 
   for (auto *idx : getIndices())
     if (!idx->getType()->isAffineInt())
-      return "index to load must have 'affineint' type";
+      return emitOpError("index to load must have 'affineint' type");
 
   // TODO: Verify we have the right number of indices.
 
   // TODO: in MLFunction verify that the indices are parameters, IV's, or the
   // result of an affine_apply.
-  return nullptr;
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -699,18 +697,18 @@ void ReturnOp::print(OpAsmPrinter *p) const {
   }
 }
 
-const char *ReturnOp::verify() const {
+bool ReturnOp::verify() const {
   // ReturnOp must be part of an ML function.
   if (auto *stmt = dyn_cast<OperationStmt>(getOperation())) {
     StmtBlock *block = stmt->getBlock();
     if (!block || !isa<MLFunction>(block) || &block->back() != stmt)
-      return "must be the last statement in the ML function";
+      return emitOpError("must be the last statement in the ML function");
 
     // Return success. Checking that operand types match those in the function
     // signature is performed in the ML function verifier.
-    return nullptr;
+    return false;
   }
-  return "cannot occur in a CFG function";
+  return emitOpError("cannot occur in a CFG function");
 }
 
 //===----------------------------------------------------------------------===//
@@ -723,36 +721,37 @@ void ShapeCastOp::build(Builder *builder, OperationState *result,
   result->addTypes(resultType);
 }
 
-const char *ShapeCastOp::verify() const {
+bool ShapeCastOp::verify() const {
   auto *opType = dyn_cast<TensorType>(getOperand()->getType());
   auto *resType = dyn_cast<TensorType>(getResult()->getType());
   if (!opType || !resType)
-    return "requires input and result types to be tensors";
+    return emitOpError("requires input and result types to be tensors");
 
   if (opType == resType)
-    return "requires the input and result type to be different";
+    return emitOpError("requires the input and result type to be different");
 
   if (opType->getElementType() != resType->getElementType())
-    return "requires input and result element types to be the same";
+    return emitOpError(
+        "requires input and result element types to be the same");
 
   // If the source or destination are unranked, then the cast is valid.
   auto *opRType = dyn_cast<RankedTensorType>(opType);
   auto *resRType = dyn_cast<RankedTensorType>(resType);
   if (!opRType || !resRType)
-    return nullptr;
+    return false;
 
   // If they are both ranked, they have to have the same rank, and any specified
   // dimensions must match.
   if (opRType->getRank() != resRType->getRank())
-    return "requires input and result ranks to match";
+    return emitOpError("requires input and result ranks to match");
 
   for (unsigned i = 0, e = opRType->getRank(); i != e; ++i) {
     int opDim = opRType->getDimSize(i), resultDim = resRType->getDimSize(i);
     if (opDim != -1 && resultDim != -1 && opDim != resultDim)
-      return "requires static dimensions to match";
+      return emitOpError("requires static dimensions to match");
   }
 
-  return nullptr;
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -795,31 +794,31 @@ bool StoreOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->resolveOperands(indexInfo, affineIntTy, result->operands);
 }
 
-const char *StoreOp::verify() const {
+bool StoreOp::verify() const {
   if (getNumOperands() < 2)
-    return "expected a value to store and a memref";
+    return emitOpError("expected a value to store and a memref");
 
   // Second operand is a memref type.
   auto *memRefType = dyn_cast<MemRefType>(getMemRef()->getType());
   if (!memRefType)
-    return "second operand must be a memref";
+    return emitOpError("second operand must be a memref");
 
   // First operand must have same type as memref element type.
   if (getValueToStore()->getType() != memRefType->getElementType())
-    return "first operand must have same type memref element type ";
+    return emitOpError("first operand must have same type memref element type");
 
   if (getNumOperands() != 2 + memRefType->getRank())
-    return "store index operand count not equal to memref rank";
+    return emitOpError("store index operand count not equal to memref rank");
 
   for (auto *idx : getIndices())
     if (!idx->getType()->isAffineInt())
-      return "index to load must have 'affineint' type";
+      return emitOpError("index to load must have 'affineint' type");
 
   // TODO: Verify we have the right number of indices.
 
   // TODO: in MLFunction verify that the indices are parameters, IV's, or the
   // result of an affine_apply.
-  return nullptr;
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
