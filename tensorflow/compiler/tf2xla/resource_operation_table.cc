@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "absl/algorithm/container.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace tensorflow {
@@ -32,7 +31,8 @@ namespace tensorflow {
 }
 
 static gtl::FlatMap<StringPiece, XlaResourceOpInfo>* CreateResourceOpInfoMap() {
-  auto* result = new gtl::FlatMap<StringPiece, XlaResourceOpInfo>;
+  gtl::FlatMap<StringPiece, XlaResourceOpInfo>* result =
+      new gtl::FlatMap<StringPiece, XlaResourceOpInfo>;
 
   auto add = [&](StringPiece op, XlaResourceOpKind op_kind,
                  XlaResourceKind resource_kind) {
@@ -121,7 +121,7 @@ namespace resource_op_table_internal {
 std::vector<StringPiece> GetKnownResourceOps() {
   std::vector<StringPiece> result;
   for (const auto& p : GetStaticResourceOpInfoMap()) {
-    result.push_back(absl::string_view(p.first));
+    result.push_back(p.first);
   }
   absl::c_sort(result);
   return result;
