@@ -72,9 +72,10 @@ Status ConvolutionThunk::ExecuteOnStream(
 
   auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   TF_RETURN_IF_ERROR(RunCudnnConvolution(
-      convolution_kind_, input_shape_, filter_shape_, output_shape_, input_data,
-      filter_data, output_data, scratch, window_, dim_nums_,
-      feature_group_count_, algorithm_config, stream));
+      {convolution_kind_, &input_shape_, &filter_shape_, &output_shape_,
+       input_data, filter_data, output_data, &window_, &dim_nums_,
+       feature_group_count_, algorithm_config},
+      scratch, stream));
 
   // Figure out which of output/input/filter is the result produced by
   // this op, and write the result tuple.
