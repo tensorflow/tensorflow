@@ -43,9 +43,9 @@ bool AffineMap::isSingleConstant() const {
   return getNumResults() == 1 && isa<AffineConstantExpr>(getResult(0));
 }
 
-int64_t AffineMap::getSingleConstantValue() const {
+int64_t AffineMap::getSingleConstantResult() const {
   assert(isSingleConstant() && "map must have a single constant result");
-  return dyn_cast<AffineConstantExpr>(getResult(0))->getValue();
+  return cast<AffineConstantExpr>(getResult(0))->getValue();
 }
 
 /// Simplify add expression. Return nullptr if it can't be simplified.

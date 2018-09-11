@@ -58,9 +58,9 @@ public:
   /// Returns true if this affine map is a single result constant function.
   bool isSingleConstant() const;
 
-  /// Returns the constant value that is the result of this map.
-  /// This methods asserts that the map has a single constant result.
-  int64_t getSingleConstantValue() const;
+  /// Returns the constant result of this map. This methods asserts that the map
+  /// has a single constant result.
+  int64_t getSingleConstantResult() const;
 
   // Prints affine map to 'os'.
   void print(raw_ostream &os) const;

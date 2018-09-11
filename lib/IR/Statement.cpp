@@ -336,11 +336,11 @@ bool ForStmt::hasConstantUpperBound() const {
 }
 
 int64_t ForStmt::getConstantLowerBound() const {
-  return lbMap->getSingleConstantValue();
+  return lbMap->getSingleConstantResult();
 }
 
 int64_t ForStmt::getConstantUpperBound() const {
-  return ubMap->getSingleConstantValue();
+  return ubMap->getSingleConstantResult();
 }
 
 Optional<uint64_t> ForStmt::getConstantTripCount() const {
