@@ -28,9 +28,7 @@ class CpuHloSupportChecker : public HloPassInterface {
   CpuHloSupportChecker() = default;
   ~CpuHloSupportChecker() override = default;
 
-  tensorflow::StringPiece name() const override {
-    return "cpu_hlo_support_checker";
-  }
+  absl::string_view name() const override { return "cpu_hlo_support_checker"; }
 
   // Note: always returns false (no instructions are ever modified by this
   // pass).

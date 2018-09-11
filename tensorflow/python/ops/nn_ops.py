@@ -510,7 +510,7 @@ class _WithSpaceToBatch(object):
 
     # Recover channel information for output shape if channels are not last.
     if self.data_format is not None and self.data_format.startswith("NC"):
-      if not result_converted.shape[1].value:
+      if not result_converted.shape[1].value and filter is not None:
         output_shape = result_converted.shape.as_list()
         output_shape[1] = filter.shape[-1]
         result_converted.set_shape(output_shape)
@@ -698,7 +698,7 @@ def convolution(
   `padded_input` is obtained by zero padding the input using an effective
   spatial filter shape of `(spatial_filter_shape-1) * dilation_rate + 1` and
   output striding `strides` as described in the
-  @{$python/nn#Convolution$comment here}.
+  [comment here](https://tensorflow.org/api_guides/python/nn#Convolution).
 
   In the case that `data_format` does start with `"NC"`, the `input` and output
   (but not the `filter`) are simply transposed as follows:
@@ -1586,7 +1586,7 @@ def leaky_relu(features, alpha=0.2, name=None):
 
   "Rectifier Nonlinearities Improve Neural Network Acoustic Models"
   AL Maas, AY Hannun, AY Ng - Proc. ICML, 2013
-  http://web.stanford.edu/~awni/papers/relu_hybrid_icml2013_final.pdf
+  https://ai.stanford.edu/~amaas/papers/relu_hybrid_icml2013_final.pdf
 
   Args:
     features: A `Tensor` representing preactivation values. Must be one of
@@ -1838,8 +1838,9 @@ def softmax_cross_entropy_with_logits_v2(
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of the same shape as `labels` and of the same type as `logits`
-    with the softmax cross entropy loss.
+    A `Tensor` that contains the softmax cross entropy loss. Its type is the
+    same as `logits` and its shape is the same as `labels` except that it does
+    not have the last dimension of `labels`.
   """
   _ensure_xent_args("softmax_cross_entropy_with_logits", _sentinel, labels,
                     logits)
@@ -1964,8 +1965,9 @@ def softmax_cross_entropy_with_logits(
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of the same shape as `labels` and of the same type as `logits`
-    with the softmax cross entropy loss.
+    A `Tensor` that contains the softmax cross entropy loss. Its type is the
+    same as `logits` and its shape is the same as `labels` except that it does
+    not have the last dimension of `labels`.
   """
   _ensure_xent_args("softmax_cross_entropy_with_logits", _sentinel, labels,
                     logits)
@@ -2454,7 +2456,7 @@ def conv1d(value,
   returned to the caller.
 
   Args:
-    value: A 3D `Tensor`.  Must be of type `float16` or `float32`.
+    value: A 3D `Tensor`.  Must be of type `float16`, `float32`, or `float64`.
     filters: A 3D `Tensor`.  Must have the same type as `value`.
     stride: An `integer`.  The number of entries by which
       the filter is moved right at each step.

@@ -36,8 +36,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
-static const char* kInputPHName = "TensorRTInputPH_";
-static const char* kOutputPHName = "TensorRTOutputPH_";
+extern const char* const kInputPHName;
+extern const char* const kOutputPHName;
+
 namespace convert {
 
 struct EngineConnection {

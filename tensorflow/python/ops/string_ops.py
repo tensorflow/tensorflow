@@ -15,7 +15,7 @@
 
 """Operations for working with string Tensors.
 
-See the @{$python/string_ops} guide.
+See the [Strings](https://tensorflow.org/api_guides/python/string_ops) guide.
 """
 
 from __future__ import absolute_import
@@ -24,6 +24,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -31,6 +32,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import compat as util_compat
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -39,8 +41,72 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
 
+
+# pylint: disable=redefined-builtin
+def regex_full_match(input, pattern, name=None):
+  r"""Match elements of `input` with regex `pattern`.
+
+  Args:
+    input: string `Tensor`, the source strings to process.
+    pattern: string or scalar string `Tensor`, regular expression to use,
+      see more details at https://github.com/google/re2/wiki/Syntax
+    name: Name of the op.
+
+  Returns:
+    bool `Tensor` of the same shape as `input` with match results.
+  """
+  # TODO(b/112455102): Remove compat.forward_compatible once past the horizon.
+  if not compat.forward_compatible(2018, 11, 10):
+    return gen_string_ops.regex_full_match(
+        input=input, pattern=pattern, name=name)
+  if isinstance(pattern, util_compat.bytes_or_text_types):
+    # When `pattern` is static through the life of the op we can
+    # use a version which performs the expensive regex compilation once at
+    # creation time.
+    return gen_string_ops.static_regex_full_match(
+        input=input, pattern=pattern, name=name)
+  return gen_string_ops.regex_full_match(
+      input=input, pattern=pattern, name=name)
+
+regex_full_match.__doc__ = gen_string_ops.regex_full_match.__doc__
+
 # Expose regex_full_match in strings namespace
 tf_export("strings.regex_full_match")(regex_full_match)
+
+
+def regex_replace(source, pattern, rewrite, replace_global=True):
+  r"""Replace elements of `source` matching regex `pattern` with `rewrite`.
+
+  Args:
+    source: string `Tensor`, the source strings to process.
+    pattern: string or scalar string `Tensor`, regular expression to use,
+      see more details at https://github.com/google/re2/wiki/Syntax
+    rewrite: string or scalar string `Tensor`, value to use in match
+      replacement, supports backslash-escaped digits (\1 to \9) can be to insert
+      text matching corresponding parenthesized group.
+    replace_global: `bool`, if `True` replace all non-overlapping matches,
+      else replace only the first match.
+
+  Returns:
+    string `Tensor` of the same shape as `source` with specified replacements.
+  """
+  # TODO(b/112455102): Remove compat.forward_compatible once past the horizon.
+  if not compat.forward_compatible(2018, 10, 10):
+    return gen_string_ops.regex_replace(
+        input=source, pattern=pattern,
+        rewrite=rewrite, replace_global=replace_global)
+  if (isinstance(pattern, util_compat.bytes_or_text_types) and
+      isinstance(rewrite, util_compat.bytes_or_text_types)):
+    # When `pattern` and `rewrite` are static through the life of the op we can
+    # use a version which performs the expensive regex compilation once at
+    # creation time.
+    return gen_string_ops.static_regex_replace(
+        input=source, pattern=pattern,
+        rewrite=rewrite, replace_global=replace_global)
+  return gen_string_ops.regex_replace(
+      input=source, pattern=pattern,
+      rewrite=rewrite, replace_global=replace_global)
+
 
 @tf_export("string_split")
 def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=invalid-name
@@ -91,6 +157,7 @@ def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=inv
   shape.set_shape([2])
   return sparse_tensor.SparseTensor(indices, values, shape)
 
+
 @tf_export("strings.split")
 def string_split_v2(source, sep=None, maxsplit=-1):
   """Split elements of `source` based on `sep` into a `SparseTensor`.
@@ -133,7 +200,7 @@ def string_split_v2(source, sep=None, maxsplit=-1):
     second column corresponds to the index of the split component in this row.
   """
   if sep is None:
-    sep = ''
+    sep = ""
   sep = ops.convert_to_tensor(sep, dtype=dtypes.string)
   source = ops.convert_to_tensor(source, dtype=dtypes.string)
 

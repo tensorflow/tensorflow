@@ -23,12 +23,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -66,7 +66,7 @@ class HloSharding {
   // shardings must match the number of leaf nodes in tuple_shape. For
   // empty tuples, the shardings array must have one element.
   static HloSharding Tuple(const Shape& tuple_shape,
-                           tensorflow::gtl::ArraySlice<HloSharding> shardings);
+                           absl::Span<const HloSharding> shardings);
 
   // Creates a new sharding for a tuple type, with a single input sharding
   // repeated on each leaf.
@@ -132,7 +132,7 @@ class HloSharding {
   // Returns the device that should execute the given tile.
   // It is an error to call this if is_replicated() is true.
   // REQUIRES: !IsTuple()
-  int64 DeviceForTileIndex(tensorflow::gtl::ArraySlice<int64> index) const;
+  int64 DeviceForTileIndex(absl::Span<const int64> index) const;
 
   // Given a device ID, returns the offset within the specified shape of the
   // tile that should be executed on the given core. This returns the lower
@@ -151,7 +151,7 @@ class HloSharding {
   // span a single device, the return value will be empty.
   // In order for a sharding to span a single device, every leaf sharding must
   // be maximal and not replicated, and the used device must match.
-  tensorflow::gtl::optional<int64> UniqueDevice() const;
+  absl::optional<int64> UniqueDevice() const;
 
   // Retrieves the unique device or fails with a CHECK.
   int64 GetUniqueDevice() const;
@@ -182,7 +182,7 @@ class HloSharding {
   // be returned. If it is a tuple, and all the tuple elements are common, the
   // common element will be returned. Otherwise the optional will contain no
   // value.
-  tensorflow::gtl::optional<HloSharding> ExtractSingleSharding() const;
+  absl::optional<HloSharding> ExtractSingleSharding() const;
 
   bool operator==(const HloSharding& other) const {
     return replicated_ == other.replicated_ && maximal_ == other.maximal_ &&
@@ -260,9 +260,9 @@ class HloSharding {
   bool maximal_;
   bool tuple_;
   Array<int64> tile_assignment_;
-  // Only non-empty when tuple_ is true, but because empty tuples are allowed
-  // may also be empty even then. This is a flattened list of all the leaf
-  // shardings in a tuple shape, by pre-order walk (ShapeTree iterator order).
+  // Only non-empty when tuple_ is true. If a tuple is empty then one entry is
+  // present for the root. This is a flattened list of all the leaf shardings in
+  // a tuple shape, by pre-order walk (ShapeTree iterator order).
   std::vector<HloSharding> tuple_elements_;
 };
 

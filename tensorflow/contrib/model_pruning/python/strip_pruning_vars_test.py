@@ -144,7 +144,7 @@ class StripPruningVarsTest(test.TestCase):
     return outputs
 
   def _get_initial_outputs(self, output_tensor_names_list):
-    with self.test_session(graph=self.initial_graph) as sess1:
+    with self.session(graph=self.initial_graph) as sess1:
       self._prune_model(sess1)
       reference_outputs = self._get_outputs(sess1, self.initial_graph,
                                             output_tensor_names_list)

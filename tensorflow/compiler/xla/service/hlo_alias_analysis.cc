@@ -20,6 +20,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_buffer.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -28,15 +30,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
-using ::tensorflow::str_util::Join;
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
+using absl::StrAppend;
 
 // Data structure used to construct the alias analysis. Thrown away after alias
 // analysis is complete. This data structure keeps track of which sets of
@@ -414,7 +412,7 @@ Status HloAliasAnalysis::Verify() const {
 }
 
 string HloAliasAnalysis::ToString() const {
-  string out = StrCat("HloAliasAnalysis, module ", module_->name(), "\n");
+  string out = absl::StrCat("HloAliasAnalysis, module ", module_->name(), "\n");
   StrAppend(&out, "  Buffers at each position:\n");
   for (const HloComputation* computation : module_->computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
@@ -457,7 +455,7 @@ StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
   VLOG(2) << "HloAliasAnalysis::Run on module " << module->name();
   XLA_VLOG_LINES(2, module->ToString());
 
-  auto alias_analysis = WrapUnique(new HloAliasAnalysis(module));
+  auto alias_analysis = absl::WrapUnique(new HloAliasAnalysis(module));
   TF_ASSIGN_OR_RETURN(alias_analysis->dataflow_analysis_,
                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
                                                /*bitcast_defines_value=*/false,
@@ -537,10 +535,10 @@ bool HloAliasAnalysis::HasLiveRangeInterference(
       if (ordering.MayInterfere(*values[i - 1], *values[i],
                                 dataflow_analysis())) {
         VLOG(1) << "In buffer " << buffer.id() << " containing values:\n  "
-                << Join(values, ", ",
-                        [](string* out, const HloValue* value) {
-                          StrAppend(out, value->ToShortString());
-                        })
+                << absl::StrJoin(values, ", ",
+                                 [](string* out, const HloValue* value) {
+                                   StrAppend(out, value->ToShortString());
+                                 })
 
                 << "\nValue " << values[i - 1]->ToShortString()
                 << " may interfere with value " << values[i]->ToShortString();

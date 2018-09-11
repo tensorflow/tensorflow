@@ -16,10 +16,11 @@ cc_library(
     deps = [
         ":util",
         "//tensorflow/c:c_api_internal",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite:kernel_api",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:android_tensorflow_lib_lite_no_runtime",
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
@@ -54,11 +55,12 @@ cc_library(
         ":delegate_data",
         ":kernel",
         ":util",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite:kernel_api",
         "//tensorflow/contrib/lite:util",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:android_tensorflow_lib_lite_no_runtime",
         ],
         "//conditions:default": [
             "//tensorflow/core:lib",
@@ -87,7 +89,7 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:context",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core:core_cpu",
@@ -104,6 +106,7 @@ tf_cc_test(
         ":delegate_data",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:util",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
@@ -117,6 +120,7 @@ cc_library(
         ":delegate_data",
         ":util",
         "@flatbuffers",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite:kernel_api",
         "//tensorflow/contrib/lite:string",
         "//tensorflow/contrib/lite/kernels:kernel_util",
@@ -124,11 +128,16 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:execute",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
     ] + select({
+        # TODO(b/111881878): The android_tensorflow_lib target pulls in the full
+        # set of core TensorFlow kernels. We may want to revisit this dependency
+        # to allow selective registration via build targets.
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib",
         ],
         "//conditions:default": [
             "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:tensorflow",
         ],
     }),
 )
@@ -164,12 +173,12 @@ cc_library(
     srcs = ["util.cc"],
     hdrs = ["util.h"],
     deps = [
-        ":constants",
         "//tensorflow/c:c_api_internal",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite:kernel_api",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:android_tensorflow_lib_lite_no_runtime",
         ],
         "//conditions:default": [
             "//tensorflow/core:lib",
@@ -188,9 +197,4 @@ tf_cc_test(
         "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
-)
-
-cc_library(
-    name = "constants",
-    hdrs = ["constants.h"],
 )

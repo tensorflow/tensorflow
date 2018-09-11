@@ -21,9 +21,9 @@ limitations under the License.
 #include <cstring>
 
 #include "tensorflow/contrib/lite/arena_planner.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/context_util.h"
-#include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/core/api/error_reporter.h"
 #include "tensorflow/contrib/lite/graph_info.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
@@ -474,6 +474,10 @@ TfLiteStatus Interpreter::ResetVariableTensorsToZero() {
     memset(tensor.data.raw, 0, tensor.bytes);
   }
   return kTfLiteOk;
+}
+
+void Interpreter::ReserveNodes(int count) {
+  nodes_and_registration_.reserve(count);
 }
 
 TfLiteStatus Interpreter::AddNodeWithParameters(

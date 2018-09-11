@@ -144,7 +144,11 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     t = ops.convert_to_tensor(t, name="t")
 
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
-    l2norm = math_ops.sqrt(math_ops.reduce_sum(t * t, axes, keepdims=True))
+    l2sum = math_ops.reduce_sum(t * t, axes, keepdims=True)
+    pred = l2sum > 0
+    # Two-tap tf.where trick to bypass NaN gradients
+    l2sum_safe = array_ops.where(pred, l2sum, array_ops.ones_like(l2sum))
+    l2norm = array_ops.where(pred, math_ops.sqrt(l2sum_safe), l2sum)
     intermediate = t * clip_norm
     # Assert that the shape is compatible with the initial shape,
     # to prevent unintentional broadcasting.

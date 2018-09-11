@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_KERNEL_H_
 #define TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_KERNEL_H_
 
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 
 namespace tflite {
 namespace eager {

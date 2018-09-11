@@ -117,6 +117,7 @@ bool ResolveConstantFakeQuant::Run(Model* model, std::size_t op_index) {
                                 &quantized_max);
   if (fakequant_op->narrow_range) {
     quantized_min++;
+    output_array.narrow_range = true;
   }
 
   // It is important for matching accuracy between TF training and TFLite

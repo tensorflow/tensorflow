@@ -58,7 +58,7 @@ class KFeatureRoutingFunctionTest(test_util.TensorFlowTestCase):
     self.assertEquals(self.params.num_features_per_node, 2)
 
   def testRoutingFunction(self):
-    with self.test_session():
+    with self.cached_session():
       route_tensor = gen_training_ops.k_feature_routing_function(
           self.input_data,
           self.tree_weights,

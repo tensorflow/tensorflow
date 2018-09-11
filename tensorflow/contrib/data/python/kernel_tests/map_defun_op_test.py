@@ -17,7 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
 from tensorflow.contrib.data.python.ops import map_defun
+from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -25,53 +28,63 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
-
 class MapDefunTest(test.TestCase):
 
-  def testMapDefun_Simple(self):
+  def testMapDefunSimple(self):
 
     @function.Defun(dtypes.int32)
     def simple_fn(x):
       return x * 2 + 3
 
-    with self.test_session():
-      nums = [[1, 2], [3, 4], [5, 6]]
-      elems = constant_op.constant(nums, dtype=dtypes.int32, name="data")
-      r = map_defun.map_defun(simple_fn, [elems], [dtypes.int32], [(2,)])[0]
-      expected = elems * 2 + 3
-      self.assertAllEqual(self.evaluate(r), self.evaluate(expected))
+    nums = [[1, 2], [3, 4], [5, 6]]
+    elems = constant_op.constant(nums, dtype=dtypes.int32, name="data")
+    r = map_defun.map_defun(simple_fn, [elems], [dtypes.int32], [(2,)])[0]
+    expected = elems * 2 + 3
+    self.assertAllEqual(self.evaluate(r), self.evaluate(expected))
 
-  def testMapDefun_MismatchedTypes(self):
+  def testMapDefunMismatchedTypes(self):
 
     @function.Defun(dtypes.int32)
     def fn(x):
       return math_ops.cast(x, dtypes.float64)
 
-    with self.test_session():
-      nums = [1, 2, 3, 4, 5, 6]
-      elems = constant_op.constant(nums, dtype=dtypes.int32, name="data")
-      r = map_defun.map_defun(fn, [elems], [dtypes.int32], [()])[0]
-      with self.assertRaises(errors.InvalidArgumentError):
-        self.evaluate(r)
+    nums = [1, 2, 3, 4, 5, 6]
+    elems = constant_op.constant(nums, dtype=dtypes.int32, name="data")
+    r = map_defun.map_defun(fn, [elems], [dtypes.int32], [()])[0]
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(r)
 
-  def testMapDefun_MultipleOutputs(self):
+  def testMapDefunReduceDim(self):
+    # Tests where the output has a different rank from the input
+
+    @function.Defun(dtypes.int32)
+    def fn(x):
+      return array_ops.gather(x, 0)
+
+    nums = [[1, 2], [3, 4], [5, 6]]
+    elems = constant_op.constant(nums, dtype=dtypes.int32, name="data")
+    r = map_defun.map_defun(fn, [elems], [dtypes.int32], [()])[0]
+    expected = constant_op.constant([1, 3, 5])
+    self.assertAllEqual(self.evaluate(r), self.evaluate(expected))
+
+  def testMapDefunMultipleOutputs(self):
 
     @function.Defun(dtypes.int32)
     def fn(x):
       return (x, math_ops.cast(x * 2 + 3, dtypes.float64))
 
-    with self.test_session():
-      nums = [[1, 2], [3, 4], [5, 6]]
-      elems = constant_op.constant(nums, dtype=dtypes.int32, name="data")
-      r = map_defun.map_defun(fn, [elems], [dtypes.int32, dtypes.float64],
-                              [(2,), (2,)])
-      expected = [elems, elems * 2 + 3]
-      self.assertAllEqual(self.evaluate(r), self.evaluate(expected))
+    nums = [[1, 2], [3, 4], [5, 6]]
+    elems = constant_op.constant(nums, dtype=dtypes.int32, name="data")
+    r = map_defun.map_defun(fn, [elems], [dtypes.int32, dtypes.float64], [(2,),
+                                                                          (2,)])
+    expected = [elems, elems * 2 + 3]
+    self.assertAllEqual(self.evaluate(r), self.evaluate(expected))
 
-  def testMapDefun_ShapeInference(self):
+  def testMapDefunShapeInference(self):
 
     @function.Defun(dtypes.int32)
     def fn(x):
@@ -82,7 +95,7 @@ class MapDefunTest(test.TestCase):
     result = map_defun.map_defun(fn, [elems], [dtypes.int32], [(2,)])[0]
     self.assertEqual(result.get_shape(), (3, 2))
 
-  def testMapDefun_PartialShapeInference(self):
+  def testMapDefunPartialShapeInference(self):
 
     @function.Defun(dtypes.int32)
     def fn(x):
@@ -92,7 +105,7 @@ class MapDefunTest(test.TestCase):
     result = map_defun.map_defun(fn, [elems], [dtypes.int32], [(2,)])
     self.assertEqual(result[0].get_shape().as_list(), [None, 2])
 
-  def testMapDefun_RaisesErrorOnRuntimeShapeMismatch(self):
+  def testMapDefunRaisesErrorOnRuntimeShapeMismatch(self):
 
     @function.Defun(dtypes.int32, dtypes.int32)
     def fn(x, y):
@@ -108,7 +121,7 @@ class MapDefunTest(test.TestCase):
           "All inputs must have the same dimension 0."):
         sess.run(result, feed_dict={elems1: [1, 2, 3, 4, 5], elems2: [1, 2, 3]})
 
-  def testMapDefun_RaisesDefunError(self):
+  def testMapDefunRaisesDefunError(self):
 
     @function.Defun(dtypes.int32)
     def fn(x):
@@ -117,10 +130,124 @@ class MapDefunTest(test.TestCase):
 
     elems = constant_op.constant([0, 0, 0, 37, 0])
     result = map_defun.map_defun(fn, [elems], [dtypes.int32], [()])
-    with self.test_session():
-      with self.assertRaises(errors.InvalidArgumentError):
-        self.evaluate(result)
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(result)
 
+  def testMapDefunCancelledCorrectly(self):
+
+    @function.Defun(dtypes.int64)
+    def defun(x):
+      # x has leading dimension 5, this will raise an error
+      return array_ops.gather(x, 10)
+
+    c = array_ops.tile(
+        array_ops.expand_dims(
+            constant_op.constant([1, 2, 3, 4, 5], dtype=dtypes.int64), 0),
+        [100, 1])
+    map_defun_op = map_defun.map_defun(defun, [c], [dtypes.int64], [()])[0]
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 r"indices = 10 is not in \[0, 5\)"):
+      self.evaluate(map_defun_op)
+
+  def testMapDefunWithUnspecifiedOutputShape(self):
+
+    @function.Defun(dtypes.int32)
+    def simple_fn(x):
+      res = x * 2 + 3
+      return (res, res + 1, res + 2)
+
+    nums = [[1, 2], [3, 4], [5, 6]]
+    elems = constant_op.constant(nums, dtype=dtypes.int32, name="data")
+    r = map_defun.map_defun(simple_fn, [elems],
+                            [dtypes.int32, dtypes.int32, dtypes.int32],
+                            [None, (None,), (2,)])
+    expected = elems * 2 + 3
+    self.assertAllEqual(self.evaluate(r[0]), self.evaluate(expected))
+    self.assertAllEqual(self.evaluate(r[1]), self.evaluate(expected + 1))
+    self.assertAllEqual(self.evaluate(r[2]), self.evaluate(expected + 2))
+
+  def testMapDefunWithDifferentOutputShapeEachRun(self):
+
+    @function.Defun(dtypes.int32)
+    def simple_fn(x):
+      return x * 2 + 3
+
+    elems = array_ops.placeholder(dtypes.int32, name="data")
+    r = map_defun.map_defun(simple_fn, [elems], [dtypes.int32], [None])[0]
+    with session.Session() as sess:
+      self.assertAllEqual(sess.run(r, feed_dict={elems: [0]}), [3])
+      self.assertAllEqual(
+          sess.run(r, feed_dict={elems: [[0], [1]]}), [[3], [5]])
+
+  def testMapDefunWithWrongOutputShape(self):
+
+    @function.Defun(dtypes.int32)
+    def simple_fn(x):
+      return x * 2 + 3
+
+    nums = [[1, 2], [3, 4], [5, 6]]
+    elems = constant_op.constant(nums, dtype=dtypes.int32, name="data")
+    r = map_defun.map_defun(simple_fn, [elems], [dtypes.int32], [(1,)])[0]
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(r)
+
+  def testMapDefunWithInvalidInput(self):
+
+    @function.Defun(dtypes.int32)
+    def simple_fn(x):
+      return x * 2
+
+    c = constant_op.constant(2)
+    with self.assertRaises(ValueError):
+      # Fails at graph construction time for inputs with known shapes.
+      r = map_defun.map_defun(simple_fn, [c], [dtypes.int32], [None])[0]
+    p = array_ops.placeholder(dtypes.int32)
+    r = map_defun.map_defun(simple_fn, [p], [dtypes.int32], [None])[0]
+    with session.Session() as sess:
+      with self.assertRaises(errors.InvalidArgumentError):
+        sess.run(r, feed_dict={p: 0})
+
+
+class MapDefunBenchmark(test.Benchmark):
+
+  def _run(self, op, name=None, num_iters=3000):
+    with session.Session() as sess:
+      # Warm up the session
+      for _ in range(5):
+        sess.run(op)
+      start = time.time()
+      for _ in range(num_iters):
+        sess.run(op)
+      end = time.time()
+      mean_us = (end - start) * 1e6 / num_iters
+      self.report_benchmark(
+          name=name,
+          iters=num_iters,
+          wall_time=mean_us,
+          extras={"examples_per_sec": num_iters / (end - start)})
+
+  def benchmarkDefunVsMapFn(self):
+    """Benchmarks to compare the performance of MapDefun vs tf.map_fn."""
+
+    @function.Defun(dtypes.int32)
+    def defun(x):
+      return array_ops.identity(x)
+
+    def map_fn(x):
+      return array_ops.identity(x)
+
+    base = math_ops.range(100)
+    for input_size in [10, 100, 1000, 10000]:
+      num_iters = 100000 // input_size
+      map_defun_op = map_defun.map_defun(defun, [base], [dtypes.int32], [()])
+      map_fn_op = functional_ops.map_fn(map_fn, base)
+
+      self._run(
+          map_defun_op,
+          "benchmarkMapDefun_size_%d" % input_size,
+          num_iters=num_iters)
+      self._run(
+          map_fn_op, "benchmarkMapFn_size_%d" % input_size, num_iters=num_iters)
 
 if __name__ == "__main__":
   test.main()

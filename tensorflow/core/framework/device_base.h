@@ -89,6 +89,15 @@ class DeviceContext : public core::RefCounted {
                                      Tensor* cpu_tensor, StatusCallback done) {
     done(errors::Internal("Unrecognized device type in device-to-CPU Copy"));
   }
+
+  // If possible, wait for all events on *stream to complete then execute func.
+  // A non-OK Status is returned otherwise.  The stream argument should be the
+  // one provided by GpuDeviceInfo.  This function is not applicable to devices
+  // that don't provide such a value.
+  virtual Status ThenExecute(Device* device, stream_executor::Stream* stream,
+                             std::function<void()> func) {
+    return errors::Internal("ThenExecute not supported by device");
+  }
 };
 
 // map[i] is the DeviceContext* for the node with id i, if i < map.size().

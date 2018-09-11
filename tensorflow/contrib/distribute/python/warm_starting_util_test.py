@@ -56,7 +56,7 @@ class WarmStartingUtilWithDistributionStrategyTest(
 
     # Create variable and save checkpoint from which to warm-start.
     def create_var(g):
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         var = variable_scope.get_variable(var_name, initializer=original_value)
         sess.run(variables.global_variables_initializer())
         saver = saver_lib.Saver()
@@ -75,7 +75,7 @@ class WarmStartingUtilWithDistributionStrategyTest(
     self.assertAllEqual(original_value, prev_init_val)
 
     def warm_start(g):
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         # Initialize with zeros.
         var = variable_scope.get_variable(
             var_name, initializer=[[0., 0.], [0., 0.]])

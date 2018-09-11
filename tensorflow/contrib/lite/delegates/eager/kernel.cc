@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/lite/delegates/eager/kernel.h"
 
-#include "flatbuffers/flexbuffers.h"
+#include "flatbuffers/flexbuffers.h"  // flatbuffers
 #include "tensorflow/contrib/lite/builtin_ops.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/context_util.h"
 #include "tensorflow/contrib/lite/delegates/eager/delegate_data.h"
 #include "tensorflow/contrib/lite/delegates/eager/util.h"
@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 
 // Note: this is part of TF Lite's Eager delegation code which is to be
 // completed soon.
@@ -189,6 +190,14 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
       }
     }
 
+    // Fill NodeDef with defaults if it's a valid op.
+    const tensorflow::OpRegistrationData* op_reg_data;
+    auto tf_status = tensorflow::OpRegistry::Global()->LookUp(
+        node_data.nodedef.op(), &op_reg_data);
+    if (tf_status.ok()) {
+      AddDefaultsToNodeDef(op_reg_data->op_def, &node_data.nodedef);
+    }
+
     for (auto input_index : TfLiteIntArrayView(node->inputs)) {
       node_data.inputs.push_back(input_index);
     }
@@ -269,7 +278,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TfLiteTensor* tensor = &context->tensors[tensor_index];
     TF_LITE_ENSURE_OK(
         context,
-        CopyShape(context, buffer_map->GetTensor(tensor_index), tensor));
+        CopyShapeAndType(context, buffer_map->GetTensor(tensor_index), tensor));
     tensor->buffer_handle = tensor_index;
     tensor->data_is_stale = true;
   }

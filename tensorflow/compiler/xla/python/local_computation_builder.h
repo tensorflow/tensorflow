@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_LOCAL_COMPUTATION_BUILDER_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_LOCAL_COMPUTATION_BUILDER_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -23,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 namespace swig {
@@ -51,8 +51,8 @@ Status TransferToInfeedLocalReplica(const Literal& literal, int replica_number);
 // Transfers a literal of the given shape from the outfeed of the given replica.
 //
 // The replica number is resolved to an appropriate device ordinal.
-StatusOr<std::unique_ptr<Literal> > TransferFromOutfeedLocalReplica(
-    const Shape& shape, int replica_number);
+StatusOr<Literal> TransferFromOutfeedLocalReplica(const Shape& shape,
+                                                  int replica_number);
 
 // Wraps a ScopedShapedBuffer produced by copying a literal "to
 // device," i.e. copying a literal to a scoped buffer via the local
@@ -60,13 +60,12 @@ StatusOr<std::unique_ptr<Literal> > TransferFromOutfeedLocalReplica(
 class LocalShapedBuffer {
  public:
   static StatusOr<LocalShapedBuffer*> FromLiteral(
-      const Literal& argument,
-      const tensorflow::gtl::optional<Shape>& shape_with_layout);
+      const Literal& argument, const absl::optional<Shape>& shape_with_layout);
 
   LocalShapedBuffer(ScopedShapedBuffer shaped_buffer);
   const ScopedShapedBuffer* shaped_buffer() const;
 
-  StatusOr<std::unique_ptr<Literal> > ToLiteral() const;
+  StatusOr<Literal> ToLiteral() const;
 
   // Transfers ownership of the encapsulated ShapedBuffer to the caller,
   // analogous to std::unique_ptr::release().
@@ -118,12 +117,12 @@ class CompiledLocalComputation {
   // with optionally-specified argument layouts. The literals will be
   // re-laid out according to the corresponding elements of
   // shapes_with_layout.
-  StatusOr<std::unique_ptr<Literal> > Execute(
+  StatusOr<Literal> Execute(
       const std::vector<Literal>& arguments,
-      const std::vector<tensorflow::gtl::optional<Shape> >& shapes_with_layout);
+      const std::vector<absl::optional<Shape> >& shapes_with_layout);
 
   LocalShapedBuffer* ExecuteWithShapedBuffers(
-      tensorflow::gtl::ArraySlice<LocalShapedBuffer*> argument_handles);
+      absl::Span<LocalShapedBuffer* const> argument_handles);
 
  private:
   std::unique_ptr<LocalExecutable> executable_;
@@ -200,46 +199,41 @@ class LocalComputationBuilder {
   LocalOp ConstantLiteral(const Literal& literal);
 
   LocalOp Broadcast(const LocalOp& operand,
-                    tensorflow::gtl::ArraySlice<int64> broadcast_sizes);
+                    absl::Span<const int64> broadcast_sizes);
 
   LocalOp Pad(const LocalOp& operand, const LocalOp& padding_value,
               const PaddingConfig& padding_config);
 
-  LocalOp Reshape(const LocalOp& operand,
-                  tensorflow::gtl::ArraySlice<int64> dimensions,
-                  tensorflow::gtl::ArraySlice<int64> new_sizes);
+  LocalOp Reshape(const LocalOp& operand, absl::Span<const int64> dimensions,
+                  absl::Span<const int64> new_sizes);
 
-  LocalOp Collapse(const LocalOp& operand,
-                   tensorflow::gtl::ArraySlice<int64> dimensions);
+  LocalOp Collapse(const LocalOp& operand, absl::Span<const int64> dimensions);
 
   LocalOp CrossReplicaSum(const LocalOp& operand);
 
-  LocalOp Slice(const LocalOp& operand,
-                tensorflow::gtl::ArraySlice<int64> start_indices,
-                tensorflow::gtl::ArraySlice<int64> limit_indices,
-                tensorflow::gtl::ArraySlice<int64> strides);
+  LocalOp Slice(const LocalOp& operand, absl::Span<const int64> start_indices,
+                absl::Span<const int64> limit_indices,
+                absl::Span<const int64> strides);
 
   LocalOp SliceInDim(const LocalOp& operand, int64 start_index,
                      int64 limit_index, int64 stride, int64 dimno);
 
   LocalOp DynamicSlice(const LocalOp& operand, const LocalOp& start_indices,
-                       tensorflow::gtl::ArraySlice<int64> slice_sizes);
+                       absl::Span<const int64> slice_sizes);
 
   LocalOp DynamicUpdateSlice(const LocalOp& operand, const LocalOp& update,
                              const LocalOp& start_indices);
 
-  LocalOp ConcatInDim(tensorflow::gtl::ArraySlice<LocalOp> operands,
-                      int64 dimension);
+  LocalOp ConcatInDim(absl::Span<const LocalOp> operands, int64 dimension);
 
   LocalOp SelectAndScatterWithGeneralPadding(
       const LocalOp& operand, const LocalComputation& select,
-      tensorflow::gtl::ArraySlice<int64> window_dimensions,
-      tensorflow::gtl::ArraySlice<int64> window_strides,
-      tensorflow::gtl::ArraySlice<std::pair<int64, int64> > padding,
-      const LocalOp& source, const LocalOp& init_value,
-      const LocalComputation& scatter);
+      absl::Span<const int64> window_dimensions,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64> > padding, const LocalOp& source,
+      const LocalOp& init_value, const LocalComputation& scatter);
 
-  LocalOp Tuple(tensorflow::gtl::ArraySlice<LocalOp> elements);
+  LocalOp Tuple(absl::Span<const LocalOp> elements);
 
   LocalOp GetTupleElement(const LocalOp& tuple_data, int64 index);
 
@@ -250,10 +244,10 @@ class LocalComputationBuilder {
 
   LocalOp ConvGeneralDilated(
       const LocalOp& lhs, const LocalOp& rhs,
-      tensorflow::gtl::ArraySlice<int64> window_strides,
-      tensorflow::gtl::ArraySlice<std::pair<int64, int64> > padding,
-      tensorflow::gtl::ArraySlice<int64> lhs_dilation,
-      tensorflow::gtl::ArraySlice<int64> rhs_dilation,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64> > padding,
+      absl::Span<const int64> lhs_dilation,
+      absl::Span<const int64> rhs_dilation,
       const ConvolutionDimensionNumbers& dimension_numbers);
 
   LocalOp ConvertElementType(const LocalOp& operand,
@@ -263,28 +257,27 @@ class LocalComputationBuilder {
                              PrimitiveType new_element_type);
 
   LocalOp Call(const LocalComputation& local_computation,
-               tensorflow::gtl::ArraySlice<LocalOp> operands);
+               absl::Span<const LocalOp> operands);
 
   LocalOp Transpose(const LocalOp& operand,
-                    tensorflow::gtl::ArraySlice<int64> permutation);
+                    absl::Span<const int64> permutation);
 
-  LocalOp Rev(const LocalOp& operand,
-              tensorflow::gtl::ArraySlice<int64> dimensions);
+  LocalOp Rev(const LocalOp& operand, absl::Span<const int64> dimensions);
 
-  LocalOp Map(tensorflow::gtl::ArraySlice<LocalOp> operands,
+  LocalOp Map(absl::Span<const LocalOp> operands,
               const LocalComputation& local_computation,
-              tensorflow::gtl::ArraySlice<int64> dimensions);
+              absl::Span<const int64> dimensions);
 
   LocalOp Reduce(const LocalOp& operand, const LocalOp& init_value,
                  const LocalComputation& local_computation,
-                 tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce);
+                 absl::Span<const int64> dimensions_to_reduce);
 
   LocalOp ReduceWindowWithGeneralPadding(
       const LocalOp& operand, const LocalOp& init_value,
       const LocalComputation& local_computation,
-      tensorflow::gtl::ArraySlice<int64> window_dimensions,
-      tensorflow::gtl::ArraySlice<int64> window_strides,
-      tensorflow::gtl::ArraySlice<std::pair<int64, int64> > padding);
+      absl::Span<const int64> window_dimensions,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64> > padding);
 
   LocalOp RngNormal(const LocalOp& mu, const LocalOp& sigma,
                     const Shape& shape);
@@ -301,6 +294,11 @@ class LocalComputationBuilder {
 
   StatusOr<bool> IsConstant(const LocalOp& operand);
 
+  LocalOp Sort(const LocalOp& operand, int64 dimension);
+
+  LocalOp SortKeyVal(const LocalOp& keys, const LocalOp& values,
+                     int64 dimension);
+
   StatusOr<LocalComputation*> BuildConstantSubGraph(const LocalOp& operand);
 
 #define _FORWARD(method_name, return_sig, args_sig) \
@@ -312,7 +310,7 @@ class LocalComputationBuilder {
 #define _FORWARD_BINOP(method_name)                 \
   _FORWARD(method_name, LocalOp,                    \
            (const LocalOp& lhs, const LocalOp& rhs, \
-            tensorflow::gtl::ArraySlice<int64> broadcast_dimensions))
+            absl::Span<const int64> broadcast_dimensions))
 
 #define _FORWARD_TRIOP(method_name) \
   _FORWARD(method_name, LocalOp,    \
@@ -357,7 +355,6 @@ class LocalComputationBuilder {
   _FORWARD_UNOP(Tanh)
   _FORWARD_UNOP(IsFinite)
   _FORWARD_UNOP(Neg)
-  _FORWARD_UNOP(Sort)
   _FORWARD_UNOP(Sqrt)
   _FORWARD_UNOP(Rsqrt)
   _FORWARD_UNOP(Square)

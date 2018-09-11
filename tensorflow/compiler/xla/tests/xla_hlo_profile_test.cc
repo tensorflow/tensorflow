@@ -16,6 +16,10 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -29,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -81,8 +84,7 @@ struct ParsedProfileOutputLine {
 Status ParseOneProfileOutputLine(
     const string& line, bool expect_hlo,
     gtl::FlatMap<string, ParsedProfileOutputLine>* parsed_results,
-    tensorflow::gtl::ArraySlice<tensorflow::StringPiece> opcodes_to_ignore =
-        {}) {
+    absl::Span<const absl::string_view> opcodes_to_ignore = {}) {
   string separator = "[^:]*:: +";
   string match_percentage = R"(\d+\.\d*% +\d+Σ)";
   string match_cycles = R"((\d+) cycles +\( *()" + match_percentage + R"()\))";
@@ -99,7 +101,7 @@ Status ParseOneProfileOutputLine(
 
   string match_opcode =
       expect_hlo ? "%[^=]+= [^ ]+ ([^(]+)\\(.*" : "(\\[total\\])";
-  string regexp_pattern = tensorflow::strings::StrCat(
+  string regexp_pattern = absl::StrCat(
       " +", match_cycles, separator, match_usecs, separator, match_flops,
       separator, match_trops, separator, match_bytes_per_sec, separator,
       match_bytes_per_cycle, separator, match_opcode);
@@ -116,7 +118,7 @@ Status ParseOneProfileOutputLine(
         ", Regexp: ", regexp_pattern);
   }
 
-  if (!c_linear_search(opcodes_to_ignore, parsed_line.opcode)) {
+  if (!absl::c_linear_search(opcodes_to_ignore, parsed_line.opcode)) {
     InsertOrDie(parsed_results, parsed_line.opcode, parsed_line);
   }
 
@@ -142,14 +144,14 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
       transfer_manager->AllocateScopedShapedBuffer(
           lhs_arg_shape, allocator, backend->default_device_ordinal()));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToDevice(
-      stream_ptr.get(), *Literal::CreateFromShape(lhs_arg_shape), lhs_arg));
+      stream_ptr.get(), Literal::CreateFromShape(lhs_arg_shape), lhs_arg));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer rhs_arg,
       transfer_manager->AllocateScopedShapedBuffer(
           rhs_arg_shape, allocator, backend->default_device_ordinal()));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToDevice(
-      stream_ptr.get(), *Literal::CreateFromShape(rhs_arg_shape), rhs_arg));
+      stream_ptr.get(), Literal::CreateFromShape(rhs_arg_shape), rhs_arg));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LocalExecutable> local_executable,
@@ -169,10 +171,10 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   ServiceExecutableRunOptions run_options(
       exec_run_options, /*borrow_stream=*/nullptr,
       backend->eigen_intra_op_thread_pool());
+  std::vector<const ShapedBuffer*> args = {&lhs_arg, &rhs_arg};
   TF_ASSERT_OK_AND_ASSIGN(
       auto execution_result,
-      executable->ExecuteOnStream(&run_options, {&lhs_arg, &rhs_arg},
-                                  &hlo_execution_profile));
+      executable->ExecuteOnStream(&run_options, args, &hlo_execution_profile));
   TF_ASSERT_OK(stream_ptr->BlockHostUntilDone());
   (void)execution_result;
 
@@ -204,7 +206,7 @@ XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
                          rhs_shape);
 
   std::vector<string> profile_output_lines =
-      tensorflow::str_util::Split(profile_output, '\n');
+      absl::StrSplit(profile_output, '\n');
 
   gtl::FlatMap<string, ParsedProfileOutputLine> parsed_profile_lines;
 
@@ -291,22 +293,20 @@ XLA_TEST_F(HloProfileTest, ProfileWhileComputation) {
                          matrix_shape);
 
   std::vector<string> profile_output_lines =
-      tensorflow::str_util::Split(profile_output, '\n');
+      absl::StrSplit(profile_output, '\n');
 
   auto while_body_profile_start =
-      c_find_if(profile_output_lines, [](tensorflow::StringPiece s) {
-        return tensorflow::str_util::StartsWith(s,
-                                                "Execution profile for body");
+      absl::c_find_if(profile_output_lines, [](absl::string_view s) {
+        return absl::StartsWith(s, "Execution profile for body");
       });
 
   ASSERT_NE(while_body_profile_start, profile_output_lines.cend());
 
-  auto while_body_profile_end =
-      std::find_if(while_body_profile_start, profile_output_lines.end(),
-                   [](tensorflow::StringPiece s) {
-                     return tensorflow::str_util::StartsWith(
-                         s, "********** microseconds report **********");
-                   });
+  auto while_body_profile_end = std::find_if(
+      while_body_profile_start, profile_output_lines.end(),
+      [](absl::string_view s) {
+        return absl::StartsWith(s, "********** microseconds report **********");
+      });
 
   // We emit a blank line before the "********** microseconds report **********"
   // line.

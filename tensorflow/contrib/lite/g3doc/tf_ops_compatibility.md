@@ -1,5 +1,3 @@
-book_path: /mobile/_book.yaml
-project_path: /mobile/_project.yaml
 
 # TensorFlow Lite & TensorFlow Compatibility Guide
 
@@ -840,6 +838,31 @@ Inputs {
 }
 Outputs {
   0: A tensor of logical_or output tensors.
+}
+```
+
+**UNPACK**
+
+```
+Inputs {
+  0: a tensor.
+  1: an integer.
+  2: an integer.
+}
+Outputs {
+  0-N: tensors of unpacked tensor.
+}
+```
+
+**FLOOR_DIV**
+
+```
+Inputs {
+  0: a list of tensors.
+  1: a list of tensors.
+}
+Outputs {
+  0: A tensor of floor_div output tensors.
 }
 ```
 

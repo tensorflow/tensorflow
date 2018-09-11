@@ -52,7 +52,7 @@ def _key_op(op):
 class ArgScopeTest(test.TestCase):
 
   def testEmptyArgScope(self):
-    with self.test_session():
+    with self.cached_session():
       with arg_scope([]) as sc:
         self.assertEqual(sc, {})
 
@@ -60,7 +60,7 @@ class ArgScopeTest(test.TestCase):
     func1_kwargs = {'a': 1, 'b': None, 'c': [1]}
     key_op = _key_op(func1)
     func1_scope = {key_op: func1_kwargs.copy()}
-    with self.test_session():
+    with self.cached_session():
       with arg_scope([func1], a=1, b=None, c=[1]) as sc1:
         self.assertEqual(sc1, func1_scope)
         with arg_scope({}) as sc2:
@@ -86,7 +86,7 @@ class ArgScopeTest(test.TestCase):
     func1_kwargs = {'a': 1, 'b': None, 'c': [1]}
     key_op = _key_op(func1)
     current_scope = {key_op: func1_kwargs.copy()}
-    with self.test_session():
+    with self.cached_session():
       with arg_scope([func1], a=1, b=None, c=[1]) as scope:
         self.assertDictEqual(scope, current_scope)
 
@@ -102,7 +102,7 @@ class ArgScopeTest(test.TestCase):
         key(func1): func1_kwargs.copy(),
         key(func2): func2_kwargs.copy()
     }
-    with self.test_session():
+    with self.cached_session():
       with arg_scope([func1], a=1, b=None, c=[1]):
         with arg_scope([func2], b=2, d=[2]) as scope:
           self.assertDictEqual(scope, current_scope)
@@ -111,7 +111,7 @@ class ArgScopeTest(test.TestCase):
     func1_kwargs = {'a': 1, 'b': None, 'c': [1]}
     key_op = _key_op(func1)
     current_scope = {key_op: func1_kwargs.copy()}
-    with self.test_session():
+    with self.cached_session():
       with arg_scope([func1], a=1, b=None, c=[1]) as scope1:
         pass
       with arg_scope(scope1) as scope:
@@ -126,7 +126,7 @@ class ArgScopeTest(test.TestCase):
         key(func1): func1_kwargs.copy(),
         key(func2): func2_kwargs.copy()
     }
-    with self.test_session():
+    with self.cached_session():
       with arg_scope([func1], a=1, b=None, c=[1]) as scope1:
         with arg_scope([func2], b=2, d=[2]) as scope2:
           pass
@@ -140,7 +140,7 @@ class ArgScopeTest(test.TestCase):
   def testSimpleArgScope(self):
     func1_args = (0,)
     func1_kwargs = {'a': 1, 'b': None, 'c': [1]}
-    with self.test_session():
+    with self.cached_session():
       with arg_scope([func1], a=1, b=None, c=[1]):
         args, kwargs = func1(0)
         self.assertTupleEqual(args, func1_args)
@@ -149,7 +149,7 @@ class ArgScopeTest(test.TestCase):
   def testSimpleArgScopeWithTuple(self):
     func1_args = (0,)
     func1_kwargs = {'a': 1, 'b': None, 'c': [1]}
-    with self.test_session():
+    with self.cached_session():
       with arg_scope((func1,), a=1, b=None, c=[1]):
         args, kwargs = func1(0)
         self.assertTupleEqual(args, func1_args)
@@ -240,7 +240,7 @@ class ArgScopeTest(test.TestCase):
   def testAddArgScopeRaceCondition(self):
     func4_kwargs = ('a', 'b', 'c', 'd', 'e', 'f', 'g', 'h')
     for i in range(4):
-        # redefine the function with different args
+      # redefine the function with different args
       @add_arg_scope
       def func4(a=1, b=2, c=3, d=4, e=5, f=6, g=7, h=8):
         pass

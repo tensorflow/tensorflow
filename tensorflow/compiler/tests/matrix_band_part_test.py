@@ -29,7 +29,7 @@ from tensorflow.python.platform import test
 class MatrixBandPartTest(xla_test.XLATestCase):
 
   def _testMatrixBandPart(self, dtype, shape):
-    with self.test_session():
+    with self.cached_session():
       batch_shape = shape[:-2]
       mat = np.ones(shape).astype(dtype)
       batch_mat = np.tile(mat, batch_shape + [1, 1])

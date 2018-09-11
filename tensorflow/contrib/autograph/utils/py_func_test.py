@@ -31,7 +31,7 @@ class PyFuncTest(test.TestCase):
     def test_fn(a, b, c):
       return a + b + c
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       result = py_func.wrap_py_func(test_fn, dtypes.int64,
                                     (1, constant_op.constant(1), 1))
       self.assertEqual(3, sess.run(result))
@@ -52,7 +52,7 @@ class PyFuncTest(test.TestCase):
     def test_fn(a, b):
       return a * b.foo
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       result = py_func.wrap_py_func(test_fn, dtypes.int64, (7, TestClass()))
       self.assertEqual(35, sess.run(result))
       result = py_func.wrap_py_func(test_fn, dtypes.int64,
@@ -69,7 +69,7 @@ class PyFuncTest(test.TestCase):
     def test_fn(a, b, c, d):
       return a * b.foo + c * d.foo
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       result = py_func.wrap_py_func(test_fn, dtypes.int64, (7, TestClass(5)), {
           'c': 11,
           'd': TestClass(13)
@@ -89,7 +89,7 @@ class PyFuncTest(test.TestCase):
     def test_fn(_):
       side_counter[0] += 1
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       result = py_func.wrap_py_func(test_fn, None, (5,), use_dummy_return=True)
       self.assertEqual(1, sess.run(result))
       self.assertEqual([1], side_counter)

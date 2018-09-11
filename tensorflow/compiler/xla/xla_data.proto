@@ -105,13 +105,14 @@ enum PaddingValue {
 message PaddingConfig {
   // Describes the padding configuration for a dimension.
   message PaddingConfigDimension {
-    // Padding amount on the low-end (next to the index 0).
+    // Padding amount on the low-end (next to the index 0). May be negative.
     int64 edge_padding_low = 1;
 
-    // Padding amount on the high-end (next to the highest index).
+    // Padding amount on the high-end (next to the highest index). May be
+    // negative.
     int64 edge_padding_high = 2;
 
-    // Padding amount between the elements.
+    // Padding amount between the elements. May not be negative.
     int64 interior_padding = 3;
   }
 
@@ -393,13 +394,14 @@ message WindowDimension {
 
   // Dilation factor of the sliding window in this dimension. A dilation factor
   // of 1 means no dilation. window_dilation - 1 no-op entries ("holes") are
-  // implicitly placed between each kernel element. See documentation for
-  // convolution.
+  // implicitly placed between each kernel element. This value may not be less
+  // than 1. See documentation for convolution.
   int64 window_dilation = 5;
 
   // Dilation factor of the base area in this dimension. A dilation factor of 1
   // means no dilation. base_dilation - 1 no-op entries ("holes") are implicitly
-  // placed between each base area element. See documentation for convolution.
+  // placed between each base area element. This value may not be less than 1.
+  // See documentation for convolution.
   int64 base_dilation = 6;
 
   // Window reversal means that this dimension was logically reversed before the
@@ -424,25 +426,25 @@ message GatherDimensionNumbers {
   // "Window indices" is a term for a set of indices that index into the
   // interior of a dynamic-slice from the input tensor, the starting indices for
   // which were computed from output_gather_dims (see the operation semantic for
-  // how this is defined) and the gather_indices tensor.
+  // how this is defined) and the start_indices tensor.
   //
   // The window indices for a specific output index Out is computed as:
   //
   //  i = 0
   //  for (k : [0, input_tensor_shape.rank))
   //    window_indices[k] =
-  //      if k in elided_window_dims
+  //      if k in collapsed_slice_dims
   //      then 0
-  //      else Out[output_window_dims[i++]]
-  repeated int64 output_window_dims = 1;
-  repeated int64 elided_window_dims = 2;
+  //      else Out[offset_dims[i++]]
+  repeated int64 offset_dims = 1;
+  repeated int64 collapsed_slice_dims = 2;
 
-  // This is interpreted as a map from i to gather_dims_to_operand_dims[i]. It
-  // transforms the gather index looked up from the gather_indices tensor into
+  // This is interpreted as a map from i to start_index_map[i]. It
+  // transforms the gather index looked up from the start_indices tensor into
   // the starting index in the input space.
-  repeated int64 gather_dims_to_operand_dims = 3;
+  repeated int64 start_index_map = 3;
 
-  // The dimension in the gather_indices input that contains the starting
+  // The dimension in the start_indices input that contains the starting
   // indices.
   int64 index_vector_dim = 4;
 }
@@ -568,4 +570,25 @@ message ReplicaGroup {
   // The ids of the replicas that belongs to the same group. The ordering of the
   // ids matters in some op (e.g., all-to-all).
   repeated int64 replica_ids = 1;
+}
+
+// Describes the source target pair in the collective permute op.
+message SourceTarget {
+  int64 source = 1;
+  int64 target = 2;
+}
+
+// Used to indicate the precision configuration. It has backend specific
+// meaning.
+message PrecisionConfig {
+  enum Precision {
+    DEFAULT = 0;
+    HIGH = 1;
+    HIGHEST = 2;
+
+    // Next: 3
+  }
+  repeated Precision operand_precision = 1;
+
+  // Next: 2
 }

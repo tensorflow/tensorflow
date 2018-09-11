@@ -14,17 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/optional.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 
-using tensorflow::gtl::nullopt;
-using tensorflow::gtl::optional;
+using absl::optional;
 
 // Determines whether the given instruction is a send/recv node, or has a
 // subcomputation which contains a send/recv node.
@@ -237,12 +236,11 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
             << "Instruction " << user->ToString(print_no_metadata)
             << " should be unused (except by root of while body), but has "
                "users: {"
-            << tensorflow::str_util::Join(
-                   user->users(), ", ",
-                   [&](string* out, const HloInstruction* instr) {
-                     tensorflow::strings::StrAppend(
-                         out, instr->ToString(print_no_metadata));
-                   })
+            << absl::StrJoin(user->users(), ", ",
+                             [&](string* out, const HloInstruction* instr) {
+                               absl::StrAppend(
+                                   out, instr->ToString(print_no_metadata));
+                             })
             << "}";
 
         replacements.emplace(user, nullptr);

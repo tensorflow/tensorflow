@@ -950,7 +950,7 @@ class Seq2SeqTest(test.TestCase):
     num_dec_timesteps = 3
 
     def TestModel(seq2seq):
-      with self.test_session(graph=ops.Graph()) as sess:
+      with self.session(graph=ops.Graph()) as sess:
         random_seed.set_random_seed(111)
         random.seed(111)
         np.random.seed(111)

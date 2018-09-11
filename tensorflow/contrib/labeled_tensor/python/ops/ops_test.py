@@ -270,7 +270,7 @@ class ReshapeTest(Base):
         array_ops.placeholder(dtypes.float32, [None]), ['x'])
     reshape_lt = ops.reshape(orig_lt, ['x'], ['y', ('z', 1)])
     self.assertEqual(reshape_lt.axes, core.Axes([('y', None), ('z', 1)]))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       result = sess.run(reshape_lt, feed_dict={orig_lt.tensor: [1, 2]})
       np.testing.assert_array_equal(result, [[1], [2]])
 

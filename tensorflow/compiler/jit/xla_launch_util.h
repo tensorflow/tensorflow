@@ -167,4 +167,4 @@ xla::ScopedShapedBuffer ExtractSubShapedBuffer(
 
 }  // namespace tensorflow
 
-#endif
+#endif  // TENSORFLOW_COMPILER_JIT_XLA_LAUNCH_UTIL_H_

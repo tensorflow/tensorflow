@@ -34,14 +34,16 @@ class HloDomainIsolator : public HloPassInterface {
  public:
   // Creates a new kDomain instruction for the edge between the use instruction
   // (the first HloInstruction argument), and the operand instruction (the
-  // second HloInstruction argument).
+  // third HloInstruction argument) if the interesting attribute of the
+  // instruction differes from the attribute of the root (the second
+  // HloInstruction argument).
   // Returns nullptr in case no domain separation is necessary.
-  using DomainCreator = std::function<std::unique_ptr<HloInstruction>(
-      HloInstruction*, HloInstruction*)>;
+  using DomainCreator = std::function<HloInstruction*(
+      HloInstruction*, HloInstruction*, HloInstruction*)>;
 
   explicit HloDomainIsolator(DomainCreator creator);
 
-  tensorflow::StringPiece name() const override { return "domain_isolator"; }
+  absl::string_view name() const override { return "domain_isolator"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 

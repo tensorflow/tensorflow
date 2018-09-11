@@ -32,6 +32,8 @@ class Device;
 class OpKernelContext;
 class ResourceMgr;
 
+namespace data {
+
 // A `CapturedFunction` encapsulates a TensorFlow function and all of
 // the runtime support required to execute it.
 //
@@ -46,6 +48,15 @@ class CapturedFunction {
   // efficiency, you are recommended to move this argument into the call.
   static Status Create(const NameAttrList& func,
                        std::vector<Tensor> captured_inputs,
+                       std::unique_ptr<CapturedFunction>* out_function);
+
+  // Creates a new instance from a list of named attributes and captured inputs.
+  //
+  // If `use_inter_op_parallelism` is false, the runtime may use an executor
+  // that is optimized for small functions.
+  static Status Create(const NameAttrList& func,
+                       std::vector<Tensor> captured_inputs,
+                       bool use_inter_op_parallelism,
                        std::unique_ptr<CapturedFunction>* out_function);
 
   // Creates a new instance using a list of named attributes, fetching captured
@@ -114,10 +125,11 @@ class CapturedFunction {
 
  private:
   CapturedFunction(const NameAttrList& func,
-                   std::vector<Tensor> captured_inputs);
+                   std::vector<Tensor> captured_inputs,
+                   bool use_inter_op_parallelism);
 
-  Status MaybeInstantiate(IteratorContext* ctx,
-                          FunctionLibraryRuntime::Handle* out_handle);
+  Status GetHandle(IteratorContext* ctx,
+                   FunctionLibraryRuntime::Handle* out_handle);
 
   mutex mu_;
   const NameAttrList func_;
@@ -126,9 +138,16 @@ class CapturedFunction {
   const std::vector<Tensor> captured_inputs_;
   DataTypeSlice ret_types_;
   std::function<void(std::function<void()>)> captured_runner_ = nullptr;
+  const bool use_inter_op_parallelism_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CapturedFunction);
 };
+
+}  // namespace data
+
+// TODO(b/114112161): Remove these aliases when all users have moved over to the
+// `tensorflow::data` namespace.
+using data::CapturedFunction;
 
 }  // namespace tensorflow
 

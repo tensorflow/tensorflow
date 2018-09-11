@@ -22,7 +22,7 @@ Status::Status(tensorflow::error::Code code, StringPiece msg) {
   assert(code != tensorflow::error::OK);
   state_ = std::unique_ptr<State>(new State);
   state_->code = code;
-  state_->msg = msg.ToString();
+  state_->msg = string(msg);
 }
 
 void Status::Update(const Status& new_status) {

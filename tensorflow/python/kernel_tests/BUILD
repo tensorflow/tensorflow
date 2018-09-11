@@ -84,6 +84,25 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "batch_scatter_ops_test",
+    srcs = ["batch_scatter_ops_test.py"],
+    additional_deps = [
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
+    ],
+)
+
+tf_py_test(
     name = "bcast_ops_test",
     size = "small",
     srcs = ["bcast_ops_test.py"],
@@ -582,7 +601,7 @@ tf_py_test(
 
 tf_py_test(
     name = "matrix_logarithm_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["matrix_logarithm_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -603,6 +622,7 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],
+    tags = ["notap"],
 )
 
 cuda_py_test(
@@ -645,7 +665,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "parameterized_truncated_normal_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["parameterized_truncated_normal_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -747,6 +767,7 @@ tf_py_test(
     size = "small",
     srcs = ["regex_replace_op_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -759,6 +780,7 @@ tf_py_test(
     size = "small",
     srcs = ["regex_full_match_op_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -1101,6 +1123,7 @@ tf_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
@@ -1368,6 +1391,8 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -1420,6 +1445,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond_v2",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:data_flow_ops_gen",
@@ -1610,6 +1636,7 @@ cuda_py_test(
     srcs = ["functional_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",

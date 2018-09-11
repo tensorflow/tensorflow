@@ -65,6 +65,7 @@ renames = {
     'tf.fft': 'tf.spectral.fft',
     'tf.floor': 'tf.math.floor',
     'tf.gather_nd': 'tf.manip.gather_nd',
+    'tf.GraphKeys.VARIABLES': 'tf.GraphKeys.GLOBAL_VARIABLES',
     'tf.greater': 'tf.math.greater',
     'tf.greater_equal': 'tf.math.greater_equal',
     'tf.ifft': 'tf.spectral.ifft',

@@ -31,7 +31,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import function
+from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -57,6 +57,10 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
+
+# This is to avoid a circular dependency (eager.function depends on
+# gradients_impl). This is set in eager/function.py.
+_function = None
 
 # This is to avoid a circular dependency with cond_v2_impl.
 cond_v2_impl._gradients_impl = sys.modules[__name__]  # pylint: disable=protected-access
@@ -121,7 +125,7 @@ def _MarkReachedOps(from_ops, reached_ops, func_graphs):
   Args:
     from_ops: list of Operations.
     reached_ops: set of Operations.
-    func_graphs: list of function._FuncGraphs. This method will traverse through
+    func_graphs: list of _function.FuncGraphs. This method will traverse through
       these functions if they capture from_ops or any reachable ops.
   """
   queue = collections.deque()
@@ -146,7 +150,7 @@ def _PendingCount(to_ops, from_ops, colocate_gradients_with_ops, func_graphs,
     to_ops: list of Operations.
     from_ops: list of Operations.
     colocate_gradients_with_ops: Python bool.  See docstring of gradients().
-    func_graphs: list of function._FuncGraphs. This method will traverse through
+    func_graphs: list of _function.FuncGraphs. This method will traverse through
       these functions if they capture from_ops or any reachable ops. This is
       useful if to_ops occur in a function and from_ops are in an outer function
       or graph.
@@ -441,6 +445,19 @@ def _RaiseNoGradWrtInitialLoopValError(op, from_ops, xs):
       % target_op.name)
 
 
+def _IsFunction(graph):
+  return (isinstance(graph, _function.FuncGraph) or
+          isinstance(graph, framework_function._FuncGraph))  # pylint: disable=protected-access
+
+
+def _Captures(func_graph):
+  if isinstance(func_graph, _function.FuncGraph):
+    return func_graph.captures
+  else:
+    assert isinstance(func_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
+    return func_graph._captured  # pylint: disable=protected-access
+
+
 def _MaybeCaptured(t):
   """If t is a captured value placeholder, returns the original captured value.
 
@@ -448,11 +465,11 @@ def _MaybeCaptured(t):
     t: Tensor
 
   Returns:
-    A tensor, potentially from a different Graph/function._FuncGraph.
+    A tensor, potentially from a different Graph/_function.FuncGraph.
   """
   # pylint: disable=protected-access
-  if isinstance(t.op.graph, function._FuncGraph) and t.op.type == "Placeholder":
-    for input_t, placeholder_t in t.op.graph._captured.items():
+  if _IsFunction(t.op.graph) and t.op.type == "Placeholder":
+    for input_t, placeholder_t in _Captures(t.op.graph).items():
       if t == placeholder_t:
         return _MaybeCaptured(input_t)
   # pylint: enable=protected-access
@@ -470,10 +487,10 @@ def _Inputs(op, xs):
 
   Returns:
     A list of tensors. The tensors may be from multiple
-    Graph/function._FuncGraphs if op is in a function._FuncGraph and has
+    Graph/_function.FuncGraphs if op is in a _function.FuncGraph and has
     captured inputs.
   """
-  if isinstance(op.graph, function._FuncGraph):  # pylint: disable=protected-access
+  if _IsFunction(op.graph):  # pylint: disable=protected-access
     # If we're differentiating w.r.t. `t`, do not attempt to traverse through it
     # to a captured value. The algorithm needs to "see" `t` in this case, even
     # if it's a function input for a captured value, whereas usually we'd like
@@ -489,7 +506,7 @@ def _Consumers(t, func_graphs):
 
   Args:
     t: Tensor
-    func_graphs: a list of function._FuncGraphs that may have captured t.
+    func_graphs: a list of _function.FuncGraphs that may have captured t.
 
   Returns:
     A list of tensors. The tensors will be from the current graph and/or
@@ -497,7 +514,7 @@ def _Consumers(t, func_graphs):
   """
   consumers = t.consumers()
   for func in func_graphs:
-    for input_t, placeholder in func._captured.items():  # pylint: disable=protected-access
+    for input_t, placeholder in _Captures(func).items():
       if input_t == t:
         consumers.extend(_Consumers(placeholder, func_graphs))
   return consumers
@@ -616,9 +633,13 @@ def _GradientsHelper(ys,
   # ancestor graphs. This is necessary for correctly handling captured values.
   func_graphs = []
   curr_graph = src_graph
-  while isinstance(curr_graph, function._FuncGraph):  # pylint: disable=protected-access
+  while _IsFunction(curr_graph):
     func_graphs.append(curr_graph)
-    curr_graph = curr_graph._outer_graph  # pylint: disable=protected-access
+    if isinstance(curr_graph, _function.FuncGraph):
+      curr_graph = curr_graph.outer_graph
+    else:
+      assert isinstance(curr_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
+      curr_graph = curr_graph._outer_graph  # pylint: disable=protected-access
 
   ys = _AsList(ys)
   xs = _AsList(xs)

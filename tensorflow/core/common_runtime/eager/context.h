@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #endif
+#include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -65,10 +66,17 @@ enum ContextDevicePlacementPolicy {
 
 class EagerContext {
  public:
-  explicit EagerContext(const SessionOptions& opts,
-                        ContextDevicePlacementPolicy default_policy, bool async,
-                        std::unique_ptr<DeviceMgr> device_mgr,
-                        Rendezvous* rendezvous);
+  // TODO: remove this constructor once we migrate all callers to the next one.
+  EagerContext(const SessionOptions& opts,
+               ContextDevicePlacementPolicy default_policy, bool async,
+               std::unique_ptr<const DeviceMgr> device_mgr,
+               Rendezvous* rendezvous);
+
+  EagerContext(const SessionOptions& opts,
+               ContextDevicePlacementPolicy default_policy, bool async,
+               const DeviceMgr* device_mgr, bool device_mgr_owned,
+               Rendezvous* rendezvous);
+
   ~EagerContext();
 
   // Returns the function library runtime for the given device.
@@ -93,6 +101,9 @@ class EagerContext {
 
   // TODO(apassos) make this return a constant reference
   std::vector<Device*>* devices() { return &devices_; }
+  const std::vector<DeviceType>& prioritized_device_type_list() {
+    return prioritized_device_type_list_;
+  }
 
   // Clears the kernel caches.
   void ClearCaches();
@@ -131,6 +142,7 @@ class EagerContext {
   void AddKernelToCache(Fprint128 cache_key, KernelAndDevice* kernel);
 
   bool LogDevicePlacement() { return log_device_placement_; }
+  bool LogMemory() { return log_memory_; }
 
   Rendezvous* GetRendezvous() { return rendezvous_; }
 
@@ -204,12 +216,13 @@ class EagerContext {
       thread_local_policies_ GUARDED_BY(policy_map_mu_);
 
   // Only one of the below is set.
-  std::unique_ptr<DeviceMgr> local_device_manager_;
-  DeviceMgr* local_unowned_device_manager_;
+  std::unique_ptr<const DeviceMgr> local_device_manager_;
+  const DeviceMgr* local_unowned_device_manager_;
   std::unique_ptr<DeviceMgr> remote_device_manager_;
 
   // Devices owned by device_manager
   std::vector<Device*> devices_;
+  std::vector<DeviceType> prioritized_device_type_list_;
   // All devices are not owned.
   gtl::FlatMap<string, Device*, StringPieceHasher> devices_map_;
   Rendezvous* rendezvous_;
@@ -249,6 +262,8 @@ class EagerContext {
   mutable mutex async_map_mu_;
   std::unordered_map<std::thread::id, bool> thread_local_async_
       GUARDED_BY(async_map_mu_);
+
+  const bool log_memory_;
 
   Env* const env_;
 

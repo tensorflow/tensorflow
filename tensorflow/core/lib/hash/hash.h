@@ -15,8 +15,8 @@ limitations under the License.
 
 // Simple hash functions used for internal data structures
 
-#ifndef TENSORFLOW_LIB_HASH_HASH_H_
-#define TENSORFLOW_LIB_HASH_HASH_H_
+#ifndef TENSORFLOW_CORE_LIB_HASH_HASH_H_
+#define TENSORFLOW_CORE_LIB_HASH_HASH_H_
 
 #include <stddef.h>
 #include <stdint.h>
@@ -110,4 +110,4 @@ struct hash<std::pair<T, U>> {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_HASH_HASH_H_
+#endif  // TENSORFLOW_CORE_LIB_HASH_HASH_H_

@@ -326,7 +326,7 @@ class StopAtCheckpointStepHookTest(test.TestCase):
       step = training.create_global_step()
       assign_ten = step.assign(10)
       no_op = control_flow_ops.no_op()
-      hook = hooks_lib.StopAtCheckpointStepHook(
+      hook = hooks_lib._StopAtCheckpointStepHook(
           model_dir=tempfile.mkdtemp(), last_step=10)
       with training.SingularMonitoredSession(hooks=[hook]) as mon_sess:
         mon_sess.raw_session().run(assign_ten)
@@ -342,7 +342,7 @@ class StopAtCheckpointStepHookTest(test.TestCase):
       assign_nine = step.assign(9)
       assign_ten = step.assign(10)
       no_op = control_flow_ops.no_op()
-      hook = hooks_lib.StopAtCheckpointStepHook(
+      hook = hooks_lib._StopAtCheckpointStepHook(
           model_dir=model_dir, last_step=10)
       with tf_session.Session() as sess:
         sess.run(assign_nine)
@@ -360,7 +360,7 @@ class StopAtCheckpointStepHookTest(test.TestCase):
       step = training.create_global_step()
       assign_ten = step.assign(10)
       no_op = control_flow_ops.no_op()
-      hook = hooks_lib.StopAtCheckpointStepHook(
+      hook = hooks_lib._StopAtCheckpointStepHook(
           model_dir=model_dir, last_step=10)
       with tf_session.Session() as sess:
         sess.run(assign_ten)
@@ -371,6 +371,32 @@ class StopAtCheckpointStepHookTest(test.TestCase):
           mon_sess.run(no_op)
           self.assertFalse(mock_sleep.called)
         self.assertTrue(mon_sess.should_stop())
+
+  def test_creates_regular_stop_at_step_hook_for_chief(self):
+    # by default an estimator is in chief mode
+    dnn = estimator_lib.DNNClassifier(
+        feature_columns=[feature_column_lib.numeric_column('x')],
+        hidden_units=[3, 1])
+    hook = hooks_lib.make_stop_at_checkpoint_step_hook(dnn, 300)
+    self.assertIsInstance(hook, training.StopAtStepHook)
+    self.assertEqual(300, hook._last_step)
+
+  def test_creates_checkpoint_hook_for_workers(self):
+
+    class FakeWorkerConfig(estimator_lib.RunConfig):
+
+      @property
+      def is_chief(self):
+        return False
+
+    dnn = estimator_lib.DNNClassifier(
+        feature_columns=[feature_column_lib.numeric_column('x')],
+        hidden_units=[3, 1],
+        config=FakeWorkerConfig())
+    hook = hooks_lib.make_stop_at_checkpoint_step_hook(dnn, 300)
+    self.assertIsInstance(hook, hooks_lib._StopAtCheckpointStepHook)
+    self.assertEqual(300, hook._last_step)
+    self.assertEqual(dnn.model_dir, hook._model_dir)
 
 
 if __name__ == '__main__':

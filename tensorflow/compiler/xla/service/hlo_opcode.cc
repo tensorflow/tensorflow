@@ -39,7 +39,7 @@ StatusOr<HloOpcode> StringToHloOpcode(const string& opcode_name) {
   });
   auto it = opcode_map->find(opcode_name);
   if (it == opcode_map->end()) {
-    return InvalidArgument("Unknown opcode: %s", opcode_name.c_str());
+    return InvalidArgument("Unknown opcode: %s", opcode_name);
   }
   return it->second;
 }

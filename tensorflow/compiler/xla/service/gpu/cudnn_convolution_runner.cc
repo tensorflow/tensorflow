@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -56,7 +57,7 @@ class ScratchBufAllocator : public se::ScratchAllocator {
           "Can't allocate twice from a ScratchBufAllocator.");
     }
     if (byte_size > scratch_.size()) {
-      return se::port::InternalError(tensorflow::strings::StrCat(
+      return se::port::InternalError(absl::StrCat(
           "Can't allocate ", byte_size,
           " bytes from a ScratchBufAllocator of size ", scratch_.size()));
     }
@@ -71,13 +72,22 @@ class ScratchBufAllocator : public se::ScratchAllocator {
 };
 
 template <typename T>
-Status RunCudnnConvolution(
-    CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
-    const Shape& output_shape, DeviceMemory<T> input_buf,
-    DeviceMemory<T> filter_buf, DeviceMemory<T> output_buf,
-    se::ScratchAllocator* scratch_allocator, const Window& window,
-    const ConvolutionDimensionNumbers& dnums, AlgorithmConfig algorithm,
-    Stream* stream, ProfileResult* profile_result /*= nullptr*/) {
+Status RunCudnnConvolutionImpl(CudnnConvParams params,
+                               se::ScratchAllocator* scratch_allocator,
+                               se::Stream* stream,
+                               se::dnn::ProfileResult* profile_result) {
+  CudnnConvKind kind = params.kind;
+  const Shape& input_shape = *params.input_shape;
+  const Shape& filter_shape = *params.filter_shape;
+  const Shape& output_shape = *params.output_shape;
+  DeviceMemory<T> input_buf(params.input_buf);
+  DeviceMemory<T> filter_buf(params.filter_buf);
+  DeviceMemory<T> output_buf(params.output_buf);
+  const Window& window = *params.window;
+  const ConvolutionDimensionNumbers& dnums = *params.dnums;
+  int64 feature_group_count = params.feature_group_count;
+  AlgorithmConfig algorithm = params.algorithm;
+
   VLOG(3) << "Convolution Algorithm: " << algorithm.algorithm().algo_id();
   VLOG(3) << "tensor_ops_enabled: "
           << algorithm.algorithm().tensor_ops_enabled();
@@ -143,6 +153,7 @@ Status RunCudnnConvolution(
   }
 
   ConvolutionDescriptor convolution_descriptor(effective_num_dimensions);
+  convolution_descriptor.set_group_count(feature_group_count);
   for (int dim = 0; dim < num_dimensions; ++dim) {
     convolution_descriptor
         .set_zero_padding(
@@ -196,8 +207,8 @@ Status RunCudnnConvolution(
 
   if (!stream->ok()) {
     return InternalError(
-        "Unable to launch convolution with type %s and algorithm (%lld, %lld)",
-        CudnnConvKindToString(kind).c_str(), algorithm.algorithm().algo_id(),
+        "Unable to launch convolution with type %s and algorithm (%d, %d)",
+        CudnnConvKindToString(kind), algorithm.algorithm().algo_id(),
         algorithm.algorithm_no_scratch().algo_id());
   }
   return Status::OK();
@@ -216,54 +227,31 @@ string CudnnConvKindToString(CudnnConvKind kind) {
   }
 }
 
-Status RunCudnnConvolution(
-    CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
-    const Shape& output_shape, se::DeviceMemoryBase input_buf,
-    se::DeviceMemoryBase filter_buf, se::DeviceMemoryBase output_buf,
-    se::DeviceMemoryBase scratch_buf, const Window& window,
-    const ConvolutionDimensionNumbers& dnums,
-    se::dnn::AlgorithmConfig algorithm, se::Stream* stream,
-    se::dnn::ProfileResult* profile_result) {
+Status RunCudnnConvolution(CudnnConvParams params,
+                           se::DeviceMemoryBase scratch_buf, se::Stream* stream,
+                           se::dnn::ProfileResult* profile_result) {
   ScratchBufAllocator scratch_allocator(scratch_buf);
-  return RunCudnnConvolution(kind, input_shape, filter_shape, output_shape,
-                             input_buf, filter_buf, output_buf,
-                             &scratch_allocator, window, dnums, algorithm,
-                             stream, profile_result);
+  return RunCudnnConvolution(params, &scratch_allocator, stream,
+                             profile_result);
 }
 
-Status RunCudnnConvolution(
-    CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
-    const Shape& output_shape, se::DeviceMemoryBase input_buf,
-    se::DeviceMemoryBase filter_buf, se::DeviceMemoryBase output_buf,
-    se::ScratchAllocator* scratch_allocator, const Window& window,
-    const ConvolutionDimensionNumbers& dnums,
-    se::dnn::AlgorithmConfig algorithm, se::Stream* stream,
-    se::dnn::ProfileResult* profile_result) {
-  PrimitiveType output_primitive_type = output_shape.element_type();
+Status RunCudnnConvolution(CudnnConvParams params,
+                           se::ScratchAllocator* scratch_allocator,
+                           se::Stream* stream,
+                           se::dnn::ProfileResult* profile_result) {
+  PrimitiveType output_primitive_type = params.output_shape->element_type();
   switch (output_primitive_type) {
     case F16:
-      return RunCudnnConvolution(kind, input_shape, filter_shape, output_shape,
-                                 se::DeviceMemory<Eigen::half>(input_buf),
-                                 se::DeviceMemory<Eigen::half>(filter_buf),
-                                 se::DeviceMemory<Eigen::half>(output_buf),
-                                 scratch_allocator, window, dnums, algorithm,
-                                 stream, profile_result);
+      return RunCudnnConvolutionImpl<Eigen::half>(params, scratch_allocator,
+                                                  stream, profile_result);
     case F32:
-      return RunCudnnConvolution(kind, input_shape, filter_shape, output_shape,
-                                 se::DeviceMemory<float>(input_buf),
-                                 se::DeviceMemory<float>(filter_buf),
-                                 se::DeviceMemory<float>(output_buf),
-                                 scratch_allocator, window, dnums, algorithm,
-                                 stream, profile_result);
+      return RunCudnnConvolutionImpl<float>(params, scratch_allocator, stream,
+                                            profile_result);
     case F64:
-      return RunCudnnConvolution(kind, input_shape, filter_shape, output_shape,
-                                 se::DeviceMemory<double>(input_buf),
-                                 se::DeviceMemory<double>(filter_buf),
-                                 se::DeviceMemory<double>(output_buf),
-                                 scratch_allocator, window, dnums, algorithm,
-                                 stream, profile_result);
+      return RunCudnnConvolutionImpl<double>(params, scratch_allocator, stream,
+                                             profile_result);
     default:
-      LOG(FATAL) << ShapeUtil::HumanString(output_shape);
+      LOG(FATAL) << ShapeUtil::HumanString(*params.output_shape);
   }
 }
 

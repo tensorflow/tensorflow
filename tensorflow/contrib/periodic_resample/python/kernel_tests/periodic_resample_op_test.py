@@ -38,7 +38,7 @@ class PeriodicResampleTest(test_util.TensorFlowTestCase):
     desired_shape = numpy.array([6, None])
     output_tensor = input_tensor.reshape((6, 2))
 
-    with self.test_session():
+    with self.cached_session():
       variables.global_variables_initializer().run()
       result = periodic_resample(input_tensor, desired_shape).eval()
       self.assertAllEqual(result, output_tensor)
@@ -49,7 +49,7 @@ class PeriodicResampleTest(test_util.TensorFlowTestCase):
     desired_shape = numpy.array([5, None])
     output_tensor = input_tensor.reshape((6, 2))[:-1]
 
-    with self.test_session():
+    with self.cached_session():
       variables.global_variables_initializer().run()
       result = periodic_resample(input_tensor, desired_shape).eval()
       self.assertAllEqual(result, output_tensor)
@@ -63,7 +63,7 @@ class PeriodicResampleTest(test_util.TensorFlowTestCase):
                                                            [15]]])
 
     # NOTE: output_tensor != input_tensor.reshape((4, 4, -1))
-    with self.test_session():
+    with self.cached_session():
       variables.global_variables_initializer().run()
       result = periodic_resample(input_tensor, desired_shape).eval()
       # input_tensor[0, 0, 0] == result[0, 0, 0]
@@ -88,14 +88,14 @@ class PeriodicResampleTest(test_util.TensorFlowTestCase):
           [[49], [53], [57], [61]], [[51], [55], [59], [63]]]])
 
     # NOTE: output_tensor != input_tensor.reshape((4, 4, 4, -1))
-    with self.test_session():
+    with self.cached_session():
       variables.global_variables_initializer().run()
       result = periodic_resample(input_tensor, desired_shape).eval()
       self.assertAllEqual(result, output_tensor)
 
   def testPeriodicResampleErrors(self):
     input_tensor = numpy.zeros(shape=[1, 2, 2, 4])
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesWithPredicateMatch(
           errors_impl.InvalidArgumentError,
           'Dimension 3 input tensor has size 4, desired shape has size 1'):
@@ -109,7 +109,7 @@ class PeriodicResampleTest(test_util.TensorFlowTestCase):
     desired_shape = numpy.array([4, 4, None])
     result_shape = (4, 4, 1)
     input_shape = (2, 2, 4)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.float32, shape=input_shape)
       output = periodic_resample(x, desired_shape)
       error = gradient_checker.compute_gradient_error(
@@ -117,7 +117,7 @@ class PeriodicResampleTest(test_util.TensorFlowTestCase):
       self.assertLess(error, 1e-4)
 
   def testPeriodicResampleShapeInference(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Case 1: output shape can be fully inferreed.
       x = array_ops.placeholder(dtypes.float32, shape=(2, 2, 4))
       output = periodic_resample(x, [4, 4, None])

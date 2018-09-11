@@ -390,12 +390,6 @@ class _InternalTPUContext(object):
       logging.info('_is_running_on_cpu: eval_on_tpu disabled')
       return True
 
-    if mode != model_fn_lib.ModeKeys.PREDICT:
-      return False
-
-    # There are actually 2 use cases when running with mode.PREDICT: prediction
-    # and saving the model.  We run actual predictions on the TPU, but
-    # model export is run on the CPU.
     if is_export_mode:
       return True
 

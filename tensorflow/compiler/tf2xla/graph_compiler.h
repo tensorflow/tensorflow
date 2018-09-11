@@ -89,7 +89,7 @@ class GraphCompiler {
   ScopedStepContainer* step_container_;
   // A buffer to hold tensor inputs to a node, this is reused across the graph
   // traversal.
-  gtl::InlinedVector<TensorValue, 4> tensor_inputs_;
+  absl::InlinedVector<TensorValue, 4> tensor_inputs_;
 };
 
 }  // namespace tensorflow

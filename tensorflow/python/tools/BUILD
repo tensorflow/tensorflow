@@ -114,6 +114,12 @@ py_library(
     ],
 )
 
+py_library(
+    name = "component_api_helper",
+    srcs = ["component_api_helper.py"],
+    srcs_version = "PY2AND3",
+)
+
 py_binary(
     name = "strip_unused",
     srcs = ["strip_unused.py"],
@@ -131,6 +137,7 @@ py_test(
     size = "small",
     srcs = ["strip_unused_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notap"],
     deps = [
         ":strip_unused_lib",
         "//tensorflow/core:protos_all_py",

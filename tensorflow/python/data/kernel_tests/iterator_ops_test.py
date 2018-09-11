@@ -91,7 +91,7 @@ class IteratorTest(test.TestCase):
     self.assertEqual([c.shape[1:] for c in components],
                      [t.shape for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for _ in range(14):
         for i in range(7):
           result = sess.run(get_next)
@@ -117,7 +117,7 @@ class IteratorTest(test.TestCase):
     self.assertEqual([c.shape[1:] for c in components],
                      [t.shape for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for _ in range(14):
         for i in range(7):
           result = sess.run(get_next)
@@ -208,7 +208,7 @@ class IteratorTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesRegexp(errors.InvalidArgumentError, "oops"):
         sess.run(next_element)
 
@@ -216,7 +216,7 @@ class IteratorTest(test.TestCase):
       with self.assertRaisesRegexp(errors.InvalidArgumentError, "oops"):
         sess.run(next_element)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
       def consumer_thread():
         with self.assertRaisesRegexp(errors.InvalidArgumentError, "oops"):
@@ -287,7 +287,7 @@ class IteratorTest(test.TestCase):
         .make_initializable_iterator())
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesRegexp(errors.FailedPreconditionError,
                                    "iterator has not been initialized"):
         sess.run(get_next)
@@ -308,7 +308,7 @@ class IteratorTest(test.TestCase):
     self.assertEqual(dataset_4.output_types, iterator.output_types)
     self.assertEqual([None], iterator.output_shapes.as_list())
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The iterator is initially uninitialized.
       with self.assertRaises(errors.FailedPreconditionError):
         sess.run(get_next)
@@ -380,7 +380,7 @@ class IteratorTest(test.TestCase):
     self.assertEqual(dataset_4.output_types, feedable_iterator.output_types)
     self.assertEqual([], feedable_iterator.output_shapes)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       iterator_3_handle = sess.run(iterator_3.string_handle())
       iterator_4_handle = sess.run(iterator_4.string_handle())
 
@@ -436,7 +436,7 @@ class IteratorTest(test.TestCase):
       self.assertEqual(dataset_4.output_types, feedable_iterator.output_types)
       self.assertEqual([], feedable_iterator.output_shapes)
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         iterator_3_handle = sess.run(iterator_3.string_handle())
         iterator_4_handle = sess.run(iterator_4.string_handle())
 
@@ -524,7 +524,7 @@ class IteratorTest(test.TestCase):
     feedable_int_any = iterator_ops.Iterator.from_string_handle(
         handle_placeholder, dtypes.int32)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       handle_int_scalar = sess.run(
           dataset_int_scalar.make_one_shot_iterator().string_handle())
       handle_float_vector = sess.run(
@@ -687,7 +687,7 @@ class IteratorTest(test.TestCase):
           f=_remote_fn,
           target=target_placeholder)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       elem = sess.run(
           remote_op,
           feed_dict={
@@ -756,7 +756,7 @@ class IteratorTest(test.TestCase):
     # Saving iterator for RangeDataset graph.
     with ops.Graph().as_default() as g:
       init_op, _, save_op, _ = _build_range_dataset_graph()
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         sess.run(save_op)
 
@@ -767,7 +767,7 @@ class IteratorTest(test.TestCase):
     # IteratorResource::set_iterator.
     with ops.Graph().as_default() as g:
       _, _, _, restore_op = _build_reader_dataset_graph()
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         with self.assertRaises(errors.InvalidArgumentError):
           sess.run(restore_op)
 
@@ -803,16 +803,15 @@ class IteratorCheckpointingTest(test.TestCase):
     get_next = iterator.get_next if context.executing_eagerly(
     ) else functools.partial(self.evaluate, iterator.get_next())
     checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
-    with self.test_session() as sess:
-      self.assertAllEqual([1, 4], get_next())
-      save_path = checkpoint.save(checkpoint_prefix)
-      self.assertAllEqual([9, 16], get_next())
-      self.assertAllEqual([25, 36], get_next())
-      checkpoint.restore(save_path).run_restore_ops(sess)
-      self.assertAllEqual([9, 16], get_next())
-      self.assertAllEqual([25, 36], get_next())
-      with self.assertRaises(errors.OutOfRangeError):
-        get_next()
+    self.assertAllEqual([1, 4], get_next())
+    save_path = checkpoint.save(checkpoint_prefix)
+    self.assertAllEqual([9, 16], get_next())
+    self.assertAllEqual([25, 36], get_next())
+    checkpoint.restore(save_path).run_restore_ops()
+    self.assertAllEqual([9, 16], get_next())
+    self.assertAllEqual([25, 36], get_next())
+    with self.assertRaises(errors.OutOfRangeError):
+      get_next()
 
   @test_util.run_in_graph_and_eager_modes
   def testSaveRestoreMultipleIterator(self):
@@ -833,19 +832,18 @@ class IteratorCheckpointingTest(test.TestCase):
     ) else functools.partial(self.evaluate, iterator_3.get_next())
     checkpoint = checkpointable_utils.Checkpoint(
         iterator_1=iterator_1, iterator_2=iterator_2, iterator_3=iterator_3)
-    with self.test_session() as sess:
-      self.assertAllEqual([1, 4], get_next_1())
-      self.assertAllEqual(0, get_next_3())
-      self.assertAllEqual(1, get_next_3())
-      self.assertAllEqual(2, get_next_3())
-      save_path = checkpoint.save(checkpoint_prefix)
-      self.assertAllEqual([1, 4], get_next_2())
-      self.assertAllEqual([9, 16], get_next_2())
-      self.assertAllEqual(3, get_next_3())
-      checkpoint.restore(save_path).run_restore_ops(sess)
-      self.assertAllEqual([9, 16], get_next_1())
-      self.assertAllEqual([1, 4], get_next_2())
-      self.assertAllEqual(3, get_next_3())
+    self.assertAllEqual([1, 4], get_next_1())
+    self.assertAllEqual(0, get_next_3())
+    self.assertAllEqual(1, get_next_3())
+    self.assertAllEqual(2, get_next_3())
+    save_path = checkpoint.save(checkpoint_prefix)
+    self.assertAllEqual([1, 4], get_next_2())
+    self.assertAllEqual([9, 16], get_next_2())
+    self.assertAllEqual(3, get_next_3())
+    checkpoint.restore(save_path).run_restore_ops()
+    self.assertAllEqual([9, 16], get_next_1())
+    self.assertAllEqual([1, 4], get_next_2())
+    self.assertAllEqual(3, get_next_3())
 
   @test_util.run_in_graph_and_eager_modes
   def testRestoreExhaustedIterator(self):
@@ -856,17 +854,16 @@ class IteratorCheckpointingTest(test.TestCase):
     get_next = iterator.get_next if context.executing_eagerly(
     ) else functools.partial(self.evaluate, iterator.get_next())
     checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
-    with self.test_session() as sess:
-      self.assertAllEqual(0, get_next())
-      self.assertAllEqual(1, get_next())
-      save_path = checkpoint.save(checkpoint_prefix)
-      self.assertAllEqual(2, get_next())
-      checkpoint.restore(save_path).run_restore_ops(sess)
-      self.assertAllEqual(2, get_next())
-      save_path = checkpoint.save(checkpoint_prefix)
-      checkpoint.restore(save_path).run_restore_ops(sess)
-      with self.assertRaises(errors.OutOfRangeError):
-        get_next()
+    self.assertAllEqual(0, get_next())
+    self.assertAllEqual(1, get_next())
+    save_path = checkpoint.save(checkpoint_prefix)
+    self.assertAllEqual(2, get_next())
+    checkpoint.restore(save_path).run_restore_ops()
+    self.assertAllEqual(2, get_next())
+    save_path = checkpoint.save(checkpoint_prefix)
+    checkpoint.restore(save_path).run_restore_ops()
+    with self.assertRaises(errors.OutOfRangeError):
+      get_next()
 
   def testRestoreInReconstructedIteratorInitializable(self):
     checkpoint_directory = self.get_temp_dir()
@@ -876,7 +873,7 @@ class IteratorCheckpointingTest(test.TestCase):
     get_next = iterator.get_next()
     checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
     for i in range(5):
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         checkpoint.restore(checkpoint_management.latest_checkpoint(
             checkpoint_directory)).initialize_or_restore(sess)
         for j in range(2):

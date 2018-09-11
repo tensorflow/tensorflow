@@ -394,10 +394,10 @@ class Network(base_layer.Layer):
     no_dependency = isinstance(value, data_structures.NoDependency)
     value = data_structures.sticky_attribute_assignment(
         checkpointable=self, value=value, name=name)
-    if isinstance(value, (
-        base_layer.Layer,
-        Network,
-        data_structures.CheckpointableDataStructure)):
+    if (isinstance(value, (base_layer.Layer,
+                           Network,
+                           data_structures.CheckpointableDataStructure))
+        or checkpointable_layer_utils.has_weights(value)):
       try:
         is_graph_network = self._is_graph_network
       except AttributeError:
@@ -689,14 +689,14 @@ class Network(base_layer.Layer):
   def trainable_weights(self):
     return checkpointable_layer_utils.gather_trainable_weights(
         trainable=self.trainable,
-        sub_layers=self.layers,
+        sub_layers=self._layers,
         extra_variables=self._extra_variables)
 
   @property
   def non_trainable_weights(self):
     return checkpointable_layer_utils.gather_non_trainable_weights(
         trainable=self.trainable,
-        sub_layers=self.layers,
+        sub_layers=self._layers,
         extra_variables=self._extra_variables)
 
   @property
@@ -770,7 +770,7 @@ class Network(base_layer.Layer):
       # and graph building, the variables created after building the model in
       # a Graph are still valid when executing eagerly.
       with context.graph_mode():
-        graph = eager_function.CapturingGraph()
+        graph = eager_function.FuncGraph('graph')
         with graph.as_default():
           if isinstance(input_shape, list):
             x = [base_layer.generate_placeholders_from_shape(shape)
@@ -1355,7 +1355,9 @@ class Network(base_layer.Layer):
     ```
     """
     if not self._is_graph_network:
-      raise NotImplementedError
+      raise NotImplementedError(
+          'Currently `save` requires model to be a graph network. Consider '
+          'using `save_weights`, in order to save the weights of the model.')
 
     from tensorflow.python.keras.models import save_model  # pylint: disable=g-import-not-at-top
     save_model(self, filepath, overwrite, include_optimizer)
@@ -1574,7 +1576,10 @@ class Network(base_layer.Layer):
     def get_json_type(obj):
       # If obj is any numpy type
       if type(obj).__module__ == np.__name__:
-        return obj.item()
+        if isinstance(obj, np.ndarray):
+          return obj.tolist()
+        else:
+          return obj.item()
 
       # If obj is a python 'type'
       if type(obj).__name__ == type.__name__:

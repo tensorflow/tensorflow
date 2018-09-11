@@ -20,16 +20,19 @@ limitations under the License.
 #include <vector>
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class ParallelMapIterator : public DatasetBaseIterator {
  public:
   explicit ParallelMapIterator(
       const typename DatasetBaseIterator::BaseParams& params,
-      const DatasetBase* input_dataset, ParallelMapIteratorFunction map_func,
-      int32 num_parallel_calls)
+      const DatasetBase* input_dataset,
+      std::function<Status(IteratorContext*)> init_func,
+      ParallelMapIteratorFunction map_func, int32 num_parallel_calls)
       : DatasetBaseIterator(params),
         input_dataset_(input_dataset),
+        init_func_(std::move(init_func)),
         map_func_(std::move(map_func)),
         num_parallel_calls_(num_parallel_calls) {}
 
@@ -50,7 +53,12 @@ class ParallelMapIterator : public DatasetBaseIterator {
   }
 
   Status Initialize(IteratorContext* ctx) override {
-    return input_dataset_->MakeIterator(ctx, prefix(), &input_impl_);
+    TF_RETURN_IF_ERROR(
+        input_dataset_->MakeIterator(ctx, prefix(), &input_impl_));
+    if (init_func_) {
+      TF_RETURN_IF_ERROR(init_func_(ctx));
+    }
+    return Status::OK();
   }
 
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
@@ -285,6 +293,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
   }
 
   const DatasetBase* const input_dataset_;  // Not owned.
+  const std::function<Status(IteratorContext*)> init_func_;
   const ParallelMapIteratorFunction map_func_;
   const int32 num_parallel_calls_;
   // Used for coordination between the main thread and the runner thread.
@@ -311,8 +320,19 @@ std::unique_ptr<IteratorBase> NewParallelMapIterator(
     const DatasetBaseIterator::BaseParams& params,
     const DatasetBase* input_dataset, ParallelMapIteratorFunction map_func,
     int32 num_parallel_calls) {
-  return std::unique_ptr<IteratorBase>(new ParallelMapIterator(
-      params, input_dataset, std::move(map_func), num_parallel_calls));
+  return NewParallelMapIterator(params, input_dataset, nullptr,
+                                std::move(map_func), num_parallel_calls);
 }
 
+std::unique_ptr<IteratorBase> NewParallelMapIterator(
+    const DatasetBaseIterator::BaseParams& params,
+    const DatasetBase* input_dataset,
+    std::function<Status(IteratorContext*)> init_func,
+    ParallelMapIteratorFunction map_func, int32 num_parallel_calls) {
+  return std::unique_ptr<IteratorBase>(
+      new ParallelMapIterator(params, input_dataset, std::move(init_func),
+                              std::move(map_func), num_parallel_calls));
+}
+
+}  // namespace data
 }  // namespace tensorflow

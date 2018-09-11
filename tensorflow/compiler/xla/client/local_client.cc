@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "llvm/ADT/Triple.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/source_map_util.h"
@@ -51,7 +51,7 @@ LocalExecutable::LocalExecutable(std::unique_ptr<Executable> executable,
 }
 
 Status LocalExecutable::ValidateExecutionOptions(
-    const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    const absl::Span<const ShapedBuffer* const> arguments,
     const ExecutableRunOptions& run_options, const Backend& backend) {
   const ComputationLayout& computation_layout =
       executable_->module_config().entry_computation_layout();
@@ -59,7 +59,7 @@ Status LocalExecutable::ValidateExecutionOptions(
   // Check argument number, shapes, and layouts.
   if (arguments.size() != computation_layout.parameter_count()) {
     return InvalidArgument(
-        "invalid number of arguments for computation: expected %d, got %zu",
+        "invalid number of arguments for computation: expected %d, got %u",
         computation_layout.parameter_count(), arguments.size());
   }
   for (int i = 0; i < arguments.size(); ++i) {
@@ -71,9 +71,9 @@ Status LocalExecutable::ValidateExecutionOptions(
           "parameter "
           "%d: want %s, got %s",
           i,
-          ShapeUtil::HumanString(computation_layout.parameter_layout(i).shape())
-              .c_str(),
-          ShapeUtil::HumanString(arguments[i]->on_host_shape()).c_str());
+          ShapeUtil::HumanString(
+              computation_layout.parameter_layout(i).shape()),
+          ShapeUtil::HumanString(arguments[i]->on_host_shape()));
     }
   }
 
@@ -88,8 +88,7 @@ Status LocalExecutable::ValidateExecutionOptions(
     if (stream_platform != backend_->platform()) {
       return InvalidArgument(
           "stream is for platform %s, but service targets platform %s",
-          stream_platform->Name().c_str(),
-          backend_->platform()->Name().c_str());
+          stream_platform->Name(), backend_->platform()->Name());
     }
 
     // Cannot specify device_ordinal with a stream. The stream determines these
@@ -120,10 +119,10 @@ Status LocalExecutable::ValidateExecutionOptions(
     return InvalidArgument(
         "executable is built for device %s of type \"%s\"; cannot run it on "
         "device %s of type \"%s\"",
-        backend_->device_name(build_device_ordinal()).c_str(),
-        build_executor->GetDeviceDescription().name().c_str(),
-        backend_->device_name(run_device_ordinal).c_str(),
-        run_executor->GetDeviceDescription().name().c_str());
+        backend_->device_name(build_device_ordinal()),
+        build_executor->GetDeviceDescription().name(),
+        backend_->device_name(run_device_ordinal),
+        run_executor->GetDeviceDescription().name());
   }
 
   if (!run_options.allocator()) {
@@ -133,15 +132,15 @@ Status LocalExecutable::ValidateExecutionOptions(
   if (run_options.allocator()->platform() != backend.platform()) {
     return InvalidArgument(
         "allocator platform (%s) does not match service platform (%s)",
-        run_options.allocator()->platform()->Name().c_str(),
-        backend.platform()->Name().c_str());
+        run_options.allocator()->platform()->Name(),
+        backend.platform()->Name());
   }
 
   return Status::OK();
 }
 
 StatusOr<ScopedShapedBuffer> LocalExecutable::Run(
-    const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    const absl::Span<const ShapedBuffer* const> arguments,
     ExecutableRunOptions run_options) {
   TF_RETURN_IF_ERROR(
       ValidateExecutionOptions(arguments, run_options, *backend_));
@@ -178,7 +177,7 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::Run(
 
 StatusOr<ScopedShapedBuffer> LocalExecutable::ExecuteAndDump(
     const ServiceExecutableRunOptions* run_options,
-    const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
+    const absl::Span<const ShapedBuffer* const> arguments) {
   executable_->hlo_snapshot()->set_execution_platform(
       backend_->platform()->Name());
   TF_RETURN_IF_ERROR(RecordArguments(arguments, executable_->hlo_snapshot()));
@@ -192,13 +191,12 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::ExecuteAndDump(
 }
 
 Status LocalExecutable::RecordArguments(
-    const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    const absl::Span<const ShapedBuffer* const> arguments,
     HloSnapshot* hlo_snapshot) {
   hlo_snapshot->clear_arguments();
   for (const ShapedBuffer* argument : arguments) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
-                        LiteralFromShapedBuffer(*argument));
-    *hlo_snapshot->add_arguments() = literal->ToProto();
+    TF_ASSIGN_OR_RETURN(Literal literal, LiteralFromShapedBuffer(*argument));
+    *hlo_snapshot->add_arguments() = literal.ToProto();
   }
   return Status::OK();
 }
@@ -206,13 +204,12 @@ Status LocalExecutable::RecordArguments(
 Status LocalExecutable::RecordResult(const ShapedBuffer* result,
                                      HloSnapshot* hlo_snapshot) {
   hlo_snapshot->clear_result();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
-                      LiteralFromShapedBuffer(*result));
-  *hlo_snapshot->mutable_result() = literal->ToProto();
+  TF_ASSIGN_OR_RETURN(Literal literal, LiteralFromShapedBuffer(*result));
+  *hlo_snapshot->mutable_result() = literal.ToProto();
   return Status::OK();
 }
 
-StatusOr<std::unique_ptr<Literal>> LocalExecutable::LiteralFromShapedBuffer(
+StatusOr<Literal> LocalExecutable::LiteralFromShapedBuffer(
     const ShapedBuffer& shaped_buffer) {
   TF_ASSIGN_OR_RETURN(auto stream,
                       backend_->BorrowStream(shaped_buffer.device_ordinal()));
@@ -246,7 +243,7 @@ Backend* LocalClient::mutable_backend() {
 
 StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
     const XlaComputation& computation,
-    const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
+    const absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& options) {
   ExecutableBuildOptions updated_options = options;
   if (options.device_ordinal() == -1) {
@@ -257,9 +254,9 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       local_service_->CompileExecutable(
                           computation, argument_layouts, updated_options));
-  return WrapUnique(new LocalExecutable(std::move(executable),
-                                        local_service_->mutable_backend(),
-                                        updated_options));
+  return absl::WrapUnique(new LocalExecutable(std::move(executable),
+                                              local_service_->mutable_backend(),
+                                              updated_options));
 }
 
 StatusOr<ScopedShapedBuffer> LocalClient::LiteralToShapedBuffer(
@@ -278,7 +275,7 @@ StatusOr<ScopedShapedBuffer> LocalClient::LiteralToShapedBuffer(
   return std::move(scoped_buffer);
 }
 
-StatusOr<std::unique_ptr<Literal>> LocalClient::ShapedBufferToLiteral(
+StatusOr<Literal> LocalClient::ShapedBufferToLiteral(
     const ShapedBuffer& shaped_buffer) {
   TF_ASSIGN_OR_RETURN(auto stream, mutable_backend()->BorrowStream(
                                        shaped_buffer.device_ordinal()));
@@ -299,13 +296,13 @@ Status LocalClient::TransferToInfeedLocal(const Literal& literal,
                                                                literal);
 }
 
-StatusOr<std::unique_ptr<Literal>> LocalClient::TransferFromOutfeedLocal(
-    const Shape& shape, int device_ordinal) {
+StatusOr<Literal> LocalClient::TransferFromOutfeedLocal(const Shape& shape,
+                                                        int device_ordinal) {
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       backend().stream_executor(device_ordinal));
   auto literal = Literal::CreateFromShape(shape);
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralFromOutfeed(
-      executor, shape, literal.get()));
+      executor, shape, &literal));
   return std::move(literal);
 }
 

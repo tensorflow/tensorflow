@@ -48,12 +48,26 @@ exports_files([
     "schema_v3.fbs",
 ])
 
-load("//third_party/flatbuffers:build_defs.bzl", "flatbuffer_cc_library")
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 
 # Generic schema for inference on device.
 flatbuffer_cc_library(
     name = "schema_fbs",
     srcs = ["schema.fbs"],
+)
+
+# Generic schema for inference on device (but with reflections makes bigger).
+flatbuffer_cc_library(
+    name = "schema_fbs_with_reflection",
+    srcs = ["schema.fbs"],
+    flatc_args = [
+        "--reflect-types",
+        "--reflect-names",
+        "--no-union-value-namespacing",
+        "--gen-object-api",
+    ],
+    gen_reflections = True,
+    out_prefix = "reflection/",
 )
 
 # Schema test to make sure we don't introduce backward incompatible changes

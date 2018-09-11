@@ -60,7 +60,7 @@ class CheckpointInputPipelineHookTest(test.TestCase):
       meta_filename = ckpt_path + '.meta'
       saver_lib.import_meta_graph(meta_filename)
       saver = saver_lib.Saver()
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         saver.restore(sess, ckpt_path)
         return sess.run(ops.get_collection('my_vars'))
 

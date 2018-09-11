@@ -809,6 +809,22 @@ class BaseSaverBuilder(object):
           keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
           version=self._write_version)
     else:
+      graph = ops.get_default_graph()
+      # Do some sanity checking on collections containing
+      # PartitionedVariables. If a saved collection has a PartitionedVariable,
+      # the GraphDef needs to include concat ops to get the value (or there'll
+      # be a lookup error on load).
+      check_collection_list = graph.get_all_collection_keys()
+      for collection_type in check_collection_list:
+        for element in graph.get_collection(collection_type):
+          if isinstance(element, variables.PartitionedVariable):
+            try:
+              graph.get_operation_by_name(element.name)
+            except KeyError:
+              # Create a concat op for this PartitionedVariable. The user may
+              # not need it, but we'll try looking it up on MetaGraph restore
+              # since it's in a collection.
+              element.as_tensor()
       return saver_pb2.SaverDef(
           filename_tensor_name=filename_tensor.name,
           save_tensor_name=save_tensor.name,
@@ -869,7 +885,7 @@ def _get_saver_or_default():
 class Saver(object):
   """Saves and restores variables.
 
-  See @{$variables$Variables}
+  See [Variables](https://tensorflow.org/guide/variables)
   for an overview of variables, saving and restoring.
 
   The `Saver` class adds ops to save and restore variables to and from

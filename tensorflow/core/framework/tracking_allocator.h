@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_TRACKING_ALLOCATOR_H_
-#define TENSORFLOW_FRAMEWORK_TRACKING_ALLOCATOR_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_TRACKING_ALLOCATOR_H_
+#define TENSORFLOW_CORE_FRAMEWORK_TRACKING_ALLOCATOR_H_
 
 #include <unordered_map>
 #include "tensorflow/core/framework/allocator.h"
@@ -130,4 +130,4 @@ class TrackingAllocator : public Allocator {
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_TRACKING_ALLOCATOR_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_TRACKING_ALLOCATOR_H_

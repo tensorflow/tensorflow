@@ -27,9 +27,7 @@ namespace {
 class ControlDepRemover : public HloPassInterface {
  public:
   ControlDepRemover() = default;
-  tensorflow::StringPiece name() const override {
-    return "control-dep-remover";
-  }
+  absl::string_view name() const override { return "control-dep-remover"; }
 
   StatusOr<bool> Run(HloModule* module) override {
     bool changed = false;

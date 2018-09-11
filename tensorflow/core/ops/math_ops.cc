@@ -392,8 +392,11 @@ Returns x * y element-wise.
 REGISTER_OP("Div").BINARY_MORE().SetShapeFn(
     shape_inference::BroadcastBinaryOpShapeFn);
 
-REGISTER_OP("UnsafeDiv")
-    .BINARY_MORE()
+REGISTER_OP("DivNoNan")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr("T: {float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("FloorDiv")

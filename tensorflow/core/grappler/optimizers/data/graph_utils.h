@@ -37,6 +37,12 @@ NodeDef* AddNode(StringPiece name, StringPiece op,
                  const std::vector<std::pair<string, AttrValue>>& attributes,
                  MutableGraphView* graph);
 
+// Adds a node to a FunctionDef.
+NodeDef* AddNode(StringPiece name, StringPiece op,
+                 const std::vector<string>& inputs,
+                 const std::vector<std::pair<string, AttrValue>>& attributes,
+                 FunctionDef* fd);
+
 // Adds a Const node with the given value to the graph.
 template <typename T>
 NodeDef* AddScalarConstNode(T v, MutableGraphView* graph) {
@@ -99,7 +105,10 @@ int FindFunctionNodeWithOp(StringPiece op, const FunctionDef& function);
 
 // Returns the index of the first node with the given op or -1 if no such  node
 // exists.
-int FindNodeWithOp(StringPiece op, const GraphDef& graph);
+int FindGraphNodeWithOp(StringPiece op, const GraphDef& graph);
+
+// Gets the 0th input to a node in the graph.
+NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph);
 
 // Returns the list of indices of all nodes with the given op or empty list if
 // no such node exists.

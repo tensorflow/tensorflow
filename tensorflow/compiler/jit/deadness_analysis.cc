@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/deadness_analysis.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/deadness_analysis_internal.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/tensor_id.h"
@@ -107,7 +108,7 @@ class Predicate {
 
   virtual string ToString() const = 0;
   int64 hash() const { return hash_; }
-  virtual gtl::ArraySlice<Predicate*> GetOperands() const = 0;
+  virtual absl::Span<Predicate* const> GetOperands() const = 0;
 
   virtual Kind kind() const = 0;
   virtual ~Predicate() {}
@@ -128,7 +129,7 @@ class Predicate {
 };
 
 int64 HashPredicateSequence(Predicate::Kind kind,
-                            gtl::ArraySlice<Predicate*> preds) {
+                            absl::Span<Predicate* const> preds) {
   int64 hash = ::tensorflow::hash<Predicate::Kind>()(kind);
   for (Predicate* pred : preds) {
     hash = Hash64Combine(hash, pred->hash());
@@ -153,13 +154,15 @@ class AndPredicate : public Predicate {
                    std::back_inserter(operands_str),
                    [](Predicate* pred) { return pred->ToString(); });
 
-    return strings::StrCat("(", str_util::Join(operands_str, " & "), ")");
+    return absl::StrCat("(", absl::StrJoin(operands_str, " & "), ")");
   }
 
   Kind kind() const override { return Kind::kAnd; }
 
-  gtl::ArraySlice<Predicate*> GetOperands() const override { return operands_; }
-  gtl::ArraySlice<Predicate*> operands() const { return operands_; }
+  absl::Span<Predicate* const> GetOperands() const override {
+    return operands_;
+  }
+  absl::Span<Predicate* const> operands() const { return operands_; }
 
  private:
   std::vector<Predicate*> operands_;
@@ -182,12 +185,14 @@ class OrPredicate : public Predicate {
                    std::back_inserter(operands_str),
                    [](Predicate* pred) { return pred->ToString(); });
 
-    return strings::StrCat("(", str_util::Join(operands_str, " | "), ")");
+    return absl::StrCat("(", absl::StrJoin(operands_str, " | "), ")");
   }
 
   Kind kind() const override { return Kind::kOr; }
-  gtl::ArraySlice<Predicate*> GetOperands() const override { return operands_; }
-  gtl::ArraySlice<Predicate*> operands() const { return operands_; }
+  absl::Span<Predicate* const> GetOperands() const override {
+    return operands_;
+  }
+  absl::Span<Predicate* const> operands() const { return operands_; }
 
  private:
   std::vector<Predicate*> operands_;
@@ -201,12 +206,14 @@ class NotPredicate : public Predicate {
         operands_({operand}) {}
 
   string ToString() const override {
-    return strings::StrCat("~", operand()->ToString());
+    return absl::StrCat("~", operand()->ToString());
   }
 
   Kind kind() const override { return Kind::kNot; }
   Predicate* operand() const { return operands_[0]; }
-  gtl::ArraySlice<Predicate*> GetOperands() const override { return operands_; }
+  absl::Span<Predicate* const> GetOperands() const override {
+    return operands_;
+  }
 
  private:
   std::array<Predicate*, 1> operands_;
@@ -233,13 +240,15 @@ class AndRecurrencePredicate : public Predicate {
   Predicate* step() const { return operands_[1]; }
 
   string ToString() const override {
-    return strings::StrCat("{", start()->ToString(), ",&,", step()->ToString(),
-                           "}");
+    return absl::StrCat("{", start()->ToString(), ",&,", step()->ToString(),
+                        "}");
   }
 
   Kind kind() const override { return Kind::kAndRecurrence; }
 
-  gtl::ArraySlice<Predicate*> GetOperands() const override { return operands_; }
+  absl::Span<Predicate* const> GetOperands() const override {
+    return operands_;
+  }
 
  private:
   std::array<Predicate*, 2> operands_;
@@ -258,12 +267,12 @@ class SymbolPredicate : public Predicate {
         must_be_true_(must_be_true) {}
 
   string ToString() const override {
-    return must_be_true() ? strings::StrCat("*", tensor_id_.ToString())
+    return must_be_true() ? absl::StrCat("*", tensor_id_.ToString())
                           : tensor_id_.ToString();
   }
 
   Kind kind() const override { return Kind::kSymbol; }
-  gtl::ArraySlice<Predicate*> GetOperands() const override { return {}; }
+  absl::Span<Predicate* const> GetOperands() const override { return {}; }
 
   // If `must_be_true()` is true this SymbolPredicate represents the proposition
   // "tensor_id() is live and evaluates to true".
@@ -312,11 +321,11 @@ template <typename FunctionTy>
 // them.
 class PredicateFactory {
  public:
-  Predicate* MakeAndPredicate(gtl::ArraySlice<Predicate*> operands) {
+  Predicate* MakeAndPredicate(absl::Span<Predicate* const> operands) {
     return MakeAndOrImpl(operands, /*is_and=*/true);
   }
 
-  Predicate* MakeOrPredicate(gtl::ArraySlice<Predicate*> operands) {
+  Predicate* MakeOrPredicate(absl::Span<Predicate* const> operands) {
     return MakeAndOrImpl(operands, /*is_and=*/false);
   }
 
@@ -373,7 +382,7 @@ class PredicateFactory {
         new PredicateT(std::forward<Args>(args)...));
   }
 
-  Predicate* MakeAndOrImpl(gtl::ArraySlice<Predicate*> operands, bool is_and);
+  Predicate* MakeAndOrImpl(absl::Span<Predicate* const> operands, bool is_and);
 
   // Predicate instances are interned, meaning that there is only a single
   // instance of a Predicate object with a given content.  This makes checking
@@ -386,7 +395,7 @@ class PredicateFactory {
   // for the owning pointers to predicate instances.
 
   using SignatureForAndOr =
-      std::pair<Predicate::Kind, gtl::ArraySlice<Predicate*>>;
+      std::pair<Predicate::Kind, absl::Span<Predicate* const>>;
   using SignatureForNot = Predicate*;
   using SignatureForAndRec = std::pair<Predicate*, Predicate*>;
   using SignatureForSymbol = std::pair<SafeTensorId, bool>;
@@ -421,8 +430,8 @@ class PredicateFactory {
 };
 
 // Common code to create AndPredicate or OrPredicate instances.
-Predicate* PredicateFactory::MakeAndOrImpl(gtl::ArraySlice<Predicate*> operands,
-                                           bool is_and) {
+Predicate* PredicateFactory::MakeAndOrImpl(
+    absl::Span<Predicate* const> operands, bool is_and) {
   Predicate::Kind pred_kind =
       is_and ? Predicate::Kind::kAnd : Predicate::Kind::kOr;
   gtl::FlatSet<Predicate*> simplified_ops_set;
@@ -473,7 +482,7 @@ Predicate* PredicateFactory::MakeAndOrImpl(gtl::ArraySlice<Predicate*> operands,
     // NB!  Because we'll use a non-owning reference to simplified_ops in the
     // key for interned_and_or_instances_ we need to be careful to std::move()
     // it all the way through.
-    gtl::ArraySlice<Predicate*> operands_slice = simplified_ops;
+    absl::Span<Predicate* const> operands_slice = simplified_ops;
     std::unique_ptr<Predicate> new_pred =
         is_and ? Make<AndPredicate>(std::move(simplified_ops))
                : Make<OrPredicate>(std::move(simplified_ops));
@@ -495,7 +504,7 @@ class DeadnessAnalysisImpl : public DeadnessAnalysis {
       : graph_(*graph), vlog_(VLOG_IS_ON(2)) {}
 
   Status Populate();
-  Status PopulateWithReversePostOrder(gtl::ArraySlice<Node*> rpo);
+  Status PopulateWithReversePostOrder(absl::Span<Node* const> rpo);
   bool HasInputsWithMismatchingDeadness(const Node& node) override;
   void Print() const override;
   gtl::FlatMap<TensorId, string, TensorId::Hasher> PredicateMapAsString() const;
@@ -508,8 +517,8 @@ class DeadnessAnalysisImpl : public DeadnessAnalysis {
   // Sets the predicate for output `output_idx` of `n` to `pred`.  Sets the i'th
   // bit of `should_revisit` if `pred` is different from the current predicate
   // for the `output_idx` output of `n`.
-  void SetPred(Node* n, int output_idx, Predicate* pred,
-               std::vector<bool>* should_revisit) {
+  void SetPredicate(Node* n, int output_idx, Predicate* pred,
+                    std::vector<bool>* should_revisit) {
     auto insert_result =
         predicate_map_.insert({TensorId(n->name(), output_idx), pred});
     if (!insert_result.second && insert_result.first->second != pred) {
@@ -526,10 +535,10 @@ class DeadnessAnalysisImpl : public DeadnessAnalysis {
     }
   }
 
-  void SetPred(Node* n, gtl::ArraySlice<int> output_idxs, Predicate* pred,
-               std::vector<bool>* should_revisit) {
+  void SetPredicate(Node* n, absl::Span<const int> output_idxs, Predicate* pred,
+                    std::vector<bool>* should_revisit) {
     for (int output_idx : output_idxs) {
-      SetPred(n, output_idx, pred, should_revisit);
+      SetPredicate(n, output_idx, pred, should_revisit);
     }
   }
 
@@ -580,19 +589,20 @@ Status DeadnessAnalysisImpl::HandleSwitch(Node* n,
 
   // Output 0 is alive iff all inputs are alive and the condition is false.
   input_preds.push_back(false_switch);
-  SetPred(n, 0, predicate_factory_.MakeAndPredicate(input_preds),
-          should_revisit);
+  SetPredicate(n, 0, predicate_factory_.MakeAndPredicate(input_preds),
+               should_revisit);
   input_preds.pop_back();
 
   // Output 1 is alive iff all inputs are alive and the condition is true.
   input_preds.push_back(true_switch);
-  SetPred(n, 1, predicate_factory_.MakeAndPredicate(input_preds),
-          should_revisit);
+  SetPredicate(n, 1, predicate_factory_.MakeAndPredicate(input_preds),
+               should_revisit);
   input_preds.pop_back();
 
   // Control is alive iff all inputs are alive.
-  SetPred(n, Graph::kControlSlot,
-          predicate_factory_.MakeAndPredicate(input_preds), should_revisit);
+  SetPredicate(n, Graph::kControlSlot,
+               predicate_factory_.MakeAndPredicate(input_preds),
+               should_revisit);
 
   return Status::OK();
 }
@@ -623,7 +633,7 @@ Predicate* DeduceStepPredicate(PredicateFactory* predicate_factory,
   }
 
   std::vector<Predicate*> and_ops;
-  gtl::ArraySlice<Predicate*> recurrent_pred_ops =
+  absl::Span<Predicate* const> recurrent_pred_ops =
       backedge_predicate->GetOperands();
 
   bool found_sym = false;
@@ -682,14 +692,16 @@ Status DeadnessAnalysisImpl::HandleMerge(Node* n,
       // backedge.
       Predicate* input_data_pred = predicate_factory_.MakeSymbolPredicate(
           TensorId(n->name(), 0), /*must_be_true=*/false);
-      SetPred(n, {0, 1, Graph::kControlSlot}, input_data_pred, should_revisit);
+      SetPredicate(n, {0, 1, Graph::kControlSlot}, input_data_pred,
+                   should_revisit);
       return Status::OK();
     }
 
     // We're visiting this merge for the first time and it is a acyclic merge.
     Predicate* input_data_pred = predicate_factory_.MakeOrPredicate(
         GetIncomingPreds(n, EdgeKind::kDataOnly));
-    SetPred(n, {0, 1, Graph::kControlSlot}, input_data_pred, should_revisit);
+    SetPredicate(n, {0, 1, Graph::kControlSlot}, input_data_pred,
+                 should_revisit);
     return Status::OK();
   }
 
@@ -717,7 +729,7 @@ Status DeadnessAnalysisImpl::HandleMerge(Node* n,
             predicate_factory_.MakeOrPredicate(non_recurrent_inputs);
         Predicate* and_rec =
             predicate_factory_.MakeAndRecurrencePredicate(start, step);
-        SetPred(n, {0, 1, Graph::kControlSlot}, and_rec, should_revisit);
+        SetPredicate(n, {0, 1, Graph::kControlSlot}, and_rec, should_revisit);
         return Status::OK();
       }
     }
@@ -733,8 +745,9 @@ Status DeadnessAnalysisImpl::HandleRecv(Node* n,
       GetIncomingPreds(n, EdgeKind::kDataAndControl);
   input_preds.push_back(predicate_factory_.MakeSymbolPredicate(
       TensorId(n->name(), 0), /*must_be_true=*/false));
-  SetPred(n, {0, Graph::kControlSlot},
-          predicate_factory_.MakeAndPredicate(input_preds), should_revisit);
+  SetPredicate(n, {0, Graph::kControlSlot},
+               predicate_factory_.MakeAndPredicate(input_preds),
+               should_revisit);
   return Status::OK();
 }
 
@@ -744,9 +757,9 @@ Status DeadnessAnalysisImpl::HandleGeneric(Node* n,
   Predicate* pred = predicate_factory_.MakeAndPredicate(
       GetIncomingPreds(n, EdgeKind::kDataAndControl));
   for (int output_idx = 0; output_idx < n->num_outputs(); output_idx++) {
-    SetPred(n, output_idx, pred, should_revisit);
+    SetPredicate(n, output_idx, pred, should_revisit);
   }
-  SetPred(n, Graph::kControlSlot, pred, should_revisit);
+  SetPredicate(n, Graph::kControlSlot, pred, should_revisit);
   return Status::OK();
 }
 
@@ -757,7 +770,8 @@ Status DeadnessAnalysisImpl::HandleNode(Node* n,
   } else if (n->IsMerge()) {
     TF_RETURN_IF_ERROR(HandleMerge(n, should_revisit));
   } else if (n->IsControlTrigger()) {
-    SetPred(n, Graph::kControlSlot, predicate_factory_.MakeTrue(), nullptr);
+    SetPredicate(n, Graph::kControlSlot, predicate_factory_.MakeTrue(),
+                 nullptr);
   } else if (n->IsRecv() || n->IsHostRecv()) {
     TF_RETURN_IF_ERROR(HandleRecv(n, should_revisit));
   } else if (n->IsNextIteration()) {
@@ -770,7 +784,7 @@ Status DeadnessAnalysisImpl::HandleNode(Node* n,
 
 Status DeadnessAnalysisImpl::Populate() {
   std::vector<Node*> rpo;
-  GetReversePostOrder(graph_, &rpo, /*stable_comparator=*/{},
+  GetReversePostOrder(graph_, &rpo, /*stable_comparator=*/NodeComparatorName(),
                       /*edge_filter=*/[](const Edge& edge) {
                         return !edge.src()->IsNextIteration();
                       });
@@ -778,7 +792,7 @@ Status DeadnessAnalysisImpl::Populate() {
 }
 
 Status DeadnessAnalysisImpl::PopulateWithReversePostOrder(
-    gtl::ArraySlice<Node*> rpo) {
+    absl::Span<Node* const> rpo) {
   // This an abstract interpretation over the deadness propagation semantics of
   // the graph executor.
   //
@@ -918,7 +932,7 @@ Status ComputePredicates(const Graph& graph,
 }
 
 Status ComputePredicates(const Graph& graph,
-                         gtl::ArraySlice<Node*> reverse_post_order,
+                         absl::Span<Node* const> reverse_post_order,
                          PredicateMapTy* out_predicate_map) {
   DeadnessAnalysisImpl impl(&graph);
   TF_RETURN_IF_ERROR(impl.PopulateWithReversePostOrder(reverse_post_order));

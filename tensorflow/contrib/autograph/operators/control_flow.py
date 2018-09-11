@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.autograph.utils import builtins
+from tensorflow.contrib.autograph.operators import py_builtins
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -82,8 +82,8 @@ def _py_for_stmt(iter_, extra_test, body, init_state):
 
 
 def _known_len_for_stmt(iter_, extra_test, body, init_state):
-  """Overload of for_stmt that iterates over objects that define a length."""
-  n = builtins.dynamic_len(iter_)
+  """Overload of for_stmt that iterates over objects that admit a length."""
+  n = py_builtins.len_(iter_)
 
   def while_body(iterate_index, *state):
     iterate = iter_[iterate_index]

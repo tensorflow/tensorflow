@@ -45,7 +45,7 @@ _DEFAULT_TENSORRT_PATH_LINUX = '/usr/lib/%s-linux-gnu' % platform.machine()
 _TF_OPENCL_VERSION = '1.2'
 _DEFAULT_COMPUTECPP_TOOLKIT_PATH = '/usr/local/computecpp'
 _DEFAULT_TRISYCL_INCLUDE_DIR = '/usr/local/triSYCL/include'
-_SUPPORTED_ANDROID_NDK_VERSIONS = [10, 11, 12, 13, 14, 15]
+_SUPPORTED_ANDROID_NDK_VERSIONS = [10, 11, 12, 13, 14, 15, 16]
 
 _DEFAULT_PROMPT_ASK_ATTEMPTS = 10
 
@@ -848,7 +848,7 @@ def set_tf_cuda_version(environ_cp):
 
     cuda_toolkit_paths_full = [os.path.join(cuda_toolkit_path, x) for x in cuda_rt_lib_paths]
     if any([os.path.exists(x) for x in cuda_toolkit_paths_full]):
-        break
+      break
 
     # Reset and retry
     print('Invalid path to CUDA %s toolkit. %s cannot be found' %
@@ -1399,6 +1399,13 @@ def set_grpc_build_flags():
   write_to_bazelrc('build --define grpc_no_ares=true')
 
 
+def set_system_libs_flag(environ_cp):
+  syslibs = environ_cp.get('TF_SYSTEM_LIBS', '')
+  syslibs = ','.join(sorted(syslibs.split(',')))
+  if syslibs and syslibs != '':
+    write_action_env_to_bazelrc('TF_SYSTEM_LIBS', syslibs)
+
+
 def set_windows_build_flags(environ_cp):
   """Set Windows specific build options."""
   # The non-monolithic build is not supported yet
@@ -1501,6 +1508,8 @@ def main():
                 False, 'gdr')
   set_build_var(environ_cp, 'TF_NEED_VERBS', 'VERBS', 'with_verbs_support',
                 False, 'verbs')
+  set_build_var(environ_cp, 'TF_NEED_NGRAPH', 'nGraph',
+                'with_ngraph_support', False, 'ngraph')
 
   set_action_env_var(environ_cp, 'TF_NEED_OPENCL_SYCL', 'OpenCL SYCL', False)
   if environ_cp.get('TF_NEED_OPENCL_SYCL') == '1':
@@ -1534,6 +1543,10 @@ def main():
       if environ_cp.get('TF_DOWNLOAD_CLANG') != '1':
         # Set up which clang we should use as the cuda / host compiler.
         set_clang_cuda_compiler_path(environ_cp)
+      else:
+        # Use downloaded LLD for linking.
+        write_to_bazelrc('build:cuda_clang --config=download_clang_use_lld')
+        write_to_bazelrc('test:cuda_clang --config=download_clang_use_lld')
     else:
       # Set up which gcc nvcc should use as the host compiler
       # No need to set this on Windows
@@ -1555,6 +1568,7 @@ def main():
 
   set_grpc_build_flags()
   set_cc_opt_flags(environ_cp)
+  set_system_libs_flag(environ_cp)
   if is_windows():
     set_windows_build_flags(environ_cp)
 

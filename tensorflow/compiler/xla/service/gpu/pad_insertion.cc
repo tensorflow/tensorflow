@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/pad_insertion.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -67,9 +68,8 @@ HloInstruction* MaybePaddedAndSlicedInput(
           conv_window.dimensions(i).base_dilation() - 1);
     }
     PrimitiveType element_type = input->shape().element_type();
-    HloInstruction* padding =
-        computation->AddInstruction(HloInstruction::CreateConstant(
-            MakeUnique<Literal>(LiteralUtil::Zero(element_type))));
+    HloInstruction* padding = computation->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
     input = MakePadHlo(input, padding, padding_config).ValueOrDie();
   }
 
@@ -124,9 +124,8 @@ HloInstruction* MaybePaddedKernel(const Window& conv_window,
 
   HloComputation* computation = kernel->parent();
   PrimitiveType element_type = kernel->shape().element_type();
-  HloInstruction* padding =
-      computation->AddInstruction(HloInstruction::CreateConstant(
-          MakeUnique<Literal>(LiteralUtil::Zero(element_type))));
+  HloInstruction* padding = computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
   return MakePadHlo(kernel, padding, padding_config).ValueOrDie();
 }
 }  // namespace
@@ -165,9 +164,9 @@ bool PadInsertion::CanonicalizeForwardConvolution(HloInstruction* conv) {
   Shape old_conv_shape = conv->shape().tuple_shapes(0);
 
   VLOG(1) << "Canonicalizing forward conv";
-  auto new_conv = CreateCudnnConvForward(old_conv_shape, new_input, new_kernel,
-                                         new_conv_window,
-                                         conv->convolution_dimension_numbers());
+  auto new_conv = CreateCudnnConvForward(
+      old_conv_shape, new_input, new_kernel, new_conv_window,
+      conv->convolution_dimension_numbers(), conv->feature_group_count());
   VLOG(1) << "Replacing:\n  " << conv->ToString() << "\nwith:\n  "
           << new_conv->ToString();
   TF_CHECK_OK(conv->parent()->ReplaceInstruction(conv, new_conv));
@@ -235,9 +234,9 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
   // Create a new backward convolution replacing the old one.
   HloComputation* computation = backward_conv->parent();
   HloInstruction* output = backward_conv->mutable_operand(1);
-  HloInstruction* padding = computation->AddInstruction(
-      HloInstruction::CreateConstant(MakeUnique<Literal>(
-          LiteralUtil::Zero(input->shape().element_type()))));
+  HloInstruction* padding =
+      computation->AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::Zero(input->shape().element_type())));
   HloInstruction* padded_input =
       MakePadHlo(input, padding, input_padding_config).ValueOrDie();
 
@@ -246,7 +245,7 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
   Shape backward_conv_shape = backward_conv->shape().tuple_shapes(0);
   HloInstruction* new_backward_conv = CreateCudnnConvBackwardFilter(
       backward_conv_shape, padded_input, output, new_backward_conv_window,
-      backward_conv_dnums);
+      backward_conv_dnums, backward_conv->feature_group_count());
 
   VLOG(1) << "Canonicalizing backward filter conv";
   VLOG(1) << "Replacing:\n  " << backward_conv->ToString() << "\nwith:\n  "
@@ -311,7 +310,7 @@ bool PadInsertion::CanonicalizeBackwardInputConvolution(
 
   HloInstruction* new_backward_conv_call = CreateCudnnConvBackwardInput(
       new_backward_conv_shape, output, filter, new_backward_conv_window,
-      backward_conv_dnums);
+      backward_conv_dnums, backward_conv->feature_group_count());
 
   // The CustomCall created above returns a tuple (conv_result, scratch_memory).
   // Extract out the two elements.

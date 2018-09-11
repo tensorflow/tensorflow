@@ -24,8 +24,8 @@ Table of contents:
     *   [Multiple output arrays](#multiple-output-arrays)
     *   [Specifying subgraphs](#specifying-subgraphs)
 *   [Graph visualizations](#graph-visualizations)
-    *   [Using --output_format=GRAPHVIZ_DOT](#using-output-formatgraphviz-dot)
-    *   [Using --dump_graphviz](#using-dump-graphviz)
+    *   [Using --output_format=GRAPHVIZ_DOT](#using-output-format-graphviz-dot)
+    *   [Using --dump_graphviz_dir](#using-dump-graphviz-dir)
     *   [Graph "video" logging](#graph-video-logging)
     *   [Legend for the graph visualizations](#graphviz-legend)
 
@@ -247,17 +247,17 @@ function tends to get fused).
 
 ## Graph visualizations
 
-TOCO can export a graph to the GraphViz Dot format for easy visualization via
+TOCO can export a graph to the Graphviz Dot format for easy visualization via
 either the `--output_format` flag or the `--dump_graphviz_dir` flag. The
 subsections below outline the use cases for each.
 
-### Using `--output_format=GRAPHVIZ_DOT`
+### Using `--output_format=GRAPHVIZ_DOT` <a name="using-output-format-graphviz-dot"></a>
 
-The first way to get a graphviz rendering is to pass `GRAPHVIZ_DOT` into
+The first way to get a Graphviz rendering is to pass `GRAPHVIZ_DOT` into
 `--output_format`. This results in a plausible visualization of the graph. This
-reduces the requirements that exist during conversion between other input and
-output formats. This may be useful if conversion from TENSORFLOW_GRAPHDEF to
-TFLITE is failing.
+reduces the requirements that exist during conversion from a TensorFlow GraphDef
+to a TensorFlow Lite FlatBuffer. This may be useful if the conversion to TFLite
+is failing.
 
 ```
 curl https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_0.50_128_frozen.tgz \
@@ -287,10 +287,10 @@ google-chrome /tmp/foo.dot.pdf
 
 Example PDF files are viewable online in the next section.
 
-### Using `--dump_graphviz`
+### Using `--dump_graphviz_dir`
 
-The second way to get a graphviz rendering is to pass the `--dump_graphviz_dir`
-flag, specifying a destination directory to dump GraphViz rendering to. Unlike
+The second way to get a Graphviz rendering is to pass the `--dump_graphviz_dir`
+flag, specifying a destination directory to dump Graphviz rendering to. Unlike
 the previous approach, this one retains the original output format. This
 provides a visualization of the actual graph resulting from a specific
 conversion process.

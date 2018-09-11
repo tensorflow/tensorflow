@@ -94,7 +94,7 @@ class XlaOpRegistry {
   // the device; it may optionally modify the KernelDef.
   typedef bool (*BackendOpFilter)(KernelDef* kdef);
   static void RegisterBackend(const string& compilation_device_name,
-                              gtl::ArraySlice<DataType> supported_types,
+                              absl::Span<const DataType> supported_types,
                               BackendOpFilter op_filter);
 
   // Returns the names of the registered backends.
@@ -127,6 +127,9 @@ class XlaOpRegistry {
   static std::vector<const KernelDef*> DeviceKernels(
       const string& compilation_device_name,
       bool include_compilation_only_kernels);
+
+  // Returns all operations for which there are XLA kernels on any device.
+  static std::vector<string> GetAllRegisteredOps();
 
   // Returns the set of compile-time constant inputs to 'op'. Returns nullptr
   // if the op is not registered.
@@ -229,19 +232,19 @@ class XlaOpRegistry {
 class XlaOpRegistrationBuilder {
  public:
   // Starts an operator registration chain.
-  static XlaOpRegistrationBuilder Name(StringPiece name);
+  static XlaOpRegistrationBuilder Name(absl::string_view name);
 
   // Specifies a whitelist of devices on which the operator may run.
-  XlaOpRegistrationBuilder& Device(StringPiece devices);
-  XlaOpRegistrationBuilder& Device(gtl::ArraySlice<StringPiece> devices);
+  XlaOpRegistrationBuilder& Device(absl::string_view devices);
+  XlaOpRegistrationBuilder& Device(absl::Span<const absl::string_view> devices);
 
   // Specifies a type constraint for a type variable attribute. Each constraint
   // specifies the set of types that the type variable may assume.
-  XlaOpRegistrationBuilder& TypeConstraint(StringPiece attr_name,
+  XlaOpRegistrationBuilder& TypeConstraint(absl::string_view attr_name,
                                            DataType allowed);
 
-  XlaOpRegistrationBuilder& TypeConstraint(StringPiece attr_name,
-                                           gtl::ArraySlice<DataType> allowed);
+  XlaOpRegistrationBuilder& TypeConstraint(absl::string_view attr_name,
+                                           absl::Span<const DataType> allowed);
 
   // Specifies that a dummy copy of this operator should not be registered on
   // XLA_* devices, but may be used during compilation.
@@ -251,13 +254,13 @@ class XlaOpRegistrationBuilder {
   XlaOpRegistrationBuilder& AllowResourceTypes();
 
   // Mark 'input_name' as an argument whose value must be known at compile-time.
-  XlaOpRegistrationBuilder& CompileTimeConstInput(StringPiece input_name);
+  XlaOpRegistrationBuilder& CompileTimeConstInput(absl::string_view input_name);
 
   std::unique_ptr<XlaOpRegistry::OpRegistration> Build(
       XlaOpRegistry::Factory factory);
 
  private:
-  XlaOpRegistrationBuilder(StringPiece name);
+  XlaOpRegistrationBuilder(absl::string_view name);
 
   std::unique_ptr<XlaOpRegistry::OpRegistration> registration_;
 };
@@ -285,7 +288,7 @@ class XlaOpRegistrar {
 
 class XlaBackendRegistrar {
  public:
-  XlaBackendRegistrar(StringPiece name, gtl::ArraySlice<DataType> types,
+  XlaBackendRegistrar(absl::string_view name, absl::Span<const DataType> types,
                       XlaOpRegistry::BackendOpFilter op_filter = nullptr);
 };
 

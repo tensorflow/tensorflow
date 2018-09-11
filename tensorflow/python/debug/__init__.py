@@ -14,7 +14,7 @@
 # ==============================================================================
 """Public Python API of TensorFlow Debugger (tfdbg).
 
-See the @{$python/tfdbg} guide.
+See the [TFDBG](https://tensorflow.org/api_guides/python/tfdbg) guide.
 
 @@add_debug_tensor_watch
 @@watch_graph

@@ -1210,7 +1210,9 @@ def nce_loss(weights,
         num_true]`. The target classes.
     inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
         activations of the input network.
-    num_sampled: An `int`.  The number of classes to randomly sample per batch.
+    num_sampled: An `int`.  The number of negative classes to randomly sample
+        per batch. This single sample of negative classes is evaluated for each
+        element in the batch.
     num_classes: An `int`. The number of possible classes.
     num_true: An `int`.  The number of target classes per training example.
     sampled_values: a tuple of (`sampled_candidates`, `true_expected_count`,

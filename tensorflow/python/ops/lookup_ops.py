@@ -22,6 +22,7 @@ import collections
 import functools
 import six
 
+from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -299,6 +300,7 @@ class HashTable(InitializableLookupTableBase):
         self._value_shape))
     return exported_keys, exported_values
 
+
 class TableInitializerBase(object):
   """Base class for lookup table initializers."""
 
@@ -370,8 +372,13 @@ class KeyValueTensorInitializer(TableInitializerBase):
         # Ensure a unique name when eager execution is enabled to avoid spurious
         # sharing issues.
         scope += str(ops.uid())
-      init_op = gen_lookup_ops.initialize_table_v2(
-          table.table_ref, self._keys, self._values, name=scope)
+      if fwd_compat.forward_compatible(2018, 9, 19):
+        init_op = gen_lookup_ops.lookup_table_import_v2(
+            table.table_ref, self._keys, self._values, name=scope)
+      else:
+        # To maintain forward compatibiltiy, use the old implementation.
+        init_op = gen_lookup_ops.initialize_table_v2(
+            table.table_ref, self._keys, self._values, name=scope)
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     return init_op
 

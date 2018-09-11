@@ -32,7 +32,7 @@ from tensorflow.python.summary import summary as summary_lib
 class ScalarSummaryTest(test.TestCase):
 
   def testScalarSummary(self):
-    with self.test_session() as s:
+    with self.cached_session() as s:
       i = constant_op.constant(3)
       with ops.name_scope('outer'):
         im = summary_lib.scalar('inner', i)
@@ -45,7 +45,7 @@ class ScalarSummaryTest(test.TestCase):
     self.assertEqual(values[0].simple_value, 3.0)
 
   def testScalarSummaryWithFamily(self):
-    with self.test_session() as s:
+    with self.cached_session() as s:
       i = constant_op.constant(7)
       with ops.name_scope('outer'):
         im1 = summary_lib.scalar('inner', i, family='family')
@@ -68,7 +68,7 @@ class ScalarSummaryTest(test.TestCase):
     self.assertEqual(values[0].simple_value, 7.0)
 
   def testSummarizingVariable(self):
-    with self.test_session() as s:
+    with self.cached_session() as s:
       c = constant_op.constant(42.0)
       v = variables.Variable(c)
       ss = summary_lib.scalar('summary', v)
@@ -83,7 +83,7 @@ class ScalarSummaryTest(test.TestCase):
     self.assertEqual(value.simple_value, 42.0)
 
   def testImageSummary(self):
-    with self.test_session() as s:
+    with self.cached_session() as s:
       i = array_ops.ones((5, 4, 4, 3))
       with ops.name_scope('outer'):
         im = summary_lib.image('inner', i, max_outputs=3)
@@ -97,7 +97,7 @@ class ScalarSummaryTest(test.TestCase):
     self.assertEqual(tags, expected)
 
   def testImageSummaryWithFamily(self):
-    with self.test_session() as s:
+    with self.cached_session() as s:
       i = array_ops.ones((5, 2, 3, 1))
       with ops.name_scope('outer'):
         im = summary_lib.image('inner', i, max_outputs=3, family='family')
@@ -113,7 +113,7 @@ class ScalarSummaryTest(test.TestCase):
     self.assertEqual(tags, expected)
 
   def testHistogramSummary(self):
-    with self.test_session() as s:
+    with self.cached_session() as s:
       i = array_ops.ones((5, 4, 4, 3))
       with ops.name_scope('outer'):
         summ_op = summary_lib.histogram('inner', i)
@@ -124,7 +124,7 @@ class ScalarSummaryTest(test.TestCase):
     self.assertEqual(summary.value[0].tag, 'outer/inner')
 
   def testHistogramSummaryWithFamily(self):
-    with self.test_session() as s:
+    with self.cached_session() as s:
       i = array_ops.ones((5, 4, 4, 3))
       with ops.name_scope('outer'):
         summ_op = summary_lib.histogram('inner', i, family='family')
@@ -136,7 +136,7 @@ class ScalarSummaryTest(test.TestCase):
     self.assertEqual(summary.value[0].tag, 'family/outer/family/inner')
 
   def testAudioSummary(self):
-    with self.test_session() as s:
+    with self.cached_session() as s:
       i = array_ops.ones((5, 3, 4))
       with ops.name_scope('outer'):
         aud = summary_lib.audio('inner', i, 0.2, max_outputs=3)
@@ -150,7 +150,7 @@ class ScalarSummaryTest(test.TestCase):
     self.assertEqual(tags, expected)
 
   def testAudioSummaryWithFamily(self):
-    with self.test_session() as s:
+    with self.cached_session() as s:
       i = array_ops.ones((5, 3, 4))
       with ops.name_scope('outer'):
         aud = summary_lib.audio('inner', i, 0.2, max_outputs=3, family='family')
@@ -194,7 +194,7 @@ class ScalarSummaryTest(test.TestCase):
       new_summ_f = g.get_tensor_by_name('new_outer/family/inner:0')
 
       # However, the tags are unaffected.
-      with self.test_session() as s:
+      with self.cached_session() as s:
         new_summ_str, new_summ_f_str = s.run([new_summ, new_summ_f])
         new_summ_pb = summary_pb2.Summary()
         new_summ_pb.ParseFromString(new_summ_str)

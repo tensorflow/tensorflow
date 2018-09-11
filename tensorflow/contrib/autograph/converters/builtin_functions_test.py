@@ -23,6 +23,7 @@ import six
 from tensorflow.contrib.autograph.converters import builtin_functions
 from tensorflow.contrib.autograph.core import converter_testing
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -34,11 +35,11 @@ class BuiltinFunctionsTest(converter_testing.TestCase):
     def test_fn(a):
       return len(a)
 
-    with self.converted(test_fn, builtin_functions, {'len': len},
-                        array_ops.shape) as result:
-      with self.test_session() as sess:
-        ops = result.test_fn(constant_op.constant([0, 0, 0]))
-        self.assertEqual(sess.run(ops), 3)
+    with self.converted(test_fn, builtin_functions, {'len': len}) as result:
+      with self.cached_session() as sess:
+        p = array_ops.placeholder(dtype=dtypes.int32, shape=None)
+        ops = result.test_fn(p)
+        self.assertEqual(sess.run(ops, {p: [0, 0, 0]}), 3)
 
   def test_print(self):
 
@@ -49,7 +50,7 @@ class BuiltinFunctionsTest(converter_testing.TestCase):
       return print(a)
 
     with self.converted(test_fn, builtin_functions, {'print': print}) as result:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         with self.assertPrints('a\n'):
           sess.run(result.test_fn('a'))
 
@@ -62,7 +63,7 @@ class BuiltinFunctionsTest(converter_testing.TestCase):
       return print(a, b, c)
 
     with self.converted(test_fn, builtin_functions, {'print': print}) as result:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         with self.assertPrints('a 1 [2, 3]\n'):
           sess.run(
               result.test_fn(

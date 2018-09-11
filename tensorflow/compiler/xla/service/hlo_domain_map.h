@@ -69,7 +69,17 @@ class HloDomainMap {
   // instruction is not found within any domain.
   int64 GetDomainId(HloInstruction* instruction) const;
 
+  // Returns the unique id of the domain metadata for the domain the given
+  // instruction belongs to. The given instruction must not be a kDomain
+  // instruction since each domain instruction is associated with 2 domains.
+  int64 GetDomainMetadataId(HloInstruction* instruction) const;
+
  private:
+  // Map used for representing instruction ordering, i.e.
+  // order_map[a] < order_map[b] means a must be ordered before b.
+  using InstructionOrderMap =
+      tensorflow::gtl::FlatMap<const HloInstruction*, int64>;
+
   HloDomainMap(string domain_kind) : domain_kind_(std::move(domain_kind)) {}
 
   // Check if the kDomain instruction is facing (via its operand link) another
@@ -95,16 +105,23 @@ class HloDomainMap {
 
   // Creates a domain data structure using the ExpandDomain() API.
   StatusOr<std::unique_ptr<DomainMetadata::Domain>> CreateDomain(
-      HloInstruction* instruction) const;
+      HloInstruction* instruction,
+      const InstructionOrderMap& instructions_order) const;
 
   // Out of an instruction set, returns a vector of all the ones which are not
   // a kDomain kind.
   static std::vector<HloInstruction*> MakeNonDomainInstructions(
-      const tensorflow::gtl::FlatSet<HloInstruction*>& instruction_set);
+      const tensorflow::gtl::FlatSet<HloInstruction*>& instruction_set,
+      const InstructionOrderMap& instructions_order);
+
+  // Populates domain_metadata_id_ that maps each HloInstruction to the unique
+  // ID of its associated domain metatadata.
+  Status PopulateDomainMetadataMap();
 
   string domain_kind_;
   std::vector<std::unique_ptr<DomainMetadata::Domain>> instruction_domains_;
   tensorflow::gtl::FlatMap<HloInstruction*, int64> instruction_to_domain_;
+  tensorflow::gtl::FlatMap<HloInstruction*, int64> domain_metadata_id_;
 };
 
 }  // namespace xla

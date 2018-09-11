@@ -880,10 +880,15 @@ Costs VirtualScheduler::Summary() const {
   // Print per device summary
   VLOG(1) << "Devices:";
   Costs critical_path_costs = Costs::ZeroCosts();
+  std::vector<string> device_names;
+  device_names.reserve(device_.size());
+  for (auto& it : device_) {
+    device_names.push_back(it.first);
+  }
+  std::sort(device_names.begin(), device_names.end());
 
-  for (const auto& device : device_) {
-    const auto& name = device.first;
-    const auto& state = device.second;
+  for (const auto& name : device_names) {
+    const auto& state = device_.at(name);
 
     std::map<string, int64> op_to_memory;
     // First profile only persistent memory usage.

@@ -49,7 +49,7 @@ class ConcatenateDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(9):
         result = sess.run(get_next)
@@ -83,7 +83,7 @@ class ConcatenateDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(9):
         result = sess.run(get_next)
@@ -110,8 +110,24 @@ class ConcatenateDatasetTest(test.TestCase):
     dataset_to_concatenate = dataset_ops.Dataset.from_tensor_slices(
         to_concatenate_components)
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "don't have the same number of elements"):
+    with self.assertRaisesRegexp(TypeError, "have different types"):
+      input_dataset.concatenate(dataset_to_concatenate)
+
+  def testConcatenateDatasetDifferentKeys(self):
+    input_components = {
+        "foo": np.array([[1], [2], [3], [4]]),
+        "bar": np.array([[12], [13], [14], [15]])
+    }
+    to_concatenate_components = {
+        "foo": np.array([[1], [2], [3], [4]]),
+        "baz": np.array([[5], [6], [7], [8]])
+    }
+
+    input_dataset = dataset_ops.Dataset.from_tensor_slices(input_components)
+    dataset_to_concatenate = dataset_ops.Dataset.from_tensor_slices(
+        to_concatenate_components)
+
+    with self.assertRaisesRegexp(TypeError, "have different types"):
       input_dataset.concatenate(dataset_to_concatenate)
 
   def testConcatenateDatasetDifferentType(self):

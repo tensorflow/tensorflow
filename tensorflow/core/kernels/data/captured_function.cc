@@ -23,12 +23,22 @@ limitations under the License.
 #include "tensorflow/core/platform/notification.h"
 
 namespace tensorflow {
+namespace data {
 
 /* static */
 Status CapturedFunction::Create(
     const NameAttrList& func, std::vector<Tensor> captured_inputs,
     std::unique_ptr<CapturedFunction>* out_function) {
-  out_function->reset(new CapturedFunction(func, std::move(captured_inputs)));
+  return Create(func, std::move(captured_inputs), true, out_function);
+}
+
+/* static */
+Status CapturedFunction::Create(
+    const NameAttrList& func, std::vector<Tensor> captured_inputs,
+    bool use_inter_op_parallelism,
+    std::unique_ptr<CapturedFunction>* out_function) {
+  out_function->reset(new CapturedFunction(func, std::move(captured_inputs),
+                                           use_inter_op_parallelism));
   return Status::OK();
 }
 
@@ -172,31 +182,17 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 
 }  // namespace
 
-Status CapturedFunction::MaybeInstantiate(
-    IteratorContext* ctx, FunctionLibraryRuntime::Handle* out_handle) {
-  mutex_lock l(mu_);
+Status CapturedFunction::GetHandle(IteratorContext* ctx,
+                                   FunctionLibraryRuntime::Handle* out_handle) {
+  tf_shared_lock l(mu_);
   if (lib_ == nullptr) {
-    // The context's runtime will be used for all subsequent calls.
-    lib_ = ctx->lib();
-    DCHECK(f_handle_ == kInvalidHandle);
-    FunctionLibraryRuntime::InstantiateOptions inst_opts;
-    inst_opts.overlay_lib = ctx->function_library().get();
-    inst_opts.state_handle = std::to_string(random::New64());
-    TF_RETURN_IF_ERROR(lib_->Instantiate(func_.name(), AttrSlice(&func_.attr()),
-                                         inst_opts, &f_handle_));
-    const FunctionBody* fbody = lib_->GetFunctionBody(f_handle_);
-    if (fbody == nullptr) {
-      return errors::Internal("Failed to instantiate function body.");
-    }
-    ret_types_ = fbody->ret_types;
-  } else {
-    // TODO(mrry): Consider moving this under a shared lock, as it is
-    // the common case.
-    if (ctx->lib() != lib_) {
-      return errors::Internal(
-          "Captured function was called with a different "
-          "FunctionLibraryRuntime*, which is not permitted.");
-    }
+    return errors::Internal("Captured function \"", func_.name(),
+                            "\" was called before it was instantiated.");
+  }
+  if (ctx->lib() != lib_) {
+    return errors::Internal("Captured function \"", func_.name(),
+                            "\" was called with a different "
+                            "FunctionLibraryRuntime*, which is not permitted.");
   }
   *out_handle = f_handle_;
   return Status::OK();
@@ -205,7 +201,7 @@ Status CapturedFunction::MaybeInstantiate(
 Status CapturedFunction::Run(IteratorContext* ctx, std::vector<Tensor>&& args,
                              std::vector<Tensor>* rets) {
   FunctionLibraryRuntime::Handle handle;
-  TF_RETURN_IF_ERROR(MaybeInstantiate(ctx, &handle));
+  TF_RETURN_IF_ERROR(GetHandle(ctx, &handle));
 
   FunctionLibraryRuntime::Options f_opts;
   f_opts.step_id = CapturedFunction::generate_step_id();
@@ -242,7 +238,7 @@ Status CapturedFunction::RunWithBorrowedArgs(IteratorContext* ctx,
                                              const std::vector<Tensor>& args,
                                              std::vector<Tensor>* rets) {
   FunctionLibraryRuntime::Handle handle;
-  TF_RETURN_IF_ERROR(MaybeInstantiate(ctx, &handle));
+  TF_RETURN_IF_ERROR(GetHandle(ctx, &handle));
 
   FunctionLibraryRuntime::Options f_opts;
   f_opts.step_id = CapturedFunction::generate_step_id();
@@ -277,9 +273,33 @@ Status CapturedFunction::RunWithBorrowedArgs(IteratorContext* ctx,
 }
 
 Status CapturedFunction::Instantiate(IteratorContext* ctx) {
-  FunctionLibraryRuntime::Handle unused_handle;
-  TF_RETURN_IF_ERROR(MaybeInstantiate(ctx, &unused_handle));
   mutex_lock l(mu_);
+  if (lib_ == nullptr) {
+    // The context's runtime will be used for all subsequent calls.
+    lib_ = ctx->lib();
+    DCHECK(f_handle_ == kInvalidHandle);
+    FunctionLibraryRuntime::InstantiateOptions inst_opts;
+    inst_opts.overlay_lib = ctx->function_library().get();
+    inst_opts.state_handle = std::to_string(random::New64());
+    inst_opts.create_kernels_eagerly = true;
+    if (!use_inter_op_parallelism_) {
+      inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
+    }
+    Status s = (lib_->Instantiate(func_.name(), AttrSlice(&func_.attr()),
+                                  inst_opts, &f_handle_));
+    TF_RETURN_IF_ERROR(s);
+    const FunctionBody* fbody = lib_->GetFunctionBody(f_handle_);
+    if (fbody == nullptr) {
+      return errors::Internal("Failed to instantiate function body.");
+    }
+    ret_types_ = fbody->ret_types;
+  } else {
+    if (ctx->lib() != lib_) {
+      return errors::Internal(
+          "Captured function was called with a different "
+          "FunctionLibraryRuntime*, which is not permitted.");
+    }
+  }
   if (captured_runner_ == nullptr) {
     captured_runner_ = *ctx->runner();
   }
@@ -343,7 +363,7 @@ void CapturedFunction::RunAsync(IteratorContext* ctx,
   // be deleted before `done` is called. Take care not to capture `ctx` in any
   // code that may execute asynchronously in this function.
   FunctionLibraryRuntime::Handle handle;
-  Status s = MaybeInstantiate(ctx, &handle);
+  Status s = GetHandle(ctx, &handle);
   if (!s.ok()) {
     done(s);
     return;
@@ -391,10 +411,13 @@ void CapturedFunction::RunAsync(IteratorContext* ctx,
 }
 
 CapturedFunction::CapturedFunction(const NameAttrList& func,
-                                   std::vector<Tensor> captured_inputs)
+                                   std::vector<Tensor> captured_inputs,
+                                   bool use_inter_op_parallelism)
     : func_(func),
       lib_(nullptr),
       f_handle_(kInvalidHandle),
-      captured_inputs_(std::move(captured_inputs)) {}
+      captured_inputs_(std::move(captured_inputs)),
+      use_inter_op_parallelism_(use_inter_op_parallelism) {}
 
+}  // namespace data
 }  // namespace tensorflow

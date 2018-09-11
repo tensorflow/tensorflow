@@ -49,7 +49,7 @@ class RangeDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, feed_dict={stop: 5})
       for i in range(5):
         self.assertEqual(i, sess.run(get_next))
@@ -64,7 +64,7 @@ class RangeDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, feed_dict={start: 2, stop: 5})
       for i in range(2, 5):
         self.assertEqual(i, sess.run(get_next))
@@ -80,7 +80,7 @@ class RangeDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, feed_dict={start: 2, stop: 10, step: 2})
       for i in range(2, 10, 2):
         self.assertEqual(i, sess.run(get_next))
@@ -95,7 +95,7 @@ class RangeDatasetTest(test.TestCase):
                                          step).make_initializable_iterator()
     init_op = iterator.initializer
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(init_op, feed_dict={start: 2, stop: 10, step: 0})
 
@@ -108,7 +108,7 @@ class RangeDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, feed_dict={start: 2, stop: 10, step: -1})
       # This for loop is a no-op but will ensure that the implementation is
       # consistent with range if it ever changes.
@@ -125,7 +125,7 @@ class RangeDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, feed_dict={start: 10, stop: 2})
       # This for loop is a no-op but will ensure that the implementation is
       # consistent with range if it ever changes.
@@ -143,7 +143,7 @@ class RangeDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, feed_dict={start: 10, stop: 2, step: 2})
       # This for loop is a no-op but will ensure that the implementation is
       # consistent with range if it ever changes.
@@ -161,7 +161,7 @@ class RangeDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, feed_dict={start: 10, stop: 2, step: -1})
       for i in range(10, 2, -1):
         self.assertEqual(i, sess.run(get_next))
@@ -203,7 +203,7 @@ class RangeDatasetTest(test.TestCase):
     break_point = 5
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, _ = _build_graph(start, stop)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(variables.global_variables_initializer())
         sess.run(init_op)
         for i in range(start, break_point):
@@ -212,7 +212,7 @@ class RangeDatasetTest(test.TestCase):
 
     with ops.Graph().as_default() as g:
       init_op, get_next, _, restore_op = _build_graph(start, stop)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         sess.run(restore_op)
         for i in range(break_point, stop):
@@ -223,7 +223,7 @@ class RangeDatasetTest(test.TestCase):
     # Saving and restoring in same session.
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, restore_op = _build_graph(start, stop)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(variables.global_variables_initializer())
         sess.run(init_op)
         for i in range(start, break_point):
@@ -254,7 +254,7 @@ class RangeDatasetTest(test.TestCase):
     break_epoch = 3
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, _ = _build_graph(start, stop, num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(variables.global_variables_initializer())
         sess.run(init_op)
         for _ in range(break_epoch):
@@ -272,7 +272,7 @@ class RangeDatasetTest(test.TestCase):
                                                       output_shapes)
       restore_op = self._restore_op(iterator._iterator_resource)
       get_next = iterator.get_next()
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(restore_op)
         for i in range(break_point, stop):
           self.assertEqual(i, sess.run(get_next))
@@ -300,7 +300,7 @@ class RangeDatasetTest(test.TestCase):
     break_point = 5
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, _ = _build_graph(start, stop)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(variables.global_variables_initializer())
         sess.run(init_op)
         for i in range(start, break_point):
@@ -311,7 +311,7 @@ class RangeDatasetTest(test.TestCase):
       # Intentionally build a graph with a different value for stop to make sure
       # the original dataset graph is actually getting loaded.
       init_op, get_next, _, restore_op = _build_graph(start, stop_1)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(restore_op)
         for i in range(break_point, stop):
           self.assertEqual(i, sess.run(get_next))
@@ -338,7 +338,7 @@ class RangeDatasetTest(test.TestCase):
     break_point = 5
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, _ = _build_graph(start, stop)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(variables.global_variables_initializer())
         sess.run(init_op)
         for i in range(start, break_point):
@@ -347,7 +347,7 @@ class RangeDatasetTest(test.TestCase):
 
     with ops.Graph().as_default() as g:
       init_op, get_next, _, restore_op = _build_graph(start, stop)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         sess.run(restore_op)
         for i in range(break_point, stop):
@@ -373,7 +373,7 @@ class RangeDatasetTest(test.TestCase):
 
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, _ = _build_graph(start, stop)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(variables.global_variables_initializer())
         sess.run(init_op)
         for i in range(start, break_point1):
@@ -382,7 +382,7 @@ class RangeDatasetTest(test.TestCase):
 
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, restore_op = _build_graph(start, stop)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(restore_op)
         for i in range(break_point1, break_point2):
           self.assertEqual(i, sess.run(get_next))
@@ -391,7 +391,7 @@ class RangeDatasetTest(test.TestCase):
     break_point2 = 7
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, restore_op = _build_graph(start, stop)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(restore_op)
         for i in range(break_point2, stop):
           self.assertEqual(i, sess.run(get_next))
@@ -417,7 +417,7 @@ class RangeDatasetTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, restore_op = _build_graph(
           start, stop, num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(variables.global_variables_initializer())
         sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
@@ -433,7 +433,7 @@ class RangeDatasetTest(test.TestCase):
 
     with ops.Graph().as_default() as g:
       init_op, get_next, _, restore_op = _build_graph(start, stop, num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(restore_op)
         for i in range(break_range, stop):
           self.assertEqual(i, sess.run(get_next))
@@ -460,7 +460,7 @@ class RangeDatasetTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, restore_op = _build_graph(
           start, stop, num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(variables.global_variables_initializer())
         sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
@@ -476,7 +476,7 @@ class RangeDatasetTest(test.TestCase):
 
     with ops.Graph().as_default() as g:
       init_op, get_next, _, restore_op = _build_graph(start, stop, num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(restore_op)
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)

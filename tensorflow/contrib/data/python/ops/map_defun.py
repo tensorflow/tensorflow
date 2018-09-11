@@ -53,6 +53,4 @@ def map_defun(fn, elems, output_dtypes, output_shapes):
 
   elems = [ops.convert_to_tensor(e) for e in elems]
   output_shapes = [tensor_shape.TensorShape(s) for s in output_shapes]
-  if not all(s.is_fully_defined() for s in output_shapes):
-    raise ValueError("All fn output shapes must be fully defined.")
   return gen_dataset_ops.map_defun(elems, output_dtypes, output_shapes, fn)
