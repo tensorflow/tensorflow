@@ -263,7 +263,7 @@ MatchBackwardInput(HloInstruction* conv) {
       !(window_util::HasBaseDilation(conv->window()) &&
         (reverse_filter->IsConstant() || is_1x1_filter))) {
     VLOG(1) << "Can't match to backwards convolution. Either filter is not "
-               "kReverse, or it's not a base-dialted conv with a 1x1 or "
+               "kReverse, or it's not a base-dilated conv with a 1x1 or "
                "constant filter.";
     return no_match_result;
   }
