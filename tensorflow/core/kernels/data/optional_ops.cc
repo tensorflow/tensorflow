@@ -231,10 +231,9 @@ static Status OptionalDeviceCopy(
   return Status::OK();
 }
 
-#define REGISTER_OPTIONAL_COPY(DIRECTION)                   \
-  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(     \
-      OptionalVariant, DIRECTION, kOptionalVariantTypeName, \
-      OptionalDeviceCopy)
+#define REGISTER_OPTIONAL_COPY(DIRECTION)               \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION( \
+      OptionalVariant, DIRECTION, OptionalDeviceCopy)
 
 REGISTER_OPTIONAL_COPY(VariantDeviceCopyDirection::HOST_TO_DEVICE);
 REGISTER_OPTIONAL_COPY(VariantDeviceCopyDirection::DEVICE_TO_HOST);
