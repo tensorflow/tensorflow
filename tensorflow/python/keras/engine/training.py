@@ -41,6 +41,7 @@ from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine.network import Network
+from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import weights_broadcast_ops
@@ -1338,6 +1339,9 @@ class Model(Network):
           initial_epoch=0,
           steps_per_epoch=None,
           validation_steps=None,
+          max_queue_size=10,
+          workers=1,
+          use_multiprocessing=False,
           **kwargs):
     """Trains the model for a fixed number of epochs (iterations on a dataset).
 
@@ -1350,19 +1354,23 @@ class Model(Network):
           - A dict mapping input names to the corresponding array/tensors,
             if the model has named inputs.
           - A `tf.data` dataset or a dataset iterator. Should return a tuple
-            of either (inputs, targets) or (inputs, targets, sample_weights).
+            of either `(inputs, targets)` or
+            `(inputs, targets, sample_weights)`.
+          - A generator or `keras.utils.Sequence` returning `(inputs, targets)`
+            or `(inputs, targets, sample weights)`.
         y: Target data. Like the input data `x`,
           it could be either Numpy array(s) or TensorFlow tensor(s).
           It should be consistent with `x` (you cannot have Numpy inputs and
-          tensor targets, or inversely). If `x` is a dataset or dataset
-          iterator, `y` should not be specified
-          (since targets will be obtained from the iterator).
+          tensor targets, or inversely). If `x` is a dataset, dataset
+          iterator, generator, or `keras.utils.Sequence` instance, `y` should
+          not be specified (since targets will be obtained from `x`).
         batch_size: Integer or `None`.
             Number of samples per gradient update.
             If unspecified, `batch_size` will default to 32.
             Do not specify the `batch_size` if your data is in the
-            form of symbolic tensors, datasets, or dataset iterators
-            (since they generate batches).
+            form of symbolic tensors, dataset, dataset iterators,
+            generators, or `keras.utils.Sequence` instances (since they generate
+            batches).
         epochs: Integer. Number of epochs to train the model.
             An epoch is an iteration over the entire `x` and `y`
             data provided.
@@ -1384,7 +1392,8 @@ class Model(Network):
             on this data at the end of each epoch.
             The validation data is selected from the last samples
             in the `x` and `y` data provided, before shuffling. This argument is
-            not supported when `x` is a dataset or a dataset iterator.
+            not supported when `x` is a dataset, dataset iterator, generator or
+           `keras.utils.Sequence` instance.
         validation_data: Data on which to evaluate
             the loss and any model metrics at the end of each epoch.
             The model will not be trained on this data.
@@ -1415,8 +1424,9 @@ class Model(Network):
             to apply a different weight to every timestep of every sample.
             In this case you should make sure to specify
             `sample_weight_mode="temporal"` in `compile()`. This argument is not
-            supported when `x` is a dataset or a dataset iterator, instead
-            provide the sample_weights as the third element of `x`.
+            supported when `x` is a dataset, dataset iterator, generator, or
+           `keras.utils.Sequence` instance, instead provide the sample_weights
+            as the third element of `x`.
         initial_epoch: Integer.
             Epoch at which to start training
             (useful for resuming a previous training run).
@@ -1430,6 +1440,20 @@ class Model(Network):
         validation_steps: Only relevant if `steps_per_epoch`
             is specified. Total number of steps (batches of samples)
             to validate before stopping.
+        max_queue_size: Integer. Used for generator or `keras.utils.Sequence`
+            input only. Maximum size for the generator queue.
+            If unspecified, `max_queue_size` will default to 10.
+        workers: Integer. Used for generator or `keras.utils.Sequence` input
+            only. Maximum number of processes to spin up
+            when using process-based threading. If unspecified, `workers`
+            will default to 1. If 0, will execute the generator on the main
+            thread.
+        use_multiprocessing: Boolean. Used for generator or
+            `keras.utils.Sequence` input only. If `True`, use process-based
+            threading. If unspecified, `use_multiprocessing` will default to
+            `False`. Note that because this implementation relies on
+            multiprocessing, you should not pass non-picklable arguments to
+            the generator as they can't be passed easily to children processes.
         **kwargs: Used for backwards compatibility.
 
     Returns:
@@ -1445,6 +1469,23 @@ class Model(Network):
     """
     # TODO(fchollet): this method may be creating reference cycles, which would
     # lead to accumulating garbage in memory when called in a loop. Investigate.
+
+    if data_utils.is_generator_or_sequence(x):
+      training_utils.check_generator_arguments(y, sample_weight)
+      return self.fit_generator(
+          x,
+          steps_per_epoch=steps_per_epoch,
+          epochs=epochs,
+          verbose=verbose,
+          callbacks=callbacks,
+          validation_data=validation_data,
+          validation_steps=validation_steps,
+          class_weight=class_weight,
+          max_queue_size=max_queue_size,
+          workers=workers,
+          use_multiprocessing=use_multiprocessing,
+          shuffle=shuffle,
+          initial_epoch=initial_epoch)
 
     # Backwards compatibility
     if batch_size is None and steps_per_epoch is None:
@@ -1588,7 +1629,10 @@ class Model(Network):
                batch_size=None,
                verbose=1,
                sample_weight=None,
-               steps=None):
+               steps=None,
+               max_queue_size=10,
+               workers=1,
+               use_multiprocessing=False):
     """Returns the loss value & metrics values for the model in test mode.
 
     Computation is done in batches.
@@ -1602,18 +1646,21 @@ class Model(Network):
           - A dict mapping input names to the corresponding array/tensors,
             if the model has named inputs.
           - A `tf.data` dataset or a dataset iterator.
+          - A generator or `keras.utils.Sequence` instance.
         y: Target data. Like the input data `x`,
           it could be either Numpy array(s) or TensorFlow tensor(s).
           It should be consistent with `x` (you cannot have Numpy inputs and
           tensor targets, or inversely).
-          If `x` is a dataset or a dataset iterator, `y` should not be specified
-          (since targets will be obtained from the iterator/dataset).
+          If `x` is a dataset, dataset iterator, generator or
+          `keras.utils.Sequence` instance, `y` should not be specified (since
+          targets will be obtained from the iterator/dataset).
         batch_size: Integer or `None`.
             Number of samples per gradient update.
             If unspecified, `batch_size` will default to 32.
             Do not specify the `batch_size` is your data is in the
-            form of symbolic tensors, datasets, or dataset iterators
-            (since they generate batches).
+            form of symbolic tensors, dataset, dataset iterators,
+            generators, or `keras.utils.Sequence` instances (since they generate
+            batches).
         verbose: 0 or 1. Verbosity mode.
             0 = silent, 1 = progress bar.
         sample_weight: Optional Numpy array of weights for
@@ -1627,11 +1674,25 @@ class Model(Network):
             to apply a different weight to every timestep of every sample.
             In this case you should make sure to specify
             `sample_weight_mode="temporal"` in `compile()`. This argument is not
-            supported when `x` is a dataset or a dataset iterator.
+            supported when `x` is a dataset or a dataset iterator, instead pass
+            sample weights as the third element of `x`.
         steps: Integer or `None`.
             Total number of steps (batches of samples)
             before declaring the evaluation round finished.
             Ignored with the default value of `None`.
+        max_queue_size: Integer. Used for generator or `keras.utils.Sequence`
+            input only. Maximum size for the generator queue.
+            If unspecified, `max_queue_size` will default to 10.
+        workers: Integer. Used for generator or `keras.utils.Sequence` input
+            only. Maximum number of processes to spin up when using
+            process-based threading. If unspecified, `workers` will default
+            to 1. If 0, will execute the generator on the main thread.
+        use_multiprocessing: Boolean. Used for generator or
+            `keras.utils.Sequence` input only. If `True`, use process-based
+            threading. If unspecified, `use_multiprocessing` will default to
+            `False`. Note that because this implementation relies on
+            multiprocessing, you should not pass non-picklable arguments to
+            the generator as they can't be passed easily to children processes.
 
     Returns:
         Scalar test loss (if the model has a single output and no metrics)
@@ -1642,6 +1703,16 @@ class Model(Network):
     Raises:
         ValueError: in case of invalid arguments.
     """
+    if data_utils.is_generator_or_sequence(x):
+      training_utils.check_generator_arguments(y, sample_weight)
+      return self.evaluate_generator(
+          x,
+          steps=steps,
+          verbose=verbose,
+          max_queue_size=max_queue_size,
+          workers=workers,
+          use_multiprocessing=use_multiprocessing)
+
     # Backwards compatibility.
     if batch_size is None and steps is None:
       batch_size = 32
@@ -1688,7 +1759,14 @@ class Model(Network):
           verbose=verbose,
           steps=steps)
 
-  def predict(self, x, batch_size=None, verbose=0, steps=None):
+  def predict(self,
+              x,
+              batch_size=None,
+              verbose=0,
+              steps=None,
+              max_queue_size=10,
+              workers=1,
+              use_multiprocessing=False):
     """Generates output predictions for the input samples.
 
     Computation is done in batches.
@@ -1700,16 +1778,32 @@ class Model(Network):
           - A TensorFlow tensor, or a list of tensors
             (in case the model has multiple inputs).
           - A `tf.data` dataset or a dataset iterator.
+          - A generator or `keras.utils.Sequence` instance.
         batch_size: Integer or `None`.
             Number of samples per gradient update.
             If unspecified, `batch_size` will default to 32.
             Do not specify the `batch_size` is your data is in the
-            form of symbolic tensors, dataset, or dataset iterators
-            (since they generate batches).
+            form of symbolic tensors, dataset, dataset iterators,
+            generators, or `keras.utils.Sequence` instances (since they generate
+            batches).
         verbose: Verbosity mode, 0 or 1.
         steps: Total number of steps (batches of samples)
             before declaring the prediction round finished.
             Ignored with the default value of `None`.
+        max_queue_size: Integer. Used for generator or `keras.utils.Sequence`
+            input only. Maximum size for the generator queue.
+            If unspecified, `max_queue_size` will default to 10.
+        workers: Integer. Used for generator or `keras.utils.Sequence` input
+            only. Maximum number of processes to spin up when using
+            process-based threading. If unspecified, `workers` will default
+            to 1. If 0, will execute the generator on the main thread.
+        use_multiprocessing: Boolean. Used for generator or
+            `keras.utils.Sequence` input only. If `True`, use process-based
+            threading. If unspecified, `use_multiprocessing` will default to
+            `False`. Note that because this implementation relies on
+            multiprocessing, you should not pass non-picklable arguments to
+            the generator as they can't be passed easily to children processes.
+
 
     Returns:
         Numpy array(s) of predictions.
@@ -1720,6 +1814,15 @@ class Model(Network):
             or in case a stateful model receives a number of samples
             that is not a multiple of the batch size.
     """
+    if data_utils.is_generator_or_sequence(x):
+      return self.predict_generator(
+          x,
+          steps=steps,
+          verbose=verbose,
+          max_queue_size=max_queue_size,
+          workers=workers,
+          use_multiprocessing=use_multiprocessing)
+
     # Backwards compatibility.
     if batch_size is None and steps is None:
       batch_size = 32
@@ -2071,7 +2174,7 @@ class Model(Network):
     Arguments:
         generator: Generator yielding tuples (inputs, targets)
             or (inputs, targets, sample_weights)
-            or an instance of Sequence (keras.utils.Sequence)
+            or an instance of `keras.utils.Sequence`
             object in order to avoid duplicate data
             when using multiprocessing.
         steps: Total number of steps (batches of samples)
@@ -2135,9 +2238,8 @@ class Model(Network):
 
     Arguments:
         generator: Generator yielding batches of input samples
-            or an instance of Sequence (keras.utils.Sequence)
-            object in order to avoid duplicate data
-            when using multiprocessing.
+            or an instance of `keras.utils.Sequence` object in order to
+            avoid duplicate data when using multiprocessing.
         steps: Total number of steps (batches of samples)
             to yield from `generator` before stopping.
             Optional for `Sequence`: if unspecified, will use
