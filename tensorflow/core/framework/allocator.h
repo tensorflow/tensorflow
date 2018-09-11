@@ -23,11 +23,12 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/type_traits.h"
-#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+class Variant;
 
 // Attributes for a single allocation call. Different calls to the same
 // allocator could potentially have different allocation attributes.
@@ -228,13 +229,9 @@ class Allocator {
     for (size_t i = 0; i < n; ++p, ++i) p->~ResourceHandle();
   }
 
-  virtual void RunVariantCtor(Variant* p, size_t n) {
-    for (size_t i = 0; i < n; ++p, ++i) new (p) Variant();
-  }
+  virtual void RunVariantCtor(Variant* p, size_t n);
 
-  virtual void RunVariantDtor(Variant* p, size_t n) {
-    for (size_t i = 0; i < n; ++p, ++i) p->~Variant();
-  }
+  virtual void RunVariantDtor(Variant* p, size_t n);
 
   // TODO(jeff): Maybe provide some interface to give info about
   // current allocation state (total number of bytes available for

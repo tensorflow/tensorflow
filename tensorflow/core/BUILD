@@ -720,6 +720,7 @@ cc_library(
     name = "abi",
     srcs = ["platform/abi.cc"],
     hdrs = ["platform/abi.h"],
+    deps = [":platform_base"],
 )
 
 cc_library(
