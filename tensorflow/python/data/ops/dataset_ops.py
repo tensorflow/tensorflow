@@ -1009,16 +1009,18 @@ class Dataset(object):
   def flat_map(self, map_func):
     """Maps `map_func` across this dataset and flattens the result. 
     
-    Will produce similar results to `tf.data.Dataset.interleave(cycle_length=1)`. 
+    `tf.data.Dataset.interleave()` is a generalization of `flat_map`, since 
+    `flat_map` produces a similar outputs as `tf.data.Dataset.interleave(cycle_length=1)`
+    
     Use `flat_map` if you want to make sure, that the order of your dataset stays the same.
-    For example:
+    For example, to implement unbatch:
 
     ```python
     # NOTE: The following examples use `{ ... }` to represent the
     # contents of a dataset. '[...]' represents a tensor.
     a = {[1,2,3,4,5], [6,7,8,9], [10]}
     
-    a.flat_map(lambda x: Dataset.from_tensors(x)) == 
+    a.flat_map(lambda x: Dataset.from_tensor_slices(x)) == 
       {[1,2,3,4,5,6,7,8,9,10]}
     ```
     Args:
