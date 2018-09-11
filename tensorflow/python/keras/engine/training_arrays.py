@@ -55,7 +55,7 @@ def fit_loop(model,
 
   Arguments:
       model: Keras Model instance.
-      inputs: List of input arrays.
+      inputs: Either a list of arrays or a dictionary.
       targets: List of target arrays.
       sample_weights: Optional list of sample weight arrays.
       batch_size: Integer batch size or None if unknown.
@@ -88,6 +88,7 @@ def fit_loop(model,
 
   sample_weights = sample_weights or []
   val_sample_weights = val_sample_weights or []
+  inputs = training_utils.ModelInputs(inputs).as_list()
   if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
     ins = inputs + targets + sample_weights + [1]
   else:
@@ -262,6 +263,7 @@ def predict_loop(model, inputs, batch_size=32, verbose=0, steps=None):
   model._make_predict_function()
   f = model.predict_function
 
+  inputs = training_utils.ModelInputs(inputs).as_list()
   if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
     ins = inputs + [0]
   else:
@@ -368,6 +370,7 @@ def test_loop(model,
   f = model.test_function
 
   sample_weights = sample_weights or []
+  inputs = training_utils.ModelInputs(inputs).as_list()
   if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
     ins = inputs + targets + sample_weights + [0]
   else:

@@ -76,7 +76,8 @@ class QuantizeWeightsTest : public ::testing::Test {
 
   void CheckWeights(const Model* input_model_packed,
                     const Model* output_model_packed,
-                    bool use_hybrid_evaluation) {
+                    bool use_hybrid_evaluation,
+                    uint64_t weights_min_num_elements = 1024) {
     std::unique_ptr<ModelT> input_model;
     input_model.reset(input_model_packed->UnPack());
 
@@ -113,8 +114,9 @@ class QuantizeWeightsTest : public ::testing::Test {
       int tensor_size = GetElementsNum(tensor);
       // If the tensor_size is less than 1024 we expect the tensor to remain
       // unquantized.
-      if (tensor_size < 1024) {
-        ASSERT_TRUE(tensor->type == TensorType_FLOAT32) << tensor->name;
+      if (tensor_size < weights_min_num_elements) {
+        ASSERT_TRUE(tensor->type == TensorType_FLOAT32)
+            << tensor->name << " of type " << tensor->type;
         const OperatorT* preceding_op = GetOpWithOutput(subgraph, tensor_idx);
         // The weight tensor should not come from a dequantize op.
         ASSERT_TRUE(preceding_op == nullptr);
@@ -183,12 +185,32 @@ TEST_F(QuantizeWeightsTest, SimpleTestWithoutHybrid) {
 
   flatbuffers::FlatBufferBuilder builder;
   // Disable hybrid evaluation.
-  EXPECT_EQ(QuantizeWeights(&builder, input_model, false), kTfLiteOk);
+  EXPECT_EQ(internal::QuantizeWeights(&builder, input_model, false), kTfLiteOk);
 
   const uint8_t* buffer = builder.GetBufferPointer();
   const Model* output_model = GetModel(buffer);
 
   CheckWeights(input_model, output_model, false);
+}
+
+TEST_F(QuantizeWeightsTest, SimpleTestWithWeightsMinNumElements) {
+  string model_path =
+      "third_party/tensorflow/contrib/lite/tools/optimize/testdata/"
+      "mobilenet_v1_0.25_128.tflite";
+  std::unique_ptr<FlatBufferModel> input_fb =
+      FlatBufferModel::BuildFromFile(model_path.data());
+  const Model* input_model = input_fb->GetModel();
+
+  flatbuffers::FlatBufferBuilder builder;
+  // Make weights_min_size sufficiently large such that no quantization should
+  // happen, i.e. the original model is the same size as the old one.
+  const uint64_t kWeightsMinNumElements = 1000000;
+  EXPECT_EQ(QuantizeWeights(&builder, input_model, kWeightsMinNumElements),
+            kTfLiteOk);
+
+  const uint8_t* buffer = builder.GetBufferPointer();
+  const Model* output_model = GetModel(buffer);
+  CheckWeights(input_model, output_model, true, kWeightsMinNumElements);
 }
 
 // TODO(suharshs): Add tests that run the resulting model.

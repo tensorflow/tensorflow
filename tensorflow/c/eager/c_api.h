@@ -171,6 +171,12 @@ TF_CAPI_EXPORT extern int64_t TFE_TensorHandleDim(TFE_TensorHandle* h,
 TF_CAPI_EXPORT extern const char* TFE_TensorHandleDeviceName(
     TFE_TensorHandle* h, TF_Status* status);
 
+// Return a pointer to a new TFE_TensorHandle that shares the underlying tensor
+// with `h`. On success, `status` is set to OK. On failure, `status` reflects
+// the error and a nullptr is returned.
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_TensorHandleCopySharingTensor(
+    TFE_TensorHandle* h, TF_Status* status);
+
 // This function will block till the operation that produces `h` has
 // completed. The memory returned might alias the internal memory used by
 // TensorFlow. Hence, callers should not mutate this memory (for example by

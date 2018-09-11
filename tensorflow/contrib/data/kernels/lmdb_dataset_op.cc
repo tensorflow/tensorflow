@@ -22,6 +22,7 @@ limitations under the License.
 #include "lmdb.h"  // NOLINT(build/include)
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class LMDBDatasetOp : public DatasetOpKernel {
@@ -212,4 +213,5 @@ class LMDBDatasetOp : public DatasetOpKernel {
 REGISTER_KERNEL_BUILDER(Name("LMDBDataset").Device(DEVICE_CPU), LMDBDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

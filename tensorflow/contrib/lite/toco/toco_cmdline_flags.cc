@@ -165,7 +165,13 @@ bool ParseTocoFlagsFromCommandLineFlags(
            parsed_flags.post_training_quantize.default_value(),
            "Boolean indicating whether to quantize the weights of the "
            "converted float model. Model size will be reduced and there will "
-           "be latency improvements (at the cost of accuracy).")};
+           "be latency improvements (at the cost of accuracy)."),
+      // WARNING: Experimental interface, subject to change
+      Flag("allow_eager_ops", parsed_flags.allow_eager_ops.bind(),
+           parsed_flags.allow_eager_ops.default_value(), ""),
+      // WARNING: Experimental interface, subject to change
+      Flag("force_eager_ops", parsed_flags.force_eager_ops.bind(),
+           parsed_flags.force_eager_ops.default_value(), "")};
   bool asked_for_help =
       *argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-help"));
   if (asked_for_help) {
@@ -260,6 +266,16 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
   READ_TOCO_FLAG(split_tflite_lstm_inputs, FlagRequirement::kNone);
   READ_TOCO_FLAG(quantize_weights, FlagRequirement::kNone);
   READ_TOCO_FLAG(post_training_quantize, FlagRequirement::kNone);
+  READ_TOCO_FLAG(allow_eager_ops, FlagRequirement::kNone);
+  READ_TOCO_FLAG(force_eager_ops, FlagRequirement::kNone);
+
+  if (parsed_toco_flags.force_eager_ops.value() &&
+      !parsed_toco_flags.allow_eager_ops.value()) {
+    // TODO(ycling): Consider to enforce `allow_eager_ops` when
+    // `force_eager_ops` is true.
+    LOG(WARNING) << "--force_eager_ops should always be used with "
+                    "--allow_eager_ops.";
+  }
 
   // Deprecated flag handling.
   if (parsed_toco_flags.input_type.specified()) {

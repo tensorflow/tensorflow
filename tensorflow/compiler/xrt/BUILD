@@ -56,6 +56,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
 )

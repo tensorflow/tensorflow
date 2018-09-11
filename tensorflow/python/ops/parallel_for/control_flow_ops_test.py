@@ -1259,7 +1259,7 @@ class SparseTest(PForTest):
                                         [3])  # [0, 2, 0]
 
     pfor = pfor_control_flow_ops.pfor(loop_fn, num_iters)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(pfor, feed_dict={num_iters: 3})
 
   def test_sparse_result_none_stacked(self):

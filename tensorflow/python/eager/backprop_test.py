@@ -64,7 +64,7 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(fn, [0])(var)[0]
     grad = self.evaluate(ops.convert_to_tensor(grad))
 
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode():
       tf_var = array_ops.constant(var_np, dtypes.float32)
       tf_ind1 = array_ops.constant([0, 1])
       tf_ind2 = array_ops.constant([2, 3])
@@ -79,7 +79,7 @@ class BackpropTest(test.TestCase):
       tf_dense_grad = math_ops.unsorted_segment_sum(
           tf_grad.values, tf_grad.indices, tf_grad.dense_shape[0])
 
-      self.assertAllClose(grad, tf_dense_grad.eval())
+      self.assertAllClose(grad, self.evaluate(tf_dense_grad))
 
   def testImplicitGradWithResourceVariable(self):
     x = resource_variable_ops.ResourceVariable(
@@ -198,7 +198,7 @@ class BackpropTest(test.TestCase):
     grad = backprop.implicit_grad(f)()[0][0]
     opt = training.GradientDescentOptimizer(lrn_rate)
 
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       tf_x = array_ops.ones((batch_size), dtypes.int64)
       # TODO(ashankar,apassos): Change to ResourceVariable.
       tf_embedding = variables.Variable(
@@ -312,6 +312,24 @@ class BackpropTest(test.TestCase):
     f = constant_op.constant([[0.1]])
     grad = backprop.gradients_function(second, [0])(f)[0]
     self.assertAllEqual([[0.0]], grad)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testWatchingIsTapeLocal(self):
+    x1 = resource_variable_ops.ResourceVariable(2.0, trainable=False)
+    x2 = resource_variable_ops.ResourceVariable(2.0, trainable=False)
+
+    with backprop.GradientTape() as tape1:
+      with backprop.GradientTape() as tape2:
+        tape1.watch(x1)
+        tape2.watch([x1, x2])
+        y = x1 ** 3
+        z = x2 ** 2
+        dy, dz = tape2.gradient([y, z], [x1, x2])
+      d2y, d2z = tape1.gradient([dy, dz], [x1, x2])
+
+    self.evaluate([x1.initializer, x2.initializer])
+    self.assertEqual(self.evaluate(d2y), 12.0)
+    self.assertIsNone(d2z)
 
   @test_util.assert_no_new_tensors
   def testMakeVJP(self):
@@ -454,6 +472,18 @@ class BackpropTest(test.TestCase):
       return constant_op.constant(1.0)
 
     self.assertEqual(backprop.implicit_grad(f)()[0][0], None)
+
+  @test_util.assert_no_new_tensors
+  def testGradientTapeReEnterContext(self):
+    g = backprop.GradientTape()
+    with g:
+      x = constant_op.constant(3.0)
+      g.watch(x)
+      y = 2*x
+    with g:
+      z = 2*y
+    grad = g.gradient(target=z, sources=[x])
+    self.assertEqual(self.evaluate(grad), [4.0])
 
   @test_util.assert_no_new_tensors
   @test_util.run_in_graph_and_eager_modes
@@ -923,7 +953,7 @@ class BackpropTest(test.TestCase):
   def testZerosCacheDoesntLeakAcrossGraphs(self):
     with context.graph_mode():
       def get_grad():
-        with ops.Graph().as_default(), self.test_session():
+        with ops.Graph().as_default(), self.cached_session():
           t = constant_op.constant(1, dtype=dtypes.float32, shape=(10, 4))
           x = constant_op.constant(2, dtype=dtypes.float32, shape=(10, 4))
           with backprop.GradientTape() as tape:
@@ -937,6 +967,60 @@ class BackpropTest(test.TestCase):
       grad2 = get_grad()
 
       self.assertAllEqual(grad1, grad2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSelectivelyWatchVariables(self):
+    x1 = resource_variable_ops.ResourceVariable(1.0)
+    x2 = resource_variable_ops.ResourceVariable(1.0)
+    with backprop.GradientTape(watch_accessed_variables=False) as tape:
+      tape.watch(x2)
+      y = x1**2
+      z = x2**3
+    self.assertTupleEqual(tape.watched_variables(), (x2,))
+    dy, dz = tape.gradient([y, z], [x1, x2])
+    self.evaluate([x1.initializer, x2.initializer])
+    self.assertIsNone(dy)
+    self.assertEqual(self.evaluate(dz), 3.0)
+
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDifferentiatingScalarCache(self):
+    # In the following test, if x2 = x1 (i.e the objects are the exact same),
+    # then y is essentially, 2*x1, and dy/dx1 = 2.
+    # When we had a pure scalar cache in eager, this would be the case. This
+    # test prevents us from going back to that case.
+    with backprop.GradientTape(persistent=False) as g:
+      x1 = constant_op.constant(3.0)
+      x2 = constant_op.constant(3.0)
+      g.watch(x1)
+      g.watch(x2)
+      y = x1 + x2
+    grad = g.gradient(target=y, sources=[x1])
+    self.assertEqual(self.evaluate(grad), [1.0])
+
+  def testVariablesAndConstantsProduceTheSameGradients(self):
+
+    # In the following test, differentiating [y, z] against [a, b] gives:
+    # (dy/da + dz/da, dy/db + dz/db).
+    # If a and b are the same constant, dz/da will not be 0 (which it should
+    # be).
+    # This is solved by using variable since doing a read_value on a tensor will
+    # produce a new tensor and corresponding TensorHandle, and not reuse the
+    # same tensor (which would happen if we are using a cache and reusing
+    # EagerTensor objects).
+    def get_grads(a, b):
+      with backprop.GradientTape() as tape:
+        tape.watch([a, b])
+        y = a**3
+        z = b**2
+      return tape.gradient([y, z], [a, b])
+
+    gradients_constants = get_grads(
+        constant_op.constant(2.0), constant_op.constant(2.0))
+    gradients_variables = get_grads(
+        resource_variable_ops.ResourceVariable(2.0),
+        resource_variable_ops.ResourceVariable(2.0))
+    self.assertAllEqual(gradients_constants, gradients_variables)
 
 
 if __name__ == '__main__':

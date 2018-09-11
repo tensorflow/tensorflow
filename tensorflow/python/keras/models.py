@@ -414,10 +414,10 @@ def clone_and_build_model(
       this argument must be set to `True` (default `False`). To restore the
       original model, use the function
       `in_place_subclassed_model_state_restoration(model)`.
-    optimizer_iterations: An iterations variable to pass to the optimizer if
-      the model uses a TFOptimizer, and if the clone is compiled. This is used
-      when a Keras model is cloned into an Estimator model function, because
-      Estimators create their own global step variable.
+    optimizer_iterations: An iterations variable that will be incremented by the
+      optimizer if the clone is compiled. This argument is used when a Keras
+      model is cloned into an Estimator model function, because Estimators
+      create their own global step variable.
 
   Returns:
     Clone of the model.
@@ -444,6 +444,8 @@ def clone_and_build_model(
     clone = model
     _in_place_subclassed_model_reset(clone)
     if input_tensors is not None:
+      if isinstance(input_tensors, (list, tuple)) and len(input_tensors) == 1:
+        input_tensors = input_tensors[0]
       clone._set_inputs(input_tensors)
 
   # Compile/Build model
@@ -458,6 +460,8 @@ def clone_and_build_model(
     else:
       optimizer_config = model.optimizer.get_config()
       optimizer = model.optimizer.__class__.from_config(optimizer_config)
+      if optimizer_iterations is not None:
+        optimizer.iterations = optimizer_iterations
 
     clone.compile(
         optimizer,

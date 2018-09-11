@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
@@ -235,6 +237,19 @@ class HloModule {
   StatusOr<HloInstruction*> LaunderConstInstructionFromModule(
       const HloInstruction* hlo);
 
+  // Sets the schedule of the module to the given schedule.
+  Status set_schedule(HloSchedule schedule);
+
+  // Clears the schedule of the module.
+  void clear_schedule() { schedule_.reset(); }
+
+  // Returns true if the module has a schedule set.
+  bool has_schedule() const { return schedule_.has_value(); }
+
+  // Returns the schedue of the module. CHECK fails if no schedule is set.
+  const HloSchedule& schedule() const { return *schedule_; }
+  HloSchedule& schedule() { return *schedule_; }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
@@ -262,6 +277,11 @@ class HloModule {
   static std::atomic<int> next_unique_module_id_;
   // A unique id to label modules with.
   int unique_id_;
+
+  // The HloSchedule of the module. The schedule if it exists contains a
+  // sequential order of instructions for each non-fusion computation in the
+  // module.
+  absl::optional<HloSchedule> schedule_;
 };
 
 }  // namespace xla

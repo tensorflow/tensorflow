@@ -167,7 +167,7 @@ class TensorArrayOp : public XlaOpKernel {
 
     XlaContext& xc = XlaContext::Get(ctx);
     XlaResource* var;
-    string name = strings::StrCat("TensorArray: ", tensor_array_name_);
+    string name = absl::StrCat("TensorArray: ", tensor_array_name_);
     OP_REQUIRES_OK(
         ctx, xc.CreateResource(XlaResource::kTensorArray, -1, std::move(name),
                                dtype_, shape, value, /*tensor_array_size=*/size,

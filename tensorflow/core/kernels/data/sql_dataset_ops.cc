@@ -24,8 +24,9 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
+
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following ops.
 
@@ -211,5 +212,5 @@ class SqlDatasetOp : public DatasetOpKernel {
 REGISTER_KERNEL_BUILDER(Name("SqlDataset").Device(DEVICE_CPU), SqlDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

@@ -36,6 +36,8 @@ class ShardingMetadata : public DomainMetadata {
 
   bool Matches(const DomainMetadata& other) const override;
 
+  size_t Hash() const override;
+
   string ToString() const override;
 
   const HloSharding* sharding() const { return sharding_.get(); }

@@ -49,7 +49,7 @@ class XRTStateHelpers {
   // TF_ASSIGN_OR_RETURN macro, which doesn't work within the body of an
   // OpKernel::Compute method.
   static Status MakeLiteral(const xla::LiteralProto& proto,
-                            std::unique_ptr<xla::Literal>* literal) {
+                            xla::Literal* literal) {
     TF_ASSIGN_OR_RETURN(*literal, xla::Literal::CreateFromProto(proto));
     return Status::OK();
   }
@@ -173,7 +173,7 @@ class XRTAllocateOp : public OpKernel {
         errors::InvalidArgument(
             "Unable to parse allocation input to XLAAllocation"));
 
-    std::unique_ptr<xla::Literal> literal;
+    xla::Literal literal;
     OP_REQUIRES_OK(
         ctx, XRTStateHelpers::MakeLiteral(allocation_proto.value(), &literal));
 
@@ -189,7 +189,7 @@ class XRTAllocateOp : public OpKernel {
 
     XRTTupleAllocation* allocation;
     OP_REQUIRES_OK(ctx, XRTTupleAllocation::CreateAndTransfer(
-                            *literal, device_ref.backend(),
+                            literal, device_ref.backend(),
                             device_ref.device_ordinal(), &allocation));
 
     // Intern takes ownership of our reference to allocation.
@@ -381,11 +381,11 @@ class XRTReadLiteralOp : public OpKernel {
     OP_REQUIRES_OK(ctx, DeviceAccessor::InitScopedRef(
                             ctx, allocation->device_ordinal(), &device_ref));
 
-    std::unique_ptr<xla::Literal> literal;
+    xla::Literal literal;
     OP_REQUIRES_OK(
         ctx, allocation->ToLiteral(device_ref.backend(),
                                    device_ref.device_ordinal(), &literal));
-    xla::LiteralProto literal_proto = literal->ToProto();
+    xla::LiteralProto literal_proto = literal.ToProto();
 
     Tensor output(DT_STRING, TensorShape({}));
     literal_proto.SerializeToString(&output.scalar<string>()());

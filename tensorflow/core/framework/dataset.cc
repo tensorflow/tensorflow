@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 
 namespace tensorflow {
+namespace data {
 
 namespace {
 
@@ -329,4 +330,5 @@ void BackgroundWorker::WorkerLoop() {
   }
 }
 
+}  // namespace data
 }  // namespace tensorflow

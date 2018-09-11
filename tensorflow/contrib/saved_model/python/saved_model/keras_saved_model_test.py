@@ -50,7 +50,7 @@ class TestModelSavingandLoading(test.TestCase):
     return os.path.join(temp_dir, dirname)
 
   def test_saving_sequential_model(self):
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.RepeatVector(3))
@@ -75,7 +75,7 @@ class TestModelSavingandLoading(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_saving_sequential_model_without_compile(self):
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.RepeatVector(3))
@@ -92,7 +92,7 @@ class TestModelSavingandLoading(test.TestCase):
       self.assertAllClose(ref_y, y, atol=1e-05)
 
   def test_saving_functional_model(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = keras.layers.Input(shape=(3,))
       x = keras.layers.Dense(2)(inputs)
       output = keras.layers.Dense(3)(x)
@@ -117,7 +117,7 @@ class TestModelSavingandLoading(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_saving_functional_model_without_compile(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = keras.layers.Input(shape=(3,))
       x = keras.layers.Dense(2)(inputs)
       output = keras.layers.Dense(3)(x)
@@ -138,7 +138,7 @@ class TestModelSavingandLoading(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_saving_with_tf_optimizer(self):
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.Dense(3))

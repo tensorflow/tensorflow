@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class ThreadPoolResource : public ResourceBase {
@@ -214,4 +215,5 @@ REGISTER_KERNEL_BUILDER(Name("ThreadPoolDataset").Device(DEVICE_CPU),
                         ThreadPoolDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

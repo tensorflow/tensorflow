@@ -47,6 +47,27 @@ bool IsInstructionElementwiseOnOperand(const HloInstruction* instruction,
         return instruction->IsElementwiseOnOperand(operand_index);
       });
 }
+
+string PrecisionConfigToString(const PrecisionConfig& precision_config) {
+  if (absl::c_all_of(precision_config.operand_precision(), [](int32 precision) {
+        return static_cast<PrecisionConfig::Precision>(precision) ==
+               PrecisionConfig::DEFAULT;
+      })) {
+    return "";
+  }
+
+  return StrCat(
+      "operand_precision={",
+      StrJoin(
+          precision_config.operand_precision(), ",",
+          [](string* out, int32 precision) {
+            CHECK(PrecisionConfig::Precision_IsValid(precision)) << precision;
+            StrAppend(out,
+                      PrecisionToString(
+                          static_cast<PrecisionConfig::Precision>(precision)));
+          }),
+      "}");
+}
 }  // namespace
 
 HloBatchNormInstruction::HloBatchNormInstruction(
@@ -824,8 +845,8 @@ std::unique_ptr<HloInstruction> HloSliceInstruction::CloneWithNewOperandsImpl(
       shape, new_operands[0], slice_starts_, slice_limits_, slice_strides_);
 }
 
-HloConstantInstruction::HloConstantInstruction(std::unique_ptr<Literal> literal)
-    : HloInstruction(HloOpcode::kConstant, CHECK_NOTNULL(literal)->shape()),
+HloConstantInstruction::HloConstantInstruction(Literal literal)
+    : HloInstruction(HloOpcode::kConstant, literal.shape()),
       literal_(std::move(literal)) {}
 
 HloConstantInstruction::HloConstantInstruction(const Shape& shape)
@@ -833,7 +854,7 @@ HloConstantInstruction::HloConstantInstruction(const Shape& shape)
 
 HloInstructionProto HloConstantInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
-  if (literal_ != nullptr) {
+  if (literal_.has_value()) {
     *proto.mutable_literal() = literal_->ToProto();
   }
   return proto;
@@ -855,7 +876,7 @@ void HloConstantInstruction::RelayoutConstant(const Layout& new_layout,
 
   if (!mutable_array_subshape->has_layout() ||
       !LayoutUtil::Equal(mutable_array_subshape->layout(), new_layout)) {
-    literal_ = literal_->Relayout(new_layout, shape_index);
+    *literal_ = literal_->Relayout(new_layout, shape_index);
     *mutable_array_subshape->mutable_layout() = new_layout;
   }
 }
@@ -872,7 +893,8 @@ std::unique_ptr<HloInstruction>
 HloConstantInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  return absl::make_unique<HloConstantInstruction>(literal_->CloneToUnique());
+  CHECK(literal_.has_value());
+  return absl::make_unique<HloConstantInstruction>(literal_->Clone());
 }
 
 string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
@@ -880,7 +902,7 @@ string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
     CanonicalNameMap* canonical_name_map) const {
   string operands;
   // For constants, show the actual value in place of an empty operand list.
-  if (literal_ != nullptr &&
+  if (literal_.has_value() &&
       ((ShapeUtil::IsArray(shape()) && ShapeUtil::ElementsIn(shape()) <= 10) ||
        options.print_large_constants())) {
     // Literal::ToString emits multidimensional arrays over multiple
@@ -915,7 +937,7 @@ HloTraceInstruction::HloTraceInstruction(const string& tag,
 
 HloInstructionProto HloTraceInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_literal() = literal_->ToProto();
+  *proto.mutable_literal() = literal_.ToProto();
   return proto;
 }
 
@@ -1628,12 +1650,14 @@ std::unique_ptr<HloInstruction> HloOutfeedInstruction::CloneWithNewOperandsImpl(
 
 HloConvolutionInstruction::HloConvolutionInstruction(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-    const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count)
+    int64 feature_group_count, const Window& window,
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    const PrecisionConfig& precision_config)
     : HloInstruction(HloOpcode::kConvolution, shape),
+      feature_group_count_(feature_group_count),
       window_(window),
       convolution_dimension_numbers_(dimension_numbers),
-      feature_group_count_(feature_group_count) {
+      precision_config_(precision_config) {
   if (window_util::HasBaseDilation(window)) {
     SetAndSanitizeName(StrCat(name(), "-base-dilated"));
   }
@@ -1660,6 +1684,8 @@ HloInstructionProto HloConvolutionInstruction::ToProto() const {
   *proto.mutable_window() = window_;
   *proto.mutable_convolution_dimension_numbers() =
       convolution_dimension_numbers_;
+  proto.set_feature_group_count(feature_group_count_);
+  *proto.mutable_precision_config() = precision_config_;
   return proto;
 }
 
@@ -1671,7 +1697,15 @@ std::vector<string> HloConvolutionInstruction::ExtraAttributesToStringImpl(
   }
   extra.push_back(StrCat("dim_labels=", ConvolutionDimensionNumbersToString(
                                             convolution_dimension_numbers_)));
-  extra.push_back(StrCat("feature_group_count=", feature_group_count_));
+  if (feature_group_count_ != 1) {
+    extra.push_back(StrCat("feature_group_count=", feature_group_count_));
+  }
+
+  string precision_config_string = PrecisionConfigToString(precision_config_);
+  if (!precision_config_string.empty()) {
+    extra.push_back(precision_config_string);
+  }
+
   return extra;
 }
 
@@ -1681,10 +1715,15 @@ bool HloConvolutionInstruction::IdenticalSlowPath(
         eq_computations) const {
   const auto& casted_other =
       static_cast<const HloConvolutionInstruction&>(other);
+  if (feature_group_count_ != other.feature_group_count()) {
+    return false;
+  }
   return protobuf_util::ProtobufEquals(window(), casted_other.window()) &&
          protobuf_util::ProtobufEquals(
              convolution_dimension_numbers(),
-             casted_other.convolution_dimension_numbers());
+             casted_other.convolution_dimension_numbers()) &&
+         protobuf_util::ProtobufEquals(precision_config(),
+                                       casted_other.precision_config());
 }
 
 std::unique_ptr<HloInstruction>
@@ -1693,8 +1732,8 @@ HloConvolutionInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 2);
   return absl::make_unique<HloConvolutionInstruction>(
-      shape, new_operands[0], new_operands[1], window(),
-      convolution_dimension_numbers_, feature_group_count_);
+      shape, new_operands[0], new_operands[1], feature_group_count_, window(),
+      convolution_dimension_numbers_, precision_config_);
 }
 
 HloReduceWindowInstruction::HloReduceWindowInstruction(
@@ -1793,8 +1832,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::string_view custom_call_target)
     : HloInstruction(HloOpcode::kCustomCall, shape),
-      custom_call_target_(custom_call_target.begin(),
-                          custom_call_target.end()) {
+      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      feature_group_count_(1) {
   for (auto operand : operands) {
     AppendOperand(operand);
   }
@@ -1810,6 +1849,7 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
         *convolution_dimension_numbers_;
   }
   proto.set_custom_call_target(custom_call_target_);
+  proto.set_feature_group_count(feature_group_count_);
   return proto;
 }
 
@@ -1823,6 +1863,9 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
     extra.push_back(StrCat(
         "dim_labels=",
         ConvolutionDimensionNumbersToString(*convolution_dimension_numbers_)));
+  }
+  if (feature_group_count_ != 1) {
+    extra.push_back(StrCat("feature_group_count=", feature_group_count_));
   }
   // By contract, we print the custom call target even if
   // options.print_subcomputation_mode() == kOff, because the call target is not
@@ -1851,6 +1894,9 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
            casted_other.convolution_dimension_numbers()))) {
     return false;
   }
+  if (feature_group_count_ != casted_other.feature_group_count_) {
+    return false;
+  }
   return custom_call_target_ == casted_other.custom_call_target_;
 }
 
@@ -1866,6 +1912,7 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
   if (convolution_dimension_numbers_ != nullptr) {
     cloned->set_convolution_dimension_numbers(*convolution_dimension_numbers_);
   }
+  cloned->set_feature_group_count(feature_group_count_);
   return std::move(cloned);
 }
 
@@ -2145,4 +2192,113 @@ std::unique_ptr<HloInstruction> HloIotaInstruction::CloneWithNewOperandsImpl(
   return absl::make_unique<HloIotaInstruction>(shape, iota_dimension());
 }
 
+HloDotInstruction::HloDotInstruction(
+    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+    const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig& precision_config)
+    : HloInstruction(HloOpcode::kDot, shape),
+      dot_dimension_numbers_(dimension_numbers),
+      precision_config_(precision_config) {
+  AppendOperand(lhs);
+  AppendOperand(rhs);
+}
+
+HloInstructionProto HloDotInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  *proto.mutable_dot_dimension_numbers() = dot_dimension_numbers_;
+  *proto.mutable_precision_config() = precision_config_;
+  return proto;
+}
+
+std::vector<string> HloDotInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  std::vector<string> extra = {DotDimensionNumbersToString()};
+
+  string precision_config_string = PrecisionConfigToString(precision_config_);
+  if (!precision_config_string.empty()) {
+    extra.push_back(precision_config_string);
+  }
+  return extra;
+}
+
+bool HloDotInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloDotInstruction&>(other);
+  return protobuf_util::ProtobufEquals(dot_dimension_numbers(),
+                                       casted_other.dot_dimension_numbers()) &&
+         protobuf_util::ProtobufEquals(precision_config(),
+                                       casted_other.precision_config());
+}
+
+std::unique_ptr<HloInstruction> HloDotInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 2);
+  return absl::make_unique<HloDotInstruction>(
+      shape, new_operands[0], new_operands[1], dot_dimension_numbers_,
+      precision_config_);
+}
+
+string HloDotInstruction::DotDimensionNumbersToString() const {
+  std::vector<string> result;
+  const DotDimensionNumbers& dnums = dot_dimension_numbers_;
+  if (!dnums.lhs_batch_dimensions().empty()) {
+    result.push_back(StrCat("lhs_batch_dims={",
+                            StrJoin(dnums.lhs_batch_dimensions(), ","), "}"));
+  }
+  result.push_back(StrCat("lhs_contracting_dims={",
+                          StrJoin(dnums.lhs_contracting_dimensions(), ","),
+                          "}"));
+
+  if (!dnums.rhs_batch_dimensions().empty()) {
+    result.push_back(StrCat("rhs_batch_dims={",
+                            StrJoin(dnums.rhs_batch_dimensions(), ","), "}"));
+  }
+  result.push_back(StrCat("rhs_contracting_dims={",
+                          StrJoin(dnums.rhs_contracting_dimensions(), ","),
+                          "}"));
+
+  return StrJoin(result, ", ");
+}
+
+HloDomainInstruction::HloDomainInstruction(
+    const Shape& shape, HloInstruction* operand,
+    std::unique_ptr<DomainMetadata> operand_side_metadata,
+    std::unique_ptr<DomainMetadata> user_side_metadata)
+    : HloInstruction(HloOpcode::kDomain, shape),
+      operand_side_metadata_(std::move(operand_side_metadata)),
+      user_side_metadata_(std::move(user_side_metadata)) {
+  AppendOperand(operand);
+}
+
+std::vector<string> HloDomainInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  if (operand_side_metadata_ != nullptr && user_side_metadata_ != nullptr) {
+    return {StrCat("domain={kind=\"", operand_side_metadata_->Kind(),
+                   "\", entry=", user_side_metadata_->ToString(),
+                   ", exit=", operand_side_metadata_->ToString(), "}")};
+  }
+  return {};
+}
+
+bool HloDomainInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloDomainInstruction&>(other);
+  return operand_side_metadata().Matches(
+             casted_other.operand_side_metadata()) &&
+         user_side_metadata().Matches(casted_other.user_side_metadata());
+}
+
+std::unique_ptr<HloInstruction> HloDomainInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 1);
+  return absl::make_unique<HloDomainInstruction>(
+      shape, new_operands[0], operand_side_metadata_->Clone(),
+      user_side_metadata_->Clone());
+}
 }  // namespace xla

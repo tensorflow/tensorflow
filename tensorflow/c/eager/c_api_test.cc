@@ -1528,4 +1528,29 @@ TEST(CAPI, StringAttributes) {
   TFE_DeleteContext(ctx);
   TF_DeleteStatus(status);
 }
+
+TEST(CAPI, TestTFE_TensorHandleCopySharingUnderlyingTensorHandle) {
+  TFE_TensorHandle* h = TestMatrixTensorHandle();
+  EXPECT_EQ(TF_FLOAT, TFE_TensorHandleDataType(h));
+
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+
+  TFE_TensorHandle* h_shares_tensor =
+      TFE_TensorHandleCopySharingTensor(h, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+
+  TF_Tensor* t = TFE_TensorHandleResolve(h_shares_tensor, status.get());
+  ASSERT_EQ(16, TF_TensorByteSize(t));
+  float data[4] = {0};
+  memcpy(&data[0], TF_TensorData(t), TF_TensorByteSize(t));
+  EXPECT_EQ(1.0, data[0]);
+  EXPECT_EQ(2.0, data[1]);
+  EXPECT_EQ(3.0, data[2]);
+  EXPECT_EQ(4.0, data[3]);
+  TF_DeleteTensor(t);
+
+  TFE_DeleteTensorHandle(h);
+  TFE_DeleteTensorHandle(h_shares_tensor);
+}
 }  // namespace

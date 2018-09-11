@@ -197,7 +197,7 @@ class RNNTest(test.TestCase):
     else:
       inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
 
-    with self.test_session() as sess:
+    with self.cached_session(use_gpu=True) as sess:
       outputs, state = rnn.dynamic_rnn(
           cell, inputs, dtype=dtypes.float32, sequence_length=[4])
       if not in_eager_mode:
@@ -217,7 +217,7 @@ class RNNTest(test.TestCase):
     else:
       inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
 
-    with self.test_session() as sess:
+    with self.cached_session(use_gpu=True) as sess:
       outputs, state = rnn.dynamic_rnn(
           cell, inputs, dtype=dtypes.float32, sequence_length=[4])
       if not in_eager_mode:
@@ -246,7 +246,7 @@ class RNNTest(test.TestCase):
     else:
       inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
 
-    with self.test_session() as sess:
+    with self.cached_session(use_gpu=True) as sess:
       outputs, state = rnn.dynamic_rnn(
           cell, inputs, dtype=dtypes.float32, sequence_length=[4])
       state = (state[0], state[1].stack())
@@ -321,7 +321,7 @@ class RNNTest(test.TestCase):
     self._assert_cell_builds(contrib_rnn.IndyLSTMCell, f64, 5, 7, 3)
 
   def testRNNWithKerasSimpleRNNCell(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       input_shape = 10
       output_shape = 5
       timestep = 4
@@ -354,7 +354,7 @@ class RNNTest(test.TestCase):
       self.assertEqual(len(state), batch)
 
   def testRNNWithKerasGRUCell(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       input_shape = 10
       output_shape = 5
       timestep = 4
@@ -387,7 +387,7 @@ class RNNTest(test.TestCase):
       self.assertEqual(len(state), batch)
 
   def testRNNWithKerasLSTMCell(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       input_shape = 10
       output_shape = 5
       timestep = 4
@@ -424,7 +424,7 @@ class RNNTest(test.TestCase):
       self.assertEqual(len(state[1]), batch)
 
   def testRNNWithStackKerasCell(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       input_shape = 10
       output_shape = 5
       timestep = 4
@@ -465,7 +465,7 @@ class RNNTest(test.TestCase):
         self.assertEqual(len(s), batch)
 
   def testStaticRNNWithKerasSimpleRNNCell(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       input_shape = 10
       output_shape = 5
       timestep = 4
@@ -567,7 +567,7 @@ class RNNTest(test.TestCase):
         rnn_cell_impl.GRUCell(
             32, kernel_initializer="ones", dtype=dtypes.float32)
     ]:
-      with self.test_session():
+      with self.cached_session():
         x = keras.Input((None, 5))
         layer = keras.layers.RNN(cell)
         y = layer(x)

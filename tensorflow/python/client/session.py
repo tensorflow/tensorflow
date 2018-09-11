@@ -1132,7 +1132,7 @@ class BaseSession(SessionInterface):
         for details of the allowable fetch types.
       feed_list: (Optional.) A list of `feed_dict` keys. See
         `tf.Session.run` for details of the allowable feed key types.
-      accept_options: (Optional.) Iff `True`, the returned `Callable` will be
+      accept_options: (Optional.) If `True`, the returned `Callable` will be
         able to accept `tf.RunOptions` and `tf.RunMetadata` as optional
         keyword arguments `options` and `run_metadata`, respectively, with
         the same syntax and semantics as `tf.Session.run`, which is useful
@@ -1302,9 +1302,7 @@ class BaseSession(SessionInterface):
           node_def = op.node_def
         except KeyError:
           pass
-      if (self._config is not None and
-          self._config.experimental.client_handles_error_formatting):
-        message = error_interpolation.interpolate(message, self._graph)
+      message = error_interpolation.interpolate(message, self._graph)
       raise type(e)(node_def, op, message)
 
   def _extend_graph(self):

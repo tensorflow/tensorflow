@@ -188,7 +188,7 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
       return output
     output = array_ops.identity(_swish(image, swish_scale), name="ModelOutput")
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # check if identities have been put into the graph (2 input, 1 output,
       # and 1 final output).
       self.assertEqual(self._countIdentities(sess.graph_def.node), 4)
@@ -215,7 +215,7 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
     output = array_ops.identity(_scaled_and_bias_and_identity(a, x, b),
                                 name="ModelOutput")
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # make sure one identity for each input (3) and output (2) => 3 + 2 = 5
       # +1 for the final output
       self.assertEqual(self._countIdentities(sess.graph_def.node), 6)
@@ -242,7 +242,7 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
     output = array_ops.identity(
         math_ops.add(_double_values(a), _double_values(b)), name="ModelOutput")
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # make sure one identity for each input (2) and output (2) => 2 + 2
       # +1 for the final output
       self.assertEqual(self._countIdentities(sess.graph_def.node), 5)
@@ -279,7 +279,7 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
                          aggregate=op_hint.OpHint.AGGREGATE_STACK)
     res = math_ops.add(math_ops.mul(a, b), math_ops.mul(c, b))
     custom.add_outputs([res])
-    with self.test_session():
+    with self.cached_session():
       self.assertEqual(self._get_input_index(a), 0)
       self.assertEqual(self._get_sort_index(a), 0)
       self.assertEqual(self._get_input_index(b), 1)
@@ -294,7 +294,7 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
     b = custom.add_input(b)  # should auto assign 0
     a = custom.add_input(a, index_override=1)
     c = custom.add_input(c)  # should auto assign 2
-    with self.test_session():
+    with self.cached_session():
       self.assertEqual(self._get_input_index(a), 1)
       self.assertEqual(self._get_input_index(b), 0)
       self.assertEqual(self._get_input_index(c), 2)
@@ -320,7 +320,7 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
 
     curr = array_ops.stack([c0, c1])
     output = array_ops.identity(curr, name="FINAL_OUTPUT")
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       stubbed_graphdef = op_hint.convert_op_hints_to_stubs(
           graph_def=sess.graph_def)
       self.assertCountEqual(

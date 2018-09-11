@@ -96,8 +96,8 @@ class Client {
   //
   // If shape_with_layout is not nullptr, it points to a shape whose layout will
   // be the layout of the returned literal.
-  StatusOr<std::unique_ptr<Literal>> Transfer(
-      const GlobalData& data, const Shape* shape_with_layout = nullptr);
+  StatusOr<Literal> Transfer(const GlobalData& data,
+                             const Shape* shape_with_layout = nullptr);
 
   // Transfer the given literal to the server. This allocates memory on the
   // device and copies the literal's contents over. Returns a global data handle
@@ -122,7 +122,7 @@ class Client {
   // device_handle and replica_id together specify a particular device; a device
   // assigned for the given replica_id among the replicas that the given device
   // handle belongs to.
-  StatusOr<std::unique_ptr<Literal>> TransferFromOutfeed(
+  StatusOr<Literal> TransferFromOutfeed(
       const Shape* shape_with_layout, int64 replica_id = 0,
       const DeviceHandle* device_handle = nullptr);
 
@@ -132,7 +132,7 @@ class Client {
   // Executes the computation with the given arguments and transfers the result
   // to the client as a literal. Parameters are defined the same as for
   // Execute() and Transfer().
-  StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
+  StatusOr<Literal> ExecuteAndTransfer(
       const XlaComputation& computation,
       absl::Span<GlobalData* const> arguments,
       const ExecutionOptions* execution_options = nullptr,
@@ -153,7 +153,7 @@ class Client {
   //
   // If output_layout is non-null, then the output of the computation will be
   // stored using that layout.
-  StatusOr<std::unique_ptr<Literal>> ComputeConstant(
+  StatusOr<Literal> ComputeConstant(
       const XlaComputation& computation,
       const Layout* output_layout = nullptr) const;
 

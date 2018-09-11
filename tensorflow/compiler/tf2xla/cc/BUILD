@@ -31,7 +31,9 @@ cc_library(
 tf_gen_op_wrapper_cc(
     name = "xla_jit_op_gen",
     out_ops_file = "ops/xla_jit_op",
-    deps = ["//tensorflow/compiler/jit/ops:xla_ops"],
+    deps = [
+        "//tensorflow/compiler/jit/ops:xla_ops",
+    ],
 )
 
 cc_library(

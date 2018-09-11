@@ -191,6 +191,139 @@ TEST(QuantizationUtilTest, ChooseQuantizationParamsZeroPointOnMaxBoundary) {
   EXPECT_EQ(qp.zero_point, 255);
 }
 
+TEST(QuantizationUtilTest, IntegerFrExp) {
+  int shift;
+  int64_t result = IntegerFrExp(0.0, &shift);
+  EXPECT_EQ(0, result);
+  EXPECT_EQ(0, shift);
+
+  result = IntegerFrExp(1.0, &shift);
+  EXPECT_NEAR(0x40000000, result, 1);
+  EXPECT_EQ(1, shift);
+
+  result = IntegerFrExp(0.25, &shift);
+  EXPECT_NEAR(0x40000000, result, 1);
+  EXPECT_EQ(-1, shift);
+
+  result = IntegerFrExp(-1.0, &shift);
+  EXPECT_NEAR(-(1 << 30), result, 1);
+  EXPECT_EQ(1, shift);
+
+  result = IntegerFrExp(123.45, &shift);
+  EXPECT_NEAR(2071147315, result, 1);
+  EXPECT_EQ(7, shift);
+
+  result = IntegerFrExp(NAN, &shift);
+  EXPECT_NEAR(0, result, 1);
+  EXPECT_EQ(0x7fffffff, shift);
+
+  result = IntegerFrExp(INFINITY, &shift);
+  EXPECT_NEAR(std::numeric_limits<int64_t>::max(), result, 1);
+  EXPECT_EQ(0x7fffffff, shift);
+
+  result = IntegerFrExp(-INFINITY, &shift);
+  EXPECT_NEAR(std::numeric_limits<int64_t>::min(), result, 1);
+  EXPECT_EQ(0x7fffffff, shift);
+}
+
+TEST(QuantizationUtilTest, IntegerFrExpVersusDouble) {
+  int shift;
+  int32_t result = IntegerFrExp(0.0, &shift);
+  EXPECT_EQ(result, 0);
+  EXPECT_EQ(shift, 0);
+
+  int double_shift;
+  double double_result = std::frexp(0.0, &double_shift);
+  EXPECT_EQ(double_result, 0);
+  EXPECT_EQ(double_shift, 0);
+
+  result = IntegerFrExp(1.0, &shift);
+  EXPECT_NEAR(result, 0x40000000, 1);
+  EXPECT_EQ(shift, 1);
+  double_result = std::frexp(1.0, &double_shift);
+  EXPECT_NEAR(double_result, 0.5, 1e-5);
+  EXPECT_EQ(double_shift, 1);
+
+  result = IntegerFrExp(0.25, &shift);
+  EXPECT_NEAR(result, 0x40000000, 1);
+  EXPECT_EQ(shift, -1);
+  double_result = std::frexp(0.25, &double_shift);
+  EXPECT_NEAR(double_result, 0.5, 1e-5);
+  EXPECT_EQ(double_shift, -1);
+
+  result = IntegerFrExp(-1.0, &shift);
+  EXPECT_NEAR(result, -(1 << 30), 1);
+  EXPECT_EQ(shift, 1);
+  double_result = std::frexp(-1.0, &double_shift);
+  EXPECT_NEAR(double_result, -0.5, 1e-5);
+  EXPECT_EQ(double_shift, 1);
+
+  result = IntegerFrExp(123.45, &shift);
+  EXPECT_NEAR(result, (0.964453 * (1L << 31)), 1000);
+  EXPECT_EQ(shift, 7);
+  double_result = std::frexp(123.45, &double_shift);
+  EXPECT_NEAR(double_result, 0.964453, 1e-5);
+  EXPECT_EQ(double_shift, 7);
+}
+
+TEST(QuantizationUtilTest, DoubleFromFractionAndShift) {
+  double result = DoubleFromFractionAndShift(0, 0);
+  EXPECT_EQ(0, result);
+
+  result = DoubleFromFractionAndShift(0x40000000, 1);
+  EXPECT_NEAR(1.0, result, 1e-5);
+
+  result = DoubleFromFractionAndShift(0x40000000, 2);
+  EXPECT_NEAR(2.0, result, 1e-5);
+
+  int shift;
+  int64_t fraction = IntegerFrExp(3.0, &shift);
+  result = DoubleFromFractionAndShift(fraction, shift);
+  EXPECT_NEAR(3.0, result, 1e-5);
+
+  fraction = IntegerFrExp(123.45, &shift);
+  result = DoubleFromFractionAndShift(fraction, shift);
+  EXPECT_NEAR(123.45, result, 1e-5);
+
+  fraction = IntegerFrExp(-23.232323, &shift);
+  result = DoubleFromFractionAndShift(fraction, shift);
+  EXPECT_NEAR(-23.232323, result, 1e-5);
+
+  fraction = IntegerFrExp(NAN, &shift);
+  result = DoubleFromFractionAndShift(fraction, shift);
+  EXPECT_TRUE(std::isnan(result));
+
+  fraction = IntegerFrExp(INFINITY, &shift);
+  result = DoubleFromFractionAndShift(fraction, shift);
+  EXPECT_FALSE(std::isfinite(result));
+}
+
+TEST(QuantizationUtilTest, IntegerDoubleMultiply) {
+  EXPECT_NEAR(1.0, IntegerDoubleMultiply(1.0, 1.0), 1e-5);
+  EXPECT_NEAR(2.0, IntegerDoubleMultiply(1.0, 2.0), 1e-5);
+  EXPECT_NEAR(2.0, IntegerDoubleMultiply(2.0, 1.0), 1e-5);
+  EXPECT_NEAR(4.0, IntegerDoubleMultiply(2.0, 2.0), 1e-5);
+  EXPECT_NEAR(0.5, IntegerDoubleMultiply(1.0, 0.5), 1e-5);
+  EXPECT_NEAR(0.25, IntegerDoubleMultiply(0.5, 0.5), 1e-5);
+  EXPECT_NEAR(-1.0, IntegerDoubleMultiply(1.0, -1.0), 1e-5);
+  EXPECT_NEAR(-1.0, IntegerDoubleMultiply(-1.0, 1.0), 1e-5);
+  EXPECT_NEAR(1.0, IntegerDoubleMultiply(-1.0, -1.0), 1e-5);
+  EXPECT_NEAR(15000000.0, IntegerDoubleMultiply(3000.0, 5000.0), 1e-5);
+  EXPECT_TRUE(std::isnan(IntegerDoubleMultiply(NAN, 5000.0)));
+  EXPECT_TRUE(std::isnan(IntegerDoubleMultiply(3000.0, NAN)));
+}
+
+TEST(QuantizationUtilTest, IntegerDoubleCompare) {
+  EXPECT_EQ(-1, IntegerDoubleCompare(0.0, 1.0));
+  EXPECT_EQ(1, IntegerDoubleCompare(1.0, 0.0));
+  EXPECT_EQ(0, IntegerDoubleCompare(1.0, 1.0));
+  EXPECT_EQ(0, IntegerDoubleCompare(0.0, 0.0));
+  EXPECT_EQ(-1, IntegerDoubleCompare(-10.0, 10.0));
+  EXPECT_EQ(1, IntegerDoubleCompare(123.45, 10.0));
+  EXPECT_EQ(1, IntegerDoubleCompare(NAN, INFINITY));
+  EXPECT_EQ(1, IntegerDoubleCompare(INFINITY, NAN));
+}
+
 #ifdef GTEST_HAS_DEATH_TEST
 TEST(QuantizationUtilTest, ChooseQuantizationParamsInvalidRange) {
   EXPECT_DEATH(ChooseQuantizationParams<uint8>(10.0, -30.0), "");

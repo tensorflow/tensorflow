@@ -136,13 +136,12 @@ class GrapplerFunctionItemInstantiation {
 class GrapplerFunctionItem : public GrapplerItem {
  public:
   GrapplerFunctionItem() = default;
-  GrapplerFunctionItem(
-      const string& func_name, const string& description,
-      const AttrValueMap& func_attr,
-      const std::vector<InputArgExpansion>& input_arg_expansions,
-      const std::vector<OutputArgExpansion>& output_arg_expansions,
-      const std::vector<string>& keep_nodes, const int versions,
-      bool is_stateful, GraphDef&& function_body);
+  GrapplerFunctionItem(string func_name, string description,
+                       AttrValueMap func_attr,
+                       std::vector<InputArgExpansion> input_arg_expansions,
+                       std::vector<OutputArgExpansion> output_arg_expansions,
+                       std::vector<string> keep_nodes, int graph_def_version,
+                       bool is_stateful, GraphDef&& function_body);
 
   const string& description() const;
 

@@ -42,9 +42,9 @@ TransferManager::GetPlatformTransferManagers() {
   return r;
 }
 
-StatusOr<std::unique_ptr<Literal>> TransferManager::TransferLiteralFromDevice(
+StatusOr<Literal> TransferManager::TransferLiteralFromDevice(
     se::Stream* stream, const ShapedBuffer& device_buffer) {
-  StatusOr<std::unique_ptr<Literal>> ret;
+  StatusOr<Literal> ret;
 
   se::Stream* substream = stream->GetOrCreateSubStream();
   substream->ThenWaitFor(stream);
@@ -63,7 +63,7 @@ StatusOr<std::unique_ptr<Literal>> TransferManager::TransferLiteralFromDevice(
   if (!s.ok()) {
     return s;
   }
-  return absl::make_unique<Literal>(std::move(literal));
+  return std::move(literal);
 }
 
 Status TransferManager::TransferLiteralFromDevice(
@@ -99,10 +99,10 @@ Status TransferManager::TransferLiteralToDevice(
   return substream->BlockHostUntilDone();
 }
 
-StatusOr<std::unique_ptr<Literal>> TransferManager::TransferArrayFromDevice(
+StatusOr<Literal> TransferManager::TransferArrayFromDevice(
     se::Stream* stream, const Shape& shape,
     const se::DeviceMemoryBase& source) {
-  StatusOr<std::unique_ptr<Literal>> ret;
+  StatusOr<Literal> ret;
   // Implement the synchronous version by waiting on the asynchronous version.
   // Use a substream so that if we are called from a HostCallback we don't
   // deadlock.
@@ -122,7 +122,7 @@ StatusOr<std::unique_ptr<Literal>> TransferManager::TransferArrayFromDevice(
   if (!s.ok()) {
     return s;
   }
-  return absl::make_unique<Literal>(std::move(literal));
+  return std::move(literal);
 }
 
 Status TransferManager::TransferArrayToDevice(

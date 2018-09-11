@@ -18,11 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os as _os
+
 # pylint: disable=g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 
 try:
-  import os  # pylint: disable=g-import-not-at-top
   # Add `estimator` attribute to allow access to estimator APIs via
   # "tf.estimator..."
   from tensorflow.python.estimator.api import estimator  # pylint: disable=g-import-not-at-top
@@ -30,9 +31,8 @@ try:
   # Add `estimator` to the __path__ to allow "from tensorflow.estimator..."
   # style imports.
   from tensorflow.python.estimator import api as estimator_api  # pylint: disable=g-import-not-at-top
-  __path__ += [os.path.dirname(estimator_api.__file__)]
+  __path__ += [_os.path.dirname(estimator_api.__file__)]
   del estimator_api
-  del os
 except (ImportError, AttributeError):
   print('tf.estimator package not installed.')
 
@@ -45,6 +45,12 @@ del LazyLoader
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
 app.flags = flags  # pylint: disable=undefined-variable
 
+# Make sure directory containing top level submodules is in
+# the __path__ so that "from tensorflow.foo import bar" works.
+_tf_api_dir = _os.path.dirname(_os.path.dirname(app.__file__))  # pylint: disable=undefined-variable
+if _tf_api_dir not in __path__:
+  __path__.append(_tf_api_dir)
+
 del absolute_import
 del division
 del print_function
@@ -54,6 +60,12 @@ del print_function
 # must come from this module. So python adds these symbols for the
 # resolution to succeed.
 # pylint: disable=undefined-variable
-del python
-del core
+try:
+  del python
+  del core
+except NameError:
+  # Don't fail if these modules are not available.
+  # For e.g. we are using this file for compat.v1 module as well and
+  # 'python', 'core' directories are not under compat/v1.
+  pass
 # pylint: enable=undefined-variable

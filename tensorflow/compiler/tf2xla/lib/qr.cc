@@ -150,7 +150,7 @@ struct QRBlockResult {
   xla::XlaOp vs;    // Shape: [..., m, n]
 };
 xla::StatusOr<QRBlockResult> QRBlock(
-    xla::XlaOp a, xla::PrecisionConfigProto::Precision precision) {
+    xla::XlaOp a, xla::PrecisionConfig::Precision precision) {
   xla::XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));
   const int num_dims = xla::ShapeUtil::Rank(a_shape);
@@ -257,7 +257,7 @@ xla::StatusOr<QRBlockResult> QRBlock(
 xla::StatusOr<xla::XlaOp> ComputeWYRepresentation(
     xla::PrimitiveType type, absl::Span<const int64> batch_dims, xla::XlaOp vs,
     xla::XlaOp taus, int64 m, int64 n,
-    xla::PrecisionConfigProto::Precision precision) {
+    xla::PrecisionConfig::Precision precision) {
   std::vector<int64> batch_dim_indices(batch_dims.size());
   std::iota(batch_dim_indices.begin(), batch_dim_indices.end(), 0);
   int64 n_index = batch_dims.size() + 1;
@@ -332,7 +332,7 @@ xla::StatusOr<xla::XlaOp> ComputeWYRepresentation(
 // rather than WY transformations.
 xla::StatusOr<QRDecompositionResult> QRDecomposition(
     xla::XlaOp a, bool full_matrices, int64 block_size,
-    xla::PrecisionConfigProto::Precision precision) {
+    xla::PrecisionConfig::Precision precision) {
   xla::XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));
   const int num_dims = xla::ShapeUtil::Rank(a_shape);
