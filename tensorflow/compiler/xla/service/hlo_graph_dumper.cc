@@ -469,9 +469,8 @@ stylesheet=<
   string graph_label =
       StrCat(label_, "<br/>Computation ", computation_->name());
   if (computation_->IsFusionComputation()) {
-    StrAppend(&graph_label,
-              StrCat(" (in fusion instruction ",
-                     computation_->FusionInstruction()->name(), ")"));
+    StrAppend(&graph_label, " (in fusion instruction ",
+              computation_->FusionInstruction()->name(), ")");
   }
   if (profile_ != nullptr) {
     auto cycles = profile_->total_cycles_executed(*computation_);
