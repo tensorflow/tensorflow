@@ -7,6 +7,7 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//third_party/mpi:mpi.bzl", "if_mpi")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow:tensorflow.bzl", "if_not_windows_cuda")
 
@@ -81,6 +82,7 @@ py_library(
         "//tensorflow/contrib/proto",
         "//tensorflow/contrib/quantization:quantization_py",
         "//tensorflow/contrib/quantize:quantize_graph",
+        "//tensorflow/contrib/rccl:rccl_py",
         "//tensorflow/contrib/receptive_field:receptive_field_py",
         "//tensorflow/contrib/recurrent:recurrent_py",
         "//tensorflow/contrib/reduce_slice_ops:reduce_slice_ops_py",
@@ -143,8 +145,12 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:stats_ops_kernels",
         "//tensorflow/contrib/tensor_forest:tensor_forest_kernels",
         "//tensorflow/contrib/text:all_kernels",
-    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_cuda([
+    ] + if_mpi([
+        "//tensorflow/contrib/mpi_collectives:mpi_collectives_py"
+    ]) + if_cuda([
         "//tensorflow/contrib/nccl:nccl_kernels",
+    ]) + if_rocm([
+        "//tensorflow/contrib/rccl:rccl_kernels",
     ]) + select({
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
@@ -170,6 +176,7 @@ cc_library(
         "//tensorflow/contrib/nccl:nccl_ops_op_lib",
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_ops_op_lib",
         "//tensorflow/contrib/rnn:all_ops",
+        "//tensorflow/contrib/rccl:rccl_ops_op_lib",
         "//tensorflow/contrib/seq2seq:beam_search_ops_op_lib",
         "//tensorflow/contrib/tensor_forest:model_ops_op_lib",
         "//tensorflow/contrib/tensor_forest:stats_ops_op_lib",
