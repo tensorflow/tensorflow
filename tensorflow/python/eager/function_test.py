@@ -1501,6 +1501,67 @@ class FunctionTest(test.TestCase):
     side_effecting_function.python_function()
     self.assertAllEqual(state, [0, 0])
 
+  def testFunctionWithExtraAttributes(self):
+    @function.defun_with_attributes(attributes={'experimental_1': 'value1',
+                                                'experimental_2': 2})
+    def matmul(x, y):
+      return math_ops.matmul(x, y)
+
+    def add(x, y):
+      return math_ops.add(x, y)
+    defun_add = function.defun_with_attributes(
+        add, attributes={'experimental_3': True, 'experimental_4': 1.0})
+
+    with context.graph_mode(), self.test_session():
+      with ops.get_default_graph().as_default():
+        t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+        sq = matmul(t, t)
+        double = defun_add(t, t)
+        self.assertAllEqual(sq.eval().reshape(-1), [7, 10, 15, 22])
+        self.assertAllEqual(double.eval().reshape(-1), [2, 4, 6, 8])
+
+        graph = ops.get_default_graph()
+        # pylint: disable=protected-access
+        self.assertEqual(len(graph._functions), 2)
+        functions = list(graph._functions.values())
+        self.assertRegexpMatches(
+            functions[0].definition.signature.name, '.*matmul.*')
+        attrs = functions[0].definition.attr
+        self.assertEqual(len(attrs), 2)
+        self.assertEqual(attrs['experimental_1'].s, b'value1')
+        self.assertEqual(attrs['experimental_2'].i, 2)
+
+        self.assertRegexpMatches(
+            functions[1].definition.signature.name, '.*add.*')
+        attrs = functions[1].definition.attr
+        self.assertEqual(len(attrs), 2)
+        self.assertEqual(attrs['experimental_3'].b, True)
+        self.assertEqual(attrs['experimental_4'].f, 1.0)
+        # pylint: enable=protected-access
+
+  def testFunctionWithInvalidAttribute(self):
+    @function.defun_with_attributes(attributes={'attr1': 'value1'})
+    def matmul(x, y):
+      return math_ops.matmul(x, y)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 '.*Attribute name is not whitelisted.*'):
+      with context.graph_mode(), self.test_session():
+        with ops.get_default_graph().as_default():
+          t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+          matmul(t, t)
+
+    @function.defun_with_attributes(attributes={'experimental_1': ['value1']})
+    def add(x, y):
+      return math_ops.add(x, y)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 '.*Unsupported attribute type.*'):
+      with context.graph_mode(), self.test_session():
+        with ops.get_default_graph().as_default():
+          t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+          add(t, t)
+
 
 @test_util.with_c_shapes
 class AutomaticControlDependenciesTest(test.TestCase):
