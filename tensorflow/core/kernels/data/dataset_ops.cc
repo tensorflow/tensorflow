@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
+namespace data {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
@@ -48,4 +49,5 @@ class DatasetToGraphOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("DatasetToGraph").Device(DEVICE_CPU),
                         DatasetToGraphOp);
 
+}  // namespace data
 }  // namespace tensorflow

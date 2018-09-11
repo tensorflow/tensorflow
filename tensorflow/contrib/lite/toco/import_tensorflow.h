@@ -27,6 +27,11 @@ struct TensorFlowImportFlags {
   // If true, control dependencies will be dropped immediately
   // during the import of the TensorFlow GraphDef.
   bool drop_control_dependency = false;
+
+  // Do not recognize any op and import all ops as
+  // `TensorFlowUnsupportedOperator`. This is used to populated with the
+  // `force_eager_ops` flag.
+  bool import_all_ops_as_unsupported = false;
 };
 
 std::unique_ptr<Model> ImportTensorFlowGraphDef(

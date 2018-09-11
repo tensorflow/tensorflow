@@ -19,11 +19,11 @@ limitations under the License.
 #include <functional>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
 
@@ -50,7 +50,7 @@ typedef std::function<xla::StatusOr<std::vector<xla::XlaOp>>(
 xla::StatusOr<std::vector<xla::XlaOp>> XlaWhileLoop(
     const LoopConditionFunction& condition_function,
     const LoopBodyFunction& body_function,
-    absl::Span<const xla::XlaOp> initial_values, StringPiece name,
+    absl::Span<const xla::XlaOp> initial_values, absl::string_view name,
     xla::XlaBuilder* builder);
 
 // Builds an XLA loop that repeats a computation `num_iterations` times.
@@ -65,7 +65,7 @@ typedef std::function<xla::StatusOr<std::vector<xla::XlaOp>>(
 xla::StatusOr<std::vector<xla::XlaOp>> XlaForEachIndex(
     int64 num_iterations, xla::PrimitiveType num_iterations_type,
     const ForEachIndexBodyFunction& body_function,
-    absl::Span<const xla::XlaOp> initial_values, StringPiece name,
+    absl::Span<const xla::XlaOp> initial_values, absl::string_view name,
     xla::XlaBuilder* builder);
 
 }  // namespace tensorflow

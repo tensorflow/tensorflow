@@ -43,11 +43,11 @@ namespace tensorflow {
 // It is computed as:
 //
 //     output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
-xla::XlaOp BatchDot(xla::XlaOp x, xla::XlaOp y, bool transpose_x = false,
-                    bool transpose_y = false, bool conjugate_x = false,
-                    bool conjugate_y = false,
-                    xla::PrecisionConfigProto::Precision precision =
-                        xla::PrecisionConfigProto::DEFAULT);
+xla::XlaOp BatchDot(
+    xla::XlaOp x, xla::XlaOp y, bool transpose_x = false,
+    bool transpose_y = false, bool conjugate_x = false,
+    bool conjugate_y = false,
+    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
 
 }  // namespace tensorflow
 

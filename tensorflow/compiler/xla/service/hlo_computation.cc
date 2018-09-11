@@ -464,6 +464,14 @@ std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
 }
 
 string HloComputation::ToString(const HloPrintOptions& options) const {
+  return ToString(options, MakeInstructionPostOrder());
+}
+
+string HloComputation::ToString(
+    const HloPrintOptions& options,
+    absl::Span<const HloInstruction* const> instruction_order) const {
+  CHECK_EQ(instruction_order.size(), instruction_count());
+
   std::ostringstream s;
   for (int i = 0; i < options.indent_amount(); i++) {
     s << "  ";
@@ -486,7 +494,9 @@ string HloComputation::ToString(const HloPrintOptions& options) const {
     new_options.set_indent_amount(options.indent_amount() + 1)
         .set_is_in_nested_computation(true);
     CanonicalNameMap name_map;
-    for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
+    for (const HloInstruction* instruction : instruction_order) {
+      CHECK_EQ(this, instruction->parent());
+
       for (int i = 0; i < new_options.indent_amount(); i++) {
         s << "  ";
       }

@@ -30,7 +30,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   def testReadResultSet(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.string,
                                                 dtypes.string), 2)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for _ in range(2):  # Run twice to verify statelessness of db operations.
         sess.run(
             init_op,
@@ -48,7 +48,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   def testReadResultSetJoinQuery(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.string,
                                                 dtypes.string))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -67,7 +67,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   def testReadResultSetNullTerminator(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.string,
                                                 dtypes.string))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -86,7 +86,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   def testReadResultSetReuseSqlDataset(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.string,
                                                 dtypes.string))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -114,7 +114,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   def testReadEmptyResultSet(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.string,
                                                 dtypes.string))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -128,7 +128,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   def testReadResultSetWithInvalidDriverName(self):
     init_op = self._createSqlDataset((dtypes.string, dtypes.string,
                                       dtypes.string))[0]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(
             init_op,
@@ -142,7 +142,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   def testReadResultSetWithInvalidColumnName(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.string,
                                                 dtypes.string))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -157,7 +157,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   def testReadResultSetOfQueryWithSyntaxError(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.string,
                                                 dtypes.string))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -173,7 +173,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   def testReadResultSetWithMismatchBetweenColumnsAndOutputTypes(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.string,
                                                 dtypes.string))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -190,7 +190,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   def testReadResultSetOfInsertQuery(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.string,
                                                 dtypes.string))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -205,7 +205,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   # place it in an `int8` tensor.
   def testReadResultSetInt8(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.int8))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -222,7 +222,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   def testReadResultSetInt8NegativeAndZero(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.int8,
                                                 dtypes.int8))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -238,7 +238,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   # a SQLite database table and place it in an `int8` tensor.
   def testReadResultSetInt8MaxValues(self):
     init_op, get_next = self._createSqlDataset((dtypes.int8, dtypes.int8))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -256,7 +256,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   # place it in an `int16` tensor.
   def testReadResultSetInt16(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.int16))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -273,7 +273,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   def testReadResultSetInt16NegativeAndZero(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.int16,
                                                 dtypes.int16))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -289,7 +289,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   # a SQLite database table and place it in an `int16` tensor.
   def testReadResultSetInt16MaxValues(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.int16))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -307,7 +307,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   # place it in an `int32` tensor.
   def testReadResultSetInt32(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.int32))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -321,7 +321,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   # SQLite database table and place it in an `int32` tensor.
   def testReadResultSetInt32NegativeAndZero(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.int32))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -337,7 +337,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   # a SQLite database table and place it in an `int32` tensor.
   def testReadResultSetInt32MaxValues(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.int32))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -355,7 +355,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   # table and place it in an `int32` tensor.
   def testReadResultSetInt32VarCharColumnAsInt(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.int32))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -371,7 +371,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   # and place it in an `int64` tensor.
   def testReadResultSetInt64(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.int64))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -387,7 +387,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   # SQLite database table and place it in an `int64` tensor.
   def testReadResultSetInt64NegativeAndZero(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.int64))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -403,7 +403,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   # a SQLite database table and place it in an `int64` tensor.
   def testReadResultSetInt64MaxValues(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.int64))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -422,7 +422,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   # place it in a `uint8` tensor.
   def testReadResultSetUInt8(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.uint8))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -438,7 +438,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   # SQLite database table and place them in `uint8` tensors.
   def testReadResultSetUInt8MinAndMaxValues(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.uint8))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -456,7 +456,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   # and place it in a `uint16` tensor.
   def testReadResultSetUInt16(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.uint16))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -472,7 +472,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   # SQLite database table and place them in `uint16` tensors.
   def testReadResultSetUInt16MinAndMaxValues(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.uint16))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -491,7 +491,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   # in `bool` tensors.
   def testReadResultSetBool(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.bool))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -508,7 +508,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   # from a SQLite database table and place it as `True` in a `bool` tensor.
   def testReadResultSetBoolNotZeroOrOne(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.bool))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -525,7 +525,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   def testReadResultSetFloat64(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.string,
                                                 dtypes.float64))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -544,7 +544,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   def testReadResultSetFloat64OverlyPrecise(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.string,
                                                 dtypes.float64))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -570,7 +570,7 @@ class SqlDatasetTest(sql_dataset_op_test_base.SqlDatasetTestBase):
   def testReadResultSetFloat64LargestConsecutiveWholeNumbersNotEqual(self):
     init_op, get_next = self._createSqlDataset((dtypes.string, dtypes.string,
                                                 dtypes.float64))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={

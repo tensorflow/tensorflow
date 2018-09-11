@@ -40,6 +40,13 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Forward declarations to avoid introducing a dependency on headers in
+// "tensorflow/core/graph/...".
+class GraphDefBuilder;
+class Node;
+
+namespace data {
+
 class DatasetBase;
 class SerializationContext;
 
@@ -65,11 +72,6 @@ class IteratorStateWriter {
 
   virtual ~IteratorStateWriter() {}
 };
-
-// Forward declarations to avoid introducing a dependency on headers in
-// "tensorflow/core/graph/...".
-class GraphDefBuilder;
-class Node;
 
 // Wrapper around GraphDefBuilder. Used to serialize Dataset graph.
 class GraphDefBuilderWrapper {
@@ -222,8 +224,7 @@ class GraphDefBuilderWrapper {
     return (str_util::EndsWith(op_def->name(), "Dataset") &&
             op_def->output_arg_size() == 1 &&
             op_def->output_arg(0).type() == DT_VARIANT) ||
-           dataset::WhitelistedStatefulOpRegistry::Global()->Contains(
-               op_def->name());
+           WhitelistedStatefulOpRegistry::Global()->Contains(op_def->name());
   }
 
   bool HasAttr(const string& op_type_name, const string& attr_name) const;
@@ -750,6 +751,21 @@ class BackgroundWorker {
   bool cancelled_ GUARDED_BY(mu_) = false;
   std::deque<std::function<void()>> work_queue_ GUARDED_BY(mu_);
 };
+
+}  // namespace data
+
+// TODO(b/114112161): Remove these aliases when all users have moved over to the
+// `tensorflow::data` namespace.
+using data::DatasetBase;
+using data::DatasetContext;
+using data::DatasetIterator;
+using data::DatasetOpKernel;
+using data::IteratorBase;
+using data::IteratorContext;
+using data::IteratorStateReader;
+using data::IteratorStateWriter;
+using data::SerializationContext;
+using data::UnaryDatasetOpKernel;
 
 }  // namespace tensorflow
 

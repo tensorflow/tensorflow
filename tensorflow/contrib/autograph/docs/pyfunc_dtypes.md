@@ -4,7 +4,7 @@ The `py_func` op requires specifying a
 [data type](https://www.tensorflow.org/guide/tensors#data_types).
 
 When wrapping a function with `py_func`, for instance using
-`@autograph.do_not_convert(run_mode=autograph.RunMode.PY_FUNC)`, you have two
+`@autograph.do_not_convert(run_as=autograph.RunMode.PY_FUNC)`, you have two
 options to specify the returned data type:
 
  * explicitly, with a specified `tf.DType` value

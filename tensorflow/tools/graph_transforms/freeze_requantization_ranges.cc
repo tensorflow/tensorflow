@@ -92,7 +92,7 @@ Status ExtractMinMaxRecords(const string& log_file_name,
     if (!str_util::EndsWith(name_string, print_suffix)) {
       continue;
     }
-    string name = std::string(
+    string name(
         name_string.substr(0, name_string.size() - print_suffix.size()));
     records->push_back({name, min, max});
   }

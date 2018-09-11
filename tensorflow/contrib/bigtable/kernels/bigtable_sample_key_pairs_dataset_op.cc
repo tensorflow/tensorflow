@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class BigtableSampleKeyPairsDatasetOp : public DatasetOpKernel {
@@ -205,4 +206,5 @@ REGISTER_KERNEL_BUILDER(
     BigtableSampleKeyPairsDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

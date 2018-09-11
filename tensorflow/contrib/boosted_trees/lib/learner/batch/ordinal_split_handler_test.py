@@ -50,7 +50,7 @@ def get_empty_tensors(gradient_shape, hessian_shape):
 class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
 
   def testGenerateFeatureSplitCandidates(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Dense Quantile |
       # i0      |  (0.2, 0.12)  | 0         | 1              |
@@ -183,7 +183,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertAllClose(0.52, split_node.threshold, 0.00001)
 
   def testObliviousFeatureSplitGeneration(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Dense Quantile |
       # i0      |  (0.2, 0.12)  | 1         | 3              |
@@ -320,7 +320,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertEqual(2, oblivious_split_info.children_parent_id[1])
 
   def testGenerateFeatureSplitCandidatesLossUsesSumReduction(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Dense Quantile |
       # i0      |  (0.2, 0.12)  | 0         | 1              |
@@ -458,7 +458,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertAllClose(0.52, split_node.threshold, 0.00001)
 
   def testGenerateFeatureSplitCandidatesMulticlassFullHessian(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       dense_column = array_ops.constant([0.52, 0.52, 0.3, 0.52])
       # Batch size is 4, 2 gradients per each instance.
       gradients = array_ops.constant(
@@ -546,7 +546,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertAllClose(0.3, split_node.threshold, 1e-6)
 
   def testGenerateFeatureSplitCandidatesMulticlassDiagonalHessian(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       dense_column = array_ops.constant([0.52, 0.52, 0.3, 0.52])
       # Batch size is 4, 2 gradients per each instance.
       gradients = array_ops.constant(
@@ -633,7 +633,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertAllClose(0.3, split_node.threshold, 1e-6)
 
   def testGenerateFeatureSplitCandidatesInactive(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Dense Quantile |
       # i0      |  (0.2, 0.12)  | 0         | 1              |
@@ -708,7 +708,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(splits), 0)
 
   def testGenerateFeatureSplitCandidatesWithTreeComplexity(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Dense Quantile |
       # i0      |  (0.2, 0.12)  | 0         | 1              |
@@ -842,7 +842,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertAllClose(0.52, split_node.threshold, 0.00001)
 
   def testGenerateFeatureSplitCandidatesWithMinNodeWeight(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Dense Quantile |
       # i0      |  (0.2, 0.12)  | 0         | 1              |
@@ -951,7 +951,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
 class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
 
   def testGenerateFeatureSplitCandidates(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Sparse Quantile |
       # i0      |  (0.2, 0.12)  | 0         | 1               |
@@ -1074,7 +1074,7 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertAllClose(0.52, split_node.split.threshold)
 
   def testGenerateFeatureSplitCandidatesLossUsesSumReduction(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Sparse Quantile |
       # i0      |  (0.2, 0.12)  | 0         | 1               |
@@ -1207,7 +1207,7 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertAllClose(0.52, split_node.split.threshold)
 
   def testGenerateFeatureSplitCandidatesMulticlassFullHessian(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Batch is 4, 2 classes
       gradients = array_ops.constant([[0.2, 1.4], [-0.5, 0.1], [1.2, 3],
                                       [4.0, -3]])
@@ -1302,7 +1302,7 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertAllClose(0.52, split_node.split.threshold)
 
   def testGenerateFeatureSplitCandidatesMulticlassDiagonalHessian(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Batch is 4, 2 classes
       gradients = array_ops.constant([[0.2, 1.4], [-0.5, 0.1], [1.2, 3],
                                       [4.0, -3]])
@@ -1397,7 +1397,7 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertAllClose(0.52, split_node.split.threshold)
 
   def testGenerateFeatureSplitCandidatesInactive(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Sparse Quantile |
       # i0      |  (0.2, 0.12)  | 0         | 1               |
@@ -1475,7 +1475,7 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(splits), 0)
 
   def testEmpty(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       indices = array_ops.constant([], dtype=dtypes.int64, shape=[0, 2])
       # No values in this feature column in this mini-batch.
       values = array_ops.constant([], dtype=dtypes.float32)
@@ -1545,7 +1545,7 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
 
   def testEmptyBuckets(self):
     """Test that reproduces the case when quantile buckets were empty."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sparse_column = array_ops.sparse_placeholder(dtypes.float32)
 
       # We have two batches - at first, a sparse feature is empty.
@@ -1638,7 +1638,7 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(splits), 0)
 
   def testDegenerativeCase(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # One data example only, one leaf and thus one quantile bucket.The same
       # situation is when all examples have the same values. This case was
       # causing before a failure.

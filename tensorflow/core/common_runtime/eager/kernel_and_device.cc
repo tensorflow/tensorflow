@@ -95,6 +95,7 @@ Status KernelAndDevice::Run(ScopedStepContainer* step_container,
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendez_;
   params.cancellation_manager = &cm_;
+  params.log_memory = log_memory_;
   if (stats != nullptr) {
     params.track_allocations = true;
   }

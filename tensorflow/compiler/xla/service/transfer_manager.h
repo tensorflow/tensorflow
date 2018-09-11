@@ -57,7 +57,7 @@ class TransferManager {
   // without waiting for any other operation on a stream to complete.
   //
   // This function should be avoided in favor of the asynchronous version below.
-  virtual StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDevice(
+  virtual StatusOr<Literal> TransferLiteralFromDevice(
       se::Stream* stream, const ShapedBuffer& device_buffer);
   virtual Status TransferLiteralFromDevice(
       se::Stream* stream, const ShapedBuffer& device_buffer,
@@ -113,9 +113,9 @@ class TransferManager {
   Status TransferArrayToDeviceAsync(se::Stream* stream,
                                     const LiteralSlice& literal,
                                     const se::DeviceMemoryBase& dest);
-  StatusOr<std::unique_ptr<Literal>> TransferArrayFromDevice(
-      se::Stream* stream, const Shape& shape,
-      const se::DeviceMemoryBase& source);
+  StatusOr<Literal> TransferArrayFromDevice(se::Stream* stream,
+                                            const Shape& shape,
+                                            const se::DeviceMemoryBase& source);
 
   // Transfers the given literal into the Infeed interface of the device,
   // using the given executor.

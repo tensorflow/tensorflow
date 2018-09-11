@@ -29,13 +29,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 namespace {
 
-class MinimumMemoryForSequenceTest : public HloTestBase {};
+class MinimumMemoryForSequenceTest : public HloVerifiedTestBase {};
 
 TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
   auto module = CreateNewModule();
@@ -85,13 +86,16 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   };
 
-  SequentialHloOrdering::HloModuleSequence module_sequence;
-  module_sequence[cond_computation] = {cond_param, cond_iter, cond_data,
-                                       cond_lt};
-  module_sequence[body_computation] = {body_param};
-  module_sequence[entry_computation] = {iter, data, tuple, while_op};
-  EXPECT_EQ(56, HeapSimulator::MinimumMemoryForModule(module_sequence, size_fn)
-                    .ValueOrDie());
+  HloSchedule schedule(module);
+  schedule.set_sequence(cond_computation,
+                        {cond_param, cond_iter, cond_data, cond_lt});
+  schedule.set_sequence(body_computation, {body_param});
+  schedule.set_sequence(entry_computation, {iter, data, tuple, while_op});
+  TF_ASSERT_OK(schedule.Verify());
+
+  EXPECT_EQ(
+      56,
+      HeapSimulator::MinimumMemoryForModule(schedule, size_fn).ValueOrDie());
 }
 
 const char kAlloc[] = "Alloc";
@@ -149,10 +153,11 @@ class HeapSimulatorTracker {
     auto zero_size = [](const BufferValue& buffer) { return 0; };
     auto algorithm = absl::make_unique<DecreasingSizeRunsHeap>(
         absl::make_unique<HeapCallRecorder>(&actual_calls_));
-    result_ = HeapSimulator::Run(
-                  std::move(algorithm), *module_->entry_computation(),
-                  instruction_sequence, *points_to_analysis_, zero_size)
-                  .ConsumeValueOrDie();
+    result_ =
+        HeapSimulator::Run(std::move(algorithm), *module_->entry_computation(),
+                           HloInstructionSequence(instruction_sequence),
+                           *points_to_analysis_, zero_size)
+            .ConsumeValueOrDie();
   }
 
   explicit HeapSimulatorTracker(const string& name) {
@@ -168,11 +173,12 @@ class HeapSimulatorTracker {
         TuplePointsToAnalysis::Run(module_.get()).ConsumeValueOrDie();
 
     // Construct the module sequence grouped by computation.
-    SequentialHloOrdering::HloModuleSequence module_sequence;
+    HloSchedule schedule(module_.get());
     tensorflow::gtl::FlatMap<const HloInstruction*, int> reverse_position;
     for (int i = 0; i < full_module_sequence.size(); ++i) {
       const HloInstruction* instruction = full_module_sequence[i];
-      module_sequence[instruction->parent()].push_back(instruction);
+      schedule.GetOrCreateSequence(instruction->parent())
+          .push_back(instruction);
       reverse_position[instruction] = full_module_sequence.size() - i;
     }
 
@@ -185,8 +191,8 @@ class HeapSimulatorTracker {
     };
     auto algorithm = absl::make_unique<DecreasingSizeRunsHeap>(
         absl::make_unique<HeapCallRecorder>(&actual_calls_));
-    result_ = HeapSimulator::Run(std::move(algorithm), *module_,
-                                 module_sequence, *points_to_analysis_, size_fn)
+    result_ = HeapSimulator::Run(std::move(algorithm), *module_, schedule,
+                                 *points_to_analysis_, size_fn)
                   .ConsumeValueOrDie();
   }
 
@@ -227,7 +233,7 @@ class HeapSimulatorTracker {
   HeapSimulator::Result result_;
 };
 
-class HeapSimulatorTest : public HloTestBase {
+class HeapSimulatorTest : public HloVerifiedTestBase {
  protected:
   HeapSimulatorTest() {}
   ~HeapSimulatorTest() override {}
@@ -366,8 +372,8 @@ TEST_F(HeapSimulatorTest, MultiplyDot) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto dot = builder.AddInstruction(
-      HloInstruction::CreateDot(f32vec4_, mul, paramY, dot_dnums));
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      f32vec4_, mul, paramY, dot_dnums, DefaultPrecisionConfig(2)));
 
   // The buffer for dot is the output, and it cannot be shared with the buffer
   // for mul, since dot isn't elementwise.
@@ -402,8 +408,8 @@ TEST_F(HeapSimulatorTest, MultiplyDotAdd) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto dot = builder.AddInstruction(
-      HloInstruction::CreateDot(f32vec4_, mul, paramY, dot_dnums));
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      f32vec4_, mul, paramY, dot_dnums, DefaultPrecisionConfig(2)));
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(f32vec4_, HloOpcode::kAdd, dot, paramA));
 
@@ -440,10 +446,10 @@ TEST_F(HeapSimulatorTest, MultiplyDotDot) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto dot0 = builder.AddInstruction(
-      HloInstruction::CreateDot(f32vec4_, mul, paramY, dot_dnums));
-  auto dot1 = builder.AddInstruction(
-      HloInstruction::CreateDot(f32vec4_, dot0, paramY, dot_dnums));
+  auto dot0 = builder.AddInstruction(HloInstruction::CreateDot(
+      f32vec4_, mul, paramY, dot_dnums, DefaultPrecisionConfig(2)));
+  auto dot1 = builder.AddInstruction(HloInstruction::CreateDot(
+      f32vec4_, dot0, paramY, dot_dnums, DefaultPrecisionConfig(2)));
 
   // The buffer for dot1 is the output.  No buffers can be shared.  The buffer
   // for mul is freed before the end, since it's no longer used after dot0
@@ -481,10 +487,10 @@ TEST_F(HeapSimulatorTest, MultiplyDotDotTuple) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto dot0 = builder.AddInstruction(
-      HloInstruction::CreateDot(f32vec4_, mul, paramY, dot_dnums));
-  auto dot1 = builder.AddInstruction(
-      HloInstruction::CreateDot(f32vec4_, dot0, paramY, dot_dnums));
+  auto dot0 = builder.AddInstruction(HloInstruction::CreateDot(
+      f32vec4_, mul, paramY, dot_dnums, DefaultPrecisionConfig(2)));
+  auto dot1 = builder.AddInstruction(HloInstruction::CreateDot(
+      f32vec4_, dot0, paramY, dot_dnums, DefaultPrecisionConfig(2)));
   auto tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({dot0, dot1}));
 

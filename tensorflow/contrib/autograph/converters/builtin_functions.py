@@ -21,6 +21,8 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.autograph.core import converter
+from tensorflow.contrib.autograph.operators import py_builtins
+from tensorflow.contrib.autograph.pyct import anno
 from tensorflow.contrib.autograph.pyct import templates
 
 
@@ -31,41 +33,32 @@ class BuiltinFunctionTransformer(converter.Base):
   TF equivalent, like `len`.
   """
 
-  def _convert_builtin(self, node):
+  def _convert_builtin(self, f, args, as_expression):
     template = """
-      ag__.utils.dynamic_builtin(func, args)
+      ag__.func(args)
     """
-    return templates.replace(template, func=node.func, args=node.args)[0].value
-
-  def _convert_print(self, node):
-    template = """
-      ag__.utils.dynamic_print(args)
-    """
-    return templates.replace(template, args=node.args)[0].value
+    if as_expression:
+      return templates.replace_as_expression(
+          template, func=py_builtins.overload_of(f).__name__, args=args)
+    else:
+      return templates.replace(
+          template, func=py_builtins.overload_of(f).__name__, args=args)
 
   def visit_Call(self, node):
-    self.generic_visit(node)
-    # TODO(mdan): This won't work if the function was hidden.
-    # TODO(mdan): Rely on the live_val and use inspect_utils.is_builtin instead.
-    if (isinstance(node.func, gast.Name) and
-        node.func.id in ('len', 'range', 'xrange', 'float', 'int')):
-      return self._convert_builtin(node)
-    # Print needs to be handled separately because it can be read as statement.
-    if isinstance(node.func, gast.Name) and node.func.id == 'print':
-      return self._convert_print(node)
+    node = self.generic_visit(node)
+    if anno.hasanno(node.func, 'live_val'):
+      live_val = anno.getanno(node.func, 'live_val')
+      if live_val in py_builtins.SUPPORTED_BUILTINS:
+        node = self._convert_builtin(live_val, node.args, as_expression=True)
     return node
 
   def visit_Print(self, node):
-    self.generic_visit(node)
+    node = self.generic_visit(node)
     args = node.values
     # Following is the case when calling print(a, b)
     if len(args) == 1 and isinstance(args[0], gast.Tuple):
       args = args[0].elts
-    template = """
-      fname(args)
-    """
-    function_call = templates.replace(template, fname='print', args=args)[0]
-    return self.visit(function_call)
+    return self._convert_builtin(print, args, as_expression=False)
 
 
 def transform(node, ctx):

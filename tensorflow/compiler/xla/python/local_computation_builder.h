@@ -51,8 +51,8 @@ Status TransferToInfeedLocalReplica(const Literal& literal, int replica_number);
 // Transfers a literal of the given shape from the outfeed of the given replica.
 //
 // The replica number is resolved to an appropriate device ordinal.
-StatusOr<std::unique_ptr<Literal> > TransferFromOutfeedLocalReplica(
-    const Shape& shape, int replica_number);
+StatusOr<Literal> TransferFromOutfeedLocalReplica(const Shape& shape,
+                                                  int replica_number);
 
 // Wraps a ScopedShapedBuffer produced by copying a literal "to
 // device," i.e. copying a literal to a scoped buffer via the local
@@ -65,7 +65,7 @@ class LocalShapedBuffer {
   LocalShapedBuffer(ScopedShapedBuffer shaped_buffer);
   const ScopedShapedBuffer* shaped_buffer() const;
 
-  StatusOr<std::unique_ptr<Literal> > ToLiteral() const;
+  StatusOr<Literal> ToLiteral() const;
 
   // Transfers ownership of the encapsulated ShapedBuffer to the caller,
   // analogous to std::unique_ptr::release().
@@ -117,7 +117,7 @@ class CompiledLocalComputation {
   // with optionally-specified argument layouts. The literals will be
   // re-laid out according to the corresponding elements of
   // shapes_with_layout.
-  StatusOr<std::unique_ptr<Literal> > Execute(
+  StatusOr<Literal> Execute(
       const std::vector<Literal>& arguments,
       const std::vector<absl::optional<Shape> >& shapes_with_layout);
 

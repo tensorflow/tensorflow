@@ -50,7 +50,7 @@ namespace {
 //                       l[..., j, j]
 //   return l
 xla::XlaOp CholeskyUnblocked(xla::XlaOp a,
-                             xla::PrecisionConfigProto::Precision precision) {
+                             xla::PrecisionConfig::Precision precision) {
   xla::XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
     TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));
@@ -150,7 +150,7 @@ xla::XlaOp CholeskyUnblocked(xla::XlaOp a,
 }  // namespace
 
 xla::XlaOp Cholesky(xla::XlaOp a, int64 block_size,
-                    xla::PrecisionConfigProto::Precision precision) {
+                    xla::PrecisionConfig::Precision precision) {
   xla::XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
     TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));

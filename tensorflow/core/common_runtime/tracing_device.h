@@ -35,8 +35,11 @@ class TracingDevice : public Device {
       : Device(env, attributes) {}
 
   void Compute(OpKernel* op_kernel, OpKernelContext* context) override {
+    const tracing::TraceCollector* trace_collector =
+        tracing::GetTraceCollector();
     if (TF_PREDICT_FALSE(
-            tracing::GetTraceCollector() ||
+            (trace_collector &&
+             trace_collector->IsEnabled(op_kernel->IsExpensive())) ||
             tracing::GetEventCollector(tracing::EventCategory::kCompute))) {
       const string& op_name = op_kernel->name();
       tracing::ScopedActivity activity(op_name, op_kernel->type_string(),

@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -117,6 +116,17 @@ Status XlaContext::AddResourceRetval(int retval_index, XlaResource* resource) {
   XlaExpression e;
   e.set_resource(resource);
   retvals_[retval_index] = Retval{DT_RESOURCE, resource->shape(), e};
+  return Status::OK();
+}
+
+Status XlaContext::AppendTokenRetval(const xla::XlaOp& token) {
+  VLOG(1) << "Adding retval index " << retvals_.size()
+          << " with token to XLA computation";
+  XlaExpression e;
+  e.set_handle(token);
+  // We use DT_INVALID because there is no TF DataType which corresponds to XLA
+  // token. XlaCompiler handles this case separately, so putting it here is OK.
+  retvals_.push_back(Retval{DT_INVALID, TensorShape(), e});
   return Status::OK();
 }
 

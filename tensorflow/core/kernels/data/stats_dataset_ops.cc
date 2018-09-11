@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 // This op defines a `Dataset` that passes through its input elements and
@@ -248,4 +249,5 @@ REGISTER_KERNEL_BUILDER(Name("BytesProducedStatsDataset").Device(DEVICE_CPU),
                         BytesProducedStatsDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

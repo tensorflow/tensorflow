@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_op_registry.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 const char kOptionalVariantTypeName[] = "tensorflow::data::Optional";
 
@@ -267,4 +268,5 @@ Status WriteOptionalNoneToOutput(OpKernelContext* ctx, int output_index) {
   return Status::OK();
 }
 
+}  // namespace data
 }  // namespace tensorflow

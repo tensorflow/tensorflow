@@ -499,7 +499,8 @@ def make_csv_dataset(
   # indefinitely, and all batches will be full-sized.
   dataset = dataset.batch(batch_size=batch_size,
                           drop_remainder=num_epochs is None)
-  dataset = dataset.map(map_fn)
+  dataset = dataset_ops.MapDataset(
+      dataset, map_fn, use_inter_op_parallelism=False)
   dataset = dataset.prefetch(prefetch_buffer_size)
 
   return dataset
@@ -778,7 +779,8 @@ def make_batched_features_dataset(file_pattern,
 
   # Extract values if the `Example` tensors are stored as key-value tuples.
   if dataset.output_types == (dtypes.string, dtypes.string):
-    dataset = dataset.map(lambda _, v: v)
+    dataset = dataset_ops.MapDataset(
+        dataset, lambda _, v: v, use_inter_op_parallelism=False)
 
   # Apply dataset repeat and shuffle transformations.
   dataset = _maybe_shuffle_and_repeat(

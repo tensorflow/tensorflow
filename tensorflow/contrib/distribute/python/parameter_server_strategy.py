@@ -412,6 +412,8 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     if not session_config or not self._cluster_spec:
       return
 
+    session_config.isolate_session_state = False
+
     assert self._cluster_spec
     assert self._task_type
     assert self._task_id is not None

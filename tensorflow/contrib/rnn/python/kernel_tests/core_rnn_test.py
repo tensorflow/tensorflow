@@ -1906,7 +1906,7 @@ class StateSaverRNNTest(test.TestCase):
     state_saver = TestStateSaverWithCounters(batch_size, 2 * num_units)
     out, state, state_saver = self._factory(scope=None, state_saver=state_saver)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables_lib.global_variables_initializer())
       sess.run(variables_lib.local_variables_initializer())
 

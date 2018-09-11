@@ -174,7 +174,7 @@ class FusedConv2DBiasActivationOp : public OpKernel {
 
     // Input bias is a 1-D tensor, with size matching output depth.
     const Tensor& bias = context->input(kBias);
-    OP_REQUIRES_OK(context, CheckShape(bias, "conv_input"));
+    OP_REQUIRES_OK(context, CheckShape(bias, "bias"));
 
     const Tensor& conv_input_scale_tensor = context->input(kConvInputScale);
     const Tensor& side_input_scale_tensor = context->input(kSideInputScale);

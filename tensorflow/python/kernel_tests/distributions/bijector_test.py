@@ -36,11 +36,10 @@ class BaseBijectorTest(test.TestCase):
   """Tests properties of the Bijector base-class."""
 
   def testIsAbstract(self):
-    with self.test_session():
-      with self.assertRaisesRegexp(TypeError,
-                                   ("Can't instantiate abstract class Bijector "
-                                    "with abstract methods __init__")):
-        bijector.Bijector()  # pylint: disable=abstract-class-instantiated
+    with self.assertRaisesRegexp(TypeError,
+                                 ("Can't instantiate abstract class Bijector "
+                                  "with abstract methods __init__")):
+      bijector.Bijector()  # pylint: disable=abstract-class-instantiated
 
   def testDefaults(self):
     class _BareBonesBijector(bijector.Bijector):
@@ -136,7 +135,7 @@ class BijectorTestEventNdims(test.TestCase):
   def testBijectorDynamicEventNdims(self):
     bij = BrokenBijector(validate_args=True)
     event_ndims = array_ops.placeholder(dtype=np.int32, shape=None)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("Expected scalar"):
         bij.forward_log_det_jacobian(1., event_ndims=event_ndims).eval({
             event_ndims: (1, 2)})
@@ -308,7 +307,7 @@ class BijectorReduceEventDimsTest(test.TestCase):
     event_ndims = array_ops.placeholder(dtype=np.int32, shape=[])
     bij = ExpOnlyJacobian(forward_min_event_ndims=1)
     bij.inverse_log_det_jacobian(x, event_ndims=event_ndims)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       ildj = sess.run(bij.inverse_log_det_jacobian(x, event_ndims=event_ndims),
                       feed_dict={event_ndims: 1})
     self.assertAllClose(-np.log(x_), ildj)

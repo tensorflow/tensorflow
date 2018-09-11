@@ -11,8 +11,8 @@ libjpegturbo_nocopts = "-[W]error"
 
 WIN_COPTS = [
     "/Ox",
-    "/w14711",  # function 'function' selected for inline expansion
-    "/w14710",  # 'function' : function not inlined
+    "-DWITH_SIMD",
+    "-wd4996",
 ]
 
 libjpegturbo_copts = select({
@@ -127,6 +127,7 @@ cc_library(
         ":armeabi-v7a": [":simd_armv7a"],
         ":arm64-v8a": [":simd_armv8a"],
         ":linux_ppc64le": [":simd_altivec"],
+        ":windows": [":simd_win_x86_64"],
         "//conditions:default": [":simd_none"],
     }),
 )
@@ -144,27 +145,27 @@ cc_library(
         "jpeglib.h",
         "jsimd.h",
         "jsimddct.h",
-        "simd/jccolor-altivec.c",
-        "simd/jcgray-altivec.c",
-        "simd/jcsample.h",
-        "simd/jcsample-altivec.c",
-        "simd/jdcolor-altivec.c",
-        "simd/jdmerge-altivec.c",
-        "simd/jdsample-altivec.c",
-        "simd/jfdctfst-altivec.c",
-        "simd/jfdctint-altivec.c",
-        "simd/jidctfst-altivec.c",
-        "simd/jidctint-altivec.c",
-        "simd/jquanti-altivec.c",
         "simd/jsimd.h",
-        "simd/jsimd_altivec.h",
-        "simd/jsimd_powerpc.c",
+        "simd/powerpc/jccolor-altivec.c",
+        "simd/powerpc/jcgray-altivec.c",
+        "simd/powerpc/jcsample-altivec.c",
+        "simd/powerpc/jdcolor-altivec.c",
+        "simd/powerpc/jdmerge-altivec.c",
+        "simd/powerpc/jdsample-altivec.c",
+        "simd/powerpc/jfdctfst-altivec.c",
+        "simd/powerpc/jfdctint-altivec.c",
+        "simd/powerpc/jidctfst-altivec.c",
+        "simd/powerpc/jidctint-altivec.c",
+        "simd/powerpc/jquanti-altivec.c",
+        "simd/powerpc/jsimd.c",
     ],
     hdrs = [
-        "simd/jccolext-altivec.c",  # should have been named .inc
-        "simd/jcgryext-altivec.c",  # should have been named .inc
-        "simd/jdcolext-altivec.c",  # should have been named .inc
-        "simd/jdmrgext-altivec.c",  # should have been named .inc
+        "simd/powerpc/jccolext-altivec.c",
+        "simd/powerpc/jcgryext-altivec.c",
+        "simd/powerpc/jdcolext-altivec.c",
+        "simd/powerpc/jdmrgext-altivec.c",
+        "simd/powerpc/jcsample.h",
+        "simd/powerpc/jsimd_altivec.h",
     ],
     copts = libjpegturbo_copts,
     nocopts = libjpegturbo_nocopts,
@@ -175,6 +176,7 @@ cc_library(
     srcs = [
         "jchuff.h",
         "jconfig.h",
+        "jconfigint.h",
         "jdct.h",
         "jerror.h",
         "jinclude.h",
@@ -183,24 +185,35 @@ cc_library(
         "jpeglib.h",
         "jsimd.h",
         "jsimddct.h",
-        "simd/jccolor-sse2-64.o",
-        "simd/jcgray-sse2-64.o",
-        "simd/jchuff-sse2-64.o",
-        "simd/jcsample-sse2-64.o",
-        "simd/jdcolor-sse2-64.o",
-        "simd/jdmerge-sse2-64.o",
-        "simd/jdsample-sse2-64.o",
-        "simd/jfdctflt-sse-64.o",
-        "simd/jfdctfst-sse2-64.o",
-        "simd/jfdctint-sse2-64.o",
-        "simd/jidctflt-sse2-64.o",
-        "simd/jidctfst-sse2-64.o",
-        "simd/jidctint-sse2-64.o",
-        "simd/jidctred-sse2-64.o",
-        "simd/jquantf-sse2-64.o",
-        "simd/jquanti-sse2-64.o",
         "simd/jsimd.h",
-        "simd/jsimd_x86_64.c",
+        "simd/x86_64/jsimd.c",
+        "simd/x86_64/jccolor-avx2.o",
+        "simd/x86_64/jccolor-sse2.o",
+        "simd/x86_64/jcgray-avx2.o",
+        "simd/x86_64/jcgray-sse2.o",
+        "simd/x86_64/jchuff-sse2.o",
+        "simd/x86_64/jcphuff-sse2.o",
+        "simd/x86_64/jcsample-avx2.o",
+        "simd/x86_64/jcsample-sse2.o",
+        "simd/x86_64/jdcolor-avx2.o",
+        "simd/x86_64/jdcolor-sse2.o",
+        "simd/x86_64/jdmerge-avx2.o",
+        "simd/x86_64/jdmerge-sse2.o",
+        "simd/x86_64/jdsample-avx2.o",
+        "simd/x86_64/jdsample-sse2.o",
+        "simd/x86_64/jfdctflt-sse.o",
+        "simd/x86_64/jfdctfst-sse2.o",
+        "simd/x86_64/jfdctint-avx2.o",
+        "simd/x86_64/jfdctint-sse2.o",
+        "simd/x86_64/jidctflt-sse2.o",
+        "simd/x86_64/jidctfst-sse2.o",
+        "simd/x86_64/jidctint-avx2.o",
+        "simd/x86_64/jidctint-sse2.o",
+        "simd/x86_64/jidctred-sse2.o",
+        "simd/x86_64/jquantf-sse2.o",
+        "simd/x86_64/jquanti-avx2.o",
+        "simd/x86_64/jquanti-sse2.o",
+        "simd/x86_64/jsimdcpu.o",
     ],
     copts = libjpegturbo_copts,
     linkstatic = 1,
@@ -210,57 +223,88 @@ cc_library(
 genrule(
     name = "simd_x86_64_assemblage23",
     srcs = [
-        "simd/jccolext-sse2-64.asm",
-        "simd/jccolor-sse2-64.asm",
-        "simd/jcgray-sse2-64.asm",
-        "simd/jcgryext-sse2-64.asm",
-        "simd/jchuff-sse2-64.asm",
-        "simd/jcolsamp.inc",
-        "simd/jcsample-sse2-64.asm",
-        "simd/jdcolext-sse2-64.asm",
-        "simd/jdcolor-sse2-64.asm",
-        "simd/jdct.inc",
-        "simd/jdmerge-sse2-64.asm",
-        "simd/jdmrgext-sse2-64.asm",
-        "simd/jdsample-sse2-64.asm",
-        "simd/jfdctflt-sse-64.asm",
-        "simd/jfdctfst-sse2-64.asm",
-        "simd/jfdctint-sse2-64.asm",
-        "simd/jidctflt-sse2-64.asm",
-        "simd/jidctfst-sse2-64.asm",
-        "simd/jidctint-sse2-64.asm",
-        "simd/jidctred-sse2-64.asm",
-        "simd/jpeg_nbits_table.inc",
-        "simd/jquantf-sse2-64.asm",
-        "simd/jquanti-sse2-64.asm",
-        "simd/jsimdcfg.inc",
-        "simd/jsimdext.inc",
+        "jconfig.h",
+        "jconfigint.h",
+        "simd/x86_64/jccolext-avx2.asm",
+        "simd/x86_64/jccolext-sse2.asm",
+        "simd/x86_64/jccolor-avx2.asm",
+        "simd/x86_64/jccolor-sse2.asm",
+        "simd/x86_64/jcgray-avx2.asm",
+        "simd/x86_64/jcgray-sse2.asm",
+        "simd/x86_64/jcgryext-avx2.asm",
+        "simd/x86_64/jcgryext-sse2.asm",
+        "simd/x86_64/jchuff-sse2.asm",
+        "simd/x86_64/jcphuff-sse2.asm",
+        "simd/x86_64/jcsample-avx2.asm",
+        "simd/x86_64/jcsample-sse2.asm",
+        "simd/x86_64/jdcolext-avx2.asm",
+        "simd/x86_64/jdcolext-sse2.asm",
+        "simd/x86_64/jdcolor-avx2.asm",
+        "simd/x86_64/jdcolor-sse2.asm",
+        "simd/x86_64/jdmerge-avx2.asm",
+        "simd/x86_64/jdmerge-sse2.asm",
+        "simd/x86_64/jdmrgext-avx2.asm",
+        "simd/x86_64/jdmrgext-sse2.asm",
+        "simd/x86_64/jdsample-avx2.asm",
+        "simd/x86_64/jdsample-sse2.asm",
+        "simd/x86_64/jfdctflt-sse.asm",
+        "simd/x86_64/jfdctfst-sse2.asm",
+        "simd/x86_64/jfdctint-avx2.asm",
+        "simd/x86_64/jfdctint-sse2.asm",
+        "simd/x86_64/jidctflt-sse2.asm",
+        "simd/x86_64/jidctfst-sse2.asm",
+        "simd/x86_64/jidctint-avx2.asm",
+        "simd/x86_64/jidctint-sse2.asm",
+        "simd/x86_64/jidctred-sse2.asm",
+        "simd/x86_64/jquantf-sse2.asm",
+        "simd/x86_64/jquanti-avx2.asm",
+        "simd/x86_64/jquanti-sse2.asm",
+        "simd/x86_64/jsimdcpu.asm",
+        "simd/nasm/jcolsamp.inc",
+        "simd/nasm/jdct.inc",
+        "simd/nasm/jpeg_nbits_table.inc",
+        "simd/nasm/jsimdcfg.inc",
+        "simd/nasm/jsimdcfg.inc.h",
+        "simd/nasm/jsimdext.inc",
     ],
     outs = [
-        "simd/jccolor-sse2-64.o",
-        "simd/jcgray-sse2-64.o",
-        "simd/jchuff-sse2-64.o",
-        "simd/jcsample-sse2-64.o",
-        "simd/jdcolor-sse2-64.o",
-        "simd/jdmerge-sse2-64.o",
-        "simd/jdsample-sse2-64.o",
-        "simd/jfdctflt-sse-64.o",
-        "simd/jfdctfst-sse2-64.o",
-        "simd/jfdctint-sse2-64.o",
-        "simd/jidctflt-sse2-64.o",
-        "simd/jidctfst-sse2-64.o",
-        "simd/jidctint-sse2-64.o",
-        "simd/jidctred-sse2-64.o",
-        "simd/jquantf-sse2-64.o",
-        "simd/jquanti-sse2-64.o",
+        "simd/x86_64/jccolor-avx2.o",
+        "simd/x86_64/jccolor-sse2.o",
+        "simd/x86_64/jcgray-avx2.o",
+        "simd/x86_64/jcgray-sse2.o",
+        "simd/x86_64/jchuff-sse2.o",
+        "simd/x86_64/jcphuff-sse2.o",
+        "simd/x86_64/jcsample-avx2.o",
+        "simd/x86_64/jcsample-sse2.o",
+        "simd/x86_64/jdcolor-avx2.o",
+        "simd/x86_64/jdcolor-sse2.o",
+        "simd/x86_64/jdmerge-avx2.o",
+        "simd/x86_64/jdmerge-sse2.o",
+        "simd/x86_64/jdsample-avx2.o",
+        "simd/x86_64/jdsample-sse2.o",
+        "simd/x86_64/jfdctflt-sse.o",
+        "simd/x86_64/jfdctfst-sse2.o",
+        "simd/x86_64/jfdctint-avx2.o",
+        "simd/x86_64/jfdctint-sse2.o",
+        "simd/x86_64/jidctflt-sse2.o",
+        "simd/x86_64/jidctfst-sse2.o",
+        "simd/x86_64/jidctint-avx2.o",
+        "simd/x86_64/jidctint-sse2.o",
+        "simd/x86_64/jidctred-sse2.o",
+        "simd/x86_64/jquantf-sse2.o",
+        "simd/x86_64/jquanti-avx2.o",
+        "simd/x86_64/jquanti-sse2.o",
+        "simd/x86_64/jsimdcpu.o",
     ],
     cmd = "for out in $(OUTS); do\n" +
           "  $(location @nasm//:nasm) -f elf64" +
-          "    -DELF -DPIC -DRGBX_FILLER_0XFF -D__x86_64__ -DARCH_X86_64" +
-          "    -I $$(dirname $(location simd/jdct.inc))/" +
-          "    -I $$(dirname $(location simd/jsimdcfg.inc))/" +
+          "    -DELF -DPIC -D__x86_64__" +
+          "    -I $$(dirname $(location jconfig.h))/" +
+          "    -I $$(dirname $(location jconfigint.h))/" +
+          "    -I $$(dirname $(location simd/nasm/jsimdcfg.inc.h))/" +
+          "    -I $$(dirname $(location simd/x86_64/jccolext-sse2.asm))/" +
           "    -o $$out" +
-          "    $$(dirname $(location simd/jdct.inc))/$$(basename $${out%.o}.asm)\n" +
+          "    $$(dirname $(location simd/x86_64/jccolext-sse2.asm))/$$(basename $${out%.o}.asm)\n" +
           "done",
     tools = ["@nasm"],
 )
@@ -279,8 +323,8 @@ cc_library(
         "jsimd.h",
         "jsimddct.h",
         "simd/jsimd.h",
-        "simd/jsimd_arm.c",
-        "simd/jsimd_arm_neon.S",
+        "simd/arm/jsimd.c",
+        "simd/arm/jsimd_neon.S",
     ],
     copts = libjpegturbo_copts,
     nocopts = libjpegturbo_nocopts,
@@ -300,11 +344,145 @@ cc_library(
         "jsimd.h",
         "jsimddct.h",
         "simd/jsimd.h",
-        "simd/jsimd_arm64.c",
-        "simd/jsimd_arm64_neon.S",
+        "simd/arm64/jsimd.c",
+        "simd/arm64/jsimd_neon.S",
     ],
     copts = libjpegturbo_copts,
     nocopts = libjpegturbo_nocopts,
+)
+
+cc_library(
+    name = "simd_win_x86_64",
+    srcs = [
+        "jchuff.h",
+        "jconfig.h",
+        "jconfigint.h",
+        "jdct.h",
+        "jerror.h",
+        "jinclude.h",
+        "jmorecfg.h",
+        "jpegint.h",
+        "jpeglib.h",
+        "jsimd.h",
+        "jsimddct.h",
+        "simd/jsimd.h",
+        "simd/x86_64/jsimd.c",
+        "simd/x86_64/jccolor-avx2.obj",
+        "simd/x86_64/jccolor-sse2.obj",
+        "simd/x86_64/jcgray-avx2.obj",
+        "simd/x86_64/jcgray-sse2.obj",
+        "simd/x86_64/jchuff-sse2.obj",
+        "simd/x86_64/jcphuff-sse2.obj",
+        "simd/x86_64/jcsample-avx2.obj",
+        "simd/x86_64/jcsample-sse2.obj",
+        "simd/x86_64/jdcolor-avx2.obj",
+        "simd/x86_64/jdcolor-sse2.obj",
+        "simd/x86_64/jdmerge-avx2.obj",
+        "simd/x86_64/jdmerge-sse2.obj",
+        "simd/x86_64/jdsample-avx2.obj",
+        "simd/x86_64/jdsample-sse2.obj",
+        "simd/x86_64/jfdctflt-sse.obj",
+        "simd/x86_64/jfdctfst-sse2.obj",
+        "simd/x86_64/jfdctint-avx2.obj",
+        "simd/x86_64/jfdctint-sse2.obj",
+        "simd/x86_64/jidctflt-sse2.obj",
+        "simd/x86_64/jidctfst-sse2.obj",
+        "simd/x86_64/jidctint-avx2.obj",
+        "simd/x86_64/jidctint-sse2.obj",
+        "simd/x86_64/jidctred-sse2.obj",
+        "simd/x86_64/jquantf-sse2.obj",
+        "simd/x86_64/jquanti-avx2.obj",
+        "simd/x86_64/jquanti-sse2.obj",
+        "simd/x86_64/jsimdcpu.obj",
+    ],
+    copts = libjpegturbo_copts,
+)
+
+genrule(
+    name = "simd_win_x86_64_assemble",
+    srcs = [
+        "jconfig.h",
+        "jconfigint.h",
+        "simd/x86_64/jccolext-avx2.asm",
+        "simd/x86_64/jccolext-sse2.asm",
+        "simd/x86_64/jccolor-avx2.asm",
+        "simd/x86_64/jccolor-sse2.asm",
+        "simd/x86_64/jcgray-avx2.asm",
+        "simd/x86_64/jcgray-sse2.asm",
+        "simd/x86_64/jcgryext-avx2.asm",
+        "simd/x86_64/jcgryext-sse2.asm",
+        "simd/x86_64/jchuff-sse2.asm",
+        "simd/x86_64/jcphuff-sse2.asm",
+        "simd/x86_64/jcsample-avx2.asm",
+        "simd/x86_64/jcsample-sse2.asm",
+        "simd/x86_64/jdcolext-avx2.asm",
+        "simd/x86_64/jdcolext-sse2.asm",
+        "simd/x86_64/jdcolor-avx2.asm",
+        "simd/x86_64/jdcolor-sse2.asm",
+        "simd/x86_64/jdmerge-avx2.asm",
+        "simd/x86_64/jdmerge-sse2.asm",
+        "simd/x86_64/jdmrgext-avx2.asm",
+        "simd/x86_64/jdmrgext-sse2.asm",
+        "simd/x86_64/jdsample-avx2.asm",
+        "simd/x86_64/jdsample-sse2.asm",
+        "simd/x86_64/jfdctflt-sse.asm",
+        "simd/x86_64/jfdctfst-sse2.asm",
+        "simd/x86_64/jfdctint-avx2.asm",
+        "simd/x86_64/jfdctint-sse2.asm",
+        "simd/x86_64/jidctflt-sse2.asm",
+        "simd/x86_64/jidctfst-sse2.asm",
+        "simd/x86_64/jidctint-avx2.asm",
+        "simd/x86_64/jidctint-sse2.asm",
+        "simd/x86_64/jidctred-sse2.asm",
+        "simd/x86_64/jquantf-sse2.asm",
+        "simd/x86_64/jquanti-avx2.asm",
+        "simd/x86_64/jquanti-sse2.asm",
+        "simd/x86_64/jsimdcpu.asm",
+        "simd/nasm/jcolsamp.inc",
+        "simd/nasm/jdct.inc",
+        "simd/nasm/jpeg_nbits_table.inc",
+        "simd/nasm/jsimdcfg.inc",
+        "simd/nasm/jsimdcfg.inc.h",
+        "simd/nasm/jsimdext.inc",
+    ],
+    outs = [
+        "simd/x86_64/jccolor-avx2.obj",
+        "simd/x86_64/jccolor-sse2.obj",
+        "simd/x86_64/jcgray-avx2.obj",
+        "simd/x86_64/jcgray-sse2.obj",
+        "simd/x86_64/jchuff-sse2.obj",
+        "simd/x86_64/jcphuff-sse2.obj",
+        "simd/x86_64/jcsample-avx2.obj",
+        "simd/x86_64/jcsample-sse2.obj",
+        "simd/x86_64/jdcolor-avx2.obj",
+        "simd/x86_64/jdcolor-sse2.obj",
+        "simd/x86_64/jdmerge-avx2.obj",
+        "simd/x86_64/jdmerge-sse2.obj",
+        "simd/x86_64/jdsample-avx2.obj",
+        "simd/x86_64/jdsample-sse2.obj",
+        "simd/x86_64/jfdctflt-sse.obj",
+        "simd/x86_64/jfdctfst-sse2.obj",
+        "simd/x86_64/jfdctint-avx2.obj",
+        "simd/x86_64/jfdctint-sse2.obj",
+        "simd/x86_64/jidctflt-sse2.obj",
+        "simd/x86_64/jidctfst-sse2.obj",
+        "simd/x86_64/jidctint-avx2.obj",
+        "simd/x86_64/jidctint-sse2.obj",
+        "simd/x86_64/jidctred-sse2.obj",
+        "simd/x86_64/jquantf-sse2.obj",
+        "simd/x86_64/jquanti-avx2.obj",
+        "simd/x86_64/jquanti-sse2.obj",
+        "simd/x86_64/jsimdcpu.obj",
+    ],
+    cmd = "for out in $(OUTS); do\n" +
+          "  $(location @nasm//:nasm) -fwin64 -DWIN64 -D__x86_64__" +
+          "    -I $$(dirname $(location simd/x86_64/jccolext-sse2.asm))/" +
+          "    -I $$(dirname $(location simd/nasm/jdct.inc))/" +
+          "    -I $$(dirname $(location simd/nasm/jdct.inc))/../../win/" +
+          "    -o $$out" +
+          "    $$(dirname $(location simd/x86_64/jccolext-sse2.asm))/$$(basename $${out%.obj}.asm)\n" +
+          "done",
+    tools = ["@nasm"],
 )
 
 cc_library(
@@ -332,50 +510,44 @@ template_rule(
     out = "jconfig_win.h",
     substitutions = {
         "@JPEG_LIB_VERSION@": "62",
-        "@VERSION@": "1.5.1",
-        "@LIBJPEG_TURBO_VERSION_NUMBER@": "1005001",
-        "cmakedefine": "define",
+        "@VERSION@": "2.0.0",
+        "@LIBJPEG_TURBO_VERSION_NUMBER@": "2000000",
         "@BITS_IN_JSAMPLE@": "8",
-    },
-)
-
-template_rule(
-    name = "jconfigint_win",
-    src = "win/jconfigint.h.in",
-    out = "jconfigint_win.h",
-    substitutions = {
-        "@VERSION@": "1.5.1",
-        "@BUILD@": "20161115",
-        "@CMAKE_PROJECT_NAME@": "libjpeg-turbo",
+        "#cmakedefine C_ARITH_CODING_SUPPORTED": "#define C_ARITH_CODING_SUPPORTED",
+        "#cmakedefine D_ARITH_CODING_SUPPORTED": "#define D_ARITH_CODING_SUPPORTED",
+        "#cmakedefine MEM_SRCDST_SUPPORTED": "#define MEM_SRCDST_SUPPORTED",
+        "#cmakedefine WITH_SIMD": "",
     },
 )
 
 JCONFIG_NOWIN_COMMON_SUBSTITUTIONS = {
-    "LIBJPEG_TURBO_VERSION 0": "LIBJPEG_TURBO_VERSION 1.5.1",
-    "LIBJPEG_TURBO_VERSION_NUMBER 0": "LIBJPEG_TURBO_VERSION_NUMBER 1005001",
-    "#undef C_ARITH_CODING_SUPPORTED": "#define C_ARITH_CODING_SUPPORTED 1",
-    "#undef D_ARITH_CODING_SUPPORTED": "#define D_ARITH_CODING_SUPPORTED 1",
-    "#undef HAVE_LOCALE_H": "#define HAVE_LOCALE_H 1",
-    "#undef HAVE_STDDEF_H": "#define HAVE_STDDEF_H 1",
-    "#undef HAVE_STDLIB_H": "#define HAVE_STDLIB_H 1",
-    "#undef HAVE_UNSIGNED_CHAR": "#define HAVE_UNSIGNED_CHAR 1",
-    "#undef HAVE_UNSIGNED_SHORT": "#define HAVE_UNSIGNED_SHORT 1",
-    "#undef INCOMPLETE_TYPES_BROKEN": "",
-    "#undef MEM_SRCDST_SUPPORTED": "#define MEM_SRCDST_SUPPORTED 1",
-    "#undef NEED_BSD_STRINGS": "",
-    "#undef NEED_SYS_TYPES_H": "#define NEED_SYS_TYPES_H 1",
-    "#undef __CHAR_UNSIGNED__": "",
+    "@JPEG_LIB_VERSION@": "62",
+    "@VERSION@": "2.0.0",
+    "@LIBJPEG_TURBO_VERSION_NUMBER@": "2000000",
+    "#cmakedefine C_ARITH_CODING_SUPPORTED": "#define C_ARITH_CODING_SUPPORTED",
+    "#cmakedefine D_ARITH_CODING_SUPPORTED": "#define D_ARITH_CODING_SUPPORTED",
+    "#cmakedefine MEM_SRCDST_SUPPORTED": "#define MEM_SRCDST_SUPPORTED",
+    "@BITS_IN_JSAMPLE@": "8",
+    "#cmakedefine HAVE_LOCALE_H": "#define HAVE_LOCALE_H 1",
+    "#cmakedefine HAVE_STDDEF_H": "#define HAVE_STDDEF_H 1",
+    "#cmakedefine HAVE_STDLIB_H": "#define HAVE_STDLIB_H 1",
+    "#cmakedefine NEED_SYS_TYPES_H": "#define NEED_SYS_TYPES_H",
+    "#cmakedefine NEED_BSD_STRINGS": "",
+    "#cmakedefine HAVE_UNSIGNED_CHAR": "#define HAVE_UNSIGNED_CHAR 1",
+    "#cmakedefine HAVE_UNSIGNED_SHORT": "#define HAVE_UNSIGNED_SHORT 1",
+    "#cmakedefine INCOMPLETE_TYPES_BROKEN": "",
+    "#cmakedefine RIGHT_SHIFT_IS_UNSIGNED": "",
+    "#cmakedefine __CHAR_UNSIGNED__": "",
     "#undef const": "",
     "#undef size_t": "",
-    "#undef RIGHT_SHIFT_IS_UNSIGNED": "",
 }
 
 JCONFIG_NOWIN_SIMD_SUBSTITUTIONS = {
-    "#undef WITH_SIMD": "#define WITH_SIMD 1",
+    "#cmakedefine WITH_SIMD": "#define WITH_SIMD",
 }
 
 JCONFIG_NOWIN_NOSIMD_SUBSTITUTIONS = {
-    "#undef WITH_SIMD": "",
+    "#cmakedefine WITH_SIMD": "",
 }
 
 JCONFIG_NOWIN_SIMD_SUBSTITUTIONS.update(JCONFIG_NOWIN_COMMON_SUBSTITUTIONS)
@@ -396,22 +568,55 @@ template_rule(
     substitutions = JCONFIG_NOWIN_SIMD_SUBSTITUTIONS,
 )
 
+JCONFIGINT_COMMON_SUBSTITUTIONS = {
+    "@BUILD@": "20180831",
+    "@VERSION@": "2.0.0",
+    "@CMAKE_PROJECT_NAME@": "libjpeg-turbo",
+    "#undef inline": "",
+    "#cmakedefine HAVE_INTRIN_H": "",
+}
+
+JCONFIGINT_NOWIN_SUBSTITUTIONS = {
+    "#cmakedefine HAVE_BUILTIN_CTZL": "#define HAVE_BUILTIN_CTZL",
+    "@INLINE@": "inline __attribute__((always_inline))",
+    "#define SIZEOF_SIZE_T  @SIZE_T@": "#if (__WORDSIZE==64 && !defined(__native_client__))\n" +
+                                       "#define SIZEOF_SIZE_T 8\n" +
+                                       "#else\n" +
+                                       "#define SIZEOF_SIZE_T 4\n" +
+                                       "#endif\n",
+}
+
+JCONFIGINT_WIN_SUBSTITUTIONS = {
+    "#cmakedefine HAVE_BUILTIN_CTZL": "",
+    "#define INLINE  @INLINE@": "#if defined(__GNUC__)\n" +
+                                "#define INLINE inline __attribute__((always_inline))\n" +
+                                "#elif defined(_MSC_VER)\n" +
+                                "#define INLINE __forceinline\n" +
+                                "#else\n" +
+                                "#define INLINE\n" +
+                                "#endif\n",
+    "#define SIZEOF_SIZE_T  @SIZE_T@": "#if (__WORDSIZE==64)\n" +
+                                       "#define SIZEOF_SIZE_T 8\n" +
+                                       "#else\n" +
+                                       "#define SIZEOF_SIZE_T 4\n" +
+                                       "#endif\n",
+}
+
+JCONFIGINT_NOWIN_SUBSTITUTIONS.update(JCONFIGINT_COMMON_SUBSTITUTIONS)
+JCONFIGINT_WIN_SUBSTITUTIONS.update(JCONFIGINT_COMMON_SUBSTITUTIONS)
+
 template_rule(
     name = "jconfigint_nowin",
     src = "jconfigint.h.in",
     out = "jconfigint_nowin.h",
-    substitutions = {
-        "#undef BUILD": "#define BUILD \"20161115\"",
-        "#undef inline": "",
-        "#undef INLINE": "#define INLINE inline __attribute__((always_inline))",
-        "#undef PACKAGE_NAME": "#define PACKAGE_NAME \"libjpeg-turbo\"",
-        "#undef VERSION": "#define VERSION \"1.5.1\"",
-        "#undef SIZEOF_SIZE_T": "#if (__WORDSIZE==64 && !defined(__native_client__))\n" +
-                                "#define SIZEOF_SIZE_T 8\n" +
-                                "#else\n" +
-                                "#define SIZEOF_SIZE_T 4\n" +
-                                "#endif\n",
-    },
+    substitutions = JCONFIGINT_NOWIN_SUBSTITUTIONS,
+)
+
+template_rule(
+    name = "jconfigint_win",
+    src = "jconfigint.h.in",
+    out = "jconfigint_win.h",
+    substitutions = JCONFIGINT_WIN_SUBSTITUTIONS,
 )
 
 genrule(
