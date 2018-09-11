@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
 from tensorflow.python.framework import dtypes
@@ -291,9 +292,15 @@ class FixedLengthRecordDataset(dataset_ops.Dataset):
         argument_dtype=dtypes.string)
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.fixed_length_record_dataset_v2(
-        self._filenames, self._header_bytes, self._record_bytes,
-        self._footer_bytes, self._buffer_size, self._compression_type)
+    if self._compression_type is not None or compat.forward_compatible(2018, 9, 30):
+      return gen_dataset_ops.fixed_length_record_dataset_v2(
+          self._filenames, self._header_bytes, self._record_bytes,
+          self._footer_bytes, self._buffer_size, self._compression_type)
+    else:
+      return gen_dataset_ops.fixed_length_record_dataset(
+          self._filenames, self._header_bytes, self._record_bytes,
+          self._footer_bytes, self._buffer_size)
+
 
   def _inputs(self):
     return []

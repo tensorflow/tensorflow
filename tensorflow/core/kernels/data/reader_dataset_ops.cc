@@ -406,7 +406,7 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
                     dataset()->record_bytes_, &record));
                 // Produce the record as output.
                 Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
-                record_tensor.scalar<string>()() = record;
+                record_tensor.scalar<string>()() = std::move(record);
                 out_tensors->emplace_back(std::move(record_tensor));
                 *end_of_sequence = false;
                 return Status::OK();
@@ -580,7 +580,7 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
       std::unique_ptr<RandomAccessFile> file_
           GUARDED_BY(mu_);  // must outlive buffered_input_stream_
       std::unique_ptr<io::RandomAccessInputStream>
-          file_stream_;  // must outlive buffered_inputstream_
+          file_stream_;  // must outlive buffered_input_stream_
       std::unique_ptr<io::InputStreamInterface> buffered_input_stream_
           GUARDED_BY(mu_);
       int64 file_pos_limit_ GUARDED_BY(mu_) = -1;
