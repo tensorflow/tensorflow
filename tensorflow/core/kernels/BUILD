@@ -5069,6 +5069,7 @@ filegroup(
         "control_flow_ops.h",
         "conv_2d.h",
         "conv_ops.h",
+        "crop_resize_bilinear_core.h",
         "data_format_ops.h",
         "depthtospace_op.h",
         "depthwise_conv_op.h",
@@ -5197,7 +5198,6 @@ filegroup(
         "population_count_op.h",
         "winograd_transform.h",
         ":android_extended_ops_headers",
-        ":crop_resize_bilinear_core",
     ] + select({
         ":xsmm_convolutions": [
             "xsmm_conv2d.h",
@@ -5292,7 +5292,6 @@ filegroup(
         "where_op.cc",
         "xent_op.cc",
         ":android_extended_ops_headers",
-        ":crop_resize_bilinear_core",
     ],
 )
 
