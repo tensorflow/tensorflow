@@ -757,6 +757,11 @@ TfLiteStatus NNAPIDelegate::BuildGraph(Interpreter* interpreter) {
         reinterpret_cast<const uint32_t*>(augmented_inputs.data()),
         static_cast<uint32_t>(augmented_outputs.size()),
         reinterpret_cast<const uint32_t*>(augmented_outputs.data())));
+
+    if (GetAndroidSdkVersionCached() >= 28) {
+      CHECK_NN(ANeuralNetworksModel_relaxComputationFloat32toFloat16(
+          nn_model_, interpreter->GetAllowFp16PrecisionForFp32()));
+    }
     CHECK_NN(ANeuralNetworksModel_finish(nn_model_));
   }
   if (!nn_compiled_model_) {
