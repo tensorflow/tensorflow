@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,13 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""This is the legacy module for AutoGraph, kept for backward compatibility.
-
-New users should instead use `tensorflow.python.autograph`.
-"""
+"""Tests for asserts module."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.autograph import *  # pylint:disable=wildcard-import
+import gast
+
+from tensorflow.python.autograph.converters import asserts
+from tensorflow.python.autograph.core import converter_testing
+from tensorflow.python.platform import test
+
+
+class AssertsTest(converter_testing.TestCase):
+
+  def test_transform(self):
+
+    def test_fn(a):
+      assert a > 0
+
+    node, ctx = self.prepare(test_fn, {})
+    node = asserts.transform(node, ctx)
+
+    self.assertTrue(isinstance(node.body[0].value, gast.Call))
+
+
+if __name__ == '__main__':
+  test.main()

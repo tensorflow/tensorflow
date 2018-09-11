@@ -21,9 +21,11 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    # This module is kept for backward compatibility only. To depend on AutoGraph,
-    # use //third_party/tensorflow/python/autograph instead.
     deps = [
-        "//tensorflow/python/autograph",
+        "//tensorflow/python:util",
+        "//tensorflow/python/autograph/impl",
+        "//tensorflow/python/autograph/lang",
+        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/utils",
     ],
 )

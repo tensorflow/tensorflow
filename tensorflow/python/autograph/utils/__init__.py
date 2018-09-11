@@ -12,13 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""This is the legacy module for AutoGraph, kept for backward compatibility.
-
-New users should instead use `tensorflow.python.autograph`.
-"""
+"""Utility module that contains APIs usable in the generated code."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.autograph import *  # pylint:disable=wildcard-import
+from tensorflow.python.autograph.utils.context_managers import control_dependency_on_returns
+from tensorflow.python.autograph.utils.misc import alias_tensors
+from tensorflow.python.autograph.utils.multiple_dispatch import dynamic_is
+from tensorflow.python.autograph.utils.multiple_dispatch import dynamic_is_not
+from tensorflow.python.autograph.utils.multiple_dispatch import run_cond
+from tensorflow.python.autograph.utils.py_func import wrap_py_func
+from tensorflow.python.autograph.utils.tensor_list import dynamic_list_append
+from tensorflow.python.autograph.utils.testing import fake_tf
+from tensorflow.python.autograph.utils.type_check import is_tensor
