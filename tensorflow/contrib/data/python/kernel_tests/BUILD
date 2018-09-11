@@ -293,6 +293,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

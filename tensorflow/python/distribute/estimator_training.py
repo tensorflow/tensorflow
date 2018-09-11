@@ -147,8 +147,8 @@ def init_run_config(config, tf_config):
   # `experimental_distribute.remote_cluster` is set.
   if (config._train_distribute and config._experimental_distribute and
       config._experimental_distribute.remote_cluster):
-    if tf_config:
-      raise ValueError('Cannot set both TF_CONFIG environment variable and '
+    if cluster_spec:
+      raise ValueError('Cannot set both "cluster_spec" of TF_CONFIG and '
                        '`experimental_distribute.remote_cluster`')
     config._distribute_coordinator_mode = dc.CoordinatorMode.STANDALONE_CLIENT
     config._cluster_spec = config._experimental_distribute.remote_cluster

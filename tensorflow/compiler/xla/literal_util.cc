@@ -84,8 +84,7 @@ std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
 }  // namespace
 
 /* static */ std::unique_ptr<Literal> LiteralUtil::CreateFromDimensions(
-    PrimitiveType primitive_type,
-    tensorflow::gtl::ArraySlice<int64> dimensions) {
+    PrimitiveType primitive_type, absl::Span<const int64> dimensions) {
   return Literal::CreateFromShape(
       ShapeUtil::MakeShape(primitive_type, dimensions));
 }
@@ -301,9 +300,8 @@ std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
 }
 
 /* static */ std::unique_ptr<Literal> LiteralUtil::ReshapeSlice(
-    tensorflow::gtl::ArraySlice<int64> new_dimensions,
-    tensorflow::gtl::ArraySlice<int64> minor_to_major,
-    const LiteralSlice& literal) {
+    absl::Span<const int64> new_dimensions,
+    absl::Span<const int64> minor_to_major, const LiteralSlice& literal) {
   int64 new_num_elements = 1;
   for (int64 i = 0; i < new_dimensions.size(); ++i) {
     new_num_elements *= new_dimensions[i];
@@ -430,7 +428,7 @@ std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
 }
 
 /* static */ std::unique_ptr<Literal> LiteralUtil::MakeTuple(
-    tensorflow::gtl::ArraySlice<const Literal*> elements) {
+    absl::Span<const Literal* const> elements) {
   std::vector<Shape> element_shapes;
   for (const auto* element : elements) {
     element_shapes.push_back(element->shape());
@@ -444,7 +442,7 @@ std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
 }
 
 /* static */ std::unique_ptr<Literal> LiteralUtil::MakeTupleFromSlices(
-    tensorflow::gtl::ArraySlice<LiteralSlice> elements) {
+    absl::Span<const LiteralSlice> elements) {
   std::vector<Shape> element_shapes;
   for (const auto& element : elements) {
     element_shapes.push_back(element.shape());
@@ -474,7 +472,7 @@ std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
 }
 
 /* static */ string LiteralUtil::MultiIndexAsString(
-    tensorflow::gtl::ArraySlice<int64> multi_index) {
+    absl::Span<const int64> multi_index) {
   return StrCat("{", absl::StrJoin(multi_index, ","), "}");
 }
 

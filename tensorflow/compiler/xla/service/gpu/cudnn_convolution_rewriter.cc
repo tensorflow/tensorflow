@@ -59,6 +59,11 @@ std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardFilter(
     HloInstruction* conv) {
   const auto no_match_result =
       std::make_tuple(false, Window(), ConvolutionDimensionNumbers());
+  // TODO(b/31709653): Figure out if we can use grouped convolutions also on
+  // backward filter.
+  if (conv->feature_group_count() > 1) {
+    return no_match_result;
+  }
   // Step 1: match the instruction pattern without considering the paddings and
   // dimension numbers just yet. We may need some generic pattern matcher
   // similar to third_party/llvm/llvm/include/llvm/IR/PatternMatch.h
@@ -218,6 +223,12 @@ std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardInput(
   const auto no_match_result =
       std::make_tuple(false, Window(), ConvolutionDimensionNumbers());
 
+  // TODO(b/31709653): Figure out if we can use grouped convolutions also on
+  // backward input.
+  if (conv->feature_group_count() > 1) {
+    return no_match_result;
+  }
+
   // Match instruction pattern.
   CHECK_EQ(HloOpcode::kConvolution, conv->opcode());
   HloInstruction* reverse_filter = conv->mutable_operand(1);
@@ -234,6 +245,23 @@ std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardInput(
           << "Backward input convolution should reverse all kernel dimensions.";
       return no_match_result;
     }
+  } else if (reverse_filter->IsConstant()) {
+    // If the filter is a constant, we're willing to pattern-match to a
+    // backwards-input conv, on the theory that
+    //
+    //  a) reversing a constant is free, and
+    //  b) even if the user specified this filter as reverse(constant), we would
+    //     long ago have constant-folded away the reverse.
+    //
+    // If the constant has any other uses, reversing it isn't entirely free,
+    // since we'd now have two constants to keep in memory.  But hopefully it's
+    // free enough.
+    //
+    // TODO(jlebar): Should we do this even if the filter is not a constant?
+    // Reversing a non-constant filter is probably cheaper than padding the
+    // input!
+
+    // Nothing to do, just fall through.
   } else {
     // Possibly 1x1 filter.
     for (int64 i = 0; i < kernel_spatial_dims.size(); ++i) {
@@ -373,22 +401,25 @@ std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardInput(
     }
   }
 
-  // Fuse the matched HLOs into a backward convolution instruction.
-  //
-  // If the reverse is omitted (for 1x1 filters) in the original pattern, we add
-  // it back in the fusion instruction so that later passes (such as
-  // PadInsertion) can handle such fusion instructions easily.
+  // OK, it's a match!  Canonicalize the conv's filter so that it's a reverse.
+  // This simplifies things for our caller, and algebraic-simplifier will later
+  // remove any unnecessary reverses.
   if (reverse_filter->opcode() != HloOpcode::kReverse) {
-    reverse_filter = reverse_filter->parent()->AddInstruction(
+    // Create a double-reverse, which is a nop.
+    HloComputation* c = conv->parent();
+    reverse_filter = c->AddInstruction(
+        HloInstruction::CreateReverse(reverse_filter->shape(), reverse_filter,
+                                      AsInt64Slice(kernel_spatial_dims)));
+    reverse_filter = c->AddInstruction(
         HloInstruction::CreateReverse(reverse_filter->shape(), reverse_filter,
                                       AsInt64Slice(kernel_spatial_dims)));
     TF_CHECK_OK(conv->ReplaceOperandWith(/*operand_no=*/1, reverse_filter));
   }
+
   dnums.set_kernel_input_feature_dimension(
       conv->convolution_dimension_numbers().kernel_output_feature_dimension());
   dnums.set_kernel_output_feature_dimension(
       conv->convolution_dimension_numbers().kernel_input_feature_dimension());
-
   return std::make_tuple(true, new_window, dnums);
 }
 
@@ -405,7 +436,7 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
     if (match) {
       return CreateCudnnConvBackwardFilter(
           conv->shape(), conv->mutable_operand(0), conv->mutable_operand(1),
-          window, dnums);
+          window, dnums, conv->feature_group_count());
     }
 
     std::tie(match, window, dnums) = MatchBackwardInput(conv);
@@ -415,15 +446,17 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
       CHECK_EQ(reverse->opcode(), HloOpcode::kReverse);
       HloInstruction* rhs = reverse->mutable_operand(0);
 
-      return CreateCudnnConvBackwardInput(
-          conv->shape(), conv->mutable_operand(0), rhs, window, dnums);
+      return CreateCudnnConvBackwardInput(conv->shape(),
+                                          conv->mutable_operand(0), rhs, window,
+                                          dnums, conv->feature_group_count());
     }
 
     // If all else fails, try a forward convolution.
     if (CanImplementAsCudnnForwardConv(conv)) {
       return CreateCudnnConvForward(conv->shape(), conv->mutable_operand(0),
                                     conv->mutable_operand(1), conv->window(),
-                                    conv->convolution_dimension_numbers());
+                                    conv->convolution_dimension_numbers(),
+                                    conv->feature_group_count());
     }
 
     return nullptr;

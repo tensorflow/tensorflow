@@ -305,7 +305,7 @@ class HloDotDumper {
                const DebugOptions& debug_options, bool show_backend_config,
                const HloExecutionProfile* profile, NodeFilter filter)
       : computation_(computation),
-        label_(std::string(label)),
+        label_(label),
         debug_options_(debug_options),
         show_backend_config_(show_backend_config),
         profile_(profile),
@@ -1029,6 +1029,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       return kGray;
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectivePermute:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kRecv:

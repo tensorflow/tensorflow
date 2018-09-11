@@ -56,6 +56,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -191,13 +192,13 @@ cc_library(
     srcs = ["embedded_protocol_buffers.cc"],
     hdrs = ["embedded_protocol_buffers.h"],
     deps = [
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@llvm//:core",
         "@llvm//:support",
         "@llvm//:target",

@@ -188,9 +188,7 @@ class IndexedArrayAnalysis {
     // `output_dims` are the dimensions in the output array that are being used
     // to compute an index into the `indices` array.  See the class
     // documentation and the overview for more details.
-    tensorflow::gtl::ArraySlice<int64> output_dims() const {
-      return output_dims_;
-    }
+    absl::Span<const int64> output_dims() const { return output_dims_; }
 
    private:
     explicit ScalarIndexedArray(Array* source, Array* indices, int64 source_dim,
@@ -265,8 +263,7 @@ class IndexedArrayAnalysis {
 
   StatusOr<Array*> ComputeArrayForGather(
       const Shape& shape, const GatherDimensionNumbers& dim_numbers,
-      tensorflow::gtl::ArraySlice<int64> slice_sizes, Array* source,
-      Array* indices);
+      absl::Span<const int64> slice_sizes, Array* source, Array* indices);
 
   StatusOr<Array*> ComputeArrayForDotWithIndexedLhs(
       const Shape& shape, const DotDimensionNumbers& dim_numbers,
@@ -303,7 +300,7 @@ class IndexedArrayAnalysis {
   //    G1 = [Arr[i] for i in I2]
   StatusOr<ScalarIndexedArray*> FoldGatherOfGather(
       ScalarIndexedArray* source, Array* indices, int64 source_dim,
-      tensorflow::gtl::ArraySlice<int64> output_dims, Shape shape);
+      absl::Span<const int64> output_dims, Shape shape);
 
   // Reshapes a scalar-indexed node to remove the degenerate dimensions in its
   // output.  The result is always a scalar-indexed node.
@@ -313,8 +310,7 @@ class IndexedArrayAnalysis {
   // Reshapes a scalar-indexed node such that the result has the degenerate
   // dimensions `degenerate_dims`.  The result is always a scalar-indexed node.
   StatusOr<ScalarIndexedArray*> ReshapeToAddDegenerateDims(
-      ScalarIndexedArray* operand,
-      tensorflow::gtl::ArraySlice<int64> degenerate_dims);
+      ScalarIndexedArray* operand, absl::Span<const int64> degenerate_dims);
 
   StatusOr<ScalarIndexedArray*> FoldReshapeOfGather(
       const Shape& shape, ScalarIndexedConstantArray* operand);

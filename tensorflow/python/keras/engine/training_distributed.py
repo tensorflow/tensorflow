@@ -160,7 +160,7 @@ def fit_loop(
           outs = [outs]
 
         outs = _aggregate_metrics_across_towers(
-            len(current_strategy._devices), out_labels, outs)
+            current_strategy.num_towers, out_labels, outs)
         for l, o in zip(out_labels, outs):
           batch_logs[l] = o
         callbacks.on_batch_end(step_index, batch_logs)
@@ -263,7 +263,7 @@ def test_loop(model, inputs, targets, verbose=0, steps=None):
     for step in range(steps):
       batch_outs = distributed_test_function(ins)
       batch_outs = _aggregate_metrics_across_towers(
-          len(current_strategy._devices), model.metrics_names, batch_outs)
+          current_strategy.num_towers, model.metrics_names, batch_outs)
       if isinstance(batch_outs, list):
         if step == 0:
           for _ in enumerate(batch_outs):

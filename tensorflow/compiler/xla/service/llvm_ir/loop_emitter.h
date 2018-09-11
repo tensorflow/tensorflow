@@ -53,8 +53,7 @@ class LoopEmitter {
   // This is used for multi-output fusion.  target_element_generator must
   // produce an LLVM struct with N elements.
   LoopEmitter(const ElementGenerator& target_element_generator,
-              tensorflow::gtl::ArraySlice<IrArray> target_arrays,
-              llvm::IRBuilder<>* b);
+              absl::Span<const IrArray> target_arrays, llvm::IRBuilder<>* b);
 
   LoopEmitter(const LoopEmitter&) = delete;
   LoopEmitter& operator=(const LoopEmitter&) = delete;

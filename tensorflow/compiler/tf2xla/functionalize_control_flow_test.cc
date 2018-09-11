@@ -805,11 +805,11 @@ TEST(FunctionalizeControlFlow, Complex) {
     auto assign = ops::AssignAddVariableOp(
         scope.WithOpName("outer/inner/assign_add"), enter_var, add_jkx);
 
-    auto one =
-        ops::Const<int32>(scope.WithOpName("outer/inner/One")
-                              .WithControlDependencies(
-                                  gtl::ArraySlice<Operation>{assign.operation}),
-                          1);
+    auto one = ops::Const<int32>(
+        scope.WithOpName("outer/inner/One")
+            .WithControlDependencies(
+                absl::Span<const Operation>{assign.operation}),
+        1);
     auto add_j =
         ops::Add(scope.WithOpName("outer/inner/add_j"), identity_j, one);
 
@@ -823,7 +823,7 @@ TEST(FunctionalizeControlFlow, Complex) {
         scope.WithOpName("outer/add/y").WithControlDependencies(identity_i), 1);
     auto add_i =
         ops::Add(scope.WithOpName("outer/add")
-                     .WithControlDependencies(gtl::ArraySlice<Operation>{
+                     .WithControlDependencies(absl::Span<const Operation>{
                          exit_j.output.op(), exit_k.output.op()}),
                  identity_i, one_outer);
     auto next_iteration_i =
@@ -929,7 +929,7 @@ TEST(FunctionalizeControlFlow, Complex) {
         scope.WithOpName("outer/add/y").WithControlDependencies(identity_i), 1);
     auto add_i =
         ops::Add(scope.WithOpName("outer/add")
-                     .WithControlDependencies(gtl::ArraySlice<Operation>{
+                     .WithControlDependencies(absl::Span<const Operation>{
                          while_op[0].op(), while_op[1].op()}),
                  identity_i, one_outer);
 
@@ -991,11 +991,11 @@ TEST(FunctionalizeControlFlow, Complex) {
     auto assign = ops::AssignAddVariableOp(
         scope.WithOpName("outer/inner/assign_add"), arg3, add_jkx);
 
-    auto one =
-        ops::Const<int32>(scope.WithOpName("outer/inner/One")
-                              .WithControlDependencies(
-                                  gtl::ArraySlice<Operation>{assign.operation}),
-                          1);
+    auto one = ops::Const<int32>(
+        scope.WithOpName("outer/inner/One")
+            .WithControlDependencies(
+                absl::Span<const Operation>{assign.operation}),
+        1);
     auto add_j =
         ops::Add(scope.WithOpName("outer/inner/add_j"), identity_j, one);
 

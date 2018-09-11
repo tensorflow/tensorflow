@@ -38,7 +38,6 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
-from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 from tensorflow.python.util.tf_export import estimator_export
@@ -876,7 +875,7 @@ def _bt_model_fn(
       train_op.append(update_model)
 
       with ops.control_dependencies([update_model]):
-        increment_global = distribute_lib.increment_var(global_step)
+        increment_global = state_ops.assign_add(global_step, 1).op
         train_op.append(increment_global)
 
       return control_flow_ops.group(train_op, name='train_op')

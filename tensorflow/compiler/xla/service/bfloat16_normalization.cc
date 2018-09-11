@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -69,8 +69,7 @@ class BFloat16NormalizationVisitor : public DfsHloVisitorWithDefault {
   // Inserts conversion HLOs to replace the called computations' BF16
   // operands/outputs to F32.
   Status ConvertCalledComputations(
-      HloInstruction* hlo,
-      tensorflow::gtl::ArraySlice<HloComputation*> bf16_called_comps);
+      HloInstruction* hlo, absl::Span<HloComputation* const> bf16_called_comps);
 
   HloComputation* computation_;
   const BFloat16Support* bfloat16_support_;
@@ -114,8 +113,7 @@ Status BFloat16NormalizationVisitor::InsertConvertBeforeOperand(
 }
 
 Status BFloat16NormalizationVisitor::ConvertCalledComputations(
-    HloInstruction* hlo,
-    tensorflow::gtl::ArraySlice<HloComputation*> bf16_called_comps) {
+    HloInstruction* hlo, absl::Span<HloComputation* const> bf16_called_comps) {
   std::map<HloComputation*, HloComputation*> cloned_computations;
   for (auto& comp : bf16_called_comps) {
     auto cloned = comp->parent()->AddEmbeddedComputation(comp->Clone());
@@ -359,6 +357,7 @@ Status BFloat16NormalizationVisitor::DefaultAction(HloInstruction* hlo) {
       hlo->opcode() == HloOpcode::kConditional) {
     return Status::OK();
   }
+  // TODO(b/112040122): Correctly normalize variadic reduce.
   if ((hlo->opcode() == HloOpcode::kSort ||
        hlo->opcode() == HloOpcode::kCrossReplicaSum) &&
       ShapeUtil::IsTuple(hlo->shape())) {

@@ -52,6 +52,13 @@ void VectorVectorCwiseProductAccumulate(const float* vector1,
                    result);
 }
 
+void VectorBatchVectorCwiseProduct(const float* vector, int v_size,
+                                   const float* batch_vector, int n_batch,
+                                   float* result) {
+  NEON_OR_PORTABLE(VectorBatchVectorCwiseProduct, vector, v_size, batch_vector,
+                   n_batch, result);
+}
+
 void VectorBatchVectorCwiseProductAccumulate(const float* vector, int v_size,
                                              const float* batch_vector,
                                              int n_batch, float* result) {

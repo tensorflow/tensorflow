@@ -481,8 +481,7 @@ tf_kernel_library(
         ":dataset",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:graph",
     ],
 )
 
@@ -505,8 +504,7 @@ tf_kernel_library(
         ":dataset",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:graph",
     ],
 )
 

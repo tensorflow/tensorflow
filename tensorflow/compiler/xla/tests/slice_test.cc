@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -194,7 +194,7 @@ class SliceR1Test : public ClientLibraryTestBase,
  protected:
   template <typename NativeT>
   void Run(const R1Spec& spec) {
-    // This can't be an std::vector, since you can't grab an ArraySlice of a
+    // This can't be an std::vector, since you can't grab a Span of a
     // vector<bool>.
     absl::InlinedVector<NativeT, 1> input(spec.input_dim0);
     std::iota(input.begin(), input.end(), NativeT());

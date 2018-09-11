@@ -112,11 +112,11 @@ StatusOr<StreamPool::Ptr> Backend::BorrowStream(se::StreamExecutor* executor) {
   return stream_pools_.at(executor).BorrowStream(executor);
 }
 
-Backend::Backend(
-    se::Platform* platform, Compiler* compiler,
-    tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors,
-    TransferManager* transfer_manager, ComputationPlacer* computation_placer,
-    int intra_op_parallelism_threads)
+Backend::Backend(se::Platform* platform, Compiler* compiler,
+                 absl::Span<se::StreamExecutor* const> stream_executors,
+                 TransferManager* transfer_manager,
+                 ComputationPlacer* computation_placer,
+                 int intra_op_parallelism_threads)
     : platform_(platform),
       compiler_(compiler),
       transfer_manager_(transfer_manager),

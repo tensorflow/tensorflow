@@ -16,6 +16,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -37,8 +37,7 @@ namespace {
 class PrngTest : public ClientLibraryTestBase {
  protected:
   template <typename T>
-  std::unique_ptr<Literal> UniformTest(T a, T b,
-                                       tensorflow::gtl::ArraySlice<int64> dims,
+  std::unique_ptr<Literal> UniformTest(T a, T b, absl::Span<const int64> dims,
                                        int64 seed = 42);
 
   // Computes the χ² statistic of a sample of the discrete uniform distribution
@@ -50,8 +49,9 @@ class PrngTest : public ClientLibraryTestBase {
 };
 
 template <typename T>
-std::unique_ptr<Literal> PrngTest::UniformTest(
-    T a, T b, tensorflow::gtl::ArraySlice<int64> dims, int64 seed) {
+std::unique_ptr<Literal> PrngTest::UniformTest(T a, T b,
+                                               absl::Span<const int64> dims,
+                                               int64 seed) {
   XlaBuilder builder(TestName());
   RngUniform(
       ConstantR0<T>(&builder, a), ConstantR0<T>(&builder, b),
@@ -61,7 +61,7 @@ std::unique_ptr<Literal> PrngTest::UniformTest(
   auto actual =
       ExecuteAndTransfer(&builder, /*arguments=*/{}).ConsumeValueOrDie();
   EXPECT_THAT(dims, ::testing::ElementsAreArray(actual->shape().dimensions()));
-  actual->EachCell<T>([=](tensorflow::gtl::ArraySlice<int64>, T value) {
+  actual->EachCell<T>([=](absl::Span<const int64>, T value) {
     EXPECT_LE(a, value);
     EXPECT_LT(value, b);
   });
@@ -117,7 +117,7 @@ XLA_TEST_F(PrngTest, DISABLED_ON_GPU(DISABLED_ON_CPU(ScalarBF16CountTests))) {
   for (int64 seed = 0; seed < count; ++seed) {
     auto result = UniformTest<bfloat16>(low, high, {}, /*seed=*/seed);
     result->Literal::EachCell<bfloat16>(
-        [&](tensorflow::gtl::ArraySlice<int64>, bfloat16 value) {
+        [&](absl::Span<const int64>, bfloat16 value) {
           int64 index = static_cast<int64>((value - low) / interval);
           counts[index]++;
         });
@@ -149,8 +149,8 @@ double PrngTest::UniformChiSquared(int32 range_size, int32 expected_count,
   auto actual =
       ExecuteAndTransfer(&builder, /*arguments=*/{}).ConsumeValueOrDie();
   std::vector<int32> counts(range_size, 0);
-  actual->EachCell<int32>([&counts](tensorflow::gtl::ArraySlice<int64>,
-                                    int32 value) { ++counts[value]; });
+  actual->EachCell<int32>(
+      [&counts](absl::Span<const int64>, int32 value) { ++counts[value]; });
   int64 sum = 0;
   for (int32 i = 0; i < range_size; ++i) {
     sum += Square(static_cast<int64>(counts[i] - expected_count));

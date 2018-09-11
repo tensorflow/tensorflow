@@ -521,6 +521,7 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
     return worker_device_map, devices
 
   def testDataDistributionOneDevicePerWorker(self):
+    self.skipTest("Temporarily disabled.")
     worker_device_map, devices = self._cpu_devices()
     with context.graph_mode():
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
@@ -528,6 +529,7 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
                          [[0, 1], [2, 3], [4, 5], [6, 7]])
 
   def testDataDistributionTwoDevicePerWorker(self):
+    self.skipTest("Temporarily disabled.")
     if context.num_gpus() < 1:
       self.skipTest("A GPU is not available for this test.")
     worker_device_map, devices = self._cpu_and_one_gpu_devices()
@@ -537,6 +539,7 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
                          [[0, 2, 1, 3], [4, 6, 5, 7]])
 
   def testTupleDataset(self):
+    self.skipTest("Temporarily disabled.")
     worker_device_map, devices = self._cpu_devices()
 
     with context.graph_mode():
@@ -553,6 +556,7 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
                          expected_values)
 
   def testInitializableIterator(self):
+    self.skipTest("Temporarily disabled.")
     worker_device_map, devices = self._cpu_devices()
     with context.graph_mode():
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
@@ -570,6 +574,7 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
                           [[0, 1], [2, 3], [4, 5], [6, 7]])
 
   def testValueErrorForIterator(self):
+    self.skipTest("Temporarily disabled.")
     # Incompatiable arguments.
     with self.assertRaises(ValueError):
       values.MultiWorkerDataIterator({"w1": None}, {"w1": "d1", "w2": "d2"})

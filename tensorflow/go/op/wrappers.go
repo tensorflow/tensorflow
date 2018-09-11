@@ -3377,6 +3377,30 @@ func PopulationCount(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
+// Calculates the prior from the training data (the bias) and fills in the first node with the logits' prior. Returns a boolean indicating whether to continue centering.
+//
+// Arguments:
+//	tree_ensemble_handle: Handle to the tree ensemble.
+//	mean_gradients: A tensor with shape=[logits_dimension] with mean of gradients for a first node.
+//	mean_hessians: A tensor with shape=[logits_dimension] mean of hessians for a first node.
+//	l1: l1 regularization factor on leaf weights, per instance based.
+//	l2: l2 regularization factor on leaf weights, per instance based.
+//
+// Returns Bool, whether to continue bias centering.
+func BoostedTreesCenterBias(scope *Scope, tree_ensemble_handle tf.Output, mean_gradients tf.Output, mean_hessians tf.Output, l1 tf.Output, l2 tf.Output) (continue_centering tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "BoostedTreesCenterBias",
+		Input: []tf.Input{
+			tree_ensemble_handle, mean_gradients, mean_hessians, l1, l2,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes the mean along sparse segments of a tensor.
 //
 // Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
@@ -4644,51 +4668,6 @@ func CholeskyGrad(scope *Scope, l tf.Output, grad tf.Output) (output tf.Output) 
 		Type: "CholeskyGrad",
 		Input: []tf.Input{
 			l, grad,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes the mean along sparse segments of a tensor.
-//
-// Like `SparseSegmentMean`, but allows missing ids in `segment_ids`. If an id is
-// misisng, the `output` tensor at that position will be zeroed.
-//
-// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-// segments.
-//
-// Arguments:
-//
-//	indices: A 1-D tensor. Has same rank as `segment_ids`.
-//	segment_ids: A 1-D tensor. Values should be sorted and can be repeated.
-//	num_segments: Should equal the number of distinct segment IDs.
-//
-// Returns Has same shape as data, except for dimension 0 which has size
-// `num_segments`.
-func SparseSegmentMeanWithNumSegments(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SparseSegmentMeanWithNumSegments",
-		Input: []tf.Input{
-			data, indices, segment_ids, num_segments,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes hyperbolic cosine of x element-wise.
-func Cosh(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Cosh",
-		Input: []tf.Input{
-			x,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -8921,21 +8900,6 @@ func ReadVariableOp(scope *Scope, resource tf.Output, dtype tf.DataType) (value 
 	return op.Output(0)
 }
 
-// Computes tan of x element-wise.
-func Tan(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Tan",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Updates the tree ensemble by either adding a layer to the last tree being grown
 //
 // or by starting a new tree.
@@ -8974,6 +8938,21 @@ func BoostedTreesUpdateEnsemble(scope *Scope, tree_ensemble_handle tf.Output, fe
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
+}
+
+// Computes tan of x element-wise.
+func Tan(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Tan",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // EncodeJpegAttr is an optional argument to EncodeJpeg.
@@ -16650,30 +16629,6 @@ func OrderedMapUnstageNoKey(scope *Scope, indices tf.Output, dtypes []tf.DataTyp
 	return key, values
 }
 
-// Calculates the prior from the training data (the bias) and fills in the first node with the logits' prior. Returns a boolean indicating whether to continue centering.
-//
-// Arguments:
-//	tree_ensemble_handle: Handle to the tree ensemble.
-//	mean_gradients: A tensor with shape=[logits_dimension] with mean of gradients for a first node.
-//	mean_hessians: A tensor with shape=[logits_dimension] mean of hessians for a first node.
-//	l1: l1 regularization factor on leaf weights, per instance based.
-//	l2: l2 regularization factor on leaf weights, per instance based.
-//
-// Returns Bool, whether to continue bias centering.
-func BoostedTreesCenterBias(scope *Scope, tree_ensemble_handle tf.Output, mean_gradients tf.Output, mean_hessians tf.Output, l1 tf.Output, l2 tf.Output) (continue_centering tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "BoostedTreesCenterBias",
-		Input: []tf.Input{
-			tree_ensemble_handle, mean_gradients, mean_hessians, l1, l2,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // SerializeManySparseAttr is an optional argument to SerializeManySparse.
 type SerializeManySparseAttr func(optionalAttr)
 
@@ -20416,6 +20371,51 @@ func RandomUniformInt(scope *Scope, shape tf.Output, minval tf.Output, maxval tf
 			shape, minval, maxval,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes hyperbolic cosine of x element-wise.
+func Cosh(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Cosh",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes the mean along sparse segments of a tensor.
+//
+// Like `SparseSegmentMean`, but allows missing ids in `segment_ids`. If an id is
+// misisng, the `output` tensor at that position will be zeroed.
+//
+// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
+// segments.
+//
+// Arguments:
+//
+//	indices: A 1-D tensor. Has same rank as `segment_ids`.
+//	segment_ids: A 1-D tensor. Values should be sorted and can be repeated.
+//	num_segments: Should equal the number of distinct segment IDs.
+//
+// Returns Has same shape as data, except for dimension 0 which has size
+// `num_segments`.
+func SparseSegmentMeanWithNumSegments(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseSegmentMeanWithNumSegments",
+		Input: []tf.Input{
+			data, indices, segment_ids, num_segments,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -26671,41 +26671,6 @@ func LatencyStatsDataset(scope *Scope, input_dataset tf.Output, tag tf.Output, o
 	return op.Output(0)
 }
 
-// Runs multiple additive regression ensemble predictors on input instances and
-//
-// computes the update to cached logits. It is designed to be used during training.
-// It traverses the trees starting from cached tree id and cached node id and
-// calculates the updates to be pushed to the cache.
-//
-// Arguments:
-//
-//	cached_tree_ids: Rank 1 Tensor containing cached tree ids which is the starting
-// tree of prediction.
-//	cached_node_ids: Rank 1 Tensor containing cached node id which is the starting
-// node of prediction.
-//	bucketized_features: A list of rank 1 Tensors containing bucket id for each
-// feature.
-//	logits_dimension: scalar, dimension of the logits, to be used for partial logits
-// shape.
-//
-// Returns Rank 2 Tensor containing logits update (with respect to cached
-// values stored) for each example.Rank 1 Tensor containing new tree ids for each example.Rank 1 Tensor containing new node ids in the new tree_ids.
-func BoostedTreesTrainingPredict(scope *Scope, tree_ensemble_handle tf.Output, cached_tree_ids tf.Output, cached_node_ids tf.Output, bucketized_features []tf.Output, logits_dimension int64) (partial_logits tf.Output, tree_ids tf.Output, node_ids tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"logits_dimension": logits_dimension}
-	opspec := tf.OpSpec{
-		Type: "BoostedTreesTrainingPredict",
-		Input: []tf.Input{
-			tree_ensemble_handle, cached_tree_ids, cached_node_ids, tf.OutputList(bucketized_features),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
-}
-
 // MapSizeAttr is an optional argument to MapSize.
 type MapSizeAttr func(optionalAttr)
 
@@ -31917,4 +31882,39 @@ func BoostedTreesDeserializeEnsemble(scope *Scope, tree_ensemble_handle tf.Outpu
 		},
 	}
 	return scope.AddOperation(opspec)
+}
+
+// Runs multiple additive regression ensemble predictors on input instances and
+//
+// computes the update to cached logits. It is designed to be used during training.
+// It traverses the trees starting from cached tree id and cached node id and
+// calculates the updates to be pushed to the cache.
+//
+// Arguments:
+//
+//	cached_tree_ids: Rank 1 Tensor containing cached tree ids which is the starting
+// tree of prediction.
+//	cached_node_ids: Rank 1 Tensor containing cached node id which is the starting
+// node of prediction.
+//	bucketized_features: A list of rank 1 Tensors containing bucket id for each
+// feature.
+//	logits_dimension: scalar, dimension of the logits, to be used for partial logits
+// shape.
+//
+// Returns Rank 2 Tensor containing logits update (with respect to cached
+// values stored) for each example.Rank 1 Tensor containing new tree ids for each example.Rank 1 Tensor containing new node ids in the new tree_ids.
+func BoostedTreesTrainingPredict(scope *Scope, tree_ensemble_handle tf.Output, cached_tree_ids tf.Output, cached_node_ids tf.Output, bucketized_features []tf.Output, logits_dimension int64) (partial_logits tf.Output, tree_ids tf.Output, node_ids tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"logits_dimension": logits_dimension}
+	opspec := tf.OpSpec{
+		Type: "BoostedTreesTrainingPredict",
+		Input: []tf.Input{
+			tree_ensemble_handle, cached_tree_ids, cached_node_ids, tf.OutputList(bucketized_features),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
 }

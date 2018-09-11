@@ -24,6 +24,23 @@ namespace xla {
 
 namespace {
 
+// AssignmentKind and kUnassignedDevice are used during tuple domain sharding
+// propagation in order to distinguish among three cases:
+// kUnassigned: no assignment has occurred
+// kAssigned: at least an assignment has occurred
+// kConflict: no assignment has occurred because of conflicting propagations,
+// which occurs when multiple users of an instruction have different
+// shardings.
+enum class AssignmentKind { kUnassigned, kAssigned, kConflict };
+
+// kUnassignedDevice can only be assigned to tuple leaf shardings to indicate
+// absence of sharding information for that particular sub-sharding during
+// sharding propagation. It is used to be able to express tuple shardings with
+// partial information. At the end of the propagation the sharding of
+// tuple-shaped instructions using kUnassignedDevice's is cleared.
+// TODO(b/112883246): Centralized enum of reserved devices.
+constexpr int64 kUnassignedDevice = -2;
+
 struct PassThrough {
   PassThrough(HloInstruction* user, HloInstruction* operand)
       : user(user), operand(operand) {}
@@ -147,108 +164,174 @@ Status ApplyDomainSingleSharding(const DomainMetadata::Domain& domain,
   return Status::OK();
 }
 
-// Retrieves the sharding of a tuple shaped instruction in form of a ShapeTree.
-// If the instruction has no sharding, a ShapeTree with HloSharding::Replicate()
-// sharding will be returned.
-ShapeTree<HloSharding> GetTupleSharding(HloInstruction* tuple) {
-  if (tuple->has_sharding()) {
-    return tuple->sharding().GetAsShapeTree(tuple->shape());
+// Return the ShapeTree<HloSharding> of the user argument. The user argument
+// is assumed to be a user of the instruction argument.
+// If user is a tuple instruction, return the tuple subsharding corresponding to
+// the operand matching the instruction argument, because that is the
+// subsharding corresponding to instruction.
+ShapeTree<HloSharding> GetShardingTreeFromUser(
+    const HloInstruction& instruction, const HloInstruction& user) {
+  if (user.opcode() == HloOpcode::kTuple) {
+    return user.sharding()
+        .GetSubSharding(user.shape(), {user.operand_index(&instruction)})
+        .GetAsShapeTree(instruction.shape());
   }
-  return ShapeTree<HloSharding>(tuple->shape(), HloSharding::Replicate());
+  return user.sharding().GetAsShapeTree(user.shape());
 }
 
-// Retrieves the sharding of operand, asked from a user instruction which is
-// within domain. If operand is a kDomain, it means that sharding argument is
-// the operand sharding, otherwise the operand's own sharding will be returned.
-const HloSharding* GetOperandSharding(const HloInstruction* operand,
-                                      const DomainMetadata::Domain& domain,
-                                      const HloSharding& sharding) {
-  // Here the user of operand is within the domain instruction set, and since it
-  // is user of operand, we need to look into the enter_domains set. If this is
-  // not a kDomain within the user domains set, then return the operand
-  // sharding, if any.
-  if (operand->opcode() != HloOpcode::kDomain ||
-      domain.enter_domains.count(const_cast<HloInstruction*>(operand)) == 0) {
-    return operand->has_sharding() ? &operand->sharding() : nullptr;
+// Assign rhs to lhs. If rhs is unassigned (assigned to kUnassignedDevice)
+// then no assignment is made. Therefore kUnassignedDevice is never propagated.
+// kConflict is returned if lhs is already assigned and rhs is assigned to a
+// different device.
+StatusOr<AssignmentKind> AssignLeafSharding(HloSharding* lhs,
+                                            const HloSharding& rhs) {
+  TF_RET_CHECK(!lhs->IsTuple() && !rhs.IsTuple());
+  if (rhs.UsesDevice(kUnassignedDevice)) {
+    return AssignmentKind::kUnassigned;
   }
-  // At this point operand is a kDomain of the currently processed domain, so we
-  // can refer to sharding as the domain sharding.
-  return &sharding;
+  if (lhs->UsesDevice(kUnassignedDevice)) {
+    *lhs = rhs;
+    return AssignmentKind::kAssigned;
+  }
+  return lhs->UniqueDevice() != rhs.UniqueDevice()
+             ? AssignmentKind::kConflict
+             : AssignmentKind::kUnassigned;
+}
+
+// Assigns the whole rhs tree to lhs_tree, starting at lhs_it.
+// In case of conflicting assignment AssignmentKind::kConflict is returned. In
+// this case lhs_tree is partially assigned, up to the conflicting leaf. It is
+// up to the caller to discard the partial assignment in case of conflict.
+StatusOr<AssignmentKind> AssignTreeSharding(
+    ShapeTree<HloSharding>* lhs_tree, ShapeTree<HloSharding>::iterator lhs_it,
+    const ShapeTree<HloSharding>& rhs_tree) {
+  AssignmentKind assigned = AssignmentKind::kUnassigned;
+  auto rhs_it = rhs_tree.begin();
+  for (; lhs_it != lhs_tree->end() && rhs_it != rhs_tree.end();
+       ++lhs_it, ++rhs_it) {
+    // TODO(b/112885211): Add ShapeTree::IsLeaf(const ShapeTreeIterator &it)
+    if (rhs_tree.IsLeaf(rhs_it->first)) {
+      TF_RET_CHECK(lhs_tree->IsLeaf(lhs_it->first));
+      TF_ASSIGN_OR_RETURN(AssignmentKind sub_assigned,
+                          AssignLeafSharding(&lhs_it->second, rhs_it->second));
+      if (sub_assigned == AssignmentKind::kConflict) {
+        // In case of conflict we return conflict to the caller. At this point
+        // partial assignments to lhs_tree may have been made already. It is up
+        // to the caller to discard the partial assignment in case of conflict.
+        return AssignmentKind::kConflict;
+      } else if (sub_assigned == AssignmentKind::kAssigned) {
+        assigned = sub_assigned;
+      }
+    }
+  }
+  TF_RET_CHECK(rhs_it == rhs_tree.end());
+  return assigned;
+}
+
+StatusOr<bool> ApplyShardingFromUsers(HloInstruction* instruction,
+                                      const DomainMetadata::Domain& domain,
+                                      const HloSharding& domain_sharding) {
+  if (instruction->users().empty()) {
+    // No sharding from users, use domain_sharding, after checking
+    // compatibility.
+    TF_RET_CHECK(ShapeUtil::IsTuple(instruction->shape()) &&
+                 ShapeUtil::GetLeafCount(instruction->shape()) ==
+                     domain_sharding.tuple_elements().size());
+    instruction->set_sharding(domain_sharding);
+    return true;
+  }
+  AssignmentKind assigned = AssignmentKind::kUnassigned;
+  // The sharding_tree leaves are initialized to kUnassignedDevice. Only Tuple
+  // subshardings can result in a final sharding assignment containing
+  // kUnassignedDevice leaves, in case some tuple indexes are not used, or are
+  // used by users that don't have a sharding.
+  // Non-tuple shardings are either assigned to a real sharding, or are not
+  // assigned at all. As such they will never get assigned to kUnassignedDevice.
+  // In any case, kUnassignedDevice is never propagated, from the implementation
+  // of AssignLeafSharding.
+  ShapeTree<HloSharding> sharding_tree(
+      instruction->shape(), HloSharding::AssignDevice(kUnassignedDevice));
+  for (HloInstruction* user : instruction->users()) {
+    if (user->opcode() == HloOpcode::kDomain &&
+        domain.exit_domains.count(const_cast<HloInstruction*>(user)) > 0) {
+      // If a user is a domain and it is registered in the domain exits, then
+      // the instruction sharding is taken directly from the domain, and no
+      // further users need to be visited.
+      instruction->set_sharding(domain_sharding);
+      return true;
+    }
+    if (!user->has_sharding()) {
+      continue;
+    }
+    AssignmentKind sub_assigned = AssignmentKind::kUnassigned;
+    ShapeTree<HloSharding> user_sharding_tree =
+        GetShardingTreeFromUser(*instruction, *user);
+    if (ShapeUtil::IsTuple(instruction->shape())) {
+      // For tuple-shaped instructions collect individual tuple subshardings
+      // from the uses, and then combine them into the tuple sharding.
+      // If the user is a GTE its sharding concerns only the subtree of
+      // sharding_tree at index user->tuple_index, otherwise the whole
+      // sharding_tree is affected.
+      ShapeTree<HloSharding>::iterator sharding_tree_begin =
+          user->opcode() == HloOpcode::kGetTupleElement
+              ? sharding_tree.find({user->tuple_index()})
+              : sharding_tree.begin();
+      TF_ASSIGN_OR_RETURN(
+          sub_assigned, AssignTreeSharding(&sharding_tree, sharding_tree_begin,
+                                           user_sharding_tree));
+    } else {
+      // Non-tuple shape: assign common users sharding.
+      TF_RET_CHECK(user_sharding_tree.leaf_count() == 1)
+          << "Expected non-tuple user sharding";
+      TF_ASSIGN_OR_RETURN(
+          sub_assigned,
+          AssignTreeSharding(&sharding_tree, sharding_tree.begin(),
+                             user_sharding_tree));
+    }
+
+    if (sub_assigned == AssignmentKind::kConflict) {
+      // In case of conflict we don't assign any sharding.
+      return false;
+    } else if (sub_assigned == AssignmentKind::kAssigned) {
+      assigned = sub_assigned;
+    }
+  }
+
+  if (assigned == AssignmentKind::kAssigned) {
+    if (ShapeUtil::IsTuple(instruction->shape())) {
+      instruction->set_sharding(HloSharding::Tuple(sharding_tree));
+    } else {
+      TF_RET_CHECK(sharding_tree.leaf_count() == 1);
+      instruction->set_sharding(sharding_tree.leaf_begin()->second);
+    }
+    return true;
+  }
+  return false;
 }
 
 // Tries to propagate the sharding information into the instructions that are
-// part of the domain, in a post order manner (operand propagate to user).
+// part of the domain, in a reverse post order manner (users propoagate to
+// instruction).
 StatusOr<int64> ApplyDomainShardingPass(const DomainMetadata::Domain& domain,
-                                        const HloSharding& sharding) {
+                                        const HloSharding& domain_sharding) {
   int64 assigned = 0;
-  for (HloInstruction* instruction : domain.instructions) {
+  // domain.instructions are ordered in a post-order manner. As we do
+  // user->operand propagation we process instructions in reverse order. In so
+  // doing we are guaranteed to process all users before their operands.
+  for (auto it = domain.instructions.rbegin(); it != domain.instructions.rend();
+       ++it) {
+    HloInstruction* instruction = *it;
     if (instruction->has_sharding()) {
       continue;
     }
-    if (instruction->opcode() == HloOpcode::kGetTupleElement) {
-      HloInstruction* tuple = instruction->mutable_operand(0);
-      const HloSharding* tuple_sharding =
-          GetOperandSharding(tuple, domain, sharding);
-      if (tuple_sharding != nullptr) {
-        if (tuple_sharding->IsTuple()) {
-          HloSharding sub_sharding = tuple_sharding->GetSubSharding(
-              tuple->shape(), {instruction->tuple_index()});
-          VLOG(4) << "  " << instruction->name() << " to sharding "
-                  << sub_sharding;
-          instruction->set_sharding(sub_sharding);
-        } else {
-          SetSingleSharding(instruction, *tuple_sharding);
-        }
-        ++assigned;
-      }
-    } else if (instruction->opcode() == HloOpcode::kTuple) {
-      int64 tuple_assigned = 0;
-      ShapeTree<HloSharding> shape_tree = GetTupleSharding(instruction);
-      for (int64 i = 0; i < instruction->operand_count(); ++i) {
-        const HloSharding* operand_sharding =
-            GetOperandSharding(instruction->operand(i), domain, sharding);
-        if (operand_sharding != nullptr) {
-          HloSharding operand_subsharding = HloSharding::Replicate();
-          if (operand_sharding == &sharding) {
-            operand_subsharding =
-                sharding.GetSubSharding(instruction->shape(), {i});
-            operand_sharding = &operand_subsharding;
-          }
-          if (shape_tree.element({i}) != *operand_sharding) {
-            *shape_tree.mutable_element({i}) = *operand_sharding;
-            ++tuple_assigned;
-          }
-        }
-      }
-      if (tuple_assigned > 0) {
-        HloSharding tuple_sharding = HloSharding::Tuple(shape_tree);
-        VLOG(4) << "  " << instruction->name() << " to sharding "
-                << tuple_sharding;
-        instruction->set_sharding(tuple_sharding);
-        ++assigned;
-      }
-    } else {
-      // If all the operand of the given instruction has the same single device
-      // assignment, assign that device to this instruction as well.
-      const HloSharding* common_sharding = nullptr;
-      for (const HloInstruction* operand : instruction->operands()) {
-        const HloSharding* operand_sharding =
-            GetOperandSharding(operand, domain, sharding);
-        if (operand_sharding != nullptr) {
-          if (common_sharding != nullptr &&
-              *common_sharding != *operand_sharding) {
-            common_sharding = nullptr;
-            break;
-          }
-          common_sharding = operand_sharding;
-        }
-      }
-      if (common_sharding != nullptr) {
-        VLOG(4) << "  " << instruction->name() << " to sharding "
-                << *common_sharding;
-        instruction->set_sharding(*common_sharding);
-        ++assigned;
-      }
+    // Take the sharding from the users.
+    TF_ASSIGN_OR_RETURN(
+        bool instruction_assigned,
+        ApplyShardingFromUsers(instruction, domain, domain_sharding));
+    if (instruction_assigned) {
+      ++assigned;
+      VLOG(4) << "  " << instruction->name() << " to sharding "
+              << instruction->sharding();
     }
   }
   return assigned;
@@ -266,18 +349,22 @@ Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
     return ApplyDomainSingleSharding(domain, *single_sharding);
   }
   VLOG(1) << "Assigning non-trivial sharding " << sharding;
-  for (;;) {
-    TF_ASSIGN_OR_RETURN(int64 assigned,
-                        ApplyDomainShardingPass(domain, sharding));
-    if (assigned == 0) {
-      break;
-    }
-  }
+  TF_RETURN_IF_ERROR(ApplyDomainShardingPass(domain, sharding).status());
+
   int64 unassigned = 0;
   for (HloInstruction* instruction : domain.instructions) {
     if (!instruction->has_sharding()) {
       LOG(WARNING) << "Unassigned instruction: " << instruction->ToString();
       ++unassigned;
+    } else {
+      // Un-set sharding of tuples whose sub-sgardings are assigned to
+      // kUnassignedDevice. Indeed in case of doubt it is better to leave the
+      // entire tuple unassigned, and let the device placer decide for it.
+      if (instruction->sharding().UsesDevice(kUnassignedDevice)) {
+        TF_RET_CHECK(ShapeUtil::IsTuple(instruction->shape()))
+            << "Only tuples can have kUnassignedDevice sub shardings";
+        instruction->clear_sharding();
+      }
     }
   }
   // Should we error out if unassigned > 0?
@@ -285,7 +372,7 @@ Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
 }
 
 StatusOr<std::shared_ptr<const HloSharding>> ExtractOriginalCommonSharding(
-    tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
+    absl::Span<HloInstruction* const> instructions) {
   // If we are here, all the instructions being passed had the same sharding
   // (or no sharding), by the means of the ShardingMatches() API.
   // As such, no kDomain was inserted, and here we are asked to extract the

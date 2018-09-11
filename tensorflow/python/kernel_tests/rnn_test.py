@@ -229,6 +229,13 @@ class RNNTest(test.TestCase):
     self.assertAllEqual([[[1, 1], [2, 2], [3, 3], [4, 4]]], outputs[1])
     self.assertAllEqual(4, state)
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testEagerMemory(self):
+    with context.eager_mode():
+      cell = TensorArrayStateRNNCell()
+      inputs = np.array([[[1], [2], [3], [4]]], dtype=np.float32)
+      rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32, sequence_length=[4])
+
   @test_util.run_in_graph_and_eager_modes
   def testTensorArrayStateIsAccepted(self):
     cell = TensorArrayStateRNNCell()

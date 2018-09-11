@@ -86,7 +86,7 @@ class LogisticLossUpdater : public DualLossUpdater {
     } else {
       inverse_exp_term = 1 / (1 + exp(label * wx));
     }
-    return inverse_exp_term * label * example_weight;
+    return -inverse_exp_term * label * example_weight;
   }
 
   // The smoothness constant is 4 since the derivative of logistic loss, which

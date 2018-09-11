@@ -28,6 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribute as distribute_lib
@@ -82,19 +83,12 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   create conflicts of device assignment.
   """
 
-  def __init__(self,
-               num_gpus_per_worker=0,
-               cluster_spec=None,
-               task_type=None,
-               task_id=None):
+  def __init__(self, num_gpus_per_worker=0):
     """Initializes this strategy.
 
     Args:
-      num_gpus_per_worker: number of local GPUs or GPUs per worker.
-      cluster_spec: a dict, ClusterDef or ClusterSpec object specifying the
-        cluster configurations.
-      task_type: the current task type.
-      task_id: the current task id.
+      num_gpus_per_worker: number of local GPUs or GPUs per worker, the default
+        is 0 meaning CPU only.
 
     Raises:
       ValueError: if `cluster_spec` is given but `task_type` or `task_id` is
@@ -102,24 +96,16 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     """
     super(ParameterServerStrategy, self).__init__()
     self._num_gpus_per_worker = num_gpus_per_worker
-    if cluster_spec:
-      cluster_spec = multi_worker_util.normalize_cluster_spec(cluster_spec)
-      if task_type is None or task_id is None:
-        raise ValueError("When `cluster_spec` is given, must also specify "
-                         "`task_type` and `task_id`.")
-    self._cluster_spec = cluster_spec
+    self._initialize_local(num_gpus_per_worker)
 
     # We typically don't need to do all-reduce in this strategy.
     self._cross_tower_ops = (
         cross_tower_ops_lib.ReductionToOneDeviceCrossTowerOps(
             reduce_to_device=_LOCAL_CPU))
 
-    self._initialize_devices(num_gpus_per_worker, cluster_spec, task_type,
-                             task_id)
-
-  def _initialize_devices(self, num_gpus_per_worker, cluster_spec, task_type,
-                          task_id):
-    """Initialize internal devices.
+  def _initialize_multi_worker(self, num_gpus_per_worker, cluster_spec,
+                               task_type, task_id):
+    """Initialize devices for multiple workers.
 
     It creates variable devices and compute devices. Variables and operations
     will be assigned to them respectively. We have one compute device per tower.
@@ -137,85 +123,103 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     Raises:
       ValueError: if the cluster_spec doesn't have ps jobs.
     """
-    self._task_type = task_type or "worker"
-    self._task_id = task_id or 0
-    self._worker_device = "/job:%s/task:%d" % (self._task_type, self._task_id)
+    assert cluster_spec
+    if not task_type or task_id is None:
+      raise ValueError("When `cluster_spec` is given, you must also specify "
+                       "`task_type` and `task_id`")
+    cluster_spec = multi_worker_util.normalize_cluster_spec(cluster_spec)
 
-    # TODO(yuefengz): maybe clearer to split it into two classes, one for
-    # the distribuetd case and one for the local case, once we have the factory
-    # class/method.
+    self._worker_device = "/job:%s/task:%d" % (self._task_type, self._task_id)
 
     # Define compute devices which is a list of device strings and one for each
     # tower. When there are GPUs, replicate operations on these GPUs. Otherwise,
     # place operations on CPU.
-    if cluster_spec is None:
-      # Local mode.
-      if num_gpus_per_worker > 0:
-        self._compute_devices = list(
-            map("/device:GPU:{}".format, range(num_gpus_per_worker)))
-      else:
-        self._compute_devices = [_LOCAL_CPU]
+    if num_gpus_per_worker > 0:
+      self._compute_devices = [
+          "%s/device:GPU:%d" % (self._worker_device, i)
+          for i in range(num_gpus_per_worker)
+      ]
     else:
-      # Distributed mode.
-      if num_gpus_per_worker > 0:
-        self._compute_devices = [
-            "%s/device:GPU:%d" % (self._worker_device, i)
-            for i in range(num_gpus_per_worker)
-        ]
-      else:
-        self._compute_devices = [self._worker_device]
+      self._compute_devices = [self._worker_device]
 
     self._compute_devices = list(
         map(device_util.resolve, self._compute_devices))
     self._canonical_compute_device_set = set(self._compute_devices)
 
-    # Define variable device which is a device string in the local case and a
-    # device function in the distributed case. It is used to open a device scope
-    # where varibles are defined.
+    # In distributed mode, place variables on ps jobs in a round-robin fashion.
+    # Note that devices returned from `replica_device_setter` are not
+    # canonical and therefore we don't canonicalize all variable devices to
+    # make them consistent.
+    # TODO(yuefengz): support passing a strategy object to control variable
+    # assignment.
+    # TODO(yuefengz): merge the logic of replica_device_setter into this
+    # class.
+    num_ps_replicas = len(cluster_spec.as_dict().get("ps", []))
+    if num_ps_replicas == 0:
+      raise ValueError("The cluster spec needs to have `ps` jobs.")
+    self._variable_device = device_setter.replica_device_setter(
+        ps_tasks=num_ps_replicas,
+        worker_device=self._worker_device,
+        merge_devices=True,
+        cluster=cluster_spec)
+
     # The `_parameter_devices` is needed for the `parameter_devices` property
-    # and is a list of all variable devices.
-    if cluster_spec is None:
-      # Local mode. If there is only one GPU, put everything on that GPU.
-      # Otherwise, place variables on CPU.
-      if num_gpus_per_worker == 1:
-        assert len(list(self._compute_devices)) == 1
-        self._variable_device = _LOCAL_GPU_0
-        self._parameter_devices = [_LOCAL_GPU_0]
-      else:
-        self._variable_device = _LOCAL_CPU
-        self._parameter_devices = [_LOCAL_CPU]
+    # and is a list of all variable devices. Here parameter devices are all
+    # tasks of the "ps" job.
+    self._parameter_devices = map("/job:ps/task:{}".format,
+                                  range(num_ps_replicas))
+
+    # Add a default device so that ops without specified devices will not end up
+    # on other workers.
+    self._default_device = self._worker_device
+
+    self._is_chief = multi_worker_util.is_chief(cluster_spec, task_type,
+                                                task_id)
+    self._cluster_spec = cluster_spec
+    self._task_type = task_type
+    self._task_id = task_id
+
+    logging.info(
+        "Multi-worker ParameterServerStrategy with "
+        "cluster_spec = %r, task_type = %r, task_id = %r, "
+        "num_ps_replicas = %r, is_chief = %r, compute_devices = %r, "
+        "variable_device = %r", cluster_spec.as_dict(), task_type, task_id,
+        num_ps_replicas, self._is_chief, self._compute_devices,
+        self._variable_device)
+
+  def _initialize_local(self, num_gpus_per_worker):
+    """Initialize internal devices for local training."""
+    # Define compute devices which is a list of device strings and one for each
+    # tower. When there are GPUs, replicate operations on these GPUs. Otherwise,
+    # place operations on CPU.
+    if num_gpus_per_worker > 0:
+      self._compute_devices = list(
+          map("/device:GPU:{}".format, range(num_gpus_per_worker)))
     else:
-      # Distributed mode. Place variables on ps jobs in a round-robin fashion.
-      # Note that devices returned from `replica_device_setter` are not
-      # canonical and therefore we don't canonicalize all variable devices to
-      # make them consistent.
-      # TODO(yuefengz): support passing a strategy object to control variable
-      # assignment.
-      # TODO(yuefengz): merge the logic of replica_device_setter into this
-      # class.
-      num_ps_replicas = len(cluster_spec.as_dict().get("ps", []))
-      if num_ps_replicas == 0:
-        raise ValueError("The cluster spec needs to have `ps` jobs.")
-      self._variable_device = device_setter.replica_device_setter(
-          ps_tasks=num_ps_replicas,
-          worker_device=self._worker_device,
-          merge_devices=True,
-          cluster=cluster_spec)
+      self._compute_devices = [_LOCAL_CPU]
 
-      # Parameter devices are all tasks of the "ps" job.
-      self._parameter_devices = map("/job:ps/task:{}".format,
-                                    range(num_ps_replicas))
+    self._compute_devices = list(
+        map(device_util.resolve, self._compute_devices))
+    self._canonical_compute_device_set = set(self._compute_devices)
 
-    # Define the default device in cross-tower mode. In the distributed case, we
-    # set the default device to the corresponding worker to prevent these ops
-    # from being placed on other workers.
-    if cluster_spec is None:
-      self._default_device = None
+    # If there is only one GPU, put everything on that GPU. Otherwise, place
+    # variables on CPU.
+    if num_gpus_per_worker == 1:
+      assert len(list(self._compute_devices)) == 1
+      self._variable_device = _LOCAL_GPU_0
+      self._parameter_devices = [_LOCAL_GPU_0]
     else:
-      self._default_device = self._worker_device
+      self._variable_device = _LOCAL_CPU
+      self._parameter_devices = [_LOCAL_CPU]
 
-    self._is_chief = cluster_spec is None or multi_worker_util.is_chief(
-        cluster_spec, task_type, task_id)
+    self._is_chief = True
+    self._cluster_spec = None
+    self._task_type = None
+    self._task_id = None
+
+    logging.info(
+        "ParameterServerStrategy with compute_devices = %r, "
+        "variable_device = %r", self._compute_devices, self._variable_device)
 
   def distribute_dataset(self, dataset_fn):
     """Distributes the dataset to each local GPU."""
@@ -235,7 +239,8 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
       if aggregation not in (
           vs.VariableAggregation.NONE,
           vs.VariableAggregation.SUM,
-          vs.VariableAggregation.MEAN
+          vs.VariableAggregation.MEAN,
+          vs.VariableAggregation.ONLY_FIRST_TOWER
       ):
         raise ValueError("Invalid variable aggregation mode: " + aggregation +
                          " for variable: " + kwargs["name"])
@@ -302,10 +307,15 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
       # pylint: disable=protected-access
       return mirrored_strategy._reduce_non_distributed_value(
           self, aggregation, value, destinations)
+    if aggregation == vs.VariableAggregation.ONLY_FIRST_TOWER:
+      return self.broadcast(value.get(self._compute_devices[0]), destinations)
     return self._cross_tower_ops.reduce(
         aggregation, value, destinations=destinations)
 
   def _batch_reduce(self, aggregation, value_destination_pairs):
+    if aggregation == vs.VariableAggregation.ONLY_FIRST_TOWER:
+      return [self.broadcast(v.get(self._compute_devices[0]), d)
+              for v, d in value_destination_pairs]
     for _, destinations in value_destination_pairs:
       self._verify_destinations_not_different_worker(destinations)
     return self._cross_tower_ops.batch_reduce(aggregation,
@@ -385,18 +395,33 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
       ValueError: if `cluster_spec` is given but `task_type` or `task_id` is
         not.
     """
-    del session_config
-
-    # Set the devices if cluster_spec is defined in TF_CONFIG but not passed in
-    # the constructor.
     if not self._cluster_spec and cluster_spec:
-      self._cluster_spec = multi_worker_util.normalize_cluster_spec(
-          cluster_spec)
+      # If a `cluster_spec` is already passed in, do nothing here.
+      # TODO(yuefengz): check `cluster_spec` is the same if this object has
+      # already been initialized with a `cluster_spec`.
       if task_type is None or task_id is None:
         raise ValueError("When `cluster_spec` is given, must also specify "
                          "`task_type` and `task_id`.")
-      self._initialize_devices(self._num_gpus_per_worker, self._cluster_spec,
-                               task_type, task_id)
+      self._cluster_spec = multi_worker_util.normalize_cluster_spec(
+          cluster_spec)
+      self._task_type = task_type
+      self._task_id = task_id
+      self._initialize_multi_worker(self._num_gpus_per_worker,
+                                    self._cluster_spec, task_type, task_id)
+
+    if not session_config or not self._cluster_spec:
+      return
+
+    assert self._cluster_spec
+    assert self._task_type
+    assert self._task_id is not None
+
+    # The device filters prevent communication between workers.
+    if self._task_type not in ["chief", "worker"]:
+      return
+    del session_config.device_filters[:]
+    session_config.device_filters.extend(
+        ["/job:%s/task:%d" % (self._task_type, self._task_id), "/job:ps"])
 
   @property
   def num_towers(self):

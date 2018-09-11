@@ -1482,6 +1482,7 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
   const Status fill_status =
       device->FillContextMap(graph, &device_context_map_);
   if (!fill_status.ok()) {
+    delete this;
     done(fill_status);
     return;
   }
@@ -1492,6 +1493,7 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
     ready.push_back(TaggedNode{n, root_frame_, 0, false});
   }
   if (ready.empty()) {
+    delete this;
     done(Status::OK());
   } else {
     num_outstanding_ops_ = ready.size();
@@ -2419,8 +2421,7 @@ void ExecutorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
         }
         if (dst_ready) {
           if (IsControlTrigger(dst_node)) dst_dead = false;
-          ready->push_back(
-              TaggedNode(dst_node, parent_frame, parent_iter, dst_dead));
+          ready->emplace_back(dst_node, parent_frame, parent_iter, dst_dead);
           parent_iter_state->outstanding_ops++;
         }
       }
@@ -2544,7 +2545,7 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
     // Add dst to the ready queue if it's ready
     if (dst_ready) {
       if (dst_item->is_control_trigger) dst_dead = false;
-      ready->push_back(TaggedNode(dst_item->node, this, iter, dst_dead));
+      ready->emplace_back(dst_item->node, this, iter, dst_dead);
       iter_state->outstanding_ops++;
     }
   }

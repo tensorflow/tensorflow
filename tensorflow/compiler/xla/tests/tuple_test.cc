@@ -507,7 +507,7 @@ XLA_TEST_F(TupleTest, ComplexTuples) {
                                         {{10011, 20022}, {30031, 40042}}});
   auto prod = absl::make_unique<Literal>(sum->shape());
   ASSERT_TRUE(prod->Populate<complex64>(
-                      [&sum](tensorflow::gtl::ArraySlice<int64> indexes) {
+                      [&sum](absl::Span<const int64> indexes) {
                         return sum->Get<complex64>(indexes) *
                                (indexes[indexes.size() - 1] == 0
                                     ? complex64(1, 2)

@@ -25,7 +25,7 @@ namespace xla {
 
 StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
     const se::Platform* platform,
-    tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors)
+    absl::Span<se::StreamExecutor* const> stream_executors)
     : DeviceMemoryAllocator(platform),
       stream_executors_(stream_executors.begin(), stream_executors.end()) {}
 

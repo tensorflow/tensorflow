@@ -710,6 +710,11 @@ struct ArithmeticParams {
 
 struct ConcatenationParams {
   int8 axis;
+  const int32* input_zeropoint;
+  const float* input_scale;
+  uint16 inputs_count;
+  int32 output_zeropoint;
+  float output_scale;
 };
 
 struct ComparisonParams {
@@ -884,6 +889,7 @@ struct SplitParams {
   // Graphs that split into, say, 2000 nodes are encountered.  The indices in
   // OperatorEdges are of type uint16.
   uint16 num_split;
+  int16 axis;
 };
 
 struct SqueezeParams {
@@ -913,21 +919,28 @@ struct TanhParams {
   int input_left_shift;
 };
 
-template <typename T>
-inline void SetActivationParams(T min, T max, ArithmeticParams* params);
-
-template <>
-inline void SetActivationParams(float min, float max,
-                                ArithmeticParams* params) {
+template <typename P>
+inline void SetActivationParams(float min, float max, P* params) {
   params->float_activation_min = min;
   params->float_activation_max = max;
 }
 
-template <>
-inline void SetActivationParams(int32 min, int32 max,
-                                ArithmeticParams* params) {
+template <typename P>
+inline void SetActivationParams(int32 min, int32 max, P* params) {
   params->quantized_activation_min = min;
   params->quantized_activation_max = max;
+}
+
+template <typename P>
+inline void GetActivationParams(const P& params, int32* min, int32* max) {
+  *min = params.quantized_activation_min;
+  *max = params.quantized_activation_max;
+}
+
+template <typename P>
+inline void GetActivationParams(const P& params, float* min, float* max) {
+  *min = params.float_activation_min;
+  *max = params.float_activation_max;
 }
 
 }  // namespace tflite

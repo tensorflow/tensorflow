@@ -522,7 +522,7 @@ def make_vjp(f, params=None, persistent=True):
       args = _ensure_unique_tensor_objects(parameter_positions, args)
       for i in parameter_positions:
         sources.append(args[i])
-        tape.watch(args[i])
+        tape.watch(this_tape, args[i])
       result = f(*args)
       if result is None:
         raise ValueError("Cannot differentiate a function that returns None; "
@@ -748,7 +748,7 @@ class GradientTape(object):
       tensor: a Tensor or list of Tensors.
     """
     for t in nest.flatten(tensor):
-      tape.watch(_handle_or_self(t))
+      tape.watch(self._tape, _handle_or_self(t))
 
   @tf_contextlib.contextmanager
   def stop_recording(self):

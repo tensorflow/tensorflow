@@ -1154,7 +1154,7 @@ PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors) {
   Py_RETURN_FALSE;
 }
 
-void TFE_Py_TapeSetWatch(PyObject* tensor) {
+void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor) {
   if (*ThreadTapeIsStopped()) {
     return;
   }
@@ -1162,9 +1162,7 @@ void TFE_Py_TapeSetWatch(PyObject* tensor) {
   if (PyErr_Occurred()) {
     return;
   }
-  for (TFE_Py_Tape* tape : *GetTapeSet()) {
-    tape->tape->Watch(tensor_id);
-  }
+  reinterpret_cast<TFE_Py_Tape*>(tape)->tape->Watch(tensor_id);
 }
 
 static tensorflow::eager::TapeTensor TapeTensorFromTensor(PyObject* tensor) {
@@ -1784,6 +1782,7 @@ bool OpDoesntRequireOutput(const string& op_name) {
           "ReadVariableOp",
           "VarHandleOp",
           "Shape",
+          "StridedSlice",
       });
 
   return ops_that_dont_require_outputs->find(op_name) !=

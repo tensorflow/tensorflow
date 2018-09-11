@@ -187,6 +187,9 @@ tf_library(
     cpp_class = "MatMulAndAddCompWithProfiling",
     enable_xla_hlo_profiling = True,
     graph = "test_graph_tfmatmulandadd.pb",
+    tags = [
+        "manual",
+    ],
 )
 
 tf_library(

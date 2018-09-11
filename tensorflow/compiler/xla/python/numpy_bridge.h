@@ -25,9 +25,9 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/python/lib/core/numpy.h"
 
 namespace xla {

@@ -392,6 +392,16 @@ class RecomputeTest(test.TestCase):
     with self.test_session() as sess:
       sess.run(grads)
 
+  def testErrorOnClosedOverTensor(self):
+    x = random_ops.random_uniform((4, 8))
+    y = random_ops.random_uniform((4, 8))
+    z = x * y
+
+    with self.assertRaisesWithPredicateMatch(ValueError, "closes over"):
+      @rev_block_lib.recompute_grad
+      def fn_with_capture(a):  # pylint: disable=unused-variable
+        return a * z
+
 
 if __name__ == "__main__":
   test.main()

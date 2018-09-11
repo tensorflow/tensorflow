@@ -219,6 +219,62 @@ FunctionDef InvalidControlFlow() {
       {{"o", "add:z"}});
 }
 
+FunctionDef LessThanOrEqualToN(int64 N) {
+  const Tensor kN = test::AsScalar<int64>(N);
+  return FDH::Define(
+      // Name
+      "LessThanOrEqualToN",
+      // Args
+      {"x: T"},
+      // Return values
+      {"z: bool"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"N"}, "Const", {}, {{"value", kN}, {"dtype", DT_INT64}}},
+          {{"y"}, "Cast", {"N"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+          {{"z"}, "LessEqual", {"x", "y"}, {{"T", "$T"}}},
+      });
+}
+
+FunctionDef XPlusOneXTimesY() {
+  const Tensor kOne = test::AsScalar<int64>(1);
+  return FDH::Define(
+      // Name
+      "XPlusOneXTimesY",
+      // Args
+      {"x: T", "y: T"},
+      // Return values
+      {"s: T", "t: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {{{"one"}, "Const", {}, {{"value", kOne}, {"dtype", DT_INT64}}},
+       {{"increment"}, "Cast", {"one"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+       {{"s"}, "Add", {"x", "increment"}, {{"T", "$T"}}},
+       {{"t"}, "Mul", {"x", "y"}, {{"T", "$T"}}}});
+}
+
+FunctionDef XYXLessThanOrEqualToN(int64 N) {
+  const Tensor kN = test::AsScalar<int64>(N);
+  return FDH::Define(
+      // Name
+      "XYXLessThanOrEqualToN",
+      // Args
+      {"x: T", "y: T"},
+      // Return values
+      {"z: bool"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"N"}, "Const", {}, {{"value", kN}, {"dtype", DT_INT64}}},
+          {{"N1"}, "Cast", {"N"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+          {{"z"}, "LessEqual", {"x", "N1"}, {{"T", "$T"}}},
+      });
+}
+
 void FunctionTestSchedClosure(std::function<void()> fn) {
   static thread::ThreadPool* w =
       new thread::ThreadPool(Env::Default(), "Test", 8);

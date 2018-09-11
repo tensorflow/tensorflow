@@ -44,7 +44,10 @@ class DomainMetadata {
     // two domains of different kind intersect each other.
     tensorflow::gtl::FlatSet<HloInstruction*> reach_set;
 
-    // The same instructions in reach_set, but purged from kDomain instructions.
+    // The same instructions in reach_set, but purged from kDomain instructions
+    // and ordered according to their computation graph post-order, i.e.
+    // if instructions[pos_a] depends on instructions[pos_b], then pos_a >
+    // pos_b.
     std::vector<HloInstruction*> instructions;
 
     // If we consider a graph edge as an arrow oriented from the operand to the

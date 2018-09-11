@@ -1771,8 +1771,9 @@ struct PowOperator : Operator {
 // Inputs[1]: required: reduction_indices.
 //
 // TensorFlow equivalent: tf.reduce_any.
-struct AnyOperator : Operator {
-  AnyOperator() : Operator(OperatorType::kAny) {}
+struct TensorFlowAnyOperator : Operator {
+  TensorFlowAnyOperator() : Operator(OperatorType::kAny) {}
+  std::vector<int> axis;
   bool keep_dims = false;
 };
 

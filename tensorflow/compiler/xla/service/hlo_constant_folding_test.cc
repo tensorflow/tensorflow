@@ -105,8 +105,8 @@ TEST_F(HloConstantFoldingTest, ConvertF32ArrayToS64Array) {
 TEST_F(HloConstantFoldingTest, Concatenate) {
   const struct TestConfig {
     int concat_dimension;
-    tensorflow::gtl::ArraySlice<int64> dimensions;
-    tensorflow::gtl::ArraySlice<int64> concat_sizes;
+    absl::Span<const int64> dimensions;
+    absl::Span<const int64> concat_sizes;
   } test_configs[] = {
       {1, {11, 0, 7, 5, 9}, {2, 5, 7, 11}},
       {3, {1, 4, 17, 0, 8}, {1, 3, 9, 12}},
@@ -196,7 +196,7 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<F32>::type;
   bool matched = true;
   root->literal().EachCell<NativeT>(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, NativeT value) {
+      [&](absl::Span<const int64> indices, NativeT value) {
         std::vector<int64> rindexes = Permute(permutation, indices);
         matched = matched && (value == literal_clone->Get<NativeT>(rindexes));
       });

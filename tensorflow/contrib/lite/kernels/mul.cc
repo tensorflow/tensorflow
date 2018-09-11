@@ -102,24 +102,28 @@ template <KernelType kernel_type>
 void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
              const OpData* data, const TfLiteTensor* input1,
              const TfLiteTensor* input2, TfLiteTensor* output) {
-#define TF_LITE_MUL(type, opname, data_type)                            \
-  data_type output_activation_min, output_activation_max;               \
-  CalculateActivationRange(params->activation, &output_activation_min,  \
-                           &output_activation_max);                     \
-  type::opname(GetTensorData<data_type>(input1), GetTensorDims(input1), \
-               GetTensorData<data_type>(input2), GetTensorDims(input2), \
-               output_activation_min, output_activation_max,            \
-               GetTensorData<data_type>(output), GetTensorDims(output))
+#define TF_LITE_MUL(type, opname, data_type)                             \
+  data_type output_activation_min, output_activation_max;                \
+  CalculateActivationRange(params->activation, &output_activation_min,   \
+                           &output_activation_max);                      \
+  tflite::ArithmeticParams op_params;                                    \
+  SetActivationParams(output_activation_min, output_activation_max,      \
+                      &op_params);                                       \
+  type::opname(op_params, GetTensorShape(input1),                        \
+               GetTensorData<data_type>(input1), GetTensorShape(input2), \
+               GetTensorData<data_type>(input2), GetTensorShape(output), \
+               GetTensorData<data_type>(output))
+
   if (output->type == kTfLiteInt32) {
     if (kernel_type == kReference) {
       if (data->requires_broadcast) {
-        TF_LITE_MUL(reference_ops, BroadcastMul, int32_t);
+        TF_LITE_MUL(reference_ops, BroadcastMul4DSlow, int32_t);
       } else {
         TF_LITE_MUL(reference_ops, Mul, int32_t);
       }
     } else {
       if (data->requires_broadcast) {
-        TF_LITE_MUL(optimized_ops, BroadcastMul, int32_t);
+        TF_LITE_MUL(optimized_ops, BroadcastMul4DSlow, int32_t);
       } else {
         TF_LITE_MUL(optimized_ops, Mul, int32_t);
       }
@@ -127,13 +131,13 @@ void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
   } else if (output->type == kTfLiteFloat32) {
     if (kernel_type == kReference) {
       if (data->requires_broadcast) {
-        TF_LITE_MUL(reference_ops, BroadcastMul, float);
+        TF_LITE_MUL(reference_ops, BroadcastMul4DSlow, float);
       } else {
         TF_LITE_MUL(reference_ops, Mul, float);
       }
     } else {
       if (data->requires_broadcast) {
-        TF_LITE_MUL(optimized_ops, BroadcastMul, float);
+        TF_LITE_MUL(optimized_ops, BroadcastMul4DSlow, float);
       } else {
         TF_LITE_MUL(optimized_ops, Mul, float);
       }
@@ -149,14 +153,20 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                            const TfLiteTensor* input2, TfLiteTensor* output) {
   if (input1->type == kTfLiteUInt8 && input2->type == kTfLiteUInt8 &&
       output->type == kTfLiteUInt8) {
-#define TF_LITE_MUL(type, opname)                                           \
-  type::opname(GetTensorData<uint8_t>(input1), GetTensorDims(input1),       \
-               -input1->params.zero_point, GetTensorData<uint8_t>(input2),  \
-               GetTensorDims(input2), -input2->params.zero_point,           \
-               output->params.zero_point, data->output_multiplier,          \
-               data->output_shift, data->output_activation_min,             \
-               data->output_activation_max, GetTensorData<uint8_t>(output), \
-               GetTensorDims(output));
+#define TF_LITE_MUL(type, opname)                                      \
+  tflite::ArithmeticParams op_params;                                  \
+  SetActivationParams(data->output_activation_min,                     \
+                      data->output_activation_max, &op_params);        \
+  op_params.input1_offset = -input1->params.zero_point;                \
+  op_params.input2_offset = -input2->params.zero_point;                \
+  op_params.output_offset = output->params.zero_point;                 \
+  op_params.output_multiplier = data->output_multiplier;               \
+  op_params.output_shift = data->output_shift;                         \
+  type::opname(op_params, GetTensorShape(input1),                      \
+               GetTensorData<uint8_t>(input1), GetTensorShape(input2), \
+               GetTensorData<uint8_t>(input2), GetTensorShape(output), \
+               GetTensorData<uint8_t>(output))
+
     // The quantized version of Mul doesn't support activations, so we
     // always use BroadcastMul.
     if (kernel_type == kReference) {
@@ -167,10 +177,12 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
 #undef TF_LITE_MUL
   } else if (input1->type == kTfLiteInt16 && input2->type == kTfLiteInt16 &&
              output->type == kTfLiteInt16) {
-#define TF_LITE_MUL(type, opname)                                     \
-  type::opname(GetTensorData<int16_t>(input1), GetTensorDims(input1), \
-               GetTensorData<int16_t>(input2), GetTensorDims(input2), \
-               GetTensorData<int16_t>(output), GetTensorDims(output));
+#define TF_LITE_MUL(type, opname)                                      \
+  tflite::ArithmeticParams op_params;                                  \
+  type::opname(op_params, GetTensorShape(input1),                      \
+               GetTensorData<int16_t>(input1), GetTensorShape(input2), \
+               GetTensorData<int16_t>(input2), GetTensorShape(output), \
+               GetTensorData<int16_t>(output))
     if (kernel_type == kReference) {
       TF_LITE_MUL(reference_ops, Mul);
     } else {
@@ -179,12 +191,15 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
 #undef TF_LITE_MUL
   } else if (input1->type == kTfLiteInt16 && input2->type == kTfLiteInt16 &&
              output->type == kTfLiteUInt8) {
-#define TF_LITE_MUL(type, opname)                                           \
-  type::opname(GetTensorData<int16_t>(input1), GetTensorDims(input1),       \
-               GetTensorData<int16_t>(input2), GetTensorDims(input2),       \
-               output->params.zero_point, data->output_activation_min,      \
-               data->output_activation_max, GetTensorData<uint8_t>(output), \
-               GetTensorDims(output));
+#define TF_LITE_MUL(type, opname)                                      \
+  tflite::ArithmeticParams op_params;                                  \
+  SetActivationParams(data->output_activation_min,                     \
+                      data->output_activation_max, &op_params);        \
+  op_params.output_offset = output->params.zero_point;                 \
+  type::opname(op_params, GetTensorShape(input1),                      \
+               GetTensorData<int16_t>(input1), GetTensorShape(input2), \
+               GetTensorData<int16_t>(input2), GetTensorShape(output), \
+               GetTensorData<uint8_t>(output))
     if (kernel_type == kReference) {
       TF_LITE_MUL(reference_ops, Mul);
     } else {

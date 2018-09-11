@@ -303,6 +303,11 @@ class LayoutAssignment : public HloPassInterface {
   // (any layouts were changed).
   StatusOr<bool> Run(HloModule* module) override;
 
+  // Returns true if the instruction requires that operands with the same rank
+  // as the output have to have the same layout as the output.
+  virtual bool InstructionRequiresInputLayoutEqualToOutputLayout(
+      const HloInstruction* instruction);
+
  protected:
   // These methods, invoked by PropagateConstraints, propagate a layout
   // constraint to its neighbors (i.e. operands and users) in order to minimize

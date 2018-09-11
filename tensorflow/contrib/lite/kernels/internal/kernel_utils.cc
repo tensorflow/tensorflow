@@ -26,6 +26,21 @@ void RnnBatchStep(const float* input_ptr_batch, const float* input_weights_ptr,
                   int input_size, int num_units, int batch_size,
                   TfLiteFusedActivation activation,
                   float* hidden_state_ptr_batch, float* output_ptr_batch) {
+  RnnBatchStep(input_ptr_batch, input_weights_ptr,
+               /*aux_input_ptr_batch=*/nullptr,
+               /*aux_input_weights_ptr=*/nullptr, recurrent_weights_ptr,
+               bias_ptr, input_size, /*aux_input_size=*/0, num_units,
+               batch_size, activation, hidden_state_ptr_batch,
+               output_ptr_batch);
+}
+
+void RnnBatchStep(const float* input_ptr_batch, const float* input_weights_ptr,
+                  const float* aux_input_ptr_batch,
+                  const float* aux_input_weights_ptr,
+                  const float* recurrent_weights_ptr, const float* bias_ptr,
+                  int input_size, int aux_input_size, int num_units,
+                  int batch_size, TfLiteFusedActivation activation,
+                  float* hidden_state_ptr_batch, float* output_ptr_batch) {
   // Output = bias
   tensor_utils::VectorBatchVectorAssign(bias_ptr, num_units, batch_size,
                                         output_ptr_batch);
@@ -33,6 +48,12 @@ void RnnBatchStep(const float* input_ptr_batch, const float* input_weights_ptr,
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       input_weights_ptr, num_units, input_size, input_ptr_batch, batch_size,
       output_ptr_batch, /*result_stride=*/1);
+  // Output += aux_input * aux_input_weights (if they are not empty).
+  if (aux_input_size > 0) {
+    tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+        aux_input_weights_ptr, num_units, aux_input_size, aux_input_ptr_batch,
+        batch_size, output_ptr_batch, /*result_stride=*/1);
+  }
   // Output += recurrent_weights * hidden_state
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       recurrent_weights_ptr, num_units, num_units, hidden_state_ptr_batch,
@@ -54,6 +75,28 @@ void RnnBatchStep(const float* input_ptr_batch, const int8_t* input_weights_ptr,
                   int8_t* quantized_hidden_state_ptr_batch,
                   float* scaling_factors, float* hidden_state_ptr_batch,
                   float* output_ptr_batch) {
+  RnnBatchStep(input_ptr_batch, input_weights_ptr, input_weights_scale,
+               /*aux_input_ptr_batch=*/nullptr,
+               /*aux_input_weights_ptr=*/nullptr,
+               /*aux_input_weights_scale=*/0.0f, recurrent_weights_ptr,
+               recurrent_weights_scale, bias_ptr, input_size,
+               /*aux_input_size=*/0, num_units, batch_size, activation,
+               quantized_input_ptr_batch,
+               /*aux_quantized_input_ptr_batch=*/nullptr,
+               quantized_hidden_state_ptr_batch, scaling_factors,
+               hidden_state_ptr_batch, output_ptr_batch);
+}
+
+void RnnBatchStep(
+    const float* input_ptr_batch, const int8_t* input_weights_ptr,
+    float input_weights_scale, const float* aux_input_ptr_batch,
+    const int8_t* aux_input_weights_ptr, float aux_input_weights_scale,
+    const int8_t* recurrent_weights_ptr, float recurrent_weights_scale,
+    const float* bias_ptr, int input_size, int aux_input_size, int num_units,
+    int batch_size, TfLiteFusedActivation activation,
+    int8_t* quantized_input_ptr_batch, int8_t* aux_quantized_input_ptr_batch,
+    int8_t* quantized_hidden_state_ptr_batch, float* scaling_factors,
+    float* hidden_state_ptr_batch, float* output_ptr_batch) {
   // Output = bias
   tensor_utils::VectorBatchVectorAssign(bias_ptr, num_units, batch_size,
                                         output_ptr_batch);
@@ -78,6 +121,26 @@ void RnnBatchStep(const float* input_ptr_batch, const int8_t* input_weights_ptr,
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         input_weights_ptr, num_units, input_size, quantized_input_ptr_batch,
         scaling_factors, batch_size, output_ptr_batch, /*result_stride=*/1);
+  }
+
+  if (aux_input_ptr_batch &&
+      !tensor_utils::IsZeroVector(aux_input_ptr_batch,
+                                  batch_size * aux_input_size)) {
+    float unused_min, unused_max;
+    for (int b = 0; b < batch_size; ++b) {
+      const int offset = b * aux_input_size;
+      tensor_utils::SymmetricQuantizeFloats(
+          aux_input_ptr_batch + offset, aux_input_size,
+          aux_quantized_input_ptr_batch + offset, &unused_min, &unused_max,
+          &scaling_factors[b]);
+      scaling_factors[b] *= aux_input_weights_scale;
+    }
+
+    // Output += aux_input * aux_input_weights
+    tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+        aux_input_weights_ptr, num_units, aux_input_size,
+        aux_quantized_input_ptr_batch, scaling_factors, batch_size,
+        output_ptr_batch, /*result_stride=*/1);
   }
 
   // Save quantization and matmul computation for all zero input.

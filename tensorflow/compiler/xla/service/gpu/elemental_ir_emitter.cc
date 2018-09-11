@@ -74,11 +74,9 @@ GpuElementalIrEmitter::GpuElementalIrEmitter(
       hlo_module_config_(hlo_module_config),
       compute_nested_(std::move(compute_nested)) {}
 
-StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitROCDLMathCall(
-    const string& callee_name,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-    PrimitiveType output_type) {
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLibdeviceMathCall(
+    const string& callee_name, absl::Span<llvm::Value* const> operands,
+    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type) {
   // The libdevice math functions differentiate between "double" and "float" by
   // appending an 'f' to the function's name. libdevice doesn't have f16 math
   // functions, so we convert the operands to f32 before calling the function
@@ -121,10 +119,8 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitROCDLMathCall(
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLlvmIntrinsicMathCall(
-    const string& callee_name,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-    PrimitiveType output_type) {
+    const string& callee_name, absl::Span<llvm::Value* const> operands,
+    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type) {
   // llvm intrinsics differentiate between half/float/double functions via
   // the suffixes ".f16", ".f32" and ".f64".
   string munged_callee = callee_name;
@@ -146,10 +142,8 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLlvmIntrinsicMathCall(
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
-    const string& callee_name,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-    PrimitiveType output_type) {
+    const string& callee_name, absl::Span<llvm::Value* const> operands,
+    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type) {
   // Binary math functions transform are of type [T] -> T.
   for (PrimitiveType input_type : input_types) {
     if (output_type != input_type) {
@@ -172,7 +166,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
   PrimitiveType output_type = op->shape().element_type();
   switch (op->opcode()) {
     case HloOpcode::kRemainder: {
-      return EmitROCDLMathCall("__ocml_fmod", {lhs_value, rhs_value},
+      return EmitLibdeviceMathCall("__ocml_fmod", {lhs_value, rhs_value},
                                    {lhs_input_type, rhs_input_type},
                                    output_type);
     }
@@ -223,54 +217,54 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPowerOp(
   }
 
   VLOG(10) << "emitting pow as regular call to pow(): " << op->ToString();
-  return EmitROCDLMathCall("__ocml_pow", {lhs_value, rhs_value},
+  return EmitLibdeviceMathCall("__ocml_pow", {lhs_value, rhs_value},
                                {lhs_input_type, rhs_input_type}, output_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitErfcInv(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitROCDLMathCall("__ocml_erfcinv", {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall("__ocml_erfcinv", {value}, {prim_type}, prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitROCDLMathCall("__ocml_log", {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall("__ocml_log", {value}, {prim_type}, prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog1p(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitROCDLMathCall("__ocml_log1p", {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall("__ocml_log1p", {value}, {prim_type}, prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitSin(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitROCDLMathCall("__ocml_sin", {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall("__ocml_sin", {value}, {prim_type}, prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitCos(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitROCDLMathCall("__ocml_cos", {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall("__ocml_cos", {value}, {prim_type}, prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExp(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitROCDLMathCall("__ocml_exp", {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall("__ocml_exp", {value}, {prim_type}, prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExpm1(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitROCDLMathCall("__ocml_expm1", {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall("__ocml_expm1", {value}, {prim_type}, prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPow(
     PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs) {
-  return EmitROCDLMathCall("__ocml_pow", {lhs, rhs}, {prim_type, prim_type},
+  return EmitLibdeviceMathCall("__ocml_pow", {lhs, rhs}, {prim_type, prim_type},
                                prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitAtan2(
     PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs) {
-  return EmitROCDLMathCall("__ocml_atan2", {lhs, rhs}, {prim_type, prim_type},
+  return EmitLibdeviceMathCall("__ocml_atan2", {lhs, rhs}, {prim_type, prim_type},
                                prim_type);
 }
 
@@ -291,11 +285,9 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
 }
 
 llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
-    const string& callee_name,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-    PrimitiveType output_type,
-    tensorflow::gtl::ArraySlice<llvm::Attribute::AttrKind> attributes,
+    const string& callee_name, absl::Span<llvm::Value* const> operands,
+    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
+    absl::Span<const llvm::Attribute::AttrKind> attributes,
     llvm::IRBuilder<>* ir_builder, llvm::Module* module) {
   std::vector<llvm::Type*> ir_input_types;
   for (PrimitiveType input_type : input_types) {

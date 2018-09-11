@@ -59,6 +59,9 @@ StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbers(
 // sharding, i.e. just the rhs of the "sharding={...}" attribute string.
 StatusOr<HloSharding> ParseSharding(absl::string_view str);
 
+// Parses the result of PaddingConfigToString(), e.g. "0_0x1_1".
+StatusOr<PaddingConfig> ParsePaddingConfig(absl::string_view str);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PARSER_H_

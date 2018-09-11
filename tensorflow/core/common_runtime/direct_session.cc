@@ -451,8 +451,22 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
   RunState run_state(step_id, &devices_);
   run_state.rendez = new IntraProcessRendezvous(device_mgr_.get());
 #ifndef __ANDROID__
-  // Set up for collectives if the RunOption declares a key.
-  if (run_options.experimental().collective_graph_key() > 0) {
+  // Set up for collectives if ExecutorsAndKeys declares a key.
+  if (executors_and_keys->collective_graph_key !=
+      BuildGraphOptions::kNoCollectiveGraphKey) {
+    if (run_options.experimental().collective_graph_key() !=
+        BuildGraphOptions::kNoCollectiveGraphKey) {
+      // If a collective_graph_key was specified in run_options, ensure that it
+      // matches what came out of GraphExecutionState::BuildGraph().
+      if (run_options.experimental().collective_graph_key() !=
+          executors_and_keys->collective_graph_key) {
+        return errors::Internal(
+            "collective_graph_key in RunOptions ",
+            run_options.experimental().collective_graph_key(),
+            " should match collective_graph_key from optimized graph ",
+            executors_and_keys->collective_graph_key);
+      }
+    }
     if (!collective_executor_mgr_) {
       std::unique_ptr<DeviceResolverInterface> drl(
           new DeviceResolverLocal(device_mgr_.get()));
@@ -678,10 +692,16 @@ Status DirectSession::Run(const RunOptions& run_options,
   // Check if we already have an executor for these arguments.
   ExecutorsAndKeys* executors_and_keys;
   RunStateArgs run_state_args(run_options.debug_options());
+  run_state_args.collective_graph_key =
+      run_options.experimental().collective_graph_key();
 
   TF_RETURN_IF_ERROR(GetOrCreateExecutors(input_tensor_names, output_names,
                                           target_nodes, &executors_and_keys,
                                           &run_state_args));
+  {
+    mutex_lock l(collective_graph_key_lock_);
+    collective_graph_key_ = executors_and_keys->collective_graph_key;
+  }
 
   // Configure a call frame for the step, which we use to feed and
   // fetch values to and from the executors.
@@ -1116,6 +1136,8 @@ Status DirectSession::CreateExecutors(
   BuildGraphOptions options;
   options.callable_options = callable_options;
   options.use_function_convention = !run_state_args->is_partial_run;
+  options.collective_graph_key =
+      callable_options.run_options().experimental().collective_graph_key();
 
   std::unique_ptr<FunctionInfo> func_info(new FunctionInfo);
   std::unique_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
@@ -1123,9 +1145,9 @@ Status DirectSession::CreateExecutors(
   ek->callable_options = callable_options;
 
   std::unordered_map<string, std::unique_ptr<Graph>> graphs;
-  TF_RETURN_IF_ERROR(CreateGraphs(options, &graphs, &func_info->flib_def,
-                                  run_state_args, &ek->input_types,
-                                  &ek->output_types));
+  TF_RETURN_IF_ERROR(CreateGraphs(
+      options, &graphs, &func_info->flib_def, run_state_args, &ek->input_types,
+      &ek->output_types, &ek->collective_graph_key));
 
   if (run_state_args->is_partial_run) {
     ek->graph = std::move(run_state_args->graph);
@@ -1353,6 +1375,9 @@ Status DirectSession::GetOrCreateExecutors(
   }
   *callable_options.mutable_run_options()->mutable_debug_options() =
       run_state_args->debug_options;
+  callable_options.mutable_run_options()
+      ->mutable_experimental()
+      ->set_collective_graph_key(run_state_args->collective_graph_key);
   std::unique_ptr<ExecutorsAndKeys> ek;
   std::unique_ptr<FunctionInfo> func_info;
   TF_RETURN_IF_ERROR(
@@ -1379,7 +1404,7 @@ Status DirectSession::CreateGraphs(
     std::unordered_map<string, std::unique_ptr<Graph>>* outputs,
     std::unique_ptr<FunctionLibraryDefinition>* flib_def,
     RunStateArgs* run_state_args, DataTypeVector* input_types,
-    DataTypeVector* output_types) {
+    DataTypeVector* output_types, int64* collective_graph_key) {
   mutex_lock l(graph_def_lock_);
   std::unique_ptr<ClientGraph> client_graph;
 
@@ -1403,6 +1428,7 @@ Status DirectSession::CreateGraphs(
     TF_RETURN_IF_ERROR(
         execution_state->BuildGraph(subgraph_options, &client_graph));
   }
+  *collective_graph_key = client_graph->collective_graph_key;
 
   if (subgraph_options.callable_options.feed_size() !=
       client_graph->feed_types.size()) {

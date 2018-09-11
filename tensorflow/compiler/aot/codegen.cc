@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/aot/embedded_protocol_buffers.h"
 #include "tensorflow/compiler/tf2xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {

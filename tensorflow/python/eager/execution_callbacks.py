@@ -146,7 +146,7 @@ def inf_nan_callback(op_type,
   """
   del attrs, inputs  # Not used.
 
-  ctx = context.get_default_context()
+  ctx = context.context()
 
   for index, output in enumerate(outputs):
     if not output.dtype.is_numpy_compatible:
@@ -263,12 +263,12 @@ def add_execution_callback(callback):
        Return value(s) from the callback are ignored.
   """
   execute.execute = execute.execute_with_callbacks
-  context.get_default_context().add_post_execution_callback(callback)
+  context.context().add_post_execution_callback(callback)
 
 
 def clear_execution_callbacks():
   """Clear all execution callbacks from the default eager context."""
-  context.get_default_context().clear_post_execution_callbacks()
+  context.context().clear_post_execution_callbacks()
 
 
 def seterr(inf_or_nan=None):
@@ -309,7 +309,7 @@ def seterr(inf_or_nan=None):
         "Valid actions are %s." % (inf_or_nan, _VALID_CALLBACK_ACTIONS))
 
   old_settings = {"inf_or_nan": "ignore"}
-  default_context = context.get_default_context()
+  default_context = context.context()
 
   carryover_callbacks = []
   for callback in default_context.post_execution_callbacks:

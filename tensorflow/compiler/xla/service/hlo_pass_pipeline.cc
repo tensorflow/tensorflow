@@ -91,7 +91,7 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
     return Status::OK();
   };
 
-  string prefix = std::string(name()) + ": pipeline start";
+  string prefix = StrCat(name(), ": pipeline start");
   bool changed = false;
   string message;
   TF_RETURN_IF_ERROR(
@@ -99,12 +99,12 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
   const string xla_dump_per_pass_hlo_proto_to =
       module->config().debug_options().xla_dump_per_pass_hlo_proto_to();
   if (!xla_dump_per_pass_hlo_proto_to.empty()) {
-    DumpModuleProto(*module, xla_dump_per_pass_hlo_proto_to,
-                    std::string(name()), "pipeline_start");
+    DumpModuleProto(*module, xla_dump_per_pass_hlo_proto_to, string(name()),
+                    "pipeline_start");
   }
 
   for (auto& pass : passes_) {
-    if (disabled_passes.count(std::string(pass->name())) > 0) {
+    if (disabled_passes.count(string(pass->name())) > 0) {
       VLOG(1) << "  Skipping HLO pass " << pass->name()
               << ", disabled by --xla_disable_hlo_passes";
       continue;
@@ -121,8 +121,8 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
     TF_RETURN_IF_ERROR(
         run_invariant_checkers(StrCat("after running pass: ", pass->name())));
     if (!xla_dump_per_pass_hlo_proto_to.empty()) {
-      DumpModuleProto(*module, xla_dump_per_pass_hlo_proto_to,
-                      std::string(name()), std::string(pass->name()));
+      DumpModuleProto(*module, xla_dump_per_pass_hlo_proto_to, string(name()),
+                      string(pass->name()));
     }
 
     changed |= changed_this_pass;

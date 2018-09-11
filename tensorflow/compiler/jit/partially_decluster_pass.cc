@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 Status FindNodesToDecluster(const Graph& graph, gtl::FlatSet<Node*>* result,
-                            gtl::ArraySlice<Node*> post_order) {
+                            absl::Span<Node* const> post_order) {
   // Find nodes that have at least one user outside their cluster that expects
   // hostmem output.  These nodes should be cloned to outside the cluster to
   // avoid the device-host copy we'd otherwise need.

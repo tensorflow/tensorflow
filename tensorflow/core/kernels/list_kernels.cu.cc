@@ -40,7 +40,12 @@ typedef Eigen::GpuDevice GPUDevice;
   REGISTER_KERNEL_BUILDER(Name("TensorListStack")                 \
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_GPU),                \
-                          TensorListStack<GPUDevice, T>)
+                          TensorListStack<GPUDevice, T>)          \
+  REGISTER_KERNEL_BUILDER(Name("TensorListGather")                \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_GPU)                 \
+                              .HostMemory("indices"),             \
+                          TensorListGather<GPUDevice, T>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_TENSOR_LIST_STACK_GPU);
 REGISTER_TENSOR_LIST_STACK_GPU(bfloat16);
@@ -71,7 +76,13 @@ REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_GPU(bool);
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_GPU)                 \
                               .HostMemory("element_shape"),       \
-                          TensorListFromTensor<GPUDevice, T>)
+                          TensorListFromTensor<GPUDevice, T>)     \
+  REGISTER_KERNEL_BUILDER(Name("TensorListScatter")               \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_GPU)                 \
+                              .HostMemory("element_shape")        \
+                              .HostMemory("indices"),             \
+                          TensorListScatter<GPUDevice, T>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_TENSOR_LIST_FROM_TENSOR_GPU);
 REGISTER_TENSOR_LIST_FROM_TENSOR_GPU(bfloat16);

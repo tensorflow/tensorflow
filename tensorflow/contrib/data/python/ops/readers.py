@@ -659,6 +659,7 @@ def make_batched_features_dataset(file_pattern,
                                   batch_size,
                                   features,
                                   reader=core_readers.TFRecordDataset,
+                                  label_key=None,
                                   reader_args=None,
                                   num_epochs=None,
                                   shuffle=True,
@@ -670,6 +671,9 @@ def make_batched_features_dataset(file_pattern,
                                   sloppy_ordering=False,
                                   drop_final_batch=False):
   """Returns a `Dataset` of feature dictionaries from `Example` protos.
+
+  If label_key argument is provided, returns a `Dataset` of tuple
+  comprising of feature dictionaries and label.
 
   Example:
 
@@ -721,6 +725,9 @@ def make_batched_features_dataset(file_pattern,
     reader: A function or class that can be
       called with a `filenames` tensor and (optional) `reader_args` and returns
       a `Dataset` of `Example` tensors. Defaults to `tf.data.TFRecordDataset`.
+    label_key: (Optional) A string corresponding to the key labels are stored in
+      `tf.Examples`. If provided, it must be one of the `features` key,
+      otherwise results in `ValueError`.
     reader_args: Additional arguments to pass to the reader class.
     num_epochs: Integer specifying the number of times to read through the
       dataset. If None, cycles through the dataset forever. Defaults to `None`.
@@ -746,8 +753,11 @@ def make_batched_features_dataset(file_pattern,
       `False`.
 
   Returns:
-    A dataset of `dict` elements. Each `dict` maps feature keys to
-    `Tensor` or `SparseTensor` objects.
+    A dataset of `dict` elements, (or a tuple of `dict` elements and label).
+    Each `dict` maps feature keys to `Tensor` or `SparseTensor` objects.
+
+  Raises:
+    ValueError: If `label_key` is not one of the `features` keys.
   """
   # Create dataset of all matching filenames
   filenames = _get_file_names(file_pattern, False)
@@ -786,9 +796,13 @@ def make_batched_features_dataset(file_pattern,
       parsing_ops.parse_example_dataset(
           features, num_parallel_calls=parser_num_threads))
 
-  # TODO(rachelim): Add an optional label_name argument for extracting the label
-  # from the features dictionary, to comply with the type expected by the
-  # input_fn to a `tf.Estimator.train` or `tf.Estimator.evaluate` function.
+  if label_key:
+    if label_key not in features:
+      raise ValueError(
+          "The `label_key` provided (%r) must be one of the `features` keys." %
+          label_key)
+    dataset = dataset.map(lambda x: (x, x.pop(label_key)))
+
   dataset = dataset.prefetch(prefetch_buffer_size)
   return dataset
 

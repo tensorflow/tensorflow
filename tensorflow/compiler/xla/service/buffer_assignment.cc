@@ -58,12 +58,65 @@ string ColocatedBufferSetsToString(const T& container, const char* title) {
   return result;
 }
 
-// Walk the call graph of the HLO module and place each computation into either
-// thread_local_computations or global_computations depending upon whether the
-// computation requires thread-local allocations or global allocations. The
-// elements in thread_local_computations and global_computations are in post
-// order (if computation A has an instruction which calls computation B, then A
-// will appear after B in the vector).
+// Checks that points-to set of 'instruction' is unambiguous and distinct
+// (ensured by CopyInsertion), then adds the buffer from the points-to set at
+// 'index' to 'colocated_set'.
+const LogicalBuffer* AddBufferToColocatedSet(
+    const HloInstruction* instruction, const ShapeIndex& index,
+    const TuplePointsToAnalysis& points_to_analysis,
+    std::vector<const LogicalBuffer*>* colocated_set) {
+  // CopyInsertion ensures root points-to set is unambiguous and distinct.
+  const auto& points_to = points_to_analysis.GetPointsToSet(instruction);
+  DCHECK(!points_to.IsAmbiguous());
+  colocated_set->push_back(points_to.element(index)[0]);
+  return colocated_set->back();
+}
+
+// Given the interference map of a graph (the list of interfering node indices
+// for each node), perform graph coloring such that interfering nodes are
+// assigned to different colors. Returns the assigned color of the nodes, where
+// the colors are represented as integer values [0, color_count).
+std::vector<int64> ColorInterferenceGraph(
+    const std::vector<std::vector<int64>>& interference_map) {
+  const int64 node_count = interference_map.size();
+
+  // Sort the nodes such that we assign nodes with more interference first. This
+  // relies on the common heuristic of assigning the most constrained node
+  // first, but it would be good to investigate other ordering heuristics too.
+  std::vector<int64> nodes(node_count);
+  std::iota(nodes.begin(), nodes.end(), 0);
+  std::sort(nodes.begin(), nodes.end(),
+            [&interference_map](const int64 i, const int64 j) {
+              return interference_map[i].size() > interference_map[j].size();
+            });
+
+  const int64 kColorUnassigned = -1;
+  std::vector<int64> assigned_colors(node_count, kColorUnassigned);
+  for (int64 node : nodes) {
+    // Mark the colors that are already assigned to the neighbors.
+    std::vector<bool> available_colors(node_count, true);
+    for (int64 neighbor : interference_map[node]) {
+      int64 color = assigned_colors[neighbor];
+      if (color != kColorUnassigned) {
+        available_colors[color] = false;
+      }
+    }
+
+    // Find the color that is not yet assigned to the neighbors.
+    int64 color = kColorUnassigned;
+    for (color = 0; color < available_colors.size(); ++color) {
+      if (available_colors[color]) {
+        break;
+      }
+    }
+    CHECK_NE(color, kColorUnassigned);
+    assigned_colors[node] = color;
+  }
+  return assigned_colors;
+}
+
+}  // namespace
+
 Status GatherComputationsByAllocationType(
     const HloModule* module,
     std::vector<const HloComputation*>* thread_local_computations,
@@ -164,65 +217,6 @@ Status GatherComputationsByAllocationType(
   }
   return Status::OK();
 }
-
-// Checks that points-to set of 'instruction' is unambiguous and distinct
-// (ensured by CopyInsertion), then adds the buffer from the points-to set at
-// 'index' to 'colocated_set'.
-const LogicalBuffer* AddBufferToColocatedSet(
-    const HloInstruction* instruction, const ShapeIndex& index,
-    const TuplePointsToAnalysis& points_to_analysis,
-    std::vector<const LogicalBuffer*>* colocated_set) {
-  // CopyInsertion ensures root points-to set is unambiguous and distinct.
-  const auto& points_to = points_to_analysis.GetPointsToSet(instruction);
-  DCHECK(!points_to.IsAmbiguous());
-  colocated_set->push_back(points_to.element(index)[0]);
-  return colocated_set->back();
-}
-
-// Given the interference map of a graph (the list of interfering node indices
-// for each node), perform graph coloring such that interfering nodes are
-// assigned to different colors. Returns the assigned color of the nodes, where
-// the colors are represented as integer values [0, color_count).
-std::vector<int64> ColorInterferenceGraph(
-    const std::vector<std::vector<int64>>& interference_map) {
-  const int64 node_count = interference_map.size();
-
-  // Sort the nodes such that we assign nodes with more interference first. This
-  // relies on the common heuristic of assigning the most constrained node
-  // first, but it would be good to investigate other ordering heuristics too.
-  std::vector<int64> nodes(node_count);
-  std::iota(nodes.begin(), nodes.end(), 0);
-  std::sort(nodes.begin(), nodes.end(),
-            [&interference_map](const int64 i, const int64 j) {
-              return interference_map[i].size() > interference_map[j].size();
-            });
-
-  const int64 kColorUnassigned = -1;
-  std::vector<int64> assigned_colors(node_count, kColorUnassigned);
-  for (int64 node : nodes) {
-    // Mark the colors that are already assigned to the neighbors.
-    std::vector<bool> available_colors(node_count, true);
-    for (int64 neighbor : interference_map[node]) {
-      int64 color = assigned_colors[neighbor];
-      if (color != kColorUnassigned) {
-        available_colors[color] = false;
-      }
-    }
-
-    // Find the color that is not yet assigned to the neighbors.
-    int64 color = kColorUnassigned;
-    for (color = 0; color < available_colors.size(); ++color) {
-      if (available_colors[color]) {
-        break;
-      }
-    }
-    CHECK_NE(color, kColorUnassigned);
-    assigned_colors[node] = color;
-  }
-  return assigned_colors;
-}
-
-}  // namespace
 
 size_t BufferAllocation::Slice::Hasher::operator()(Slice s) const {
   uint64 h = std::hash<int64>()(s.index());

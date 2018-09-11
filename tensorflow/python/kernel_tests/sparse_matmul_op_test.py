@@ -157,7 +157,7 @@ class MatMulGradientTest(test.TestCase):
               m, [3, 4],
               x_init_value=b.eval(),
               delta=delta))
-    self.assertLess(err, delta / 2.)
+    self.assertLessEqual(err, delta / 2.)
 
   def testGradientInput(self):
     for tr_a in [True, False]:

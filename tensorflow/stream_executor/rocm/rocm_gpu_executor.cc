@@ -145,8 +145,8 @@ bool ROCMExecutor::FindOnDiskForISAVersion(
 
   VLOG(2) << "could not find AMDGPU ISA version-specific file at: "
           << cc_specific;
-  if (port::FileExists(filename.ToString()).ok()) {
-    *found_filename = filename.ToString();
+  if (port::FileExists(string(filename)).ok()) {
+    *found_filename = string(filename);
     return true;
   }
 

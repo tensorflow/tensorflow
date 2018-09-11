@@ -71,6 +71,36 @@ class ListOpsTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(self.evaluate(t), [1.0, 2.0])
 
   @test_util.run_in_graph_and_eager_modes
+  def testGatherGrad(self):
+    with backprop.GradientTape() as tape:
+      l = list_ops.empty_tensor_list(element_dtype=dtypes.float32,
+                                     element_shape=scalar_shape())
+      c0 = constant_op.constant(1.0)
+      tape.watch(c0)
+      l = list_ops.tensor_list_push_back(l, c0)
+      l = list_ops.tensor_list_push_back(l, constant_op.constant(2.0))
+      t = list_ops.tensor_list_gather(l, [1, 0], element_dtype=dtypes.float32)
+      self.assertAllEqual(self.evaluate(t), [2.0, 1.0])
+      s = (t[0] + t[1]) * (t[0] + t[1])
+    dt = tape.gradient(s, c0)
+    self.assertAllEqual(self.evaluate(dt), 6.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testScatterGrad(self):
+    with backprop.GradientTape() as tape:
+      c0 = constant_op.constant([1.0, 2.0])
+      tape.watch(c0)
+      l = list_ops.tensor_list_scatter(
+          c0, [1, 0], ops.convert_to_tensor([], dtype=dtypes.int32))
+      t0 = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
+      t1 = list_ops.tensor_list_get_item(l, 1, element_dtype=dtypes.float32)
+      self.assertAllEqual(self.evaluate(t0), 2.0)
+      self.assertAllEqual(self.evaluate(t1), 1.0)
+      loss = t0 * t0 + t1 * t1
+    dt = tape.gradient(loss, c0)
+    self.assertAllEqual(self.evaluate(dt), [2., 4.])
+
+  @test_util.run_in_graph_and_eager_modes
   def testStackGPU(self):
     if not context.num_gpus():
       return

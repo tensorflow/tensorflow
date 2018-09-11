@@ -94,7 +94,7 @@ class XlaOpRegistry {
   // the device; it may optionally modify the KernelDef.
   typedef bool (*BackendOpFilter)(KernelDef* kdef);
   static void RegisterBackend(const string& compilation_device_name,
-                              gtl::ArraySlice<DataType> supported_types,
+                              absl::Span<const DataType> supported_types,
                               BackendOpFilter op_filter);
 
   // Returns the names of the registered backends.
@@ -236,7 +236,7 @@ class XlaOpRegistrationBuilder {
 
   // Specifies a whitelist of devices on which the operator may run.
   XlaOpRegistrationBuilder& Device(StringPiece devices);
-  XlaOpRegistrationBuilder& Device(gtl::ArraySlice<StringPiece> devices);
+  XlaOpRegistrationBuilder& Device(absl::Span<const StringPiece> devices);
 
   // Specifies a type constraint for a type variable attribute. Each constraint
   // specifies the set of types that the type variable may assume.
@@ -244,7 +244,7 @@ class XlaOpRegistrationBuilder {
                                            DataType allowed);
 
   XlaOpRegistrationBuilder& TypeConstraint(StringPiece attr_name,
-                                           gtl::ArraySlice<DataType> allowed);
+                                           absl::Span<const DataType> allowed);
 
   // Specifies that a dummy copy of this operator should not be registered on
   // XLA_* devices, but may be used during compilation.
@@ -288,7 +288,7 @@ class XlaOpRegistrar {
 
 class XlaBackendRegistrar {
  public:
-  XlaBackendRegistrar(StringPiece name, gtl::ArraySlice<DataType> types,
+  XlaBackendRegistrar(StringPiece name, absl::Span<const DataType> types,
                       XlaOpRegistry::BackendOpFilter op_filter = nullptr);
 };
 

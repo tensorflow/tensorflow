@@ -61,9 +61,7 @@ struct bfloat16 {
   }
 
   B16_DEVICE_FUNC explicit bfloat16(const float v) {
-    // TODO(asabne) : change the below line to
-    // value = round_to_bfloat16(v).value;
-    value = truncate_to_bfloat16(v).value;
+    value = round_to_bfloat16(v).value;
   }
 
   B16_DEVICE_FUNC explicit bfloat16(const double val)

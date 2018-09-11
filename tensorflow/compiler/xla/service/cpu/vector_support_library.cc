@@ -428,7 +428,7 @@ std::vector<llvm::Value*> TileVariable::Get() const {
   return result;
 }
 
-void TileVariable::Set(tensorflow::gtl::ArraySlice<llvm::Value*> value) {
+void TileVariable::Set(absl::Span<llvm::Value* const> value) {
   CHECK_EQ(value.size(), storage_.size());
   for (int64 i = 0, e = value.size(); i < e; i++) {
     storage_[i].Set(value[i]);

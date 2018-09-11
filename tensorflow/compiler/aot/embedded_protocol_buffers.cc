@@ -111,7 +111,7 @@ GetTargetMachineFromTriple(StringPiece target_triple) {
 
 StatusOr<EmbeddedProtocolBuffers> CreateEmbeddedProtocolBuffers(
     StringPiece target_triple,
-    gtl::ArraySlice<ProtobufToEmbed> protobufs_to_embed) {
+    absl::Span<const ProtobufToEmbed> protobufs_to_embed) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
                       GetTargetMachineFromTriple(target_triple));
 

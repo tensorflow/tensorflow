@@ -20890,6 +20890,25 @@ op {
   is_stateful: true
 }
 op {
+  name: "EnsureShape"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
   name: "Enter"
   input_arg {
     name: "data"
@@ -22484,33 +22503,6 @@ op {
     is_ref: true
   }
   is_stateful: true
-}
-op {
-  name: "FeatureStatsDataset"
-  input_arg {
-    name: "input_dataset"
-    type: DT_VARIANT
-  }
-  input_arg {
-    name: "tag"
-    type: DT_STRING
-  }
-  output_arg {
-    name: "handle"
-    type: DT_VARIANT
-  }
-  attr {
-    name: "output_types"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-  attr {
-    name: "output_shapes"
-    type: "list(shape)"
-    has_minimum: true
-    minimum: 1
-  }
 }
 op {
   name: "Fill"
@@ -37405,6 +37397,201 @@ op {
   }
 }
 op {
+  name: "ParseSequenceExample"
+  input_arg {
+    name: "serialized"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "debug_name"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "context_dense_defaults"
+    type_list_attr: "Tcontext_dense"
+  }
+  output_arg {
+    name: "context_sparse_indices"
+    type: DT_INT64
+    number_attr: "Ncontext_sparse"
+  }
+  output_arg {
+    name: "context_sparse_values"
+    type_list_attr: "context_sparse_types"
+  }
+  output_arg {
+    name: "context_sparse_shapes"
+    type: DT_INT64
+    number_attr: "Ncontext_sparse"
+  }
+  output_arg {
+    name: "context_dense_values"
+    type_list_attr: "Tcontext_dense"
+  }
+  output_arg {
+    name: "feature_list_sparse_indices"
+    type: DT_INT64
+    number_attr: "Nfeature_list_sparse"
+  }
+  output_arg {
+    name: "feature_list_sparse_values"
+    type_list_attr: "feature_list_sparse_types"
+  }
+  output_arg {
+    name: "feature_list_sparse_shapes"
+    type: DT_INT64
+    number_attr: "Nfeature_list_sparse"
+  }
+  output_arg {
+    name: "feature_list_dense_values"
+    type_list_attr: "feature_list_dense_types"
+  }
+  output_arg {
+    name: "feature_list_dense_lengths"
+    type: DT_INT64
+    number_attr: "Nfeature_list_dense"
+  }
+  attr {
+    name: "feature_list_dense_missing_assumed_empty"
+    type: "list(string)"
+    has_minimum: true
+  }
+  attr {
+    name: "context_sparse_keys"
+    type: "list(string)"
+    has_minimum: true
+  }
+  attr {
+    name: "context_dense_keys"
+    type: "list(string)"
+    has_minimum: true
+  }
+  attr {
+    name: "feature_list_sparse_keys"
+    type: "list(string)"
+    has_minimum: true
+  }
+  attr {
+    name: "feature_list_dense_keys"
+    type: "list(string)"
+    has_minimum: true
+  }
+  attr {
+    name: "Ncontext_sparse"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "Ncontext_dense"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "Nfeature_list_sparse"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "Nfeature_list_dense"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "context_sparse_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "Tcontext_dense"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "feature_list_dense_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "context_dense_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "feature_list_sparse_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "feature_list_dense_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+}
+op {
   name: "ParseSingleExample"
   input_arg {
     name: "serialized"
@@ -43935,6 +44122,38 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+      }
+    }
+  }
+}
+op {
+  name: "Relu"
+  input_arg {
+    name: "features"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "activations"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_INT64
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+        type: DT_QINT8
       }
     }
   }
@@ -56399,6 +56618,125 @@ op {
         s: "squared_loss"
         s: "hinge_loss"
         s: "smooth_hinge_loss"
+      }
+    }
+  }
+  attr {
+    name: "adaptative"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "num_sparse_features"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "num_sparse_features_with_values"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "num_dense_features"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "l1"
+    type: "float"
+  }
+  attr {
+    name: "l2"
+    type: "float"
+  }
+  attr {
+    name: "num_loss_partitions"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_inner_iterations"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
+  name: "SdcaOptimizer"
+  input_arg {
+    name: "sparse_example_indices"
+    type: DT_INT64
+    number_attr: "num_sparse_features"
+  }
+  input_arg {
+    name: "sparse_feature_indices"
+    type: DT_INT64
+    number_attr: "num_sparse_features"
+  }
+  input_arg {
+    name: "sparse_feature_values"
+    type: DT_FLOAT
+    number_attr: "num_sparse_features_with_values"
+  }
+  input_arg {
+    name: "dense_features"
+    type: DT_FLOAT
+    number_attr: "num_dense_features"
+  }
+  input_arg {
+    name: "example_weights"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "example_labels"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "sparse_indices"
+    type: DT_INT64
+    number_attr: "num_sparse_features"
+  }
+  input_arg {
+    name: "sparse_weights"
+    type: DT_FLOAT
+    number_attr: "num_sparse_features"
+  }
+  input_arg {
+    name: "dense_weights"
+    type: DT_FLOAT
+    number_attr: "num_dense_features"
+  }
+  input_arg {
+    name: "example_state_data"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "out_example_state_data"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "out_delta_sparse_weights"
+    type: DT_FLOAT
+    number_attr: "num_sparse_features"
+  }
+  output_arg {
+    name: "out_delta_dense_weights"
+    type: DT_FLOAT
+    number_attr: "num_dense_features"
+  }
+  attr {
+    name: "loss_type"
+    type: "string"
+    allowed_values {
+      list {
+        s: "logistic_loss"
+        s: "squared_loss"
+        s: "hinge_loss"
+        s: "smooth_hinge_loss"
+        s: "poisson_loss"
       }
     }
   }
@@ -71816,6 +72154,25 @@ op {
   }
 }
 op {
+  name: "TensorListGather"
+  input_arg {
+    name: "input_handle"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "values"
+    type_attr: "element_dtype"
+  }
+  attr {
+    name: "element_dtype"
+    type: "type"
+  }
+}
+op {
   name: "TensorListGetItem"
   input_arg {
     name: "input_handle"
@@ -71914,6 +72271,39 @@ op {
   }
   output_arg {
     name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "element_dtype"
+    type: "type"
+  }
+  attr {
+    name: "shape_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "TensorListScatter"
+  input_arg {
+    name: "tensor"
+    type_attr: "element_dtype"
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "element_shape"
+    type_attr: "shape_type"
+  }
+  output_arg {
+    name: "output_handle"
     type: DT_VARIANT
   }
   attr {

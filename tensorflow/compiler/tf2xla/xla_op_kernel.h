@@ -113,7 +113,7 @@ class XlaOpKernelContext {
   // cannot be evaluated, e.g., because it depends on unbound parameters,
   // returns a non-Ok status. If InputShape(index).num_elements() !=
   // new_shape.num_elements(), returns an error status.
-  Status ConstantInputReshaped(int index, gtl::ArraySlice<int64> new_shape,
+  Status ConstantInputReshaped(int index, absl::Span<const int64> new_dims,
                                xla::Literal* constant_literal);
 
   // Converts a constant scalar int32 or int64 tensor into an int64.

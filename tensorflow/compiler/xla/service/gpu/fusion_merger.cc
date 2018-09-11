@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -225,10 +226,11 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // Skip 'fusion' instruction if we cannot merge into all of its users.
   // Merging into all users enables the removal of 'fusion' from the
   // computation.
-  if (!absl::c_all_of(fusion->users(), [](const HloInstruction* user) {
+  if (!absl::c_all_of(fusion->users(), [&](const HloInstruction* user) {
         return user->opcode() == HloOpcode::kFusion &&
                (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||
-                user->fusion_kind() == HloInstruction::FusionKind::kInput);
+                (user->fusion_kind() == HloInstruction::FusionKind::kInput &&
+                 LayoutsAreReduceInputFusionFriendly(*fusion, *user)));
       })) {
     VLOG(3) << "Not merging " << fusion->name()
             << ": Some of its users are not loop/input fusion kernels.";

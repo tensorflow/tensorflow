@@ -1446,6 +1446,30 @@ REGISTER_OP("ShapeN")
     .Attr("out_type: {int32, int64} = DT_INT32")
     .SetShapeFn(ShapeShapeFn);
 
+REGISTER_OP("EnsureShape")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("shape: shape")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      // Merges desired shape and statically known shape of input
+      PartialTensorShape desired_shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &desired_shape));
+
+      int rank = desired_shape.dims();
+      ShapeHandle input_shape_handle;
+      ShapeHandle desired_shape_handle;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &input_shape_handle));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
+          desired_shape, &desired_shape_handle));
+
+      ShapeHandle merged_shape;
+      TF_RETURN_IF_ERROR(
+          c->Merge(desired_shape_handle, input_shape_handle, &merged_shape));
+      c->set_output(0, merged_shape);
+      return Status::OK();
+    });
+
 // --------------------------------------------------------------------------
 REGISTER_OP("ReverseSequence")
     .Input("input: T")

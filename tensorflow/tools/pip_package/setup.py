@@ -53,7 +53,7 @@ REQUIRED_PACKAGES = [
     'gast >= 0.2.0',
     'keras_applications >= 1.0.5',
     'keras_preprocessing >= 1.0.3',
-    'numpy >= 1.13.3, <= 1.14.5',
+    'numpy >= 1.13.3',
     'six >= 1.10.0',
     'protobuf >= 3.6.0',
     'setuptools <= 39.1.0',

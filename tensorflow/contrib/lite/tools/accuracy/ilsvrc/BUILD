@@ -6,6 +6,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
+load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 common_linkopts = tflite_linkopts() + select({
     "//conditions:default": [],
@@ -52,6 +53,10 @@ tf_cc_test(
     data = [":testdata/grace_hopper.jpg"],
     linkopts = common_linkopts,
     linkstatic = 1,
+    tags = [
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
     deps = [
         ":inception_preprocessing",
         "//tensorflow/contrib/lite/tools/accuracy:android_required_build_flags",
@@ -85,6 +90,7 @@ cc_library(
             ],
             "//conditions:default": [
                 "//tensorflow/core:framework",
+                "//tensorflow/core:lib",
             ],
         },
     ),
@@ -95,6 +101,7 @@ tf_cc_test(
     srcs = ["imagenet_topk_eval_test.cc"],
     linkopts = common_linkopts,
     linkstatic = 1,
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":imagenet_topk_eval",
         "@com_google_googletest//:gtest",
@@ -137,6 +144,7 @@ cc_library(
             ],
             "//conditions:default": [
                 "//tensorflow/core:tensorflow",
+                "//tensorflow/core:lib_internal",
                 "//tensorflow/core:framework_internal",
                 "//tensorflow/core:framework",
                 "//tensorflow/core:lib",
@@ -169,3 +177,5 @@ tf_cc_binary(
         },
     ),
 )
+
+tflite_portable_test_suite()

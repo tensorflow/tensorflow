@@ -53,7 +53,6 @@ namespace xla {
 
 namespace {
 
-using tensorflow::gtl::ArraySlice;
 
 template <typename OperandT>
 StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
@@ -97,10 +96,11 @@ StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
   }
 
   auto result = absl::make_unique<Literal>(shape);
-  TF_RETURN_IF_ERROR(result->Populate<bool>([&](ArraySlice<int64> multi_index) {
-    return compare_op(lhs_literal.Get<OperandT>(multi_index),
-                      rhs_literal.Get<OperandT>(multi_index));
-  }));
+  TF_RETURN_IF_ERROR(
+      result->Populate<bool>([&](absl::Span<const int64> multi_index) {
+        return compare_op(lhs_literal.Get<OperandT>(multi_index),
+                          rhs_literal.Get<OperandT>(multi_index));
+      }));
 
   return std::move(result);
 }
@@ -127,10 +127,11 @@ StatusOr<std::unique_ptr<Literal>> Compare<complex64>(
   }
 
   auto result = absl::make_unique<Literal>(shape);
-  TF_RETURN_IF_ERROR(result->Populate<bool>([&](ArraySlice<int64> multi_index) {
-    return compare_op(lhs_literal.Get<complex64>(multi_index),
-                      rhs_literal.Get<complex64>(multi_index));
-  }));
+  TF_RETURN_IF_ERROR(
+      result->Populate<bool>([&](absl::Span<const int64> multi_index) {
+        return compare_op(lhs_literal.Get<complex64>(multi_index),
+                          rhs_literal.Get<complex64>(multi_index));
+      }));
 
   return std::move(result);
 }
@@ -194,7 +195,7 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
 
 template <typename LiteralPtr>
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
-    const HloModule& module, ArraySlice<LiteralPtr> arg_literals) {
+    const HloModule& module, absl::Span<const LiteralPtr> arg_literals) {
   XLA_VLOG_LINES(2, "HloEvaluator::Evaluate module:\n" + module.ToString());
 
   evaluated_.clear();
@@ -211,7 +212,8 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
 
 template <typename LiteralPtr>
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
-    const HloComputation& computation, ArraySlice<LiteralPtr> arg_literals) {
+    const HloComputation& computation,
+    absl::Span<const LiteralPtr> arg_literals) {
   CHECK(computation.parent() != nullptr);
   XLA_VLOG_LINES(
       2, "HloEvaluator::Evaluate computation:\n" + computation.ToString());
@@ -228,7 +230,7 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
 
 template <typename LiteralPtr>
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
-    HloInstruction* instruction, ArraySlice<LiteralPtr> arg_literals) {
+    HloInstruction* instruction, absl::Span<const LiteralPtr> arg_literals) {
   TF_RET_CHECK(hlo_query::AllOperandsAreParametersOrConstants(*instruction));
 
   evaluated_.clear();
@@ -390,7 +392,7 @@ Status HloEvaluator::HandleTranspose(HloInstruction* transpose) {
 }
 
 Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
-  ArraySlice<HloInstruction*> operands(concatenate->operands());
+  absl::Span<HloInstruction* const> operands(concatenate->operands());
   // The result concatenate dimension is going to be the sum of all
   // concatenate dimensions of the operands taking part of the operation.
   const Shape& reference_shape = operands[0]->shape();
@@ -588,7 +590,7 @@ ShapeUtil::IndexIterationSpace IterationSpaceForOutputBatchIndices(
 // Return an ShapeUtil::IndexIterationSpace that iterates over the output slice
 // dimensions while keeping the rest of the output dimensions clamped to 0.
 ShapeUtil::IndexIterationSpace IterationSpaceForOutputOffsetIndices(
-    int64 output_rank, ArraySlice<int64> slice_sizes,
+    int64 output_rank, absl::Span<const int64> slice_sizes,
     const GatherDimensionNumbers& dim_numbers) {
   std::vector<int64> index_base(output_rank, 0);
   std::vector<int64> index_count(output_rank, 1);
@@ -660,12 +662,13 @@ class OutputBatchIndexToInputIndex {
   //    index_vector_index_ and index_vector on every invocation, we reuse the
   //    same storage for all invocations.
   //
-  // This returns an arrayslice into memory owned by the class.
-  StatusOr<ArraySlice<int64>> operator()(ArraySlice<int64> output_index) {
+  // This returns a Span into memory owned by the class.
+  StatusOr<absl::Span<const int64>> operator()(
+      absl::Span<const int64> output_index) {
     PropagateOutputIndexGatherDimsToIndexVectorIndex(output_index);
     TF_RETURN_IF_ERROR(FetchIndexVector());
     PropagateIndexVectorToInputIndex();
-    return ArraySlice<int64>(input_index_);
+    return absl::Span<const int64>(input_index_);
   }
 
  private:
@@ -674,7 +677,7 @@ class OutputBatchIndexToInputIndex {
   // update the dim_numbers.index_vector_dim() dimension -- that's the dimension
   // we iterate over in FetchIndexVector.
   void PropagateOutputIndexGatherDimsToIndexVectorIndex(
-      ArraySlice<int64> output_index) {
+      absl::Span<const int64> output_index) {
     int64 index_vector_index_i = 0;
     for (int64 i = 0, e = output_index.size(); i < e; i++) {
       if (!output_dim_is_batch_dims_[i]) {
@@ -729,7 +732,7 @@ class OutputBatchIndexToInputIndex {
   // The index vector fetched from start_indices_.
   std::vector<int64> index_vector_;
 
-  // The result computed by this functor.  operator() returns an ArraySlice into
+  // The result computed by this functor.  operator() returns a Span into
   // this vector.
   std::vector<int64> input_index_;
 
@@ -778,10 +781,11 @@ class OutputOffsetIndexToInputIndex {
   // gather input index on every invocation we reuse the same storage for the
   // result (input_index_), mutating it in place.
   //
-  // This returns an arrayslice into memory owned by the class.
-  StatusOr<ArraySlice<int64>> operator()(ArraySlice<int64> output_index) {
+  // This returns a Span into memory owned by the class.
+  StatusOr<absl::Span<const int64>> operator()(
+      absl::Span<const int64> output_index) {
     PropagateOutputIndexWindowDimsToInputIndex(output_index);
-    return ArraySlice<int64>(input_index_);
+    return absl::Span<const int64>(input_index_);
   }
 
   // Returns for a given 'input_dim' the corresponding output dimension index,
@@ -794,7 +798,7 @@ class OutputOffsetIndexToInputIndex {
   // Propagates window dimensions from the output index to input_index_ by
   // mutating input_index_ in place.
   void PropagateOutputIndexWindowDimsToInputIndex(
-      ArraySlice<int64> output_index) {
+      absl::Span<const int64> output_index) {
     for (int64 i = 0, e = input_index_.size(); i < e; i++) {
       if (input_dim_value_to_output_index_[i] != -1) {
         input_index_[i] = output_index[input_dim_value_to_output_index_[i]];
@@ -810,7 +814,7 @@ class OutputOffsetIndexToInputIndex {
   // PropagateOutputIndexWindowDimsToInputIndex.
   std::vector<int64> input_dim_value_to_output_index_;
 
-  // The result computed by this functor.  operator() returns an ArraySlice into
+  // The result computed by this functor.  operator() returns a Span into
   // this vector.
   std::vector<int64> input_index_;
 };
@@ -872,11 +876,11 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
   const Shape& operand_shape = operand.shape();
 
   auto gather_inner_loop_body =
-      [&](ArraySlice<int64> output_window_index,
-          ArraySlice<int64> input_gather_index,
-          ArraySlice<int64> output_gather_index) -> StatusOr<bool> {
+      [&](absl::Span<const int64> output_window_index,
+          absl::Span<const int64> input_gather_index,
+          absl::Span<const int64> output_gather_index) -> StatusOr<bool> {
     TF_ASSIGN_OR_RETURN(
-        ArraySlice<int64> input_window_index,
+        absl::Span<const int64> input_window_index,
         output_offset_index_to_input_index(output_window_index));
     for (int i = 0, e = output_index.size(); i < e; i++) {
       output_index[i] = output_gather_index[i] + output_window_index[i];
@@ -909,8 +913,8 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
   };
 
   auto gather_outer_loop_body =
-      [&](ArraySlice<int64> output_gather_index) -> StatusOr<bool> {
-    TF_ASSIGN_OR_RETURN(ArraySlice<int64> input_gather_index,
+      [&](absl::Span<const int64> output_gather_index) -> StatusOr<bool> {
+    TF_ASSIGN_OR_RETURN(absl::Span<const int64> input_gather_index,
                         output_batch_index_to_input_index(output_gather_index));
     TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
         shape, offset_indices_iteration_space,
@@ -1170,12 +1174,11 @@ StatusOr<std::unique_ptr<Literal>> EvaluateSortInternal(
       result_values.push_back(key_value.second);
     }
     auto result_keys_literal = absl::make_unique<Literal>(keys_literal.shape());
-    result_keys_literal->PopulateR1(
-        tensorflow::gtl::ArraySlice<KeyType>(result_keys));
+    result_keys_literal->PopulateR1(absl::Span<const KeyType>(result_keys));
     auto result_values_literal =
         absl::make_unique<Literal>(values_literal.shape());
     result_values_literal->PopulateR1(
-        tensorflow::gtl::ArraySlice<ValueType>(result_values));
+        absl::Span<const ValueType>(result_values));
     return std::make_pair(std::move(result_keys_literal),
                           std::move(result_values_literal));
   };
@@ -1262,7 +1265,7 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
   const int64 rank = ShapeUtil::Rank(sort->operand(0)->shape());
   if (sort_dim != rank - 1) {
     return Unimplemented(
-        "Trying to support along dimension %d, which is not the last "
+        "Trying to sort along dimension %d, which is not the last "
         "dimension",
         sort_dim);
   }
@@ -1281,6 +1284,22 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
   }
 }
 
+Status HloEvaluator::HandleReduce(HloInstruction* reduce) {
+  if (!ShapeUtil::IsTuple(reduce->shape())) {
+    return DefaultAction(reduce);
+  } else {
+    auto first_element_type = reduce->shape().tuple_shapes(0).element_type();
+    for (const auto& tuple_shape : reduce->shape().tuple_shapes()) {
+      if (tuple_shape.element_type() != first_element_type) {
+        return Unimplemented(
+            "Reduce with several outputs that have mixed element types is "
+            "unsupported");
+      }
+    }
+    return reduce->Visit(typed_visitors_.at(first_element_type).get());
+  }
+}
+
 Status HloEvaluator::Preprocess(HloInstruction* hlo) {
   VLOG(2) << "About to visit HLO: " << hlo->ToString();
   return ShapeUtil::ValidateShape(hlo->shape());
@@ -1295,26 +1314,27 @@ Status HloEvaluator::Postprocess(HloInstruction* hlo) {
 // Explicit instantiation of templatized Evaluate* methods.
 //
 template StatusOr<std::unique_ptr<Literal>>
-HloEvaluator::Evaluate<const Literal*>(const HloModule& module,
-                                       ArraySlice<const Literal*> arg_literals);
+HloEvaluator::Evaluate<const Literal*>(
+    const HloModule& module, absl::Span<const Literal* const> arg_literals);
 template StatusOr<std::unique_ptr<Literal>>
 HloEvaluator::Evaluate<std::unique_ptr<Literal>>(
-    const HloModule& module, ArraySlice<std::unique_ptr<Literal>> arg_literals);
+    const HloModule& module,
+    absl::Span<const std::unique_ptr<Literal>> arg_literals);
 
-template StatusOr<std::unique_ptr<Literal>>
-HloEvaluator::Evaluate<const Literal*>(const HloComputation& computation,
-                                       ArraySlice<const Literal*> arg_literals);
+template StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate<
+    const Literal*>(const HloComputation& computation,
+                    absl::Span<const Literal* const> arg_literals);
 template StatusOr<std::unique_ptr<Literal>>
 HloEvaluator::Evaluate<std::unique_ptr<Literal>>(
     const HloComputation& computation,
-    ArraySlice<std::unique_ptr<Literal>> arg_literals);
+    absl::Span<const std::unique_ptr<Literal>> arg_literals);
 
 template StatusOr<std::unique_ptr<Literal>>
-HloEvaluator::Evaluate<const Literal*>(HloInstruction* instruction,
-                                       ArraySlice<const Literal*> arg_literals);
+HloEvaluator::Evaluate<const Literal*>(
+    HloInstruction* instruction, absl::Span<const Literal* const> arg_literals);
 template StatusOr<std::unique_ptr<Literal>>
 HloEvaluator::Evaluate<std::unique_ptr<Literal>>(
     HloInstruction* instruction,
-    ArraySlice<std::unique_ptr<Literal>> arg_literals);
+    absl::Span<const std::unique_ptr<Literal>> arg_literals);
 
 }  // namespace xla

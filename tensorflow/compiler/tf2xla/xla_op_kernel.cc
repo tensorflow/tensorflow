@@ -119,7 +119,7 @@ Status XlaOpKernelContext::ConstantInput(StringPiece name,
 }
 
 Status XlaOpKernelContext::ConstantInputReshaped(
-    int index, gtl::ArraySlice<int64> new_dims,
+    int index, absl::Span<const int64> new_dims,
     xla::Literal* constant_literal) {
   const Tensor& tensor = context_->input(index);
   TensorShape new_shape(new_dims);

@@ -75,7 +75,7 @@ Status RunCudnnConvolution(
     const Shape& output_shape, se::DeviceMemoryBase input_buf,
     se::DeviceMemoryBase filter_buf, se::DeviceMemoryBase output_buf,
     se::DeviceMemoryBase scratch_buf, const Window& window,
-    const ConvolutionDimensionNumbers& dnums,
+    const ConvolutionDimensionNumbers& dnums, int64 feature_group_count,
     se::dnn::AlgorithmConfig algorithm, se::Stream* stream,
     se::dnn::ProfileResult* profile_result = nullptr);
 
@@ -84,7 +84,7 @@ Status RunCudnnConvolution(
     const Shape& output_shape, se::DeviceMemoryBase input_buf,
     se::DeviceMemoryBase filter_buf, se::DeviceMemoryBase output_buf,
     se::ScratchAllocator* scratch_allocator, const Window& window,
-    const ConvolutionDimensionNumbers& dnums,
+    const ConvolutionDimensionNumbers& dnums, int64 feature_group_count,
     se::dnn::AlgorithmConfig algorithm, se::Stream* stream,
     se::dnn::ProfileResult* profile_result = nullptr);
 

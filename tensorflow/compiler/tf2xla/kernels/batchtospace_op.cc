@@ -23,7 +23,7 @@ namespace {
 
 void BatchToSpace(XlaOpKernelContext* ctx, const xla::XlaOp& input,
                   DataType input_dtype, const TensorShape& input_tensor_shape,
-                  gtl::ArraySlice<int64> block_shape,
+                  absl::Span<const int64> block_shape,
                   const xla::Literal& crops) {
   const int input_rank = input_tensor_shape.dims();
   const gtl::InlinedVector<int64, 4> input_shape =
@@ -34,7 +34,7 @@ void BatchToSpace(XlaOpKernelContext* ctx, const xla::XlaOp& input,
       ctx, input_rank >= 1 + block_rank,
       errors::InvalidArgument("input rank should be >= ", 1 + block_rank,
                               " instead of ", input_rank));
-  gtl::ArraySlice<int64> remainder_shape(input_shape);
+  absl::Span<const int64> remainder_shape(input_shape);
   remainder_shape.remove_prefix(1 + block_rank);
 
   OP_REQUIRES(

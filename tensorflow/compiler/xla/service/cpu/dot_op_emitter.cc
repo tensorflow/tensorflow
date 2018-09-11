@@ -80,7 +80,7 @@ class MemoryTile {
   // `minor_dim_offset`}.
   //
   // Note: `major_dim_offset` is a parameter to the constructor.
-  void StoreTile(tensorflow::gtl::ArraySlice<llvm::Value*> tile,
+  void StoreTile(absl::Span<llvm::Value* const> tile,
                  llvm::Value* minor_dim_offset) const {
     CHECK_EQ(tile.size(), pointers_.size());
     for (int64 i = 0; i < pointers_.size(); i++) {

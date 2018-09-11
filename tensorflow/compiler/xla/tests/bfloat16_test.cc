@@ -65,7 +65,7 @@ XLA_TEST_F(Bfloat16Test, LogOperation) {
   Log(x);
 
   ComputeAndCompareR0<bfloat16>(&builder, static_cast<bfloat16>(1.387f), {},
-                                error_spec_);
+                                ErrorSpec(0.01, 0.01));
 }
 
 XLA_TEST_F(Bfloat16Test, NegateScalarF16) {
@@ -110,7 +110,7 @@ XLA_TEST_F(Bfloat16Test, BatchNormTraining) {
            {static_cast<bfloat16>(5), static_cast<bfloat16>(5)})
            .get()});
 
-  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.01));
+  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.01, 0.02));
 }
 
 XLA_TEST_F(Bfloat16Test, BatchNormGrad) {

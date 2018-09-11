@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
 #ifdef INTEL_MKL
 
+#include <string>
 #include <memory>
 #include <unordered_map>
 #include <utility>
@@ -30,6 +31,12 @@ limitations under the License.
 
 #if defined(INTEL_MKL_ML_ONLY) && defined(INTEL_MKL_DNN_ONLY)
 #error "at most one of INTEL_MKL_ML_ONLY and INTEL_MKL_DNN_ONLY may be defined"
+#endif
+
+#ifdef INTEL_MKL_ML_ONLY
+// Using pragma message since #warning doesn't work with all compilers
+#pragma message("Compiling for INTEL MKL ML only will be deprecated soon.")
+#pragma message("Please use MKL DNN (the default option for --config=mkl)")
 #endif
 
 #ifdef INTEL_MKL_ML_ONLY
@@ -50,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/core/util/env_var.h"
 
 #ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
@@ -95,6 +103,8 @@ typedef enum {
   Dim3d_O = 0,
   Dim3d_I = 1
 } MklDnnDims3D;
+
+static const int kSmallBatchSize = 32;
 
 #ifdef INTEL_MKL_ML_ONLY
 class MklShape {
@@ -1994,7 +2004,9 @@ const mkldnn::memory::dims NONE_DIMS = {};
 template <typename T>
 class MklPrimitiveFactory {
  public:
-  MklPrimitiveFactory() {}
+  MklPrimitiveFactory() {
+  }
+
   ~MklPrimitiveFactory() {}
 
   MklPrimitive* GetOp(const string& key) {
@@ -2015,6 +2027,22 @@ class MklPrimitiveFactory {
     CHECK(stream_iter == map.end());
 
     map[key] = op;
+  }
+
+  /// Function to decide whether HW has AVX512 or AVX2
+  /// For those legacy device(w/o AVX512 and AVX2),
+  /// MKL-DNN GEMM will be used.
+  static inline bool IsLegacyPlatform() {
+    return (!port::TestCPUFeature(port::CPUFeature::AVX512F)
+                   && !port::TestCPUFeature(port::CPUFeature::AVX2));
+  }
+
+  /// Fuction to check whether primitive memory optimization is enabled
+  static inline bool IsPrimitiveMemOptEnabled() {
+    bool is_primitive_mem_opt_enabled = true;
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_MKL_OPTIMIZE_PRIMITVE_MEMUSE", true,
+          &is_primitive_mem_opt_enabled));
+    return is_primitive_mem_opt_enabled;
   }
 
  private:
@@ -2054,7 +2082,7 @@ class FactoryKeyCreator {
   const char delimiter = 'x';
   const int kMaxKeyLength = 256;
   void Append(StringPiece s) {
-    key_.append(s.ToString());
+    key_.append(string(s));
     key_.append(1, delimiter);
   }
 };
@@ -2093,7 +2121,7 @@ class MklReorderPrimitive : public MklPrimitive {
       context_.dst_mem->set_data_handle(to->get_data_handle());
     }
 
-   private:
+ private:
     struct ReorderContext {
       std::shared_ptr<mkldnn::memory> src_mem;
       std::shared_ptr<mkldnn::memory> dst_mem;
@@ -2135,7 +2163,7 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
       return instance_;
     }
 
-   private:
+ private:
     MklReorderPrimitiveFactory() {}
     ~MklReorderPrimitiveFactory() {}
 
@@ -2178,6 +2206,15 @@ inline primitive FindOrCreateReorder(const memory* from, const memory* to) {
   MklReorderPrimitive* reorder_prim =
       MklReorderPrimitiveFactory<T>::Get(from, to);
   return *reorder_prim->GetPrimitive();
+}
+
+// utility function to determine if it is conv 1x1 and stride != 1
+// for purpose of temporarily disabling primitive reuse
+inline bool IsConv1x1StrideNot1(memory::dims filter_dims, memory::dims strides) {
+  if (filter_dims.size() != 4 || strides.size() != 2) return false;
+
+  return ((filter_dims[2] == 1) && (filter_dims[3] == 1) &&
+          ((strides[0] != 1) || (strides[1] != 1)));
 }
 
 #endif  // INTEL_MKL_DNN

@@ -25,18 +25,19 @@ namespace tflite {
 
 // Transform the given tf.mini model into a TF Lite flatbuffer and deposit the
 // result in the given string.
-void Export(const Model& model, bool allow_custom_ops,
+void Export(const Model& model, bool allow_custom_ops, bool quantize_weights,
             string* output_file_contents);
 
 // This if backward-compatibility.
 // TODO(ycling): Remove the deprecated entry functions.
 inline void Export(const Model& model, string* output_file_contents) {
-  Export(model, true, output_file_contents);
+  Export(model, true, false, output_file_contents);
 }
 
 // Export API with custom TFLite operator mapping.
 void Export(
-    const Model& model, bool allow_custom_ops, string* output_file_contents,
+    const Model& model, bool allow_custom_ops, bool quantize_weights,
+    string* output_file_contents,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type);
 
 namespace details {

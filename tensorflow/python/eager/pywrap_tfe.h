@@ -138,7 +138,7 @@ void TFE_Py_TapeSetAdd(PyObject* tape);
 PyObject* TFE_Py_TapeSetIsEmpty();
 
 PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors);
-void TFE_Py_TapeSetWatch(PyObject* tensor);
+void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor);
 void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id);
 
 // Stops any gradient recording on the current thread.

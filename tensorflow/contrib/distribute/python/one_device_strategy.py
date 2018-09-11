@@ -67,6 +67,7 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
         self._prefetch_on_device)
 
   def _broadcast(self, tensor, destinations):
+    del destinations
     return tensor
 
   # TODO(priyag): Deal with OutOfRange errors  once b/111349762 is fixed.
@@ -127,6 +128,7 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
       return values.MapOutput([fn(m, *args, **kwargs) for m in map_over])
 
   def _reduce(self, aggregation, value, destinations):
+    del destinations
     if not isinstance(value, values.MapOutput):
       return value
     l = value.get()

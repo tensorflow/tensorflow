@@ -21,8 +21,10 @@ from __future__ import print_function
 
 import platform
 
+from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.platform import tf_logging as logging
 
 if platform.system() != "Windows":
   # pylint: disable=wildcard-import,unused-import,g-import-not-at-top
@@ -36,10 +38,35 @@ if platform.system() != "Windows":
   _tpu_ops = loader.load_op_library(
       resource_loader.get_path_to_datafile("_tpu_ops.so"))
 
+  def cross_replica_sum(x, group_assignment=None, name=None):
+    """Sum the input tensor accorss replicas according to group_assignment.
+
+    Args:
+      x: The local tensor to the sum.
+      group_assignment: Optional 2d int32 lists with shape [num_groups,
+        num_replicas_per_group]. `group_assignment[i]` represents the replica
+        ids in the ith subgroup.
+      name: Optional op name.
+
+    Returns:
+      A `Tensor` which is summed across replicas.
+    """
+    if group_assignment is None:
+      num_shards = tpu_function.get_tpu_context().number_of_shards
+      if num_shards is None:
+        logging.warning(
+            "cross_replica_sum should be used within a tpu_shard_context, but "
+            "got unset number_of_shards. Assuming 1.")
+        num_shards = 1
+      group_assignment = [list(range(num_shards))]
+
+    return gen_tpu_ops.cross_replica_sum(x, group_assignment, name=name)
+
   @ops.RegisterGradient("CrossReplicaSum")
   def _cross_replica_sum_grad(op, grad):
     # The gradient of a cross replica sum is also a cross-replica sum.
-    return gen_tpu_ops.cross_replica_sum(grad, op.get_attr("group_assignment"))
+    # The graident with respect to group_assignment is None.
+    return [gen_tpu_ops.cross_replica_sum(grad, op.inputs[1]), None]
 
   # This extra type checking exists to give a more helpful error message in
   # the common case that uint8 and int64 values are infed. Remove when both

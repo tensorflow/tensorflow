@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
@@ -34,7 +34,7 @@ limitations under the License.
 namespace xla {
 namespace tools {
 
-void RealMain(tensorflow::gtl::ArraySlice<char*> args, bool compile) {
+void RealMain(absl::Span<char* const> args, bool compile) {
   LocalClient* client = ClientLibrary::LocalClientOrDie();
   LocalService* local_service =
       ClientLibrary::GetXlaService(client->platform());
@@ -102,7 +102,7 @@ int main(int argc, char** argv) {
   tensorflow::port::InitMain(usage.c_str(), &argc, &argv);
   QCHECK(argc > 1) << "\nERROR: must specify at least one module\n" << usage;
 
-  tensorflow::gtl::ArraySlice<char*> args(argv, argc);
+  absl::Span<char* const> args(argv, argc);
   args.remove_prefix(1);  // Pop off the binary name, argv[0]
   xla::tools::RealMain(args, compile);
   return 0;

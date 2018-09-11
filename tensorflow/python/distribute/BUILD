@@ -34,7 +34,11 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":distribute_coordinator_context",
+        ":multi_worker_util",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:session",
         "//tensorflow/python:training",
     ],
 )
