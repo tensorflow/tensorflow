@@ -35,7 +35,7 @@ class KerasIntegrationTest(test.TestCase):
     self.assertTrue(keras.__version__.endswith('-tf'))
 
   def test_vector_classification_sequential(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), _ = testing_utils.get_test_data(
           train_samples=100,
@@ -60,7 +60,7 @@ class KerasIntegrationTest(test.TestCase):
       self.assertGreater(history.history['val_acc'][-1], 0.7)
 
   def test_vector_classification_functional(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), _ = testing_utils.get_test_data(
           train_samples=100,
@@ -84,7 +84,7 @@ class KerasIntegrationTest(test.TestCase):
       self.assertGreater(history.history['val_acc'][-1], 0.7)
 
   def test_temporal_classification_sequential(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), _ = testing_utils.get_test_data(
           train_samples=100,
@@ -106,7 +106,7 @@ class KerasIntegrationTest(test.TestCase):
       self.assertGreater(history.history['val_acc'][-1], 0.7)
 
   def test_temporal_classification_sequential_tf_rnn(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), _ = testing_utils.get_test_data(
           train_samples=100,
@@ -130,7 +130,7 @@ class KerasIntegrationTest(test.TestCase):
       self.assertGreater(history.history['val_acc'][-1], 0.7)
 
   def test_image_classification_sequential(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), _ = testing_utils.get_test_data(
           train_samples=100,
@@ -164,7 +164,7 @@ class KerasIntegrationTest(test.TestCase):
       self.assertGreater(history.history['val_acc'][-1], 0.7)
 
   def test_video_classification_functional(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), _ = testing_utils.get_test_data(
           train_samples=100,
@@ -194,7 +194,7 @@ class KerasIntegrationTest(test.TestCase):
   def test_vector_classification_shared_sequential(self):
     # Test that Sequential models that feature internal updates
     # and internal losses can be shared.
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), _ = testing_utils.get_test_data(
           train_samples=100,
@@ -228,7 +228,7 @@ class KerasIntegrationTest(test.TestCase):
   def test_vector_classification_shared_model(self):
     # Test that functional models that feature internal updates
     # and internal losses can be shared.
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), _ = testing_utils.get_test_data(
           train_samples=100,
@@ -259,14 +259,14 @@ class KerasIntegrationTest(test.TestCase):
       self.assertGreater(history.history['val_acc'][-1], 0.7)
 
   def test_embedding_with_clipnorm(self):
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Embedding(input_dim=1, output_dim=1))
       model.compile(optimizer=keras.optimizers.SGD(clipnorm=0.1), loss='mse')
       model.fit(np.array([[0]]), np.array([[[0.5]]]), epochs=1)
 
   def test_using_tf_layers_in_keras_sequential_model(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), _ = testing_utils.get_test_data(
           train_samples=100,
@@ -289,7 +289,7 @@ class KerasIntegrationTest(test.TestCase):
       self.assertGreater(history.history['val_acc'][-1], 0.7)
 
   def test_using_tf_layers_in_keras_functional_model(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), _ = testing_utils.get_test_data(
           train_samples=100,

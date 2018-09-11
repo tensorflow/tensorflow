@@ -45,6 +45,14 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "glorot_normal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "glorot_uniform"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "identity"
     mtype: "<type \'type\'>"
   }
@@ -87,14 +95,6 @@ tf_module {
   member_method {
     name: "get"
     argspec: "args=[\'identifier\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "glorot_normal"
-    argspec: "args=[\'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\"], "
-  }
-  member_method {
-    name: "glorot_uniform"
-    argspec: "args=[\'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\"], "
   }
   member_method {
     name: "he_normal"

@@ -618,7 +618,7 @@ def cast(x, dtype, name=None):
   """Casts a tensor to a new type.
 
   The operation casts `x` (in case of `Tensor`) or `x.values`
-  (in case of `SparseTensor`) to `dtype`.
+  (in case of `SparseTensor` or `IndexedSlices`) to `dtype`.
 
   For example:
 
@@ -637,15 +637,16 @@ def cast(x, dtype, name=None):
   behavior of numpy.
 
   Args:
-    x: A `Tensor` or `SparseTensor` of numeric type. It could be
-      `uint8`, `uint16`, `uint32`, `uint64`, `int8`, `int16`, `int32`, `int64`,
-      `float16`, `float32`, `float64`, `complex64`, `complex128`, `bfloat16`.
-    dtype: The destination type. The list of supported dtypes is the same
-      as `x`.
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices` of numeric type. It could
+      be `uint8`, `uint16`, `uint32`, `uint64`, `int8`, `int16`, `int32`,
+      `int64`, `float16`, `float32`, `float64`, `complex64`, `complex128`,
+      `bfloat16`.
+    dtype: The destination type. The list of supported dtypes is the same as
+      `x`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` and
+    A `Tensor` or `SparseTensor` or `IndexedSlices` with same shape as `x` and
       same type as `dtype`.
 
   Raises:
@@ -659,6 +660,9 @@ def cast(x, dtype, name=None):
     if isinstance(x, sparse_tensor.SparseTensor):
       values_cast = cast(x.values, base_type, name=name)
       x = sparse_tensor.SparseTensor(x.indices, values_cast, x.dense_shape)
+    elif isinstance(x, ops.IndexedSlices):
+      values_cast = cast(x.values, base_type, name=name)
+      x = ops.IndexedSlices(values_cast, x.indices, x.dense_shape)
     else:
       # TODO(josh11b): If x is not already a Tensor, we could return
       # ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
@@ -711,11 +715,12 @@ def to_float(x, name="ToFloat"):
   """Casts a tensor to type `float32`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` with type `float32`.
+    A `Tensor` or `SparseTensor` or `IndexedSlices` with same shape as `x` with
+    type `float32`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `float32`.
@@ -728,11 +733,12 @@ def to_double(x, name="ToDouble"):
   """Casts a tensor to type `float64`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` with type `float64`.
+    A `Tensor` or `SparseTensor` or `IndexedSlices` with same shape as `x` with
+    type `float64`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `float64`.
@@ -745,11 +751,12 @@ def to_int32(x, name="ToInt32"):
   """Casts a tensor to type `int32`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` with type `int32`.
+    A `Tensor` or `SparseTensor` or `IndexedSlices` with same shape as `x` with
+    type `int32`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `int32`.
@@ -762,11 +769,12 @@ def to_int64(x, name="ToInt64"):
   """Casts a tensor to type `int64`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` with type `int64`.
+    A `Tensor` or `SparseTensor` or `IndexedSlices` with same shape as `x` with
+    type `int64`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `int64`.
@@ -779,11 +787,12 @@ def to_bfloat16(x, name="ToBFloat16"):
   """Casts a tensor to type `bfloat16`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` with type `bfloat16`.
+    A `Tensor` or `SparseTensor` or `IndexedSlices` with same shape as `x` with
+    type `bfloat16`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `bfloat16`.
@@ -796,11 +805,12 @@ def to_complex64(x, name="ToComplex64"):
   """Casts a tensor to type `complex64`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` with type `complex64`.
+    A `Tensor` or `SparseTensor` or `IndexedSlices` with same shape as `x` with
+    type `complex64`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `complex64`.
@@ -813,11 +823,12 @@ def to_complex128(x, name="ToComplex128"):
   """Casts a tensor to type `complex128`.
 
   Args:
-    x: A `Tensor` or `SparseTensor`.
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` with same shape as `x` with type `complex128`.
+    A `Tensor` or `SparseTensor` or `IndexedSlices` with same shape as `x` with
+    type `complex128`.
 
   Raises:
     TypeError: If `x` cannot be cast to the `complex128`.
@@ -2560,7 +2571,7 @@ def _unsorted_segment_N(data, segment_ids, num_segments):
 
 @tf_export("unsorted_segment_mean")
 def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
-  r""" Computes the mean along segments of a tensor.
+  r"""Computes the mean along segments of a tensor.
 
   Read [the section on
   segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
@@ -2571,17 +2582,26 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   Instead of computing the sum over segments, it computes the mean of all
   entries belonging to a segment such that:
 
-  \\(output_i = 1/N_i \sum data_j\\) where the sum is over `j` such
-  that `segment_ids[j] == i` with \\N_i\\ being the number of occurrences
-  of id \\i\\.
+  \\(output_i = 1/N_i \sum_{j...} data[j...]\\) where the sum is over tuples
+  `j...` such that `segment_ids[j...] == i` with \\N_i\\ being the number of
+  occurrences of id \\i\\.
 
   If there is no entry for a given segment ID `i`, it outputs 0.
 
-  segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
-  first dimension.
+  If the given segment ID `i` is negative, the value is dropped and will not
+  be added to the sum of the segment.
 
-  output: Has same shape as data, except for dimension 0 which
-  has size `num_segments`.
+  Args:
+    data: A `Tensor` with floating point or complex dtype.
+    segment_ids: An integer tensor whose shape is a prefix of `data.shape`.
+    num_segments: An integer scalar `Tensor`.  The number of distinct
+      segment IDs.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`.  Has same shape as data, except for the first `segment_ids.rank`
+    dimensions, which are replaced with a single dimension which has size
+   `num_segments`.
   """
   with ops.name_scope(name, "UnsortedSegmentMean"):
     data = ops.convert_to_tensor(data)
@@ -2604,20 +2624,29 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   Additionally to computing the sum over segments, it divides the results by
   sqrt(N).
 
-  \\(output_i = 1/sqrt(N_i) \sum data_j\\) where the sum is over `j` such
-  that `segment_ids[j] == i` with \\N_i\\ being the number of occurrences
-  of id \\i\\.
+  \\(output_i = 1/sqrt(N_i) \sum_{j...} data[j...]\\) where the sum is over
+  tuples `j...` such that `segment_ids[j...] == i` with \\N_i\\ being the
+  number of occurrences of id \\i\\.
 
   If there is no entry for a given segment ID `i`, it outputs 0.
 
   Note that this op only supports floating point and complex dtypes,
   due to tf.sqrt only supporting these types.
 
-  segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
-  first dimension.
+  If the given segment ID `i` is negative, the value is dropped and will not
+  be added to the sum of the segment.
 
-  output: Has same shape as data, except for dimension 0 which
-  has size `num_segments`.
+  Args:
+    data: A `Tensor` with floating point or complex dtype.
+    segment_ids: An integer tensor whose shape is a prefix of `data.shape`.
+    num_segments: An integer scalar `Tensor`.  The number of distinct
+      segment IDs.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`.  Has same shape as data, except for the first `segment_ids.rank`
+    dimensions, which are replaced with a single dimension which has size
+   `num_segments`.
   """
   with ops.name_scope(name, "UnsortedSegmentSqrtN"):
     data = ops.convert_to_tensor(data)

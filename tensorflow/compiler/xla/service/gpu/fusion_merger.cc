@@ -19,12 +19,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace xla {
 namespace gpu {
@@ -225,10 +226,11 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // Skip 'fusion' instruction if we cannot merge into all of its users.
   // Merging into all users enables the removal of 'fusion' from the
   // computation.
-  if (!absl::c_all_of(fusion->users(), [](const HloInstruction* user) {
+  if (!absl::c_all_of(fusion->users(), [&](const HloInstruction* user) {
         return user->opcode() == HloOpcode::kFusion &&
                (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||
-                user->fusion_kind() == HloInstruction::FusionKind::kInput);
+                (user->fusion_kind() == HloInstruction::FusionKind::kInput &&
+                 LayoutsAreReduceInputFusionFriendly(*fusion, *user)));
       })) {
     VLOG(3) << "Not merging " << fusion->name()
             << ": Some of its users are not loop/input fusion kernels.";
@@ -289,11 +291,10 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
           << " flops_to_bytes_ratio: " << CalculateFlopsToBytesRatio(fusion)
           << " merged_to_current_bytes_ratio: " << merged_to_current_bytes_ratio
           << " into users { "
-          << tensorflow::str_util::Join(users, ", ",
-                                        [](string* out, HloInstruction* user) {
-                                          tensorflow::strings::StrAppend(
-                                              out, user->name());
-                                        })
+          << absl::StrJoin(users, ", ",
+                           [](string* out, HloInstruction* user) {
+                             absl::StrAppend(out, user->name());
+                           })
           << " }";
   // Remove 'fusion' instruction.
   CHECK_EQ(0, fusion->user_count());

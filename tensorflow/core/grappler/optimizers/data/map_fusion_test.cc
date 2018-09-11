@@ -30,7 +30,7 @@ namespace {
 
 NodeDef MakeMapNode(StringPiece name, StringPiece input_node_name) {
   return test::function::NDef(
-      name, "MapDataset", {input_node_name.ToString()},
+      name, "MapDataset", {string(input_node_name)},
       {{"f", FunctionDefHelper::FunctionRef("XTimesTwo")},
        {"Targuments", {}},
        {"output_shapes", {}},

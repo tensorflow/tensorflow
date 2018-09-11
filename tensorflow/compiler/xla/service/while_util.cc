@@ -15,15 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/while_util.h"
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 
-using tensorflow::strings::StrCat;
+using absl::StrCat;
 
 static StatusOr<HloComputation*> WidenWhileCondition(
     HloComputation* narrow_condition, const Shape& wide_shape) {
@@ -94,7 +94,7 @@ WidenWhileBody(HloComputation* narrow_body, const Shape& wide_shape) {
 /*static*/ StatusOr<WhileUtil::MakeInstructionsLiveInResult>
 WhileUtil::MakeInstructionsLiveIn(
     HloInstruction* while_instr,
-    tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
+    absl::Span<HloInstruction* const> instructions) {
   CHECK(ShapeUtil::IsTuple(while_instr->shape()));
 
   int64 elements_in_old_while_shape = while_instr->shape().tuple_shapes_size();

@@ -43,7 +43,7 @@ class RangeDatasetTest(test.TestCase):
     self.assertEqual([tensor_shape.TensorShape([])] * 3,
                      [t.shape for t in get_next[1]])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       self.assertEqual((20, (b"a", 1, 37.0)), sess.run(get_next))
       self.assertEqual((21, (b"b", 2, 38.0)), sess.run(get_next))
@@ -63,7 +63,7 @@ class RangeDatasetTest(test.TestCase):
                          .make_one_shot_iterator())
     negative_get_next = negative_iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual(3, sess.run(get_next))
       self.assertEqual(3 + 4, sess.run(get_next))
       self.assertEqual(3 + 2 * 4, sess.run(get_next))

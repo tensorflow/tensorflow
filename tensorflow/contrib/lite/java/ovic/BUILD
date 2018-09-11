@@ -35,6 +35,7 @@ java_binary(
         "//tensorflow/contrib/lite/java/ovic/src/testdata:labels.txt",
     ],
     main_class = "org.tensorflow.ovic.OvicValidator",
+    tags = ["no_oss"],
     deps = [
         "//tensorflow/contrib/lite/java/ovic:ovicbenchmarkerlib_java",
     ],
@@ -47,6 +48,7 @@ android_library(
         "src/main/java/org/tensorflow/ovic/OvicSingleImageResult.java",
     ],
     manifest = "//tensorflow/contrib/lite/java:AndroidManifest.xml",
+    tags = ["no_oss"],
     deps = [
         "//tensorflow/contrib/lite/java:tensorflowlite",
         "//tensorflow/contrib/lite/java/src/testhelper/java/org/tensorflow/lite:testhelper",
@@ -61,6 +63,7 @@ java_library(
         "src/main/java/org/tensorflow/ovic/OvicSingleImageResult.java",
     ],
     javacopts = JAVACOPTS,
+    tags = ["no_oss"],
     deps = [
         "//tensorflow/contrib/lite/java:libtensorflowlite_jni.so",
         "//tensorflow/contrib/lite/java:tensorflowlite_java",

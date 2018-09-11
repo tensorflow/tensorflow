@@ -24,7 +24,8 @@ limitations under the License.
 // not be depended on.
 
 struct TFL_Model {
-  std::unique_ptr<tflite::FlatBufferModel> impl;
+  // Sharing is safe as FlatBufferModel is const.
+  std::shared_ptr<const tflite::FlatBufferModel> impl;
 };
 
 struct TFL_InterpreterOptions {
@@ -35,6 +36,9 @@ struct TFL_InterpreterOptions {
 };
 
 struct TFL_Interpreter {
+  // Taking a reference to the (const) model data avoids lifetime-related issues
+  // and complexity with the TFL_Model's existence.
+  std::shared_ptr<const tflite::FlatBufferModel> model;
   std::unique_ptr<tflite::Interpreter> impl;
 };
 

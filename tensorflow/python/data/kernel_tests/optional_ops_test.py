@@ -158,7 +158,7 @@ class OptionalTest(test.TestCase):
     self.assertEqual(ds.output_classes, next_elem.output_classes)
     elem_has_value_t = next_elem.has_value()
     elem_value_t = next_elem.get_value()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Before initializing the iterator, evaluating the optional fails with
       # a FailedPreconditionError.
       with self.assertRaises(errors.FailedPreconditionError):

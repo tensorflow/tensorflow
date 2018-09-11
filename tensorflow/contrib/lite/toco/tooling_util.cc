@@ -405,6 +405,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(LogicalNot)
     HANDLE_OPERATORTYPENAME_CASE(LogicalOr)
     HANDLE_OPERATORTYPENAME_CASE(CTCBeamSearchDecoder)
+    HANDLE_OPERATORTYPENAME_CASE(Unpack)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE

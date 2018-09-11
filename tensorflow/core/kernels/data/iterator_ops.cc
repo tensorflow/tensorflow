@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -236,6 +236,8 @@ class IteratorResource : public ResourceBase {
   const std::vector<PartialTensorShape> output_shapes_;
 };
 
+namespace {
+
 // Helper class for reading data from a VariantTensorData object.
 class VariantTensorDataReader : public IteratorStateReader {
  public:
@@ -261,7 +263,7 @@ class VariantTensorDataReader : public IteratorStateReader {
   }
 
   bool Contains(StringPiece key) override {
-    return map_.find(key.ToString()) != map_.end();
+    return map_.find(string(key)) != map_.end();
   }
 
  private:
@@ -282,18 +284,18 @@ class VariantTensorDataReader : public IteratorStateReader {
 
   template <typename T>
   Status ReadScalarInternal(StringPiece key, T* val) {
-    if (map_.find(key.ToString()) == map_.end()) {
+    if (map_.find(string(key)) == map_.end()) {
       return errors::NotFound(key);
     }
-    *val = data_->tensors(map_[key.ToString()]).scalar<T>()();
+    *val = data_->tensors(map_[string(key)]).scalar<T>()();
     return Status::OK();
   }
 
   Status ReadTensorInternal(StringPiece key, Tensor* val) {
-    if (map_.find(key.ToString()) == map_.end()) {
+    if (map_.find(string(key)) == map_.end()) {
       return errors::NotFound(key);
     }
-    *val = data_->tensors(map_[key.ToString()]);
+    *val = data_->tensors(map_[string(key)]);
     return Status::OK();
   }
 
@@ -342,7 +344,7 @@ class VariantTensorDataWriter : public IteratorStateWriter {
     // Write key to the metadata proto. This gets written to `data_`
     // when `Flush()` is called. We do this lazily to avoid multiple
     // serialization calls.
-    metadata_proto_.add_keys(key.ToString());
+    metadata_proto_.add_keys(string(key));
 
     // Update tensors.
     *(data_->add_tensors()) = val;
@@ -442,6 +444,8 @@ class IteratorStateVariant {
 // DeserializeIteratorOp which is not recommended.
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(IteratorStateVariant,
                                        kIteratorVariantTypeName);
+
+}  // namespace
 
 // Note that IteratorHandleOp holds a reference to the resource it creates. If
 // cleaning up resources with DestroyResourceOp is important, consider creating
@@ -621,6 +625,8 @@ void MakeIteratorOp::Compute(OpKernelContext* ctx) {
       ctx, dataset->MakeIterator(std::move(iter_ctx), "Iterator", &iterator));
   OP_REQUIRES_OK(ctx, iterator_resource->set_iterator(std::move(iterator)));
 }
+
+namespace {
 
 class ToSingleElementOp : public AsyncOpKernel {
  public:
@@ -887,6 +893,8 @@ class OneShotIteratorOp : public AsyncOpKernel {
   const int graph_def_version_;
 };
 
+}  // namespace
+
 void IteratorGetNextOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   IteratorResource* iterator;
   OP_REQUIRES_OK_ASYNC(
@@ -956,6 +964,8 @@ void IteratorGetNextSyncOp::Compute(OpKernelContext* ctx) {
     ctx->set_output(i, components[i]);
   }
 }
+
+namespace {
 
 class IteratorGetNextAsOptionalOp : public AsyncOpKernel {
  public:
@@ -1037,6 +1047,8 @@ class IteratorGetNextAsOptionalOp : public AsyncOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };
 
+}  // namespace
+
 void IteratorToStringHandleOp::Compute(OpKernelContext* ctx) {
   const Tensor& resource_handle_t = ctx->input(0);
   OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(resource_handle_t.shape()),
@@ -1107,6 +1119,8 @@ void IteratorFromStringHandleOp::Compute(OpKernelContext* ctx) {
                  ctx->allocate_output(0, TensorShape({}), &resource_handle_t));
   resource_handle_t->scalar<ResourceHandle>()() = resource_handle;
 }
+
+namespace {
 
 class SerializeIteratorOp : public OpKernel {
  public:
@@ -1202,4 +1216,7 @@ REGISTER_KERNEL_BUILDER(Name("SerializeIterator").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("DeserializeIterator").Device(DEVICE_CPU),
                         DeserializeIteratorOp);
 
+}  // namespace
+
+}  // namespace data
 }  // namespace tensorflow

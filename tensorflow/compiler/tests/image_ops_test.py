@@ -54,7 +54,7 @@ class RGBToHSVTest(xla_test.XLATestCase):
       inp = GenerateNumpyRandomRGB(shape).astype(nptype)
 
       # Convert to HSV and back, as a batch and individually
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         batch0 = array_ops.placeholder(nptype, shape=shape)
         with self.test_scope():
           batch1 = image_ops.rgb_to_hsv(batch0)
@@ -78,7 +78,7 @@ class RGBToHSVTest(xla_test.XLATestCase):
     data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
     for nptype in self.float_types:
       rgb_np = np.array(data, dtype=nptype).reshape([2, 2, 3]) / 255.
-      with self.test_session():
+      with self.cached_session():
         placeholder = array_ops.placeholder(nptype)
         with self.test_scope():
           hsv = image_ops.rgb_to_hsv(placeholder)
@@ -97,7 +97,7 @@ class RGBToHSVTest(xla_test.XLATestCase):
           for r, g, b in rgb_flat
       ])
       hsv_np = hsv_np.reshape(4, 4, 4, 3)
-      with self.test_session():
+      with self.cached_session():
         placeholder = array_ops.placeholder(nptype)
         with self.test_scope():
           hsv_op = image_ops.rgb_to_hsv(placeholder)
@@ -108,7 +108,7 @@ class RGBToHSVTest(xla_test.XLATestCase):
 class AdjustContrastTest(xla_test.XLATestCase):
 
   def _testContrast(self, x_np, y_np, contrast_factor):
-    with self.test_session():
+    with self.cached_session():
       x = array_ops.placeholder(x_np.dtype, shape=x_np.shape)
       flt_x = image_ops.convert_image_dtype(x, dtypes.float32)
       with self.test_scope():
@@ -146,7 +146,7 @@ class AdjustContrastTest(xla_test.XLATestCase):
     return y_np
 
   def _adjustContrastTf(self, x_np, contrast_factor):
-    with self.test_session():
+    with self.cached_session():
       x = array_ops.placeholder(np.float32)
       with self.test_scope():
         y = image_ops.adjust_contrast(x, contrast_factor)
@@ -180,7 +180,7 @@ class AdjustHueTest(xla_test.XLATestCase):
     y_data = [0, 13, 1, 54, 226, 59, 8, 234, 150, 255, 39, 1]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
-    with self.test_session():
+    with self.cached_session():
       x = array_ops.placeholder(x_np.dtype, shape=x_shape)
       flt_x = image_ops.convert_image_dtype(x, dtypes.float32)
       with self.test_scope():
@@ -198,7 +198,7 @@ class AdjustHueTest(xla_test.XLATestCase):
     y_data = [13, 0, 11, 226, 54, 221, 234, 8, 92, 1, 217, 255]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
-    with self.test_session():
+    with self.cached_session():
       x = array_ops.placeholder(x_np.dtype, shape=x_shape)
       flt_x = image_ops.convert_image_dtype(x, dtypes.float32)
       with self.test_scope():
@@ -216,7 +216,7 @@ class AdjustHueTest(xla_test.XLATestCase):
     y_data = [13, 0, 11, 226, 54, 221, 234, 8, 92, 1, 217, 255]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
-    with self.test_session():
+    with self.cached_session():
       x = array_ops.placeholder(x_np.dtype, shape=x_shape)
       flt_x = image_ops.convert_image_dtype(x, dtypes.float32)
       with self.test_scope():
@@ -244,7 +244,7 @@ class AdjustHueTest(xla_test.XLATestCase):
     return y_v.reshape(x_np.shape)
 
   def _adjustHueTf(self, x_np, delta_h):
-    with self.test_session():
+    with self.cached_session():
       x = array_ops.placeholder(dtypes.float32)
       with self.test_scope():
         y = gen_image_ops.adjust_hue(x, delta_h)
@@ -324,7 +324,7 @@ class AdjustSaturationTest(xla_test.XLATestCase):
     y_rgb_data = [6, 9, 13, 140, 180, 226, 135, 121, 234, 172, 255, 128]
     y_np = np.array(y_rgb_data, dtype=np.uint8).reshape(x_shape)
 
-    with self.test_session():
+    with self.cached_session():
       x = array_ops.placeholder(x_np.dtype, shape=x_shape)
       y = self._adjust_saturation(x, saturation_factor)
       y_tf = y.eval({x: x_np})
@@ -339,7 +339,7 @@ class AdjustSaturationTest(xla_test.XLATestCase):
     y_data = [0, 5, 13, 0, 106, 226, 30, 0, 234, 89, 255, 0]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
-    with self.test_session():
+    with self.cached_session():
       x = array_ops.placeholder(x_np.dtype, shape=x_shape)
       y = self._adjust_saturation(x, saturation_factor)
       y_tf = y.eval({x: x_np})
@@ -378,7 +378,7 @@ class AdjustSaturationTest(xla_test.XLATestCase):
         "gb_same",
         "rgb_same",
     ]
-    with self.test_session():
+    with self.cached_session():
       for x_shape in x_shapes:
         for test_style in test_styles:
           x_np = np.random.rand(*x_shape) * 255.
@@ -410,13 +410,14 @@ class ResizeBilinearTest(xla_test.XLATestCase):
                                       image_np,
                                       target_shape,
                                       expected=None,
-                                      large_tolerance=False):
+                                      large_tolerance=False,
+                                      align_corners=True):
     if expected is None:
       self.fail("expected must be specified")
-    with self.test_session() as sess, self.test_scope():
+    with self.cached_session() as sess, self.test_scope():
       image = array_ops.placeholder(image_np.dtype)
       resized = gen_image_ops.resize_bilinear(
-          image, target_shape, align_corners=True)
+          image, target_shape, align_corners=align_corners)
       out = sess.run(resized, {image: image_np[np.newaxis, :, :, np.newaxis]})
       if large_tolerance:
         self.assertAllClose(
@@ -433,7 +434,7 @@ class ResizeBilinearTest(xla_test.XLATestCase):
       self.fail("input_shape must be specified")
     if expected is None:
       self.fail("expected must be specified")
-    with self.test_session() as sess, self.test_scope():
+    with self.cached_session() as sess, self.test_scope():
       dtype = dtype or np.float32
       grads = array_ops.placeholder(np.float32)
       resized = gen_image_ops.resize_bilinear_grad(
@@ -579,6 +580,27 @@ class ResizeBilinearTest(xla_test.XLATestCase):
                 dtype=np.float32)),
         large_tolerance=True)
 
+  def testNonAlignCorners3x2To6x4(self):
+    input_data = [[64, 32], [32, 64], [50, 100]]
+    expected_data = [[64.0, 48.0, 32.0, 32.0], [48.0, 48.0, 48.0, 48.0],
+                     [32.0, 48.0, 64.0, 64.0], [41.0, 61.5, 82.0, 82.0],
+                     [50.0, 75.0, 100.0, 100.0], [50.0, 75.0, 100.0, 100.0]]
+    for dtype in self.float_types:
+      self._assertForwardOpMatchesExpected(
+          np.array(input_data, dtype=dtype), [6, 4],
+          expected=np.array(expected_data, dtype=np.float32),
+          align_corners=False)
+
+  def testNonAlignCorners6x4To3x2(self):
+    input_data = [[127, 127, 64, 64], [127, 127, 64, 64], [64, 64, 127, 127],
+                  [64, 64, 127, 127], [50, 50, 100, 100], [50, 50, 100, 100]]
+    expected_data = [[127, 64], [64, 127], [50, 100]]
+    for dtype in self.float_types:
+      self._assertForwardOpMatchesExpected(
+          np.array(input_data, dtype=dtype), [3, 2],
+          expected=np.array(expected_data, dtype=dtype),
+          align_corners=False)
+
 
 class NonMaxSuppressionTest(xla_test.XLATestCase):
 
@@ -596,7 +618,7 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
       iou_threshold_np = np.array(0.5, dtype=np.float32)
       score_threshold_np = np.array(0.0, dtype=np.float32)
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
         scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
         iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
@@ -639,7 +661,7 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
       iou_threshold_np = np.array(0.5, dtype=np.float32)
       score_threshold_np = np.array(0.0, dtype=np.float32)
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
         scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
         iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
@@ -686,7 +708,7 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
       iou_threshold_np = np.array(0.5, dtype=np.float32)
       score_threshold_np = np.array(0.4, dtype=np.float32)
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
         scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
         iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,

@@ -76,8 +76,8 @@ Status ShuffleAndRepeatFusion::Optimize(Cluster* cluster,
 
     // Use a more descriptive variable name now that we know the node type.
     const NodeDef& repeat_node = node;
-    GraphView::InputPort input_port = graph.GetInputPort(repeat_node.name(), 0);
-    NodeDef* node2 = graph.GetRegularFanin(input_port).node;
+    NodeDef* node2 = graph_utils::GetInputNode(repeat_node, graph);
+
     if (node2->op() != "ShuffleDataset") {
       continue;
     }

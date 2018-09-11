@@ -16,6 +16,7 @@ limitations under the License.
 // XLA-specific Ops for broadcasting used in gradient
 // code.
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -38,7 +39,7 @@ class BCastArgsOp : public XlaOpKernel {
     OP_REQUIRES(
         ctx, ctx->num_inputs() == 2,
         errors::Unimplemented("Broadcast for n-ary operations (n > 2)"));
-    gtl::InlinedVector<BCast::Vec, 2> shapes;
+    absl::InlinedVector<BCast::Vec, 2> shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       const TensorShape in_shape = ctx->InputShape(i);
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in_shape),
@@ -51,8 +52,8 @@ class BCastArgsOp : public XlaOpKernel {
     BCast bcast(shapes[0], shapes[1]);
     OP_REQUIRES(ctx, bcast.IsValid(),
                 errors::InvalidArgument(
-                    "Incompatible shapes: [", str_util::Join(shapes[0], ","),
-                    "] vs. [", str_util::Join(shapes[1], ","), "]"));
+                    "Incompatible shapes: [", absl::StrJoin(shapes[0], ","),
+                    "] vs. [", absl::StrJoin(shapes[1], ","), "]"));
 
     const int64 len = bcast.output_shape().size();
     Tensor output(DT_INT32, TensorShape({len}));
@@ -87,7 +88,7 @@ class BCastGradArgsOp : public XlaOpKernel {
         ctx, ctx->num_inputs() == 2,
         errors::Unimplemented("Broadcast for n-ary operations (n > 2)"));
 
-    gtl::InlinedVector<BCast::Vec, 4> shapes;
+    absl::InlinedVector<BCast::Vec, 4> shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       const TensorShape in_shape = ctx->InputShape(i);
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in_shape),
@@ -105,8 +106,8 @@ class BCastGradArgsOp : public XlaOpKernel {
     BCast bcast(shapes[0], shapes[1]);
     OP_REQUIRES(ctx, bcast.IsValid(),
                 errors::InvalidArgument(
-                    "Incompatible shapes: [", str_util::Join(shapes[0], ","),
-                    "] vs. [", str_util::Join(shapes[1], ","), "]"));
+                    "Incompatible shapes: [", absl::StrJoin(shapes[0], ","),
+                    "] vs. [", absl::StrJoin(shapes[1], ","), "]"));
     Output(ctx, 0, bcast.grad_x_reduce_idx());
     Output(ctx, 1, bcast.grad_y_reduce_idx());
   }

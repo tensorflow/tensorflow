@@ -125,11 +125,13 @@ class WALSMatrixFactorizationTest(test.TestCase):
       nz_row_ids = np.arange(np.shape(np_matrix)[0])
       nz_col_ids = np.arange(np.shape(np_matrix)[1])
 
-    def extract_features(row_batch, col_batch, shape):
+    def extract_features(row_batch, col_batch, num_rows, num_cols):
       row_ids = row_batch[0]
       col_ids = col_batch[0]
-      rows = self.remap_sparse_tensor_rows(row_batch[1], row_ids, shape)
-      cols = self.remap_sparse_tensor_rows(col_batch[1], col_ids, shape)
+      rows = self.remap_sparse_tensor_rows(
+          row_batch[1], row_ids, shape=[num_rows, num_cols])
+      cols = self.remap_sparse_tensor_rows(
+          col_batch[1], col_ids, shape=[num_cols, num_rows])
       features = {
           wals_lib.WALSMatrixFactorization.INPUT_ROWS: rows,
           wals_lib.WALSMatrixFactorization.INPUT_COLS: cols,
@@ -154,7 +156,7 @@ class WALSMatrixFactorizationTest(test.TestCase):
           capacity=10,
           enqueue_many=True)
 
-      features = extract_features(row_batch, col_batch, sp_mat.dense_shape)
+      features = extract_features(row_batch, col_batch, num_rows, num_cols)
 
       if mode == model_fn.ModeKeys.INFER or mode == model_fn.ModeKeys.EVAL:
         self.assertTrue(
@@ -334,7 +336,7 @@ class WALSMatrixFactorizationTest(test.TestCase):
     loss = self._model.evaluate(
         input_fn=eval_input_fn_row, steps=self._num_rows)['loss']
 
-    with self.test_session():
+    with self.cached_session():
       true_loss = self.calculate_loss()
 
     self.assertNear(
@@ -352,7 +354,7 @@ class WALSMatrixFactorizationTest(test.TestCase):
     loss = self._model.evaluate(
         input_fn=eval_input_fn_col, steps=self._num_cols)['loss']
 
-    with self.test_session():
+    with self.cached_session():
       true_loss = self.calculate_loss()
 
     self.assertNear(
@@ -438,7 +440,7 @@ class SweepHookTest(test.TestCase):
                          math_ops.logical_not(is_row_sweep_var)))
     mark_sweep_done = state_ops.assign(is_sweep_done_var, True)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sweep_hook = wals_lib._SweepHook(
           is_row_sweep_var,
           is_sweep_done_var,
@@ -489,7 +491,7 @@ class StopAtSweepHookTest(test.TestCase):
     train_op = state_ops.assign_add(completed_sweeps, 1)
     hook.begin()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run([variables.global_variables_initializer()])
       mon_sess = monitored_session._HookedSession(sess, [hook])
       mon_sess.run(train_op)

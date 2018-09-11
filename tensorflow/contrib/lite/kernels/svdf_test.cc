@@ -145,7 +145,6 @@ class BaseSVDFOpModel : public SingleOpModel {
     activation_state_ = AddInput(
         TensorData{TensorType_FLOAT32, {batches, memory_size * num_filters}},
         /*is_variable=*/true);
-    state_ = AddOutput(TensorType_FLOAT32);
     output_ = AddOutput(TensorType_FLOAT32);
     SetBuiltinOp(
         BuiltinOperator_SVDF, BuiltinOptions_SVDFOptions,
@@ -187,7 +186,6 @@ class BaseSVDFOpModel : public SingleOpModel {
   int weights_time_;
   int bias_;
   int activation_state_;
-  int state_;
   int output_;
 
   int batches_;

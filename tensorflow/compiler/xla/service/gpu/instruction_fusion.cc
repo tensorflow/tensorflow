@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -26,7 +27,7 @@ namespace gpu {
 
 namespace {
 
-bool IsFusile(const HloInstruction& hlo) {
+bool IsFusible(const HloInstruction& hlo) {
   // Don't fuse get-tuple-element on GPU: We can, but it's slower than not
   // fusing.  We never generate kernels for unfused GTEs.  Instead, if an
   // unfused GTE is an input to a kernel (including a fusion kernel), we
@@ -41,7 +42,7 @@ bool IsFusile(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kDynamicUpdateSlice ||
          hlo.opcode() == HloOpcode::kFusion ||
          hlo.opcode() == HloOpcode::kGather ||
-         hlo.opcode() == HloOpcode::kPad ||
+         hlo.opcode() == HloOpcode::kIota || hlo.opcode() == HloOpcode::kPad ||
          hlo.opcode() == HloOpcode::kReduce ||
          hlo.opcode() == HloOpcode::kReduceWindow ||
          hlo.opcode() == HloOpcode::kReshape ||
@@ -221,6 +222,13 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
+  // Do not fuse into reduce input fusions if the resulting kernel would suffer
+  // from poor data locality (due to unfriendly input layouts).
+  if (IsInputFusibleReduction(*consumer) &&
+      !LayoutsAreReduceInputFusionFriendly(*producer, *consumer)) {
+    return false;
+  }
+
   // We can't fuse library calls, so if a user of such an op could become a
   // bitcast, leave it unfused. See `xla::InstructionFusion::ShouldFuse` for
   // further rationale.
@@ -245,7 +253,7 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return true;
   }
 
-  if (!IsFusile(*producer) || !IsFusile(*consumer) ||
+  if (!IsFusible(*producer) || !IsFusible(*consumer) ||
       !InstructionFusion::ShouldFuse(consumer, operand_index)) {
     return false;
   }

@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import collections
 import copy
-import os
 import re
 import sys
 import threading
@@ -56,6 +55,7 @@ from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lock_util
 from tensorflow.python.util import tf_contextlib
@@ -67,7 +67,7 @@ from tensorflow.python.util.tf_export import tf_export
 # Temporary global switches determining if we should enable the work-in-progress
 # calls to the C API. These will be removed once all functionality is supported.
 _USE_C_API = True
-_USE_C_SHAPES = os.getenv("TF_C_API_GRAPH_CONSTRUCTION_SHAPES", "1") != "0"
+_USE_C_SHAPES = True
 
 
 def tensor_id(tensor):
@@ -516,6 +516,11 @@ class Tensor(_TensorLike):
     ==> TensorShape([Dimension(28), Dimension(28), Dimension(3)])
     ```
 
+    NOTE: This shape is not enforced at runtime. Setting incorrect shapes can
+    result in inconsistencies between the statically-known graph and the runtime
+    value of tensors. For runtime validation of the shape, use `tf.ensure_shape`
+    instead.
+
     Args:
       shape: A `TensorShape` representing the shape of this tensor, a
       `TensorShapeProto`, a list, a tuple, or None.
@@ -753,6 +758,9 @@ class _EagerTensorBase(Tensor):
   def __format__(self, format_spec):
     return self.numpy().__format__(format_spec)
 
+  def __reduce__(self):
+    return (convert_to_tensor, (self.numpy(),))
+
   def _numpy(self):
     raise NotImplementedError()
 
@@ -792,6 +800,19 @@ class _EagerTensorBase(Tensor):
 
     Returns:
       Integer rank
+    """
+    raise NotImplementedError()
+
+  def _num_elements(self):
+    """Number of elements of this Tensor.
+
+    Unlike regular Tensors, the number of elements is always known for
+    EagerTensors.
+
+    This is more performant than tensor.shape.num_elements
+
+    Returns:
+      Long - num elements in the tensor
     """
     raise NotImplementedError()
 
@@ -2856,19 +2877,11 @@ class Graph(object):
 
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
-    if self._use_c_api_hack():
-      self._scoped_c_graph = c_api_util.ScopedTFGraph()
-      # The C API requires all ops to have shape functions. Disable this
-      # requirement (many custom ops do not have shape functions, and we don't
-      # want to break these existing cases).
-      c_api.SetRequireShapeInferenceFns(self._c_graph, False)
-    else:
-      self._scoped_c_graph = None
-
-  # TODO(apassos) remove once the C API is used by default.
-  def _use_c_api_hack(self):
-    """Temporary hack; can be overridden to force C API usage."""
-    return _USE_C_API
+    self._scoped_c_graph = c_api_util.ScopedTFGraph()
+    # The C API requires all ops to have shape functions. Disable this
+    # requirement (many custom ops do not have shape functions, and we don't
+    # want to break these existing cases).
+    c_api.SetRequireShapeInferenceFns(self._c_graph, False)
 
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
@@ -3118,7 +3131,7 @@ class Graph(object):
     Returns:
       bool indicating whether or not 'name' is registered in function library.
     """
-    return name in self._functions
+    return compat.as_str(name) in self._functions
 
   def _get_function(self, name):
     """Returns the function definition for 'name'.
@@ -3128,7 +3141,7 @@ class Graph(object):
     Returns:
       The function def proto.
     """
-    return self._functions.get(name, None)
+    return self._functions.get(compat.as_str(name), None)
 
   def _add_function(self, function):
     """Adds a function to the graph.
@@ -3164,7 +3177,7 @@ class Graph(object):
     c_api.TF_GraphCopyFunction(self._c_graph, function._c_func.func, gradient)
     # pylint: enable=protected-access
 
-    self._functions[name] = function
+    self._functions[compat.as_str(name)] = function
 
     # Need a new-enough consumer to support the functions we add to the graph.
     if self._graph_def_versions.min_consumer < 12:
@@ -5223,6 +5236,7 @@ _default_graph_stack = _DefaultGraphStack()
 
 
 # pylint: disable=g-doc-return-or-yield,line-too-long
+@tf_export("init_scope")
 @tf_contextlib.contextmanager
 def init_scope():
   """A context manager that lifts ops out of control-flow scopes and function-building graphs.
@@ -5251,6 +5265,23 @@ def init_scope():
         `init_scope` will simply install a fresh graph as the default one.
 
     (3) The gradient tape is paused while the scope is active.
+
+  When eager execution is enabled, code inside an init_scope block runs with
+  eager execution enabled even when defining graph functions via
+  tf.contrib.eager.defun. For example:
+
+  ```python
+  tf.enable_eager_execution()
+
+  @tf.contrib.eager.defun
+  def func():
+    # A defun-decorated function constructs TensorFlow graphs,
+    # it does not execute eagerly.
+    assert not tf.executing_eagerly()
+    with tf.init_scope():
+      # Initialization runs with eager execution enabled
+      assert tf.executing_eagerly()
+  ```
 
   Raises:
     RuntimeError: if graph state is incompatible with this initialization.
@@ -5333,6 +5364,7 @@ def enable_eager_execution(config=None,
   computational graph).
 
   For example:
+
   ```python
   tf.enable_eager_execution()
 
@@ -5382,11 +5414,12 @@ def enable_eager_execution(config=None,
      TensorFlow graph, or if options provided conflict with a previous call
      to this function.
   """
-  return enable_eager_execution_internal(
-      config=config,
-      device_policy=device_policy,
-      execution_mode=execution_mode,
-      server_def=None)
+  if context.default_execution_mode != context.EAGER_MODE:
+    return enable_eager_execution_internal(
+        config=config,
+        device_policy=device_policy,
+        execution_mode=execution_mode,
+        server_def=None)
 
 
 def enable_eager_execution_internal(config=None,
@@ -5424,15 +5457,15 @@ def enable_eager_execution_internal(config=None,
     raise ValueError(
         "execution_mode must be one of None, tf.contrib.eager.SYNC, "
         "tf.contrib.eager.ASYNC")
-  # pylint: disable=protected-access
-  if context._default_mode == context.GRAPH_MODE:
+  if context.default_execution_mode == context.GRAPH_MODE:
     graph_mode_has_been_used = (
         _default_session_stack.stack
         or len(get_default_graph().get_operations()) > 0)  # pylint: disable=g-explicit-length-test
     if graph_mode_has_been_used:
       raise ValueError(
           "tf.enable_eager_execution must be called at program startup.")
-  context._default_mode = context.EAGER_MODE
+  context.default_execution_mode = context.EAGER_MODE
+  # pylint: disable=protected-access
   if context._context is None:
     context._context = context.Context(
         config=config,
@@ -5776,11 +5809,8 @@ class GraphKeys(object):
   _STREAMING_MODEL_PORTS = "streaming_model_ports"
 
   @decorator_utils.classproperty
+  @deprecation.deprecated(None, "Use `tf.GraphKeys.GLOBAL_VARIABLES` instead.")
   def VARIABLES(cls):  # pylint: disable=no-self-argument
-    logging.log_first_n(logging.WARN,
-                        "VARIABLES collection name is deprecated, please use "
-                        "GLOBAL_VARIABLES instead; VARIABLES will be removed "
-                        "after 2017-03-02.", 1)
     return cls.GLOBAL_VARIABLES
 
 

@@ -178,7 +178,8 @@ def _ApplyLengthsToBatch(sequence_lengths, tf_output):
   # TODO(drpng): just use Update so that we don't carry over the gradients?
   """Sets the output to be zero at the end of the sequence."""
   # output is batch major.
-  batch_size, max_time, vector_size = tf_output.shape
+  shape = array_ops.shape(tf_output)
+  batch_size, max_time, vector_size = shape[0], shape[1], shape[2]
   output_time = array_ops.tile(math_ops.range(0, max_time), [batch_size])
   output_time = array_ops.reshape(output_time, [batch_size, max_time])
   lengths = array_ops.tile(
@@ -278,11 +279,16 @@ def functional_rnn(cell, inputs, sequence_length=None,
     if initial_state is None:
       initial_state = cell.zero_state(batch_size, dtype)
     func_cell = _FunctionalRnnCell(cell, inputs, initial_state)
+  if sequence_length is not None:
+    max_length = math_ops.reduce_max(sequence_length)
+  else:
+    max_length = None
   extended_acc_state, extended_final_state = recurrent.Recurrent(
       theta=func_cell.theta,
       state0=func_cell.extended_initial_state,
       inputs=inputs,
       cell_fn=func_cell.cell_step,
+      max_input_length=max_length,
       use_tpu=use_tpu)
   tf_output, tf_state = _PostProcessOutput(
       extended_acc_state, extended_final_state, func_cell,

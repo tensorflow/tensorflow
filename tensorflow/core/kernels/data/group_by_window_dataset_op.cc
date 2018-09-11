@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -139,10 +140,9 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx->flib_def(), key_func_.name()));
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx->flib_def(), reduce_func_.name()));
-      TF_RETURN_IF_ERROR(
-          b->AddFunction(ctx->flib_def(), window_size_func_.name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, key_func_.name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, reduce_func_.name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, window_size_func_.name()));
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
@@ -550,4 +550,5 @@ REGISTER_KERNEL_BUILDER(Name("GroupByWindowDataset").Device(DEVICE_CPU),
                         GroupByWindowDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

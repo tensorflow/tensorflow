@@ -235,7 +235,7 @@ class PrefetchingKernelsOpsTest(test.TestCase):
       destroy_op = resource_variable_ops.destroy_resource_op(
           buffer_resource_handle, ignore_lookup_error=True)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual([b"a"], sess.run(prefetch_op))
       self.assertEqual([b"b"], sess.run(prefetch_op))
       self.assertEqual([b"c"], sess.run(prefetch_op))
@@ -301,7 +301,7 @@ class PrefetchToDeviceTest(test.TestCase):
     self.assertEqual(dtypes.int64, next_element.dtype)
     self.assertEqual([], next_element.shape)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for i in range(10):
         self.assertEqual(i, sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -384,7 +384,7 @@ class PrefetchToDeviceTest(test.TestCase):
     iterator = device_dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for i in range(10):
         self.assertEqual(i, sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -435,7 +435,7 @@ class PrefetchToDeviceTest(test.TestCase):
     iterator = device_dataset.make_initializable_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       for i in range(5):
         self.assertEqual(i, sess.run(next_element))
@@ -683,7 +683,7 @@ class CopyToDeviceTest(test.TestCase):
       iterator = device_dataset.make_initializable_iterator()
       next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       for i in range(10):
         self.assertEqual(i, sess.run(next_element))
@@ -702,7 +702,7 @@ class CopyToDeviceTest(test.TestCase):
       iterator = device_dataset.make_initializable_iterator()
       next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       for i in range(10):
         self.assertEqual(i, sess.run(next_element))
@@ -721,7 +721,7 @@ class CopyToDeviceTest(test.TestCase):
       iterator = device_dataset.make_initializable_iterator()
       next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       self.assertAllEqual([0, 1, 2, 3], sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -739,7 +739,7 @@ class CopyToDeviceTest(test.TestCase):
       iterator = device_dataset.make_initializable_iterator()
       next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       self.assertAllEqual([0, 1, 2, 3], sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -757,7 +757,7 @@ class CopyToDeviceTest(test.TestCase):
       iterator = device_dataset.make_initializable_iterator()
       next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       self.assertAllEqual([b"a", b"b", b"c"], sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -775,7 +775,7 @@ class CopyToDeviceTest(test.TestCase):
       iterator = device_dataset.make_initializable_iterator()
       next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       self.assertAllEqual([b"a", b"b", b"c"], sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -796,7 +796,7 @@ class CopyToDeviceTest(test.TestCase):
         iterator = back_to_cpu_dataset.make_initializable_iterator()
         next_element = iterator.get_next()
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         sess.run(iterator.initializer)
         for i in range(10):
           self.assertEqual(i, sess.run(next_element))
@@ -875,7 +875,7 @@ class CopyToDeviceTest(test.TestCase):
       iterator = device_dataset.make_initializable_iterator()
       next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       for i in range(5):
         self.assertEqual(i, sess.run(next_element))
@@ -897,7 +897,7 @@ class CopyToDeviceTest(test.TestCase):
       iterator = device_dataset.make_initializable_iterator()
       next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       for i in range(5):
         self.assertEqual(i, sess.run(next_element))
@@ -920,7 +920,7 @@ class CopyToDeviceTest(test.TestCase):
       elem_has_value_t = next_elem.has_value()
       elem_value_t = next_elem.get_value()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Before initializing the iterator, evaluating the optional fails with
       # a FailedPreconditionError.
       with self.assertRaises(errors.FailedPreconditionError):

@@ -96,6 +96,60 @@ def _make_int64_tensor(value, name):
   return math_ops.cast(value, dtypes.int64)
 
 
+@tf_export("sparse.expand_dims")
+def sparse_expand_dims(sp_input, axis=None, name=None):
+  """Inserts a dimension of 1 into a tensor's shape.
+
+  Given a tensor `sp_input`, this operation inserts a dimension of 1 at the
+  dimension index `axis` of `sp_input`'s shape. The dimension index `axis`
+  starts at zero; if you specify a negative number for `axis` it is counted
+  backwards from the end.
+
+  Args:
+    sp_input: A `SparseTensor`.
+    axis: 0-D (scalar). Specifies the dimension index at which to expand the
+      shape of `input`. Must be in the range `[-rank(sp_input) - 1,
+      rank(sp_input)]`.
+    name: The name of the output `SparseTensor`.
+
+  Returns:
+    A `SparseTensor` with the same data as `sp_input`, but its shape has an
+    additional dimension of size 1 added.
+  """
+  rank = sp_input.dense_shape.get_shape()[0]
+  axis = -1 if axis is None else axis
+
+  with ops.name_scope(name, default_name="expand_dims", values=[sp_input]):
+    if isinstance(axis, compat.integral_types):
+      axis = ops.convert_to_tensor(axis, name="axis", dtype=dtypes.int32)
+    elif not isinstance(axis, ops.Tensor):
+      raise TypeError("axis must be an integer value in range [-rank(sp_input)"
+                      " - 1, rank(sp_input)]")
+
+    # Convert axis to a positive value if it is negative.
+    axis = array_ops.where(axis >= 0, axis, axis + rank + 1)
+
+    # Create the new column of indices for the sparse tensor by slicing
+    # the indices and inserting a new column of indices for the new dimension.
+    column_size = array_ops.shape(sp_input.indices)[0]
+    new_index = array_ops.zeros([column_size, 1], dtype=dtypes.int64)
+    indices_before = array_ops.slice(sp_input.indices, [0, 0], [-1, axis])
+    indices_after = array_ops.slice(sp_input.indices, [0, axis], [-1, -1])
+    indices = array_ops.concat(
+        [indices_before, new_index, indices_after], axis=1)
+
+    # Create the new dense shape by splicing the tensor [1] in the correct
+    # dimension of the existing shape.
+    shape_before = array_ops.slice(sp_input.dense_shape, [0], [axis])
+    shape_after = array_ops.slice(sp_input.dense_shape, [axis], [-1])
+    new_shape = ops.convert_to_tensor([1], name="new_shape", dtype=dtypes.int64)
+    shape = array_ops.concat([shape_before, new_shape, shape_after], axis=0)
+
+    # Create the output sparse tensor.
+    return sparse_tensor.SparseTensor(
+        indices=indices, values=sp_input.values, dense_shape=shape)
+
+
 @tf_export("sparse.eye")
 def sparse_eye(num_rows,
                num_columns=None,
@@ -835,6 +889,9 @@ def sparse_reduce_max(sp_input, axis=None, keepdims=None,
   `tf.reduce_max()`.  In particular, this Op also returns a dense `Tensor`
   instead of a sparse one.
 
+  Note: A gradient is not defined for this function, so it can't be used
+  in training models that need gradient descent.
+
   Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
   `keepdims` is true, the rank of the tensor is reduced by 1 for each entry in
   `reduction_axes`. If `keepdims` is true, the reduced dimensions are retained
@@ -901,6 +958,9 @@ def sparse_reduce_max_sparse(sp_input,
   This Op takes a SparseTensor and is the sparse counterpart to
   `tf.reduce_max()`.  In contrast to SparseReduceSum, this Op returns a
   SparseTensor.
+
+  Note: A gradient is not defined for this function, so it can't be used
+  in training models that need gradient descent.
 
   Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
   `keepdims` is true, the rank of the tensor is reduced by 1 for each entry in
@@ -1002,6 +1062,9 @@ def sparse_reduce_sum_sparse(sp_input,
   This Op takes a SparseTensor and is the sparse counterpart to
   `tf.reduce_sum()`.  In contrast to SparseReduceSum, this Op returns a
   SparseTensor.
+
+  Note: A gradient is not defined for this function, so it can't be used
+  in training models that need gradient descent.
 
   Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
   `keepdims` is true, the rank of the tensor is reduced by 1 for each entry in
@@ -1288,7 +1351,11 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
     new_shape = array_ops.concat([sp_ids[0].dense_shape[:-1], vocab_size], 0)
 
     result = sparse_tensor.SparseTensor(new_indices, new_values, new_shape)
-    return result if already_sorted else sparse_reorder(result)
+    if already_sorted:
+      return result
+    sorted_result = sparse_reorder(result)
+    return sparse_tensor.SparseTensor(
+        sorted_result.indices, sorted_result.values, new_shape)
 
 
 @tf_export("sparse_retain")

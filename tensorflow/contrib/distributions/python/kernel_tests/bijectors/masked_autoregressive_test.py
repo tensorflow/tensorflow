@@ -71,7 +71,7 @@ class MaskedAutoregressiveFlowTest(test_util.VectorDistributionTestHelpers,
 
   def testBijector(self):
     x_ = np.arange(3 * 4 * 2).astype(np.float32).reshape(3, 4, 2)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       ma = MaskedAutoregressiveFlow(
           validate_args=True,
           **self._autoregressive_flow_kwargs)
@@ -102,7 +102,7 @@ class MaskedAutoregressiveFlowTest(test_util.VectorDistributionTestHelpers,
 
   def testMutuallyConsistent(self):
     dims = 4
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       ma = MaskedAutoregressiveFlow(
           validate_args=True,
           **self._autoregressive_flow_kwargs)
@@ -121,7 +121,7 @@ class MaskedAutoregressiveFlowTest(test_util.VectorDistributionTestHelpers,
 
   def testInvertMutuallyConsistent(self):
     dims = 4
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       ma = Invert(MaskedAutoregressiveFlow(
           validate_args=True,
           **self._autoregressive_flow_kwargs))

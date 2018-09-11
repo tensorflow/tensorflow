@@ -19,8 +19,8 @@ limitations under the License.
 #include <iostream>
 #include <limits>
 
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
@@ -200,7 +200,7 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
 
   const int num_dims = NumDimensions(input);
-  TF_LITE_ENSURE(context, num_dims == 1 || num_dims == 2 || num_dims == 4);
+  TF_LITE_ENSURE(context, num_dims >= 1 && num_dims <= 4);
 
   if (input->type == kTfLiteUInt8) {
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
@@ -453,6 +453,19 @@ void Softmax2DFloat(const TfLiteTensor* input, TfLiteTensor* output,
   Softmax(input->data.f, input_size, batch_size, params->beta, output->data.f);
 }
 
+// Takes a 3D tensor and perform softmax along the last dimension.
+void Softmax3DFloat(const TfLiteTensor* input, TfLiteTensor* output,
+                    TfLiteSoftmaxParams* params) {
+  const int batch_size = input->dims->data[0];
+  const int intermediate_size = input->dims->data[1];
+  const int input_size = input->dims->data[2];
+  optimized_ops::Softmax(
+      GetTensorData<float>(input),
+      GetTensorShape({batch_size, intermediate_size, 1, input_size}),
+      params->beta, GetTensorData<float>(output),
+      GetTensorShape({batch_size, intermediate_size, 1, input_size}));
+}
+
 void Softmax1DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
                         TfLiteSoftmaxParams* params, OpData* data) {
   // TODO(ahentz): this is arguably a dirty trick. Since the implementation
@@ -478,6 +491,19 @@ void Softmax2DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
                          data->input_multiplier, data->input_left_shift,
                          data->diff_min, GetTensorData<uint8_t>(output),
                          GetTensorShape({batch_size, 1, 1, input_size}));
+}
+
+void Softmax3DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
+                        TfLiteSoftmaxParams* params, OpData* data) {
+  const int batch_size = input->dims->data[0];
+  const int intermediate_size = input->dims->data[1];
+  const int input_size = input->dims->data[2];
+  optimized_ops::Softmax(
+      GetTensorData<uint8_t>(input),
+      GetTensorShape({batch_size, intermediate_size, 1, input_size}),
+      data->input_multiplier, data->input_left_shift, data->diff_min,
+      GetTensorData<uint8_t>(output),
+      GetTensorShape({batch_size, intermediate_size, 1, input_size}));
 }
 
 // Takes a 4D tensor and perform softmax along the forth dimension.
@@ -515,6 +541,10 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
         Softmax2DFloat(input, output, params);
         return kTfLiteOk;
       }
+      if (NumDimensions(input) == 3) {
+        Softmax3DFloat(input, output, params);
+        return kTfLiteOk;
+      }
       if (NumDimensions(input) == 4) {
         Softmax4DFloat(input, output, params);
         return kTfLiteOk;
@@ -531,6 +561,10 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       }
       if (NumDimensions(input) == 2) {
         Softmax2DQuantized(input, output, params, data);
+        return kTfLiteOk;
+      }
+      if (NumDimensions(input) == 3) {
+        Softmax3DQuantized(input, output, params, data);
         return kTfLiteOk;
       }
       if (NumDimensions(input) == 4) {
@@ -590,10 +624,10 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
                          input->type);
     return kTfLiteError;
   }
-  reference_ops::BroadcastBinaryFunction<float, float, float>(
-      GetTensorData<float>(input), GetTensorDims(input),
-      GetTensorData<float>(alpha), GetTensorDims(alpha),
-      GetTensorData<float>(output), GetTensorDims(output), ApplyPrelu<float>);
+  reference_ops::BroadcastBinaryFunction4DSlow<float, float, float>(
+      GetTensorShape(input), GetTensorData<float>(input), GetTensorShape(alpha),
+      GetTensorData<float>(alpha), GetTensorShape(output),
+      GetTensorData<float>(output), ApplyPrelu<float>);
   return kTfLiteOk;
 }
 

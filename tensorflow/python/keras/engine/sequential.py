@@ -332,6 +332,7 @@ class Sequential(Model):
     else:
       name = None
       build_input_shape = None
+      layer_configs = config
     model = cls(name=name)
     for layer_config in layer_configs:
       layer = layer_module.deserialize(layer_config,

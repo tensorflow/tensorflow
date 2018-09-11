@@ -355,6 +355,15 @@ class ResourceVariable(variables.RefVariable):
       raise ValueError("initial_value must be specified.")
     init_from_fn = callable(initial_value)
 
+    if isinstance(initial_value, ops.Tensor) and hasattr(
+        initial_value, "graph") and initial_value.graph.building_function:
+      raise ValueError("Tensor-typed variable initializers must either be "
+                       "wrapped in an init_scope or callable "
+                       "(e.g., `tf.Variable(lambda : "
+                       "tf.truncated_normal([10, 40]))`) when building "
+                       "functions. Please file a feature request if this "
+                       "restriction inconveniences you.")
+
     if collections is None:
       collections = [ops.GraphKeys.GLOBAL_VARIABLES]
     if not isinstance(collections, (list, tuple, set)):
@@ -586,6 +595,22 @@ class ResourceVariable(variables.RefVariable):
   def __bool__(self):
     return bool(self.read_value())
 
+  def __copy__(self):
+    return self
+
+  def __deepcopy__(self, memo):
+    if not context.executing_eagerly():
+      raise NotImplementedError(
+          "__deepcopy__() is only available when eager execution is enabled.")
+    copied_variable = ResourceVariable(
+        initial_value=self.read_value(),
+        trainable=self._trainable,
+        constraint=self._constraint,
+        dtype=self._dtype,
+        name=self._shared_name + "_copy")
+    memo[self._unique_id] = copied_variable
+    return copied_variable
+
   @property
   def dtype(self):
     """The dtype of this variable."""
@@ -725,7 +750,7 @@ class ResourceVariable(variables.RefVariable):
 
   def _read_variable_op(self):
     if self.trainable:
-      tape.watch_variable(self)
+      tape.variable_accessed(self)
     result = gen_resource_variable_ops.read_variable_op(self._handle,
                                                         self._dtype)
     if not context.executing_eagerly():
@@ -756,7 +781,7 @@ class ResourceVariable(variables.RefVariable):
     """Reads the value of this variable sparsely, using `gather`."""
     with ops.name_scope("Gather" if name is None else name) as name:
       if self.trainable:
-        tape.watch_variable(self)
+        tape.variable_accessed(self)
       value = gen_resource_variable_ops.resource_gather(
           self._handle, indices, dtype=self._dtype, name=name)
     return array_ops.identity(value)
@@ -924,12 +949,12 @@ class ResourceVariable(variables.RefVariable):
 
   def _lazy_read(self, op):
     if self.trainable:
-      tape.watch_variable(self)
+      tape.variable_accessed(self)
     return _UnreadVariable(
         handle=self._handle, dtype=self.dtype, shape=self._shape,
         in_graph_mode=self._in_graph_mode,
         deleter=self._handle_deleter if not self._in_graph_mode else None,
-        parent_op=op, parent_name=self._handle_name, unique_id=self._unique_id)
+        parent_op=op, unique_id=self._unique_id)
 
   def assign(self, value, use_locking=None, name=None, read_value=True):
     """Assigns a new value to this variable.
@@ -957,6 +982,9 @@ class ResourceVariable(variables.RefVariable):
       if read_value:
         return self._lazy_read(assign_op)
     return assign_op
+
+  def __reduce__(self):
+    return (ResourceVariable, (self.numpy(),))
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
     """Subtracts `IndexedSlices` from this variable.
@@ -1265,8 +1293,7 @@ class _UnreadVariable(ResourceVariable):
   """
 
   def __init__(self, handle, dtype,  # pylint: disable=super-init-not-called
-               shape, in_graph_mode, deleter, parent_op, parent_name,
-               unique_id):
+               shape, in_graph_mode, deleter, parent_op, unique_id):
     # We do not call super init on purpose.
     self._trainable = False
     self._save_slice_info = None

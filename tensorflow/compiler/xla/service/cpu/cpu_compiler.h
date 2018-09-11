@@ -18,13 +18,14 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/types/span.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/tf2xla/cpu_function_runtime.h"
+#include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -156,6 +157,16 @@ class CpuCompiler : public LLVMCompiler {
   // correctness.
   Status RunHloPasses(HloModule* module, bool is_aot_compile,
                       llvm::TargetMachine* target_machine);
+
+  // Runs HLO passes up to and including layout assignment.
+  Status RunHloPassesThroughLayoutAssn(
+      HloModule* module, bool /*is_aot_compile*/,
+      LLVMTargetMachineFeatures* target_machine_features);
+
+  // Runs HLO passes after layout assignment.
+  Status RunHloPassesAfterLayoutAssn(
+      HloModule* module, bool is_aot_compile,
+      LLVMTargetMachineFeatures* target_machine_features);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CpuCompiler);
 };

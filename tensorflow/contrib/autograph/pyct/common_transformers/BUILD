@@ -22,9 +22,11 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/contrib/autograph/pyct",
         "@gast_archive//:gast",
         "@six_archive//:six",
+        # TODO(aqj) Revisit this dependency direction when pyct is more
+        # modularized
+        "//tensorflow/contrib/autograph/pyct",
     ],
 )
 

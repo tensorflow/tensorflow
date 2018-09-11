@@ -443,13 +443,7 @@ def get_session():
     session = default_session
   else:
     if _SESSION is None:
-      if not os.environ.get('OMP_NUM_THREADS'):
-        config = config_pb2.ConfigProto(allow_soft_placement=True)
-      else:
-        num_thread = int(os.environ.get('OMP_NUM_THREADS'))
-        config = config_pb2.ConfigProto(
-            intra_op_parallelism_threads=num_thread, allow_soft_placement=True)
-      _SESSION = session_module.Session(config=config)
+      _SESSION = session_module.Session(config=get_default_session_config())
     session = _SESSION
   if not _MANUAL_VAR_INIT:
     with session.graph.as_default():
@@ -466,6 +460,16 @@ def set_session(session):
   """
   global _SESSION
   _SESSION = session
+
+
+def get_default_session_config():
+  if not os.environ.get('OMP_NUM_THREADS'):
+    config = config_pb2.ConfigProto(allow_soft_placement=True)
+  else:
+    num_thread = int(os.environ.get('OMP_NUM_THREADS'))
+    config = config_pb2.ConfigProto(
+        intra_op_parallelism_threads=num_thread, allow_soft_placement=True)
+  return config
 
 
 # DEVICE MANIPULATION
@@ -696,10 +700,9 @@ def _get_variables(graph=None):
   return variables
 
 
-def _initialize_variables(session, variables=None):
+def _initialize_variables(session):
   """Utility to initialize uninitialized variables on the fly."""
-  if variables is None:
-    variables = _get_variables(ops.get_default_graph())
+  variables = _get_variables(ops.get_default_graph())
   candidate_vars = []
   for v in variables:
     if not getattr(v, '_keras_initialized', False):

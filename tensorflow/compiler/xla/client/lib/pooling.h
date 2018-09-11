@@ -25,7 +25,7 @@ namespace xla {
 class TensorFormat {
  public:
   TensorFormat(int batch_dimension, int feature_dimension,
-               tensorflow::gtl::ArraySlice<int64> spatial_dimensions)
+               absl::Span<const int64> spatial_dimensions)
       : batch_dimension_(batch_dimension),
         feature_dimension_(feature_dimension),
         spatial_dimensions_(spatial_dimensions.begin(),
@@ -49,32 +49,31 @@ class TensorFormat {
 };
 
 // Computes the max pool of 'operand'.
-XlaOp MaxPool(XlaOp operand, tensorflow::gtl::ArraySlice<int64> kernel_size,
-              tensorflow::gtl::ArraySlice<int64> stride, Padding padding,
+XlaOp MaxPool(XlaOp operand, absl::Span<const int64> kernel_size,
+              absl::Span<const int64> stride, Padding padding,
               const TensorFormat& data_format);
 
 // Computes the average pool of 'operand'.
-XlaOp AvgPool(XlaOp operand, tensorflow::gtl::ArraySlice<int64> kernel_size,
-              tensorflow::gtl::ArraySlice<int64> stride,
-              tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+XlaOp AvgPool(XlaOp operand, absl::Span<const int64> kernel_size,
+              absl::Span<const int64> stride,
+              absl::Span<const std::pair<int64, int64>> padding,
               const TensorFormat& data_format,
               const bool counts_include_padding);
 
 // Returns the list of low and high padding elements in each spatial dimension
 // for the given 'padding' specification.
 std::vector<std::pair<int64, int64>> MakeSpatialPadding(
-    tensorflow::gtl::ArraySlice<int64> input_size,
-    tensorflow::gtl::ArraySlice<int64> kernel_size,
-    tensorflow::gtl::ArraySlice<int64> stride, Padding padding,
+    absl::Span<const int64> input_size, absl::Span<const int64> kernel_size,
+    absl::Span<const int64> stride, Padding padding,
     const TensorFormat& data_format);
 
 // Computes the average pool gradient.
-XlaOp AvgPoolGrad(
-    XlaOp out_backprop, tensorflow::gtl::ArraySlice<int64> gradients_size,
-    tensorflow::gtl::ArraySlice<int64> kernel_size,
-    tensorflow::gtl::ArraySlice<int64> stride,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> spatial_padding,
-    const TensorFormat& data_format, const bool counts_include_padding);
+XlaOp AvgPoolGrad(XlaOp out_backprop, absl::Span<const int64> gradients_size,
+                  absl::Span<const int64> kernel_size,
+                  absl::Span<const int64> stride,
+                  absl::Span<const std::pair<int64, int64>> spatial_padding,
+                  const TensorFormat& data_format,
+                  const bool counts_include_padding);
 
 }  // namespace xla
 

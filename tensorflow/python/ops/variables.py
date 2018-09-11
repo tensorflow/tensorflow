@@ -55,33 +55,47 @@ def _make_getter(captured_getter, captured_previous):
 
 @tf_export("VariableSynchronization")
 class VariableSynchronization(enum.Enum):
-  """Indicates when a distributed variable will be synced."""
+  """Indicates when a distributed variable will be synced.
 
-  # Indicates that the synchronization will be determined by the current
-  # `DistributionStrategy` (eg. With `MirroredStrategy` this would be
-  # `ON_WRITE`).
+  * `AUTO`: Indicates that the synchronization will be determined by the current
+    `DistributionStrategy` (eg. With `MirroredStrategy` this would be
+    `ON_WRITE`).
+  * `NONE`: Indicates that there will only be one copy of the variable, so
+    there is no need to sync.
+  * `ON_WRITE`: Indicates that the variable will be updated across devices
+    every time it is written.
+  * `ON_READ`: Indicates that the variable will be aggregated across devices
+    when it is read (eg. when checkpointing or when evaluating an op that uses
+    the variable).
+  """
   AUTO = 0
-
-  # Indicates that there will only be one copy of the variable, so there is no
-  # need to sync.
   NONE = 1
-
-  # Indicates that the variable will be aggregated across devices
-  # every time it is updated.
   ON_WRITE = 2
-
-  # Indicates that the variable will be aggregated across devices
-  # when it is read (eg. when checkpointing or when evaluating an op that uses
-  # the variable).
   ON_READ = 3
 
 
 @tf_export("VariableAggregation")
 class VariableAggregation(enum.Enum):
-  """Indicates how a distributed variable will be aggregated."""
+  """Indicates how a distributed variable will be aggregated.
+
+  `tf.contrib.distribute.DistributionStrategy` distributes a model by making
+  multiple copies (called "towers") acting data-parallel on different elements
+  of the input batch. When performing some variable-update operation, say
+  `var.assign_add(x)`, in a model, we need to resolve how to combine the
+  different values for `x` computed in the different towers.
+
+  * `NONE`: This is the default, giving an error if you use a
+    variable-update operation with multiple towers.
+  * `SUM`: Add the updates across towers.
+  * `MEAN`: Take the arithmetic mean ("average") of the updates across towers.
+  * `ONLY_FIRST_TOWER`: This is for when every tower is performing the same
+    update, but we only want to perform the update once. Used, e.g., for the
+    global step counter.
+  """
   NONE = 0
   SUM = 1
   MEAN = 2
+  ONLY_FIRST_TOWER = 3
 
 
 class VariableMetaclass(type):
@@ -459,7 +473,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
-  def assign(self, value, use_locking=False):
+  def assign(self, value, use_locking=False, name=None, read_value=True):
     """Assigns a new value to the variable.
 
     This is essentially a shortcut for `assign(self, value)`.
@@ -467,6 +481,9 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Args:
       value: A `Tensor`. The new value for this variable.
       use_locking: If `True`, use locking during the assignment.
+      name: The name of the operation to be created
+      read_value: if True, will return something which evaluates to the
+        new value of the variable; if False will return the assign op.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
@@ -474,7 +491,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
-  def assign_add(self, delta, use_locking=False):
+  def assign_add(self, delta, use_locking=False, name=None, read_value=True):
     """Adds a value to this variable.
 
      This is essentially a shortcut for `assign_add(self, delta)`.
@@ -482,6 +499,9 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Args:
       delta: A `Tensor`. The value to add to this variable.
       use_locking: If `True`, use locking during the operation.
+      name: The name of the operation to be created
+      read_value: if True, will return something which evaluates to the
+        new value of the variable; if False will return the assign op.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
@@ -489,7 +509,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
-  def assign_sub(self, delta, use_locking=False):
+  def assign_sub(self, delta, use_locking=False, name=None, read_value=True):
     """Subtracts a value from this variable.
 
     This is essentially a shortcut for `assign_sub(self, delta)`.
@@ -497,6 +517,9 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Args:
       delta: A `Tensor`. The value to subtract from this variable.
       use_locking: If `True`, use locking during the operation.
+      name: The name of the operation to be created
+      read_value: if True, will return something which evaluates to the
+        new value of the variable; if False will return the assign op.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
@@ -1450,7 +1473,7 @@ class RefVariable(Variable):
     """
     return self._constraint
 
-  def assign(self, value, use_locking=False):
+  def assign(self, value, use_locking=False, name=None, read_value=True):
     """Assigns a new value to the variable.
 
     This is essentially a shortcut for `assign(self, value)`.
@@ -1458,14 +1481,21 @@ class RefVariable(Variable):
     Args:
       value: A `Tensor`. The new value for this variable.
       use_locking: If `True`, use locking during the assignment.
+      name: The name of the operation to be created
+      read_value: if True, will return something which evaluates to the
+        new value of the variable; if False will return the assign op.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the assignment has completed.
     """
-    return state_ops.assign(self._variable, value, use_locking=use_locking)
+    assign = state_ops.assign(self._variable, value, use_locking=use_locking,
+                              name=name)
+    if read_value:
+      return assign
+    return assign.op
 
-  def assign_add(self, delta, use_locking=False):
+  def assign_add(self, delta, use_locking=False, name=None, read_value=True):
     """Adds a value to this variable.
 
      This is essentially a shortcut for `assign_add(self, delta)`.
@@ -1473,14 +1503,21 @@ class RefVariable(Variable):
     Args:
       delta: A `Tensor`. The value to add to this variable.
       use_locking: If `True`, use locking during the operation.
+      name: The name of the operation to be created
+      read_value: if True, will return something which evaluates to the
+        new value of the variable; if False will return the assign op.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the addition has completed.
     """
-    return state_ops.assign_add(self._variable, delta, use_locking=use_locking)
+    assign = state_ops.assign_add(
+        self._variable, delta, use_locking=use_locking, name=name)
+    if read_value:
+      return assign
+    return assign.op
 
-  def assign_sub(self, delta, use_locking=False):
+  def assign_sub(self, delta, use_locking=False, name=None, read_value=True):
     """Subtracts a value from this variable.
 
     This is essentially a shortcut for `assign_sub(self, delta)`.
@@ -1488,12 +1525,19 @@ class RefVariable(Variable):
     Args:
       delta: A `Tensor`. The value to subtract from this variable.
       use_locking: If `True`, use locking during the operation.
+      name: The name of the operation to be created
+      read_value: if True, will return something which evaluates to the
+        new value of the variable; if False will return the assign op.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the subtraction has completed.
     """
-    return state_ops.assign_sub(self._variable, delta, use_locking=use_locking)
+    assign = state_ops.assign_sub(
+        self._variable, delta, use_locking=use_locking, name=name)
+    if read_value:
+      return assign
+    return assign.op
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
     """Subtracts `IndexedSlices` from this variable.
@@ -2306,10 +2350,15 @@ class PartitionedVariable(object):
   def as_tensor(self):
     """Returns the overall concatenated value as a `Tensor`.
 
+    The returned tensor will not inherit the control dependencies from the scope
+    where the value is used, which is similar to getting the value of
+    `Variable`.
+
     Returns:
       `Tensor` containing the concatenated value.
     """
-    return self._concat()
+    with ops.control_dependencies(None):
+      return self._concat()
 
   @staticmethod
   def _TensorConversionFunction(v, dtype=None, name=None, as_ref=False):

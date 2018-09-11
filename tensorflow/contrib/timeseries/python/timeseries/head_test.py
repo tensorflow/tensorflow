@@ -122,7 +122,7 @@ class EvaluationMetricsTests(test.TestCase):
           metric[1] for metric in outputs.eval_metric_ops.values()]
       loss_mean, loss_update = metrics.mean(outputs.loss)
       metric_update_ops.append(loss_update)
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         coordinator = coordinator_lib.Coordinator()
         queue_runner_impl.start_queue_runners(sess, coord=coordinator)
         variables.local_variables_initializer().run()

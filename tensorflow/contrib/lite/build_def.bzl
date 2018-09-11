@@ -49,6 +49,9 @@ def tflite_linkopts_unstripped():
     Returns:
        a select object with proper linkopts
     """
+
+    # In case you wonder why there's no --icf is because the gains were
+    # negligible, and created potential compatibility problems.
     return select({
         "//tensorflow:android": [
             "-Wl,--no-export-dynamic",  # Only inc syms referenced by dynamic obj.
@@ -56,12 +59,7 @@ def tflite_linkopts_unstripped():
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
         ],
-        "//tensorflow:darwin": [],
-        "//tensorflow/contrib/lite:mips": [],
-        "//tensorflow/contrib/lite:mips64": [],
-        "//conditions:default": [
-            "-Wl,--icf=all",  # Identical code folding.
-        ],
+        "//conditions:default": [],
     })
 
 def tflite_jni_linkopts_unstripped():
@@ -73,17 +71,15 @@ def tflite_jni_linkopts_unstripped():
     Returns:
        a select object with proper linkopts
     """
+
+    # In case you wonder why there's no --icf is because the gains were
+    # negligible, and created potential compatibility problems.
     return select({
         "//tensorflow:android": [
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
         ],
-        "//tensorflow:darwin": [],
-        "//tensorflow/contrib/lite:mips": [],
-        "//tensorflow/contrib/lite:mips64": [],
-        "//conditions:default": [
-            "-Wl,--icf=all",  # Identical code folding.
-        ],
+        "//conditions:default": [],
     })
 
 def tflite_linkopts():
@@ -235,6 +231,7 @@ def generated_test_models():
         "exp",
         "expand_dims",
         "floor",
+        "floor_div",
         "fully_connected",
         "fused_batch_norm",
         "gather",
@@ -266,6 +263,7 @@ def generated_test_models():
         "padv2",
         "prelu",
         "pow",
+        "reduce_any",
         "reduce_max",
         "reduce_min",
         "reduce_prod",
@@ -293,6 +291,7 @@ def generated_test_models():
         "topk",
         "transpose",
         #"transpose_conv",   # disabled due to b/111213074
+        "unpack",
         "where",
     ]
 

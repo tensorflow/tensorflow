@@ -26,7 +26,7 @@ namespace gpu {
 // padding, so that they can be lowered to cuDNN convolution.
 class PadInsertion : public HloPassInterface {
  public:
-  tensorflow::StringPiece name() const override { return "pad insertion"; }
+  absl::string_view name() const override { return "pad insertion"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 

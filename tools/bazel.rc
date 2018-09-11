@@ -33,6 +33,11 @@ build:mkl_open_source_only --define=using_mkl_dnn_only=true
 
 build:download_clang --crosstool_top=@local_config_download_clang//:toolchain
 build:download_clang --define=using_clang=true
+# Instruct clang to use LLD for linking.
+# This only works with GPU builds currently, since Bazel sets -B/usr/bin in
+# auto-generated CPU crosstool, forcing /usr/bin/ld.lld to be preferred over
+# the downloaded one.
+build:download_clang_use_lld --linkopt='-fuse-ld=lld'
 
 build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
 build:cuda --define=using_cuda=true --define=using_cuda_nvcc=true

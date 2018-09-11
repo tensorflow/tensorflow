@@ -144,15 +144,19 @@ void RegisterSparseTensorValueClass(PyObject* sparse_tensor_value_class);
 // 1. It removes support for lists as a level of nesting in nested structures.
 // 2. It adds support for `SparseTensorValue` as an atomic element.
 
-// IsSequence specialized for the data package. Additional comments about
-// difference in functionality can be found in nest.py in tensorflow.data.util
-// and in the comments for Flatten above.
+// IsSequence specialized for `tf.data`. Additional comments about
+// difference in functionality can be found in nest.py in
+// `tensorflow.python.data.util` and in the comments for Flatten above.
 bool IsSequenceForData(PyObject* o);
 
-// IsSequence specialized for the data package. Additional comments about
-// difference in functionality can be found in nest.py in tensorflow.data.util
-// and in the comments for Flatten above.
+// Flatten specialized for `tf.data`. Additional comments about
+// difference in functionality can be found in nest.py in
+// `tensorflow.python.data.util` and in the comments for Flatten above.
 PyObject* FlattenForData(PyObject* nested);
+
+// AssertSameStructure specialized for `tf.data`.
+PyObject* AssertSameStructureForData(PyObject* o1, PyObject* o2,
+                                     bool check_types);
 
 }  // namespace swig
 }  // namespace tensorflow

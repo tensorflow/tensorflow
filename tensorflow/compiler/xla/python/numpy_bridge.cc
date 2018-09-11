@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/python/numpy_bridge.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -149,9 +151,7 @@ static int NumpyTypenum(PyObject* o) {
 //
 // NOTE: this is an internal helper for conversion to a C++, and so decrefs r.
 static string ExtractStringAndDecref(PyObject* r) {
-  auto error = [r] {
-    return tensorflow::strings::Printf("<failed conversion of %p>", r);
-  };
+  auto error = [r] { return absl::StrFormat("<failed conversion of %p>", r); };
   if (r == nullptr) {
     return error();
   }
@@ -191,8 +191,8 @@ StatusOr<Shape> XlaShapeFromPyShape(PyObject* o) {
     PyObject* result =
         PyObject_CallMethod(o, const_cast<char*>(method.c_str()), nullptr);
     if (result == nullptr) {
-      return error(tensorflow::strings::StrCat(
-          "Failed to call method of shape object:", method));
+      return error(
+          absl::StrCat("Failed to call method of shape object:", method));
     }
     return result;
   };
@@ -368,10 +368,10 @@ PyObject* PyObjectFromXlaLiteral(const LiteralSlice& literal) {
   }
 }
 
-StatusOr<std::unique_ptr<Literal>> XlaLiteralFromPyObject(PyObject* o) {
+StatusOr<Literal> XlaLiteralFromPyObject(PyObject* o) {
   if (PyTuple_Check(o)) {
     int num_elements = PyTuple_Size(o);
-    std::vector<std::unique_ptr<Literal>> elements;
+    std::vector<Literal> elements;
     elements.reserve(num_elements);
     for (int i = 0; i < num_elements; i++) {
       PyObject* element = PyTuple_GetItem(o, i);
@@ -389,8 +389,7 @@ StatusOr<std::unique_ptr<Literal>> XlaLiteralFromPyObject(PyObject* o) {
     int np_type = PyArray_TYPE(py_array);
     auto literal = LiteralUtil::CreateFromDimensions(
         NumpyTypeToPrimitiveType(np_type), dimensions);
-    TF_RETURN_IF_ERROR(
-        CopyNumpyArrayToLiteral(np_type, py_array, literal.get()));
+    TF_RETURN_IF_ERROR(CopyNumpyArrayToLiteral(np_type, py_array, &literal));
     return std::move(literal);
   } else {
     return InvalidArgument(

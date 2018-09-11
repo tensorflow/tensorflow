@@ -14,27 +14,27 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/human_readable_profile_builder.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/metric_table_report.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
 
-using tensorflow::strings::Appendf;
+using absl::StrAppend;
+using absl::StrAppendFormat;
+using absl::StrCat;
+using absl::StrFormat;
 using tensorflow::strings::HumanReadableElapsedTime;
 using tensorflow::strings::HumanReadableNumBytes;
-using tensorflow::strings::Printf;
-using tensorflow::strings::StrAppend;
-using tensorflow::strings::StrCat;
 
 string HumanReadableProfileBuilder::ToString() const {
   string s;
 
-  Appendf(&s, "Execution profile for %s: (%s @ f_nom)\n",
-          computation_name_.c_str(),
-          HumanReadableElapsedTime(CyclesToSeconds(total_cycles_)).c_str());
+  StrAppendFormat(&s, "Execution profile for %s: (%s @ f_nom)\n",
+                  computation_name_,
+                  HumanReadableElapsedTime(CyclesToSeconds(total_cycles_)));
 
   int64 cumulative_cycles = 0;
   auto print_op = [&](const OpInfo& op, bool is_total = false) {
@@ -56,7 +56,7 @@ string HumanReadableProfileBuilder::ToString() const {
       if (op.bytes_accessed > op.cycles) {
         bytes_per_cycle = StrCat(HumanReadableNumBytes(bpc), "/cycle");
       } else {
-        bytes_per_cycle = Printf("%.3fB/cycle", bpc);
+        bytes_per_cycle = StrFormat("%.3fB/cycle", bpc);
       }
     }
 
@@ -77,27 +77,24 @@ string HumanReadableProfileBuilder::ToString() const {
       // columns in the output.
       cycles_percent_str = "100.% 100Σ";
     } else {
-      cycles_percent_str =
-          Printf("%5.2f%% %2.0fΣ", cycles_percent, cumulative_cycles_percent);
+      cycles_percent_str = StrFormat("%5.2f%% %2.0fΣ", cycles_percent,
+                                     cumulative_cycles_percent);
     }
 
     double nsecs = op.cycles / clock_rate_ghz_;
-    Appendf(
+    StrAppendFormat(
         &s,
-        "%15lld cycles (%s) :: %12.1f usec %22s :: %18s :: %18s :: %14s :: "
+        "%15d cycles (%s) :: %12.1f usec %22s :: %18s :: %18s :: %14s :: "
         "%16s :: %s\n",
-        op.cycles, cycles_percent_str.c_str(), CyclesToMicroseconds(op.cycles),
+        op.cycles, cycles_percent_str, CyclesToMicroseconds(op.cycles),
         op.optimal_seconds < 0
             ? ""
-            : Printf("(%12.1f optimal)", op.optimal_seconds * 1e6).c_str(),
-        op.flop_count <= 0
-            ? ""
-            : HumanReadableNumFlops(op.flop_count, nsecs).c_str(),
+            : StrFormat("(%12.1f optimal)", op.optimal_seconds * 1e6),
+        op.flop_count <= 0 ? "" : HumanReadableNumFlops(op.flop_count, nsecs),
         op.transcendental_count <= 0
             ? ""
-            : HumanReadableNumTranscendentalOps(op.transcendental_count, nsecs)
-                  .c_str(),
-        bytes_per_sec.c_str(), bytes_per_cycle.c_str(), op.name.c_str());
+            : HumanReadableNumTranscendentalOps(op.transcendental_count, nsecs),
+        bytes_per_sec, bytes_per_cycle, op.name);
   };
 
   float optimal_seconds_sum = 0.0;

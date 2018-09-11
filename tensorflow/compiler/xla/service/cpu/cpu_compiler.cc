@@ -27,6 +27,7 @@ limitations under the License.
 // IWYU pragma: no_include "llvm/Config/Disassemblers.def.inc"
 // IWYU pragma: no_include "llvm/Config/Targets.def.inc"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/IR/Function.h"
@@ -76,12 +77,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
-#include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
@@ -101,8 +102,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 namespace cpu {
@@ -235,15 +234,15 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
   std::unordered_map<const HloInstruction*, int64>* hlo_to_profile_idx_;
   const std::unordered_map<const HloInstruction*, int64>& assigned_indices_;
 };
+
 }  // namespace
 
-Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
-                                 llvm::TargetMachine* target_machine) {
-  LLVMTargetMachineFeatures target_machine_features(target_machine);
-
-  // Optimization pipeline.
-  HloPassPipeline pipeline("CPU");
-  pipeline.AddInvariantChecker<HloVerifier>();
+Status CpuCompiler::RunHloPassesThroughLayoutAssn(
+    HloModule* module, bool /*is_aot_compile*/,
+    LLVMTargetMachineFeatures* target_machine_features) {
+  HloPassPipeline pipeline("HLO passes through layout assignment");
+  pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
+                                            /*allow_mixed_precision=*/false);
   pipeline.AddPass<CpuHloSupportChecker>();
 
   ReducePrecisionInsertion::AddPasses(
@@ -260,11 +259,12 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
   pipeline.AddPass<BatchDotSimplification>();
   pipeline.AddPass<DotDecomposer>();
   pipeline.AddPass<ConvolutionFeatureGroupConverter>();
-  pipeline.AddPass<ConvCanonicalization>(&target_machine_features);
+  pipeline.AddPass<ConvCanonicalization>(target_machine_features);
   {
     auto& pass =
         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
-    pass.AddInvariantChecker<HloVerifier>();
+    pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
+                                          /*allow_mixed_precision=*/false);
 
     pass.AddPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
@@ -291,10 +291,9 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
   }
   pipeline.AddPass<IndexedArrayAnalysisPrinterPass>();
   pipeline.AddPass<TransposeFolding>(
-      [&target_machine_features](
-          const HloInstruction& dot,
+      [&](const HloInstruction& dot,
           const TransposeFolding::OperandIndices& candidate_operands) {
-        return PotentiallyImplementedAsEigenDot(dot, target_machine_features)
+        return PotentiallyImplementedAsEigenDot(dot, *target_machine_features)
                    ? candidate_operands
                    : TransposeFolding::OperandIndices{};
       },
@@ -309,12 +308,28 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
       ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
 
   pipeline.AddPass<CpuLayoutAssignment>(
-      module->mutable_entry_computation_layout(), &target_machine_features);
+      module->mutable_entry_computation_layout(), target_machine_features);
+  return pipeline.Run(module).status();
+}
+
+Status CpuCompiler::RunHloPassesAfterLayoutAssn(
+    HloModule* module, bool is_aot_compile,
+    LLVMTargetMachineFeatures* target_machine_features) {
+  HloPassPipeline pipeline("HLO passes after layout assignment");
+  // After layout assignment, use a layout-sensitive verifier.
+  auto& after_layout_assn =
+      pipeline.AddPass<HloPassPipeline>("after layout assignment");
+  after_layout_assn.AddInvariantChecker<HloVerifier>(
+      /*layout_sensitive=*/true,
+      /*allow_mixed_precision=*/false);
+
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   {
     auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-        "after layout assignement");
+        "simplification after layout assignement");
+    pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/true,
+                                          /*allow_mixed_precision=*/false);
     pass.AddPass<HloPassFix<AlgebraicSimplifier>>(
         /*is_layout_sensitive=*/true,
         [](const Shape&, const Shape&) { return true; },
@@ -322,7 +337,9 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
     pass.AddPass<HloDCE>();
     pass.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   }
+
   pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
+
   // Outline ops in the entry computation into calls to subcomputations.
   const int max_parallelism =
       module->config().intra_op_parallelism_threads() > 0
@@ -335,19 +352,28 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
     // binary size (and most AOT applications are single-threaded).
     // TODO(b/29630486) Support multi-threaded AOT.
     pipeline.AddPass<ParallelTaskAssigner>(
-        max_parallelism, ShapeSizeBytesFunction(), &target_machine_features);
+        max_parallelism, ShapeSizeBytesFunction(), target_machine_features);
   }
-  // Copy insertion should be performed immediately before IR emission to avoid
-  // inserting unnecessary copies (later pass adds an instruction which
-  // materializes the value) or missing a necessary copy (later pass removes an
-  // instruction which materializes a value). DCE must be run immediately before
-  // (and sometime after) copy insertion, to avoid dead code from interfering
-  // with the rewrites.
+  // Copy insertion should be performed immediately before IR emission to
+  // avoid inserting unnecessary copies (later pass adds an instruction which
+  // materializes the value) or missing a necessary copy (later pass removes
+  // an instruction which materializes a value). DCE must be run immediately
+  // before (and sometime after) copy insertion, to avoid dead code from
+  // interfering with the rewrites.
   pipeline.AddPass<HloDCE>();
   pipeline.AddPass<FlattenCallGraph>();
   pipeline.AddPass<CpuCopyInsertion>();
   pipeline.AddPass<HloDCE>();
   return pipeline.Run(module).status();
+}
+
+Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
+                                 llvm::TargetMachine* target_machine) {
+  LLVMTargetMachineFeatures target_machine_features(target_machine);
+  TF_RETURN_IF_ERROR(RunHloPassesThroughLayoutAssn(module, is_aot_compile,
+                                                   &target_machine_features));
+  return RunHloPassesAfterLayoutAssn(module, is_aot_compile,
+                                     &target_machine_features);
 }
 
 namespace {
@@ -558,17 +584,14 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // computation. Using this sequence enables tighter buffer liveness analysis
   // and reduced memory usage (as compared to using DependencyHloOrdering).
   TF_ASSIGN_OR_RETURN(
-      SequentialHloOrdering::HloModuleSequence module_sequence,
-      ScheduleComputationsInModule(*module, BufferSizeBytesFunction(),
-                                   DFSMemoryScheduler));
+      HloSchedule schedule,
+      ScheduleModule(*module, BufferSizeBytesFunction(), DFSMemoryScheduler));
 
-  // Run buffer analysis on the HLO graph. This analysis figures out which
-  // temporary buffers are required to run the computation.
+  // Run buffer allocation on the HLO graph.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(module.get(),
-                          absl::make_unique<SequentialHloOrdering>(
-                              module.get(), module_sequence),
+                          absl::make_unique<SequentialHloOrdering>(schedule),
                           BufferSizeBytesFunction(), memory_alignment,
                           /*allow_input_output_aliasing=*/false,
                           /*allocate_buffers_for_constants=*/true));
@@ -602,9 +625,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     }
     TF_RETURN_IF_ERROR(
         ir_emitter
-            .EmitComputation(embedded_computation, embedded_computation->name(),
-                             /*is_top_level_computation=*/false,
-                             &module_sequence.at(embedded_computation))
+            .EmitComputation(
+                embedded_computation, embedded_computation->name(),
+                /*is_top_level_computation=*/false,
+                &schedule.sequence(embedded_computation).instructions())
             .status());
   }
   string function_name_prefix = entry_computation->name().empty()
@@ -612,9 +636,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
                                     : entry_computation->name();
   TF_ASSIGN_OR_RETURN(
       llvm::Function * entry_function,
-      ir_emitter.EmitComputation(entry_computation, function_name_prefix,
-                                 /*is_top_level_computation=*/true,
-                                 &module_sequence.at(entry_computation)));
+      ir_emitter.EmitComputation(
+          entry_computation, function_name_prefix,
+          /*is_top_level_computation=*/true,
+          &schedule.sequence(entry_computation).instructions()));
 
   string function_name = [&]() {
     llvm::SmallVector<char, 40> function_name_vector;
@@ -679,8 +704,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
   const llvm::Target* target =
       llvm::TargetRegistry::lookupTarget(triple.getTriple(), error);
   if (target == nullptr) {
-    return InternalError("TargetRegistry::lookupTarget failed: %s",
-                         error.c_str());
+    return InternalError("TargetRegistry::lookupTarget failed: %s", error);
   }
 
   llvm::Reloc::Model reloc_model = llvm::Reloc::Static;
@@ -747,20 +771,18 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     VLOG(2) << "After optimization:";
     XLA_VLOG_LINES(2, module->ToString());
 
-    TF_ASSIGN_OR_RETURN(
-        SequentialHloOrdering::HloModuleSequence module_sequence,
-        ScheduleComputationsInModule(*module, BufferSizeBytesFunction()));
+    TF_ASSIGN_OR_RETURN(HloSchedule schedule,
+                        ScheduleModule(*module, BufferSizeBytesFunction()));
 
     // Run buffer analysis on the HLO graph. This analysis figures out which
     // temporary buffers are required to run the computation.
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<BufferAssignment> assignment,
-        BufferAssigner::Run(
-            module,
-            absl::make_unique<SequentialHloOrdering>(module, module_sequence),
-            BufferSizeBytesFunction(), memory_alignment,
-            /*allow_input_output_aliasing=*/false,
-            /*allocate_buffers_for_constants=*/true));
+        BufferAssigner::Run(module,
+                            absl::make_unique<SequentialHloOrdering>(schedule),
+                            BufferSizeBytesFunction(), memory_alignment,
+                            /*allow_input_output_aliasing=*/false,
+                            /*allocate_buffers_for_constants=*/true));
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
@@ -800,18 +822,18 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
       }
       TF_RETURN_IF_ERROR(
           ir_emitter
-              .EmitComputation(embedded_computation,
-                               embedded_computation->name(),
-                               /*is_top_level_computation=*/false,
-                               &module_sequence.at(embedded_computation))
+              .EmitComputation(
+                  embedded_computation, embedded_computation->name(),
+                  /*is_top_level_computation=*/false,
+                  &schedule.sequence(embedded_computation).instructions())
               .status());
     }
     const string& entry_point_name = options.entry_point_name();
-    TF_ASSIGN_OR_RETURN(
-        llvm::Function * entry_function,
-        ir_emitter.EmitComputation(computation, entry_point_name,
-                                   /*is_top_level_computation=*/true,
-                                   &module_sequence.at(computation)));
+    TF_ASSIGN_OR_RETURN(llvm::Function * entry_function,
+                        ir_emitter.EmitComputation(
+                            computation, entry_point_name,
+                            /*is_top_level_computation=*/true,
+                            &schedule.sequence(computation).instructions()));
 
     CHECK(entry_function->getName() == llvm_ir::AsStringRef(entry_point_name));
 

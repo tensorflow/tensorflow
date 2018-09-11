@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -239,7 +240,8 @@ TEST_F(FunctionsTest, FromSimpleFunctionDef) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ("XTimesTwo", item.id);
   EXPECT_EQ(4, item.function_body().node_size());
@@ -314,7 +316,8 @@ TEST_F(FunctionsTest, FromFunctionDefWithMultiOutputNodes) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ("SubGrad", item.id);
   EXPECT_EQ(12, item.function_body().node_size());
@@ -395,7 +398,8 @@ TEST_F(FunctionsTest, FromFunctionDefWithNestedFuncs) {
   func_attr["T"].set_type(DT_FLOAT);
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
 
   int count = 0;
   for (const NodeDef &node : item.function_body().node()) {
@@ -456,7 +460,8 @@ TEST_F(FunctionsTest, FromFunctionDefWithOutputMappings) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ(1, item.output_size());
   EXPECT_EQ("Exp", item.output(0).output_tensors[0]);
@@ -499,7 +504,8 @@ TEST_F(FunctionsTest, FromFunctionDefWithInputForwarding) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ("ForwardInputs", item.id);
   EXPECT_EQ(5, item.function_body().node_size());
@@ -545,7 +551,8 @@ TEST_F(FunctionsTest, FromFunctionDefWithoutInput) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ(0, item.input_size());
   EXPECT_EQ(1, item.output_size());
@@ -584,7 +591,8 @@ TEST_F(FunctionsTest, MakeFunctionDef) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
 
   FunctionDef specialized;
   TF_EXPECT_OK(MakeFunctionDef(item, flib, &specialized));
@@ -622,7 +630,8 @@ TEST_F(FunctionsTest, ReplaceInputWithConst) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ(2, item.input_size());
   EXPECT_EQ(1, item.output_size());
@@ -713,7 +722,8 @@ TEST_F(FunctionsTest, SwapFunctionBodyAndMakeFunctionDef) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), lib_def);
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
 
   // Replace function body with identity function
   item.SwapFunctionBody(std::move(id_func_body));
@@ -754,7 +764,8 @@ TEST_F(FunctionsTest, FunctionDefGrapplerFunctionItemRoundTrip) {
   GrapplerFunctionItem item;
   std::unordered_map<string, AttrValue> func_attr;
   func_attr["T"].set_type(DT_INT32);
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
 
   FunctionDef func2;
   TF_EXPECT_OK(MakeFunctionDef(item, flib, &func2));
