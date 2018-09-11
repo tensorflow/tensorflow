@@ -22,7 +22,6 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
@@ -58,22 +57,6 @@ const char* const kXlaNumConstantArgsAttr = "_XlaNumConstantArgs";
 const char* const kXlaNumResourceArgsAttr = "_XlaNumResourceArgs";
 const char* const kXlaHostTransferSequencerAttr =
     "_xla_host_transfer_sequencer";
-
-void SortControlInputs(GraphDef* gdef) {
-  int64 num_nodes = gdef->node_size();
-  for (int64 i = 0; i < num_nodes; ++i) {
-    NodeDef* node = gdef->mutable_node(i);
-    // Stable sort control inputs and leave the order of data inputs unchanged.
-    std::stable_sort(node->mutable_input()->begin(),
-                     node->mutable_input()->end(),
-                     [](const string& a, const string& b) {
-                       bool a_is_control = absl::StartsWith(a, "^");
-                       bool b_is_control = absl::StartsWith(b, "^");
-                       return (!a_is_control && b_is_control) ||
-                              (a_is_control && b_is_control && a < b);
-                     });
-  }
-}
 
 namespace {
 

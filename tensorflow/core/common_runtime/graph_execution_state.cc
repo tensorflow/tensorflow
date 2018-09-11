@@ -561,10 +561,6 @@ Status GraphExecutionState::OptimizeGraph(
     grappler::GrapplerItem item;
     item.id = "tf_graph";
     graph_->ToGraphDef(&item.graph);
-    // TODO(b/114748242): Add a unit test to test this bug fix.
-    if (flib_def_) {
-      *item.graph.mutable_library() = flib_def_->ToProto();
-    }
 
     item.fetch.insert(item.fetch.end(),
                       options.callable_options.fetch().begin(),

@@ -72,16 +72,6 @@ bool IsRunOnceOptimizer(const string& name) {
          name == "loop_optimizer";
 }
 
-// Check if the graphdef contains nodes that indicate TPU execution.
-bool IsTPUGraphDef(const GraphDef& def) {
-  for (auto node : def.node()) {
-    if (node.op() == "TPUCompile" || node.op() == "TPUPartitionedCall") {
-      return true;
-    }
-  }
-  return false;
-}
-
 }  // namespace
 
 #define MK_OPT(NAME, VALUE) \
@@ -345,19 +335,6 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // 1. Optimize main graph
   TF_RETURN_IF_ERROR(OptimizeGraph(cluster, item, optimized_graph));
-
-  // Skip optimizing functions if this is a TPU graph. Currently, Grappler
-  // passes do not handle TPU functions correctly in a variety of ways (Note
-  // that due to the pre-placement TPU graph rewriting passes, the TPU-related
-  // ops are encapsulated away into functions). For example, TPU graphs contain
-  // TPUReplicateMetadata node that carries relevant TPU metadata and Grappler
-  // passes could prune that away. Grappler passes could also cause issues
-  // around shape inference. Since the desired and existing behavior is to not
-  // optimize TPU functions with Grappler, this check preserves that.
-  if (IsTPUGraphDef(*optimized_graph)) {
-    VLOG(2) << "Skipping optimizing funcs for TPU graphs";
-    return Status::OK();
-  }
 
   // 2. Optimize function library
   FunctionLibraryDefinition flib(OpRegistry::Global(),
