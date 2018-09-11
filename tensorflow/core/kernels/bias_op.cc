@@ -250,9 +250,8 @@ class BiasGradOp : public OpKernel {
                                         output_backprop.shape().DebugString()));
 
     OP_REQUIRES(
-        context,
-        FastBoundsCheck(output_backprop.NumElements(),
-                        std::numeric_limits<int32>::max()),
+        context, FastBoundsCheck(output_backprop.NumElements(),
+                                 std::numeric_limits<int32>::max()),
         errors::InvalidArgument("BiasGrad requires tensor size <= int32 max"));
 
     int32 batch, height, width, depth, channel;
@@ -358,7 +357,8 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
                 errors::InvalidArgument("Biases must be 1D: ",
                                         bias.shape().DebugString()));
     int32 batch, height, width, depth, channel;
-    GetBiasValueDims(input, data_format_, &batch, &height, &width, &depth, &channel);
+    GetBiasValueDims(input, data_format_, &batch, &height, &width, &depth,
+                     &channel);
     OP_REQUIRES(context, bias.shape().dim_size(0) == channel,
                 errors::InvalidArgument(
                     "Must provide as many biases as the channel dimension "
@@ -544,8 +544,8 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                 errors::InvalidArgument("Input tensor must be at least 2D: ",
                                         output_backprop.shape().DebugString()));
     int32 batch, height, width, depth, channel;
-    GetBiasValueDims(output_backprop, data_format_, &batch, &height, &width, &depth,
-                     &channel);
+    GetBiasValueDims(output_backprop, data_format_, &batch, &height, &width,
+                     &depth, &channel);
     Tensor* output = nullptr;
     TensorShape output_shape{channel};
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
@@ -560,10 +560,7 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
     int device_id = stream->parent()->device_ordinal();
     DataType dtype = output_backprop.dtype();
     BiasAddParams bias_parameters = {
-        {batch, height * width, channel},
-        data_format_,
-        dtype,
-        device_id,
+        {batch, height * width, channel}, data_format_, dtype, device_id,
     };
 
     // Autotune two algorithm: customized
