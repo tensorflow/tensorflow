@@ -20,23 +20,23 @@ limitations under the License.
 namespace tensorflow {
 
 REGISTER_OP("IgniteDataset")
-  .Input("cache_name: string")
-  .Input("host: string")
-  .Input("port: int32")
-  .Input("local: bool")
-  .Input("part: int32")
-  .Input("page_size: int32")
-  .Input("username: string")
-  .Input("password: string")
-  .Input("certfile: string")
-  .Input("keyfile: string")
-  .Input("cert_password: string")
-  .Input("schema: int32")
-  .Input("permutation: int32")
-  .Output("handle: variant")
-  .SetIsStateful()
-  .SetShapeFn(shape_inference::ScalarShape)
-  .Doc(R"doc(
+    .Input("cache_name: string")
+    .Input("host: string")
+    .Input("port: int32")
+    .Input("local: bool")
+    .Input("part: int32")
+    .Input("page_size: int32")
+    .Input("username: string")
+    .Input("password: string")
+    .Input("certfile: string")
+    .Input("keyfile: string")
+    .Input("cert_password: string")
+    .Input("schema: int32")
+    .Input("permutation: int32")
+    .Output("handle: variant")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
 Apache Ignite is a memory-centric distributed database, caching, and processing
 platform for transactional, analytical, and streaming workloads, delivering 
 in-memory speeds at petabyte scale. This contrib package contains an 
