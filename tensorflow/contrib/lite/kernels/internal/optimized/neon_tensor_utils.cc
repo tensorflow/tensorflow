@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/kernels/activation_functor.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
 #include "tensorflow/contrib/lite/kernels/internal/compatibility.h"
+#include "tensorflow/contrib/lite/kernels/internal/optimized/neon_tensor_utils.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/tensor_utils_impl.h"
 #include "tensorflow/contrib/lite/kernels/internal/round.h"
 
