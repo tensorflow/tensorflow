@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,13 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""This is the legacy module for AutoGraph, kept for backward compatibility.
-
-New users should instead use `tensorflow.python.autograph`.
-"""
+"""Tests for type_info module."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.autograph import *  # pylint:disable=wildcard-import
+import numpy as np
+
+from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct.testing import codegen
+from tensorflow.python.platform import test
+
+
+class CodeGenTest(test.TestCase):
+
+  def test_codegen_gens(self):
+    np.random.seed(0)
+    for _ in range(1000):
+      node = codegen.generate_random_functiondef()
+      fn = compiler.ast_to_object(node)
+      self.assertIsNotNone(
+          fn, 'Generated invalid AST that could not convert to source.')
+
+
+if __name__ == '__main__':
+  test.main()

@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,13 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""This is the legacy module for AutoGraph, kept for backward compatibility.
-
-New users should instead use `tensorflow.python.autograph`.
-"""
+"""Tests of functions that use list literals."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.autograph import *  # pylint:disable=wildcard-import
+import tensorflow as tf
+
+from tensorflow.python import autograph as ag
+
+
+def list_used_as_tuple():
+  return tf.constant([1, 2, 3])
+
+
+class ListLiteralsTest(tf.test.TestCase):
+
+  def test_basic(self):
+    converted = ag.to_graph(list_used_as_tuple)
+    result = converted()
+
+    with self.cached_session() as sess:
+      self.assertAllEqual(sess.run(result), [1, 2, 3])
+
+
+if __name__ == '__main__':
+  tf.test.main()

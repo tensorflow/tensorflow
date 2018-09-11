@@ -12,13 +12,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""This is the legacy module for AutoGraph, kept for backward compatibility.
-
-New users should instead use `tensorflow.python.autograph`.
-"""
+"""Global configuration."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.autograph import *  # pylint:disable=wildcard-import
+from tensorflow.python.autograph import utils
+
+
+PYTHON_LITERALS = {
+    'None': None,
+    'False': False,
+    'True': True,
+    'float': float,
+}
+
+DEFAULT_UNCOMPILED_MODULES = set((
+    ('tensorflow',),
+    (utils.__name__,),
+
+    # All of tensorflow's subpackages. Unlike the root tf module, they don't
+    # have well-known names. Not referring to the module directly to avoid
+    # circular imports.
+    (
+        utils.__name__[:-len('.python.autograph.utils')],),
+))
+
+NO_SIDE_EFFECT_CONSTRUCTORS = set(('tensorflow',))
+
+# TODO(mdan): Also allow controlling the generated names.
+# TODO(mdan); Consolidate all internal imports into a single __ag module.
+COMPILED_IMPORT_STATEMENTS = (
+    'from __future__ import print_function',
+    'import tensorflow as tf',
+)
