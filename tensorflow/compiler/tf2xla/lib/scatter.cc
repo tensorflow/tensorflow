@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
 
@@ -40,9 +40,9 @@ xla::StatusOr<xla::XlaOp> XlaScatter(
   TF_ASSIGN_OR_RETURN(xla::Shape buffer_shape, builder->GetShape(buffer));
   TF_RETURN_IF_ERROR(builder->GetShape(updates).status());
   TF_ASSIGN_OR_RETURN(xla::Shape indices_shape, builder->GetShape(indices));
-  gtl::ArraySlice<int64> indices_dims =
+  absl::Span<const int64> indices_dims =
       xla::AsInt64Slice(indices_shape.dimensions());
-  gtl::ArraySlice<int64> buffer_dims =
+  absl::Span<const int64> buffer_dims =
       xla::AsInt64Slice(buffer_shape.dimensions());
 
   // If the indices are N-dimensional, the minor dimension of indices contains
@@ -107,7 +107,7 @@ xla::StatusOr<xla::XlaOp> XlaScatter(
   //   index = dynamic-slice(indices, i)
   //   update = dynamic-slice(updates, i)
   //   buffer = dynamic-update-slice(buffer, update, index)
-  auto body_fn = [&](xla::XlaOp i, gtl::ArraySlice<xla::XlaOp> loop_vars,
+  auto body_fn = [&](xla::XlaOp i, absl::Span<const xla::XlaOp> loop_vars,
                      xla::XlaBuilder* body_builder) {
     auto indices = loop_vars[0];
     auto updates = loop_vars[1];

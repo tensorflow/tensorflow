@@ -20,8 +20,8 @@ limitations under the License.
 #include <iostream>
 #include <limits>
 
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/activation_functor.h"
 #include "tensorflow/contrib/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor_utils.h"
@@ -64,10 +64,14 @@ constexpr int kProjectionWeightsTensor = 16;  // Optional
 // Projection bias tensor of size {n_output}
 constexpr int kProjectionBiasTensor = 17;  // Optional
 
+// Stateful input tensors that are variables and will be modified by the Op.
+// Activation state tensor of size {n_batch, n_output}
+constexpr int kInputActivationStateTensor = 18;
+// Cell state tensor of size {n_batch, n_cell}
+constexpr int kInputCellStateTensor = 19;
+
 // Output tensors.
-constexpr int kOutputStateTensor = 0;
-constexpr int kCellStateTensor = 1;
-constexpr int kOutputTensor = 2;
+constexpr int kOutputTensor = 0;
 
 // Temporary tensors
 enum TemporaryTensor {
@@ -82,7 +86,7 @@ enum TemporaryTensor {
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  auto* scratch_tensor_index = new int;
+  auto* scratch_tensor_index = new int();
   context->AddTensors(context, kNumTemporaryTensors, scratch_tensor_index);
   return scratch_tensor_index;
 }
@@ -247,8 +251,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   int* scratch_tensor_index = reinterpret_cast<int*>(node->user_data);
 
   // Check we have all the inputs and outputs we need.
-  TF_LITE_ENSURE_EQ(context, node->inputs->size, 18);
-  TF_LITE_ENSURE_EQ(context, node->outputs->size, 3);
+  TF_LITE_ENSURE_EQ(context, node->inputs->size, 20);
+  TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
 
   // Inferring batch size, number of outputs and sequence length and
   // number of cells from the input tensors.
@@ -276,34 +280,27 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, CheckInputTensorDimensions(context, node, n_input,
                                                         n_output, n_cell));
 
-  // Get the pointer to output, output_state and cell_state buffer tensors.
+  // Get the pointer to output, activation_state and cell_state buffer tensors.
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  TfLiteTensor* output_state = GetOutput(context, node, kOutputStateTensor);
-  TfLiteTensor* cell_state = GetOutput(context, node, kCellStateTensor);
 
-  // Resize the output, output_state and cell_state tensors.
+  TfLiteTensor* activation_state =
+      GetVariableInput(context, node, kInputActivationStateTensor);
+  TfLiteTensor* cell_state =
+      GetVariableInput(context, node, kInputCellStateTensor);
+
+  // Check the shape of input state tensors.
+  // These tensor may be 1D or 2D. It's fine as long as the total size is
+  // correct.
+  TF_LITE_ENSURE_EQ(context, NumElements(activation_state), n_batch * n_output);
+  TF_LITE_ENSURE_EQ(context, NumElements(cell_state), n_batch * n_cell);
+
+  // Resize the output tensors.
   TfLiteIntArray* output_size = TfLiteIntArrayCreate(3);
   output_size->data[0] = max_time;
   output_size->data[1] = n_batch;
   output_size->data[2] = n_output;
   TF_LITE_ENSURE_OK(context,
                     context->ResizeTensor(context, output, output_size));
-
-  TfLiteIntArray* output_state_size = TfLiteIntArrayCreate(2);
-  output_state_size->data[0] = n_batch;
-  output_state_size->data[1] = n_output;
-  TF_LITE_ENSURE_OK(
-      context, context->ResizeTensor(context, output_state, output_state_size));
-
-  TfLiteIntArray* cell_size = TfLiteIntArrayCreate(2);
-  cell_size->data[0] = n_batch;
-  cell_size->data[1] = n_cell;
-  TF_LITE_ENSURE_OK(context,
-                    context->ResizeTensor(context, cell_state, cell_size));
-
-  // Mark state tensors as persistent tensors.
-  output_state->allocation_type = kTfLiteArenaRwPersistent;
-  cell_state->allocation_type = kTfLiteArenaRwPersistent;
 
   // The weights are of consistent type, so it suffices to check one.
   // TODO(mirkov): create a utility/macro for this check, so all Ops can use it.
@@ -340,7 +337,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   if (is_hybrid_op) {
     // Allocate temporary tensors to store quantized values of input,
-    // output_state and cell_state tensors.
+    // activation_state and cell_state tensors.
     node->temporaries->data[kInputQuantized] =
         *scratch_tensor_index + kInputQuantized;
     TfLiteTensor* input_quantized =
@@ -354,17 +351,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
     node->temporaries->data[kOutputStateQuantized] =
         *scratch_tensor_index + kOutputStateQuantized;
-    TfLiteTensor* output_state_quantized =
+    TfLiteTensor* activation_state_quantized =
         GetTemporary(context, node, kOutputStateQuantized);
-    output_state_quantized->type = kTfLiteUInt8;
-    output_state_quantized->allocation_type = kTfLiteArenaRw;
-    if (!TfLiteIntArrayEqual(output_state_quantized->dims,
-                             output_state->dims)) {
-      TfLiteIntArray* output_state_quantized_size =
-          TfLiteIntArrayCopy(output_state->dims);
-      TF_LITE_ENSURE_OK(context,
-                        context->ResizeTensor(context, output_state_quantized,
-                                              output_state_quantized_size));
+    activation_state_quantized->type = kTfLiteUInt8;
+    activation_state_quantized->allocation_type = kTfLiteArenaRw;
+    if (!TfLiteIntArrayEqual(activation_state_quantized->dims,
+                             activation_state->dims)) {
+      TfLiteIntArray* activation_state_quantized_size =
+          TfLiteIntArrayCopy(activation_state->dims);
+      TF_LITE_ENSURE_OK(
+          context, context->ResizeTensor(context, activation_state_quantized,
+                                         activation_state_quantized_size));
     }
     node->temporaries->data[kCellStateQuantized] =
         *scratch_tensor_index + kCellStateQuantized;
@@ -449,7 +446,7 @@ TfLiteStatus EvalFloat(
     const TfLiteTensor* cell_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
     const TfLiteLSTMParams* params, TfLiteTensor* scratch_buffer,
-    TfLiteTensor* output_state, TfLiteTensor* cell_state,
+    TfLiteTensor* activation_state, TfLiteTensor* cell_state,
     TfLiteTensor* output) {
   const int max_time = input->dims->data[0];
   const int n_batch = input->dims->data[1];
@@ -510,7 +507,7 @@ TfLiteStatus EvalFloat(
   const float* cell_bias_ptr = cell_bias->data.f;
   const float* output_gate_bias_ptr = output_gate_bias->data.f;
 
-  float* output_state_ptr = output_state->data.f;
+  float* activation_state_ptr = activation_state->data.f;
   float* cell_state_ptr = cell_state->data.f;
 
   // Feed the sequence into the LSTM step-by-step.
@@ -527,7 +524,7 @@ TfLiteStatus EvalFloat(
         cell_to_forget_weights_ptr, cell_to_output_weights_ptr,
         input_gate_bias_ptr, forget_gate_bias_ptr, cell_bias_ptr,
         output_gate_bias_ptr, projection_weights_ptr, projection_bias_ptr,
-        params, n_batch, n_cell, n_input, n_output, output_state_ptr,
+        params, n_batch, n_cell, n_input, n_output, activation_state_ptr,
         cell_state_ptr, input_gate_scratch, forget_gate_scratch, cell_scratch,
         output_gate_scratch, output_ptr_batch);
   }
@@ -552,9 +549,9 @@ TfLiteStatus EvalHybrid(
     const TfLiteLSTMParams* params, TfLiteTensor* scratch_buffer,
     TfLiteTensor* scaling_factors, TfLiteTensor* prod_scaling_factors,
     TfLiteTensor* recovered_cell_weights, TfLiteTensor* input_quantized,
-    TfLiteTensor* output_state_quantized, TfLiteTensor* cell_state_quantized,
-    TfLiteTensor* output_state, TfLiteTensor* cell_state,
-    TfLiteTensor* output) {
+    TfLiteTensor* activation_state_quantized,
+    TfLiteTensor* cell_state_quantized, TfLiteTensor* activation_state,
+    TfLiteTensor* cell_state, TfLiteTensor* output) {
   const int max_time = input->dims->data[0];
   const int n_batch = input->dims->data[1];
   const int n_input = input->dims->data[2];
@@ -655,14 +652,14 @@ TfLiteStatus EvalHybrid(
   const float* cell_bias_ptr = cell_bias->data.f;
   const float* output_gate_bias_ptr = output_gate_bias->data.f;
 
-  float* output_state_ptr = output_state->data.f;
+  float* activation_state_ptr = activation_state->data.f;
   float* cell_state_ptr = cell_state->data.f;
 
   // Temporary storage for quantized values and scaling factors.
   int8_t* quantized_input_ptr =
       reinterpret_cast<int8_t*>(input_quantized->data.uint8);
-  int8_t* quantized_output_state_ptr =
-      reinterpret_cast<int8_t*>(output_state_quantized->data.uint8);
+  int8_t* quantized_activation_state_ptr =
+      reinterpret_cast<int8_t*>(activation_state_quantized->data.uint8);
   int8_t* quantized_cell_state_ptr =
       reinterpret_cast<int8_t*>(cell_state_quantized->data.uint8);
   float* scaling_factors_ptr = scaling_factors->data.f;
@@ -692,8 +689,8 @@ TfLiteStatus EvalHybrid(
         n_input, n_output, input_gate_scratch, forget_gate_scratch,
         cell_scratch, output_gate_scratch, scaling_factors_ptr,
         prod_scaling_factors_ptr, recovered_cell_weights_ptr,
-        quantized_input_ptr, quantized_output_state_ptr,
-        quantized_cell_state_ptr, output_state_ptr, cell_state_ptr,
+        quantized_input_ptr, quantized_activation_state_ptr,
+        quantized_cell_state_ptr, activation_state_ptr, cell_state_ptr,
         output_ptr_batch);
   }
   return kTfLiteOk;
@@ -744,8 +741,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Index the scratch buffers pointers to the global scratch buffer.
   TfLiteTensor* scratch_buffer = GetTemporary(context, node, /*index=*/0);
 
-  TfLiteTensor* output_state = GetOutput(context, node, kOutputStateTensor);
-  TfLiteTensor* cell_state = GetOutput(context, node, kCellStateTensor);
+  TfLiteTensor* activation_state =
+      GetVariableInput(context, node, kInputActivationStateTensor);
+  TfLiteTensor* cell_state =
+      GetVariableInput(context, node, kInputCellStateTensor);
+
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   switch (input_to_output_weights->type) {
@@ -758,11 +758,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                        cell_to_output_weights, input_gate_bias,
                        forget_gate_bias, cell_bias, output_gate_bias,
                        projection_weights, projection_bias, params,
-                       scratch_buffer, output_state, cell_state, output);
+                       scratch_buffer, activation_state, cell_state, output);
     }
     case kTfLiteUInt8: {
       TfLiteTensor* input_quantized = GetTemporary(context, node, /*index=*/1);
-      TfLiteTensor* output_state_quantized =
+      TfLiteTensor* activation_state_quantized =
           GetTemporary(context, node, /*index=*/2);
       TfLiteTensor* cell_state_quantized =
           GetTemporary(context, node, /*index=*/3);
@@ -780,8 +780,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           input_gate_bias, forget_gate_bias, cell_bias, output_gate_bias,
           projection_weights, projection_bias, params, scratch_buffer,
           scaling_factors, prod_scaling_factors, recovered_cell_weights,
-          input_quantized, output_state_quantized, cell_state_quantized,
-          output_state, cell_state, output);
+          input_quantized, activation_state_quantized, cell_state_quantized,
+          activation_state, cell_state, output);
     }
     default:
       context->ReportError(context, "Type %d is not currently supported.",

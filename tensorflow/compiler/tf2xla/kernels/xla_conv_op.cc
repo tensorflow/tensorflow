@@ -84,7 +84,7 @@ class XlaConvOp : public XlaOpKernel {
 
  private:
   xla::ConvolutionDimensionNumbers dnums_;
-  xla::PrecisionConfigProto precision_config_;
+  xla::PrecisionConfig precision_config_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaConvOp);
 };

@@ -53,7 +53,7 @@ class GetSingleElementTest(test.TestCase, parameterized.TestCase):
         lambda x: (x * x, make_sparse(x))).take(take_t)
     element = get_single_element.get_single_element(dataset)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       if error is None:
         dense_val, sparse_val = sess.run(
             element, feed_dict={
@@ -90,7 +90,7 @@ class GetSingleElementTest(test.TestCase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(stop_t)
     element = get_single_element.reduce_dataset(dataset, sum_reducer)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       value = sess.run(element, feed_dict={stop_t: stop})
       self.assertEqual(stop * (stop - 1) / 2, value)
 

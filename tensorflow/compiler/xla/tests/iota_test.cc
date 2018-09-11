@@ -39,7 +39,7 @@ TEST_P(IotaR1Test, DoIt) {
   const auto element_type = std::get<0>(spec);
   const int64 num_elements = std::get<1>(spec);
   XlaBuilder builder(TestName() + "_" + PrimitiveType_Name(element_type));
-  IotaGen(&builder, element_type, num_elements);
+  Iota(&builder, element_type, num_elements);
   if (element_type == F32) {
     ComputeAndCompareR1<float>(&builder, GetR1Expected<float>(num_elements), {},
                                ErrorSpec{0.0001});
@@ -71,7 +71,7 @@ TEST_P(IotaR2Test, DoIt) {
   XlaBuilder builder(TestName() + "_" + PrimitiveType_Name(element_type));
   std::vector<int64> dimensions = {42};
   dimensions.insert(dimensions.begin() + iota_dim, num_elements);
-  IotaGen(&builder, ShapeUtil::MakeShape(element_type, dimensions), iota_dim);
+  Iota(&builder, ShapeUtil::MakeShape(element_type, dimensions), iota_dim);
   if (primitive_util::IsFloatingPointType(element_type)) {
     ComputeAndCompare(&builder, {}, ErrorSpec{0.0001});
   } else {
@@ -98,7 +98,7 @@ TEST_P(IotaR3Test, DoIt) {
   XlaBuilder builder(TestName() + "_" + PrimitiveType_Name(element_type));
   std::vector<int64> dimensions = {42, 19};
   dimensions.insert(dimensions.begin() + iota_dim, num_elements);
-  IotaGen(&builder, ShapeUtil::MakeShape(element_type, dimensions), iota_dim);
+  Iota(&builder, ShapeUtil::MakeShape(element_type, dimensions), iota_dim);
   if (primitive_util::IsFloatingPointType(element_type)) {
     ComputeAndCompare(&builder, {}, ErrorSpec{0.0001});
   } else {

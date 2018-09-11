@@ -690,7 +690,10 @@ const uint64 DebugFileIO::defaultGlobalDiskBytesLimit = 107374182400L;
 uint64 DebugFileIO::globalDiskBytesLimit = 0;
 uint64 DebugFileIO::diskBytesUsed = 0;
 
+mutex DebugFileIO::bytes_mu(LINKER_INITIALIZED);
+
 bool DebugFileIO::requestDiskByteUsage(uint64 bytes) {
+  mutex_lock l(bytes_mu);
   if (globalDiskBytesLimit == 0) {
     const char* env_tfdbg_disk_bytes_limit = getenv("TFDBG_DISK_BYTES_LIMIT");
     if (env_tfdbg_disk_bytes_limit == nullptr ||
@@ -713,7 +716,10 @@ bool DebugFileIO::requestDiskByteUsage(uint64 bytes) {
   }
 }
 
-void DebugFileIO::resetDiskByteUsage() { diskBytesUsed = 0; }
+void DebugFileIO::resetDiskByteUsage() {
+  mutex_lock l(bytes_mu);
+  diskBytesUsed = 0;
+}
 
 #ifndef PLATFORM_WINDOWS
 DebugGrpcChannel::DebugGrpcChannel(const string& server_stream_addr)

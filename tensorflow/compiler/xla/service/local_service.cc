@@ -141,7 +141,7 @@ ExecutionOptions CreateExecutionOptions(
 
 StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
     const XlaComputation& computation,
-    const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
+    const absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& build_options) {
   const HloModuleProto& proto = computation.proto();
   TF_RET_CHECK(proto.has_program_shape());

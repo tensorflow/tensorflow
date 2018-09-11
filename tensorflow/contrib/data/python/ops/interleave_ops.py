@@ -220,6 +220,7 @@ def sample_from_datasets(datasets, weights=None, seed=None):
     if weights is None:
       # Select inputs with uniform probability.
       logits = [[1.0] * num_datasets]
+
     else:
       # Use the given `weights` as the probability of choosing the respective
       # input.
@@ -235,12 +236,21 @@ def sample_from_datasets(datasets, weights=None, seed=None):
       # to weights.
       logits = array_ops.expand_dims(math_ops.log(weights, name="logits"), 0)
 
+    # NOTE(mrry): We only specialize when `weights` is not a `Dataset`. When it
+    # is a `Dataset`, it is possible that evaluating it has a side effect the
+    # user depends on.
+    if len(datasets) == 1:
+      return datasets[0]
+
     def select_dataset_constant_logits(seed):
       return array_ops.squeeze(
           stateless.stateless_multinomial(logits, 1, seed=seed), axis=[0, 1])
 
-    selector_input = random_ops.RandomDataset(seed).batch(2).map(
-        select_dataset_constant_logits)
+    selector_input = dataset_ops.MapDataset(
+        random_ops.RandomDataset(seed).batch(2),
+        select_dataset_constant_logits,
+        use_inter_op_parallelism=False)
+
   else:
     # Use each element of the given `weights` dataset as the probability of
     # choosing the respective input.
@@ -253,9 +263,12 @@ def sample_from_datasets(datasets, weights=None, seed=None):
       return array_ops.squeeze(
           stateless.stateless_multinomial(logits, 1, seed=seed), axis=[0, 1])
 
-    selector_input = dataset_ops.Dataset.zip(
-        (logits_ds, random_ops.RandomDataset(seed).batch(2)
-        )).map(select_dataset_varying_logits)
+    logits_and_seeds = dataset_ops.Dataset.zip(
+        (logits_ds, random_ops.RandomDataset(seed).batch(2)))
+    selector_input = dataset_ops.MapDataset(
+        logits_and_seeds,
+        select_dataset_varying_logits,
+        use_inter_op_parallelism=False)
 
   return _DirectedInterleaveDataset(selector_input, datasets)
 

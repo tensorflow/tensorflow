@@ -86,8 +86,8 @@ Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {
       const Shape expected,
       ShapeInference::InferConvolveShape(
           convolution->operand(0)->shape(), convolution->operand(1)->shape(),
-          convolution->window(), convolution->convolution_dimension_numbers(),
-          convolution->feature_group_count()));
+          convolution->feature_group_count(), convolution->window(),
+          convolution->convolution_dimension_numbers()));
   return CheckShape(convolution, expected);
 }
 
@@ -699,8 +699,7 @@ Status ShapeVerifier::CheckVariadicShape(const HloInstruction* instruction) {
                         instruction->opcode(), instruction->operands()));
 }
 
-string ComputationsToString(
-    tensorflow::gtl::ArraySlice<HloComputation*> computations) {
+string ComputationsToString(absl::Span<HloComputation* const> computations) {
   return absl::StrJoin(computations, ",",
                        [](string* s, const HloComputation* computation) {
                          s->append(computation->name());
@@ -1068,9 +1067,9 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
       TF_RET_CHECK(instruction->parent() == computation);
       if (instruction->opcode() == HloOpcode::kFusion) {
         TF_RETURN_IF_ERROR(CheckFusionInstruction(instruction));
-        TF_RET_CHECK(
-            ContainersEqual(instruction->called_computations(),
-                            {instruction->fused_instructions_computation()}))
+        TF_RET_CHECK(instruction->called_computations() ==
+                     absl::Span<HloComputation* const>(
+                         {instruction->fused_instructions_computation()}))
             << "Fusion HLO calls computations other than the "
                "fused_instructions_computation: "
             << instruction->ToString()
@@ -1123,6 +1122,11 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
   }
 
   TF_RETURN_IF_ERROR(VerifyEntryAndExitShapes(*module));
+
+  // If the module has a schedule, it must be valid.
+  if (module->has_schedule()) {
+    TF_RETURN_IF_ERROR(module->schedule().Verify());
+  }
 
   return false;
 }

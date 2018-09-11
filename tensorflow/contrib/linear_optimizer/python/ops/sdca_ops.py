@@ -35,6 +35,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as var_ops
+from tensorflow.python.ops.nn import log_poisson_loss
 from tensorflow.python.ops.nn import sigmoid_cross_entropy_with_logits
 from tensorflow.python.summary import summary
 
@@ -51,6 +52,7 @@ class SdcaModel(object):
      * Squared loss
      * Hinge loss
      * Smooth hinge loss
+     * Poisson log loss
 
     This class defines an optimizer API to train a linear model.
 
@@ -112,7 +114,7 @@ class SdcaModel(object):
       raise ValueError('examples, variables and options must all be specified.')
 
     supported_losses = ('logistic_loss', 'squared_loss', 'hinge_loss',
-                        'smooth_hinge_loss')
+                        'smooth_hinge_loss', 'poisson_loss')
     if options['loss_type'] not in supported_losses:
       raise ValueError('Unsupported loss_type: ', options['loss_type'])
 
@@ -315,6 +317,7 @@ class SdcaModel(object):
     """Add operations to compute predictions by the model.
 
     If logistic_loss is being used, predicted probabilities are returned.
+    If poisson_loss is being used, predictions are exponentiated.
     Otherwise, (raw) linear predictions (w*x) are returned.
 
     Args:
@@ -335,6 +338,10 @@ class SdcaModel(object):
       # Convert logits to probability for logistic loss predictions.
       with name_scope('sdca/logistic_prediction'):
         result = math_ops.sigmoid(result)
+    elif self._options['loss_type'] == 'poisson_loss':
+      # Exponeniate the prediction for poisson loss predictions.
+      with name_scope('sdca/poisson_prediction'):
+        result = math_ops.exp(result)
     return result
 
   def _get_partitioned_update_ops(self,
@@ -622,6 +629,11 @@ class SdcaModel(object):
         return math_ops.reduce_sum(math_ops.multiply(
             sigmoid_cross_entropy_with_logits(labels=labels,
                                               logits=predictions),
+            weights)) / math_ops.reduce_sum(weights)
+
+      if self._options['loss_type'] == 'poisson_loss':
+        return math_ops.reduce_sum(math_ops.multiply(
+            log_poisson_loss(targets=labels, log_input=predictions),
             weights)) / math_ops.reduce_sum(weights)
 
       if self._options['loss_type'] in ['hinge_loss', 'smooth_hinge_loss']:

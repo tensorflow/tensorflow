@@ -38,14 +38,14 @@ TEST_F(CheckExecutionArityTest, TwoParamComputationNumArguments) {
   XlaBuilder builder("add_two_params");
   auto param_literal = LiteralUtil::CreateR1<float>({1.1f, 2.2f});
 
-  auto p0 = Parameter(&builder, 0, param_literal->shape(), "param0");
-  auto p1 = Parameter(&builder, 1, param_literal->shape(), "param1");
+  auto p0 = Parameter(&builder, 0, param_literal.shape(), "param0");
+  auto p1 = Parameter(&builder, 1, param_literal.shape(), "param1");
   Add(p0, p1);
 
   auto param0_data =
-      client_->TransferToServer(*param_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param_literal).ConsumeValueOrDie();
   auto param1_data =
-      client_->TransferToServer(*param_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param_literal).ConsumeValueOrDie();
 
   auto computation_status = builder.Build();
   ASSERT_IS_OK(computation_status.status());
@@ -86,12 +86,12 @@ XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
   auto computation = computation_status.ConsumeValueOrDie();
 
   auto f32_literal = LiteralUtil::CreateR0<float>(1.1f);
-  auto f32_data = client_->TransferToServer(*f32_literal).ConsumeValueOrDie();
+  auto f32_data = client_->TransferToServer(f32_literal).ConsumeValueOrDie();
   auto f32_4_literal = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
   auto f32_4_data =
-      client_->TransferToServer(*f32_4_literal).ConsumeValueOrDie();
+      client_->TransferToServer(f32_4_literal).ConsumeValueOrDie();
   auto u8_4_literal = LiteralUtil::CreateR1U8("hola");
-  auto u8_4_data = client_->TransferToServer(*u8_4_literal).ConsumeValueOrDie();
+  auto u8_4_data = client_->TransferToServer(u8_4_literal).ConsumeValueOrDie();
 
   // Match
   auto status = client_->Execute(

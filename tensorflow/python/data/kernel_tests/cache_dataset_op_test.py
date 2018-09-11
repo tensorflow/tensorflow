@@ -68,7 +68,7 @@ class FileCacheDatasetTest(test.TestCase):
 
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # First run without caching to collect the "ground truth".
       sess.run(init_fifo_op)
       elements = []
@@ -132,7 +132,7 @@ class FileCacheDatasetTest(test.TestCase):
     get_next1 = iterator1.get_next()
     get_next2 = iterator2.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_cache_op1, feed_dict={filename_placeholder: self.cache_prefix})
       sess.run(get_next1)  # this should succeed
@@ -162,7 +162,7 @@ class FileCacheDatasetTest(test.TestCase):
     get_next1 = iterator1.get_next()
     get_next2 = iterator2.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_cache_op1, feed_dict={filename_placeholder: self.cache_prefix})
       elements = []
@@ -217,7 +217,7 @@ class MemoryCacheDatasetTest(test.TestCase):
       uncached_iterator = uncached_dataset.make_initializable_iterator()
       uncached_next = uncached_iterator.get_next()
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
 
         sess.run(repeat_count.initializer)
         sess.run(cached_iterator.initializer)
@@ -261,7 +261,7 @@ class MemoryCacheDatasetTest(test.TestCase):
 
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Initialize with an empty upstream and a missing cache file (should
       # throw errors.OutOfRangeError immediately).
       sess.run(init_cache_op, feed_dict={count_placeholder: 0})
@@ -278,7 +278,7 @@ class MemoryCacheDatasetTest(test.TestCase):
     i1 = d1.make_initializable_iterator()
     i2 = d2.make_initializable_iterator()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(i1.initializer)
 
       self.assertEqual(1, sess.run(i1.get_next()))
@@ -304,7 +304,7 @@ class MemoryCacheDatasetTest(test.TestCase):
 
     expected_values = [0, 1, 2, 3, 4, 0, 1, 2, 3, 4]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for i, expected in enumerate(expected_values):
         self.assertEqual(expected, sess.run(n),
                          "Unexpected value at index %s" % i)

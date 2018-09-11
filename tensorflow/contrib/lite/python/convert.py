@@ -126,7 +126,7 @@ def build_toco_convert_protos(input_tensors,
                               reorder_across_fake_quant=False,
                               allow_custom_ops=False,
                               change_concat_input_ranges=False,
-                              quantize_weights=False,
+                              post_training_quantize=False,
                               dump_graphviz_dir=None,
                               dump_graphviz_video=False):
   """Builds protocol buffers describing a conversion of a model using TOCO.
@@ -149,9 +149,11 @@ def build_toco_convert_protos(input_tensors,
       as `input_tensors`, or None. (default None)
     output_format: Output file format. Currently must be `{TFLITE,
       GRAPHVIZ_DOT}`. (default TFLITE)
-    quantized_input_stats: List of tuples of integers representing the mean and
+    quantized_input_stats: List of tuples of floats representing the mean and
       standard deviation. Each tuple maps to the corresponding input tensor.
-      Only need if `inference_type` is `QUANTIZED_UINT8`. (default None)
+      Only need if `inference_input_type` is `QUANTIZED_UINT8`.
+      real_input_value = (quantized_input_value - mean_value) / std_dev_value.
+      (default None)
     default_ranges_stats: Tuple of integers representing (min, max) range values
       for all arrays without a specified range. Intended for experimenting with
       quantization via "dummy quantization". (default None)
@@ -171,9 +173,9 @@ def build_toco_convert_protos(input_tensors,
     change_concat_input_ranges: Boolean to change behavior of min/max ranges for
       inputs and outputs of the concat operator for quantized models. Changes
       the ranges of concat operator overlap when true. (default False)
-    quantize_weights: Boolean indicating whether to store weights as quantized
-      weights followed by dequantize operations. Computation is still done in
-      float, but reduces model size (at the cost of accuracy and latency).
+    post_training_quantize: Boolean indicating whether to quantize the weights
+      of the converted float model. Model size will be reduced and there will be
+      latency improvements (at the cost of accuracy).
       (default False)
     dump_graphviz_dir: Full filepath of folder to dump the graphs at various
       stages of processing GraphViz .dot files. Preferred over
@@ -197,10 +199,12 @@ def build_toco_convert_protos(input_tensors,
   toco.inference_type = inference_type
   if inference_input_type:
     toco.inference_input_type = inference_input_type
+  else:
+    toco.inference_input_type = toco.inference_type
   toco.drop_control_dependency = drop_control_dependency
   toco.reorder_across_fake_quant = reorder_across_fake_quant
   toco.allow_custom_ops = allow_custom_ops
-  toco.quantize_weights = quantize_weights
+  toco.post_training_quantize = post_training_quantize
   if default_ranges_stats:
     toco.default_ranges_min = default_ranges_stats[0]
     toco.default_ranges_max = default_ranges_stats[1]
@@ -212,7 +216,7 @@ def build_toco_convert_protos(input_tensors,
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):
     input_array = model.input_arrays.add()
-    if inference_type == lite_constants.QUANTIZED_UINT8:
+    if toco.inference_input_type == lite_constants.QUANTIZED_UINT8:
       input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
     input_array.name = tensor_name(input_tensor)
     if input_shapes is None:

@@ -161,8 +161,8 @@ def _dnn_linear_combined_model_fn(features,
     with variable_scope.variable_scope(
         dnn_parent_scope,
         values=tuple(six.itervalues(features)),
-        partitioner=dnn_partitioner):
-
+        partitioner=dnn_partitioner) as scope:
+      dnn_absolute_scope = scope.name
       dnn_logit_fn = dnn._dnn_logit_fn_builder(  # pylint: disable=protected-access
           units=head.logits_dimension,
           hidden_units=dnn_hidden_units,
@@ -186,6 +186,7 @@ def _dnn_linear_combined_model_fn(features,
         linear_parent_scope,
         values=tuple(six.itervalues(features)),
         partitioner=input_layer_partitioner) as scope:
+      linear_absolute_scope = scope.name
       logit_fn = linear._linear_logit_fn_builder(  # pylint: disable=protected-access
           units=head.logits_dimension,
           feature_columns=linear_feature_columns,
@@ -211,14 +212,14 @@ def _dnn_linear_combined_model_fn(features,
               loss,
               var_list=ops.get_collection(
                   ops.GraphKeys.TRAINABLE_VARIABLES,
-                  scope=dnn_parent_scope)))
+                  scope=dnn_absolute_scope)))
     if linear_logits is not None:
       train_ops.append(
           linear_optimizer.minimize(
               loss,
               var_list=ops.get_collection(
                   ops.GraphKeys.TRAINABLE_VARIABLES,
-                  scope=linear_parent_scope)))
+                  scope=linear_absolute_scope)))
 
     train_op = control_flow_ops.group(*train_ops)
     with ops.control_dependencies([train_op]):

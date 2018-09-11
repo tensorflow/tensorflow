@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 
 namespace tensorflow {
+namespace data {
 
 namespace {
 
@@ -179,6 +180,13 @@ Status GraphDefBuilderWrapper::AddFunction(SerializationContext* ctx,
   return Status::OK();
 }
 
+void GraphDefBuilderWrapper::AddPlaceholderInternal(const Tensor& val,
+                                                    Node** output) {
+  *output = ops::SourceOp(
+      "Placeholder",
+      b_->opts().WithAttr("dtype", val.dtype()).WithAttr("shape", val.shape()));
+}
+
 void GraphDefBuilderWrapper::AddTensorInternal(const Tensor& val,
                                                Node** output) {
   *output = ops::SourceOp(
@@ -322,4 +330,5 @@ void BackgroundWorker::WorkerLoop() {
   }
 }
 
+}  // namespace data
 }  // namespace tensorflow

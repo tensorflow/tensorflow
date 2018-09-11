@@ -364,7 +364,7 @@ if (tensorflow_ENABLE_MKL_SUPPORT)
     list(APPEND tensorflow_EXTERNAL_DEPENDENCIES mkldnn_copy_shared_to_destination)
     include_directories(${mkldnn_INCLUDE_DIRS})
   else (tensorflow_ENABLE_MKLDNN_SUPPORT)
-    add_definitions(-DINTEL_MKL_ML)
+    add_definitions(-DINTEL_MKL_ML_ONLY)
   endif()
 endif (tensorflow_ENABLE_MKL_SUPPORT)
 

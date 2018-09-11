@@ -34,6 +34,8 @@ namespace {
 
 using ::testing::HasSubstr;
 
+// This class cannot be converted to use HloVerifiedTestBase. It explicitly
+// uses HloTestBase to create and test malformed HLOs.
 class HloVerifierTest : public HloTestBase {
  public:
   HloVerifierTest()
@@ -288,8 +290,8 @@ TEST_F(HloVerifierTest, NegativeInteriorPaddingNotAllowed) {
   padding_config.add_dimensions()->set_interior_padding(-1);
   builder.AddInstruction(HloInstruction::CreatePad(
       ShapeUtil::MakeShape(F32, {100}), param,
-      builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::Zero(F32).CloneToUnique())),
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::Zero(F32))),
       padding_config));
 
   auto module = CreateNewModule();
@@ -312,8 +314,8 @@ TEST_F(HloVerifierTest, PadNegativeInteriorDilationNotAllowed) {
   padding_config.add_dimensions()->set_interior_padding(-1);
   builder.AddInstruction(HloInstruction::CreatePad(
       ShapeUtil::MakeShape(F32, {100}), param,
-      builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::Zero(F32).CloneToUnique())),
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::Zero(F32).Clone())),
       padding_config));
 
   auto module = CreateNewModule();

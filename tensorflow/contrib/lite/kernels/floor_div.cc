@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
@@ -97,15 +97,15 @@ TfLiteStatus EvalImpl(TfLiteContext* context, bool requires_broadcast,
     }
   }
   if (requires_broadcast) {
-    reference_ops::BroadcastBinaryFunction<T, T, T>(
-        GetTensorData<T>(input1), GetTensorDims(input1), denominator_data,
-        GetTensorDims(input2), GetTensorData<T>(output), GetTensorDims(output),
-        FloorDiv<T>);
+    reference_ops::BroadcastBinaryFunction4DSlow<T, T, T>(
+        GetTensorShape(input1), GetTensorData<T>(input1),
+        GetTensorShape(input2), denominator_data, GetTensorShape(output),
+        GetTensorData<T>(output), FloorDiv<T>);
   } else {
     reference_ops::BinaryFunction<T, T, T>(
-        GetTensorData<T>(input1), GetTensorDims(input1),
-        GetTensorData<T>(input2), GetTensorDims(input2),
-        GetTensorData<T>(output), GetTensorDims(output), FloorDiv<T>);
+        GetTensorShape(input1), GetTensorData<T>(input1),
+        GetTensorShape(input2), GetTensorData<T>(input2),
+        GetTensorShape(output), GetTensorData<T>(output), FloorDiv<T>);
   }
 
   return kTfLiteOk;

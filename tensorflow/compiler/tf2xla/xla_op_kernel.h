@@ -80,14 +80,14 @@ class XlaOpKernelContext {
   TensorShape InputShape(int index);
 
   // Returns the shape of input `name`.
-  TensorShape InputShape(StringPiece name);
+  TensorShape InputShape(absl::string_view name);
 
   // Returns input `index` as a XlaOp. Unlike
   // OpKernelContext::Input returns a symbolic value rather than a concrete
   // Tensor.
   const xla::XlaOp& Input(int index);
   // Returns input `name` as a XlaOp.
-  const xla::XlaOp& Input(StringPiece name);
+  const xla::XlaOp& Input(absl::string_view name);
 
   // Returns true if all inputs are the same shape, otherwise sets the
   // status to a non-OK value and returns false.
@@ -97,7 +97,7 @@ class XlaOpKernelContext {
   // Returns the named list-valued immutable input in "list", as
   // defined in the OpDef.  If the named output is not list-valued,
   // returns a one-element list.
-  Status InputList(StringPiece name, std::vector<xla::XlaOp>* handles,
+  Status InputList(absl::string_view name, std::vector<xla::XlaOp>* handles,
                    std::vector<TensorShape>* shapes);
 
   // Helper methods for constant inputs.
@@ -106,26 +106,27 @@ class XlaOpKernelContext {
   // expression cannot be evaluated, e.g., because it depends on unbound
   // parameters, returns a non-OK status.
   Status ConstantInput(int index, xla::Literal* constant_literal);
-  Status ConstantInput(StringPiece name, xla::Literal* constant_literal);
+  Status ConstantInput(absl::string_view name, xla::Literal* constant_literal);
 
   // Evaluates input `index`, reshapes it to `new_shape` if new_shape !=
   // InputShape(index), and stores it in `*constant_literal`. If the input
   // cannot be evaluated, e.g., because it depends on unbound parameters,
   // returns a non-Ok status. If InputShape(index).num_elements() !=
   // new_shape.num_elements(), returns an error status.
-  Status ConstantInputReshaped(int index, gtl::ArraySlice<int64> new_shape,
+  Status ConstantInputReshaped(int index, absl::Span<const int64> new_dims,
                                xla::Literal* constant_literal);
 
   // Converts a constant scalar int32 or int64 tensor into an int64.
   Status ConstantInputAsIntScalar(int index, int64* out);
-  Status ConstantInputAsIntScalar(StringPiece name, int64* out);
+  Status ConstantInputAsIntScalar(absl::string_view name, int64* out);
 
   // Converts a constant scalar float32 or float64 tensor into a float64.
   Status ConstantInputAsFloatScalar(int index, double* out);
 
   // Converts a constant 1D int32 or int64 tensor into a vector of int64s.
   Status ConstantInputAsIntVector(int index, std::vector<int64>* out);
-  Status ConstantInputAsIntVector(StringPiece name, std::vector<int64>* out);
+  Status ConstantInputAsIntVector(absl::string_view name,
+                                  std::vector<int64>* out);
 
   // Reshapes and converts a constant int32 or int64 tensor into a vector of
   // int64s.
@@ -133,7 +134,7 @@ class XlaOpKernelContext {
 
   // Converts a constant int32 or int64 Tensor into an xla int64 Literal.
   Status ConstantInputAsInt64Literal(int index, xla::Literal* out);
-  Status ConstantInputAsInt64Literal(StringPiece name, xla::Literal* out);
+  Status ConstantInputAsInt64Literal(absl::string_view name, xla::Literal* out);
 
   // Converts a constant 1D int32 or int64 tensor into a TensorShape.
   Status ConstantInputAsShape(int index, TensorShape* shape);
@@ -141,7 +142,7 @@ class XlaOpKernelContext {
   // Returns the named list-valued immutable input in "list", as
   // defined in the OpDef.  If the named output is not list-valued,
   // returns a one-element list.
-  Status ConstantInputList(StringPiece name,
+  Status ConstantInputList(absl::string_view name,
                            std::vector<xla::Literal>* literals);
 
   // Outputs
@@ -190,8 +191,8 @@ class XlaOpKernelContext {
                            xla::XlaOp* value);
   // Reads the current value of the resouce variable referred to by input
   // `name`.
-  Status ReadVariableInput(StringPiece name, DataType type, TensorShape* shape,
-                           xla::XlaOp* value);
+  Status ReadVariableInput(absl::string_view name, DataType type,
+                           TensorShape* shape, xla::XlaOp* value);
 
   // Assigns the value `handle` to the variable referenced by input
   // `input_index`. The variable must be of `type`. Returns an error if the
@@ -199,7 +200,8 @@ class XlaOpKernelContext {
   // different shape.
   Status AssignVariable(int input_index, DataType type, xla::XlaOp handle);
   // Assigns the value `handle` to the variable referenced by input `name`.
-  Status AssignVariable(StringPiece name, DataType type, xla::XlaOp handle);
+  Status AssignVariable(absl::string_view name, DataType type,
+                        xla::XlaOp handle);
 
   // Helper routines for the OP_REQUIRES macros
   void CtxFailure(const Status& s);
@@ -248,7 +250,7 @@ class XlaOpKernelContext {
 
  private:
   // Returns the tensor of input `name`.
-  const Tensor& GetInputTensorByName(StringPiece name);
+  const Tensor& GetInputTensorByName(absl::string_view name);
 
   OpKernelContext* const context_;
 };

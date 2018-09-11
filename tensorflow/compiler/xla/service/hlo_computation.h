@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/macros.h"
@@ -170,6 +170,11 @@ class HloComputation {
   string ToString() const { return ToString(HloPrintOptions()); }
   string ToString(const HloPrintOptions& options) const;
 
+  // Overload which accepts an order to emit the instructions in.
+  string ToString(
+      const HloPrintOptions& options,
+      absl::Span<const HloInstruction* const> instruction_order) const;
+
   // Returns a serialized representation of this computation.
   HloComputationProto ToProto() const;
 
@@ -237,7 +242,7 @@ class HloComputation {
   // removed if they have no uses after fusion (this is necessarily true for at
   // least the root).
   HloInstruction* CreateFusionInstruction(
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
+      absl::Span<HloInstruction* const> instructions_to_fuse,
       HloInstruction::FusionKind fusion_kind);
 
   // Create a deep copy of the given instruction and return the instruction
@@ -385,7 +390,7 @@ class HloComputation {
   //
   // Pre-condition: fusion_instruction's opcode is kFusion.
   void FuseInstructionsInto(
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
+      absl::Span<HloInstruction* const> instructions_to_fuse,
       HloInstruction* fusion_instruction);
 
   // Internal helper for recursive copying of an instruction. Creates and

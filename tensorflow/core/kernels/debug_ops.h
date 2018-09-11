@@ -255,7 +255,7 @@ class DebugNanCountOp : public BaseDebugOp {
     TensorShape shape({1});
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output_tensor));
     output_tensor->vec<int64>()(0) = nan_count;
-    PublishTensor(*output_tensor);
+    OP_REQUIRES_OK(context, PublishTensor(*output_tensor));
   }
 };
 
@@ -380,7 +380,7 @@ class DebugNumericSummaryOp : public BaseDebugOp {
     bool mute = mute_if_healthy_ && nan_count == 0 && negative_inf_count == 0 &&
                 positive_inf_count == 0;
     if (!mute) {
-      PublishTensor(*output_tensor);
+      OP_REQUIRES_OK(context, PublishTensor(*output_tensor));
     }
   }
 

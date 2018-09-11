@@ -20,8 +20,8 @@ limitations under the License.
 #include <iostream>
 #include <limits>
 
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/eigen_support.h"
 #include "tensorflow/contrib/lite/kernels/gemm_support.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/cblas_conv.h"
@@ -249,6 +249,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE_STATUS(AllocateTemporaryTensorsIfRequired(context, node));
 
+  int channels_in = filter->dims->data[3];
   int channels_out = filter->dims->data[0];
   int width = input->dims->data[2];
   int height = input->dims->data[1];
@@ -372,12 +373,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         data->scaling_factors_id;
     TfLiteTensor* scaling_factors =
         GetTemporary(context, node, data->scaling_factors_index);
-    scaling_factors->type = kTfLiteInt32;
+    scaling_factors->type = kTfLiteFloat32;
     scaling_factors->allocation_type = kTfLiteArenaRw;
     TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
     // Only one scale factor per batch is typically necessary. See optimized
-    // implementation for why we need to allocate for height elements here.
-    scaling_factors_size->data[0] = height;
+    // implementation for why we need to allocate for the height of the inputs
+    // flattened to 2D.
+    scaling_factors_size->data[0] = NumElements(input) / channels_in;
     if (!TfLiteIntArrayEqual(scaling_factors->dims, scaling_factors_size)) {
       TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
                                                        scaling_factors_size));
@@ -549,7 +551,10 @@ void EvalHybrid(TfLiteContext* context, TfLiteNode* node,
     scaling_factors_ptr[b] *= filter->params.scale;
   }
 
-  int8_t* im2col_ptr = reinterpret_cast<int8_t*>(im2col->data.uint8);
+  int8_t* im2col_ptr = nullptr;
+  if (im2col != nullptr) {
+    im2col_ptr = reinterpret_cast<int8_t*>(im2col->data.uint8);
+  }
   int8_t* filter_ptr = reinterpret_cast<int8_t*>(filter->data.uint8);
 
   switch (kernel_type) {

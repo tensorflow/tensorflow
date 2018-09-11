@@ -29,11 +29,6 @@ namespace xla {
 namespace {
 
 class HloDomainTest : public HloVerifiedTestBase {
- public:
-  HloDomainTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false) {}
-
  protected:
   bool FindUserViaDomainPath(HloInstruction* instruction,
                              HloInstruction* operand) const {
@@ -103,6 +98,8 @@ class OpNameMetadata : public DomainMetadata {
   string ToString() const override { return opname_; }
 
   static absl::string_view KindName() { return "opname"; }
+
+  size_t Hash() const override { return std::hash<string>()(opname_); }
 
  private:
   string opname_;

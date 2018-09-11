@@ -70,7 +70,7 @@ py_library(
 py_test(
     name = "lite_test",
     srcs = ["lite_test.py"],
-    data = ["@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pbtxt"],
+    data = ["@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb"],
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",

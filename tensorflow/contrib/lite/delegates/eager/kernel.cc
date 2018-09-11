@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "flatbuffers/flexbuffers.h"  // flatbuffers
 #include "tensorflow/contrib/lite/builtin_ops.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/context_util.h"
 #include "tensorflow/contrib/lite/delegates/eager/delegate_data.h"
 #include "tensorflow/contrib/lite/delegates/eager/util.h"
@@ -278,7 +278,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TfLiteTensor* tensor = &context->tensors[tensor_index];
     TF_LITE_ENSURE_OK(
         context,
-        CopyShape(context, buffer_map->GetTensor(tensor_index), tensor));
+        CopyShapeAndType(context, buffer_map->GetTensor(tensor_index), tensor));
     tensor->buffer_handle = tensor_index;
     tensor->data_is_stale = true;
   }

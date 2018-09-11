@@ -22,7 +22,7 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_LITE_UTIL_H_
 
 #include <vector>
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 
 namespace tflite {
 

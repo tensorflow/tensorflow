@@ -372,7 +372,7 @@ Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
 }
 
 StatusOr<std::shared_ptr<const HloSharding>> ExtractOriginalCommonSharding(
-    tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
+    absl::Span<HloInstruction* const> instructions) {
   // If we are here, all the instructions being passed had the same sharding
   // (or no sharding), by the means of the ShardingMatches() API.
   // As such, no kDomain was inserted, and here we are asked to extract the
@@ -420,6 +420,13 @@ bool ShardingMetadata::Matches(const DomainMetadata& other) const {
   return other_ptr->sharding_ != nullptr
              ? ShardingMatches(*sharding_, *other_ptr->sharding_)
              : false;
+}
+
+size_t ShardingMetadata::Hash() const {
+  if (sharding_ != nullptr) {
+    return sharding_->Hash();
+  }
+  return static_cast<size_t>(0x297814aaad196e6dULL);
 }
 
 string ShardingMetadata::ToString() const {

@@ -40,6 +40,13 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Forward declarations to avoid introducing a dependency on headers in
+// "tensorflow/core/graph/...".
+class GraphDefBuilder;
+class Node;
+
+namespace data {
+
 class DatasetBase;
 class SerializationContext;
 
@@ -65,11 +72,6 @@ class IteratorStateWriter {
 
   virtual ~IteratorStateWriter() {}
 };
-
-// Forward declarations to avoid introducing a dependency on headers in
-// "tensorflow/core/graph/...".
-class GraphDefBuilder;
-class Node;
 
 // Wrapper around GraphDefBuilder. Used to serialize Dataset graph.
 class GraphDefBuilderWrapper {
@@ -110,14 +112,29 @@ class GraphDefBuilderWrapper {
     return Status::OK();
   }
 
-  // Adds a Const node with Tensor value to the Graph.
+  // Adds a `Const` node for the given tensor value to the graph.
+  //
   // `*output` contains a pointer to the output `Node`. It is guaranteed to be
-  // non-null if the method returns with an OK status.
-  // The returned Node pointer is owned by the backing Graph of GraphDefBuilder.
+  // non-null if the method returns with an OK status. The returned `Node`
+  // pointer is owned by the backing graph of `GraphDefBuilder`.
   Status AddTensor(const Tensor& val, Node** output) {
     AddTensorInternal(val, output);
     if (*output == nullptr) {
       return errors::Internal("AddTensor: Failed to build Const op.");
+    }
+    return Status::OK();
+  }
+
+  // Adds a `Placeholder` node for the given tensor value to the graph.
+  //
+  // `*output` contains a pointer to the output `Node`. It is guaranteed to be
+  // non-null if the method returns with an OK status. The returned `Node`
+  // pointer is owned by the backing graph of `GraphDefBuilder`.
+  Status AddPlaceholder(const Tensor& val, Node** output) {
+    AddPlaceholderInternal(val, output);
+    if (*output == nullptr) {
+      return errors::Internal(
+          "AddPlaceholder: Failed to build Placeholder op.");
     }
     return Status::OK();
   }
@@ -168,6 +185,7 @@ class GraphDefBuilderWrapper {
   }
 
  private:
+  void AddPlaceholderInternal(const Tensor& val, Node** output);
   void AddTensorInternal(const Tensor& val, Node** output);
 
   Status EnsureFunctionIsStateless(const FunctionLibraryDefinition& flib_def,
@@ -206,8 +224,7 @@ class GraphDefBuilderWrapper {
     return (str_util::EndsWith(op_def->name(), "Dataset") &&
             op_def->output_arg_size() == 1 &&
             op_def->output_arg(0).type() == DT_VARIANT) ||
-           dataset::WhitelistedStatefulOpRegistry::Global()->Contains(
-               op_def->name());
+           WhitelistedStatefulOpRegistry::Global()->Contains(op_def->name());
   }
 
   bool HasAttr(const string& op_type_name, const string& attr_name) const;
@@ -334,7 +351,8 @@ class SerializationContext {
  public:
   struct Params {
     bool allow_stateful_functions = false;
-    const FunctionLibraryDefinition* flib_def;  // Not owned.
+    const FunctionLibraryDefinition* flib_def = nullptr;           // Not owned.
+    std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
   };
 
   explicit SerializationContext(Params params) : params_(std::move(params)) {}
@@ -342,6 +360,10 @@ class SerializationContext {
   bool allow_stateful_functions() { return params_.allow_stateful_functions; }
 
   const FunctionLibraryDefinition& flib_def() { return *params_.flib_def; }
+
+  std::vector<std::pair<string, Tensor>>* input_list() {
+    return params_.input_list;
+  }
 
  private:
   Params params_;
@@ -729,6 +751,21 @@ class BackgroundWorker {
   bool cancelled_ GUARDED_BY(mu_) = false;
   std::deque<std::function<void()>> work_queue_ GUARDED_BY(mu_);
 };
+
+}  // namespace data
+
+// TODO(b/114112161): Remove these aliases when all users have moved over to the
+// `tensorflow::data` namespace.
+using data::DatasetBase;
+using data::DatasetContext;
+using data::DatasetIterator;
+using data::DatasetOpKernel;
+using data::IteratorBase;
+using data::IteratorContext;
+using data::IteratorStateReader;
+using data::IteratorStateWriter;
+using data::SerializationContext;
+using data::UnaryDatasetOpKernel;
 
 }  // namespace tensorflow
 

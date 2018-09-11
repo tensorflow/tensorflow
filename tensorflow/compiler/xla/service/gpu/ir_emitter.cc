@@ -141,7 +141,7 @@ Status IrEmitter::HandleTuple(HloInstruction* tuple) {
 
 Status IrEmitter::EmitCallToNestedComputation(
     const HloComputation& nested_computation,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands, llvm::Value* output) {
+    absl::Span<llvm::Value* const> operands, llvm::Value* output) {
   TF_RET_CHECK(nested_computation.num_parameters() > 0);
   llvm::Function*& emitted_function =
       computation_to_ir_function_[&nested_computation];
@@ -633,7 +633,7 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce) {
   }
   auto arg = reduce->operand(0);
   auto init_value = reduce->operand(1);
-  tensorflow::gtl::ArraySlice<int64> dimensions(reduce->dimensions());
+  absl::Span<const int64> dimensions(reduce->dimensions());
   HloComputation* function = reduce->to_apply();
   return EmitTargetElementLoop(
       *reduce,
@@ -748,7 +748,7 @@ Status IrEmitter::HandleBatchNormGrad(HloInstruction*) {
 
 StatusOr<llvm::Value*> IrEmitter::ComputeNestedElement(
     const HloComputation& computation,
-    tensorflow::gtl::ArraySlice<llvm::Value*> parameter_elements) {
+    absl::Span<llvm::Value* const> parameter_elements) {
   llvm::Value* return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
       llvm_ir::PrimitiveTypeToIrType(
           computation.root_instruction()->shape().element_type(), module_),
@@ -762,6 +762,21 @@ StatusOr<llvm::Value*> IrEmitter::ComputeNestedElement(
   TF_RETURN_IF_ERROR(EmitCallToNestedComputation(computation, parameter_buffers,
                                                  return_buffer));
   return Load(return_buffer);
+}
+
+std::vector<llvm_ir::IrArray> IrEmitter::ConstructIrArrayForOutputs(
+    const HloInstruction& hlo) {
+  std::vector<llvm_ir::IrArray> output_arrays;
+  if (ShapeUtil::IsTuple(hlo.shape())) {
+    int64 num_outputs = ShapeUtil::TupleElementCount(hlo.shape());
+    output_arrays.reserve(num_outputs);
+    for (int64 i = 0; i < num_outputs; ++i) {
+      output_arrays.push_back(GetIrArray(hlo, hlo, {i}));
+    }
+  } else {
+    output_arrays.push_back(GetIrArray(hlo, hlo));
+  }
+  return output_arrays;
 }
 
 }  // namespace gpu

@@ -21,13 +21,13 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -242,7 +242,7 @@ class ForLoopNest {
   // size equals the rank of shape and there is a null for each
   // dimension that is not in "dimensions".
   IrArray::Index AddLoopsForShapeOnDimensions(
-      const Shape& shape, tensorflow::gtl::ArraySlice<int64> dimensions,
+      const Shape& shape, absl::Span<const int64> dimensions,
       absl::string_view suffix);
 
   // Emits a series of nested loops for iterating over an operand array. Loops

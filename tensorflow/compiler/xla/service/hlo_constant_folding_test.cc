@@ -105,8 +105,8 @@ TEST_F(HloConstantFoldingTest, ConvertF32ArrayToS64Array) {
 TEST_F(HloConstantFoldingTest, Concatenate) {
   const struct TestConfig {
     int concat_dimension;
-    tensorflow::gtl::ArraySlice<int64> dimensions;
-    tensorflow::gtl::ArraySlice<int64> concat_sizes;
+    absl::Span<const int64> dimensions;
+    absl::Span<const int64> concat_sizes;
   } test_configs[] = {
       {1, {11, 0, 7, 5, 9}, {2, 5, 7, 11}},
       {3, {1, 4, 17, 0, 8}, {1, 3, 9, 12}},
@@ -175,7 +175,7 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   TF_ASSERT_OK_AND_ASSIGN(auto literal,
                           LiteralUtil::CreateRandomLiteral<F32>(
                               ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
-  auto literal_clone = literal->Literal::CloneToUnique();
+  auto literal_clone = literal.Clone();
   HloInstruction* literal_instruction = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
   Shape shape = ShapeUtil::MakeShape(F32, {8, 7, 11, 9, 5});
@@ -196,9 +196,9 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<F32>::type;
   bool matched = true;
   root->literal().EachCell<NativeT>(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, NativeT value) {
+      [&](absl::Span<const int64> indices, NativeT value) {
         std::vector<int64> rindexes = Permute(permutation, indices);
-        matched = matched && (value == literal_clone->Get<NativeT>(rindexes));
+        matched = matched && (value == literal_clone.Get<NativeT>(rindexes));
       });
   EXPECT_TRUE(matched);
 }

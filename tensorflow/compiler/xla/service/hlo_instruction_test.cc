@@ -41,10 +41,6 @@ using ::testing::UnorderedElementsAre;
 
 class HloInstructionTest : public HloVerifiedTestBase {
  protected:
-  HloInstructionTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false) {}
-
   Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
 };
 
@@ -1151,8 +1147,8 @@ TEST_F(HloInstructionTest, CloneOfFusionPreservesShape) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  HloInstruction* dot = builder.AddInstruction(
-      HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
+  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+      sout, x, reshape, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto module = CreateNewModule();
   auto* computation = module->AddEntryComputation(builder.Build());
@@ -1192,8 +1188,8 @@ TEST_F(HloInstructionTest, NoRedundantFusionOperandsAfterReplacingUse) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  HloInstruction* dot = builder.AddInstruction(
-      HloInstruction::CreateDot(s, x, reshape, dot_dnums));
+  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+      s, x, reshape, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto module = CreateNewModule();
   auto* computation = module->AddEntryComputation(builder.Build());
@@ -1243,8 +1239,8 @@ TEST_F(HloInstructionTest, NestedFusionEquality) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto dot = builder.AddInstruction(
-      HloInstruction::CreateDot(data_shape, a, b_t, dot_dnums));
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      data_shape, a, b_t, dot_dnums, DefaultPrecisionConfig(2)));
   auto one = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto add_operand = builder.AddInstruction(
@@ -1324,8 +1320,8 @@ TEST_F(HloInstructionTest, Stringification) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  HloInstruction* dot = builder.AddInstruction(
-      HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
+  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+      sout, x, reshape, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto options = HloPrintOptions().set_print_metadata(false);
 
@@ -1489,8 +1485,8 @@ TEST_F(HloInstructionTest, CanonnicalStringificationFusion) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  HloInstruction* dot = builder.AddInstruction(
-      HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
+  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+      sout, x, reshape, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto options = HloPrintOptions().Canonical();
 
@@ -1531,8 +1527,8 @@ TEST_F(HloInstructionTest, CanonnicalStringificationWhile) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  HloInstruction* dot = builder.AddInstruction(
-      HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
+  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+      sout, x, reshape, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto module = CreateNewModule();
   auto* computation = module->AddEntryComputation(builder.Build());
@@ -1587,8 +1583,8 @@ TEST_F(HloInstructionTest, CanonnicalStringificationConditional) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  HloInstruction* dot = builder.AddInstruction(
-      HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
+  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+      sout, x, reshape, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto module = CreateNewModule();
   auto* computation = module->AddEntryComputation(builder.Build());
@@ -1741,6 +1737,24 @@ TEST_F(HloInstructionTest, CloneDnumsOnCustomCall) {
   EXPECT_TRUE(protobuf_util::ProtobufEquals(
       clone->convolution_dimension_numbers(), dnums))
       << clone->convolution_dimension_numbers().DebugString();
+}
+
+TEST_F(HloInstructionTest, PreserveOperandPrecisionOnCloneConv) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  ENTRY test {
+    arg0 = f32[1,2,1] parameter(0)
+    arg1 = f32[1,1,1] parameter(1)
+    ROOT conv = f32[1,2,1] convolution(arg0, arg1), window={size=1},
+      dim_labels=b0f_0io->b0f, operand_precision={high,default}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kHloString));
+  auto* conv = module->entry_computation()->root_instruction();
+
+  auto clone = conv->Clone();
+  EXPECT_THAT(
+      clone->precision_config().operand_precision(),
+      ::testing::ElementsAre(PrecisionConfig::HIGH, PrecisionConfig::DEFAULT));
 }
 
 }  // namespace

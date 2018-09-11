@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TENSOR_UTILS_H_
 #define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TENSOR_UTILS_H_
 
-#include "tensorflow/contrib/lite/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
 
 #if defined(_MSC_VER)
 #define __restrict__ __restrict
@@ -113,6 +113,10 @@ void VectorBatchVectorCwiseProductAccumulate(const float* vector, int v_size,
                                              const float* batch_vector,
                                              int n_batch, float* result);
 
+// Add another vector for each batch in the batch vector.
+void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
+                          float* batch_vector);
+
 // Batch vector initialization with another vector.
 void VectorBatchVectorAssign(const float* vector, int v_size, int n_batch,
                              float* batch_vector);
@@ -152,6 +156,12 @@ void VectorShiftLeft(float* vector, int v_size, float shift_value);
 // added to get one element of output.
 void ReductionSumVector(const float* input_vector, float* output_vector,
                         int output_size, int reduction_size);
+
+// Layer norm for each batch.
+// normalization_epsilon is added to avoid divergence.
+void MeanStddevNormalization(const float* input_vector, float* output_vector,
+                             int v_size, int n_batch,
+                             float normalization_epsilon);
 }  // namespace tensor_utils
 }  // namespace tflite
 

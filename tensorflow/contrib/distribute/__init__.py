@@ -28,6 +28,7 @@ from tensorflow.contrib.distribute.python.parameter_server_strategy import Param
 from tensorflow.contrib.distribute.python.step_fn import *
 from tensorflow.contrib.distribute.python.tpu_strategy import TPUStrategy
 from tensorflow.python.distribute.distribute_config import DistributeConfig
+from tensorflow.python.distribute.distribute_coordinator import run_standard_tensorflow_server
 from tensorflow.python.training.distribute import *
 from tensorflow.python.training.distribution_strategy_context import *
 
@@ -56,6 +57,7 @@ _allowed_symbols = [
     'get_tower_context',
     'has_distribution_strategy',
     'require_tower_context',
+    'run_standard_tensorflow_server',
     'UpdateContext',
 ]
 

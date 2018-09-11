@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -855,8 +855,7 @@ void LayoutAssignment::SetupCopiedInstruction(const HloInstruction& instruction,
             ? instruction.sharding().GetSubSharding(instruction.shape(), index)
             : instruction.sharding();
     // We propagate the sharding to the copied instruction only if it is a
-    // special sharding, like tiled ones, or special devices like the
-    // HostCompute module.
+    // special sharding, like tiled ones.
     // Otherwise it is preferable to leave the new instruction without device,
     // and let the automatic device placer to choose the best location.
     auto device = sharding.UniqueDevice();

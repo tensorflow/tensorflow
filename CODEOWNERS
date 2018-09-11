@@ -54,9 +54,11 @@
 /tensorflow/contrib/slim/ @sguada @thenbasilmanran
 /tensorflow/contrib/stateless/ @girving @alextp
 /tensorflow/contrib/tensor_forest/ @gilberthendry @thomascolthurst @yupbank
-/tensorflow/contrib/tensorrt/ @laigd
+/tensorflow/contrib/tensorrt/ @aaroey
 # NEED OWNER: /tensorflow/contrib/testing/
 /tensorflow/contrib/timeseries/ @allenlavoie
 /tensorflow/contrib/tpu/ @frankchn @saeta @jhseu @sourabhbajaj
 /tensorflow/contrib/training/ @joel-shor @ebrevdo
 /tensorflow/contrib/util/ @sherrym
+
+/third_party/systemlibs/ @perfinion

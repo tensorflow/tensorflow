@@ -110,6 +110,42 @@ class TemplatesTest(test.TestCase):
     self.assertIsInstance(node.body[0].targets[0].value.ctx, gast.Load)
     self.assertIsInstance(node.body[0].targets[0].value.value.ctx, gast.Load)
 
+  def test_replace_list_context(self):
+    template = """
+      def test_fn(foo):
+        foo = 0
+    """
+
+    node = templates.replace(template, foo=parser.parse_expression('[a, b]'))[0]
+    self.assertIsInstance(node.body[0].targets[0].ctx, gast.Store)
+    self.assertIsInstance(node.body[0].targets[0].elts[0].ctx, gast.Store)
+    self.assertIsInstance(node.body[0].targets[0].elts[1].ctx, gast.Store)
+
+  def test_replace_tuple_context(self):
+    template = """
+      def test_fn(foo):
+        foo = 0
+    """
+
+    node = templates.replace(template, foo=parser.parse_expression('(a, b)'))[0]
+    self.assertIsInstance(node.body[0].targets[0].ctx, gast.Store)
+    self.assertIsInstance(node.body[0].targets[0].elts[0].ctx, gast.Store)
+    self.assertIsInstance(node.body[0].targets[0].elts[1].ctx, gast.Store)
+
+  def test_replace_complex_context(self):
+    template = """
+      def test_fn(foo):
+        foo = 0
+    """
+
+    node = templates.replace(
+        template, foo=parser.parse_expression('bar(([a, b],)).baz'))[0]
+    self.assertIsInstance(node.body[0].targets[0].ctx, gast.Store)
+    function_call_arg = node.body[0].targets[0].value.args[0]
+    self.assertIsInstance(function_call_arg.elts[0].ctx, gast.Load)
+    self.assertIsInstance(function_call_arg.elts[0].elts[0].ctx, gast.Load)
+    self.assertIsInstance(function_call_arg.elts[0].elts[1].ctx, gast.Load)
+
   def test_replace_call_keyword(self):
     template = """
       def test_fn():

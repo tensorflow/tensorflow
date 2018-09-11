@@ -92,8 +92,7 @@ string FftTypeToString(se::fft::Type type) {
 
 }  // namespace
 
-FftThunk::FftThunk(FftType fft_type,
-                   tensorflow::gtl::ArraySlice<int64> fft_length,
+FftThunk::FftThunk(FftType fft_type, absl::Span<const int64> fft_length,
                    const BufferAllocation::Slice& input_buffer,
                    const BufferAllocation::Slice& output_buffer,
                    const Shape& input_shape, const Shape& output_shape,

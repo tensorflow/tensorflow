@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -124,6 +124,12 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   llvm::Value* GetBasePointer(const HloInstruction& inst) const {
     return bindings_.GetBasePointer(inst);
   }
+
+  // Generates the IrArray for each output of an hlo instruction and returns
+  // a vector containing such IrArrays.
+  std::vector<llvm_ir::IrArray> ConstructIrArrayForOutputs(
+      const HloInstruction& hlo);
+
   // A convenient helper for calling BufferAssignment::GetUniqueSlice.
   BufferAllocation::Slice GetAllocationSlice(
       const HloInstruction& hlo, const ShapeIndex& index = {}) const {
@@ -143,9 +149,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Emits a call in IR to the given nested computation with the given operands
   // and output. If no IR function has been previously emitted for the
   // computation, also emits such a function.
-  Status EmitCallToNestedComputation(
-      const HloComputation& nested_computation,
-      tensorflow::gtl::ArraySlice<llvm::Value*> operands, llvm::Value* output);
+  Status EmitCallToNestedComputation(const HloComputation& nested_computation,
+                                     absl::Span<llvm::Value* const> operands,
+                                     llvm::Value* output);
 
   // Emits an atomic operation that implements `nested_computation` in the
   // sequentially consistent memory model. `output_address` and `source_address`
@@ -199,7 +205,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   StatusOr<llvm::Value*> ComputeNestedElement(
       const HloComputation& computation,
-      tensorflow::gtl::ArraySlice<llvm::Value*> parameter_elements);
+      absl::Span<llvm::Value* const> parameter_elements);
 
   // Emits an atomic operation that implements `nested_computation` in the
   // sequentially consistent memory model. `output_address` and `source_address`

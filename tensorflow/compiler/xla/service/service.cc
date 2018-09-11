@@ -62,16 +62,15 @@ using absl::StrCat;
 using absl::StrFormat;
 
 // Records the arguments used to invoke a computation in an HloSnapshot proto.
-Status RecordArguments(
-    const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    se::Stream* stream, TransferManager* transfer_manager,
-    HloSnapshot* module) {
+Status RecordArguments(const absl::Span<const ShapedBuffer* const> arguments,
+                       se::Stream* stream, TransferManager* transfer_manager,
+                       HloSnapshot* module) {
   module->clear_arguments();
   for (const ShapedBuffer* argument : arguments) {
     TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<Literal> literal,
+        Literal literal,
         transfer_manager->TransferLiteralFromDevice(stream, *argument));
-    *module->add_arguments() = literal->ToProto();
+    *module->add_arguments() = literal.ToProto();
   }
   return Status::OK();
 }
@@ -81,9 +80,9 @@ Status RecordResult(const ShapedBuffer& result, se::Stream* stream,
                     TransferManager* transfer_manager, HloSnapshot* module) {
   module->clear_result();
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Literal> literal,
+      Literal literal,
       transfer_manager->TransferLiteralFromDevice(stream, result));
-  *module->mutable_result() = literal->ToProto();
+  *module->mutable_result() = literal.ToProto();
   return Status::OK();
 }
 
@@ -207,8 +206,8 @@ Status Service::ValidateResultShape(const Shape& client_shape,
 
 StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
 Service::ResolveAndValidateArguments(
-    tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
-    tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors) {
+    absl::Span<const GlobalDataHandle* const> arguments,
+    absl::Span<se::StreamExecutor* const> stream_executors) {
   CHECK_EQ(options_.number_of_replicas(), stream_executors.size());
   std::vector<std::vector<const ShapedBuffer*>> replicated_arguments;
   replicated_arguments.resize(options_.number_of_replicas());
@@ -242,7 +241,7 @@ Service::ResolveAndValidateArguments(
 
 StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
-    tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
+    absl::Span<const Shape* const> argument_shapes,
     const ExecutionOptions* execution_options) {
   auto config = absl::make_unique<HloModuleConfig>(program_shape);
   ComputationLayout* computation_layout =
@@ -299,7 +298,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
 
 StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    absl::Span<const ShapedBuffer* const> arguments,
     const ExecutionOptions& execution_options) {
   std::vector<const Shape*> argument_shapes;
   for (const auto* arg : arguments) {
@@ -367,12 +366,10 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
 
 StatusOr<std::vector<GlobalDataHandle>>
 Service::ExecuteParallelAndRegisterResult(
-    tensorflow::gtl::ArraySlice<Executable*> executables,
-    tensorflow::gtl::ArraySlice<std::vector<std::vector<const ShapedBuffer*>>>
-        arguments,
-    Backend* backend, tensorflow::gtl::ArraySlice<DeviceHandle> device_handles,
-    tensorflow::gtl::ArraySlice<string> result_tags,
-    ExecutionProfile* profile) {
+    absl::Span<Executable* const> executables,
+    absl::Span<const std::vector<std::vector<const ShapedBuffer*>>> arguments,
+    Backend* backend, absl::Span<const DeviceHandle> device_handles,
+    absl::Span<const string> result_tags, ExecutionProfile* profile) {
   // Streams where the computation are launched, so we can wait on the streams
   // to complete.
   std::vector<StreamPool::Ptr> streams;
@@ -511,8 +508,7 @@ Service::ExecuteParallelAndRegisterResult(
 
 StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     Executable* executable,
-    const tensorflow::gtl::ArraySlice<std::vector<const ShapedBuffer*>>
-        arguments,
+    const absl::Span<const std::vector<const ShapedBuffer*>> arguments,
     Backend* backend, const string& result_tag, ExecutionProfile* profile) {
   // Set up streams.
   std::vector<StreamPool::Ptr> streams;
@@ -555,8 +551,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
 
   // TODO(b/69985541): Support profiling also on this path.
 
-  std::vector<tensorflow::gtl::ArraySlice<const ShapedBuffer*>>
-      replicated_arguments;
+  std::vector<absl::Span<const ShapedBuffer* const>> replicated_arguments;
   for (const auto& arg : arguments) {
     replicated_arguments.push_back(arg);
   }
@@ -595,7 +590,7 @@ StatusOr<std::vector<se::StreamExecutor*>> Service::GetExecutors(
 
 StatusOr<std::vector<std::vector<const ShapedBuffer*>>> Service::GetArguments(
     const ExecutionOptions& execution_options,
-    tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments) {
+    absl::Span<const GlobalDataHandle* const> arguments) {
   // Resolve the allocations for the arguments of the computation, and create
   // a vector of device memory offsets for the arguments from the allocations.
   // In the case of partitioned computations, assume all arguments go on the
@@ -933,16 +928,15 @@ Status Service::TransferToClient(const TransferToClientRequest* arg,
                                        shaped_buffer->device_ordinal()));
 
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Literal> result_literal,
+      Literal result_literal,
       execute_backend_->transfer_manager()->TransferLiteralFromDevice(
           stream.get(), *shaped_buffer));
 
-  if (LayoutUtil::LayoutsInShapesEqual(*return_shape,
-                                       result_literal->shape())) {
-    *result->mutable_literal() = result_literal->ToProto();
+  if (LayoutUtil::LayoutsInShapesEqual(*return_shape, result_literal.shape())) {
+    *result->mutable_literal() = result_literal.ToProto();
   } else {
     *result->mutable_literal() =
-        result_literal->Relayout(*return_shape)->ToProto();
+        result_literal.Relayout(*return_shape).ToProto();
   }
   return Status::OK();
 }
@@ -964,9 +958,9 @@ std::unique_ptr<ShapedBuffer> CloneShapedBufferOnDevice(
 
 Status Service::TransferToServer(const TransferToServerRequest* arg,
                                  TransferToServerResponse* result) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
+  TF_ASSIGN_OR_RETURN(Literal literal,
                       Literal::CreateFromProto(arg->literal()));
-  const Shape& shape = literal->shape();
+  const Shape& shape = literal.shape();
 
   std::vector<se::StreamExecutor*> replicas;
   if (arg->has_device_handle()) {
@@ -988,7 +982,7 @@ Status Service::TransferToServer(const TransferToServerRequest* arg,
     TF_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(executor));
     TF_RETURN_IF_ERROR(
         execute_backend_->transfer_manager()->TransferLiteralToDevice(
-            stream.get(), *literal, shaped_buffer));
+            stream.get(), literal, shaped_buffer));
     replicated_buffers.emplace_back(std::move(shaped_buffer));
   }
   TF_ASSIGN_OR_RETURN(*result->mutable_data(),
@@ -1023,10 +1017,10 @@ Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
     executor = replicas[arg->replica_id()];
   }
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
+  TF_ASSIGN_OR_RETURN(Literal literal,
                       Literal::CreateFromProto(arg->literal()));
-  return execute_backend_->transfer_manager()->TransferLiteralToInfeed(
-      executor, *literal);
+  return execute_backend_->transfer_manager()->TransferLiteralToInfeed(executor,
+                                                                       literal);
 }
 
 Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
@@ -1054,8 +1048,8 @@ Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
 
   TF_RETURN_IF_ERROR(
       execute_backend_->transfer_manager()->TransferLiteralFromOutfeed(
-          executor, arg->shape_with_layout(), *literal));
-  *result->mutable_literal() = literal->ToProto();
+          executor, arg->shape_with_layout(), literal));
+  *result->mutable_literal() = literal.ToProto();
   return Status::OK();
 }
 
@@ -1090,18 +1084,17 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
                       HloModule::CreateFromProto(arg->computation(), config));
 
   HloEvaluator evaluator;
-  TF_ASSIGN_OR_RETURN(auto result_literal,
-                      evaluator.Evaluate<std::unique_ptr<Literal>>(
-                          *module, /*arg_literals=*/{}));
+  TF_ASSIGN_OR_RETURN(auto result_literal, evaluator.Evaluate<Literal>(
+                                               *module, /*arg_literals=*/{}));
 
   // Since the result layout is non-effective to the Evaluator results, explicit
   // relayout here.
   //
   // TODO(b/77824332): Make HloEvaluator take care of the re-layout.
   if (arg->has_output_layout()) {
-    result_literal = result_literal->Relayout(arg->output_layout());
+    result_literal = result_literal.Relayout(arg->output_layout());
   }
-  *result->mutable_literal() = result_literal->ToProto();
+  *result->mutable_literal() = result_literal.ToProto();
 
   return Status::OK();
 }

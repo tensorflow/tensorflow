@@ -31,7 +31,7 @@ class MiscTest(test.TestCase):
 
     new_a = alias_tensors(a)
     self.assertFalse(new_a is a)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual(1, sess.run(new_a))
 
   def test_alias_tensors(self):
@@ -46,7 +46,7 @@ class MiscTest(test.TestCase):
     self.assertTrue(new_v is v)
     self.assertTrue(new_s is s)
     self.assertTrue(new_l is l)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual(1, sess.run(new_a))
 
 

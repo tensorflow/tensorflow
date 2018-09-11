@@ -360,7 +360,7 @@ Status TuplePointsToAnalysis::HandleSend(HloInstruction* send) {
 }
 
 Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
-  tensorflow::gtl::ArraySlice<HloInstruction*> operands(tuple->operands());
+  absl::Span<HloInstruction* const> operands(tuple->operands());
   PointsToSet& points_to_set = CreateEmptyPointsToSet(tuple);
   points_to_set.AddPointedToBuffer(
       logical_buffer_analysis_->GetBuffer(tuple, /*index=*/{}),

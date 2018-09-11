@@ -34,7 +34,7 @@ def _rand(*size):
 class SummariesTest(test.TestCase):
 
   def testStructure(self):
-    with self.test_session():
+    with self.cached_session():
       inputs_shape = (1, 18, 19, 5)
       inputs = constant_op.constant(_rand(*inputs_shape))
       spec = "net = Cr(64, [5, 5])"
@@ -48,7 +48,7 @@ class SummariesTest(test.TestCase):
           "_ variablev2 conv variablev2 biasadd relu")
 
   def testStructureFromTensor(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = constant_op.constant(_rand(1, 18, 19, 5))
       spec = "net = Cr(64, [5, 5])"
       outputs = specs.create_net(spec, inputs)
@@ -60,7 +60,7 @@ class SummariesTest(test.TestCase):
           "_ variablev2 conv variablev2 biasadd relu")
 
   def testPrint(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = constant_op.constant(_rand(1, 18, 19, 5))
       spec = "net = Cr(64, [5, 5])"
       outputs = specs.create_net(spec, inputs)
@@ -70,7 +70,7 @@ class SummariesTest(test.TestCase):
       summaries.tf_spec_print(spec, inputs)
 
   def testSummary(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = constant_op.constant(_rand(1, 18, 19, 5))
       spec = "net = Cr(64, [5, 5])"
       outputs = specs.create_net(spec, inputs)

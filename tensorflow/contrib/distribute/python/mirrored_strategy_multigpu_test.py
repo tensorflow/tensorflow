@@ -1385,7 +1385,8 @@ class MultiWorkerMirroredStrategyTestWithChief(
     cls._default_target = "grpc://" + cls._cluster_spec["chief"][0]
 
   def testMinimizeLossGraph(self):
-    strategy = mirrored_strategy.MirroredStrategy(num_gpus=context.num_gpus())
+    strategy = mirrored_strategy.MirroredStrategy(
+        num_gpus_per_worker=context.num_gpus())
     strategy.configure(cluster_spec=self._cluster_spec)
     self._test_minimize_loss_graph(strategy, learning_rate=0.05)
 

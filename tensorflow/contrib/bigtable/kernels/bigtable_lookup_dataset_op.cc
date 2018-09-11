@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
@@ -226,4 +227,5 @@ REGISTER_KERNEL_BUILDER(Name("BigtableLookupDataset").Device(DEVICE_CPU),
                         BigtableLookupDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

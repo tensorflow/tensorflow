@@ -340,10 +340,6 @@ class MirroredVariable(DistributedVariable, Mirrored,
   """Holds a map from device to variables whose values are kept in sync."""
 
   def __init__(self, index, primary_var, aggregation):
-    # Use a weakref to make it easy to map from the contained values
-    # to the container without introducing a reference cycle.
-    for v in six.itervalues(index):
-      v._mirrored_container = weakref.ref(self)  # pylint: disable=protected-access
     self._primary_var = primary_var
     self._aggregation = aggregation
     super(MirroredVariable, self).__init__(index)

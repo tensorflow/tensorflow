@@ -33,6 +33,7 @@
 @@shard
 @@batch_parallel
 @@rewrite
+@@outside_compilation
 
 @@CrossShardOptimizer
 

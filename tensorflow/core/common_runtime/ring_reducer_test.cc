@@ -260,13 +260,17 @@ class RingReducerTest : public ::testing::Test {
     }
   }
 
-  void Reduce() {
+  void Reduce(int fail_after) {
     std::atomic<int> done(0);
     for (auto di : instances_) {
       SchedClosure([di, &done] {
         di->DoReduce();
         ++done;
       });
+      if (fail_after > 0) {
+        // Stagger the op execution starts.
+        Env::Default()->SleepForMicroseconds(100);
+      }
     }
     while (done < static_cast<int>(instances_.size())) {
       if (stop_) break;
@@ -296,7 +300,7 @@ class RingReducerTest : public ::testing::Test {
             }
           });
     }
-    Reduce();
+    Reduce(fail_after);
     if (fail_after > 0) {
       // Confirm that every device terminated with the expected error status.
       for (int di = 0; di < static_cast<int>(instances_.size()); ++di) {
@@ -640,6 +644,7 @@ DEF_TEST(INT64, CPU, 1, 2, 1, 1001, 0)
 DEF_TEST(INT64, CPU, 2, 8, 3, 4095, 0)
 
 // Failure tests
+DEF_TEST(FLOAT, CPU, 2, 8, 1, 9408, 1)
 DEF_TEST(FLOAT, CPU, 2, 8, 1, 9408, 7)
 DEF_TEST(FLOAT, CPU, 2, 8, 2, 9408, 11)
 #endif

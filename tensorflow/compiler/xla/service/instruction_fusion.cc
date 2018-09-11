@@ -219,7 +219,7 @@ bool InstructionFusion::CanFuseOnAllPaths(
 
 InstructionFusion::HloInstructionSet
 InstructionFusion::ComputeGloballyUnfusible(
-    tensorflow::gtl::ArraySlice<HloInstruction*> post_order) {
+    absl::Span<HloInstruction* const> post_order) {
   // Forbid fusion of producers that:
   // a) Need to be duplicated, unless they can be fused into all consumers
   //    via all paths.

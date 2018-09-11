@@ -35,7 +35,7 @@ bool CanBeLoopFused(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kDynamicSlice ||
          hlo.opcode() == HloOpcode::kDynamicUpdateSlice ||
          hlo.opcode() == HloOpcode::kGather ||
-         hlo.opcode() == HloOpcode::kPad ||
+         hlo.opcode() == HloOpcode::kIota || hlo.opcode() == HloOpcode::kPad ||
          hlo.opcode() == HloOpcode::kReshape ||
          hlo.opcode() == HloOpcode::kReverse ||
          hlo.opcode() == HloOpcode::kSlice ||

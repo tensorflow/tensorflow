@@ -46,8 +46,7 @@ namespace {
 //
 // In this case, we should be able to reuse p0 and output, although p0 has
 // multiple uses.
-bool MultiDynamicSliceUseShareSameIndices(
-    tensorflow::gtl::ArraySlice<HloUse> uses) {
+bool MultiDynamicSliceUseShareSameIndices(absl::Span<const HloUse> uses) {
   if (uses.empty()) {
     return false;
   }
@@ -221,7 +220,7 @@ string HloDataflowAnalysis::ToString() const {
 
 bool HloDataflowAnalysis::Phi(
     HloInstruction* instruction,
-    tensorflow::gtl::ArraySlice<const InstructionValueSet*> inputs) {
+    absl::Span<const InstructionValueSet* const> inputs) {
   CHECK(ssa_form_);
   VLOG(4) << "Phi(" << instruction->name() << ")";
   VLOG(5) << "instruction value set = "

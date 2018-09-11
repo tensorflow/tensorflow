@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -382,5 +382,5 @@ REGISTER_KERNEL_BUILDER(Name("PaddedBatchDatasetV2").Device(DEVICE_CPU),
                         PaddedBatchDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

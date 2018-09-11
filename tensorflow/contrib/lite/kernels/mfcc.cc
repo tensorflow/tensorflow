@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/lite/kernels/internal/mfcc.h"
 #include "flatbuffers/flexbuffers.h"  // flatbuffers
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/mfcc_dct.h"
 #include "tensorflow/contrib/lite/kernels/internal/mfcc_mel_filterbank.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"

@@ -464,6 +464,14 @@ std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
 }
 
 string HloComputation::ToString(const HloPrintOptions& options) const {
+  return ToString(options, MakeInstructionPostOrder());
+}
+
+string HloComputation::ToString(
+    const HloPrintOptions& options,
+    absl::Span<const HloInstruction* const> instruction_order) const {
+  CHECK_EQ(instruction_order.size(), instruction_count());
+
   std::ostringstream s;
   for (int i = 0; i < options.indent_amount(); i++) {
     s << "  ";
@@ -486,7 +494,9 @@ string HloComputation::ToString(const HloPrintOptions& options) const {
     new_options.set_indent_amount(options.indent_amount() + 1)
         .set_is_in_nested_computation(true);
     CanonicalNameMap name_map;
-    for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
+    for (const HloInstruction* instruction : instruction_order) {
+      CHECK_EQ(this, instruction->parent());
+
       for (int i = 0; i < new_options.indent_amount(); i++) {
         s << "  ";
       }
@@ -558,7 +568,7 @@ HloComputation::CreateFromProto(
 }
 
 void HloComputation::FuseInstructionsInto(
-    tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
+    absl::Span<HloInstruction* const> instructions_to_fuse,
     HloInstruction* fusion_instruction) {
   CHECK_EQ(HloOpcode::kFusion, fusion_instruction->opcode());
   HloInstruction* root = instructions_to_fuse.front();
@@ -577,7 +587,7 @@ void HloComputation::FuseInstructionsInto(
 }
 
 HloInstruction* HloComputation::CreateFusionInstruction(
-    tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
+    absl::Span<HloInstruction* const> instructions_to_fuse,
     HloInstruction::FusionKind fusion_kind) {
   HloInstruction* root = instructions_to_fuse.front();
   HloInstruction* fusion_instruction = AddInstruction(

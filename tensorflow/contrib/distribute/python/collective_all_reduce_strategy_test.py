@@ -62,7 +62,10 @@ class CollectiveAllReduceStrategyTestBase(
         num_gpus_per_worker=num_gpus)
     if task_type and task_id is not None:
       distribution.configure(
-          cluster_spec=self._cluster_spec, task_type=task_type, task_id=task_id)
+          session_config=self._sess_config,
+          cluster_spec=self._cluster_spec,
+          task_type=task_type,
+          task_id=task_id)
     collective_keys = cross_tower_utils.CollectiveKeys(
         group_key_start=10 * num_gpus +
         CollectiveAllReduceStrategyTestBase.collective_key_base,
@@ -187,11 +190,6 @@ class DistributedCollectiveAllReduceStrategyTest(
     cls._cluster_spec = multi_worker_test_base.create_in_process_cluster(
         num_workers=3, num_ps=0)
 
-  def setUp(self):
-    super(DistributedCollectiveAllReduceStrategyTest, self).setUp()
-    self._sess_config.experimental.collective_group_leader = (
-        '/job:worker/replica:0/task:0')
-
   @combinations.generate(
       combinations.combine(mode=['graph'], num_gpus=[0, 1, 2], required_gpus=1))
   def testMinimizeLossGraph(self, num_gpus):
@@ -221,8 +219,6 @@ class DistributedCollectiveAllReduceStrategyTestWithChief(
   def setUp(self):
     super(DistributedCollectiveAllReduceStrategyTestWithChief, self).setUp()
     self._run_options.experimental.collective_graph_key = 7
-    self._sess_config.experimental.collective_group_leader = (
-        '/job:chief/replica:0/task:0')
 
   @combinations.generate(
       combinations.combine(mode=['graph'], num_gpus=[0, 1, 2], required_gpus=1))

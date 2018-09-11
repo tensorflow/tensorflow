@@ -693,9 +693,6 @@ def strided_slice(input_,
   parent_name = name
 
   if not (var is None and isinstance(op, ops.EagerTensor)):
-    # TODO(b/113297051): Assigning a function to an EagerTensor seems to leak
-    # memory. Slicing variables still leaks, although ".assign" is removed for
-    # EagerTensors which are not variable slices to mitigate the issue.
     def assign(val, name=None):
       """Closure that holds all the arguments to create an assignment."""
 
@@ -1278,7 +1275,7 @@ unique_with_counts.__doc__ = gen_array_ops.unique_with_counts.__doc__
 def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   """Splits a tensor into sub tensors.
 
-  If `num_or_size_splits` is an integer type, `num_split`, then splits `value`
+  If `num_or_size_splits` is an integer type, then `value` is split
   along dimension `axis` into `num_split` smaller tensors.
   Requires that `num_split` evenly divides `value.shape[axis]`.
 

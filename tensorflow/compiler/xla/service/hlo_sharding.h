@@ -23,12 +23,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -66,7 +66,7 @@ class HloSharding {
   // shardings must match the number of leaf nodes in tuple_shape. For
   // empty tuples, the shardings array must have one element.
   static HloSharding Tuple(const Shape& tuple_shape,
-                           tensorflow::gtl::ArraySlice<HloSharding> shardings);
+                           absl::Span<const HloSharding> shardings);
 
   // Creates a new sharding for a tuple type, with a single input sharding
   // repeated on each leaf.
@@ -132,7 +132,7 @@ class HloSharding {
   // Returns the device that should execute the given tile.
   // It is an error to call this if is_replicated() is true.
   // REQUIRES: !IsTuple()
-  int64 DeviceForTileIndex(tensorflow::gtl::ArraySlice<int64> index) const;
+  int64 DeviceForTileIndex(absl::Span<const int64> index) const;
 
   // Given a device ID, returns the offset within the specified shape of the
   // tile that should be executed on the given core. This returns the lower

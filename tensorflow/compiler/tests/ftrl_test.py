@@ -29,7 +29,6 @@ from tensorflow.python.training import adagrad
 from tensorflow.python.training import ftrl
 from tensorflow.python.training import gradient_descent
 
-
 class FtrlOptimizerTest(xla_test.XLATestCase):
 
   def initVariableAndGradient(self, dtype):
@@ -196,7 +195,11 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
 
         # Validate updated params
         self.assertAllCloseAccordingToType(
-            np.array([-7.66718769, -10.91273689]), var0.eval(), rtol=1e-4)
+            np.array([-7.66718769, -10.91273689]),
+            var0.eval(),
+            rtol=1e-4,
+            bfloat16_rtol=1e-1,
+            bfloat16_atol=1e-1)
         self.assertAllCloseAccordingToType(
             np.array([-0.93460727, -1.86147261]), var1.eval(), rtol=1e-4)
 
