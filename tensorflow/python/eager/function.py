@@ -34,6 +34,7 @@ from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import c_api_util
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import ops
@@ -879,9 +880,6 @@ def _encode_arg(arg):
           _TensorType(arg.values.dtype, arg.values._shape_tuple()),
           _TensorType(arg.indices.dtype, arg.indices._shape_tuple()),
       ])
-  elif isinstance(arg, np.ndarray):
-    tensor = ops.convert_to_tensor(arg)
-    return _TensorType(tensor.dtype, tensor._shape_tuple())
   # pylint: enable=protected-access
   elif isinstance(arg, (list, tuple)):
     return tuple([_encode_arg(elem) for elem in arg])
@@ -1089,6 +1087,17 @@ class PolymorphicFunction(object):
       # opposed to named arguments called in a keyword-like fashion.
       kwds.pop(arg)
     inputs = args + _deterministic_dict_values(arg_indices_to_values)
+    flat_inputs = nest.flatten(inputs)
+
+    # Check for NumPy arrays in arguments and convert them to Tensors.
+    need_packing = False
+    for index, value in enumerate(flat_inputs):
+      if isinstance(value, np.ndarray):
+        flat_inputs[index] = constant_op.constant(value)
+        need_packing = True
+    if need_packing:
+      inputs = nest.pack_sequence_as(structure=inputs,
+                                     flat_sequence=flat_inputs)
     if self._input_signature is None:
       return inputs, kwds
     else:
@@ -1098,7 +1107,6 @@ class PolymorphicFunction(object):
       except (ValueError, TypeError):
         raise ValueError("Structure of Python function inputs does not match "
                          "input_signature.")
-      flat_inputs = nest.flatten(inputs)
       if any(not isinstance(arg, ops.Tensor) for arg in flat_inputs):
         raise ValueError("When input_signature is provided, all inputs to "
                          "the Python function must be Tensors.")
@@ -1270,6 +1278,11 @@ def defun(func=None, input_signature=None):
   of Tensor shapes and dtypes and Python values, it constructs a graph by
   tracing the execution of `f(*args, **kwargs)`; this graph is bound to an
   input signature inferred from `(*args, **kwargs)` and cached for future reuse.
+
+  NumPy arrays passed as inputs to `F` are converted to `tf.Tensor` objects
+  before being passed to `f`, and are treated as Tensors for caching. This
+  allows a function to be called multiple times with NumPy arrays having
+  different values but the same shape and dtype without re-tracing each time.
 
   `tf.contrib.eager.defun` caches graphs for your convenience, letting you
   define TensorFlow functions without explicitly specifying their signatures.
