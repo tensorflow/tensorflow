@@ -25,6 +25,8 @@ namespace tflite {
 namespace optimize {
 
 // Quantizes input_model and populates the provided builder with the new model.
+// By default only weights tensors weight more than 1024 elements will be
+// quantized.
 //
 // A tflite::Model can be obtained from the builder with:
 //   const uint8_t* buffer = builder->GetBufferPointer();
@@ -32,11 +34,22 @@ namespace optimize {
 TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const Model* input_model);
 
-// Same as above, but if use_hybrid_evaluation is false, will disable using
-// hybrid eval for operations that support it.
+// Same as above, but only weights with greater than or equal
+// weights_min_num_elements elements will be quantized.
+TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
+                             const Model* input_model,
+                             uint64_t weights_min_num_elements);
+
+namespace internal {
+// If use_hybrid_evaluation is false, will disable using hybrid eval for
+// operations that support it.
+//
+// We use this internal QuantizeWeights call to test models with hybrid
+// evaluation disabled.
 TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const Model* input_model,
                              bool use_hybrid_evaluation);
+}  // namespace internal
 
 }  // namespace optimize
 }  // namespace tflite

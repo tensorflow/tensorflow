@@ -40,7 +40,7 @@ class GroupByReducerTest(test.TestCase):
   def checkResults(self, dataset, shapes, values):
     self.assertEqual(shapes, dataset.output_shapes)
     get_next = dataset.make_one_shot_iterator().get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for expected in values:
         got = sess.run(get_next)
         self.assertEqual(got, expected)
@@ -129,7 +129,7 @@ class GroupByReducerTest(test.TestCase):
       self.assertIs(None, dataset.output_shapes[1].ndims)
       iterator = dataset.make_one_shot_iterator()
       get_next = iterator.get_next()
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         x, y = sess.run(get_next)
         self.assertAllEqual([0] * (2**i), x)
         self.assertAllEqual(np.array(1, ndmin=i), y)
@@ -192,7 +192,7 @@ class GroupByReducerTest(test.TestCase):
         (dataset_ops.Dataset.range(10), dataset_ops.Dataset.range(10))).apply(
             grouping.group_by_reducer(lambda x, y: np.int64(0), reducer))
     get_next = dataset.make_one_shot_iterator().get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x, y = sess.run(get_next)
       self.assertAllEqual(x, np.asarray([x for x in range(10)]))
       self.assertEqual(y, 45)
@@ -210,7 +210,7 @@ class GroupByWindowTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       counts = []
       with self.assertRaises(errors.OutOfRangeError):
@@ -237,7 +237,7 @@ class GroupByWindowTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       # The input is infinite, so this test demonstrates that:
       # 1. We produce output without having to consume the entire input,
@@ -258,7 +258,7 @@ class GroupByWindowTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       self.assertAllEqual([0, 0, 0, 0], sess.run(get_next))
       self.assertAllEqual([1, 1, 1, 1], sess.run(get_next))
@@ -275,7 +275,7 @@ class GroupByWindowTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
@@ -301,7 +301,7 @@ class GroupByWindowTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(get_next)
@@ -329,7 +329,7 @@ class GroupByWindowTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       counts = []
       with self.assertRaises(errors.OutOfRangeError):
@@ -376,7 +376,7 @@ class BucketTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
 
       which_bucket, bucketed_values = sess.run(get_next)
@@ -411,7 +411,7 @@ class BucketTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
 
       # Get two minibatches (one containing even values, one containing odds)
@@ -482,7 +482,7 @@ class BucketTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
 
       # Get two minibatches ([0, 2, ...] and [64, 66, ...])
@@ -515,7 +515,7 @@ class BucketTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       with self.assertRaises(errors.OutOfRangeError):
         batches = 0
@@ -556,7 +556,7 @@ class BucketBySequenceLength(test.TestCase):
                 element_len, boundaries, batch_sizes))
     batch, = dataset.make_one_shot_iterator().get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       batches = []
       for _ in range(4):
         batches.append(sess.run(batch))
@@ -600,7 +600,7 @@ class BucketBySequenceLength(test.TestCase):
                 pad_to_bucket_boundary=True))
     batch, = dataset.make_one_shot_iterator().get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       batches = []
       for _ in range(3):
         batches.append(sess.run(batch))
@@ -637,7 +637,7 @@ class BucketBySequenceLength(test.TestCase):
                 pad_to_bucket_boundary=True))
     batch, = dataset.make_one_shot_iterator().get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       batches = []
       for _ in range(5):
         batches.append(sess.run(batch))

@@ -1083,7 +1083,7 @@ class MklConvOp : public OpKernel {
 #endif
 
 // Register 2D operations
-#define REGISTER_MKL_CPU(T)                                         \
+#define REGISTER_MKL_CPU_2D(T)                                      \
   REGISTER_KERNEL_BUILDER(Name("_MklConv2D")                        \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
@@ -1100,16 +1100,16 @@ class MklConvOp : public OpKernel {
                               .Label(mkl_op_registry::kMklOpLabel), \
                           MklDummyOp<CPUDevice, T>);
 
-TF_CALL_float(REGISTER_MKL_CPU);
+TF_CALL_float(REGISTER_MKL_CPU_2D);
 
 // Register 3D operations
-#define REGISTER_MKL_CPU(T)                                         \
+#define REGISTER_MKL_CPU_3D(T)                                      \
   REGISTER_KERNEL_BUILDER(Name("_MklConv3D")                        \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \
                           MklConvOp<CPUDevice, T, false>);
-TF_CALL_float(REGISTER_MKL_CPU);
+TF_CALL_float(REGISTER_MKL_CPU_3D);
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL

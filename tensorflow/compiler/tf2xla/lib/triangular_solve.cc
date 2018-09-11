@@ -110,9 +110,9 @@ xla::XlaOp DiagonalBlocks(xla::XlaOp a, int64 block_size) {
   });
 }
 
-xla::XlaOp InvertDiagonalBlocks(
-    xla::XlaOp diag_blocks, bool lower, bool transpose_a, bool conjugate_a,
-    xla::PrecisionConfigProto::Precision precision) {
+xla::XlaOp InvertDiagonalBlocks(xla::XlaOp diag_blocks, bool lower,
+                                bool transpose_a, bool conjugate_a,
+                                xla::PrecisionConfig::Precision precision) {
   xla::XlaBuilder* builder = diag_blocks.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
     // Input is a batch of square lower triangular square matrices. Its shape is
@@ -216,7 +216,7 @@ xla::XlaOp InvertDiagonalBlocks(
       dnums.add_rhs_batch_dimensions(0);
       dnums.add_lhs_contracting_dimensions(2);
       dnums.add_rhs_contracting_dimensions(1);
-      xla::PrecisionConfigProto precision_proto;
+      xla::PrecisionConfig precision_proto;
       precision_proto.add_operand_precision(precision);
       precision_proto.add_operand_precision(precision);
       auto update = -DotGeneral(input_row, body_out, dnums, &precision_proto);
@@ -245,7 +245,7 @@ xla::XlaOp InvertDiagonalBlocks(
 xla::XlaOp SolveWithInvertedDiagonalBlocks(
     xla::XlaOp a, xla::XlaOp b, xla::XlaOp inv_diag_blocks, bool left_side,
     bool lower, bool transpose_a, bool conjugate_a,
-    xla::PrecisionConfigProto::Precision precision) {
+    xla::PrecisionConfig::Precision precision) {
   xla::XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
     TF_ASSIGN_OR_RETURN(xla::Shape blocks_shape,
@@ -346,7 +346,7 @@ xla::XlaOp SolveWithInvertedDiagonalBlocks(
 xla::XlaOp TriangularSolve(xla::XlaOp a, xla::XlaOp b, bool left_side,
                            bool lower, bool transpose_a, bool conjugate_a,
                            int64 block_size,
-                           xla::PrecisionConfigProto::Precision precision) {
+                           xla::PrecisionConfig::Precision precision) {
   xla::XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
     TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));

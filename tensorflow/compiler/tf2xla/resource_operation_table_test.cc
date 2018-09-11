@@ -34,7 +34,7 @@ bool HasResourceInputOrOutput(const OpDef& op_def) {
 
 TEST(ResourceOperationTableTest, HaveAllResourceOps) {
   gtl::FlatMap<string, bool> known_resource_ops;
-  for (StringPiece known_resource_op :
+  for (absl::string_view known_resource_op :
        resource_op_table_internal::GetKnownResourceOps()) {
     ASSERT_TRUE(
         known_resource_ops.insert({string(known_resource_op), false}).second);

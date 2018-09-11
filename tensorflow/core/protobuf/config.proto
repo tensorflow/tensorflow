@@ -390,9 +390,12 @@ message ConfigProto {
   message Experimental {
     // Task name for group resolution.
     string collective_group_leader = 1;
-    // Whether the client will format templated errors. For example, the string:
-    // "The node was defined on ^^node:Foo:${file}:${line}^^".
-    bool client_handles_error_formatting = 2;
+
+    // We removed the flag client_handles_error_formatting. Marking the tag
+    // number as reserved.
+    // TODO(shikharagarwal): Should we just remove this tag so that it can be
+    // used in future for other purpose?
+    reserved 2;
 
     // Which executor to use, the default executor will be used
     // if it is an empty string or "DEFAULT"

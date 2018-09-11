@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 
+#include "structmember.h"  // NOLINT // For PyMemberDef
+
 // forward declare
 struct EagerTensor;
 
@@ -325,12 +327,36 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   PyObject* context = nullptr;
   PyObject* device = nullptr;
   PyObject* dtype = Py_None;
-  const char* kwlist[] = {"value", "context", "device", "dtype", nullptr};
-  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOO|O",
+  PyObject* other_value = nullptr;
+  const char* kwlist[] = {"value", "context",     "device",
+                          "dtype", "other_value", nullptr};
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOO|OO",
                                    const_cast<char**>(kwlist), &value, &context,
-                                   &device, &dtype)) {
+                                   &device, &dtype, &other_value)) {
     return -1;
   }
+
+  if (other_value != nullptr) {
+    if (!EagerTensor_CheckExact(other_value)) {
+      PyErr_SetString(PyExc_TypeError,
+                      tensorflow::strings::StrCat(
+                          "Expecting an EagerTensor for other_value, got ",
+                          Py_TYPE(other_value)->tp_name)
+                          .c_str());
+
+      return -1;
+    }
+    EagerTensor* other = reinterpret_cast<EagerTensor*>(other_value);
+    self->handle =
+        TFE_TensorHandleCopySharingTensor(other->handle, self->status);
+
+    if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError)) {
+      return -1;
+    }
+
+    return 0;
+  }
+
   // Extract dtype
   int desired_dtype = -1;
   if (dtype != Py_None) {
@@ -619,6 +645,15 @@ static PyGetSetDef EagerTensor_getseters[] = {
     {nullptr} /* Sentinel */
 };
 
+#if PY_MAJOR_VERSION < 3
+// Only used for Python2 since Python3 seems to set the __dict__ correctly.
+static PyMemberDef EagerTensor_members[] = {
+    {const_cast<char*>("__dict__"), T_OBJECT, offsetof(EagerTensor, dict),
+     READONLY},
+    {nullptr},
+};
+#endif
+
 static PyMethodDef EagerTensor_methods[] = {
     {"_numpy", (PyCFunction)EagerTensor_numpy, METH_NOARGS,
      PyDoc_STR("_numpy")},
@@ -693,7 +728,7 @@ static PyTypeObject _EagerTensorType = {
     nullptr,                            /* tp_iter */
     nullptr,                            /* tp_iternext */
     EagerTensor_methods,                /* tp_methods */
-    nullptr,                            /* tp_members */
+    EagerTensor_members,                /* tp_members */
     EagerTensor_getseters,              /* tp_getset */
     nullptr,                            /* tp_base */
     nullptr,                            /* tp_dict */
@@ -829,7 +864,7 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
   }
   EagerTensorType->tp_dictoffset = offsetof(EagerTensor, dict);
 #else
-  _EagerTensorType.tp_base = reinterpret_cast<PyTypeObject*>(base_class);
+  _EagerTensorType.tp_base = base_class_type;
 
   if (PyType_Ready(&_EagerTensorType) < 0) {
     if (PyErr_Occurred()) return nullptr;

@@ -494,6 +494,7 @@ class SequenceEnqueuer(object):
     raise NotImplementedError
 
 
+@tf_export('keras.utils.OrderedEnqueuer')
 class OrderedEnqueuer(SequenceEnqueuer):
   """Builds a Enqueuer from a Sequence.
 

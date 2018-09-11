@@ -105,7 +105,8 @@ TEST_F(ExportTest, LoadOperatorsMap) {
 
   details::OperatorsMap operators;
   const auto ops_by_type = BuildOperatorByTypeMap();
-  details::LoadOperatorsMap(input_model_, &operators, ops_by_type);
+  // TODO(ycling): Add a test for allow_eager_ops.
+  details::LoadOperatorsMap(input_model_, &operators, ops_by_type, false);
   EXPECT_EQ(0, operators[details::OperatorKey(OperatorType::kAdd, "", 1)]);
   EXPECT_EQ(1, operators[details::OperatorKey(OperatorType::kConv, "", 1)]);
   EXPECT_EQ(2, operators[details::OperatorKey(OperatorType::kSub, "", 1)]);
@@ -253,7 +254,7 @@ TEST_F(VersionedOpExportTest, LoadOperatorsMapWithOpV1) {
 
   details::OperatorsMap operators;
   const auto ops_by_type = BuildFakeOperatorByTypeMap();
-  details::LoadOperatorsMap(input_model_, &operators, ops_by_type);
+  details::LoadOperatorsMap(input_model_, &operators, ops_by_type, false);
 
   EXPECT_EQ(1, operators.size());
   EXPECT_EQ(0, operators.at(details::OperatorKey(OperatorType::kConv, "", 1)));
@@ -264,7 +265,7 @@ TEST_F(VersionedOpExportTest, LoadOperatorsMapWithOpV2) {
 
   details::OperatorsMap operators;
   const auto ops_by_type = BuildFakeOperatorByTypeMap();
-  details::LoadOperatorsMap(input_model_, &operators, ops_by_type);
+  details::LoadOperatorsMap(input_model_, &operators, ops_by_type, false);
 
   EXPECT_EQ(1, operators.size());
   EXPECT_EQ(0, operators.at(details::OperatorKey(OperatorType::kConv, "", 2)));
@@ -276,7 +277,7 @@ TEST_F(VersionedOpExportTest, LoadOperatorsMapWithBothVersions) {
 
   details::OperatorsMap operators;
   const auto ops_by_type = BuildFakeOperatorByTypeMap();
-  details::LoadOperatorsMap(input_model_, &operators, ops_by_type);
+  details::LoadOperatorsMap(input_model_, &operators, ops_by_type, false);
 
   EXPECT_EQ(2, operators.size());
   EXPECT_EQ(0, operators.at(details::OperatorKey(OperatorType::kConv, "", 1)));

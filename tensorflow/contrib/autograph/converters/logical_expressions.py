@@ -57,8 +57,8 @@ class LogicalExpressionTransformer(converter.Base):
         gast.NotEq: 'tf.not_equal',
         gast.Or: 'tf.logical_or',
         gast.USub: 'tf.negative',
-        gast.Is: 'autograph_utils.dynamic_is',
-        gast.IsNot: 'autograph_utils.dynamic_is_not'
+        gast.Is: 'ag__.utils.dynamic_is',
+        gast.IsNot: 'ag__.utils.dynamic_is_not'
     }
 
   def _expect_simple_symbol(self, operand):

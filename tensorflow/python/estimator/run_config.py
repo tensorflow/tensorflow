@@ -521,7 +521,12 @@ class RunConfig(object):
         eval_distribute=eval_distribute,
         experimental_distribute=experimental_distribute)
 
-    if train_distribute or eval_distribute or experimental_distribute:
+    # TODO(frankchn,priyag): Eventually use distributed coordinator for TPUs.
+    if ((train_distribute and
+         train_distribute.__class__.__name__ != 'TPUStrategy') or
+        (eval_distribute and
+         eval_distribute.__class__.__name__ != 'TPUStrategy') or
+        experimental_distribute):
       logging.info('Initializing RunConfig with distribution strategies.')
       distribute_coordinator_training.init_run_config(self, tf_config)
     else:

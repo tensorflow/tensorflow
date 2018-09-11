@@ -885,18 +885,20 @@ TEST_F(HloAliasAnalysisTest, WhileInterference) {
 
   // For a sequential order, if there is interference iff the negate is after
   // the while.
-  SequentialHloOrdering::HloModuleSequence sequence;
-  sequence[body] = {body_param, body_root};
-  sequence[condition] = {cond_param, cond_root};
+  HloSchedule schedule(module_);
+  schedule.set_sequence(body, {body_param, body_root});
+  schedule.set_sequence(condition, {cond_param, cond_root});
   {
-    sequence[entry] = {init, xla_while, negate, entry_root};
-    SequentialHloOrdering ordering(module_, sequence);
+    schedule.set_sequence(entry, {init, xla_while, negate, entry_root});
+    TF_ASSERT_OK(schedule.Verify());
+    SequentialHloOrdering ordering(schedule);
     EXPECT_TRUE(analysis.HasLiveRangeInterference(ordering));
   }
 
   {
-    sequence[entry] = {init, negate, xla_while, entry_root};
-    SequentialHloOrdering ordering(module_, sequence);
+    schedule.set_sequence(entry, {init, negate, xla_while, entry_root});
+    TF_ASSERT_OK(schedule.Verify());
+    SequentialHloOrdering ordering(schedule);
     EXPECT_FALSE(analysis.HasLiveRangeInterference(ordering));
   }
 }

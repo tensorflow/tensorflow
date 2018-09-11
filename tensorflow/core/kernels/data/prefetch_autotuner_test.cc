@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 TEST(PrefetchAutotuner, Disabled) {
@@ -79,4 +80,5 @@ TEST(PrefetchAutotuner, EnabledSteady) {
 }
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

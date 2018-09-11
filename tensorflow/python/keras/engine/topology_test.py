@@ -342,7 +342,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertListEqual(model.non_trainable_weights, weights)
 
   def test_learning_phase(self):
-    with self.test_session():
+    with self.cached_session():
       a = keras.layers.Input(shape=(32,), name='input_a')
       b = keras.layers.Input(shape=(32,), name='input_b')
 
@@ -458,7 +458,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(dense.get_output_mask_at(1), None)
 
   def test_multi_input_layer(self):
-    with self.test_session():
+    with self.cached_session():
       # test multi-input layer
       a = keras.layers.Input(shape=(32,), name='input_a')
       b = keras.layers.Input(shape=(32,), name='input_b')
@@ -530,7 +530,7 @@ class TopologyConstructionTest(test.TestCase):
       self.assertListEqual([x.shape for x in fn_outputs], [(10, 64), (10, 5)])
 
   def test_recursion(self):
-    with self.test_session():
+    with self.cached_session():
       a = keras.layers.Input(shape=(32,), name='input_a')
       b = keras.layers.Input(shape=(32,), name='input_b')
 
@@ -591,7 +591,7 @@ class TopologyConstructionTest(test.TestCase):
       self.assertListEqual([x.shape for x in fn_outputs], [(10, 7), (10, 64)])
 
   def test_multi_input_multi_output_recursion(self):
-    with self.test_session():
+    with self.cached_session():
       # test multi-input multi-output
       a = keras.layers.Input(shape=(32,), name='input_a')
       b = keras.layers.Input(shape=(32,), name='input_b')
@@ -816,7 +816,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(loss, 4.)
 
   def test_layer_sharing_at_heterogenous_depth(self):
-    with self.test_session():
+    with self.cached_session():
       x_val = np.random.random((10, 5))
 
       x = input_layer_lib.Input(shape=(5,))
@@ -837,7 +837,7 @@ class TopologyConstructionTest(test.TestCase):
       self.assertAllClose(output_val, output_val_2, atol=1e-6)
 
   def test_layer_sharing_at_heterogenous_depth_with_concat(self):
-    with self.test_session():
+    with self.cached_session():
       input_shape = (16, 9, 3)
       input_layer = input_layer_lib.Input(shape=input_shape)
 
@@ -864,7 +864,7 @@ class TopologyConstructionTest(test.TestCase):
       self.assertAllClose(output_val, output_val_2, atol=1e-6)
 
   def test_explicit_training_argument(self):
-    with self.test_session():
+    with self.cached_session():
       a = keras.layers.Input(shape=(2,))
       b = keras.layers.Dropout(0.5)(a)
       base_model = keras.models.Model(a, b)
@@ -887,7 +887,8 @@ class TopologyConstructionTest(test.TestCase):
 
   def test_multi_output_model_with_none_masking(self):
 
-    with self.test_session():
+    with self.cached_session():
+
       def func(x):
         return [x * 0.2, x * 0.3]
 
@@ -911,6 +912,23 @@ class TopologyConstructionTest(test.TestCase):
       out = model2.predict(x)
       assert out.shape == (4, 3, 2, 1)
       self.assertAllClose(out, x * 0.2 + x * 0.3, atol=1e-4)
+
+  def test_constant_initializer_with_numpy(self):
+
+    with self.test_session():
+      initializer = keras.initializers.Constant(np.ones((3, 2)))
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_shape=(3,),
+                                   kernel_initializer=initializer))
+      model.add(keras.layers.Dense(3))
+      model.compile(loss='mse', optimizer='sgd', metrics=['acc'])
+
+      json_str = model.to_json()
+      keras.models.model_from_json(json_str)
+
+      if yaml is not None:
+        yaml_str = model.to_yaml()
+        keras.models.model_from_yaml(yaml_str)
 
 
 class DeferredModeTest(test.TestCase):
@@ -1169,7 +1187,7 @@ class GraphUtilsTest(test.TestCase):
 
   def testGetReachableFromInputs(self):
 
-    with self.test_session():
+    with self.cached_session():
       pl_1 = array_ops.placeholder(shape=None, dtype='float32')
       pl_2 = array_ops.placeholder(shape=None, dtype='float32')
       pl_3 = array_ops.placeholder(shape=None, dtype='float32')

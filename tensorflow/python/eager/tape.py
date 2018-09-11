@@ -33,9 +33,10 @@ class Tape(object):
     return pywrap_tensorflow.TFE_Py_TapeWatchedVariables(self._tape)
 
 
-def push_new_tape(persistent=False):
+def push_new_tape(persistent=False, watch_accessed_variables=True):
   """Pushes a new tape onto the tape stack."""
-  tape = pywrap_tensorflow.TFE_Py_TapeSetNew(persistent)
+  tape = pywrap_tensorflow.TFE_Py_TapeSetNew(persistent,
+                                             watch_accessed_variables)
   return Tape(tape)
 
 
@@ -49,13 +50,14 @@ def watch(tape, tensor):
   pywrap_tensorflow.TFE_Py_TapeWatch(tape._tape, tensor)  # pylint: disable=protected-access
 
 
-def watch_variable(variable):
-  """Marks this variable to be watched by all tapes in the stack.
+def watch_variable(tape, variable):
+  """Marks this variable to be watched by the given tape."""
+  pywrap_tensorflow.TFE_Py_TapeWatchVariable(tape._tape, variable)  # pylint: disable=protected-access
 
-  Args:
-    variable: variable to be watched.
-  """
-  pywrap_tensorflow.TFE_Py_TapeSetWatchVariable(variable)
+
+def variable_accessed(variable):
+  """Notifies all tapes in the stack that a variable has been accessed."""
+  pywrap_tensorflow.TFE_Py_TapeVariableAccessed(variable)
 
 
 def pop_tape(tape):
