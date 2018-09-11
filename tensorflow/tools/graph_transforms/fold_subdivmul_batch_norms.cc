@@ -68,7 +68,7 @@ Status FoldSubDivMulBatchNorms( const GraphDef& input_graph_def,
   MapNamesToNodes(input_graph_def, &node_map);
   GraphDef replaced_graph_def;
   ReplaceMatchingOpTypesOptions options;
-  options.allow_inconsistencies = true;  
+  options.allow_inconsistencies = false;  
   
   TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
       input_graph_def,  // clang-format off
@@ -105,11 +105,11 @@ Status FoldSubDivMulBatchNorms( const GraphDef& input_graph_def,
         
         // Find all the nodes we expect in the subgraph.
         const NodeDef& biasadd_node   = match.node;
-        const NodeDef& mul_node       = match.inputs[0].node;
+        // const NodeDef& mul_node    = match.inputs[0].node;
         const NodeDef& beta_node      = match.inputs[1].node;
-        const NodeDef& realdiv_node   = match.inputs[0].inputs[0].node;
+        // const NodeDef& realdiv_node= match.inputs[0].inputs[0].node;
         const NodeDef& gamma_node     = match.inputs[0].inputs[1].node;
-        const NodeDef& sub_node       = match.inputs[0].inputs[0].inputs[0].node;
+        // const NodeDef& sub_node    = match.inputs[0].inputs[0].inputs[0].node;
         const NodeDef& variance_node  = match.inputs[0].inputs[0].inputs[1].node;
         const NodeDef& conv_node      = match.inputs[0].inputs[0].inputs[0].inputs[0].node;
         const NodeDef& mean_node      = match.inputs[0].inputs[0].inputs[0].inputs[1].node;
