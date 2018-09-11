@@ -331,10 +331,12 @@ Status MetaOptimizer::RunOptimizer(
 
 Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                GraphDef* optimized_graph) {
+  LOG(INFO) << "Starting optimization for grappler item: " << item.id;
   optimization_results_.clear();
 
   // 1. Optimize main graph
   TF_RETURN_IF_ERROR(OptimizeGraph(cluster, item, optimized_graph));
+  VLOG(1) << "Optimized main graph.";
 
   // 2. Optimize function library
   FunctionLibraryDefinition flib(OpRegistry::Global(),
@@ -398,7 +400,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
   }
 
-  VLOG(3) << "Optimized " << optimized_funcs.size()
+  VLOG(1) << "Optimized " << optimized_funcs.size()
           << " functions: " << str_util::Join(optimized_funcs, ", ");
 
   return Status::OK();
