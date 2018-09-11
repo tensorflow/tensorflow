@@ -2419,7 +2419,7 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
   instr.set_id(handle);
   instr.set_opcode(HloOpcodeString(opcode));
   if (instr.name().empty()) {
-    instr.set_name(StrCat(instr.opcode()));
+    instr.set_name(instr.opcode());
   }
   for (const auto& operand : operands) {
     if (operand.builder_ == nullptr) {

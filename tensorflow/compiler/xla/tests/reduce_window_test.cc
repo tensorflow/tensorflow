@@ -588,7 +588,7 @@ string R4ReduceWindowTestDataToString(
   // Test names are not allowed to contain the '-' character.
   std::replace(str.begin(), str.end(), '-', 'n');
   if (::testing::get<1>(data.param)) {
-    str = absl::StrCat(str, "_bfloat16");
+    absl::StrAppend(&str, "_bfloat16");
   }
   return str;
 }
@@ -980,7 +980,7 @@ string R3ReduceWindowTestDataToString(
       param.layout[0], "_", param.layout[1], "_", param.layout[2], "__reducer_",
       param.reducer == kAdd ? "add" : "max");
   if (::testing::get<1>(data.param)) {
-    str = absl::StrCat(str, "_bfloat16");
+    absl::StrAppend(&str, "_bfloat16");
   }
   return str;
 }
@@ -1121,7 +1121,7 @@ string R2ReduceWindowTestDataToString(
       param.layout[1],  //
       "__reducer_", param.reducer == kAdd ? "add" : "max");
   if (::testing::get<1>(data.param)) {
-    str = absl::StrCat(str, "_bfloat16");
+    absl::StrAppend(&str, "_bfloat16");
   }
   return str;
 }
@@ -1322,7 +1322,7 @@ string R1ReduceWindowTestDataToString(
                    "__pad_high_", absl::StrJoin(param.pad_high, "x"),
                    "__reducer_", param.reducer == kAdd ? "add" : "max");
   if (::testing::get<1>(data.param)) {
-    str = absl::StrCat(str, "_bfloat16");
+    absl::StrAppend(&str, "_bfloat16");
   }
   return str;
 }
