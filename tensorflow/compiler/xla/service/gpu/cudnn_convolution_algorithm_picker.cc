@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/mutex.h"
 
@@ -176,10 +177,14 @@ tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec) {
 // caching would speed up compilation a lot.
 StatusOr<std::tuple<int64, bool, int64>>
 CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
-    CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
-    const Shape& output_shape, const Window& window,
-    const ConvolutionDimensionNumbers& dnums, int64 feature_group_count,
-    HloInstruction* instr) {
+    const HloCustomCallInstruction* instr) {
+  CudnnConvParams params;
+  TF_RETURN_IF_ERROR(PopulateCudnnConvParams(instr, &params));
+
+  const Shape& input_shape = *params.input_shape;
+  const Shape& filter_shape = *params.filter_shape;
+  const Shape& output_shape = *params.output_shape;
+
   CHECK_EQ(input_shape.element_type(), filter_shape.element_type());
   CHECK_EQ(input_shape.element_type(), output_shape.element_type());
   // TODO(timshen): for now only check fp16. It can be expanded to other types,
@@ -220,13 +225,13 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
   // use a ScratchAllocator for this instead of calling allocator_ directly so
   // that our allocations don't leak.
   ScratchAllocator input_output_allocator(device_ordinal, allocator);
-  TF_ASSIGN_OR_RETURN(DeviceMemoryBase input_buf,
+  TF_ASSIGN_OR_RETURN(params.input_buf,
                       input_output_allocator.AllocateBytes(
                           &stream, ShapeUtil::ByteSizeOf(input_shape)));
-  TF_ASSIGN_OR_RETURN(DeviceMemoryBase filter_buf,
+  TF_ASSIGN_OR_RETURN(params.filter_buf,
                       input_output_allocator.AllocateBytes(
                           &stream, ShapeUtil::ByteSizeOf(filter_shape)));
-  TF_ASSIGN_OR_RETURN(DeviceMemoryBase output_buf,
+  TF_ASSIGN_OR_RETURN(params.output_buf,
                       input_output_allocator.AllocateBytes(
                           &stream, ShapeUtil::ByteSizeOf(output_shape)));
 
@@ -253,32 +258,32 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
           static_cast<char*>(buffer.opaque()) + aligned_size, left_over_bytes);
       stream.ThenMemcpy(&left_over, halfs, left_over_bytes);
     };
-    initialize_f16(input_buf);
-    initialize_f16(filter_buf);
-    initialize_f16(output_buf);
+    initialize_f16(params.input_buf);
+    initialize_f16(params.filter_buf);
+    initialize_f16(params.output_buf);
   } else {
     // Although we don't have evidence this matters, zero out the buffers before
     // autotuning.  It's conceivable that using uninitialized memory as the
     // inputs might affect performance if e.g. the inputs contain denormals, and
     // this is easy enough.
-    stream.ThenMemZero(&input_buf, input_buf.size())
-        .ThenMemZero(&filter_buf, filter_buf.size())
-        .ThenMemZero(&output_buf, output_buf.size());
+    stream.ThenMemZero(&params.input_buf, params.input_buf.size())
+        .ThenMemZero(&params.filter_buf, params.filter_buf.size())
+        .ThenMemZero(&params.output_buf, params.output_buf.size());
   }
 
   DeviceMemoryBase* result_buf = [&] {
-    switch (kind) {
+    switch (params.kind) {
       case CudnnConvKind::kBackwardFilter:
-        return &filter_buf;
+        return &params.filter_buf;
       case CudnnConvKind::kBackwardInput:
-        return &input_buf;
+        return &params.input_buf;
       case CudnnConvKind::kForward:
-        return &output_buf;
+        return &params.output_buf;
     }
   }();
 
   const bool use_winograd_nonfused = ShouldIncludeWinogradNonfusedAlgo(
-      input_shape, output_shape, dnums, stream_exec_);
+      input_shape, output_shape, *params.dnums, stream_exec_);
   se::dnn::ProfileResult best_result;
   int64 best_result_bytes_used = 0;
 
@@ -288,18 +293,16 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
   // this algorithm considered correct, though.
   optional<AlgorithmDesc> first_algorithm;
   for (const AlgorithmDesc& alg :
-       GetAlgorithms(kind, use_winograd_nonfused, stream_exec_)) {
+       GetAlgorithms(params.kind, use_winograd_nonfused, stream_exec_)) {
     ScratchAllocator scratch_allocator(device_ordinal, allocator);
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr->ToString();
 
-    bool launch_ok =
-        RunCudnnConvolution({kind, &input_shape, &filter_shape, &output_shape,
-                             input_buf, filter_buf, output_buf, &window, &dnums,
-                             feature_group_count, AlgorithmConfig(alg)},
-                            &scratch_allocator, &stream, &profile_result)
-            .ok();
+    params.algorithm = AlgorithmConfig(alg);
+    bool launch_ok = RunCudnnConvolution(params, &scratch_allocator, &stream,
+                                         &profile_result)
+                         .ok();
 
     if (launch_ok && profile_result.is_valid()) {
       const bool crash_on_checking_failure =
@@ -374,34 +377,8 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
     HloInstruction* instr) {
   CHECK(IsCustomCallToDnnConvolution(*instr));
 
-  const auto& call_target = instr->custom_call_target();
-  const auto& lhs_shape = instr->operand(0)->shape();
-  const auto& rhs_shape = instr->operand(1)->shape();
-  const auto& conv_result_shape = instr->shape().tuple_shapes(0);
-  StatusOr<std::tuple<int64, bool, int64>> alg_scratch_and_tc;
-  if (call_target == kCudnnConvForwardCallTarget) {
-    alg_scratch_and_tc =
-        PickBestAlgorithm(CudnnConvKind::kForward, /*input_shape=*/lhs_shape,
-                          /*filter_shape=*/rhs_shape,
-                          /*output_shape=*/conv_result_shape, instr->window(),
-                          instr->convolution_dimension_numbers(),
-                          instr->feature_group_count(), instr);
-  } else if (call_target == kCudnnConvBackwardInputCallTarget) {
-    alg_scratch_and_tc = PickBestAlgorithm(
-        CudnnConvKind::kBackwardInput, /*input_shape=*/conv_result_shape,
-        /*filter_shape=*/rhs_shape, /*output_shape=*/lhs_shape, instr->window(),
-        instr->convolution_dimension_numbers(), instr->feature_group_count(),
-        instr);
-  } else if (call_target == kCudnnConvBackwardFilterCallTarget) {
-    alg_scratch_and_tc = PickBestAlgorithm(
-        CudnnConvKind::kBackwardFilter, /*input_shape=*/lhs_shape,
-        /*filter_shape=*/conv_result_shape, /*output_shape=*/rhs_shape,
-        instr->window(), instr->convolution_dimension_numbers(),
-        instr->feature_group_count(), instr);
-  } else {
-    LOG(FATAL) << "Unknown custom call target for cudnn conv: "
-               << instr->ToString();
-  }
+  StatusOr<std::tuple<int64, bool, int64>> alg_scratch_and_tc =
+      PickBestAlgorithm(Cast<HloCustomCallInstruction>(instr));
 
   if (!alg_scratch_and_tc.ok()) {
     LOG(ERROR) << alg_scratch_and_tc.status();

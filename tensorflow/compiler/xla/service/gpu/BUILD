@@ -399,6 +399,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
