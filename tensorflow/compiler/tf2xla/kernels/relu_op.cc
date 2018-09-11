@@ -50,7 +50,6 @@ class Relu6Op : public XlaOpKernel {
   }
 };
 
-
 class LeakyReluOp : public XlaOpKernel {
  public:
   explicit LeakyReluOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
@@ -61,9 +60,9 @@ class LeakyReluOp : public XlaOpKernel {
     xla::XlaBuilder* builder = ctx->builder();
     auto alpha = XlaHelpers::FloatLiteral(builder, input_type(0),
                                           static_cast<double>(alpha_));
-    ctx->SetOutput(0,
-        xla::Max(xla::Mul(alpha, ctx->Input(0)), ctx->Input(0)));
+    ctx->SetOutput(0, xla::Max(xla::Mul(alpha, ctx->Input(0)), ctx->Input(0)));
   }
+
  private:
   float alpha_;
 };
@@ -115,11 +114,12 @@ class LeakyReluGradOp : public XlaOpKernel {
     const auto zero =
         xla::Broadcast(XlaHelpers::Zero(b, input_type(0)), shape.dim_sizes());
     const auto pred = xla::Gt(ctx->Input(1), zero);
-    auto alpha = XlaHelpers::FloatLiteral(b, input_type(0),
-                                          static_cast<double>(alpha_));
-    ctx->SetOutput(0,
-        xla::Select(pred, ctx->Input(0), xla::Mul(alpha, ctx->Input(0))));
+    auto alpha =
+        XlaHelpers::FloatLiteral(b, input_type(0), static_cast<double>(alpha_));
+    ctx->SetOutput(
+        0, xla::Select(pred, ctx->Input(0), xla::Mul(alpha, ctx->Input(0))));
   }
+
  private:
   float alpha_;
 };
