@@ -3904,8 +3904,8 @@ def cohen_kappa(labels,
       total = math_ops.reduce_sum(pe_row)
       pe_sum = math_ops.reduce_sum(
           math_ops.div_no_nan(
-              pe_row * pe_col,
-              math_ops.maximum(total, 0),
+              math_ops.to_double(pe_row * pe_col),
+              math_ops.to_double(total),
               name=None))
       po_sum, pe_sum, total = (math_ops.to_double(po_sum),
                                math_ops.to_double(pe_sum),

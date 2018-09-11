@@ -586,7 +586,8 @@ def mean_pairwise_squared_error(
       term2 = 2.0 * math_ops.div_no_nan(
           math_ops.square(sum_diff),
           math_ops.maximum(
-              math_ops.multiply(num_present_per_batch, num_present_per_batch - 1),
+              math_ops.multiply(num_present_per_batch,
+                                num_present_per_batch - 1),
               0),
           name="value")
 
