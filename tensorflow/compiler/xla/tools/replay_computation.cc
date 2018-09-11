@@ -40,6 +40,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
@@ -59,7 +60,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
@@ -121,11 +121,10 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
     }
   } else {  // use recorded data if available
     for (const auto& proto : module.arguments()) {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Literal> literal,
-                          Literal::CreateFromProto(proto));
+      TF_ASSIGN_OR_RETURN(Literal literal, Literal::CreateFromProto(proto));
       TF_ASSIGN_OR_RETURN(
           ScopedShapedBuffer data,
-          client->LiteralToShapedBuffer(*literal, /*device_ordinal=*/0));
+          client->LiteralToShapedBuffer(literal, /*device_ordinal=*/0));
       scoped_shaped_buffer_arguments.push_back(std::move(data));
     }
     for (const auto& argument : scoped_shaped_buffer_arguments) {
@@ -160,13 +159,13 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   // concurrent infeed occur via the fake_infeed_shape, or when
   // --generate_fake_infeed is passed and there exists an infeed operation in
   // the HloSnapshot.
-  tensorflow::gtl::optional<tensorflow::thread::ThreadPool> pool;
-  std::unique_ptr<Literal> data;
+  absl::optional<tensorflow::thread::ThreadPool> pool;
+  Literal data;
   if (provide_infeed) {
     data = std::move(MakeFakeLiteral(infeed_shape)).ValueOrDie();
   }
   auto transfer_infeed = [&data, client]() {
-    TF_CHECK_OK(client->TransferToInfeed(*data));
+    TF_CHECK_OK(client->TransferToInfeed(data));
   };
   if (provide_infeed) {
     pool.emplace(tensorflow::Env::Default(), "infeed",
@@ -196,7 +195,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   StreamExecutorMemoryAllocator allocator(
       client->platform(),
       {client->platform()->ExecutorForDevice(0).ValueOrDie()});
-  tensorflow::gtl::optional<ScopedShapedBuffer> result;
+  absl::optional<ScopedShapedBuffer> result;
   for (int i = 0; i < opts.num_runs; ++i) {
     // If xla_hlo_profile is enabled, print a noisy message before the last run,
     // making it easier to separate this profile from the others in the logspam.
@@ -214,9 +213,9 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
               << "s: " << module.hlo().hlo_module().name();
   }
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> result_literal,
+  TF_ASSIGN_OR_RETURN(Literal result_literal,
                       client->ShapedBufferToLiteral(*result));
-  return std::move(*result_literal);
+  return result_literal;
 }
 
 StatusOr<HloSnapshot> ParseInputFile(const string& filename,
@@ -250,10 +249,10 @@ StatusOr<HloSnapshot> ParseInputFile(const string& filename,
   }
   fprintf(stderr, "%s: is not HLO text.  Nothing left to try.\n",
           filename.c_str());
-  return InvalidArgument("Could not parse %s.", filename.c_str());
+  return InvalidArgument("Could not parse %s.", filename);
 }
 
-int RealMain(tensorflow::gtl::ArraySlice<char*> args, const Options& opts) {
+int RealMain(absl::Span<char* const> args, const Options& opts) {
   LocalClient* client = ClientLibrary::LocalClientOrDie();
   int exit_status = EXIT_SUCCESS;
 
@@ -305,11 +304,11 @@ int RealMain(tensorflow::gtl::ArraySlice<char*> args, const Options& opts) {
               result.ToString().c_str());
       auto& snapshot = snapshots[i];
       if (snapshot.has_result()) {
-        std::unique_ptr<Literal> literal =
+        Literal literal =
             Literal::CreateFromProto(snapshot.result()).ConsumeValueOrDie();
         fprintf(stdout, "was %s:%s\n",
                 ShapeUtil::HumanString(snapshot.result().shape()).c_str(),
-                literal->ToString().c_str());
+                literal.ToString().c_str());
       }
     }
   }
@@ -344,7 +343,7 @@ int main(int argc, char** argv) {
     LOG(QFATAL) << usage;
   }
 
-  tensorflow::gtl::ArraySlice<char*> args(argv, argc);
-  args.pop_front();  // Pop off the binary name, argv[0]
+  absl::Span<char* const> args(argv, argc);
+  args.remove_prefix(1);  // Pop off the binary name, argv[0]
   return xla::tools::RealMain(args, opts);
 }

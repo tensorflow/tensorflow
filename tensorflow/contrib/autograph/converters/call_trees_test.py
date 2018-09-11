@@ -91,7 +91,7 @@ class CallTreesTest(converter_testing.TestCase):
       setattr(a, 'foo', 'bar')
 
     with self.converted(test_fn, call_trees, {'setattr': setattr}) as result:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
 
         class Dummy(object):
           pass
@@ -110,7 +110,7 @@ class CallTreesTest(converter_testing.TestCase):
 
     with self.converted(test_fn, call_trees, {'np': np},
                         dtypes.int64) as result:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         self.assertTrue(isinstance(result.test_fn(), ops.Tensor))
         self.assertIn(sess.run(result.test_fn()), (0, 1, 2))
 
@@ -129,7 +129,7 @@ class CallTreesTest(converter_testing.TestCase):
     node = call_trees.transform(node, ctx)
 
     with self.compiled(node, ns) as result:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         result_tensor = result.test_fn(constant_op.constant(1))
         self.assertEquals(sess.run(result_tensor), 3)
 

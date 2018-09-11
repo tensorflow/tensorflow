@@ -22,6 +22,8 @@ from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import distribution_strategy_context
@@ -60,6 +62,7 @@ class VariableCreatorStackTest(test.TestCase):
 
     def model_fn(device_id):
       assert isinstance(device_id, int)
+
       def thread_creator_fn(next_creator, *args, **kwargs):
         return next_creator(*args, **kwargs) + ":thread_" + str(device_id)
 
@@ -84,6 +87,22 @@ class VariableCreatorStackTest(test.TestCase):
       result = dist.unwrap(result)
       expected = ["main_thread:thread_0", "main_thread:thread_1"]
       self.assertEquals(expected, result)
+
+
+class MultiWorkerMirroredStrategyTest(test.TestCase):
+
+  def testDeviceScope(self):
+    """Test the device scope of multi-worker MirroredStrategy."""
+    with context.graph_mode():
+      strategy = mirrored_strategy.MirroredStrategy(num_gpus=context.num_gpus())
+      strategy.configure(
+          cluster_spec={"worker": ["/job:worker/task:0", "/job:worker/task:1"]})
+      with strategy.scope():
+        a = constant_op.constant(1.)
+        with ops.device("/cpu:0"):
+          b = constant_op.constant(1.)
+        self.assertEqual(a.device, "/job:worker/task:0")
+        self.assertEqual(b.device, "/job:worker/task:0/device:CPU:0")
 
 
 if __name__ == "__main__":

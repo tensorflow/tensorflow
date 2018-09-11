@@ -22,6 +22,7 @@ import collections
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import tensor_array_ops
 
@@ -57,6 +58,8 @@ def get_item(target, i, opts):
   elif tensor_util.is_tensor(target):
     if target.dtype == dtypes.variant:
       return _tf_tensor_list_get_item(target, i, opts)
+    elif target.dtype == dtypes.string and target.shape.ndims == 0:
+      return _tf_tensor_string_get_item(target, i)
     else:
       return _tf_tensor_get_item(target, i)
   else:
@@ -80,6 +83,12 @@ def _tf_tensor_list_get_item(target, i, opts):
 def _tf_tensor_get_item(target, i):
   """Overload of get_item that stages a Tensor (not Tensor list) read."""
   return target[i]
+
+
+def _tf_tensor_string_get_item(target, i):
+  """Overload of get_item that stages a Tensor string read."""
+  x = gen_string_ops.substr(target, i, 1)
+  return x
 
 
 def _py_get_item(target, i):

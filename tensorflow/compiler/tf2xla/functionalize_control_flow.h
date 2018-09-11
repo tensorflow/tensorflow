@@ -16,14 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_FUNCTIONALIZE_CONTROL_FLOW_H_
 #define TENSORFLOW_COMPILER_TF2XLA_FUNCTIONALIZE_CONTROL_FLOW_H_
 
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {
 
 // Transformation that converts tf.while_loop() loops into functional While
-// operators, suitable for XLA compilation. If lookup_library is provided, use
-// it to make the library for control flow self-contained.
+// operators and tf.cond() conditionals into function If operators, suitable for
+// XLA compilation. If lookup_library is provided, use it to make the library
+// for control flow self-contained.
 Status FunctionalizeControlFlow(Graph* graph,
                                 FunctionLibraryDefinition* library);
 Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,

@@ -65,7 +65,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     self.assertFalse(c0.op in d.op.control_inputs)
     self.assertTrue(c.op in d.op.control_inputs)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       c_out = sess.run([c])
       n_out = sess.run([n])
       d_out = sess.run([d])
@@ -144,7 +144,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     b = subscribe.subscribe(b,
                             lambda t: script_ops.py_func(sub, [t], [t.dtype]))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       c_out = sess.run([c])
       d_out = sess.run([d])
 
@@ -204,7 +204,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     self.assertIs(c_sub, c_sub3)
 
     # Expect the three side effect graphs to have been evaluated.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run([c_sub])
     self.assertIn('graph1', shared)
     self.assertIn('graph2', shared)
@@ -227,7 +227,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
         v1, lambda t: script_ops.py_func(sub, [t], [t.dtype]))
     self.assertTrue(subscribe._is_subscribed_identity(v1_sub))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Initialize the variables first.
       sess.run([v1.initializer])
       sess.run([v2.initializer])
@@ -272,7 +272,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     self.assertIs(tensor_array_sub, tensor_array.handle)
     self.assertFalse(subscribe._is_subscribed_identity(tensor_array.handle))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run([reader])
     self.assertEqual(0, len(shared))
 
@@ -303,7 +303,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     subscribe.subscribe(sparse_add.op.outputs,
                         lambda t: script_ops.py_func(sub, [t], [t.dtype]))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run([neg])
 
     # All three ops have been processed.
@@ -374,7 +374,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     # Verify that sub(x1) and sub(branch) are not.
     self.assertIsNot(context(subscriptions[0]), context(subscriptions[1]))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(cond)
 
     self.assertEqual(3, len(results))

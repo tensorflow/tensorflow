@@ -37,7 +37,7 @@ class FtrlOptimizerTest(test.TestCase):
 
   def doTestFtrlwithoutRegularization(self, use_resource=False):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         if use_resource:
           var0 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
           var1 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
@@ -76,7 +76,7 @@ class FtrlOptimizerTest(test.TestCase):
 
   def testFtrlwithoutRegularization2(self):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -105,7 +105,7 @@ class FtrlOptimizerTest(test.TestCase):
 
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
         pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
@@ -117,12 +117,11 @@ class FtrlOptimizerTest(test.TestCase):
         # Run 1 step of sgd
         sgd_op.run()
         # Validate updated params
-        self.assertAllCloseAccordingToType(
-            [[0, 1]], var0.eval(), atol=0.01)
+        self.assertAllCloseAccordingToType([[0, 1]], var0.eval(), atol=0.01)
 
   def testFtrlWithL1(self):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -151,7 +150,7 @@ class FtrlOptimizerTest(test.TestCase):
 
   def testFtrlWithL1_L2(self):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -187,7 +186,7 @@ class FtrlOptimizerTest(test.TestCase):
     weights will tend to have smaller magnitudes with this parameter set.
     """
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -212,24 +211,96 @@ class FtrlOptimizerTest(test.TestCase):
 
         v0_val, v1_val = sess.run([var0, var1])
         self.assertAllCloseAccordingToType(
-            np.array([-0.22078767, -0.41378114]), v0_val)
+            np.array([-0.22578995, -0.44345796]), v0_val)
         self.assertAllCloseAccordingToType(
-            np.array([-0.02919818, -0.07343706]), v1_val)
+            np.array([-0.14378493, -0.13229476]), v1_val)
+
+  def testFtrlWithL1_L2_L2ShrinkageSparse(self):
+    """Tests the new FTRL op with support for l2 shrinkage on sparse grads."""
+    for dtype in [dtypes.half, dtypes.float32]:
+      with self.test_session() as sess:
+        var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
+        var1 = variables.Variable([[4.0], [3.0]], dtype=dtype)
+        grads0 = ops.IndexedSlices(
+            constant_op.constant([0.1], shape=[1, 1], dtype=dtype),
+            constant_op.constant([0]), constant_op.constant([2, 1]))
+        grads1 = ops.IndexedSlices(
+            constant_op.constant([0.02], shape=[1, 1], dtype=dtype),
+            constant_op.constant([1]), constant_op.constant([2, 1]))
+
+        opt = ftrl.FtrlOptimizer(
+            3.0,
+            initial_accumulator_value=0.1,
+            l1_regularization_strength=0.001,
+            l2_regularization_strength=2.0,
+            l2_shrinkage_regularization_strength=0.1)
+        update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        variables.global_variables_initializer().run()
+
+        v0_val, v1_val = sess.run([var0, var1])
+        self.assertAllCloseAccordingToType([[1.0], [2.0]], v0_val)
+        self.assertAllCloseAccordingToType([[4.0], [3.0]], v1_val)
+
+        # Run 10 steps FTRL
+        for _ in range(10):
+          update.run()
+
+        v0_val, v1_val = sess.run([var0, var1])
+        self.assertAllCloseAccordingToType([[-0.22578995], [2.]], v0_val)
+        self.assertAllCloseAccordingToType([[4.], [-0.13229476]], v1_val)
+
+  def testFtrlWithL2ShrinkageDoesNotChangeLrSchedule(self):
+    """Verifies that l2 shrinkage in FTRL does not change lr schedule."""
+    for dtype in [dtypes.half, dtypes.float32]:
+      with self.test_session() as sess:
+        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+        var1 = variables.Variable([1.0, 2.0], dtype=dtype)
+        grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
+        grads1 = constant_op.constant([0.1, 0.2], dtype=dtype)
+
+        opt0 = ftrl.FtrlOptimizer(
+            3.0,
+            initial_accumulator_value=0.1,
+            l1_regularization_strength=0.001,
+            l2_regularization_strength=2.0,
+            l2_shrinkage_regularization_strength=0.1)
+        opt1 = ftrl.FtrlOptimizer(
+            3.0,
+            initial_accumulator_value=0.1,
+            l1_regularization_strength=0.001,
+            l2_regularization_strength=2.0)
+        update0 = opt0.apply_gradients([(grads0, var0)])
+        update1 = opt1.apply_gradients([(grads1, var1)])
+        variables.global_variables_initializer().run()
+
+        v0_val, v1_val = sess.run([var0, var1])
+        self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
+        self.assertAllCloseAccordingToType([1.0, 2.0], v1_val)
+
+        # Run 10 steps FTRL
+        for _ in range(10):
+          update0.run()
+          update1.run()
+
+        v0_val, v1_val = sess.run([var0, var1])
+        # var0 is experiencing L2 shrinkage so it should be smaller than var1
+        # in magnitude.
+        self.assertTrue((v0_val**2 < v1_val**2).all())
+        accum0 = list(sess.run(opt0._slots)["accum"].values())[0]
+        accum1 = list(sess.run(opt1._slots)["accum"].values())[0]
+        # L2 shrinkage should not change how we update grad accumulator.
+        self.assertAllCloseAccordingToType(accum0, accum1)
 
   def applyOptimizer(self, opt, dtype, steps=5, is_sparse=False):
     if is_sparse:
       var0 = variables.Variable([[0.0], [0.0]], dtype=dtype)
       var1 = variables.Variable([[0.0], [0.0]], dtype=dtype)
       grads0 = ops.IndexedSlices(
-          constant_op.constant(
-              [0.1], shape=[1, 1], dtype=dtype),
-          constant_op.constant([0]),
-          constant_op.constant([2, 1]))
+          constant_op.constant([0.1], shape=[1, 1], dtype=dtype),
+          constant_op.constant([0]), constant_op.constant([2, 1]))
       grads1 = ops.IndexedSlices(
-          constant_op.constant(
-              [0.02], shape=[1, 1], dtype=dtype),
-          constant_op.constant([1]),
-          constant_op.constant([2, 1]))
+          constant_op.constant([0.02], shape=[1, 1], dtype=dtype),
+          constant_op.constant([1]), constant_op.constant([2, 1]))
     else:
       var0 = variables.Variable([0.0, 0.0], dtype=dtype)
       var1 = variables.Variable([0.0, 0.0], dtype=dtype)
@@ -264,7 +335,7 @@ class FtrlOptimizerTest(test.TestCase):
   # FTRL-Proximal performs same updates as Adagrad or GradientDescent.
   def testEquivAdagradwithoutRegularization(self):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.test_session():
+      with self.cached_session():
         val0, val1 = self.applyOptimizer(
             ftrl.FtrlOptimizer(
                 3.0,
@@ -275,17 +346,16 @@ class FtrlOptimizerTest(test.TestCase):
                 l2_regularization_strength=0.0),
             dtype)
 
-      with self.test_session():
+      with self.cached_session():
         val2, val3 = self.applyOptimizer(
-            adagrad.AdagradOptimizer(
-                3.0, initial_accumulator_value=0.1), dtype)
+            adagrad.AdagradOptimizer(3.0, initial_accumulator_value=0.1), dtype)
 
       self.assertAllCloseAccordingToType(val0, val2)
       self.assertAllCloseAccordingToType(val1, val3)
 
   def testEquivSparseAdagradwithoutRegularization(self):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.test_session():
+      with self.cached_session():
         val0, val1 = self.applyOptimizer(
             ftrl.FtrlOptimizer(
                 3.0,
@@ -297,10 +367,9 @@ class FtrlOptimizerTest(test.TestCase):
             dtype,
             is_sparse=True)
 
-      with self.test_session():
+      with self.cached_session():
         val2, val3 = self.applyOptimizer(
-            adagrad.AdagradOptimizer(
-                3.0, initial_accumulator_value=0.1),
+            adagrad.AdagradOptimizer(3.0, initial_accumulator_value=0.1),
             dtype,
             is_sparse=True)
 
@@ -309,7 +378,7 @@ class FtrlOptimizerTest(test.TestCase):
 
   def testEquivSparseGradientDescentwithoutRegularization(self):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.test_session():
+      with self.cached_session():
         val0, val1 = self.applyOptimizer(
             ftrl.FtrlOptimizer(
                 3.0,
@@ -321,7 +390,7 @@ class FtrlOptimizerTest(test.TestCase):
             dtype,
             is_sparse=True)
 
-      with self.test_session():
+      with self.cached_session():
         val2, val3 = self.applyOptimizer(
             gradient_descent.GradientDescentOptimizer(3.0),
             dtype,
@@ -332,7 +401,7 @@ class FtrlOptimizerTest(test.TestCase):
 
   def testEquivGradientDescentwithoutRegularization(self):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.test_session():
+      with self.cached_session():
         val0, val1 = self.applyOptimizer(
             ftrl.FtrlOptimizer(
                 3.0,
@@ -343,7 +412,7 @@ class FtrlOptimizerTest(test.TestCase):
                 l2_regularization_strength=0.0),
             dtype)
 
-      with self.test_session():
+      with self.cached_session():
         val2, val3 = self.applyOptimizer(
             gradient_descent.GradientDescentOptimizer(3.0), dtype)
 

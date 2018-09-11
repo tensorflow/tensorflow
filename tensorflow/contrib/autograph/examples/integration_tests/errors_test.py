@@ -97,7 +97,7 @@ class ErrorsTest(tf.test.TestCase):
     compiled_fn = ag.to_graph(test_fn)
 
     with self.assertRaises(ag.TfRuntimeError) as error:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         x = compiled_fn(tf.constant([4, 8]))
         with ag.improved_errors(compiled_fn):
           sess.run(x)
@@ -144,7 +144,7 @@ class ErrorsTest(tf.test.TestCase):
     # frame with "g" as the function name but because we don't yet add
     # try/except blocks to inner functions the name is "tf__g".
     with self.assertRaises(ag.TfRuntimeError) as error:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         x = compiled_fn(tf.constant([4, 8]))
         with ag.improved_errors(compiled_fn):
           sess.run(x)

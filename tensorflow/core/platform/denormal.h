@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_DENORMAL_H_
-#define TENSORFLOW_PLATFORM_DENORMAL_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_DENORMAL_H_
+#define TENSORFLOW_CORE_PLATFORM_DENORMAL_H_
 
 #include "tensorflow/core/platform/macros.h"
 
@@ -59,4 +59,4 @@ class ScopedDontFlushDenormal {
 }  // namespace port
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_DENORMAL_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_DENORMAL_H_

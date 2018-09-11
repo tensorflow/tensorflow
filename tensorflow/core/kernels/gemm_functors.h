@@ -24,6 +24,9 @@ limitations under the License.
 #error "EIGEN_USE_THREADS must be enabled by all .cc files including this."
 #endif  // EIGEN_USE_THREADS
 
+#ifndef TENSORFLOW_CORE_KERNELS_GEMM_FUNCTORS_H_
+#define TENSORFLOW_CORE_KERNELS_GEMM_FUNCTORS_H_
+
 #include <string.h>
 #include <map>
 #include <vector>
@@ -116,3 +119,5 @@ class FastGemmFunctor<float, float, float> {
   }
 };
 #endif  // USE_CBLAS_GEMM
+
+#endif  // TENSORFLOW_CORE_KERNELS_GEMM_FUNCTORS_H_

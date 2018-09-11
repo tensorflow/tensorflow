@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <vector>
+#include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_parsers.h"
 #include "tensorflow/compiler/xla/legacy_flags/parse_flags_from_env.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace xla {
 namespace legacy_flags {
@@ -87,7 +87,7 @@ void AllocateFlags() {
   // Custom "sub-parser" lambda for xla_disable_hlo_passes.
   auto setter_for_xla_disable_hlo_passes = [](string comma_separated_values) {
     std::vector<string> disabled_passes =
-        tensorflow::str_util::Split(comma_separated_values, ',');
+        absl::StrSplit(comma_separated_values, ',');
     for (const auto& passname : disabled_passes) {
       flag_values->add_xla_disable_hlo_passes(passname);
     }
@@ -316,6 +316,13 @@ void AllocateFlags() {
                        bool_setter_for(&DebugOptions::set_xla_cpu_use_mkl_dnn),
                        flag_values->xla_cpu_use_mkl_dnn(),
                        "Generate calls to MKL-DNN in the CPU backend."),
+      tensorflow::Flag(
+          "xla_gpu_crash_on_verification_failures",
+          bool_setter_for(
+              &DebugOptions::set_xla_gpu_crash_on_verification_failures),
+          flag_values->xla_gpu_crash_on_verification_failures(),
+          "Crashes the program on extra verification failures, e.g. cuDNN "
+          "cross checking failures"),
   });
   ParseFlagsFromEnv(*flag_objects);
 }

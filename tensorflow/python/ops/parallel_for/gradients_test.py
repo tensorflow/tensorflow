@@ -333,6 +333,13 @@ class GradientsTest(test.TestCase):
     for i in range(n):
       self.assertAllClose(outputs[i], outputs[i + n], rtol=rtol, atol=atol)
 
+  def test_no_path(self):
+    for grad_func in [gradients.jacobian, gradients.batch_jacobian]:
+      for use_pfor in [True, False]:
+        x = constant_op.constant([[1.0]])
+        y = constant_op.constant([[2.0]])
+        self.assertIsNone(grad_func(y, x, use_pfor=use_pfor))
+
   def test_jacobian_fixed_shape(self):
     x = random_ops.random_uniform([2, 2])
     y = math_ops.matmul(x, x, transpose_a=True)
@@ -349,7 +356,7 @@ class GradientsTest(test.TestCase):
     self.run_and_assert_equal(answer, jacobian_while)
 
   def test_jacobian_unknown_shape(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.float32, shape=[None, None])
       y = math_ops.matmul(x, x, transpose_a=True)
       jacobian_pfor = gradients.jacobian(y, x, use_pfor=True)
@@ -374,7 +381,7 @@ class GradientsTest(test.TestCase):
       gradients.batch_jacobian(y, x, use_pfor=True)
 
   def test_batch_jacobian_bad_unknown_shapes(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.float32)
       y = array_ops.concat([x, x], axis=0)
       jacobian = gradients.batch_jacobian(y, x)
@@ -395,7 +402,7 @@ class GradientsTest(test.TestCase):
     self.run_and_assert_equal(answer, batch_jacobian_while)
 
   def test_batch_jacobian_unknown_shape(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.float32)
       y = x * x
       batch_jacobian_pfor = gradients.batch_jacobian(y, x, use_pfor=True)

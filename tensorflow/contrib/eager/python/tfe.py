@@ -16,7 +16,7 @@
 
 EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 
-To use, at program startup, call `tfe.enable_eager_execution()`.
+To use, at program startup, call `tf.enable_eager_execution()`.
 
 @@metrics
 
@@ -67,11 +67,14 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@execution_mode
 @@async_wait
 @@async_clear_error
+@@set_server_def
 
 @@run_test_in_graph_and_eager_modes
 @@run_all_tests_in_graph_and_eager_modes
 
 @@TensorSpec
+
+@@connect_to_remote_host
 
 @@DEVICE_PLACEMENT_EXPLICIT
 @@DEVICE_PLACEMENT_WARN
@@ -93,6 +96,7 @@ from tensorflow.contrib.eager.python.network import Network
 from tensorflow.contrib.eager.python.network import Sequential
 from tensorflow.contrib.eager.python.network import save_network_checkpoint
 from tensorflow.contrib.eager.python.network import restore_network_checkpoint
+from tensorflow.contrib.eager.python.remote import connect_to_remote_host
 from tensorflow.contrib.eager.python.saver import get_optimizer_variables
 from tensorflow.contrib.eager.python.saver import restore_variables_on_create
 from tensorflow.contrib.eager.python.saver import Saver
@@ -110,6 +114,7 @@ from tensorflow.python.eager.context import async_clear_error
 from tensorflow.python.eager.context import SYNC
 from tensorflow.python.eager.context import ASYNC
 from tensorflow.python.eager.context import num_gpus
+from tensorflow.python.eager.context import set_server_def
 from tensorflow.python.eager.execution_callbacks import add_execution_callback
 from tensorflow.python.eager.execution_callbacks import clear_execution_callbacks
 from tensorflow.python.eager.execution_callbacks import inf_callback

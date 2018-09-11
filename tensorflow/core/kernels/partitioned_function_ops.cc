@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/function.h"
@@ -98,20 +99,12 @@ class PartitionedCallOp : public AsyncOpKernel {
                           done);
         auto graph = tensorflow::MakeUnique<Graph>(fbody->graph->flib_def());
         CopyGraph(*fbody->graph, graph.get());
-        OP_REQUIRES_OK_ASYNC(ctx, PropagateInheritedDevices(graph.get(), args),
-                             done);
+        OP_REQUIRES_OK_ASYNC(ctx, PinResourceArgs(graph.get(), args), done);
 
         DeviceSet device_set;
         for (auto d : lib->device_mgr()->ListDevices()) {
           device_set.AddDevice(d);
         }
-        Placer placer(graph.get(), &device_set);
-        OP_REQUIRES_OK_ASYNC(ctx, placer.Run(), done);
-
-        std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
-        OP_REQUIRES_OK_ASYNC(
-            ctx, PartitionHelper(device_set, std::move(graph), &subgraphs),
-            done);
 
         // The FunctionLibraryRuntime's library cannot be mutated from within
         // an OpKernel, so functions are instantiated in an overlay library.
@@ -124,6 +117,47 @@ class PartitionedCallOp : public AsyncOpKernel {
         FunctionLibraryDefinition* overlay_lib =
             new FunctionLibraryDefinition(*lib->GetFunctionLibraryDefinition());
         overlay_libs_.emplace(lib, overlay_lib);
+
+        GraphOptimizationPassOptions optimization_options;
+        // TODO(akshayka): Thread SessionOptions (if any) into this kernel, or
+        // make it possible to specify the relevant options via attributes.
+        SessionOptions session_options;
+        session_options.env = ctx->env();
+        optimization_options.session_options = &session_options;
+        optimization_options.graph = &graph;
+        optimization_options.flib_def = overlay_lib;
+        optimization_options.device_set = &device_set;
+        Placer placer(graph.get(), &device_set);
+        OP_REQUIRES_OK_ASYNC(
+            ctx,
+            OptimizationPassRegistry::Global()->RunGrouping(
+                OptimizationPassRegistry::PRE_PLACEMENT, optimization_options),
+            done);
+        OP_REQUIRES_OK_ASYNC(ctx, placer.Run(), done);
+        OP_REQUIRES_OK_ASYNC(
+            ctx,
+            OptimizationPassRegistry::Global()->RunGrouping(
+                OptimizationPassRegistry::POST_PLACEMENT, optimization_options),
+            done);
+        OP_REQUIRES_OK_ASYNC(
+            ctx,
+            OptimizationPassRegistry::Global()->RunGrouping(
+                OptimizationPassRegistry::POST_REWRITE_FOR_EXEC,
+                optimization_options),
+            done);
+
+        std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
+        OP_REQUIRES_OK_ASYNC(
+            ctx, PartitionHelper(device_set, std::move(graph), &subgraphs),
+            done);
+        optimization_options.graph = nullptr;
+        optimization_options.device_set = nullptr;
+        optimization_options.partition_graphs = &subgraphs;
+        OP_REQUIRES_OK_ASYNC(ctx,
+                             OptimizationPassRegistry::Global()->RunGrouping(
+                                 OptimizationPassRegistry::POST_PARTITIONING,
+                                 optimization_options),
+                             done);
 
         auto handles = tensorflow::MakeUnique<gtl::FlatMap<string, FHandle>>();
         for (const auto& pair : subgraphs) {
@@ -163,15 +197,10 @@ class PartitionedCallOp : public AsyncOpKernel {
                     std::vector<AllocatorAttributes>>
       ArgAndRetAllocAttrs;
 
-  // Propagates device annotations from the outer graph to the function body.
-  //
   // Pins each arg that emits a `DT_RESOURCE` tensor to the device on which the
   // corresponding resource lives. This ensures that the Placer assigns ops that
-  // access these resources to the appropriate devices. Additionally, places
-  // nodes that are unadorned with device annotations onto PartitiondCallOp's
-  // device. This lets call-site device annotations influence the execution
-  // of the function.
-  Status PropagateInheritedDevices(Graph* graph, const OpInputList& args) {
+  // access these resources to the appropriate devices.
+  Status PinResourceArgs(Graph* graph, const OpInputList& args) {
     for (Node* node : graph->op_nodes()) {
       string node_type = node->type_string();
       if (node_type == FunctionLibraryDefinition::kArgOp) {
@@ -183,18 +212,6 @@ class PartitionedCallOp : public AsyncOpKernel {
         if (dtype == DT_RESOURCE) {
           ResourceHandle handle = args[index].flat<ResourceHandle>()(0);
           node->set_assigned_device_name(handle.device());
-        }
-      } else if (node_type != FunctionLibraryDefinition::kRetOp) {
-        // All non-RetVal nodes that weren't explicitly placed by the user
-        // inherit PartitionedCallOp's device. RetVal placement is inferred by
-        // the placer, to avoid forcing the function's outputs through a single
-        // device.
-        //
-        // TODO(b/112166045): Plumb the original requested device into this
-        // OpKernel (this->requested_device() isn't reliable), and merge it
-        // with node->requested_device() if possible.
-        if (node->requested_device().empty()) {
-          node->set_requested_device(local_device_name_);
         }
       }
     }

@@ -36,7 +36,7 @@ load(
     tags = [
         "gen_zip_test",
         "no_oss",
-        "tflite_not_portable",
+        "tflite_not_portable_intentional",
     ],
     test_name = test_name,
     deps = [
@@ -214,6 +214,7 @@ cc_library(
     deps = [
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string",
+        "//tensorflow/contrib/lite/core/api",
     ],
 )
 

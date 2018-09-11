@@ -20,6 +20,8 @@ limitations under the License.
 #include <set>
 #include <unordered_map>
 
+#include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -32,8 +34,6 @@ limitations under the License.
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/optional.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 
@@ -112,8 +112,8 @@ Status AddPlaceholdersForFeeds(
     const string name_port = TensorIdToString(feed->id());
     PlaceholderInfo& info = placeholder_info[name_port];
     info.feed = feed;
-    info.placeholder_name = strings::StrCat(
-        "aot_feed_", feed->id().output_index(), "/", feed->id().node_name());
+    info.placeholder_name = absl::StrCat("aot_feed_", feed->id().output_index(),
+                                         "/", feed->id().node_name());
     (*feed_remapping)[name_port] = info.placeholder_name;
   }
 
@@ -233,7 +233,7 @@ Status PruneGraphDefInto(const tf2xla::Config& config, const GraphDef& in,
     // Push input nodes of the currently visited node to name_queue.
     for (const string& in_edge : map_entry.second->input()) {
       auto id = ParseTensorName(in_edge);
-      const string node_name = std::string(id.first);
+      const string node_name = string(id.first);
       if (feed_tensors.find(std::make_pair(node_name, id.second)) ==
           feed_tensors.end()) {
         name_queue.push(node_name);
@@ -258,7 +258,7 @@ Status PruneGraphDefInto(const tf2xla::Config& config, const GraphDef& in,
 }
 
 string TensorIdToString(const tf2xla::TensorId& id) {
-  return strings::StrCat(id.node_name(), ":", id.output_index());
+  return absl::StrCat(id.node_name(), ":", id.output_index());
 }
 
 Status SetNodeShardingFromNeighbors(Node* n, bool out_edges) {
@@ -268,7 +268,7 @@ Status SetNodeShardingFromNeighbors(Node* n, bool out_edges) {
     if (edge->IsControlEdge()) continue;
     const Node* possible_match = out_edges ? edge->dst() : edge->src();
     TF_ASSIGN_OR_RETURN(
-        tensorflow::gtl::optional<xla::OpSharding> sharding,
+        absl::optional<xla::OpSharding> sharding,
         ParseShardingFromDevice(
             *possible_match,
             /*num_cores_per_replica=*/std::numeric_limits<int32>::max()));
@@ -289,7 +289,7 @@ Status SetNodeShardingFromNeighbors(Node* n, bool out_edges) {
   return Status::OK();
 }
 
-void AddDtypeToKernalDefConstraint(StringPiece name, DataType dtype,
+void AddDtypeToKernalDefConstraint(absl::string_view name, DataType dtype,
                                    KernelDef* kdef) {
   for (KernelDef::AttrConstraint& constraint : *kdef->mutable_constraint()) {
     if (constraint.name() == name) {

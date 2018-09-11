@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Script Language Operators. See the @{$python/script_ops} guide."""
+"""Script Language Operators."""
 
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -287,19 +287,19 @@ def _internal_py_func(func,
 
 # TODO(akshayka): Implement higher-order derivatives.
 @ops.RegisterGradient("EagerPyFunc")
-def _EagerPyFuncGrad(op, dy):
+def _EagerPyFuncGrad(op, *dy):
   """Computes the gradient of an EagerPyFunc."""
 
   token = op.get_attr("token")
 
-  def eagerly_executed_grad(dy):
+  def eagerly_executed_grad(*dy):
     tape, eager_inputs, eager_outputs = tape_cache.pop(compat.as_bytes(token))
     return tape.gradient(eager_outputs, eager_inputs, output_gradients=dy)
 
   with ops.control_dependencies(op.outputs):
     return _internal_py_func(
         func=eagerly_executed_grad,
-        inp=[dy] if isinstance(dy, ops.Tensor) else dy,
+        inp=dy,
         Tout=[tensor.dtype for tensor in op.inputs],
         eager=True,
         is_grad_func=True)
@@ -343,7 +343,8 @@ def eager_py_func(func, inp, Tout, name=None):
   or print statements as desired, and wrap those functions in
   `tf.contrib.eager.py_func`.
 
-  For more information on eager execution, see @{$guide/eager}.
+  For more information on eager execution, see the
+  [Eager guide](https://tensorflow.org/guide/eager).
 
   `tf.contrib.eager.py_func` is similar in spirit to `tf.py_func`, but unlike
   the latter, the former lets you use TensorFlow operations in the wrapped

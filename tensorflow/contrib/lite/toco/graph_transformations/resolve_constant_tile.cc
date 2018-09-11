@@ -128,15 +128,7 @@ bool ResolveConstantTile::Run(Model* model, std::size_t op_index) {
         multiples_array.data_type == ArrayDataType::kInt64)
       << "Only int32/int64 indices are supported";
 
-  // Copy min/max info if present. The ranges of the selected values may be
-  // a subset of the original range but we want to ensure the quantization
-  // params stay the same.
-  if (input_array.minmax) {
-    const auto& input_minmax = input_array.GetMinMax();
-    auto& output_minmax = output_array.GetOrCreateMinMax();
-    output_minmax.min = input_minmax.min;
-    output_minmax.max = input_minmax.max;
-  }
+  CopyMinMaxAndQuantizationRelatedFields(input_array, &output_array);
 
   CHECK(!output_array.buffer);
   switch (output_array.data_type) {

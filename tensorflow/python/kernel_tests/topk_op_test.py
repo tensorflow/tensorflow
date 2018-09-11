@@ -76,7 +76,7 @@ class TopKTest(test.TestCase):
         for result_index, src_index in np.ndenumerate(indices):
           value = values[result_index]
           expected_value = np_inputs[result_index[0], src_index]
-          np.testing.utils.assert_almost_equal(value, expected_value)
+          np.testing.assert_almost_equal(value, expected_value)
 
         # Check that if two elements are equal, the lower-index element appears
         # first.

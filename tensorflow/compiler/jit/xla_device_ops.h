@@ -198,31 +198,33 @@ class XlaAssignVariableOp : public AsyncOpKernel {
                                                                                \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("GeneratorDataset").Device(DEVICE).HostMemory("handle"),            \
-      GeneratorDatasetOp);                                                     \
+      data::GeneratorDatasetOp);                                               \
   REGISTER_KERNEL_BUILDER(Name("PrefetchDataset")                              \
                               .Device(DEVICE)                                  \
                               .HostMemory("buffer_size")                       \
                               .HostMemory("input_dataset")                     \
                               .HostMemory("handle"),                           \
-                          PrefetchDatasetOp);                                  \
+                          data::PrefetchDatasetOp);                            \
                                                                                \
   REGISTER_KERNEL_BUILDER(Name("IteratorV2").Device(DEVICE),                   \
-                          IteratorHandleOp);                                   \
+                          data::IteratorHandleOp);                             \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("MakeIterator").Device(DEVICE).HostMemory("dataset"),               \
-      MakeIteratorOp);                                                         \
+      data::MakeIteratorOp);                                                   \
   REGISTER_KERNEL_BUILDER(Name("AnonymousIterator").Device(DEVICE),            \
-                          AnonymousIteratorHandleOp);                          \
+                          data::AnonymousIteratorHandleOp);                    \
   REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE),              \
-                          IteratorGetNextOp);                                  \
+                          data::IteratorGetNextOp);                            \
+  REGISTER_KERNEL_BUILDER(Name("IteratorGetNextSync").Device(DEVICE),          \
+                          data::IteratorGetNextSyncOp);                        \
   REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle")                       \
                               .Device(DEVICE)                                  \
                               .HostMemory("string_handle"),                    \
-                          IteratorToStringHandleOp);                           \
+                          data::IteratorToStringHandleOp);                     \
   REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandleV2")                   \
                               .Device(DEVICE)                                  \
                               .HostMemory("string_handle"),                    \
-                          IteratorFromStringHandleOp);                         \
+                          data::IteratorFromStringHandleOp);                   \
   REGISTER_KERNEL_BUILDER(Name(FunctionLibraryDefinition::kArgOp)              \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \

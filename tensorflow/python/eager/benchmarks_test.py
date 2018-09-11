@@ -42,6 +42,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -172,6 +173,11 @@ class MicroBenchmarks(test.Benchmark):
 
     def func():
       ops.EagerTensor(value, context=handle, device=device, dtype=dtype)
+
+    self._run(func, 30000)
+
+  def benchmark_create_constant(self):
+    func = lambda: constant_op.constant(3.0)
 
     self._run(func, 30000)
 
@@ -350,6 +356,21 @@ class MicroBenchmarks(test.Benchmark):
     func = lambda: f(m, m, transpose_b)
     self._run(func, num_iters, execution_mode=execution_mode)
 
+  def _benchmark_defun_matmul_forward_backward(self,
+                                               m,
+                                               transpose_b,
+                                               num_iters,
+                                               execution_mode=None):
+    f = function.defun(math_ops.matmul)
+
+    def func():
+      with backprop.GradientTape() as gt:
+        gt.watch(m)
+        y = f(m, m, transpose_b)
+      _ = gt.gradient(y, m)
+
+    self._run(func, num_iters, execution_mode=execution_mode)
+
   def _benchmark_read_variable(self, m, num_iters):
     self._run(m.value, num_iters)
 
@@ -416,6 +437,21 @@ class MicroBenchmarks(test.Benchmark):
     with context.device(CPU):
       m = self._m_2_by_2.cpu()
       self._benchmark_defun_matmul(
+          m,
+          transpose_b=False,
+          num_iters=self._num_iters_2_by_2,
+          execution_mode=context.ASYNC)
+
+  def benchmark_defun_matmul_forward_backward_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = self._m_2_by_2.cpu()
+      self._benchmark_defun_matmul_forward_backward(
+          m, transpose_b=False, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_defun_matmul_forward_backward_2_by_2_CPU_async(self):
+    with context.device(CPU):
+      m = self._m_2_by_2.cpu()
+      self._benchmark_defun_matmul_forward_backward(
           m,
           transpose_b=False,
           num_iters=self._num_iters_2_by_2,
@@ -681,6 +717,25 @@ class MicroBenchmarks(test.Benchmark):
     func()
     assert np.equal(func(), make_keras_model()(data)).all()
     self._run(func, 30000)
+
+  def benchmarkScan(self):
+    elems = math_ops.range(1600)
+
+    def scan():
+      return functional_ops.scan(
+          lambda a, x: a + x, elems, parallel_iterations=1)
+
+    self._run(scan, 100)
+
+  def benchmarkScanDefun(self):
+    elems = math_ops.range(1600)
+
+    @function.defun
+    def scan():
+      return functional_ops.scan(
+          lambda a, x: a + x, elems, parallel_iterations=1)
+
+    self._run(scan, 100)
 
 
 if __name__ == "__main__":

@@ -19,18 +19,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_replace.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/aot/embedded_protocol_buffers.h"
 #include "tensorflow/compiler/tf2xla/cpu_function_runtime.h"
-#include "tensorflow/compiler/tf2xla/str_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 namespace tfcompile {
@@ -134,14 +135,14 @@ Status AddRewritesForShape(int i, const xla::Shape& shape,
     indices = "[0]";
   } else {
     for (int dim = 0; dim < shape.dimensions_size(); ++dim) {
-      dim_vars.push_back(strings::StrCat("size_t dim", dim));
-      dim_sizes += strings::StrCat("[", shape.dimensions(dim), "]");
-      indices += strings::StrCat("[dim", dim, "]");
+      dim_vars.push_back(absl::StrCat("size_t dim", dim));
+      dim_sizes += absl::StrCat("[", shape.dimensions(dim), "]");
+      indices += absl::StrCat("[dim", dim, "]");
     }
   }
-  rewrites->push_back({"{{I}}", strings::StrCat(i)});
+  rewrites->push_back({"{{I}}", absl::StrCat(i)});
   rewrites->push_back({"{{TYPE}}", type});
-  rewrites->push_back({"{{DIM_VARS}}", str_util::Join(dim_vars, ", ")});
+  rewrites->push_back({"{{DIM_VARS}}", absl::StrJoin(dim_vars, ", ")});
   rewrites->push_back({"{{DIM_SIZES}}", dim_sizes});
   rewrites->push_back({"{{INDICES}}", indices});
   return Status::OK();
@@ -157,8 +158,9 @@ Status AddRewritesForShape(int i, const xla::Shape& shape,
 // text-templating mechanism.
 string RewriteWithName(const string& name, string code,
                        const std::vector<std::pair<string, string>>& rewrites) {
-  str_util::ReplaceAllPairs(&code, rewrites);
-  return str_util::StringReplace(code, "{{NAME}}", name, /*replace_all=*/true);
+  absl::StrReplaceAll(rewrites, &code);
+  absl::StrReplaceAll({{"{{NAME}}", name}}, &code);
+  return code;
 }
 
 // Generate methods for args (inputs).
@@ -192,7 +194,7 @@ Status GenArgMethods(const tf2xla::Config& config, const xla::ProgramShape& ps,
         arg_data({{I}}))){{INDICES}};
   }
 )";
-    *methods += RewriteWithName(strings::StrCat(i), code, rewrites);
+    *methods += RewriteWithName(absl::StrCat(i), code, rewrites);
     if (!config.feed(i).name().empty()) {
       *methods += RewriteWithName("_" + config.feed(i).name(), code, rewrites);
     }
@@ -233,7 +235,7 @@ Status GenResultMethods(const tf2xla::Config& config,
         result_data({{I}}))){{INDICES}};
   }
 )";
-    *methods += RewriteWithName(strings::StrCat(i), code, rewrites);
+    *methods += RewriteWithName(absl::StrCat(i), code, rewrites);
     if (!config.fetch(i).name().empty()) {
       *methods += RewriteWithName("_" + config.fetch(i).name(), code, rewrites);
     }
@@ -302,8 +304,8 @@ std::vector<string> BufferInfosToCppExpression(
                    string encoded_second_as_str =
                        encoded.second == ~0ULL
                            ? "~0ULL"
-                           : strings::StrCat(encoded.second, "ULL");
-                   return strings::StrCat(
+                           : absl::StrCat(encoded.second, "ULL");
+                   return absl::StrCat(
                        "::tensorflow::cpu_function_runtime::BufferInfo({",
                        encoded.first, "ULL, ", encoded_second_as_str, "})");
                  });
@@ -350,13 +352,13 @@ Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
   // Create rewrite strings for namespace start and end.
   string ns_start;
   for (const string& n : opts.namespaces) {
-    ns_start += strings::StrCat("namespace ", n, " {\n");
+    ns_start += absl::StrCat("namespace ", n, " {\n");
   }
   ns_start += "\n";
   string ns_end("\n");
   for (int i = opts.namespaces.size() - 1; i >= 0; --i) {
     const string& n = opts.namespaces[i];
-    ns_end += strings::StrCat("}  // end namespace ", n, "\n");
+    ns_end += absl::StrCat("}  // end namespace ", n, "\n");
   }
 
   // Generate metadata.
@@ -566,15 +568,15 @@ class {{CLASS}} : public tensorflow::XlaCompiledCpuFunction {
 )";
   // The replacement strategy is naive, but good enough for our purposes.
   const std::vector<std::pair<string, string>> rewrites = {
-      {"{{ARG_BYTES_ALIGNED}}", strings::StrCat(arg_bytes_aligned)},
-      {"{{ARG_BYTES_TOTAL}}", strings::StrCat(arg_bytes_total)},
+      {"{{ARG_BYTES_ALIGNED}}", absl::StrCat(arg_bytes_aligned)},
+      {"{{ARG_BYTES_TOTAL}}", absl::StrCat(arg_bytes_total)},
       {"{{ARG_NAMES_CODE}}", arg_names_code},
-      {"{{ARG_NUM}}", strings::StrCat(arg_index_table.size())},
-      {"{{ARG_INDEX_TABLE}}", str_util::Join(arg_index_table, ", ")},
+      {"{{ARG_NUM}}", absl::StrCat(arg_index_table.size())},
+      {"{{ARG_INDEX_TABLE}}", absl::StrJoin(arg_index_table, ", ")},
       {"{{ASSIGN_PROFILE_COUNTERS_SIZE}}", assign_profile_counters_size},
       {"{{CLASS}}", opts.class_name},
       {"{{DECLS_FROM_OBJ_FILE}}",
-       str_util::Join(metadata_result.header_variable_decls, "\n")},
+       absl::StrJoin(metadata_result.header_variable_decls, "\n")},
       {"{{ENTRY}}", compile_result.entry_point},
       {"{{HLO_PROFILE_PRINTER_DATA_SHIM_EXPRESSION}}",
        metadata_result.hlo_profile_printer_data_access_shim},
@@ -588,25 +590,25 @@ class {{CLASS}} : public tensorflow::XlaCompiledCpuFunction {
       {"{{PROGRAM_SHAPE}}", xla::ShapeUtil::HumanString(ps)},
       {"{{PROGRAM_SHAPE_SHIM_EXPRESSION}}",
        metadata_result.program_shape_access_shim},
-      {"{{RESULT_INDEX}}", strings::StrCat(result_index)},
+      {"{{RESULT_INDEX}}", absl::StrCat(result_index)},
       {"{{RESULT_NAMES_CODE}}", result_names_code},
-      {"{{TEMP_BYTES_ALIGNED}}", strings::StrCat(temp_bytes_aligned)},
-      {"{{TEMP_BYTES_TOTAL}}", strings::StrCat(temp_bytes_total)},
-      {"{{NUM_BUFFERS}}", strings::StrCat(buffer_infos.size())},
+      {"{{TEMP_BYTES_ALIGNED}}", absl::StrCat(temp_bytes_aligned)},
+      {"{{TEMP_BYTES_TOTAL}}", absl::StrCat(temp_bytes_total)},
+      {"{{NUM_BUFFERS}}", absl::StrCat(buffer_infos.size())},
       {"{{BUFFER_INFOS_AS_STRING}}",
-       str_util::Join(buffer_infos_as_strings, ",\n")}};
-  str_util::ReplaceAllPairs(header, rewrites);
+       absl::StrJoin(buffer_infos_as_strings, ",\n")}};
+  absl::StrReplaceAll(rewrites, header);
   return Status::OK();
 }
 
 static string CreateUniqueIdentifier(const CodegenOpts& opts,
-                                     StringPiece suffix) {
+                                     absl::string_view suffix) {
   string result = "__tfcompile";
   for (const string& n : opts.namespaces) {
-    strings::StrAppend(&result, "_", n);
+    absl::StrAppend(&result, "_", n);
   }
 
-  strings::StrAppend(&result, "_", opts.class_name, "_", suffix);
+  absl::StrAppend(&result, "_", opts.class_name, "_", suffix);
   return result;
 }
 
@@ -617,7 +619,8 @@ Status GenerateMetadata(const CodegenOpts& opts,
 
   if (opts.gen_program_shape) {
     program_shape =
-        tensorflow::MakeUnique<xla::ProgramShape>(compile_result.program_shape);
+        absl::make_unique<xla::ProgramShape>(compile_result.program_shape);
+
     // The parameter names are currently meaningless, and redundant with the
     // rest of our metadata, so clear them out to avoid confusion and save
     // space.
@@ -675,7 +678,7 @@ Status ParseCppClass(const string& cpp_class, string* class_name,
   return Status::OK();
 }
 
-Status ValidateCppIdent(StringPiece ident, StringPiece msg) {
+Status ValidateCppIdent(absl::string_view ident, absl::string_view msg) {
   if (ident.empty()) {
     return errors::InvalidArgument("empty identifier: ", msg);
   }

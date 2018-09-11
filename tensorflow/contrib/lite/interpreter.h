@@ -23,10 +23,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/contrib/lite/allocation.h"
-#include "tensorflow/contrib/lite/context.h"
-#include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
+#include "tensorflow/contrib/lite/core/api/error_reporter.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
 #include "tensorflow/contrib/lite/profiling/profiler.h"
+#include "tensorflow/contrib/lite/stderr_reporter.h"
 
 namespace tflite {
 
@@ -135,6 +136,11 @@ class Interpreter {
   // Each index is bound check and this modifies the consistent_ flag of the
   // interpreter.
   TfLiteStatus SetVariables(std::vector<int> variables);
+
+  // Ensure the internal node storage memory allocates at least `count`
+  // spots for node. NOTE, this doesn't actually add operators. This is an
+  // efficiency optimization that is subject to change.
+  void ReserveNodes(int count);
 
   // Adds a node with the given parameters and returns the index of the new
   // node in `node_index` (optionally). Interpreter will take ownership of
@@ -413,6 +419,10 @@ class Interpreter {
     return op_reg.profiling_string(&context_, node);
   }
 
+  // Set the value of an external context.
+  void SetExternalContext(TfLiteExternalContextType type,
+                          TfLiteExternalContext* ctx);
+
  private:
   friend class InterpreterBuilder;
   friend class InterpreterTest;
@@ -544,8 +554,6 @@ class Interpreter {
       struct TfLiteContext* context, TfLiteExternalContextType type);
 
   // Set the value of an external context.
-  void SetExternalContext(TfLiteExternalContextType type,
-                          TfLiteExternalContext* ctx);
   static void SetExternalContext(struct TfLiteContext* context,
                                  TfLiteExternalContextType type,
                                  TfLiteExternalContext* ctx);

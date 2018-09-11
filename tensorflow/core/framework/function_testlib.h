@@ -63,6 +63,9 @@ GraphDef GDef(gtl::ArraySlice<NodeDef> nodes,
 // x:T -> x * 2.
 FunctionDef XTimesTwo();
 
+// x:T -> x + x.
+FunctionDef XAddX();
+
 // x:T -> x * 2, where x is int32.
 FunctionDef XTimesTwoInt32();
 
@@ -86,6 +89,15 @@ FunctionDef Swap();
 
 // Contains malformed control flow which can't be run by the executor.
 FunctionDef InvalidControlFlow();
+
+// x:T -> x <= N.
+FunctionDef LessThanOrEqualToN(int64 N);
+
+// x:T, y:T -> x+1, x*y
+FunctionDef XPlusOneXTimesY();
+
+// x:T, y:T -> x <= N
+FunctionDef XYXLessThanOrEqualToN(int64 N);
 
 void FunctionTestSchedClosure(std::function<void()> fn);
 

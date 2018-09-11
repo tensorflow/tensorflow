@@ -33,7 +33,7 @@ class GradientsFunctionTest(converter_testing.TestCase):
 
     with self.converted(test_fn, logical_expressions, {},
                         math_ops.equal) as result:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         self.assertTrue(sess.run(result.test_fn(1, 1)))
         self.assertFalse(sess.run(result.test_fn(1, 2)))
 
@@ -44,8 +44,17 @@ class GradientsFunctionTest(converter_testing.TestCase):
 
     with self.converted(test_fn, logical_expressions, {}, math_ops.logical_or,
                         math_ops.logical_and) as result:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         self.assertTrue(sess.run(result.test_fn(True, False, True)))
+
+  def test_ag_utils_lookup(self):
+    def test_fn(a, b):
+      return a is b or a is not b
+
+    with self.converted(test_fn, logical_expressions, {}, math_ops.logical_or
+                       ) as result:
+      with self.cached_session() as sess:
+        self.assertTrue(sess.run(result.test_fn(True, False)))
 
 
 if __name__ == '__main__':

@@ -189,14 +189,19 @@ SpatialConvolutionBackwardInput(
   }
 #endif
 
-  // Reorder the dimensions to filters X patch_rows X patch_cols X channels
+  // Reorder the dimensions to:
+  //   filters x patch_rows x patch_cols x channels
   array<TensorIndex, 4> kernel_shuffle;
   if (isColMajor) {
+    //  From: filters x channels x rows x cols
+    //  To:   filters x rows x cols x channels
     kernel_shuffle[0] = 0;
     kernel_shuffle[1] = 2;
     kernel_shuffle[2] = 3;
     kernel_shuffle[3] = 1;
   } else {
+    //  From: cols x rows x channels x filters
+    //  To:   channels x cols x rows x filters
     kernel_shuffle[0] = 2;
     kernel_shuffle[1] = 0;
     kernel_shuffle[2] = 1;
@@ -499,4 +504,4 @@ SpatialConvolutionBackwardKernel(
 
 }  // end namespace Eigen
 
-#endif  // EIGEN_CXX11_NEURAL_NETWORKS_BACKWARD_SPATIAL_CONVOLUTIONS_H
+#endif  // TENSORFLOW_CORE_KERNELS_EIGEN_BACKWARD_SPATIAL_CONVOLUTIONS_H_

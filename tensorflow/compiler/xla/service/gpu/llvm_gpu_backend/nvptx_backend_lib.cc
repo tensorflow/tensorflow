@@ -20,13 +20,15 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/dump_ir_pass.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSet.h"
@@ -54,10 +56,7 @@ limitations under the License.
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Scalar.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
@@ -107,8 +106,7 @@ static string GetLibdeviceFilename(const string& libdevice_dir_path,
                  << ", " << compute_capability.second << ") ."
                  << "Defaulting to libdevice for compute_" << libdevice_version;
   }
-  return tensorflow::strings::StrCat("libdevice.compute_", libdevice_version,
-                                     ".10.bc");
+  return absl::StrCat("libdevice.compute_", libdevice_version, ".10.bc");
 }
 
 // Gets the GPU name as it's known to LLVM for a given compute capability.  If
@@ -138,15 +136,16 @@ static string GetSmName(std::pair<int, int> compute_capability) {
                  << "Defaulting to telling LLVM that we're compiling for sm_"
                  << sm_version;
   }
-  return tensorflow::strings::StrCat("sm_", sm_version);
+  return absl::StrCat("sm_", sm_version);
 }
 
 // Convenience function for producing a name of a temporary compilation product
 // from the input filename.
 string MakeNameForTempProduct(const std::string& input_filename,
-                              tensorflow::StringPiece extension) {
-  return ReplaceFilenameExtension(
-      tensorflow::io::Basename(llvm_ir::AsString(input_filename)), extension);
+                              absl::string_view extension) {
+  return ReplaceFilenameExtension(absl::string_view(tensorflow::io::Basename(
+                                      llvm_ir::AsString(input_filename))),
+                                  extension);
 }
 
 // Initializes LLVM passes. Uses the PassRegistry mechanism.
@@ -167,7 +166,7 @@ void InitializePasses(llvm::PassRegistry* pass_registry) {
 
 // Returns the TargetMachine, given a triple.
 std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
-    llvm::Triple triple, tensorflow::StringPiece cpu_name,
+    llvm::Triple triple, absl::string_view cpu_name,
     const HloModuleConfig& hlo_module_config) {
   std::string error;
   const llvm::Target* target = TargetRegistry::lookupTarget("", triple, error);
@@ -205,7 +204,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
     default:
       codegen_opt_level = CodeGenOpt::None;
   }
-  return WrapUnique(target->createTargetMachine(
+  return absl::WrapUnique(target->createTargetMachine(
       triple.str(), llvm_ir::AsStringRef(cpu_name), "+ptx60", target_options,
       Optional<Reloc::Model>(RelocModel), Optional<CodeModel::Model>(CMModel),
       codegen_opt_level));
@@ -243,9 +242,9 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
 }
 
 // Emits the given module to a bit code file.
-void EmitBitcodeToFile(const Module& module, tensorflow::StringPiece filename) {
+void EmitBitcodeToFile(const Module& module, absl::string_view filename) {
   std::error_code error_code;
-  llvm::ToolOutputFile outfile(filename.ToString().c_str(), error_code,
+  llvm::ToolOutputFile outfile(string(filename).c_str(), error_code,
                                llvm::sys::fs::F_None);
   if (error_code) {
     LOG(FATAL) << "opening bitcode file for writing: " << error_code.message();
@@ -266,8 +265,9 @@ string EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
     // get creative to add a suffix.
     string module_id(llvm_ir::AsString(module->getModuleIdentifier()));
     IrDumpingPassManager codegen_passes(
-        ReplaceFilenameExtension(tensorflow::io::Basename(module_id),
-                                 "-nvptx.dummy"),
+        ReplaceFilenameExtension(
+            absl::string_view(tensorflow::io::Basename(module_id)),
+            "-nvptx.dummy"),
         "", false);
     codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
         llvm::Triple(module->getTargetTriple())));
@@ -332,8 +332,8 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
               return !GV.hasName() || (GVS.count(GV.getName()) == 0);
             });
           })) {
-    return tensorflow::errors::Internal(tensorflow::strings::StrCat(
-        "Error linking libdevice from ", libdevice_path));
+    return tensorflow::errors::Internal(
+        absl::StrCat("Error linking libdevice from ", libdevice_path));
   }
   return Status::OK();
 }

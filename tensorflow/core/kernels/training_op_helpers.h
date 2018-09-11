@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_TRAINING_OP_HELPERS_H_
-#define TENSORFLOW_KERNELS_TRAINING_OP_HELPERS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_TRAINING_OP_HELPERS_H_
+#define TENSORFLOW_CORE_KERNELS_TRAINING_OP_HELPERS_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
@@ -90,4 +90,4 @@ Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_TRAINING_OP_HELPERS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_TRAINING_OP_HELPERS_H_

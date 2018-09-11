@@ -24,12 +24,11 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using tensorflow::gtl::nullopt;
+using absl::nullopt;
 
 class ElementalIrEmitterExecutionTest : public HloTestBase {
  protected:
-  void RunTest(const string& hlo_text,
-               tensorflow::gtl::ArraySlice<Literal*> args) {
+  void RunTest(const string& hlo_text, absl::Span<Literal* const> args) {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -57,9 +56,9 @@ ENTRY main {
 }
 )";
 
-  std::unique_ptr<Literal> lhs = LiteralUtil::CreateR3<int32>({{{1}, {2}}});
-  std::unique_ptr<Literal> rhs = LiteralUtil::CreateR3<int32>({{{3}, {4}}});
-  RunTest(hlo_text, {lhs.get(), rhs.get()});
+  Literal lhs = LiteralUtil::CreateR3<int32>({{{1}, {2}}});
+  Literal rhs = LiteralUtil::CreateR3<int32>({{{3}, {4}}});
+  RunTest(hlo_text, {&lhs, &rhs});
 }
 }  // namespace
 }  // namespace xla

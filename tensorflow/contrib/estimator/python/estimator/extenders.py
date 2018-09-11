@@ -26,6 +26,7 @@ from tensorflow.python.estimator.export.export_output import PredictOutput
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.util import function_utils
 
@@ -140,7 +141,7 @@ def clip_gradients_by_norm(optimizer, clip_norm):
       name='ClipByNorm' + optimizer.get_name())
 
 
-def forward_features(estimator, keys=None):
+def forward_features(estimator, keys=None, sparse_default_values=None):
   """Forward features to predictions dictionary.
 
   In some cases, user wants to see some of the features in estimators prediction
@@ -148,39 +149,36 @@ def forward_features(estimator, keys=None):
   runs inference on the users graph and returns the results. Keys are essential
   because there is no order guarantee on the outputs so they need to be rejoined
   to the inputs via keys or transclusion of the inputs in the outputs.
-
   Example:
-
   ```python
     def input_fn():
       features, labels = ...
       features['unique_example_id'] = ...
       features, labels
-
     estimator = tf.estimator.LinearClassifier(...)
     estimator = tf.contrib.estimator.forward_features(
         estimator, 'unique_example_id')
     estimator.train(...)
     assert 'unique_example_id' in estimator.predict(...)
   ```
-
   Args:
     estimator: A `tf.estimator.Estimator` object.
-    keys: a `string` or a `list` of `string`. If it is `None`, all of the
+    keys: A `string` or a `list` of `string`. If it is `None`, all of the
       `features` in `dict` is forwarded to the `predictions`. If it is a
       `string`, only given key is forwarded. If it is a `list` of strings, all
       the given `keys` are forwarded.
+    sparse_default_values: A dict of `str` keys mapping the name of the sparse
+      features to be converted to dense, to the default value to use. Only
+      sparse features indicated in the dictionary are converted to dense and the
+      provided default value is used.
 
   Returns:
       A new `tf.estimator.Estimator` which forwards features to predictions.
-
   Raises:
     ValueError:
       * if `keys` is already part of `predictions`. We don't allow
         override.
       * if 'keys' does not exist in `features`.
-      * if feature key refers to a `SparseTensor`, since we don't support
-        `SparseTensor` in `predictions`. `SparseTensor` is common in `features`.
     TypeError: if `keys` type is not one of `string` or list/tuple of `string`.
   """
 
@@ -231,11 +229,18 @@ def forward_features(estimator, keys=None):
     for key in get_keys(features):
       feature = sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(
           features[key])
+      if sparse_default_values and (key in sparse_default_values):
+        if not isinstance(feature, sparse_tensor_lib.SparseTensor):
+          raise ValueError(
+              'Feature ({}) is expected to be a `SparseTensor`.'.format(key))
+        feature = sparse_ops.sparse_tensor_to_dense(
+            feature, default_value=sparse_default_values[key])
       if not isinstance(feature, ops.Tensor):
         raise ValueError(
-            'Forwarded feature ({}) should be a Tensor. Please use keys '
-            'argument of forward_features to filter unwanted features. Type of '
-            'features[{}] is {}.'.format(key, key, type(feature)))
+            'Feature ({}) should be a Tensor. Please use `keys` '
+            'argument of forward_features to filter unwanted features, or'
+            'add key to argument `sparse_default_values`.'
+            'Type of features[{}] is {}.'.format(key, key, type(feature)))
       predictions[key] = feature
     spec = spec._replace(predictions=predictions)
     if spec.export_outputs:

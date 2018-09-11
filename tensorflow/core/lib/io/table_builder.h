@@ -21,8 +21,8 @@ limitations under the License.
 // non-const method, all threads accessing the same TableBuilder must use
 // external synchronization.
 
-#ifndef TENSORFLOW_LIB_IO_TABLE_BUILDER_H_
-#define TENSORFLOW_LIB_IO_TABLE_BUILDER_H_
+#ifndef TENSORFLOW_CORE_LIB_IO_TABLE_BUILDER_H_
+#define TENSORFLOW_CORE_LIB_IO_TABLE_BUILDER_H_
 
 #include <stdint.h>
 #include "tensorflow/core/lib/core/status.h"
@@ -96,4 +96,4 @@ class TableBuilder {
 }  // namespace table
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_IO_TABLE_BUILDER_H_
+#endif  // TENSORFLOW_CORE_LIB_IO_TABLE_BUILDER_H_

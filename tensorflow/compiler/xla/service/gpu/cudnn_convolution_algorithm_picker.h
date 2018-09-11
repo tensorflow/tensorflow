@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONVOLUTION_ALGORITHM_PICKER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONVOLUTION_ALGORITHM_PICKER_H_
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
@@ -39,7 +40,7 @@ class CudnnConvolutionAlgorithmPicker : public HloPassInterface {
                                   Compiler* compiler)
       : stream_exec_(stream_exec), allocator_(allocator), compiler_(compiler) {}
 
-  tensorflow::StringPiece name() const override {
+  absl::string_view name() const override {
     return "cudnn-convolution-algorithm-picker";
   }
 
@@ -49,9 +50,7 @@ class CudnnConvolutionAlgorithmPicker : public HloPassInterface {
   StatusOr<bool> RunOnComputation(HloComputation* computation);
   StatusOr<bool> RunOnInstruction(HloInstruction* instr);
   StatusOr<std::tuple<int64, bool, int64>> PickBestAlgorithm(
-      CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
-      const Shape& output_shape, const Window& window,
-      const ConvolutionDimensionNumbers& dnums, HloInstruction* instr);
+      const HloCustomCallInstruction* instr);
 
   se::StreamExecutor* stream_exec_;                   // never null
   DeviceMemoryAllocator* allocator_;                  // may be null

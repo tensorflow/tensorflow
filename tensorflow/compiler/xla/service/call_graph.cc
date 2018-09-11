@@ -17,21 +17,21 @@ limitations under the License.
 
 #include <queue>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
-using ::tensorflow::strings::Appendf;
-using ::tensorflow::strings::StrCat;
+using absl::StrAppendFormat;
+using absl::StrCat;
 
 string CallContextToString(CallContext context) {
   switch (context) {
@@ -71,10 +71,10 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
 }
 
 string CallSite::ToString() const {
-  return StrCat(instruction()->name(), " calls in context ",
-                CallContextToString(context()), ": ",
-                tensorflow::str_util::Join(
-                    called_computations(), ", ",
+  return StrCat(
+      instruction()->name(), " calls in context ",
+      CallContextToString(context()), ": ",
+      absl::StrJoin(called_computations(), ", ",
                     [](string* out, const HloComputation* computation) {
                       out->append(computation->name());
                     }));
@@ -237,8 +237,8 @@ void CallGraph::SetCallContexts() {
 
 /* static */
 std::unique_ptr<CallGraph> CallGraph::Build(const HloModule* module) {
-  // Constructor for CallGraph is private so MakeUnique can't be used.
-  auto call_graph = WrapUnique<CallGraph>(new CallGraph(module));
+  // Constructor for CallGraph is private so absl::make_unique can't be used.
+  auto call_graph = absl::WrapUnique<CallGraph>(new CallGraph(module));
 
   VLOG(2) << "Building call graph for:";
   XLA_VLOG_LINES(2, module->ToString());
@@ -356,20 +356,20 @@ CallGraph::NearestAncestorsInSameComputation(HloInstruction* a,
 
 string CallGraph::ToString() const {
   string out;
-  Appendf(&out, "Call graph for module %s:\n", module_->name().c_str());
+  StrAppendFormat(&out, "Call graph for module %s:\n", module_->name());
   for (const CallGraphNode& node : nodes()) {
-    Appendf(&out, "Computation %s:\n", node.computation()->name().c_str());
-    Appendf(&out, "  calls:\n");
+    StrAppendFormat(&out, "Computation %s:\n", node.computation()->name());
+    StrAppendFormat(&out, "  calls:\n");
     for (const HloComputation* callee : node.callees()) {
-      Appendf(&out, "    %s\n", callee->name().c_str());
+      StrAppendFormat(&out, "    %s\n", callee->name());
     }
-    Appendf(&out, "  called by:\n");
+    StrAppendFormat(&out, "  called by:\n");
     for (const HloComputation* caller : node.callers()) {
-      Appendf(&out, "    %s\n", caller->name().c_str());
+      StrAppendFormat(&out, "    %s\n", caller->name());
     }
-    Appendf(&out, "  callsites:\n");
+    StrAppendFormat(&out, "  callsites:\n");
     for (const CallSite& callsite : node.callsites()) {
-      Appendf(&out, "    %s\n", callsite.ToString().c_str());
+      StrAppendFormat(&out, "    %s\n", callsite.ToString());
     }
   }
   return out;

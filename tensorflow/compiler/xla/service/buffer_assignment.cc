@@ -22,13 +22,14 @@ limitations under the License.
 #include <ostream>
 #include <utility>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value_containers.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -36,20 +37,15 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
+namespace {
 
+using absl::StrAppend;
+using absl::StrAppendFormat;
 using ::tensorflow::gtl::FlatMap;
 using ::tensorflow::gtl::FlatSet;
-using ::tensorflow::strings::Appendf;
 using ::tensorflow::strings::HumanReadableNumBytes;
-using ::tensorflow::strings::Printf;
-using ::tensorflow::strings::StrAppend;
-
-namespace {
 
 template <typename T>
 string ColocatedBufferSetsToString(const T& container, const char* title) {
@@ -59,114 +55,6 @@ string ColocatedBufferSetsToString(const T& container, const char* title) {
     StrAppend(&result, "\t", it->ToString(), "\n");
   }
   return result;
-}
-
-// Walk the call graph of the HLO module and place each computation into either
-// thread_local_computations or global_computations depending upon whether the
-// computation requires thread-local allocations or global allocations. The
-// elements in thread_local_computations and global_computations are in post
-// order (if computation A has an instruction which calls computation B, then A
-// will appear after B in the vector).
-Status GatherComputationsByAllocationType(
-    const HloModule* module,
-    std::vector<const HloComputation*>* thread_local_computations,
-    std::vector<const HloComputation*>* global_computations) {
-  // Create a worklist of computations paired with whether the allocation must
-  // be thread-local.
-  std::deque<std::pair<const HloComputation*, bool>> worklist;
-  worklist.push_back(std::make_pair(module->entry_computation(),
-                                    /*is_thread_local*/ false));
-
-  // Sets for quickly checking membership. Computations are returned in vectors
-  // for stable iteration.
-  FlatSet<const HloComputation*> thread_local_set;
-  FlatSet<const HloComputation*> global_set;
-
-  while (!worklist.empty()) {
-    auto worklist_front = worklist.front();
-    worklist.pop_front();
-    const HloComputation* computation = worklist_front.first;
-    bool is_thread_local = worklist_front.second;
-    bool in_thread_local_set = thread_local_set.count(computation) > 0;
-    bool in_global_set = global_set.count(computation) > 0;
-
-    // If the computation has already been added to the respective set, then
-    // nothing to do.
-    if ((is_thread_local && in_thread_local_set) ||
-        (!is_thread_local && in_global_set)) {
-      continue;
-    }
-
-    // If the computation has already been added to the other set this is an
-    // error condition because the global call to the computation (eg,
-    // while/call) may return a reference to one of the thread-local buffers to
-    // the calling computation which will become a dangling reference when the
-    // thread-local is deallocated with the call return.
-    if ((is_thread_local && in_global_set) ||
-        (!is_thread_local && in_thread_local_set)) {
-      return InvalidArgument(
-          "computation %s has conflicting allocation requirements (global "
-          "and thread-local)",
-          computation->name().c_str());
-    }
-
-    if (is_thread_local) {
-      thread_local_set.insert(computation);
-    } else {
-      global_set.insert(computation);
-    }
-
-    for (auto* instruction : computation->instructions()) {
-      for (HloComputation* subcomputation :
-           instruction->called_computations()) {
-        switch (instruction->opcode()) {
-          case HloOpcode::kCall:
-          case HloOpcode::kConditional:
-          case HloOpcode::kWhile:
-            // Call and while must be called from a computation with global
-            // allocations as they may return references to buffers inside the
-            // called computation which cannot be thread-local.
-            if (is_thread_local) {
-              return InvalidArgument(
-                  "computation %s cannot contain call/while op because it "
-                  "requires thread-local buffer allocations",
-                  computation->name().c_str());
-            }
-            worklist.push_back(std::make_pair(subcomputation,
-                                              false));  // Not thread local.
-            break;
-          case HloOpcode::kCrossReplicaSum:
-          case HloOpcode::kMap:
-          case HloOpcode::kReduce:
-          case HloOpcode::kReduceWindow:
-          case HloOpcode::kScatter:
-          case HloOpcode::kSelectAndScatter:
-          case HloOpcode::kFusion:
-            // Map/reduce etc computations are always thread-local.
-            worklist.push_back(std::make_pair(subcomputation,
-                                              true));  // Thread local.
-            break;
-          default:
-            return InternalError(
-                "Unexpected calling opcode: %s",
-                HloOpcodeString(instruction->opcode()).c_str());
-        }
-      }
-    }
-  }
-
-  // Add the computations to the vectors in post order.
-  for (auto* computation : module->MakeComputationPostOrder()) {
-    if (thread_local_set.count(computation) > 0) {
-      thread_local_computations->push_back(computation);
-    } else if (global_set.count(computation) > 0) {
-      global_computations->push_back(computation);
-    }
-    // If the computation is not reachable from the entry computation, then it
-    // will not appear in either thread_local_set or global_set. We don't bother
-    // assigning buffers for these.
-  }
-  return Status::OK();
 }
 
 // Checks that points-to set of 'instruction' is unambiguous and distinct
@@ -228,6 +116,107 @@ std::vector<int64> ColorInterferenceGraph(
 
 }  // namespace
 
+Status GatherComputationsByAllocationType(
+    const HloModule* module,
+    std::vector<const HloComputation*>* thread_local_computations,
+    std::vector<const HloComputation*>* global_computations) {
+  // Create a worklist of computations paired with whether the allocation must
+  // be thread-local.
+  std::deque<std::pair<const HloComputation*, bool>> worklist;
+  worklist.push_back(std::make_pair(module->entry_computation(),
+                                    /*is_thread_local*/ false));
+
+  // Sets for quickly checking membership. Computations are returned in vectors
+  // for stable iteration.
+  FlatSet<const HloComputation*> thread_local_set;
+  FlatSet<const HloComputation*> global_set;
+
+  while (!worklist.empty()) {
+    auto worklist_front = worklist.front();
+    worklist.pop_front();
+    const HloComputation* computation = worklist_front.first;
+    bool is_thread_local = worklist_front.second;
+    bool in_thread_local_set = thread_local_set.count(computation) > 0;
+    bool in_global_set = global_set.count(computation) > 0;
+
+    // If the computation has already been added to the respective set, then
+    // nothing to do.
+    if ((is_thread_local && in_thread_local_set) ||
+        (!is_thread_local && in_global_set)) {
+      continue;
+    }
+
+    // If the computation has already been added to the other set this is an
+    // error condition because the global call to the computation (eg,
+    // while/call) may return a reference to one of the thread-local buffers to
+    // the calling computation which will become a dangling reference when the
+    // thread-local is deallocated with the call return.
+    if ((is_thread_local && in_global_set) ||
+        (!is_thread_local && in_thread_local_set)) {
+      return InvalidArgument(
+          "computation %s has conflicting allocation requirements (global "
+          "and thread-local)",
+          computation->name());
+    }
+
+    if (is_thread_local) {
+      thread_local_set.insert(computation);
+    } else {
+      global_set.insert(computation);
+    }
+
+    for (auto* instruction : computation->instructions()) {
+      for (HloComputation* subcomputation :
+           instruction->called_computations()) {
+        switch (instruction->opcode()) {
+          case HloOpcode::kCall:
+          case HloOpcode::kConditional:
+          case HloOpcode::kWhile:
+            // Call and while must be called from a computation with global
+            // allocations as they may return references to buffers inside the
+            // called computation which cannot be thread-local.
+            if (is_thread_local) {
+              return InvalidArgument(
+                  "computation %s cannot contain call/while op because it "
+                  "requires thread-local buffer allocations",
+                  computation->name());
+            }
+            worklist.push_back(std::make_pair(subcomputation,
+                                              false));  // Not thread local.
+            break;
+          case HloOpcode::kCrossReplicaSum:
+          case HloOpcode::kMap:
+          case HloOpcode::kReduce:
+          case HloOpcode::kReduceWindow:
+          case HloOpcode::kScatter:
+          case HloOpcode::kSelectAndScatter:
+          case HloOpcode::kFusion:
+            // Map/reduce etc computations are always thread-local.
+            worklist.push_back(std::make_pair(subcomputation,
+                                              true));  // Thread local.
+            break;
+          default:
+            return InternalError("Unexpected calling opcode: %s",
+                                 HloOpcodeString(instruction->opcode()));
+        }
+      }
+    }
+  }
+
+  // Add the computations to the vectors in post order.
+  for (auto* computation : module->MakeComputationPostOrder()) {
+    if (thread_local_set.count(computation) > 0) {
+      thread_local_computations->push_back(computation);
+    } else if (global_set.count(computation) > 0) {
+      global_computations->push_back(computation);
+    }
+    // If the computation is not reachable from the entry computation, then it
+    // will not appear in either thread_local_set or global_set. We don't bother
+    // assigning buffers for these.
+  }
+  return Status::OK();
+}
+
 size_t BufferAllocation::Slice::Hasher::operator()(Slice s) const {
   uint64 h = std::hash<int64>()(s.index());
   h = tensorflow::Hash64Combine(h, std::hash<int64>()(s.offset()));
@@ -236,8 +225,8 @@ size_t BufferAllocation::Slice::Hasher::operator()(Slice s) const {
 }
 
 string BufferAllocation::Slice::ToString() const {
-  return tensorflow::strings::StrCat("{index:", index(), ", offset:", offset_,
-                                     ", size:", size_, "}");
+  return absl::StrCat("{index:", index(), ", offset:", offset_,
+                      ", size:", size_, "}");
 }
 
 BufferAllocation::Slice BufferAllocation::GetSlice(
@@ -298,7 +287,7 @@ BufferAllocationProto BufferAllocation::ToProto() const {
 
 string BufferAllocation::ToString() const {
   string output;
-  Appendf(&output, "allocation %lld: %p, size %lld", index_, this, size());
+  StrAppendFormat(&output, "allocation %d: %p, size %d", index_, this, size());
   if (color().value() != 0) {
     StrAppend(&output, ", color ", color().value());
   }
@@ -330,11 +319,10 @@ string BufferAllocation::ToString() const {
             });
   for (const LogicalBuffer* buffer : sorted_buffers) {
     const OffsetSize& offset_size = FindOrDie(assigned_buffers_, buffer);
-    StrAppend(&output,
-              tensorflow::strings::Printf(
-                  "  %s [%lld,%lld]: %s\n", buffer->ToString().c_str(),
-                  offset_size.offset, offset_size.size,
-                  ShapeUtil::HumanStringWithLayout(buffer->shape()).c_str()));
+    StrAppend(&output, absl::StrFormat(
+                           "  %s [%d,%d]: %s\n", buffer->ToString(),
+                           offset_size.offset, offset_size.size,
+                           ShapeUtil::HumanStringWithLayout(buffer->shape())));
   }
   return output;
 }
@@ -427,7 +415,7 @@ StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
         return FailedPrecondition(
             "BufferAllocation::Slice for instruction %s at index %s cannot "
             "be determined at compile-time.",
-            instruction->name().c_str(), index.ToString().c_str());
+            instruction->name(), index.ToString());
       }
     } else {
       VLOG(3) << "No allocation";
@@ -436,7 +424,7 @@ StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
   if (result.allocation() == nullptr) {
     return FailedPrecondition(
         "BufferAllocation::Slice not assigned for instruction %s at index %s",
-        instruction->name().c_str(), index.ToString().c_str());
+        instruction->name(), index.ToString());
   }
   return result;
 }
@@ -627,19 +615,25 @@ Status BufferAssignment::ComputeSummaryStats() {
     stats_.total_allocation_bytes += allocation.size();
   }
 
-  // Only compute total fragmentation if all computations are sequential.
-  SequentialHloOrdering::HloModuleSequence module_sequence;
+  // Only compute total fragmentation if all computations have schedules.
+  HloSchedule schedule(module_);
+  bool schedule_complete = true;
   for (const auto& computation : module_->computations()) {
-    const std::vector<const HloInstruction*>* sequence =
-        liveness_->hlo_ordering().SequentialOrder(*computation);
-    if (sequence != nullptr) {
-      module_sequence.emplace(computation, *sequence);
+    if (!computation->IsFusionComputation()) {
+      const std::vector<const HloInstruction*>* sequence =
+          liveness_->hlo_ordering().SequentialOrder(*computation);
+      if (sequence == nullptr) {
+        schedule_complete = false;
+      } else {
+        schedule.set_sequence(computation, *sequence);
+      }
     }
   }
-  if (module_sequence.size() == module_->computation_count()) {
+  if (schedule_complete) {
+    TF_RETURN_IF_ERROR(schedule.Verify());
     TF_ASSIGN_OR_RETURN(
         const int64 min_size,
-        HeapSimulator::MinimumMemoryForModule(module_sequence, buffer_size_));
+        HeapSimulator::MinimumMemoryForModule(schedule, buffer_size_));
     stats_.total_fragmentation_bytes = stats_.total_allocation_bytes - min_size;
   }
 
@@ -648,39 +642,38 @@ Status BufferAssignment::ComputeSummaryStats() {
 
 string BufferAssignment::Stats::ToString() const {
   string s;
-  Appendf(&s, "BufferAssignment stats:\n");
-  Appendf(&s, "             parameter allocation: %10s\n",
-          HumanReadableNumBytes(parameter_allocation_bytes).c_str());
-  Appendf(&s, "              constant allocation: %10s\n",
-          HumanReadableNumBytes(constant_allocation_bytes).c_str());
-  Appendf(&s, "        maybe_live_out allocation: %10s\n",
-          HumanReadableNumBytes(maybe_live_out_allocation_bytes).c_str());
-  Appendf(&s, "     preallocated temp allocation: %10s\n",
-          HumanReadableNumBytes(preallocated_temp_allocation_bytes).c_str());
+  StrAppendFormat(&s, "BufferAssignment stats:\n");
+  StrAppendFormat(&s, "             parameter allocation: %10s\n",
+                  HumanReadableNumBytes(parameter_allocation_bytes));
+  StrAppendFormat(&s, "              constant allocation: %10s\n",
+                  HumanReadableNumBytes(constant_allocation_bytes));
+  StrAppendFormat(&s, "        maybe_live_out allocation: %10s\n",
+                  HumanReadableNumBytes(maybe_live_out_allocation_bytes));
+  StrAppendFormat(&s, "     preallocated temp allocation: %10s\n",
+                  HumanReadableNumBytes(preallocated_temp_allocation_bytes));
   if (preallocated_temp_fragmentation_bytes >= 0) {
     const double percent = 100. * preallocated_temp_fragmentation_bytes /
                            preallocated_temp_allocation_bytes;
-    Appendf(
+    StrAppendFormat(
         &s, "  preallocated temp fragmentation: %10s (%.2f%%)\n",
-        HumanReadableNumBytes(preallocated_temp_fragmentation_bytes).c_str(),
-        percent);
+        HumanReadableNumBytes(preallocated_temp_fragmentation_bytes), percent);
   }
-  Appendf(&s, "                 total allocation: %10s\n",
-          HumanReadableNumBytes(total_allocation_bytes).c_str());
+  StrAppendFormat(&s, "                 total allocation: %10s\n",
+                  HumanReadableNumBytes(total_allocation_bytes));
   if (total_fragmentation_bytes >= 0) {
     const double percent =
         100. * total_fragmentation_bytes / total_allocation_bytes;
-    Appendf(&s, "              total fragmentation: %10s (%.2f%%)\n",
-            HumanReadableNumBytes(total_fragmentation_bytes).c_str(), percent);
+    StrAppendFormat(&s, "              total fragmentation: %10s (%.2f%%)\n",
+                    HumanReadableNumBytes(total_fragmentation_bytes), percent);
   }
   return s;
 }
 
 string BufferAssignment::ToString() const {
   string output;
-  tensorflow::strings::StrAppend(&output, "BufferAssignment:\n");
+  absl::StrAppend(&output, "BufferAssignment:\n");
   for (auto& allocation : allocations_) {
-    tensorflow::strings::StrAppend(&output, allocation.ToString());
+    absl::StrAppend(&output, allocation.ToString());
   }
   return output;
 }
@@ -1076,7 +1069,7 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     // since buffers for kCall, kWhile, and kConditional sub-computations are
     // only live for the duration of their calling instructions.
     VLOG(1) << "Running whole-module heap simulation";
-    SequentialHloOrdering::HloModuleSequence module_sequence;
+    HloSchedule schedule(&assignment->module());
     FlatSet<const LogicalBuffer*> all_buffers_to_assign;
     for (const auto& pair : buffers_to_assign_sequentially) {
       const HloComputation* computation = pair.first;
@@ -1084,7 +1077,7 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       const std::vector<const HloInstruction*>* instruction_sequence =
           hlo_ordering.SequentialOrder(*computation);
       CHECK(instruction_sequence != nullptr) << computation->name();
-      module_sequence[computation] = *instruction_sequence;
+      schedule.set_sequence(computation, *instruction_sequence);
       all_buffers_to_assign.insert(buffers_to_assign.begin(),
                                    buffers_to_assign.end());
     }
@@ -1100,9 +1093,9 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       options.buffers_to_assign = &buffer_value_set;
       TF_ASSIGN_OR_RETURN(
           const HeapSimulator::Result result,
-          HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
-                                 MakeUnique<LazyBestFitHeap>(alignment)),
-                             assignment->module(), module_sequence,
+          HeapSimulator::Run(absl::make_unique<DecreasingSizeRunsHeap>(
+                                 absl::make_unique<LazyBestFitHeap>(alignment)),
+                             assignment->module(), schedule,
                              assignment->points_to_analysis(),
                              assignment->buffer_size_, options));
       AssignBuffersFromHeapSimulator(result, assignment,
@@ -1130,11 +1123,12 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         options.buffers_to_assign = &buffer_value_set;
         TF_ASSIGN_OR_RETURN(
             const HeapSimulator::Result result,
-            HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
-                                   MakeUnique<LazyBestFitHeap>(alignment)),
-                               *computation, *instruction_sequence,
-                               assignment->points_to_analysis(),
-                               assignment->buffer_size_, options));
+            HeapSimulator::Run(
+                absl::make_unique<DecreasingSizeRunsHeap>(
+                    absl::make_unique<LazyBestFitHeap>(alignment)),
+                *computation, HloInstructionSequence(*instruction_sequence),
+                assignment->points_to_analysis(), assignment->buffer_size_,
+                options));
         AssignBuffersFromHeapSimulator(result, assignment,
                                        single_colored_set.first);
       }
@@ -1646,7 +1640,8 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   XLA_VLOG_LINES(3, liveness->ToString());
   XLA_VLOG_LINES(3, liveness->points_to_analysis().ToString());
 
-  // Can't use MakeUnique because BufferAssignment constructor is private.
+  // Can't use absl::make_unique because BufferAssignment constructor is
+  // private.
   std::unique_ptr<BufferAssignment> assignment(
       new BufferAssignment(module, std::move(liveness), std::move(buffer_size),
                            std::move(color_alignment)));

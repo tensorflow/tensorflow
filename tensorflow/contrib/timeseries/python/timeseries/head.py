@@ -30,6 +30,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import metrics_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.summary import summary
@@ -123,6 +124,8 @@ class TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acce
     metrics[feature_keys.FilteringResults.STATE_TUPLE] = (
         _identity_metric_nested(feature_keys.FilteringResults.STATE_TUPLE,
                                 model_outputs.end_state))
+    metrics[metric_keys.MetricKeys.LOSS_MEAN] = metrics_impl.mean(
+        model_outputs.loss, name="average_loss")
     return estimator_lib.EstimatorSpec(
         loss=model_outputs.loss,
         mode=mode,

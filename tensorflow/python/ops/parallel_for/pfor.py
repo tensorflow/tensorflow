@@ -21,8 +21,6 @@ from __future__ import print_function
 
 import collections
 
-from absl import flags
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -41,6 +39,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
@@ -1070,6 +1069,8 @@ class PFor(object):
       If y does not need to be converted, it returns y as is. Else it returns
       the "converted value" corresponding to y.
     """
+    if y is None:
+      return None
     if isinstance(y, sparse_tensor.SparseTensor):
       return self._convert_sparse(y)
     output = self._convert_helper(y)
@@ -2011,6 +2012,7 @@ def _convert_biasaddgrad(pfor_input):
 @RegisterPForWithArgs("ReluGrad")
 @RegisterPForWithArgs("TanhGrad")
 @RegisterPForWithArgs("SigmoidGrad")
+@RegisterPForWithArgs("SoftplusGrad")
 def _convert_grads(pfor_input, op_type, *args, **kw_args):
   del args
   del kw_args

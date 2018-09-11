@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_WORK_SHARDER_H_
-#define TENSORFLOW_UTIL_WORK_SHARDER_H_
+#ifndef TENSORFLOW_CORE_UTIL_WORK_SHARDER_H_
+#define TENSORFLOW_CORE_UTIL_WORK_SHARDER_H_
 
 #include <functional>
 
@@ -95,4 +95,4 @@ class Sharder {
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_WORK_SHARDER_H_
+#endif  // TENSORFLOW_CORE_UTIL_WORK_SHARDER_H_

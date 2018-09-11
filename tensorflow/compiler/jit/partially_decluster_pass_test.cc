@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/partially_decluster_pass.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
@@ -31,8 +32,8 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/graph_def_builder_util.h"
+#include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -83,7 +84,9 @@ Status PartiallyDecluster(std::unique_ptr<Graph>* graph) {
   // Assign all nodes to the CPU device.
   static const char* kCpuDevice = "/job:localhost/replica:0/task:0/cpu:0";
   for (Node* n : (*graph)->nodes()) {
-    n->set_assigned_device_name(kCpuDevice);
+    if (n->assigned_device_name().empty()) {
+      n->set_assigned_device_name(kCpuDevice);
+    }
   }
 
   GraphOptimizationPassOptions opt_options;
@@ -92,8 +95,8 @@ Status PartiallyDecluster(std::unique_ptr<Graph>* graph) {
   return pass.Run(opt_options);
 }
 
-const Node* FindNodeByName(const Graph& graph, const string& name) {
-  for (const Node* node : graph.nodes()) {
+Node* FindNodeByName(const Graph& graph, const string& name) {
+  for (Node* node : graph.nodes()) {
     if (node->name() == name) {
       return node;
     }
@@ -280,5 +283,128 @@ TEST(PartiallyDeclusterPassTest, DeclusterDependentNodes) {
             "ClusteredProducer0/declustered");
   EXPECT_EQ(declustered_producer_1_inputs[1]->name(), "Input");
 }
+
+void AddToCluster(absl::Span<Node* const> nodes,
+                  absl::string_view cluster_name) {
+  for (Node* n : nodes) {
+    n->AddAttr(kXlaClusterAttr, string(cluster_name));
+  }
+}
+
+TEST(PartiallyDeclusterPassTest, DeclusterMustBeConstantNodes) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output shape_a = ops::Placeholder(s.WithOpName("shape_a"), DT_INT32,
+                                    ops::Placeholder::Attrs{});
+  Output shape_b = ops::Placeholder(s.WithOpName("shape_b"), DT_INT32,
+                                    ops::Placeholder::Attrs{});
+  Output shape = ops::Add(s.WithOpName("shape"), shape_a, shape_b);
+
+  Output reshape_input = ops::Placeholder(s.WithOpName("reshape_input"),
+                                          DT_FLOAT, ops::Placeholder::Attrs{});
+  Output reshape = ops::Reshape(s.WithOpName("reshape"), reshape_input, shape);
+
+  AddToCluster({shape.node(), reshape.node()}, "cluster_0");
+
+  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  TF_ASSERT_OK(s.ToGraph(graph.get()));
+  TF_ASSERT_OK(PartiallyDecluster(&graph));
+
+  const Node* n = FindNodeByName(*graph, "shape");
+  ASSERT_NE(n, nullptr);
+
+  EXPECT_EQ(GetXlaClusterForNode(*n), absl::nullopt);
+}
+
+TEST(PartiallyDeclusterPassTest, DeclusteringStopsAtMetadataOps) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input_a = ops::Placeholder(s.WithOpName("input_a"), DT_INT32,
+                                    ops::Placeholder::Attrs{});
+  Output input_b = ops::Placeholder(s.WithOpName("shape_b"), DT_FLOAT,
+                                    ops::Placeholder::Attrs{});
+  Output mul = ops::Mul(s.WithOpName("mul"), input_b, input_b);
+  Output shape_of_mul = ops::Shape(s.WithOpName("shape_of_mul"), mul);
+
+  Output shape = ops::Add(s.WithOpName("shape"), shape_of_mul, input_a);
+
+  Output reshape_input = ops::Placeholder(s.WithOpName("reshape_input"),
+                                          DT_FLOAT, ops::Placeholder::Attrs{});
+  Output reshape = ops::Reshape(s.WithOpName("reshape"), reshape_input, shape);
+
+  AddToCluster({mul.node(), shape_of_mul.node(), shape.node(), reshape.node()},
+               "cluster_0");
+
+  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  TF_ASSERT_OK(s.ToGraph(graph.get()));
+  TF_ASSERT_OK(PartiallyDecluster(&graph));
+
+  const Node* n = FindNodeByName(*graph, "shape");
+  ASSERT_NE(n, nullptr);
+
+  EXPECT_EQ(GetXlaClusterForNode(*n), "cluster_0");
+}
+
+TEST(PartiallyDeclusterPassTest, EdgeAcrossDifferentClusters) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output shape_a = ops::Placeholder(s.WithOpName("shape_a"), DT_INT32,
+                                    ops::Placeholder::Attrs{});
+  Output shape_b = ops::Placeholder(s.WithOpName("shape_b"), DT_INT32,
+                                    ops::Placeholder::Attrs{});
+  Output shape = ops::Add(s.WithOpName("shape"), shape_a, shape_b);
+
+  Output reshape_input = ops::Placeholder(s.WithOpName("reshape_input"),
+                                          DT_FLOAT, ops::Placeholder::Attrs{});
+  Output reshape = ops::Reshape(s.WithOpName("reshape"), reshape_input, shape);
+
+  AddToCluster({reshape.node()}, "cluster_0");
+  AddToCluster({shape.node()}, "cluster_1");
+
+  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  TF_ASSERT_OK(s.ToGraph(graph.get()));
+  TF_ASSERT_OK(PartiallyDecluster(&graph));
+
+  const Node* n = FindNodeByName(*graph, "shape");
+  ASSERT_NE(n, nullptr);
+
+  EXPECT_EQ(GetXlaClusterForNode(*n), "cluster_1");
+}
+
+TEST(PartiallyDeclusterPassTest, DontDeclusterXlaDeviceOps) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output shape_a = ops::Placeholder(s.WithOpName("shape_a"), DT_INT32,
+                                    ops::Placeholder::Attrs{});
+  Output shape_b = ops::Placeholder(s.WithOpName("shape_b"), DT_INT32,
+                                    ops::Placeholder::Attrs{});
+  Output shape = ops::Add(s.WithOpName("shape"), shape_a, shape_b);
+
+  Output reshape_input = ops::Placeholder(s.WithOpName("reshape_input"),
+                                          DT_FLOAT, ops::Placeholder::Attrs{});
+  Output reshape = ops::Reshape(s.WithOpName("reshape"), reshape_input, shape);
+
+  AddToCluster({shape.node(), reshape.node()}, "cluster_0");
+
+  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  TF_ASSERT_OK(s.ToGraph(graph.get()));
+
+  // This is needed to register the XLA_GPU device.
+  std::vector<Device*> devices;
+  TF_ASSERT_OK(DeviceFactory::AddDevices(
+      SessionOptions(), "/job:localhost/replica:0/task:0", &devices));
+
+  // Scope::ToGraph loses the assigned device name since it goes through
+  // GraphDef/NodeDef which does not have a field for the assigned device name.
+  Node* n = FindNodeByName(*graph, "shape");
+  ASSERT_NE(n, nullptr);
+  n->set_assigned_device_name(
+      "/job:localhost/replica:0/task:0/device:XLA_GPU:0");
+
+  TF_ASSERT_OK(PartiallyDecluster(&graph));
+
+  EXPECT_EQ(GetXlaClusterForNode(*n), "cluster_0");
+
+  for (Device* d : devices) {
+    delete d;
+  }
+}
+
 }  // namespace
 }  // namespace tensorflow

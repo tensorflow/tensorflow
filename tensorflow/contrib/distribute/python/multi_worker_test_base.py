@@ -23,26 +23,105 @@ import copy
 import threading
 import numpy as np
 
+_portpicker_import_error = None
+try:
+  import portpicker  # pylint: disable=g-import-not-at-top
+except ImportError as _error:  # pylint: disable=invalid-name
+  _portpicker_import_error = _error
+  portpicker = None
+
+# pylint: disable=g-import-not-at-top
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.estimator import run_config
 from tensorflow.python.platform import test
-from tensorflow.python.framework import test_util
+from tensorflow.python.training import server_lib
 
 
-def create_in_process_cluster(num_workers, num_ps):
+def _create_cluster(num_workers,
+                    num_ps,
+                    has_chief=False,
+                    has_eval=False,
+                    protocol='grpc',
+                    worker_config=None,
+                    ps_config=None):
+  """Creates and starts local servers and returns the cluster_spec dict."""
+  if _portpicker_import_error:
+    raise _portpicker_import_error  # pylint: disable=raising-bad-type
+  worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
+  ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
+
+  cluster_dict = {}
+  if num_workers > 0:
+    cluster_dict['worker'] = ['localhost:%s' % port for port in worker_ports]
+  if num_ps > 0:
+    cluster_dict['ps'] = ['localhost:%s' % port for port in ps_ports]
+  if has_eval:
+    cluster_dict['evaluator'] = ['localhost:%s' % portpicker.pick_unused_port()]
+  if has_chief:
+    cluster_dict['chief'] = ['localhost:%s' % portpicker.pick_unused_port()]
+
+  cs = server_lib.ClusterSpec(cluster_dict)
+
+  for i in range(num_workers):
+    server_lib.Server(
+        cs,
+        job_name='worker',
+        protocol=protocol,
+        task_index=i,
+        config=worker_config,
+        start=True)
+
+  for i in range(num_ps):
+    server_lib.Server(
+        cs,
+        job_name='ps',
+        protocol=protocol,
+        task_index=i,
+        config=ps_config,
+        start=True)
+
+  if has_chief:
+    server_lib.Server(
+        cs,
+        job_name='chief',
+        protocol=protocol,
+        task_index=0,
+        config=worker_config,
+        start=True)
+
+  if has_eval:
+    server_lib.Server(
+        cs,
+        job_name='evaluator',
+        protocol=protocol,
+        task_index=0,
+        config=worker_config,
+        start=True)
+
+  return cluster_dict
+
+
+def create_in_process_cluster(num_workers,
+                              num_ps,
+                              has_chief=False,
+                              has_eval=False):
   """Create an in-process cluster that consists of only standard server."""
   # Leave some memory for cuda runtime.
-  gpu_mem_frac = 0.7 / num_workers
+  gpu_mem_frac = 0.7 / (num_workers + int(has_chief) + int(has_eval))
   worker_config = config_pb2.ConfigProto()
   worker_config.gpu_options.per_process_gpu_memory_fraction = gpu_mem_frac
 
   # Enable collective ops which has no impact on non-collective ops.
   # TODO(yuefengz, tucker): removing this after we move the initialization of
   # collective mgr to the session level.
-  worker_config.experimental.collective_group_leader = (
-      '/job:worker/replica:0/task:0')
+  if has_chief:
+    worker_config.experimental.collective_group_leader = (
+        '/job:chief/replica:0/task:0')
+  else:
+    worker_config.experimental.collective_group_leader = (
+        '/job:worker/replica:0/task:0')
 
   ps_config = config_pb2.ConfigProto()
   ps_config.device_count['GPU'] = 0
@@ -56,9 +135,10 @@ def create_in_process_cluster(num_workers, num_ps):
   # 2) there is something global in CUDA such that if we initialize CUDA in the
   # parent process, the child process cannot initialize it again and thus cannot
   # use GPUs (https://stackoverflow.com/questions/22950047).
-  return test_util.create_local_cluster(
+  return _create_cluster(
       num_workers,
       num_ps=num_ps,
+      has_chief=has_chief,
       worker_config=worker_config,
       ps_config=ps_config,
       protocol='grpc')
@@ -70,7 +150,8 @@ class MultiWorkerTestBase(test.TestCase):
   @classmethod
   def setUpClass(cls):
     """Create a local cluster with 2 workers."""
-    cls._workers, cls._ps = create_in_process_cluster(num_workers=2, num_ps=0)
+    cls._cluster_spec = create_in_process_cluster(num_workers=2, num_ps=0)
+    cls._default_target = 'grpc://' + cls._cluster_spec['worker'][0]
 
   def setUp(self):
     # We only cache the session in one test because another test may have a
@@ -111,17 +192,17 @@ class MultiWorkerTestBase(test.TestCase):
     config.graph_options.rewrite_options.constant_folding = (
         rewriter_config_pb2.RewriterConfig.OFF)
 
+    if target is None:
+      target = self._default_target
     if graph is None:
       if getattr(self._thread_local, 'cached_session', None) is None:
         self._thread_local.cached_session = session.Session(
-            graph=None, config=config, target=target or self._workers[0].target)
+            graph=None, config=config, target=target)
       sess = self._thread_local.cached_session
       with sess.graph.as_default(), sess.as_default():
         yield sess
     else:
-      with session.Session(
-          graph=graph, config=config, target=target or
-          self._workers[0].target) as sess:
+      with session.Session(graph=graph, config=config, target=target) as sess:
         yield sess
 
   def _run_client(self, client_fn, task_type, task_id, num_gpus, *args,

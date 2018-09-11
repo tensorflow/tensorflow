@@ -136,7 +136,7 @@ class ShuffleDatasetSerializationTest(
           for saveable in saveables:
             ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
           saver = saver_lib.Saver(allow_empty=True)
-          with self.test_session(graph=g) as sess:
+          with self.session(graph=g) as sess:
             self._save(sess, saver)
             expected = [sess.run(get_next_ops) for _ in range(num_outputs)]
             self._restore(saver, sess)

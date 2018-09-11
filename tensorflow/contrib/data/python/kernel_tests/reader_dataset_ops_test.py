@@ -43,29 +43,57 @@ class ReadBatchFeaturesTest(
     for batch_size in [1, 2]:
       for num_epochs in [1, 10]:
         with ops.Graph().as_default() as g:
-          with self.test_session(graph=g) as sess:
+          with self.session(graph=g) as sess:
             # Basic test: read from file 0.
             self.outputs = self.make_batch_feature(
                 filenames=self.test_filenames[0],
+                label_key="label",
                 num_epochs=num_epochs,
                 batch_size=batch_size).make_one_shot_iterator().get_next()
-            self.verify_records(sess, batch_size, 0, num_epochs=num_epochs)
+            self.verify_records(
+                sess,
+                batch_size,
+                0,
+                num_epochs=num_epochs,
+                label_key_provided=True)
             with self.assertRaises(errors.OutOfRangeError):
-              self._next_actual_batch(sess)
+              self._next_actual_batch(sess, label_key_provided=True)
 
         with ops.Graph().as_default() as g:
-          with self.test_session(graph=g) as sess:
+          with self.session(graph=g) as sess:
             # Basic test: read from file 1.
             self.outputs = self.make_batch_feature(
                 filenames=self.test_filenames[1],
+                label_key="label",
                 num_epochs=num_epochs,
                 batch_size=batch_size).make_one_shot_iterator().get_next()
-            self.verify_records(sess, batch_size, 1, num_epochs=num_epochs)
+            self.verify_records(
+                sess,
+                batch_size,
+                1,
+                num_epochs=num_epochs,
+                label_key_provided=True)
             with self.assertRaises(errors.OutOfRangeError):
-              self._next_actual_batch(sess)
+              self._next_actual_batch(sess, label_key_provided=True)
 
         with ops.Graph().as_default() as g:
-          with self.test_session(graph=g) as sess:
+          with self.session(graph=g) as sess:
+            # Basic test: read from both files.
+            self.outputs = self.make_batch_feature(
+                filenames=self.test_filenames,
+                label_key="label",
+                num_epochs=num_epochs,
+                batch_size=batch_size).make_one_shot_iterator().get_next()
+            self.verify_records(
+                sess,
+                batch_size,
+                num_epochs=num_epochs,
+                label_key_provided=True)
+            with self.assertRaises(errors.OutOfRangeError):
+              self._next_actual_batch(sess, label_key_provided=True)
+
+        with ops.Graph().as_default() as g:
+          with self.session(graph=g) as sess:
             # Basic test: read from both files.
             self.outputs = self.make_batch_feature(
                 filenames=self.test_filenames,
@@ -88,9 +116,9 @@ class ReadBatchFeaturesTest(
     init_op = iterator.initializer
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
-      for file_batch, _, _, _, record_batch in self._next_expected_batch(
+      for file_batch, _, _, _, record_batch, _ in self._next_expected_batch(
           range(self._num_files), 2, 10):
         actual_batch = sess.run(next_element)
         self.assertAllEqual(file_batch, actual_batch["file"])
@@ -104,7 +132,7 @@ class ReadBatchFeaturesTest(
     for batch_size in [1, 2]:
       # Test that shuffling with same seed produces the same result.
       with ops.Graph().as_default() as g:
-        with self.test_session(graph=g) as sess:
+        with self.session(graph=g) as sess:
           outputs1 = self.make_batch_feature(
               filenames=self.test_filenames[0],
               num_epochs=num_epochs,
@@ -125,7 +153,7 @@ class ReadBatchFeaturesTest(
 
       # Test that shuffling with different seeds produces a different order.
       with ops.Graph().as_default() as g:
-        with self.test_session(graph=g) as sess:
+        with self.session(graph=g) as sess:
           outputs1 = self.make_batch_feature(
               filenames=self.test_filenames[0],
               num_epochs=num_epochs,
@@ -152,7 +180,26 @@ class ReadBatchFeaturesTest(
       for reader_num_threads in [2, 4]:
         for parser_num_threads in [2, 4]:
           with ops.Graph().as_default() as g:
-            with self.test_session(graph=g) as sess:
+            with self.session(graph=g) as sess:
+              self.outputs = self.make_batch_feature(
+                  filenames=self.test_filenames,
+                  label_key="label",
+                  num_epochs=num_epochs,
+                  batch_size=batch_size,
+                  reader_num_threads=reader_num_threads,
+                  parser_num_threads=parser_num_threads).make_one_shot_iterator(
+                  ).get_next()
+              self.verify_records(
+                  sess,
+                  batch_size,
+                  num_epochs=num_epochs,
+                  label_key_provided=True,
+                  interleave_cycle_length=reader_num_threads)
+              with self.assertRaises(errors.OutOfRangeError):
+                self._next_actual_batch(sess, label_key_provided=True)
+
+          with ops.Graph().as_default() as g:
+            with self.session(graph=g) as sess:
               self.outputs = self.make_batch_feature(
                   filenames=self.test_filenames,
                   num_epochs=num_epochs,
@@ -175,16 +222,20 @@ class ReadBatchFeaturesTest(
           # Basic test: read from file 0.
           outputs = self.make_batch_feature(
               filenames=self.test_filenames[0],
+              label_key="label",
               num_epochs=num_epochs,
               batch_size=batch_size,
               drop_final_batch=True).make_one_shot_iterator().get_next()
-          for _, tensor in outputs.items():
+          for tensor in nest.flatten(outputs):
             if isinstance(tensor, ops.Tensor):  # Guard against SparseTensor.
               self.assertEqual(tensor.shape[0], batch_size)
 
   def testIndefiniteRepeatShapeInference(self):
     dataset = self.make_batch_feature(
-        filenames=self.test_filenames[0], num_epochs=None, batch_size=32)
+        filenames=self.test_filenames[0],
+        label_key="label",
+        num_epochs=None,
+        batch_size=32)
     for shape, clazz in zip(nest.flatten(dataset.output_shapes),
                             nest.flatten(dataset.output_classes)):
       if issubclass(clazz, ops.Tensor):
@@ -275,7 +326,7 @@ class MakeCsvDatasetTest(test.TestCase):
     filenames = self._setup_files(
         inputs, compression_type=kwargs.get("compression_type", None))
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         dataset = self._make_csv_dataset(
             filenames,
             batch_size=batch_size,
@@ -740,7 +791,7 @@ class MakeCsvDatasetTest(test.TestCase):
     total_records = 20
     for batch_size in [1, 2]:
       with ops.Graph().as_default() as g:
-        with self.test_session(graph=g) as sess:
+        with self.session(graph=g) as sess:
           # Test that shuffling with the same seed produces the same result
           dataset1 = self._make_csv_dataset(
               filenames,
@@ -771,7 +822,7 @@ class MakeCsvDatasetTest(test.TestCase):
               self.assertAllEqual(batch1[i], batch2[i])
 
       with ops.Graph().as_default() as g:
-        with self.test_session(graph=g) as sess:
+        with self.session(graph=g) as sess:
           # Test that shuffling with a different seed produces different results
           dataset1 = self._make_csv_dataset(
               filenames,
@@ -909,7 +960,7 @@ class MakeTFRecordDatasetTest(
       fn = None
 
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         outputs = readers.make_tf_record_dataset(
             file_pattern=file_pattern,
             num_epochs=num_epochs,
@@ -965,7 +1016,7 @@ class MakeTFRecordDatasetTest(
   def _shuffle_test(self, batch_size, num_epochs, num_parallel_reads=1,
                     seed=None):
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         dataset = readers.make_tf_record_dataset(
             file_pattern=self.test_filenames,
             num_epochs=num_epochs,

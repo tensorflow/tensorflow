@@ -47,6 +47,10 @@ public final class InterpreterTest {
   public void testInterpreter() throws Exception {
     Interpreter interpreter = new Interpreter(MODEL_FILE);
     assertThat(interpreter).isNotNull();
+    assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
+    assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+    assertThat(interpreter.getOutputTensorCount()).isEqualTo(1);
+    assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
     interpreter.close();
   }
 
@@ -183,6 +187,19 @@ public final class InterpreterTest {
   }
 
   @Test
+  public void testResizeInput() {
+    try (Interpreter interpreter = new Interpreter(MODEL_FILE)) {
+      int[] inputDims = {1};
+      interpreter.resizeInput(0, inputDims);
+      assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(inputDims);
+      ByteBuffer input = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());
+      ByteBuffer output = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());
+      interpreter.run(input, output);
+      assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(inputDims);
+    }
+  }
+
+  @Test
   public void testMobilenetRun() {
     // Create a gray image.
     float[][][][] img = new float[1][224][224][3];
@@ -199,6 +216,8 @@ public final class InterpreterTest {
 
     Interpreter interpreter = new Interpreter(MOBILENET_MODEL_FILE);
     interpreter.run(img, labels);
+    assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(new int[] {1, 224, 224, 3});
+    assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(new int[] {1, 1001});
     interpreter.close();
 
     assertThat(labels[0])

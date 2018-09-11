@@ -81,6 +81,8 @@ void Cluster::DisableOptimizer(bool disable) {
     rewriter_config->set_dependency_optimization(RewriterConfig::OFF);
     rewriter_config->set_constant_folding(RewriterConfig::OFF);
     rewriter_config->set_memory_optimization(RewriterConfig::NO_MEM_OPT);
+    rewriter_config->set_shape_optimization(RewriterConfig::OFF);
+    rewriter_config->set_remapping(RewriterConfig::OFF);
     rewriter_config->mutable_auto_parallel()->set_enable(false);
     rewriter_config->clear_optimizers();
   } else {

@@ -20,7 +20,9 @@ limitations under the License.
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 
 // TODO(jlebar): Move functions related to cublas/cudnn to a separate file; they
 // don't belong in "ir_emission_utils".
@@ -109,15 +111,20 @@ bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
 //
 // The created cudnn call will use the default cudnn algorithm and no scratch
 // space.
-HloInstruction* CreateCudnnConvForward(
-    const Shape& shape, HloInstruction* input, HloInstruction* kernel,
-    const Window& window, const ConvolutionDimensionNumbers& dnums);
+HloInstruction* CreateCudnnConvForward(const Shape& shape,
+                                       HloInstruction* input,
+                                       HloInstruction* kernel,
+                                       const Window& window,
+                                       const ConvolutionDimensionNumbers& dnums,
+                                       int64 feature_group_count);
 HloInstruction* CreateCudnnConvBackwardInput(
     const Shape& shape, HloInstruction* output, HloInstruction* reverse_filter,
-    const Window& window, const ConvolutionDimensionNumbers& dnums);
+    const Window& window, const ConvolutionDimensionNumbers& dnums,
+    int64 feature_group_count);
 HloInstruction* CreateCudnnConvBackwardFilter(
     const Shape& shape, HloInstruction* input, HloInstruction* output,
-    const Window& window, const ConvolutionDimensionNumbers& dnums);
+    const Window& window, const ConvolutionDimensionNumbers& dnums,
+    int64 feature_group_count);
 
 // Returns true if `hlo` will be implemented as a library call, e.g. cuBLAS gemm
 // or cuDNN convolution.
@@ -126,8 +133,8 @@ bool ImplementedAsLibraryCall(const HloInstruction& hlo);
 bool IsReductionToVector(const HloInstruction& reduce);
 
 // Emits call to "vprintf" with given format and arguments.
-llvm::Value* EmitPrintf(tensorflow::StringPiece fmt,
-                        tensorflow::gtl::ArraySlice<llvm::Value*> arguments,
+llvm::Value* EmitPrintf(absl::string_view fmt,
+                        absl::Span<llvm::Value* const> arguments,
                         llvm::IRBuilder<>* builder);
 
 // Emits code to shuffle data between threads of a warp. This has the same
@@ -142,6 +149,11 @@ llvm::Value* EmitPrintf(tensorflow::StringPiece fmt,
 // https://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl-sync
 llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
                                      llvm::IRBuilder<>* builder);
+
+// Populates params using conv, which must be a custom-call to a cudnn
+// convolution.  Does not modify any buffers in the params.
+Status PopulateCudnnConvParams(const HloCustomCallInstruction* custom_call,
+                               CudnnConvParams* params);
 
 }  // namespace gpu
 }  // namespace xla

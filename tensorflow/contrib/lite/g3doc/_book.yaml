@@ -1,6 +1,7 @@
 upper_tabs:
 # Tabs left of dropdown menu
 - include: /_upper_tabs_left.yaml
+- include: /versions/_upper_tabs_versions.yaml
 # Dropdown menu
 - name: Ecosystem
   path: /ecosystem
