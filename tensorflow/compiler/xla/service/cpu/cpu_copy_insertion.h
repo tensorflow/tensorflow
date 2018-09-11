@@ -32,7 +32,7 @@ namespace xla {
 // (module-scoped).
 class CpuCopyInsertion : public HloPassInterface {
  public:
-  tensorflow::StringPiece name() const override { return "copy-insertion"; }
+  absl::string_view name() const override { return "copy-insertion"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 };

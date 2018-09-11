@@ -217,6 +217,29 @@ class TensorServingInputReceiver(
         receiver_tensors_alternatives=receiver.receiver_tensors_alternatives)
 
 
+class UnsupervisedInputReceiver(ServingInputReceiver):
+  """A return type for a training_input_receiver_fn or eval_input_receiver_fn.
+
+  This differs from SupervisedInputReceiver in that it does not require a set
+  of labels.
+
+  The expected return values are:
+    features: A `Tensor`, `SparseTensor`, or dict of string to `Tensor` or
+      `SparseTensor`, specifying the features to be passed to the model.
+    receiver_tensors: A `Tensor`, `SparseTensor`, or dict of string to `Tensor`
+      or `SparseTensor`, specifying input nodes where this receiver expects to
+      be fed by default.  Typically, this is a single placeholder expecting
+      serialized `tf.Example` protos.
+  """
+
+  def __new__(cls, features, receiver_tensors):
+    return super(UnsupervisedInputReceiver, cls).__new__(
+        cls,
+        features=features,
+        receiver_tensors=receiver_tensors,
+        receiver_tensors_alternatives=None)
+
+
 class SupervisedInputReceiver(
     collections.namedtuple('SupervisedInputReceiver',
                            ['features', 'labels', 'receiver_tensors'])):
@@ -288,13 +311,33 @@ def build_parsing_serving_input_receiver_fn(feature_spec,
 
 
 def _placeholder_from_tensor(t, default_batch_size=None):
+  """Creates a placeholder that matches the dtype and shape of passed tensor.
+
+  Args:
+    t: Tensor or EagerTensor
+    default_batch_size: the number of query examples expected per batch.
+        Leave unset for variable batch size (recommended).
+
+  Returns:
+    Placeholder that matches the passed tensor.
+  """
   batch_shape = tensor_shape.TensorShape([default_batch_size])
   shape = batch_shape.concatenate(t.get_shape()[1:])
 
   # Reuse the feature tensor's op name (t.op.name) for the placeholder,
   # excluding the index from the tensor's name (t.name):
   # t.name = "%s:%d" % (t.op.name, t._value_index)
-  return array_ops.placeholder(dtype=t.dtype, shape=shape, name=t.op.name)
+  try:
+    name = t.op.name
+  except AttributeError:
+    # In Eager mode, tensors don't have ops or names, and while they do have
+    # IDs, those are not maintained across runs. The name here is used
+    # primarily for debugging, and is not critical to the placeholder.
+    # So, in order to make this Eager-compatible, continue with an empty
+    # name if none is available.
+    name = None
+
+  return array_ops.placeholder(dtype=t.dtype, shape=shape, name=name)
 
 
 def _placeholders_from_receiver_tensors_dict(input_vals,

@@ -72,7 +72,7 @@ py_test(
 
 tf_xla_py_test(
     name = "adadelta_test",
-    size = "medium",
+    size = "large",
     srcs = ["adadelta_test.py"],
     deps = [
         ":xla_test",
@@ -251,6 +251,7 @@ tf_xla_py_test(
 tf_xla_py_test(
     name = "matrix_triangular_solve_op_test",
     size = "small",
+    timeout = "moderate",
     srcs = ["matrix_triangular_solve_op_test.py"],
     tags = ["optonly"],
     deps = [
@@ -572,6 +573,7 @@ tf_xla_py_test(
 tf_xla_py_test(
     name = "matrix_band_part_test",
     size = "medium",
+    timeout = "long",
     srcs = ["matrix_band_part_test.py"],
     tags = ["optonly"],
     deps = [
@@ -728,6 +730,7 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -1100,6 +1103,7 @@ cc_library(
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1188,5 +1192,21 @@ tf_xla_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "xla_ops_test",
+    size = "small",
+    srcs = ["xla_ops_test.py"],
+    disabled_backends = ["cpu_ondemand"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

@@ -36,23 +36,6 @@ from tensorflow.tools.docs import pretty_docs
 from tensorflow.tools.docs import py_guide_parser
 
 
-def _is_free_function(py_object, full_name, index):
-  """Check if input is a free function (and not a class- or static method)."""
-  if not tf_inspect.isfunction(py_object):
-    return False
-
-  # Static methods are functions to tf_inspect (in 2.7), so check if the parent
-  # is a class. If there is no parent, it's not a function.
-  if '.' not in full_name:
-    return False
-
-  parent_name = full_name.rsplit('.', 1)[0]
-  if tf_inspect.isclass(index[parent_name]):
-    return False
-
-  return True
-
-
 def write_docs(output_dir,
                parser_config,
                yaml_toc,
@@ -109,7 +92,7 @@ def write_docs(output_dir,
 
     # Methods and some routines are documented only as part of their class.
     if not (tf_inspect.ismodule(py_object) or tf_inspect.isclass(py_object) or
-            _is_free_function(py_object, full_name, parser_config.index)):
+            parser.is_free_function(py_object, full_name, parser_config.index)):
       continue
 
     sitepath = os.path.join('api_docs/python',
@@ -171,14 +154,15 @@ def write_docs(output_dir,
           os.path.join('/', from_path),
           os.path.join('/', to_path)))
 
-  redirects = sorted(redirects)
-  template = ('- from: {}\n'
-              '  to: {}\n')
-  redirects = [template.format(f, t) for f, t in redirects]
-  api_redirects_path = os.path.join(output_dir, '_redirects.yaml')
-  with open(api_redirects_path, 'w') as redirect_file:
-    redirect_file.write('redirects:\n')
-    redirect_file.write(''.join(redirects))
+  if redirects:
+    redirects = sorted(redirects)
+    template = ('- from: {}\n'
+                '  to: {}\n')
+    redirects = [template.format(f, t) for f, t in redirects]
+    api_redirects_path = os.path.join(output_dir, '_redirects.yaml')
+    with open(api_redirects_path, 'w') as redirect_file:
+      redirect_file.write('redirects:\n')
+      redirect_file.write(''.join(redirects))
 
   if yaml_toc:
     # Generate table of contents
@@ -417,8 +401,8 @@ class _GenerateGuideIndex(py_guide_parser.PyGuideParser):
     self.section_tag = tag
 
   def process_line(self, _, line):
-    """Index @{symbol} references as in the current file & section."""
-    for match in parser.SYMBOL_REFERENCE_RE.finditer(line):
+    """Index the file and section of each `symbol` reference."""
+    for match in parser.AUTO_REFERENCE_RE.finditer(line):
       val = self.index.get(match.group(1), [])
       val.append(
           _GuideRef(self.base_name, self.title, self.section_title,
@@ -547,6 +531,13 @@ class DocGenerator(object):
         help='The path from the site-root to api_docs'
              'directory for this project')
 
+    self.argument_parser.add_argument(
+        '--api_cache_out_path',
+        type=str,
+        default=None,
+        help='Path to store a json-serialized api-index, so links can be '
+        'inserted into docs without rebuilding the api_docs')
+
   def add_output_dir_argument(self):
     self.argument_parser.add_argument(
         '--output_dir',
@@ -646,6 +637,9 @@ class DocGenerator(object):
     doc_index = build_doc_index(flags.src_dir)
     visitor = self.run_extraction()
     reference_resolver = self.make_reference_resolver(visitor, doc_index)
+
+    if getattr(flags, 'api_cache_out_path', None):
+      reference_resolver.to_json_file(flags.api_cache_out_path)
 
     # Build the guide_index for the api_docs back links.
     root_title = getattr(flags, 'root_title', 'TensorFlow')

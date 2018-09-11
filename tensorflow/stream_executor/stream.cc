@@ -5287,12 +5287,11 @@ Stream &Stream::ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
 Stream &Stream::ThenDoHostCallback(std::function<void()> callback) {
   VLOG_CALL(PARAM(callback));
 
-  if (ok()) {
-    CheckError(parent_->HostCallback(this, callback));
-  } else {
+  if (!ok()) {
     LOG(INFO) << DebugStreamPointers()
               << " was in error state before adding host callback";
   }
+  CheckError(parent_->HostCallback(this, std::move(callback)));
   return *this;
 }
 
@@ -5300,12 +5299,11 @@ Stream &Stream::ThenDoHostCallbackWithStatus(
     std::function<port::Status()> callback) {
   VLOG_CALL(PARAM(callback));
 
-  if (ok()) {
-    CheckError(parent_->HostCallback(this, std::move(callback)));
-  } else {
-    LOG(WARNING) << "stream " << DebugStreamPointers()
-                 << " was in error state before adding host callback";
+  if (!ok()) {
+    LOG(INFO) << DebugStreamPointers()
+              << " was in error state before adding host callback";
   }
+  CheckError(parent_->HostCallback(this, std::move(callback)));
   return *this;
 }
 

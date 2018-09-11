@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -30,8 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -47,8 +46,7 @@ namespace {
 //
 // In this case, we should be able to reuse p0 and output, although p0 has
 // multiple uses.
-bool MultiDynamicSliceUseShareSameIndices(
-    tensorflow::gtl::ArraySlice<HloUse> uses) {
+bool MultiDynamicSliceUseShareSameIndices(absl::Span<const HloUse> uses) {
   if (uses.empty()) {
     return false;
   }
@@ -79,8 +77,8 @@ bool MultiDynamicSliceUseShareSameIndices(
 
 }  // namespace
 
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
+using absl::StrAppend;
+using absl::StrCat;
 
 HloDataflowAnalysis::HloDataflowAnalysis(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
@@ -222,7 +220,7 @@ string HloDataflowAnalysis::ToString() const {
 
 bool HloDataflowAnalysis::Phi(
     HloInstruction* instruction,
-    tensorflow::gtl::ArraySlice<const InstructionValueSet*> inputs) {
+    absl::Span<const InstructionValueSet* const> inputs) {
   CHECK(ssa_form_);
   VLOG(4) << "Phi(" << instruction->name() << ")";
   VLOG(5) << "instruction value set = "
@@ -838,7 +836,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
             return Unimplemented(
                 "Computation %s is called in both a parallel (eg, kMap) and "
                 "sequential (eg, kCall) context",
-                computation->name().c_str());
+                computation->name());
           }
           if (call_graph_node.caller_callsites().empty() ||
               call_graph_node.context() == CallContext::kParallel) {
@@ -977,28 +975,22 @@ Status HloDataflowAnalysis::Verify() const {
 bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
     const HloInstruction* operand, const ShapeIndex& index,
     const HloInstruction* user) const {
-  CHECK(user->IsUserOf(operand))
-      << "user: " << user->ToString() << " operand: " << operand->ToString();
-  if (user->opcode() == HloOpcode::kFusion &&
-      user->fusion_kind() == HloInstruction::FusionKind::kLoop) {
-    // Find fusion parameter associated with 'operand'.
-    HloInstruction* fusion_param =
-        user->fused_parameter(user->operand_index(operand));
-    // Iterate through all users of all uses of the fusion parameter value.
-    // Return false if any uses are detected, returns true otherwise.
-    const HloValue& value = GetValueDefinedAt(fusion_param, index);
-    return value.uses().empty();
-  } else {
-    // Return false if no value at 'operand' and 'index' is used at 'user'.
-    for (const HloValue* value : GetValueSet(operand, index).values()) {
-      for (const HloUse& use : value->uses()) {
-        if (use.instruction == user) {
-          return false;
+  // Return false if no value at 'operand' and 'index' is used at 'user'.
+  for (const HloValue* value : GetValueSet(operand, index).values()) {
+    for (const HloUse& use : value->uses()) {
+      if (use.instruction == user) {
+        if (user->opcode() == HloOpcode::kFusion &&
+            user->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+          HloInstruction* fusion_param =
+              user->fused_parameter(use.operand_number);
+          const HloValue& value =
+              GetValueDefinedAt(fusion_param, use.operand_index);
+          return value.uses().empty();
         }
+        return false;
       }
     }
   }
-
   return true;
 }
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/shape_partition.h"
@@ -217,8 +218,7 @@ bool ParallelTaskAssigner::AssignParallelTasksHelper(
 
     // Outline 'instruction' in 'computation' for parallel task assignment.
     auto* call = module->OutlineExpressionFromComputation(
-        {instruction},
-        tensorflow::strings::StrCat("parallel_", instruction->name()),
+        {instruction}, absl::StrCat("parallel_", instruction->name()),
         computation);
 
     // Set assigned dimension partitioning to 'instruction'.

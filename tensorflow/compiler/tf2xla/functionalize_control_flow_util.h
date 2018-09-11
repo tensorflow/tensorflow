@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_FUNCTIONALIZE_CONTROL_FLOW_UTIL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_FUNCTIONALIZE_CONTROL_FLOW_UTIL_H_
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/graph/graph.h"
 
@@ -42,13 +43,12 @@ xla::StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index);
 // Returns a textual representation of the names of the nodes in the input.
 template <typename T>
 string NodesToString(const T& nodes) {
-  return strings::StrCat("{",
-                         str_util::Join(nodes, ",",
-                                        [](string* output, const Node* node) {
-                                          strings::StrAppend(output,
-                                                             node->name());
-                                        }),
-                         "}");
+  return absl::StrCat("{",
+                      absl::StrJoin(nodes, ",",
+                                    [](string* output, const Node* node) {
+                                      absl::StrAppend(output, node->name());
+                                    }),
+                      "}");
 }
 
 }  // namespace tensorflow

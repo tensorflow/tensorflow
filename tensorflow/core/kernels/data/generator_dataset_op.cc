@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
+namespace data {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
@@ -188,10 +189,13 @@ void GeneratorDatasetOp::MakeDataset(OpKernelContext* ctx,
                   std::move(finalize_func), output_types_, output_shapes_);
 }
 
+namespace {
 REGISTER_KERNEL_BUILDER(Name("GeneratorDataset").Device(DEVICE_CPU),
                         GeneratorDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("GeneratorDataset").Device(DEVICE_GPU).HostMemory("handle"),
     GeneratorDatasetOp);
+}  // namespace
 
+}  // namespace data
 }  // namespace tensorflow

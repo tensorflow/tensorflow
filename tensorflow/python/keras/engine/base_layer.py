@@ -42,7 +42,6 @@ from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint:
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import function_utils
@@ -50,6 +49,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
 
 
 class CallConvention(enum.Enum):
@@ -79,6 +79,7 @@ class Layer(checkpointable.CheckpointableBase):
   Users will just instantiate a layer and then treat it as a callable.
 
   We recommend that descendants of `Layer` implement the following methods:
+
   * `__init__()`: Save configuration in member variables
   * `build()`: Called once from `__call__`, when we know the shapes of inputs
     and `dtype`. Should have the calls to `add_weight()`, and then
@@ -272,6 +273,7 @@ class Layer(checkpointable.CheckpointableBase):
       return []
     return self._updates
 
+  @doc_controls.for_subclass_implementers
   def add_update(self, updates, inputs=None):
     """Add update op(s), potentially dependent on layer inputs.
 
@@ -372,6 +374,7 @@ class Layer(checkpointable.CheckpointableBase):
     else:
       return self._losses
 
+  @doc_controls.for_subclass_implementers
   def add_loss(self, losses, inputs=None):
     """Add loss tensor(s), potentially dependent on layer inputs.
 
@@ -463,10 +466,12 @@ class Layer(checkpointable.CheckpointableBase):
     """Creates the variables of the layer."""
     self.built = True
 
+  @doc_controls.for_subclass_implementers
   def add_variable(self, *args, **kwargs):
     """Alias for `add_weight`."""
     return self.add_weight(*args, **kwargs)
 
+  @doc_controls.for_subclass_implementers
   def add_weight(self,
                  name,
                  shape,
@@ -477,8 +482,8 @@ class Layer(checkpointable.CheckpointableBase):
                  constraint=None,
                  partitioner=None,
                  use_resource=None,
-                 synchronization=vs.VariableSynchronization.AUTO,
-                 aggregation=vs.VariableAggregation.NONE,
+                 synchronization=tf_variables.VariableSynchronization.AUTO,
+                 aggregation=tf_variables.VariableAggregation.NONE,
                  **kwargs):
     """Adds a new variable to the layer, or gets an existing one; returns it.
 
@@ -535,7 +540,7 @@ class Layer(checkpointable.CheckpointableBase):
     regularizer = regularizers.get(regularizer)
     constraint = constraints.get(constraint)
 
-    if synchronization == vs.VariableSynchronization.ON_READ:
+    if synchronization == tf_variables.VariableSynchronization.ON_READ:
       if trainable:
         raise ValueError(
             'Synchronization value can be set to '
@@ -656,6 +661,7 @@ class Layer(checkpointable.CheckpointableBase):
           activity_regularization = self._activity_regularizer(output)
         self.add_loss(activity_regularization, inputs=inputs)
 
+  @doc_controls.for_subclass_implementers
   def call(self, inputs, **kwargs):  # pylint: disable=unused-argument
     """This is where the layer's logic lives.
 
@@ -995,7 +1001,7 @@ class Layer(checkpointable.CheckpointableBase):
       self.build(input_shape)
 
       with context.graph_mode():
-        graph = eager_function.CapturingGraph()
+        graph = eager_function.FuncGraph('graph')
         with graph.as_default():
           if isinstance(input_shape, list):
             inputs = [generate_placeholders_from_shape(shape)
@@ -1422,11 +1428,13 @@ class Layer(checkpointable.CheckpointableBase):
                            'instead.' % self.name)
 
   @property
+  @doc_controls.do_not_doc_inheritable
   def inbound_nodes(self):
     """Deprecated, do NOT use! Only for compatibility with external Keras."""
     return self._inbound_nodes
 
   @property
+  @doc_controls.do_not_doc_inheritable
   def outbound_nodes(self):
     """Deprecated, do NOT use! Only for compatibility with external Keras."""
     return self._outbound_nodes
@@ -1897,8 +1905,8 @@ def make_variable(name,
                   constraint=None,
                   use_resource=None,
                   collections=None,
-                  synchronization=vs.VariableSynchronization.AUTO,
-                  aggregation=vs.VariableAggregation.NONE,
+                  synchronization=tf_variables.VariableSynchronization.AUTO,
+                  aggregation=tf_variables.VariableAggregation.NONE,
                   partitioner=None):  # pylint: disable=unused-argument
   """Temporary util to create a variable (relies on `variable_scope.variable`).
 
@@ -1926,8 +1934,8 @@ def make_variable(name,
       then this parameter is ignored and any added variables are also
       marked as non-trainable. `trainable` defaults to `True` unless
       `synchronization` is set to `ON_READ`.
-    caching_device: Passed to `vs.variable`.
-    validate_shape: Passed to `vs.variable`.
+    caching_device: Passed to `tf.Variable`.
+    validate_shape: Passed to `tf.Variable`.
     constraint: Constraint instance (callable).
     use_resource: Whether to use a `ResourceVariable`.
     collections: List of graph collections keys. The new variable is added to
@@ -1964,7 +1972,7 @@ def make_variable(name,
   if use_resource is None:
     use_resource = True
 
-  v = vs.variable(
+  v = tf_variables.Variable(
       initial_value=init_val,
       name=name,
       trainable=trainable,

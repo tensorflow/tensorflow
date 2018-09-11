@@ -32,7 +32,7 @@ Status ComputePredicates(const Graph& graph, PredicateMapTy* out_predicate_map);
 // specified in `reverse_post_order` which must be a valid RPO for the graph
 // minus NextIteration->Merge edges.
 Status ComputePredicates(const Graph& graph,
-                         gtl::ArraySlice<Node*> reverse_post_order,
+                         absl::Span<Node* const> reverse_post_order,
                          PredicateMapTy* out_predicate_map);
 }  // namespace deadness_analysis_internal
 }  // namespace tensorflow

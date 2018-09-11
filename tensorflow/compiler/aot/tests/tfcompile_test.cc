@@ -16,6 +16,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 #define EIGEN_USE_CUSTOM_THREAD_POOL
 
+#include "absl/strings/str_split.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -546,7 +546,7 @@ TEST(TFCompileTest, HloProfiling) {
   VLOG(1) << "HLO profile string:\n" << hlo_profile_as_string;
 
   std::vector<string> hlo_profile_lines =
-      tensorflow::str_util::Split(hlo_profile_as_string, '\n');
+      absl::StrSplit(hlo_profile_as_string, '\n');
 
   auto header = HasSubstr("Execution profile for");
   auto total_cycles_profile_line = HasSubstr("[total]");

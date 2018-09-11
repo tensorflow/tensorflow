@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/fusion_utils.h"
 
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_def.pb.h"
-
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -50,6 +50,12 @@ string GetOutputNode(const FunctionDef& function, int output_idx) {
   const auto& ret_output_name =
       function.signature().output_arg(output_idx).name();
   return function.ret().at(ret_output_name);
+}
+
+string& GetMutableOutputNode(FunctionDef* function, int output_idx) {
+  const auto& ret_output_name =
+      function->signature().output_arg(output_idx).name();
+  return function->mutable_ret()->at(ret_output_name);
 }
 
 template <typename Iterable>
@@ -106,7 +112,6 @@ gtl::FlatMap<string, string> GetUniqueNames(const Iterable& first_iterable,
 // Nodes that will be added to the function can have the same name as the nodes
 // from parent function.
 void RenameFunctionNodes(const FunctionDef& first_function,
-                         FunctionDef* fused_function,
                          protobuf::RepeatedPtrField<NodeDef>* nodes_to_fuse,
                          protobuf::Map<string, string>* rets_to_fuse) {
   const gtl::FlatMap<string, string> changed_node_names =
@@ -149,6 +154,7 @@ OpDef GetUniqueSignature(const OpDef& first_signature,
   const gtl::FlatMap<string, string> changed_input_names =
       GetUniqueNames(first_signature.input_arg(), second_signature.input_arg());
   OpDef signature;
+  signature.set_name(second_signature.name());
 
   for (const auto& input_arg : second_signature.input_arg()) {
     auto& input = *signature.add_input_arg();
@@ -221,12 +227,13 @@ void FuseFunctionNodes(const StringCollection& first_inputs,
 }
 
 // This function looks for direct edges from input to return and rewrites
-// them to the coresponding input of the return of `first_function`.
+// them to the corresponding input of the return of `first_function`.
 void FuseReturns(const StringCollection& first_inputs,
                  const StringCollection& second_inputs,
                  const StringCollection& first_outputs,
-                 const SetInputFn& set_input, FunctionDef* fused_function) {
-  for (auto& ret : *fused_function->mutable_ret()) {
+                 const SetInputFn& set_input,
+                 protobuf::Map<string, string>* fused_ret) {
+  for (auto& ret : *fused_ret) {
     auto return_input = ParseNodeConnection(ret.second);
     auto input_it =
         std::find(second_inputs.begin(), second_inputs.end(), return_input);
@@ -249,6 +256,33 @@ StringCollection GetFunctionOutputs(const FunctionDef& function) {
   return outputs;
 }
 
+FunctionDef* CreateFalsePredicate(
+    const protobuf::RepeatedPtrField<OpDef_ArgDef>& fake_args,
+    FunctionDefLibrary* library) {
+  GraphDef graph;
+  MutableGraphView graph_view(&graph);
+  auto* node = graph_utils::AddScalarConstNode(false, &graph_view);
+  auto* false_predicate = library->add_function();
+  graph_utils::SetUniqueGraphFunctionName("false_predicate", library,
+                                          false_predicate);
+
+  int num = 0;
+  for (const auto& fake_arg : fake_args) {
+    auto* arg = false_predicate->mutable_signature()->add_input_arg();
+    arg->set_type(fake_arg.type());
+    arg->set_name(strings::StrCat("fake_arg", num));
+    num++;
+  }
+
+  auto* output = false_predicate->mutable_signature()->add_output_arg();
+  output->set_name("false_out");
+  output->set_type(DT_BOOL);
+
+  (*false_predicate->mutable_ret())["false_out"] = node->name() + ":output:0";
+  *false_predicate->mutable_node_def() = std::move(*graph.mutable_node());
+  return false_predicate;
+}
+
 void CheckIfCanCompose(const OpDef& first_signature,
                        const OpDef& second_signature) {
   CHECK(CanCompose(first_signature, second_signature))
@@ -258,6 +292,15 @@ void CheckIfCanCompose(const OpDef& first_signature,
 }
 
 }  // namespace
+
+void MergeNodes(const FunctionDef& first_function,
+                const FunctionDef& second_function, FunctionDef* fused_function,
+                FunctionDefLibrary* library) {
+  // Copy all nodes from first_function.
+  fused_function->mutable_node_def()->CopyFrom(first_function.node_def());
+  // Copy transformed nodes from the second function.
+  fused_function->mutable_node_def()->MergeFrom(second_function.node_def());
+}
 
 bool CanCompose(const OpDef& first_signature, const OpDef& second_signature) {
   // TODO(prazek): Functions can have additional inputs being placeholders
@@ -285,8 +328,8 @@ void ComposeSignature(const OpDef& first_signature,
 
 void ComposeOutput(const protobuf::Map<string, string>& first_ret,
                    const protobuf::Map<string, string>& second_ret,
-                   FunctionDef* fused_function) {
-  *fused_function->mutable_ret() = second_ret;
+                   protobuf::Map<string, string>* fused_ret) {
+  *fused_ret = second_ret;
 }
 
 void CombineSignature(const OpDef& first_signature,
@@ -302,41 +345,110 @@ void CombineSignature(const OpDef& first_signature,
 
 void CombineOutput(const protobuf::Map<string, string>& first_ret,
                    const protobuf::Map<string, string>& second_ret,
-                   FunctionDef* fused_function) {
-  *fused_function->mutable_ret() = first_ret;
-  fused_function->mutable_ret()->insert(second_ret.begin(), second_ret.end());
+                   protobuf::Map<string, string>* fused_ret) {
+  *fused_ret = first_ret;
+  fused_ret->insert(second_ret.begin(), second_ret.end());
 }
 
-FunctionDef* FuseFunctions(const FunctionDef& first_function,
-                           const FunctionDef& function,
-                           StringPiece fused_name_prefix,
-                           const SetFunctionSignatureFn& set_signature,
-                           const SetInputFn& set_input,
-                           const SetOutputFn& set_output,
-                           FunctionDefLibrary* library) {
-  if (first_function.attr_size() != 0 || function.attr_size() != 0)
+string SameInput(const StringCollection& first_inputs,
+                 const StringCollection& second_inputs,
+                 const StringCollection& first_outputs, int arg_num) {
+  return first_inputs.at(arg_num);
+}
+
+bool HasSameSignature(const OpDef& first_signature,
+                      const OpDef& second_signature) {
+  return first_signature.input_arg_size() ==
+             second_signature.input_arg_size() &&
+         first_signature.output_arg_size() ==
+             second_signature.output_arg_size();
+}
+
+void SameSignature(const OpDef& first_signature, const OpDef& second_signature,
+                   OpDef* fused_signature) {
+  CHECK(HasSameSignature(first_signature, second_signature))
+      << "Functions do not have the same signature";
+  // Copy signature from first function.
+  *fused_signature = first_signature;
+}
+
+void LazyConjunctionNodes(const FunctionDef& first_function,
+                          const FunctionDef& second_function,
+                          FunctionDef* fused_function,
+                          FunctionDefLibrary* library) {
+  fused_function->mutable_node_def()->CopyFrom(first_function.node_def());
+
+  NodeDefBuilder if_builder("", "If");
+  if_builder.Input(GetOutputNode(first_function, 0), 0, DT_BOOL);
+  DataTypeVector in_arg_types;
+  std::vector<NodeDefBuilder::NodeOut> inputs;
+  for (const auto& input_arg : first_function.signature().input_arg()) {
+    inputs.push_back({input_arg.name(), 0, input_arg.type()});
+    in_arg_types.push_back(input_arg.type());
+  }
+  if_builder.Attr("Tin", in_arg_types);
+
+  if_builder.Attr("Tcond", DT_BOOL);
+  if_builder.Attr("Tout", DataTypeVector{DT_BOOL});
+  if_builder.Attr("_lower_using_switch_merge", true);
+
+  NameAttrList then_branch;
+  then_branch.set_name(second_function.signature().name());
+  if_builder.Attr("then_branch", then_branch);
+
+  auto* false_predicate =
+      CreateFalsePredicate(first_function.signature().input_arg(), library);
+
+  NameAttrList else_branch;
+  else_branch.set_name(false_predicate->signature().name());
+  if_builder.Attr("else_branch", else_branch);
+  if_builder.Input(inputs);
+
+  auto* if_node = fused_function->add_node_def();
+  // This is guaranteed to succeed.
+  TF_CHECK_OK(if_builder.Finalize(if_node));
+  graph_utils::SetUniqueFunctionNodeName("cond", fused_function, if_node);
+
+  GetMutableOutputNode(fused_function, 0) = if_node->name() + ":output:0";
+}
+
+void LazyConjunctionOutput(const protobuf::Map<string, string>& first_ret,
+                           const protobuf::Map<string, string>& second_ret,
+                           protobuf::Map<string, string>* fused_ret) {
+  CHECK_EQ(first_ret.size(), 1);
+  CHECK_EQ(second_ret.size(), 1);
+  // Temporarily copy returns from first_ret.  We are going to change the
+  // output node after creating it.
+  *fused_ret = first_ret;
+}
+
+FunctionDef* FuseFunctions(
+    const FunctionDef& first_function, const FunctionDef& second_function,
+    StringPiece fused_name_prefix, const SetFunctionSignatureFn& set_signature,
+    const SetInputFn& set_input, const SetOutputFn& set_output,
+    const SetNodesFn& set_nodes, FunctionDefLibrary* library) {
+  if (first_function.attr_size() != 0 || second_function.attr_size() != 0)
     return nullptr;  // Functions with attributes are currently not supported
 
   // This function will be used as a clone of second function, having unique
   // names.
-  FunctionDef setup_function = function;
+  FunctionDef setup_function = second_function;
   *setup_function.mutable_signature() = GetUniqueSignature(
       first_function.signature(), setup_function.signature(),
       setup_function.mutable_ret(), setup_function.mutable_node_def());
 
   FunctionDef* fused_function = library->add_function();
-  // Copy all nodes from first_function.
-  fused_function->mutable_node_def()->CopyFrom(first_function.node_def());
+
   set_signature(first_function.signature(), setup_function.signature(),
                 fused_function->mutable_signature());
 
   graph_utils::SetUniqueGraphFunctionName(fused_name_prefix, library,
                                           fused_function);
 
-  RenameFunctionNodes(first_function, fused_function,
-                      setup_function.mutable_node_def(),
+  RenameFunctionNodes(first_function, setup_function.mutable_node_def(),
                       setup_function.mutable_ret());
-  set_output(first_function.ret(), setup_function.ret(), fused_function);
+  set_output(first_function.ret(), setup_function.ret(),
+             fused_function->mutable_ret());
 
   CHECK(fused_function->signature().output_arg_size() ==
         fused_function->ret_size())
@@ -351,10 +463,10 @@ FunctionDef* FuseFunctions(const FunctionDef& first_function,
   FuseFunctionNodes(first_inputs, second_inputs, first_outputs, set_input,
                     setup_function.mutable_node_def());
   FuseReturns(first_inputs, second_inputs, first_outputs, set_input,
-              fused_function);
+              fused_function->mutable_ret());
 
-  // Copy transformed nodes from the second function.
-  fused_function->mutable_node_def()->MergeFrom(setup_function.node_def());
+  set_nodes(first_function, setup_function, fused_function, library);
+
   return fused_function;
 }
 

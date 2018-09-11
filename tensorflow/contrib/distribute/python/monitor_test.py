@@ -45,7 +45,7 @@ class MonitorTest(test.TestCase, parameterized.TestCase):
       if context.executing_eagerly():
         monitor = monitor_lib.Monitor(single_loss_step, None)
       else:
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           monitor = monitor_lib.Monitor(single_loss_step, sess)
 
       monitor.run_steps(1)

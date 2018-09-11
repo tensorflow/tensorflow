@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -193,7 +193,7 @@ std::vector<HloInstruction*> HloModuleGroupUtil::GlobalSuccessors(
 }
 
 std::vector<HloInstruction*> HloModuleGroupUtil::RootInstructions(
-    tensorflow::gtl::ArraySlice<HloComputation*> computations) {
+    absl::Span<HloComputation* const> computations) {
   std::vector<HloInstruction*> roots;
   for (HloComputation* computation : computations) {
     for (HloInstruction* instruction : computation->instructions()) {
@@ -270,8 +270,8 @@ Status HloModuleGroupUtil::VisitTopologicalOrder(
           string cyclic_instructions;
           for (const auto& state : *visit_state) {
             if (state.second == VisitState::kVisiting) {
-              tensorflow::strings::StrAppend(&cyclic_instructions,
-                                             state.first->ToString(), "\n");
+              absl::StrAppend(&cyclic_instructions, state.first->ToString(),
+                              "\n");
             }
           }
           // TODO(b/64305524): Improve the error message to print out the
@@ -282,7 +282,7 @@ Status HloModuleGroupUtil::VisitTopologicalOrder(
               "following nodes. Note that the order of the nodes is arbitrary "
               "and that the list may include nodes that are not part of the "
               "cycle.\n%s",
-              predecessor->ToString().c_str(), cyclic_instructions.c_str());
+              predecessor->ToString(), cyclic_instructions);
         }
         stack.push(predecessor);
       }
@@ -293,7 +293,7 @@ Status HloModuleGroupUtil::VisitTopologicalOrder(
 }
 
 Status HloModuleGroupUtil::VerifyComputations(
-    tensorflow::gtl::ArraySlice<HloComputation*> computations) {
+    absl::Span<HloComputation* const> computations) {
   auto visit_function =
       [&](HloInstruction* instruction,
           const std::vector<HloInstruction*>& instruction_group) {
@@ -324,7 +324,7 @@ Status HloModuleGroupUtil::VerifyComputations(
 
 StatusOr<std::unique_ptr<HloReachabilityMap>>
 HloModuleGroupUtil::ComputeReachability(
-    tensorflow::gtl::ArraySlice<HloComputation*> computations) {
+    absl::Span<HloComputation* const> computations) {
   std::vector<HloInstruction*> post_order;
   auto visit_function =
       [&](HloInstruction* instruction,

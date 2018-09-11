@@ -60,6 +60,9 @@ class GPUDeviceContext : public DeviceContext {
   void MaintainLifetimeOnStream(const Tensor* t,
                                 se::Stream* stream) const override {}
 
+  Status ThenExecute(Device* device, se::Stream* stream,
+                     std::function<void()> func) override;
+
  private:
   int stream_id_;
   // The default primary stream to use for this context.

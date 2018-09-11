@@ -58,12 +58,6 @@ tensorflow::Env* env = tensorflow::Env::Default();
 // Key is a substring of the test name and value is a bug number.
 // TODO(ahentz): make sure we clean this list up frequently.
 std::map<string, string> kBrokenTests = {
-    // Pad and PadV2 only supports 4D tensors.
-    {R"(^\/pad.*,input_shape=\[.,.\],paddings=\[\[.,.\],\[.,.\]\])",
-     "70527055"},
-    {R"(^\/padv2.*,input_shape=\[.,.\],paddings=\[\[.,.\],\[.,.\]\])",
-     "70527055"},
-
     // L2Norm only supports tensors with 4D or fewer.
     {R"(^\/l2norm_dim=.*,epsilon=.*,input_shape=\[.,.,.,.,.*\])", "67963684"},
 
@@ -101,6 +95,15 @@ std::map<string, string> kBrokenTests = {
      "77546240"},
     {R"(^\/arg_min_max.*axis_is_last_dim=False.*input_shape=\[.,.\])",
      "77546240"},
+
+    // No Support for float.
+    {R"(^\/floor_div.*dtype=tf\.float32)", "112859002"},
+
+    // Relu does not support int32.
+    // These test cases appends a Relu after the tested ops when
+    // activation=True. The tests are failing since Relu doesn't support int32.
+    {R"(^\/div.*activation=True.*dtype=tf\.int32)", "112968789"},
+    {R"(^\/floor_div.*activation=True.*dtype=tf\.int32)", "112968789"},
 };
 
 // Allows test data to be unarchived into a temporary directory and makes

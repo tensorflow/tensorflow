@@ -113,7 +113,7 @@ class ReplaceTransformer(gast.NodeTransformer):
     if isinstance(node, gast.Attribute):
       self._check_inner_children_have_context(node.value)
       self._check_has_context(node)
-    elif isinstance(node, gast.Tuple):
+    elif isinstance(node, (gast.Tuple, gast.List)):
       for e in node.elts:
         self._check_inner_children_have_context(e)
       self._check_has_context(node)
@@ -142,7 +142,7 @@ class ReplaceTransformer(gast.NodeTransformer):
     if isinstance(node, gast.Attribute):
       self._set_inner_child_context(node.value, gast.Load())
       node.ctx = ctx
-    elif isinstance(node, gast.Tuple):
+    elif isinstance(node, (gast.Tuple, gast.List)):
       for e in node.elts:
         self._set_inner_child_context(e, ctx)
       node.ctx = ctx
@@ -191,7 +191,7 @@ class ReplaceTransformer(gast.NodeTransformer):
 
     # Preserve the target context.
     for n in new_nodes:
-      if isinstance(n, gast.Tuple):
+      if isinstance(n, (gast.Tuple, gast.List)):
         for e in n.elts:
           self._set_inner_child_context(e, node.ctx)
       if isinstance(n, gast.Attribute):

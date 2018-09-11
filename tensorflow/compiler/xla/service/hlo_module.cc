@@ -24,11 +24,12 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -48,6 +49,13 @@ StatusOr<HloInstruction*> HloModule::LaunderConstInstructionFromModule(
 
   // TODO(b/78350259): Eliminate const laundering.
   return const_cast<HloInstruction*>(hlo);
+}
+
+Status HloModule::set_schedule(HloSchedule schedule) {
+  TF_RET_CHECK(schedule.module() == this);
+  TF_RETURN_IF_ERROR(schedule.Verify());
+  schedule_ = std::move(schedule);
+  return Status::OK();
 }
 
 HloComputation* HloModule::AddComputationInternal(
@@ -198,12 +206,23 @@ void HloModule::ReplaceComputations(
 
 string HloModule::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
-  s << "HloModule " << name() << "\n\n";
+  s << "HloModule " << name();
+  if (has_schedule()) {
+    TF_CHECK_OK(schedule().Verify());
+    s << ", is_scheduled=true";
+  }
+  s << "\n\n";
   for (const HloComputation* computation : MakeComputationPostOrder()) {
     if (computation == entry_computation()) {
       s << "ENTRY ";
     }
-    s << computation->ToString(options) << "\n\n";
+    if (has_schedule() && schedule().is_computation_scheduled(computation)) {
+      s << computation->ToString(
+               options, schedule().sequence(computation).instructions())
+        << "\n\n";
+    } else {
+      s << computation->ToString(options) << "\n\n";
+    }
   }
   return s.str();
 }
@@ -220,6 +239,9 @@ HloModuleProto HloModule::ToProto() const {
       *proto.mutable_program_shape() = computation_proto.program_shape();
     }
     proto.add_computations()->Swap(&computation_proto);
+  }
+  if (has_schedule()) {
+    *proto.mutable_schedule() = schedule().ToProto().ValueOrDie();
   }
   return proto;
 }
@@ -309,6 +331,13 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     }
   }
 
+  if (proto.has_schedule()) {
+    TF_ASSIGN_OR_RETURN(
+        HloSchedule schedule,
+        HloSchedule::CreateFromProto(module.get(), proto.schedule()));
+    TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
+  }
+
   return std::move(module);
 }
 
@@ -353,7 +382,7 @@ bool IsUsedOutsideSubcomputation(
 }  // anonymous namespace
 
 HloInstruction* HloModule::OutlineExpressionFromComputation(
-    tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_outline,
+    absl::Span<HloInstruction* const> instructions_to_outline,
     const string& outlined_computation_name, HloComputation* computation) {
   auto builder = HloComputation::Builder(outlined_computation_name);
 
@@ -410,7 +439,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
     string error_message =
         "The subcomputation to outline has multiple outputs:\n";
     for (HloInstruction* output : outputs) {
-      tensorflow::strings::StrAppend(&error_message, output->ToString(), "\n");
+      absl::StrAppend(&error_message, output->ToString(), "\n");
     }
     LOG(FATAL) << error_message;
   }
@@ -536,8 +565,7 @@ uint64 HloModule::RandomNew64() const {
   return rng_();
 }
 
-HloComputation* HloModule::GetComputationWithName(
-    tensorflow::StringPiece name) {
+HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
   auto computations_in_module = computations();
   auto it = absl::c_find_if(
       computations_in_module,

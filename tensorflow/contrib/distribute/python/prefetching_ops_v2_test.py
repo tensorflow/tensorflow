@@ -37,7 +37,7 @@ class PrefetchingOpsV2Test(test.TestCase):
     iterator = device_dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for i in range(10):
         self.assertEqual(i, sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -55,7 +55,7 @@ class PrefetchingOpsV2Test(test.TestCase):
     next_element = iterator.get_next()
 
     output = []
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for _ in range(5):
         result = sess.run(next_element)
         self.assertEqual(2, len(result))
@@ -75,7 +75,7 @@ class PrefetchingOpsV2Test(test.TestCase):
     iterator = device_dataset.make_initializable_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       for _ in range(5):
         sess.run(next_element)

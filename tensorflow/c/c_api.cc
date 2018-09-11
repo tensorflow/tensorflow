@@ -1240,7 +1240,7 @@ void TF_SetAttrTypeList(TF_OperationDescription* desc, const char* attr_name,
 void TF_SetAttrFuncName(TF_OperationDescription* desc, const char* attr_name,
                         const char* value, size_t length) {
   tensorflow::NameAttrList func_name;
-  func_name.set_name(std::string(value, value + length));
+  func_name.set_name(string(value, value + length));
   desc->node_builder.Attr(attr_name, func_name);
 }
 
@@ -2065,7 +2065,7 @@ static void GraphImportGraphDefLocked(TF_Graph* graph, const GraphDef& def,
 
   for (int i = 0; i < size; ++i) {
     TensorId id = results.missing_unused_input_map_keys[i];
-    tf_results->missing_unused_key_names_data.push_back(std::string(id.first));
+    tf_results->missing_unused_key_names_data.emplace_back(id.first);
     tf_results->missing_unused_key_names[i] =
         tf_results->missing_unused_key_names_data.back().c_str();
     tf_results->missing_unused_key_indexes[i] = id.second;

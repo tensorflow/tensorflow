@@ -34,7 +34,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 52
+// Next ID: 53
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -46,6 +46,8 @@ message HloInstructionProto {
   reserved "control_predecessor_names";
   reserved 6;
   reserved "called_computation_names";
+  reserved 44;
+  reserved "replica_group_ids";
 
   string name = 1;
   string opcode = 2;
@@ -158,9 +160,6 @@ message HloInstructionProto {
   string backend_config = 43;
 
   // Cross replica op fields.
-  // TODO(b/112107579): remove replica_group_ids field and always use
-  // replica_groups.
-  repeated int64 replica_group_ids = 44;
   repeated ReplicaGroup replica_groups = 49;
   int64 all_reduce_id = 45;
   string cross_replica_sum_barrier = 46;
@@ -173,7 +172,10 @@ message HloInstructionProto {
   xla.ScatterDimensionNumbers scatter_dimension_numbers = 48;
 
   // Precision configuration for the instruction. Has backend-specific meaning.
-  xla.PrecisionConfigProto precision_config = 51;
+  xla.PrecisionConfig precision_config = 51;
+
+  // Collective permute field.
+  repeated SourceTarget source_target_pairs = 52;
 }
 
 // Serialization of HloComputation.
@@ -197,6 +199,17 @@ message HloComputationProto {
   int64 root_id = 6;
 }
 
+// Serialization of an HLO schedule. An HLO schedule contains a total order of
+// instructions for each non-fusion computation in the module.
+message HloScheduleProto {
+  message InstructionSequence {
+    repeated int64 instruction_ids = 1;
+  }
+
+  // Map from computation id to sequence.
+  map<int64, InstructionSequence> sequences = 1;
+}
+
 // Serialization of HloModule.
 message HloModuleProto {
   string name = 1;
@@ -212,16 +225,9 @@ message HloModuleProto {
 
   // The id of this module.
   int64 id = 5;
-}
 
-// Serialization of HloOrdering.
-message HloOrderingProto {
-  // NOTE: currently only sequential orderings are serialized.
-  message SequentialComputation {
-    string computation_name = 1;
-    repeated string instruction_names = 2;
-  }
-  repeated SequentialComputation sequential_computations = 1;
+  // The schedule for this module.
+  HloScheduleProto schedule = 7;
 }
 
 // Serialization of LogicalBuffer.
@@ -320,8 +326,10 @@ message BufferAssignmentProto {
 
 // Grouping message that contains all of the information above.
 message HloProto {
+  reserved 2;
+  reserved "hlo_ordering";
+
   HloModuleProto hlo_module = 1;
-  HloOrderingProto hlo_ordering = 2;
   BufferAssignmentProto buffer_assignment = 3;
 }
 

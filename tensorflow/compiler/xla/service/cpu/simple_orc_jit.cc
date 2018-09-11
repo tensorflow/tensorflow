@@ -170,15 +170,14 @@ namespace {
 bool RegisterKnownJITSymbols() {
   CustomCallTargetRegistry* registry = CustomCallTargetRegistry::Global();
 
-#define REGISTER_CPU_RUNTIME_SYMBOL(base_name)                                \
-  do {                                                                        \
-    auto* function_address =                                                  \
-        reinterpret_cast<void*>(__xla_cpu_runtime_##base_name);               \
-    registry->Register(xla::cpu::runtime::k##base_name##SymbolName,           \
-                       function_address);                                     \
-    CHECK_EQ(                                                                 \
-        tensorflow::StringPiece(xla::cpu::runtime::k##base_name##SymbolName), \
-        "__xla_cpu_runtime_" #base_name);                                     \
+#define REGISTER_CPU_RUNTIME_SYMBOL(base_name)                               \
+  do {                                                                       \
+    auto* function_address =                                                 \
+        reinterpret_cast<void*>(__xla_cpu_runtime_##base_name);              \
+    registry->Register(xla::cpu::runtime::k##base_name##SymbolName,          \
+                       function_address);                                    \
+    CHECK_EQ(absl::string_view(xla::cpu::runtime::k##base_name##SymbolName), \
+             "__xla_cpu_runtime_" #base_name);                               \
   } while (false)
 
   REGISTER_CPU_RUNTIME_SYMBOL(AcquireInfeedBufferForDequeue);

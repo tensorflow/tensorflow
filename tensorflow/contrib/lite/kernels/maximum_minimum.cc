@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <string.h>
 #include <vector>
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
@@ -86,13 +86,14 @@ struct MinimumOp {
 template <typename data_type, typename op_type>
 void TFLiteOperation(TfLiteContext* context, TfLiteNode* node,
                       const OpContext& op_context) {
-  reference_ops::TensorFlowMaximumMinimum<data_type>(
+  reference_ops::MaximumMinimumBroadcast4DSlow(
+      GetTensorShape(op_context.input1),
       GetTensorData<data_type>(op_context.input1),
-      GetTensorDims(op_context.input1),
+      GetTensorShape(op_context.input2),
       GetTensorData<data_type>(op_context.input2),
-      GetTensorDims(op_context.input2),
+      GetTensorShape(op_context.output),
       GetTensorData<data_type>(op_context.output),
-      GetTensorDims(op_context.output), op_type::template op<data_type>);
+      op_type::template op<data_type>);
 }
 
 template <KernelType kernel_type, typename OpType>

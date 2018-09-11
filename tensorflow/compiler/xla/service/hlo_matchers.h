@@ -188,6 +188,7 @@ HLO_MATCHER(Fusion);
 HLO_MATCHER(Ge);
 HLO_MATCHER(AfterAll);
 HLO_MATCHER(Gt);
+HLO_MATCHER(Iota);
 HLO_MATCHER(Infeed);
 HLO_MATCHER(IsFinite);
 HLO_MATCHER(Le);
@@ -306,7 +307,7 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Shape(
   return ::testing::MakeMatcher(new ::xla::testing::HloShapeMatcher(shape));
 }
 inline ::testing::Matcher<const ::xla::HloInstruction*> Shape(
-    tensorflow::StringPiece shape) {
+    absl::string_view shape) {
   return ::testing::MakeMatcher(new ::xla::testing::HloShapeMatcher(
       ShapeUtil::ParseShapeString(shape).ValueOrDie()));
 }
@@ -316,7 +317,7 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
       new ::xla::testing::HloShapeAndLayoutMatcher(shape));
 }
 inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
-    tensorflow::StringPiece shape) {
+    absl::string_view shape) {
   return ::testing::MakeMatcher(new ::xla::testing::HloShapeAndLayoutMatcher(
       ShapeUtil::ParseShapeString(shape).ValueOrDie()));
 }
@@ -329,7 +330,7 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Sharding(
 }
 // Matcher for Sharding from sharding string
 inline ::testing::Matcher<const ::xla::HloInstruction*> Sharding(
-    tensorflow::StringPiece sharding) {
+    absl::string_view sharding) {
   return ::testing::MakeMatcher(new ::xla::testing::HloShardingMatcher(
       ParseSharding(sharding).ValueOrDie()));
 }

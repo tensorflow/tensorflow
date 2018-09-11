@@ -30,7 +30,7 @@ class ExpBijectorTest(test.TestCase):
   """Tests correctness of the Y = g(X) = exp(X) transformation."""
 
   def testBijector(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = Exp()
       self.assertEqual("exp", bijector.name)
       x = [[[1.], [2.]]]
@@ -48,13 +48,13 @@ class ExpBijectorTest(test.TestCase):
               x, event_ndims=1).eval())
 
   def testScalarCongruency(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = Exp()
       assert_scalar_congruency(
           bijector, lower_x=-2., upper_x=1.5, rtol=0.05)
 
   def testBijectiveAndFinite(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = Exp()
       x = np.linspace(-10, 10, num=10).astype(np.float32)
       y = np.logspace(-10, 10, num=10).astype(np.float32)

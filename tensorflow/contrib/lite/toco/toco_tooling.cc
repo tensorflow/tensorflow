@@ -197,6 +197,10 @@ std::unique_ptr<Model> Import(const TocoFlags& toco_flags,
           toco_flags.has_drop_control_dependency()
               ? toco_flags.drop_control_dependency()
               : (toco_flags.output_format() != TENSORFLOW_GRAPHDEF);
+
+      tf_import_flags.import_all_ops_as_unsupported =
+          toco_flags.force_eager_ops();
+
       model = ImportTensorFlowGraphDef(model_flags, tf_import_flags,
                                        input_file_contents);
       break;
@@ -281,12 +285,6 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   RunGraphTransformations(model, "general graph transformations",
                           transformations);
 
-  if (toco_flags.quantize_weights()) {
-    // Run the quantize weights transformation after batchnorms have been
-    // folded into the weights.
-    RunGraphTransformations(model, "quantize weights transformation",
-                            {new QuantizeWeights});
-  }
   if (quantize_output) {
     if (toco_flags.propagate_fake_quant_num_bits()) {
       RunGraphTransformations(model,
@@ -403,9 +401,21 @@ void Export(const TocoFlags& toco_flags, const Model& model,
     case TENSORFLOW_GRAPHDEF:
       ExportTensorFlowGraphDef(model, output_file_contents);
       break;
-    case TFLITE:
-      toco::tflite::Export(model, allow_custom_ops, output_file_contents);
-      break;
+    case TFLITE: {
+      toco::tflite::ExportParams params;
+
+      // Always allow custom ops when eager ops are allowed.
+      if (toco_flags.force_eager_ops() || toco_flags.allow_eager_ops()) {
+        params.allow_eager_ops = true;
+        params.allow_custom_ops = true;
+      } else if (allow_custom_ops) {
+        params.allow_custom_ops = true;
+      }
+
+      params.quantize_weights = toco_flags.post_training_quantize();
+
+      toco::tflite::Export(model, output_file_contents, params);
+    } break;
     case GRAPHVIZ_DOT:
       DumpGraphviz(model, output_file_contents);
       break;

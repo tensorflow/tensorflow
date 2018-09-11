@@ -40,6 +40,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
@@ -203,6 +204,42 @@ When passed in as the value for the `reuse` flag, AUTO_REUSE indicates that
 get_variable() should create the requested variable if it doesn't exist or, if
 it does exist, simply return it.
 """
+
+
+_DEFAULT_USE_RESOURCE = False
+
+
+@tf_export(v1=["enable_resource_variables"])
+def enable_resource_variables():
+  """Creates resource variables by default.
+
+  Resource variables are improved versions of TensorFlow variables with a
+  well-defined memory model. Accessing a resource variable reads its value, and
+  all ops which access a specific read value of the variable are guaranteed to
+  see the same value for that tensor. Writes which happen after a read (by
+  having a control or data dependency on the read) are guaranteed not to affect
+  the value of the read tensor, and similarly writes which happen before a read
+  are guaranteed to affect the value. No guarantees are made about unordered
+  read/write pairs.
+
+  Calling tf.enable_resource_variables() lets you opt-in to this TensorFlow 2.0
+  feature.
+  """
+  global _DEFAULT_USE_RESOURCE
+  _DEFAULT_USE_RESOURCE = True
+
+
+@deprecation.deprecated(
+    None, "non-resource variables are not supported in the long term")
+@tf_export(v1=["disable_resource_variables"])
+def disable_resource_variables():
+  """Opts out of resource variables.
+
+  If your code needs tf.disable_resource_variables() to be called to work
+  properly please file a bug.
+  """
+  global _DEFAULT_USE_RESOURCE
+  _DEFAULT_USE_RESOURCE = False
 
 
 class _VariableStore(object):
@@ -858,7 +895,7 @@ class _VariableStore(object):
         elif not tf_inspect.getargspec(initializer).args:
           init_val = initializer
         else:
-          raise ValueError("You can only pass an initializer function that"
+          raise ValueError("You can only pass an initializer function that "
                            "expects no arguments to its callable when the "
                            "shape is not fully defined. The given initializer "
                            "function expects the following args %s" %
@@ -868,7 +905,7 @@ class _VariableStore(object):
     # Create the variable.
     if use_resource is None:
       # Set the default value if unspecified.
-      use_resource = False
+      use_resource = _DEFAULT_USE_RESOURCE
     v = variable(
         initial_value=init_val,
         name=name,
@@ -1521,6 +1558,22 @@ Args:
     def custom_getter(getter, name, *args, **kwargs):
       return getter(name + '_suffix', *args, **kwargs)
     ```
+  constraint: An optional projection function to be applied to the variable
+    after being updated by an `Optimizer` (e.g. used to implement norm
+    constraints or value constraints for layer weights). The function must
+    take as input the unprojected Tensor representing the value of the
+    variable and return the Tensor for the projected value
+    (which must have the same shape). Constraints are not safe to
+    use when doing asynchronous distributed training.
+  synchronization: Indicates when a distributed a variable will be
+    aggregated. Accepted values are constants defined in the class
+    `tf.VariableSynchronization`. By default the synchronization is set to
+    `AUTO` and the current `DistributionStrategy` chooses
+    when to synchronize. If `synchronization` is set to `ON_READ`,
+    `trainable` must not be set to `True`.
+  aggregation: Indicates how a distributed variable will be aggregated.
+    Accepted values are constants defined in the class
+    `tf.VariableAggregation`.
 
 Returns:
   The created or existing `Variable` (or `PartitionedVariable`, if a
@@ -1554,10 +1607,10 @@ def get_local_variable(  # pylint: disable=missing-docstring
     partitioner=None,
     validate_shape=True,
     use_resource=None,
-    synchronization=VariableSynchronization.AUTO,
-    aggregation=VariableAggregation.NONE,
     custom_getter=None,
-    constraint=None):
+    constraint=None,
+    synchronization=VariableSynchronization.AUTO,
+    aggregation=VariableAggregation.NONE):
   if collections:
     collections += [ops.GraphKeys.LOCAL_VARIABLES]
   else:
@@ -2369,6 +2422,8 @@ def default_variable_creator(next_creator=None, **kwargs):
 
   if use_resource is None:
     use_resource = get_variable_scope().use_resource
+  if use_resource is None:
+    use_resource = _DEFAULT_USE_RESOURCE
   use_resource = use_resource or context.executing_eagerly()
   if use_resource:
     return resource_variable_ops.ResourceVariable(

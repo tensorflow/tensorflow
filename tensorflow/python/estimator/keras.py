@@ -36,7 +36,6 @@ from tensorflow.python.keras import optimizers
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_module
-from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
@@ -183,10 +182,58 @@ def _clone_and_build_model(mode,
   K.set_learning_phase(mode == model_fn_lib.ModeKeys.TRAIN)
   input_tensors, target_tensors = _convert_estimator_io_to_keras(
       keras_model, features, labels)
-  return models.clone_and_build_model(
+
+  compile_clone = (mode != model_fn_lib.ModeKeys.PREDICT)
+
+  global_step = None
+  if compile_clone:
+    # Set iterations to the global step created by tf.train.create_global_step()
+    # which is automatically run in the estimator framework.
+    global_step = training_util.get_or_create_global_step()
+    K.track_variable(global_step)
+
+  clone = models.clone_and_build_model(
       keras_model, input_tensors, target_tensors, custom_objects,
-      compile_clone=(mode != model_fn_lib.ModeKeys.PREDICT),
-      in_place_reset=(not keras_model._is_graph_network))
+      compile_clone=compile_clone,
+      in_place_reset=(not keras_model._is_graph_network),
+      optimizer_iterations=global_step)
+
+  return clone
+
+
+def _convert_keras_metrics_to_estimator(model):
+  """Convert metrics from a Keras model to ops used by the Estimator framework.
+
+  Args:
+    model: A `tf.keras.Model` object.
+
+  Returns:
+    Dictionary mapping metric names to tuples of (value, update) ops. May return
+    `None` if the model does not contain any metrics.
+  """
+  if not getattr(model, 'metrics', None):
+    return None
+
+  # TODO(psv/fchollet): support stateful metrics
+  eval_metric_ops = {}
+  # When each metric maps to an output
+  if isinstance(model.metrics, dict):
+    for i, output_name in enumerate(model.metrics.keys()):
+      metric_name = model.metrics[output_name]
+      if callable(metric_name):
+        metric_name = metric_name.__name__
+      # When some outputs use the same metric
+      if list(model.metrics.values()).count(metric_name) > 1:
+        metric_name += '_' + output_name
+      eval_metric_ops[metric_name] = metrics_module.mean(
+          model.metrics_tensors[i - len(model.metrics)])
+  else:
+    for i, metric_name in enumerate(model.metrics):
+      if callable(metric_name):
+        metric_name = metric_name.__name__
+      eval_metric_ops[metric_name] = metrics_module.mean(
+          model.metrics_tensors[i])
+  return eval_metric_ops
 
 
 def _create_keras_model_fn(keras_model, custom_objects=None):
@@ -238,26 +285,7 @@ def _create_keras_model_fn(keras_model, custom_objects=None):
         model._make_test_function()  # pylint: disable=protected-access
       loss = model.total_loss
 
-      if model.metrics:
-        # TODO(psv/fchollet): support stateful metrics
-        eval_metric_ops = {}
-        # When each metric maps to an output
-        if isinstance(model.metrics, dict):
-          for i, output_name in enumerate(model.metrics.keys()):
-            metric_name = model.metrics[output_name]
-            if callable(metric_name):
-              metric_name = metric_name.__name__
-            # When some outputs use the same metric
-            if list(model.metrics.values()).count(metric_name) > 1:
-              metric_name += '_' + output_name
-            eval_metric_ops[metric_name] = metrics_module.mean(
-                model.metrics_tensors[i - len(model.metrics)])
-        else:
-          for i, metric_name in enumerate(model.metrics):
-            if callable(metric_name):
-              metric_name = metric_name.__name__
-            eval_metric_ops[metric_name] = metrics_module.mean(
-                model.metrics_tensors[i])
+      eval_metric_ops = _convert_keras_metrics_to_estimator(model)
 
     # Set train_op only during train.
     if mode is model_fn_lib.ModeKeys.TRAIN:
@@ -315,15 +343,7 @@ def _save_first_checkpoint(keras_model, custom_objects, config):
         if not model.train_function:
           # pylint: disable=protected-access
           model._make_train_function()
-          # We are using global variables collection here because:
-          # estimator runs eager mode under context.graph_mode() context manager
-          # When we try to get all the TF optimizer variables using
-          # optimizer.variables() we try to return variables that belong to the
-          # current graph. This check (variable.op.graph is current_graph) will
-          # error as the context is graph mode but variables are eager.
-          # TODO(psv): investigate this and see if we can remove the usage of
-          # collection here.
-          K._initialize_variables(sess, variables_module.global_variables())
+          K._initialize_variables(sess)
           # pylint: enable=protected-access
         saver = saver_lib.Saver()
         latest_path = os.path.join(keras_model_dir, 'keras_model.ckpt')

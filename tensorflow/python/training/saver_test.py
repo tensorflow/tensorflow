@@ -324,7 +324,7 @@ class SaverTest(test.TestCase):
         save_relative_paths=True)
     init_all_op = [variables.global_variables_initializer(), v2_init]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Initialize all variables
       sess.run(init_all_op)
 
@@ -349,7 +349,7 @@ class SaverTest(test.TestCase):
 
     # Start a second session.  In that session the parameter nodes
     # have not been initialized either.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       v0 = variables.Variable(-1.0, name="v0")
       v1 = variables.Variable(-1.0, name="v1")
       v2 = saver_test_utils.CheckpointedOp(name="v2")
@@ -373,7 +373,7 @@ class SaverTest(test.TestCase):
     v0 = variables.Variable(0, name="v0")
     filename = b"somerandomfilename"
     save = saver_module.Saver({"v0": v0}, filename=filename)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tensor = sess.graph.get_tensor_by_name(
           save.saver_def.filename_tensor_name)
       self.assertEqual(sess.run(tensor), filename)
@@ -381,7 +381,7 @@ class SaverTest(test.TestCase):
   def testInvalidPath(self):
     v0 = variables.Variable(0, name="v0")
     for ver in (saver_pb2.SaverDef.V1, saver_pb2.SaverDef.V2):
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         save = saver_module.Saver({"v0": v0}, write_version=ver)
         with self.assertRaisesRegexp(
             ValueError, "The passed save_path is not a valid checkpoint:"):
@@ -390,7 +390,7 @@ class SaverTest(test.TestCase):
   def testInt64(self):
     save_path = os.path.join(self.get_temp_dir(), "int64")
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Build a graph with 1 node, and save and restore for them.
       v = variables.Variable(np.int64(15), name="v")
       save = saver_module.Saver({"v": v}, restore_sequentially=True)
@@ -401,7 +401,7 @@ class SaverTest(test.TestCase):
       self.assertTrue(isinstance(val, six.string_types))
       self.assertEqual(save_path, val)
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         v = variables.Variable(np.int64(-1), name="v")
         save = saver_module.Saver({"v": v})
 
@@ -559,12 +559,12 @@ class SaverTest(test.TestCase):
 
   def testAllowEmpty(self):
     save_path = os.path.join(self.get_temp_dir(), "allow_empty")
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _ = constant_op.constant(1)
       save = saver_module.Saver(allow_empty=True)
       val = save.save(sess, save_path)
       self.assertIsNone(val)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       save = saver_module.Saver(allow_empty=True)
       save.restore(sess, save_path)
 
@@ -740,7 +740,7 @@ class SaverTest(test.TestCase):
       # save succeeds or fails is implementation dependent.  Therefore we allow
       # both cases.
       try:
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           # Initialize all variables
           sess.run(init_all_op)
 
@@ -751,7 +751,7 @@ class SaverTest(test.TestCase):
           # Save the graph.
           save.save(sess, save_path)
 
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           # Restore the saved values in the parameter nodes.
           save.restore(sess, save_path)
           # Check that the parameter nodes have been restored.
@@ -775,7 +775,7 @@ class SaverTest(test.TestCase):
     save = saver_module.Saver({"v0": v0, "v1": v1}, restore_sequentially=True)
     init_all_op = variables.global_variables_initializer()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Initialize all variables
       sess.run(init_all_op)
 
@@ -983,7 +983,7 @@ class SaveRestoreShardedTest(test.TestCase):
           os.path.join(self.get_temp_dir(), "sharded_basics"))
 
   def testSaverDef(self):
-    with self.test_session():
+    with self.cached_session():
       v0 = variables.Variable(123, name="v0")
       save = saver_module.Saver({"v0": v0}, sharded=True)
       sd = save.as_saver_def()
@@ -1209,7 +1209,7 @@ class MaxToKeepTest(test.TestCase):
   def testNonSharded(self):
     save_dir = self._get_test_dir("max_to_keep_non_sharded")
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       v = variables.Variable(10.0, name="v")
       save = saver_module.Saver({"v": v}, max_to_keep=2)
       variables.global_variables_initializer().run()
@@ -1447,7 +1447,7 @@ class MaxToKeepTest(test.TestCase):
     save_dir = self._get_test_dir("no_max_to_keep")
     save_dir2 = self._get_test_dir("max_to_keep_0")
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       v = variables.Variable(10.0, name="v")
       variables.global_variables_initializer().run()
 
@@ -1474,7 +1474,7 @@ class MaxToKeepTest(test.TestCase):
   def testNoMetaGraph(self):
     save_dir = self._get_test_dir("no_meta_graph")
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       v = variables.Variable(10.0, name="v")
       save = saver_module.Saver({"v": v})
       variables.global_variables_initializer().run()
@@ -1497,7 +1497,7 @@ class KeepCheckpointEveryNHoursTest(test.TestCase):
   def testNonSharded(self, mock_time):
     save_dir = self._get_test_dir("keep_checkpoint_every_n_hours")
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       v = variable_scope.variable([10.0], name="v")
       # Run the initializer NOW to avoid the 0.5s overhead of the first Run()
       # call, which throws the test timing off in fastbuild mode.
@@ -1630,7 +1630,7 @@ class MetaGraphTest(test.TestCase):
   def testAddCollectionDef(self):
     test_dir = self._get_test_dir("good_collection")
     filename = os.path.join(test_dir, "metafile")
-    with self.test_session():
+    with self.cached_session():
       # Creates a graph.
       v0 = variables.Variable(1.0, name="v0")
       control_flow_ops.cond(
@@ -1685,7 +1685,7 @@ class MetaGraphTest(test.TestCase):
         self, meta_graph_def, new_meta_graph_def)
 
   def testAddCollectionDefFails(self):
-    with self.test_session():
+    with self.cached_session():
       # Creates a graph.
       v0 = variables.Variable(10.0, name="v0")
       # Creates a saver.
@@ -1870,7 +1870,7 @@ class MetaGraphTest(test.TestCase):
   def testSliceVariable(self):
     test_dir = self._get_test_dir("slice_saver")
     filename = os.path.join(test_dir, "metafile")
-    with self.test_session():
+    with self.cached_session():
       v1 = variables.Variable([20.0], name="v1")
       v2 = variables.Variable([20.0], name="v2")
       v2._set_save_slice_info(
@@ -1946,7 +1946,7 @@ class MetaGraphTest(test.TestCase):
       ops_lib.add_to_collection("logits", logits)
     init_all_op = variables.global_variables_initializer()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Initializes all the variables.
       sess.run(init_all_op)
       # Runs to logit.
@@ -2120,7 +2120,7 @@ class MetaGraphTest(test.TestCase):
     # pylint: enable=g-long-lambda
 
   def testStrippedOpListDef(self):
-    with self.test_session():
+    with self.cached_session():
       # Creates a graph.
       v0 = variables.Variable(0.0)
       var = variables.Variable(10.0)
@@ -2160,7 +2160,7 @@ class MetaGraphTest(test.TestCase):
 
     # With strip_default_attrs enabled, attributes "T" (float32) and "Tout"
     # (complex64) in the "Complex" op must be removed.
-    with self.test_session():
+    with self.cached_session():
       real_num = variables.Variable(1.0, dtype=dtypes.float32, name="real")
       imag_num = variables.Variable(2.0, dtype=dtypes.float32, name="imag")
       math_ops.complex(real_num, imag_num, name="complex")
@@ -2397,7 +2397,7 @@ class CheckpointReaderTest(test.TestCase):
         }, write_version=self._WRITE_VERSION)
     save_path = os.path.join(self.get_temp_dir(),
                              "ckpt_for_debug_string" + str(self._WRITE_VERSION))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_all_op)
       # Saves a checkpoint.
       save.save(sess, save_path)
@@ -2853,8 +2853,8 @@ class CheckpointableCompatibilityTests(test.TestCase):
     saver = saver_module.Saver(var_list=[v])
     test_dir = self.get_temp_dir()
     prefix = os.path.join(test_dir, "ckpt")
-    self.evaluate(v.non_dep_variable.assign(42.))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
+      self.evaluate(v.non_dep_variable.assign(42.))
       save_path = saver.save(sess, prefix)
       self.evaluate(v.non_dep_variable.assign(43.))
       saver.restore(sess, save_path)
@@ -2867,7 +2867,7 @@ class CheckpointableCompatibilityTests(test.TestCase):
     test_dir = self.get_temp_dir()
     prefix = os.path.join(test_dir, "ckpt")
     self.evaluate(v.non_dep_variable.assign(42.))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       save_path = saver.save(sess, prefix)
       self.evaluate(v.non_dep_variable.assign(43.))
       self.evaluate(v.mirrored.assign(44.))
@@ -2900,7 +2900,7 @@ class CheckpointableCompatibilityTests(test.TestCase):
       saver = saver_module.Saver(var_list=[v])
       test_dir = self.get_temp_dir()
       prefix = os.path.join(test_dir, "ckpt")
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         save_path = saver.save(sess, prefix)
         self.assertEqual(1, v.eval_count)
         saver.restore(sess, save_path)
@@ -2957,7 +2957,7 @@ class CheckpointableCompatibilityTests(test.TestCase):
     b = resource_variable_ops.ResourceVariable(1., name="b")
     a_saver = saver_module.Saver([a])
     b_saver = saver_module.Saver([b])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(a.initializer)
       save_path = a_saver.save(sess=sess, save_path=checkpoint_prefix)
       with self.assertRaisesRegexp(

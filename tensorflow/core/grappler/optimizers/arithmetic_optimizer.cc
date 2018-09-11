@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -1120,11 +1121,8 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
     TF_RETURN_IF_ERROR(EnsureNodeIsSupported(node));
     NodeDef* tail = node;
-    // TODO(rmlarsen): Enable after debugging breakage in Bayesflow.
-    if (ctx().opt_level == RewriterConfig::AGGRESSIVE) {
-      tail = GetTailOfIdempotentChain(*tail, *ctx().node_map,
-                                      *ctx().nodes_to_preserve);
-    }
+    tail = GetTailOfIdempotentChain(*tail, *ctx().node_map,
+                                    *ctx().nodes_to_preserve);
     NodeDef* first_transpose;
     TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &first_transpose));
 
@@ -2702,22 +2700,37 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
     NodeDef* inner_function;
     TF_RETURN_IF_ERROR(GetInputNode(reduction_node->input(0), &inner_function));
     // Optimize only if:
+    // 0. inner_function is not in the preserve set,
     // 1. inner_function's Op is element-wise monotonic
     // 2. inner_function's output is not being consumed elsewhere.
-    if (IsElementWiseMonotonic(*inner_function) &&
-        (NumNonControlOutputs(*inner_function, *ctx().node_map) == 1)) {
+    bool is_non_decreasing = false;
+    if (!IsInPreserveSet(*inner_function) &&
+        IsElementWiseMonotonic(*inner_function, &is_non_decreasing) &&
+        ctx().node_map->GetOutputs(inner_function->name()).size() == 1) {
       // Swap the first inputs of the inner function Op & the reduction Op.
       NodeDef* inner_input;
       TF_RETURN_IF_ERROR(GetInputNode(inner_function->input(0), &inner_input));
-      inner_function->set_input(0, reduction_node->name());
-      UpdateConsumersAvoidingLoop(inner_function, reduction_node->name());
       reduction_node->set_input(0, inner_input->name());
-      UpdateConsumersAvoidingLoop(reduction_node, inner_function->name());
+      ctx().node_map->UpdateInput(reduction_node->name(),
+                                  inner_function->name(), inner_input->name());
+      inner_function->set_input(0, reduction_node->name());
+      UpdateConsumers(reduction_node, inner_function->name());
+      ctx().node_map->UpdateInput(inner_function->name(), inner_input->name(),
+                                  reduction_node->name());
+      if (!is_non_decreasing) {
+        // Flip Min<->Max if the function is non-increasing, e.g.
+        // Max(Neg(x)) = Neg(Min(x)).
+        const string opposite = IsMax(*reduction_node) ? "Min" : "Max";
+        reduction_node->set_op(opposite);
+      }
+      AddToOptimizationQueue(reduction_node);
+      AddToOptimizationQueue(inner_function);
+      AddToOptimizationQueue(inner_input);
     }
     return Status::OK();
   }
 
-  void UpdateConsumersAvoidingLoop(NodeDef* node, const string& new_input) {
+  void UpdateConsumers(NodeDef* node, const string& new_input) {
     const string& node_name = node->name();
     const std::set<NodeDef*> consumers = ctx().node_map->GetOutputs(node_name);
     for (NodeDef* consumer : consumers) {
