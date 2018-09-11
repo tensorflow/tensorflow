@@ -343,11 +343,11 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       if (compression_type_ == "") {
-      return std::unique_ptr<IteratorBase>(
-          new UncompressedIterator({this, strings::StrCat(prefix, "::FixedLengthRecord")}));
+        return std::unique_ptr<IteratorBase>(new UncompressedIterator(
+            {this, strings::StrCat(prefix, "::FixedLengthRecord")}));
       } else {
-      return std::unique_ptr<IteratorBase>(
-          new CompressedIterator({this, strings::StrCat(prefix, "::FixedLengthRecord")}));
+        return std::unique_ptr<IteratorBase>(new CompressedIterator(
+            {this, strings::StrCat(prefix, "::FixedLengthRecord")}));
       }
     }
 
