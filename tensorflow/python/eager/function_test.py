@@ -22,6 +22,8 @@ import functools
 from multiprocessing.pool import ThreadPool
 import sys
 
+import numpy
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import backprop
@@ -314,6 +316,7 @@ class FunctionTest(test.TestCase):
   def testDefunNumpyArraysConvertedToTensors(self):
 
     def f(x):
+      self.assertIsInstance(x, ops.Tensor)
       return x
 
     x = random_ops.random_uniform([2, 2]).numpy()
@@ -326,6 +329,12 @@ class FunctionTest(test.TestCase):
     # A NumPy array with different values but the same shape and dtype
     # shouldn't trigger another function definition.
     self.assertEqual(len(defined._function_cache), 1)
+
+    # Test that the numpy array is properly an argument to the graph function.
+    self.assertEqual(1., defined(numpy.ones([])).numpy())
+    self.assertEqual(0., defined(numpy.zeros([])).numpy())
+    self.assertEqual(1., defined(array_ops.ones([])).numpy())
+    self.assertEqual(0., defined(array_ops.zeros([])).numpy())
 
   def testDefunCapturedInt32(self):
     x = constant_op.constant(1, dtype=dtypes.int32)
