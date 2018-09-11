@@ -130,6 +130,7 @@ tensorflow/core/kernels/immutable_constant_op.cc
 tensorflow/core/kernels/in_topk_op.cc
 tensorflow/core/kernels/initializable_lookup_table.c
 tensorflow/core/kernels/inplace_ops.cc
+tensorflow/core/kernels/listdiff_op.cc
 tensorflow/core/kernels/logging_ops.cc
 tensorflow/core/kernels/lookup_table_init_op.cc
 tensorflow/core/kernels/lookup_table_op.cc

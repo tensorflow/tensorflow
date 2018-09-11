@@ -5184,6 +5184,7 @@ filegroup(
         "fifo_queue.cc",
         "fifo_queue_op.cc",
         "fused_batch_norm_op.cc",
+        "listdiff_op.cc",
         "population_count_op.cc",
         "population_count_op.h",
         "winograd_transform.h",
