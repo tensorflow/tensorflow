@@ -8,7 +8,7 @@ go_library(
         "scope.go",
         "wrappers.go",
     ],
-    importpath = "github.com/tensorflow/tensorflow/tensorflow/go/op",
+    importpath = "github.com/tensorflow/tensorflow/go/op",
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/go:go_default_library"],
 )
