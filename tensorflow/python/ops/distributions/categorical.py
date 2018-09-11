@@ -69,7 +69,7 @@ class Categorical(distribution.Distribution):
   The Categorical distribution is closely related to the `OneHotCategorical` and
   `Multinomial` distributions.  The Categorical distribution can be intuited as
   generating samples according to `argmax{ OneHotCategorical(probs) }` itself
-  being identical to `argmax{ Multinomial(probs, total_count=1) }.
+  being identical to `argmax{ Multinomial(probs, total_count=1) }`.
 
   #### Mathematical Details
 
@@ -83,7 +83,7 @@ class Categorical(distribution.Distribution):
 
   The number of classes, `K`, must not exceed:
   - the largest integer representable by `self.dtype`, i.e.,
-    `2**(mantissa_bits+1)` (IEE754),
+    `2**(mantissa_bits+1)` (IEEE 754),
   - the maximum `Tensor` index, i.e., `2**31-1`.
 
   In other words,
