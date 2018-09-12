@@ -173,6 +173,7 @@ enum BuiltinOperator : byte {
   REDUCE_MIN = 89,
   FLOOR_DIV = 90,
   REDUCE_ANY = 91,
+  SQUARE = 92,
 }
 
 // Options for the builtin operators.
@@ -242,6 +243,7 @@ union BuiltinOptions {
   LogicalNotOptions,
   UnpackOptions,
   FloorDivOptions,
+  SquareOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -577,6 +579,9 @@ table UnpackOptions {
 }
 
 table FloorDivOptions {
+}
+
+table SquareOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
