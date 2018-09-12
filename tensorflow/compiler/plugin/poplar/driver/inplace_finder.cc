@@ -81,11 +81,13 @@ void InplaceFinder::RouteFinder(HloInstruction* inst,
       break;
     }
     case HloOpcode::kGetTupleElement: {
-      if (inst->tuple_index() == stack.back() || stack.back() == -1) {
-        new_stack = stack;
-        tuple_stack_modified = true;
-        new_stack.pop_back();
-        break;
+      if (!stack.empty()) {
+        if (inst->tuple_index() == stack.back() || stack.back() == -1) {
+          new_stack = stack;
+          tuple_stack_modified = true;
+          new_stack.pop_back();
+          break;
+        }
       }
       return;
     }
