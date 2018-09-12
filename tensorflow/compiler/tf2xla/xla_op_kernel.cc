@@ -83,6 +83,10 @@ DataType XlaOpKernelContext::input_type(int index) const {
   return context_->input(index).dtype();
 }
 
+DataType XlaOpKernelContext::InputType(absl::string_view name) {
+  return GetInputTensorByName(name).dtype();
+}
+
 xla::PrimitiveType XlaOpKernelContext::input_xla_type(int index) {
   xla::PrimitiveType type;
   Status status = DataTypeToPrimitiveType(input_type(index), &type);
