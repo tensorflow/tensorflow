@@ -530,7 +530,9 @@ class RNNTest(test.TestCase):
         y_np_2 = model.predict(x_np)
         self.assertAllClose(y_np, y_np_2, atol=1e-4)
 
-  def test_stacked_rnn_dropout(self):
+  def DISABLED_test_stacked_rnn_dropout(self):
+    # Temporarily disabled test due an occasional Grappler segfault.
+    # See b/115523414
     cells = [keras.layers.LSTMCell(3, dropout=0.1, recurrent_dropout=0.1),
              keras.layers.LSTMCell(3, dropout=0.1, recurrent_dropout=0.1)]
     layer = keras.layers.RNN(cells)
