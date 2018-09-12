@@ -223,7 +223,7 @@ func TestGraphAddGradientsSums(t *testing.T) {
 	}
 }
 
-func TestGraphAddGradientsWithInitialValuesToGraph(t *testing.T) {
+func TestGraphAddGradientsWithInitialValues(t *testing.T) {
 	g := NewGraph()
 	x, err := Placeholder(g, "x", Float)
 	op0, err := g.AddOperation(OpSpec{
@@ -331,5 +331,10 @@ func TestGraphValidateGradientsNames(t *testing.T) {
 	}
 	if !strings.HasPrefix(grads3[0].Op.Name(), "even_more_gradients/") {
 		t.Fatalf("Got name %v, wanted started with even_more_gradients/", grads3[0].Op.Name())
+	}
+
+	_, err = g.AddGradients("even_more_gradients", []Output{y0}, []Output{x}, nil)
+	if err == nil {
+		t.Error("AddGradients should have failed if gradients name is already existing")
 	}
 }
