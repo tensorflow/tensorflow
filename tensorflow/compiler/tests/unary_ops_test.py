@@ -362,11 +362,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
           expected=np.array([[0, 6, 5]], dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
-          nn_ops.leaky_relu,
-          np.array([[-1.0, 1.0]], dtype=dtype),
-          expected=np.array([[-0.2, 1.0]], dtype=dtype))
-
-      self._assertOpOutputMatchesExpected(
           nn_ops.softmax,
           np.array([1, 2, 3, 4], dtype=dtype),
           expected=np.array([0.032058604, 0.087144323, 0.23688284, 0.64391428],
