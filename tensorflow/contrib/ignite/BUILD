@@ -40,6 +40,7 @@ cc_library(
     srcs = [
         "kernels/ignite_dataset_ops.cc",
         "kernels/ignite_client.h",
+        "kernels/ignite_byte_swapper.h",
         "kernels/ignite_plain_client.h",
         "kernels/ignite_ssl_wrapper.h",
         "kernels/ignite_ssl_wrapper.cc",

@@ -13,35 +13,39 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "ignite_client.h"
+#ifndef TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_SSL_WRAPPER_H_
+#define TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_SSL_WRAPPER_H_
+
+#include "tensorflow/contrib/ignite/kernels/ignite_client.h"
 
 #include <openssl/ssl.h>
-#include <string>
 
 namespace tensorflow {
 
 class SslWrapper : public Client {
  public:
-  SslWrapper(std::shared_ptr<Client> client, std::string certfile,
-             std::string keyfile, std::string cert_password);
+  SslWrapper(std::shared_ptr<Client> client, string certfile, string keyfile,
+             string cert_password, bool big_endian);
   ~SslWrapper();
 
   virtual Status Connect();
   virtual Status Disconnect();
   virtual bool IsConnected();
   virtual int GetSocketDescriptor();
-  virtual Status ReadData(uint8_t* buf, int32_t length);
-  virtual Status WriteData(uint8_t* buf, int32_t length);
+  virtual Status ReadData(uint8_t* buf, const int32_t length);
+  virtual Status WriteData(const uint8_t* buf, const int32_t length);
 
  private:
+  Status InitSslContext();
+
   std::shared_ptr<Client> client_;
-  std::string certfile_;
-  std::string keyfile_;
-  std::string cert_password_;
+  string certfile_;
+  string keyfile_;
+  string cert_password_;
   SSL_CTX* ctx_;
   SSL* ssl_;
-
-  Status InitSslContext();
 };
 
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_SSL_WRAPPER_H_

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "ignite_plain_client.h"
+#include "tensorflow/contrib/ignite/kernels/ignite_plain_client.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -29,8 +29,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-PlainClient::PlainClient(std::string host, int port)
-    : host_(host), port_(port), sock_(INVALID_SOCKET) {}
+PlainClient::PlainClient(string host, int port, bool big_endian)
+    : Client(big_endian),
+      host_(std::move(host)),
+      port_(port),
+      sock_(INVALID_SOCKET) {}
 
 PlainClient::~PlainClient() {
   if (IsConnected()) {
@@ -55,6 +58,8 @@ Status PlainClient::Connect() {
                     &result);
   if (res != 0) return errors::Internal("Getaddrinfo failed with error: ", res);
 
+  auto clean = gtl::MakeCleanup([result] { reeaddrinfo(result); });
+
   for (ptr = result; ptr != NULL; ptr = ptr->ai_next) {
     sock_ = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
     if (sock_ == INVALID_SOCKET) {
@@ -71,8 +76,6 @@ Status PlainClient::Connect() {
 
     break;
   }
-
-  freeaddrinfo(result);
 
   if (sock_ == INVALID_SOCKET) {
     WSACleanup();
@@ -99,7 +102,7 @@ bool PlainClient::IsConnected() { return sock_ != INVALID_SOCKET; }
 
 int PlainClient::GetSocketDescriptor() { return sock_; }
 
-Status PlainClient::ReadData(uint8_t *buf, int32_t length) {
+Status PlainClient::ReadData(uint8_t *buf, const int32_t length) {
   int recieved = 0;
 
   while (recieved < length) {
@@ -117,7 +120,7 @@ Status PlainClient::ReadData(uint8_t *buf, int32_t length) {
   return Status::OK();
 }
 
-Status PlainClient::WriteData(uint8_t *buf, int32_t length) {
+Status PlainClient::WriteData(const uint8_t *buf, const int32_t length) {
   int sent = 0;
 
   while (sent < length) {

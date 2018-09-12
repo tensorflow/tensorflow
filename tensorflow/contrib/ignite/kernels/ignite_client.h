@@ -16,40 +16,69 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_CLIENT_H_
 #define TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_CLIENT_H_
 
+#include "tensorflow/contrib/ignite/kernels/ignite_byte_swapper.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
 class Client {
  public:
+  Client(bool big_endian) : byte_swapper_(ByteSwapper(big_endian)){};
   virtual Status Connect() = 0;
   virtual Status Disconnect() = 0;
   virtual bool IsConnected() = 0;
   virtual int GetSocketDescriptor() = 0;
-  virtual Status ReadData(uint8_t* buf, int32_t length) = 0;
-  virtual Status WriteData(uint8_t* buf, int32_t length) = 0;
+  virtual Status ReadData(uint8_t *buf, const int32_t length) = 0;
+  virtual Status WriteData(const uint8_t *buf, const int32_t length) = 0;
 
-  inline Status ReadByte(uint8_t* data) { return ReadData(data, 1); }
+  inline Status ReadByte(uint8_t *data) { return ReadData(data, 1); }
 
-  inline Status ReadShort(int16_t* data) { return ReadData((uint8_t*)data, 2); }
+  inline Status ReadShort(int16_t *data) {
+    TF_RETURN_IF_ERROR(ReadData((uint8_t *)data, 2));
+    byte_swapper_.SwapIfRequiredInt16(data);
 
-  inline Status ReadInt(int32_t* data) { return ReadData((uint8_t*)data, 4); }
-
-  inline Status ReadLong(int64_t* data) { return ReadData((uint8_t*)data, 8); }
-
-  inline Status WriteByte(uint8_t data) { return WriteData(&data, 1); }
-
-  inline Status WriteShort(int16_t data) {
-    return WriteData((uint8_t*)&data, 2);
+    return Status::OK();
   }
 
-  inline Status WriteInt(int32_t data) { return WriteData((uint8_t*)&data, 4); }
+  inline Status ReadInt(int32_t *data) {
+    TF_RETURN_IF_ERROR(ReadData((uint8_t *)data, 4));
+    byte_swapper_.SwapIfRequiredInt32(data);
 
-  inline Status WriteLong(int64_t data) {
-    return WriteData((uint8_t*)&data, 8);
+    return Status::OK();
   }
+
+  inline Status ReadLong(int64_t *data) {
+    TF_RETURN_IF_ERROR(ReadData((uint8_t *)data, 8));
+    byte_swapper_.SwapIfRequiredInt64(data);
+
+    return Status::OK();
+  }
+
+  inline Status WriteByte(const uint8_t data) { return WriteData(&data, 1); }
+
+  inline Status WriteShort(const int16_t data) {
+    int16_t tmp = data;
+    byte_swapper_.SwapIfRequiredInt16(&tmp);
+    return WriteData((uint8_t *)&tmp, 2);
+  }
+
+  inline Status WriteInt(const int32_t data) {
+    int32_t tmp = data;
+    byte_swapper_.SwapIfRequiredInt32(&tmp);
+    return WriteData((uint8_t *)&tmp, 4);
+  }
+
+  inline Status WriteLong(const int64_t data) {
+    int64_t tmp = data;
+    byte_swapper_.SwapIfRequiredInt64(&tmp);
+    return WriteData((uint8_t *)&tmp, 8);
+  }
+
+ private:
+  const ByteSwapper byte_swapper_;
 };
 
 }  // namespace tensorflow
 
-#endif
+#endif  // TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_CLIENT_H_

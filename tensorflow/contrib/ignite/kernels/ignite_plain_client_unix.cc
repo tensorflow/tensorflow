@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "ignite_plain_client.h"
+#include "tensorflow/contrib/ignite/kernels/ignite_plain_client.h"
 
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -31,8 +31,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-PlainClient::PlainClient(std::string host, int port)
-    : host_(host), port_(port), sock_(-1) {}
+PlainClient::PlainClient(string host, int port, bool big_endian)
+    : Client(big_endian), host_(std::move(host)), port_(port), sock_(-1) {}
 
 PlainClient::~PlainClient() {
   if (IsConnected()) {
@@ -87,7 +87,7 @@ bool PlainClient::IsConnected() { return sock_ != -1; }
 
 int PlainClient::GetSocketDescriptor() { return sock_; }
 
-Status PlainClient::ReadData(uint8_t* buf, int32_t length) {
+Status PlainClient::ReadData(uint8_t* buf, const int32_t length) {
   int recieved = 0;
 
   while (recieved < length) {
@@ -95,7 +95,7 @@ Status PlainClient::ReadData(uint8_t* buf, int32_t length) {
 
     if (res < 0)
       return errors::Internal("Error occured while reading from socket: ", res,
-                              ", ", std::string(strerror(errno)));
+                              ", ", string(strerror(errno)));
 
     if (res == 0) return errors::Internal("Server closed connection");
 
@@ -106,7 +106,7 @@ Status PlainClient::ReadData(uint8_t* buf, int32_t length) {
   return Status::OK();
 }
 
-Status PlainClient::WriteData(uint8_t* buf, int32_t length) {
+Status PlainClient::WriteData(const uint8_t* buf, const int32_t length) {
   int sent = 0;
 
   while (sent < length) {
@@ -114,7 +114,7 @@ Status PlainClient::WriteData(uint8_t* buf, int32_t length) {
 
     if (res < 0)
       return errors::Internal("Error occured while writing into socket: ", res,
-                              ", ", std::string(strerror(errno)));
+                              ", ", string(strerror(errno)));
 
     sent += res;
     buf += res;
