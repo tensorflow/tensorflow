@@ -852,7 +852,7 @@ def set_tf_cuda_version(environ_cp):
 
     # Reset and retry
     print('Invalid path to CUDA %s toolkit. %s cannot be found' %
-          (tf_cuda_version, cuda_toolkit_path_full))
+          (tf_cuda_version, cuda_toolkit_paths_full))
     environ_cp['TF_CUDA_VERSION'] = ''
     environ_cp['CUDA_TOOLKIT_PATH'] = ''
 
