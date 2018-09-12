@@ -29,7 +29,8 @@ from tensorflow.python.platform import tf_logging
 _READER_DATASET_OPS = [
     "TextLineDataset",
     "TFRecordDataset",
-    "FixedLengthRecordDataset"
+    "FixedLengthRecordDataset",
+    "FixedLengthRecordDatasetV2"
 ]
 
 
