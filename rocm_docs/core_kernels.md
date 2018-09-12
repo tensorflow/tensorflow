@@ -334,7 +334,7 @@ Kernels under tensorflow/core/kernels
 |   O    |        | cwise_op_sub.cc
 |   O    |        | cwise_op_tan.cc
 |   O    |        | cwise_op_tanh.cc
-|   O    |        | cwise_op_zeta.cc
+|   O/X  |        | cwise_op_zeta.cc (polygama okay, zeta failed)
 |   O    |        | cwise_ops.h
 |   O    |        | cwise_ops_common.cc
 |   O    |        | cwise_ops_common.h
