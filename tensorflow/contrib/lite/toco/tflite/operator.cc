@@ -1488,6 +1488,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       "SQRT", OperatorType::kSqrt));
   ops.push_back(MakeUnique<SimpleOperator<TensorFlowRsqrtOperator>>(
       "RSQRT", OperatorType::kRsqrt));
+  ops.push_back(MakeUnique<SimpleOperator<TensorFlowSquareOperator>>(
+      "SQUARE", OperatorType::kSquare));
 
   return ops;
 }

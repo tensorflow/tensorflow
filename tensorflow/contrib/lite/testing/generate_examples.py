@@ -2882,6 +2882,11 @@ def make_rsqrt_tests(zip_path):
   return _make_elementwise_tests(tf.rsqrt)(zip_path)
 
 
+def make_square_tests(zip_path):
+  """Make a set of tests to do square."""
+  return _make_elementwise_tests(tf.square)(zip_path)
+
+
 def make_where_tests(zip_path):
   """Make a set of tests to do where."""
 
