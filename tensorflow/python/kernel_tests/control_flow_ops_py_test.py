@@ -3408,6 +3408,7 @@ class WhileOpBenchmark(test.Benchmark):
         name="unroll_same_device", iters=iters, wall_time=duration)
 
 
+@test_util.with_cond_v2
 class EagerTest(test.TestCase):
 
   def testCond(self):
