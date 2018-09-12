@@ -24,4 +24,4 @@ DEFINE_UNARY3(bessel_i1e, Eigen::half, float, double);
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

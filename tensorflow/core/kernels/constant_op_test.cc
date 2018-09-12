@@ -88,7 +88,7 @@ TEST_F(ConstantOpTest, PersistentMemoryTracking) {
   PersistentMemoryTrackingTest(false);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   PersistentMemoryTrackingTest(true);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 // Returns graph containing "num" const nodes.  If 'sequential' is
