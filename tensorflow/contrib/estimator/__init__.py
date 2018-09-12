@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.contrib.estimator.python.estimator.baseline import *
 from tensorflow.contrib.estimator.python.estimator.boosted_trees import *
 from tensorflow.contrib.estimator.python.estimator.dnn import *
+from tensorflow.contrib.estimator.python.estimator.dnn_with_layer_annotations import *
 from tensorflow.contrib.estimator.python.estimator.dnn_linear_combined import *
 from tensorflow.contrib.estimator.python.estimator.early_stopping import *
 from tensorflow.contrib.estimator.python.estimator.export import *
@@ -76,6 +77,8 @@ _allowed_symbols = [
     'build_raw_supervised_input_receiver_fn',
     'build_supervised_input_receiver_fn_from_input_fn',
     'SavedModelEstimator'
+    'DNNClassifierWithLayerAnnotations',
+    'DNNRegressorWithLayerAnnotations',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)
