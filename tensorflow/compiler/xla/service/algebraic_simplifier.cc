@@ -2066,8 +2066,8 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
       if (pad_literal == reduce_init_literal) {
         return true;
       }
-      auto converted_pad_literal = pad_literal.ConvertToShape(
-          reduce_init_value->shape(), /*round_f32_to_bf16=*/true);
+      auto converted_pad_literal =
+          pad_literal.ConvertToShape(reduce_init_value->shape());
       if (!converted_pad_literal.ok()) {
         return false;
       }
