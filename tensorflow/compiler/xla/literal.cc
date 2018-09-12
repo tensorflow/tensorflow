@@ -1351,17 +1351,8 @@ StatusOr<Literal> LiteralBase::BitcastConvert(
   return ConvertSwitch(*this, primitive_dest_type, /*bitcast=*/true);
 }
 
-StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape,
-                                              bool round_f32_to_bf16) const {
+StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape) const {
   if (!ShapeUtil::IsTuple(dest_shape)) {
-    if (round_f32_to_bf16 && shape().element_type() == F32 &&
-        dest_shape.element_type() == BF16) {
-      auto converter = [](float src) {
-        return tensorflow::bfloat16::round_to_bfloat16(src);
-      };
-      return ConvertBetweenNativeTypesWithConverter<float, bfloat16>(*this,
-                                                                     converter);
-    }
     return Convert(dest_shape.element_type());
   }
   std::vector<Literal> elements;
