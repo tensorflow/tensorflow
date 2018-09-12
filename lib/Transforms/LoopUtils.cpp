@@ -19,16 +19,19 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Transforms/Passes.h"
+
+#include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/StandardOps.h"
 #include "mlir/IR/Statements.h"
 #include "mlir/IR/StmtVisitor.h"
-#include "mlir/Transforms/Passes.h"
 
 /// Promotes the loop body of a forStmt to its containing block if the forStmt
 /// was known to have a single iteration. Returns false otherwise.
+// TODO(bondhugula): extend this for arbitrary affine bounds.
 bool mlir::promoteIfSingleIteration(ForStmt *forStmt) {
-  Optional<uint64_t> tripCount = forStmt->getConstantTripCount();
+  Optional<uint64_t> tripCount = getConstantTripCount(*forStmt);
   if (!tripCount.hasValue() || !forStmt->hasConstantLowerBound())
     return false;
 

@@ -161,16 +161,44 @@ AffineExpr *Builder::getMulExpr(AffineExpr *lhs, AffineExpr *rhs) {
   return AffineBinaryOpExpr::get(AffineExpr::Kind::Mul, lhs, rhs, context);
 }
 
+// Most multiply expressions are pure affine (rhs is a constant).
+AffineExpr *Builder::getMulExpr(AffineExpr *lhs, int64_t rhs) {
+  return AffineBinaryOpExpr::get(AffineExpr::Kind::Mul, lhs,
+                                 getConstantExpr(rhs), context);
+}
+
+AffineExpr *Builder::getSubExpr(AffineExpr *lhs, AffineExpr *rhs) {
+  return getAddExpr(lhs, getMulExpr(rhs, getConstantExpr(-1)));
+}
+
 AffineExpr *Builder::getModExpr(AffineExpr *lhs, AffineExpr *rhs) {
   return AffineBinaryOpExpr::get(AffineExpr::Kind::Mod, lhs, rhs, context);
+}
+
+// Most modulo expressions are pure affine.
+AffineExpr *Builder::getModExpr(AffineExpr *lhs, uint64_t rhs) {
+  return AffineBinaryOpExpr::get(AffineExpr::Kind::Mod, lhs,
+                                 getConstantExpr(rhs), context);
 }
 
 AffineExpr *Builder::getFloorDivExpr(AffineExpr *lhs, AffineExpr *rhs) {
   return AffineBinaryOpExpr::get(AffineExpr::Kind::FloorDiv, lhs, rhs, context);
 }
 
+// Most floordiv expressions are pure affine.
+AffineExpr *Builder::getFloorDivExpr(AffineExpr *lhs, uint64_t rhs) {
+  return AffineBinaryOpExpr::get(AffineExpr::Kind::FloorDiv, lhs,
+                                 getConstantExpr(rhs), context);
+}
+
 AffineExpr *Builder::getCeilDivExpr(AffineExpr *lhs, AffineExpr *rhs) {
   return AffineBinaryOpExpr::get(AffineExpr::Kind::CeilDiv, lhs, rhs, context);
+}
+
+// Most ceildiv expressions are pure affine.
+AffineExpr *Builder::getCeilDivExpr(AffineExpr *lhs, uint64_t rhs) {
+  return AffineBinaryOpExpr::get(AffineExpr::Kind::CeilDiv, lhs,
+                                 getConstantExpr(rhs), context);
 }
 
 IntegerSet *Builder::getIntegerSet(unsigned dimCount, unsigned symbolCount,

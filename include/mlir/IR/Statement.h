@@ -110,6 +110,7 @@ public:
     return operand_iterator(this, getNumOperands());
   }
 
+  /// Returns an iterator on the underlying MLValue's (MLValue *).
   llvm::iterator_range<operand_iterator> getOperands() {
     return {operand_begin(), operand_end()};
   }
@@ -126,6 +127,7 @@ public:
     return const_operand_iterator(this, getNumOperands());
   }
 
+  /// Returns a const iterator on the underlying MLValue's (MLValue *).
   llvm::iterator_range<const_operand_iterator> getOperands() const {
     return {operand_begin(), operand_end()};
   }

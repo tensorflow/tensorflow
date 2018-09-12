@@ -63,7 +63,7 @@ AffineExpr *AffineBinaryOpExpr::simplifyAdd(AffineExpr *lhs, AffineExpr *rhs,
   // If only one of them is a symbolic expressions, make it the RHS.
   if (isa<AffineConstantExpr>(lhs) ||
       (lhs->isSymbolicOrConstant() && !rhs->isSymbolicOrConstant())) {
-    return AffineBinaryOpExpr::get(Kind::Add, rhs, lhs, context);
+    return AffineBinaryOpExpr::getAdd(rhs, lhs, context);
   }
 
   // At this point, if there was a constant, it would be on the right.
@@ -77,8 +77,8 @@ AffineExpr *AffineBinaryOpExpr::simplifyAdd(AffineExpr *lhs, AffineExpr *rhs,
   auto *lBin = dyn_cast<AffineBinaryOpExpr>(lhs);
   if (lBin && rhsConst && lBin->getKind() == Kind::Add) {
     if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS()))
-      return AffineBinaryOpExpr::get(
-          Kind::Add, lBin->getLHS(),
+      return AffineBinaryOpExpr::getAdd(
+          lBin->getLHS(),
           AffineConstantExpr::get(lrhs->getValue() + rhsConst->getValue(),
                                   context),
           context);
@@ -88,10 +88,9 @@ AffineExpr *AffineBinaryOpExpr::simplifyAdd(AffineExpr *lhs, AffineExpr *rhs,
   // + d1 into (d0 + d1) + 2.
   if (lBin && lBin->getKind() == Kind::Add) {
     if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS())) {
-      return AffineBinaryOpExpr::get(
-          Kind::Add,
-          AffineBinaryOpExpr::get(Kind::Add, lBin->getLHS(), rhs, context),
-          lrhs, context);
+      return AffineBinaryOpExpr::getAdd(
+          AffineBinaryOpExpr::getAdd(lBin->getLHS(), rhs, context), lrhs,
+          context);
     }
   }
 
@@ -115,7 +114,7 @@ AffineExpr *AffineBinaryOpExpr::simplifyMul(AffineExpr *lhs, AffineExpr *rhs,
   // constant. (Note that a constant is trivially symbolic).
   if (!rhs->isSymbolicOrConstant() || isa<AffineConstantExpr>(lhs)) {
     // At least one of them has to be symbolic.
-    return AffineBinaryOpExpr::get(Kind::Mul, rhs, lhs, context);
+    return AffineBinaryOpExpr::getMul(rhs, lhs, context);
   }
 
   // At this point, if there was a constant, it would be on the right.
@@ -133,8 +132,8 @@ AffineExpr *AffineBinaryOpExpr::simplifyMul(AffineExpr *lhs, AffineExpr *rhs,
   auto *lBin = dyn_cast<AffineBinaryOpExpr>(lhs);
   if (lBin && rhsConst && lBin->getKind() == Kind::Mul) {
     if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS()))
-      return AffineBinaryOpExpr::get(
-          Kind::Mul, lBin->getLHS(),
+      return AffineBinaryOpExpr::getMul(
+          lBin->getLHS(),
           AffineConstantExpr::get(lrhs->getValue() * rhsConst->getValue(),
                                   context),
           context);
@@ -144,10 +143,9 @@ AffineExpr *AffineBinaryOpExpr::simplifyMul(AffineExpr *lhs, AffineExpr *rhs,
   // * 2) * d1 into (d0 * d1) * 2.
   if (lBin && lBin->getKind() == Kind::Mul) {
     if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS())) {
-      return AffineBinaryOpExpr::get(
-          Kind::Mul,
-          AffineBinaryOpExpr::get(Kind::Mul, lBin->getLHS(), rhs, context),
-          lrhs, context);
+      return AffineBinaryOpExpr::getMul(
+          AffineBinaryOpExpr::getMul(lBin->getLHS(), rhs, context), lrhs,
+          context);
     }
   }
 
@@ -167,13 +165,16 @@ AffineExpr *AffineBinaryOpExpr::simplifyFloorDiv(AffineExpr *lhs,
   // Fold floordiv of a multiply with a constant that is a multiple of the
   // divisor. Eg: (i * 128) floordiv 64 = i * 2.
   if (rhsConst) {
+    if (rhsConst->getValue() == 1)
+      return lhs;
+
     auto *lBin = dyn_cast<AffineBinaryOpExpr>(lhs);
     if (lBin && lBin->getKind() == Kind::Mul) {
       if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS())) {
         // rhsConst is known to be positive if a constant.
         if (lrhs->getValue() % rhsConst->getValue() == 0)
-          return AffineBinaryOpExpr::get(
-              Kind::Mul, lBin->getLHS(),
+          return AffineBinaryOpExpr::getMul(
+              lBin->getLHS(),
               AffineConstantExpr::get(lrhs->getValue() / rhsConst->getValue(),
                                       context),
               context);
@@ -199,13 +200,16 @@ AffineExpr *AffineBinaryOpExpr::simplifyCeilDiv(AffineExpr *lhs,
   // Fold ceildiv of a multiply with a constant that is a multiple of the
   // divisor. Eg: (i * 128) ceildiv 64 = i * 2.
   if (rhsConst) {
+    if (rhsConst->getValue() == 1)
+      return lhs;
+
     auto *lBin = dyn_cast<AffineBinaryOpExpr>(lhs);
     if (lBin && lBin->getKind() == Kind::Mul) {
       if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS())) {
         // rhsConst is known to be positive if a constant.
         if (lrhs->getValue() % rhsConst->getValue() == 0)
-          return AffineBinaryOpExpr::get(
-              Kind::Mul, lBin->getLHS(),
+          return AffineBinaryOpExpr::getMul(
+              lBin->getLHS(),
               AffineConstantExpr::get(lrhs->getValue() / rhsConst->getValue(),
                                       context),
               context);
@@ -230,7 +234,7 @@ AffineExpr *AffineBinaryOpExpr::simplifyMod(AffineExpr *lhs, AffineExpr *rhs,
   // mod 64 is folded to 0, and less trivially, (i*(j*4*(k*32))) mod 128 = 0.
   if (rhsConst) {
     // rhsConst is known to be positive if a constant.
-    if (lhs->getKnownGcd() % rhsConst->getValue() == 0)
+    if (lhs->getLargestKnownDivisor() % rhsConst->getValue() == 0)
       return AffineConstantExpr::get(0, context);
   }
 

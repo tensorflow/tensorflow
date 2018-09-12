@@ -69,7 +69,7 @@ public:
   unsigned getNumDims() const { return numDims; }
   unsigned getNumSymbols() const { return numSymbols; }
   unsigned getNumResults() const { return numResults; }
-  unsigned getNumOperands() const { return numDims + numSymbols; }
+  unsigned getNumInputs() const { return numDims + numSymbols; }
 
   ArrayRef<AffineExpr *> getResults() const {
     return ArrayRef<AffineExpr *>(results, numResults);

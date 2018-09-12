@@ -81,6 +81,7 @@ public:
     return operand_iterator(this, getNumOperands());
   }
 
+  /// Returns an iterator on the underlying MLValue's (MLValue *).
   llvm::iterator_range<operand_iterator> getOperands() {
     return {operand_begin(), operand_end()};
   }
@@ -97,6 +98,7 @@ public:
     return const_operand_iterator(this, getNumOperands());
   }
 
+  /// Returns a const iterator on the underlying MLValue's (MLValue *).
   llvm::iterator_range<const_operand_iterator> getOperands() const {
     return {operand_begin(), operand_end()};
   }
@@ -244,6 +246,13 @@ public:
   void setLowerBound(ArrayRef<MLValue *> operands, AffineMap *map);
   /// Set upper bound.
   void setUpperBound(ArrayRef<MLValue *> operands, AffineMap *map);
+
+  /// Set the lower bound map without changing operands.
+  void setLowerBoundMap(AffineMap *map);
+
+  /// Set the upper bound map without changing operands.
+  void setUpperBoundMap(AffineMap *map);
+
   /// Set loop step.
   void setStep(int64_t step) { this->step = step; }
 
@@ -265,9 +274,6 @@ public:
   void setConstantLowerBound(int64_t value);
   /// Sets the upper bound to the given constant value.
   void setConstantUpperBound(int64_t value);
-
-  /// Returns the trip count if it's a constant.
-  Optional<uint64_t> getConstantTripCount() const;
 
   //===--------------------------------------------------------------------===//
   // Operands
@@ -361,16 +367,19 @@ public:
     return stmt.getStmtOperand(opStart + idx);
   }
 
-  using operand_iterator = ForStmt::const_operand_iterator;
-  using operand_range = ForStmt::const_operand_range;
+  using operand_iterator = ForStmt::operand_iterator;
+  using operand_range = ForStmt::operand_range;
 
   operand_iterator operand_begin() const {
-    return operand_iterator(&stmt, opStart);
+    // These are iterators over MLValue *. Not casting away const'ness would
+    // require the caller to use const MLValue *.
+    return operand_iterator(const_cast<ForStmt *>(&stmt), opStart);
   }
   operand_iterator operand_end() const {
-    return operand_iterator(&stmt, opEnd);
+    return operand_iterator(const_cast<ForStmt *>(&stmt), opEnd);
   }
 
+  /// Returns an iterator on the underlying MLValue's (MLValue *).
   operand_range getOperands() const { return {operand_begin(), operand_end()}; }
   ArrayRef<StmtOperand> getStmtOperands() const {
     auto ops = stmt.getStmtOperands();

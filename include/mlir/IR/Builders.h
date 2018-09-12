@@ -106,9 +106,13 @@ public:
   AffineExpr *getAddExpr(AffineExpr *lhs, AffineExpr *rhs);
   AffineExpr *getSubExpr(AffineExpr *lhs, AffineExpr *rhs);
   AffineExpr *getMulExpr(AffineExpr *lhs, AffineExpr *rhs);
+  AffineExpr *getMulExpr(AffineExpr *lhs, int64_t rhs);
   AffineExpr *getModExpr(AffineExpr *lhs, AffineExpr *rhs);
+  AffineExpr *getModExpr(AffineExpr *lhs, uint64_t rhs);
   AffineExpr *getFloorDivExpr(AffineExpr *lhs, AffineExpr *rhs);
+  AffineExpr *getFloorDivExpr(AffineExpr *lhs, uint64_t rhs);
   AffineExpr *getCeilDivExpr(AffineExpr *lhs, AffineExpr *rhs);
+  AffineExpr *getCeilDivExpr(AffineExpr *lhs, uint64_t rhs);
 
   // Integer set.
   IntegerSet *getIntegerSet(unsigned dimCount, unsigned symbolCount,

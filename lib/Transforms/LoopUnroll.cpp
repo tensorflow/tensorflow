@@ -19,18 +19,15 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Transforms/Passes.h"
+
+#include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/Attributes.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/CFGFunction.h"
-#include "mlir/IR/MLFunction.h"
-#include "mlir/IR/Module.h"
-#include "mlir/IR/OperationSet.h"
 #include "mlir/IR/StandardOps.h"
-#include "mlir/IR/Statements.h"
 #include "mlir/IR/StmtVisitor.h"
 #include "mlir/Transforms/Pass.h"
-#include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/CommandLine.h"
 
@@ -128,7 +125,7 @@ void LoopUnroll::runOnMLFunction(MLFunction *f) {
     ShortLoopGatherer(unsigned minTripCount) : minTripCount(minTripCount) {}
 
     void visitForStmt(ForStmt *forStmt) {
-      Optional<uint64_t> tripCount = forStmt->getConstantTripCount();
+      Optional<uint64_t> tripCount = getConstantTripCount(*forStmt);
       if (tripCount.hasValue() && tripCount.getValue() <= minTripCount)
         loops.push_back(forStmt);
     }
@@ -174,10 +171,41 @@ bool LoopUnroll::runOnForStmt(ForStmt *forStmt) {
 // Unrolls this loop completely. Fails assertion if loop bounds are
 // non-constant.
 bool LoopUnroll::loopUnrollFull(ForStmt *forStmt) {
-  Optional<uint64_t> tripCount = forStmt->getConstantTripCount();
+  Optional<uint64_t> tripCount = getConstantTripCount(*forStmt);
   if (tripCount.hasValue())
     return loopUnrollByFactor(forStmt, tripCount.getValue());
   return false;
+}
+
+/// Returns the upper bound of an unrolled loop with lower bound 'lb' and with
+/// the specified trip count, stride, and unroll factor.
+static AffineMap *getUnrolledLoopUpperBound(AffineMap *lbMap,
+                                            uint64_t tripCount,
+                                            unsigned unrollFactor, int64_t step,
+                                            MLFuncBuilder *builder) {
+  assert(lbMap->getNumResults() == 1);
+  auto *lbExpr = lbMap->getResult(0);
+  // lbExpr + (count - count % unrollFactor - 1) * step).
+  auto *expr = builder->getAddExpr(
+      lbExpr, builder->getConstantExpr(
+                  (tripCount - tripCount % unrollFactor - 1) * step));
+  return builder->getAffineMap(lbMap->getNumDims(), lbMap->getNumSymbols(),
+                               {expr}, {});
+}
+
+/// Returns the lower bound of the cleanup loop when unrolling a loop with lower
+/// bound 'lb' and with the specified trip count, stride, and unroll factor.
+static AffineMap *getCleanupLoopLowerBound(AffineMap *lbMap, uint64_t tripCount,
+                                           unsigned unrollFactor, int64_t step,
+                                           MLFuncBuilder *builder) {
+  assert(lbMap->getNumResults() == 1);
+  auto *lbExpr = lbMap->getResult(0);
+  // lbExpr + (count - count % unrollFactor) * step);
+  auto *expr = builder->getAddExpr(
+      lbExpr,
+      builder->getConstantExpr((tripCount - tripCount % unrollFactor) * step));
+  return builder->getAffineMap(lbMap->getNumDims(), lbMap->getNumSymbols(),
+                               {expr}, {});
 }
 
 /// Unrolls this loop by the specified unroll factor.
@@ -187,44 +215,96 @@ bool LoopUnroll::loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor) {
   if (unrollFactor == 1 || forStmt->getStatements().empty())
     return false;
 
-  if (!forStmt->hasConstantBounds())
+  Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(*forStmt);
+
+  if (!mayBeConstantTripCount.hasValue() &&
+      getLargestDivisorOfTripCount(*forStmt) % unrollFactor != 0)
     return false;
 
-  int64_t lb = forStmt->getConstantLowerBound();
+  const AffineBound &lb = forStmt->getLowerBound();
+  const AffineBound &ub = forStmt->getLowerBound();
+  auto lbMap = lb.getMap();
+  auto ubMap = lb.getMap();
+
+  // Loops with max/min expressions won't be unrolled here (the output can't be
+  // expressed as an MLFunction in the general case). However, the right way to
+  // do such unrolling for an MLFunction would be to specialize the loop for the
+  // 'hotspot' case and unroll that hotspot case.
+  if (lbMap->getNumResults() != 1 || ubMap->getNumResults() != 1)
+    return false;
+
+  // TODO(bondhugula): handle bounds with different sets of operands.
+  // Same operand list for now.
+  if (lbMap->getNumDims() != ubMap->getNumDims() ||
+      lbMap->getNumSymbols() != ubMap->getNumSymbols())
+    return false;
+  unsigned i, e = lb.getNumOperands();
+  for (i = 0; i < e; i++) {
+    if (lb.getStmtOperand(i).get() != ub.getStmtOperand(i).get())
+      break;
+  }
+  if (i != e)
+    return false;
+
   int64_t step = forStmt->getStep();
-  uint64_t tripCount = forStmt->getConstantTripCount().getValue();
 
   // If the trip count is lower than the unroll factor, no unrolled body.
   // TODO(bondhugula): option to specify cleanup loop unrolling.
-  if (tripCount < unrollFactor)
-    return true;
+  if (mayBeConstantTripCount.hasValue() &&
+      mayBeConstantTripCount.getValue() < unrollFactor)
+    return false;
 
   // Generate the cleanup loop if trip count isn't a multiple of unrollFactor.
-  if (tripCount % unrollFactor) {
+  // If the trip count is unknown, we currently unroll only when the unknown
+  // trip count is known to be a multiple of unroll factor - hence, no cleanup
+  // loop will be necessary in those cases.
+  // TODO(bondhugula): handle generation of cleanup loop for unknown trip count
+  // when it's not known to be a multiple of unroll factor (still for single
+  // result / same operands case).
+  if (mayBeConstantTripCount.hasValue() &&
+      mayBeConstantTripCount.getValue() % unrollFactor != 0) {
+    uint64_t tripCount = mayBeConstantTripCount.getValue();
     DenseMap<const MLValue *, MLValue *> operandMap;
     MLFuncBuilder builder(forStmt->getBlock(), ++StmtBlock::iterator(forStmt));
     auto *cleanupForStmt = cast<ForStmt>(builder.clone(*forStmt, operandMap));
-    cleanupForStmt->setConstantLowerBound(
-        lb + (tripCount - tripCount % unrollFactor) * step);
+    if (forStmt->hasConstantLowerBound()) {
+      cleanupForStmt->setConstantLowerBound(
+          forStmt->getConstantLowerBound() +
+          (tripCount - tripCount % unrollFactor) * step);
+    } else {
+      cleanupForStmt->setLowerBoundMap(
+          getCleanupLoopLowerBound(forStmt->getLowerBoundMap(), tripCount,
+                                   unrollFactor, step, &builder));
+    }
     // Promote the loop body up if this has turned into a single iteration loop.
     promoteIfSingleIteration(cleanupForStmt);
+
+    // The upper bound needs to be adjusted.
+    if (forStmt->hasConstantUpperBound()) {
+      forStmt->setConstantUpperBound(
+          forStmt->getConstantLowerBound() +
+          (tripCount - tripCount % unrollFactor - 1) * step);
+    } else {
+      forStmt->setUpperBoundMap(
+          getUnrolledLoopUpperBound(forStmt->getLowerBoundMap(), tripCount,
+                                    unrollFactor, step, &builder));
+    }
   }
+
+  // Scale the step of loop being unrolled by unroll factor.
+  forStmt->setStep(step * unrollFactor);
 
   // Builder to insert unrolled bodies right after the last statement in the
   // body of 'forStmt'.
   MLFuncBuilder builder(forStmt, StmtBlock::iterator(forStmt->end()));
-  forStmt->setStep(step * unrollFactor);
-  forStmt->setConstantUpperBound(
-      lb + (tripCount - tripCount % unrollFactor - 1) * step);
 
   // Keep a pointer to the last statement in the original block so that we know
   // what to clone (since we are doing this in-place).
-  StmtBlock::iterator srcBlockEnd = --forStmt->end();
+  StmtBlock::iterator srcBlockEnd = std::prev(forStmt->end());
 
-  // Unroll the contents of 'forStmt' (unrollFactor-1 additional copies
-  // appended).
+  // Unroll the contents of 'forStmt' (append unrollFactor-1 additional copies).
   for (unsigned i = 1; i < unrollFactor; i++) {
-    DenseMap<const MLValue *, MLValue *> operandMapping;
+    DenseMap<const MLValue *, MLValue *> operandMap;
 
     // If the induction variable is used, create a remapping to the value for
     // this unrolled instance.
@@ -236,15 +316,13 @@ bool LoopUnroll::loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor) {
       auto *ivUnroll =
           builder.create<AffineApplyOp>(forStmt->getLoc(), bumpMap, forStmt)
               ->getResult(0);
-      operandMapping[forStmt] = cast<MLValue>(ivUnroll);
+      operandMap[forStmt] = cast<MLValue>(ivUnroll);
     }
 
-    // Clone the original body of the loop (this doesn't include the last stmt).
-    for (auto it = forStmt->begin(); it != srcBlockEnd; it++) {
-      builder.clone(*it, operandMapping);
+    // Clone the original body of 'forStmt'.
+    for (auto it = forStmt->begin(); it != std::next(srcBlockEnd); it++) {
+      builder.clone(*it, operandMap);
     }
-    // Clone the last statement in the original body.
-    builder.clone(*srcBlockEnd, operandMapping);
   }
 
   // Promote the loop body up if this has turned into a single iteration loop.

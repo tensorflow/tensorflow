@@ -1,5 +1,4 @@
-//===- LoopUnrollAndJam.cpp - Code to perform loop unroll jam
-//----------------===//
+//===- LoopUnrollAndJam.cpp - Code to perform loop unroll and jam ---------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -16,10 +15,10 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file implements loop unroll jam for MLFunctions. Unroll and jam is a
+// This file implements loop unroll and jam for MLFunctions. Unroll and jam is a
 // transformation that improves locality, in particular, register reuse, while
 // also improving instruction level parallelism. The example below shows what it
-// does in nearly the general case. Loop unroll jam currently works if the
+// does in nearly the general case. Loop unroll and jam currently works if the
 // bounds of the loops inner to the loop being unroll-jammed do not depend on
 // the latter.
 //
@@ -44,25 +43,27 @@
 // stmt's, bodies of those loops will not be jammed.
 //
 //===----------------------------------------------------------------------===//
+#include "mlir/Transforms/Passes.h"
+
+#include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/StandardOps.h"
 #include "mlir/IR/StmtVisitor.h"
 #include "mlir/Transforms/Pass.h"
-#include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/CommandLine.h"
 
 using namespace mlir;
 
-// Loop unroll jam factor.
+// Loop unroll and jam factor.
 static llvm::cl::opt<unsigned>
     clUnrollJamFactor("unroll-jam-factor", llvm::cl::Hidden,
                       llvm::cl::desc("Use this unroll jam factor for all loops"
                                      " (default 4)"));
 
 namespace {
-/// Loop unroll jam pass. For test purposes, this just unroll jams the first
+/// Loop unroll jam pass. Currently, this just unroll jams the first
 /// outer loop in an MLFunction.
 struct LoopUnrollAndJam : public MLFunctionPass {
   Optional<unsigned> unrollJamFactor;
@@ -127,10 +128,8 @@ bool LoopUnrollAndJam::loopUnrollJamByFactor(ForStmt *forStmt,
         while (it != End && !isa<ForStmt>(it))
           ++it;
         if (it != subBlockStart)
-          // Record the last statement (one behind the iterator) while not
-          // changing the iterator position.
-          subBlocks.push_back({subBlockStart, (--it)++});
-        // Process all for Stmts that appear next.
+          subBlocks.push_back({subBlockStart, std::prev(it)});
+        // Process all for stmts that appear next.
         while (it != End && isa<ForStmt>(it))
           walkForStmt(cast<ForStmt>(it++));
       }
@@ -142,12 +141,14 @@ bool LoopUnrollAndJam::loopUnrollJamByFactor(ForStmt *forStmt,
   if (unrollJamFactor == 1 || forStmt->getStatements().empty())
     return false;
 
-  if (!forStmt->hasConstantBounds())
+  Optional<uint64_t> mayTripCount = getConstantTripCount(*forStmt).getValue();
+
+  if (!mayTripCount.hasValue())
     return false;
 
+  uint64_t tripCount = mayTripCount.getValue();
   int64_t lb = forStmt->getConstantLowerBound();
   int64_t step = forStmt->getStep();
-  uint64_t tripCount = forStmt->getConstantTripCount().getValue();
 
   // If the trip count is lower than the unroll jam factor, no unrolled body.
   // TODO(bondhugula): option to specify cleanup loop unrolling.
@@ -164,7 +165,8 @@ bool LoopUnrollAndJam::loopUnrollJamByFactor(ForStmt *forStmt,
   if (tripCount % unrollJamFactor) {
     DenseMap<const MLValue *, MLValue *> operandMap;
     // Insert the cleanup loop right after 'forStmt'.
-    MLFuncBuilder builder(forStmt->getBlock(), ++StmtBlock::iterator(forStmt));
+    MLFuncBuilder builder(forStmt->getBlock(),
+                          std::next(StmtBlock::iterator(forStmt)));
     auto *cleanupForStmt = cast<ForStmt>(builder.clone(*forStmt, operandMap));
     cleanupForStmt->setConstantLowerBound(
         lb + (tripCount - tripCount % unrollJamFactor) * step);
@@ -200,13 +202,10 @@ bool LoopUnrollAndJam::loopUnrollJamByFactor(ForStmt *forStmt,
                 ->getResult(0);
         operandMapping[forStmt] = cast<MLValue>(ivUnroll);
       }
-      // Clone the sub-block being unroll-jammed (this doesn't include the last
-      // stmt because subBlock.second is inclusive).
-      for (auto it = subBlock.first; it != subBlock.second; ++it) {
+      // Clone the sub-block being unroll-jammed.
+      for (auto it = subBlock.first; it != std::next(subBlock.second); ++it) {
         builder.clone(*it, operandMapping);
       }
-      // Clone the last statement of the sub-block.
-      builder.clone(*subBlock.second, operandMapping);
     }
   }
 

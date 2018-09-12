@@ -70,8 +70,8 @@ public:
   /// floordiv, ceildiv, and mod is only allowed w.r.t constants.
   bool isPureAffine() const;
 
-  /// Returns the greatest known common divisor of this affine expression.
-  uint64_t getKnownGcd() const;
+  /// Returns the greatest known integral divisor of this affine expression.
+  uint64_t getLargestKnownDivisor() const;
 
   /// Return true if the affine expression is a multiple of 'factor'.
   bool isMultipleOf(int64_t factor) const;
@@ -107,6 +107,11 @@ public:
                             MLIRContext *context) {
     return get(AffineExpr::Kind::Add, lhs, rhs, context);
   }
+  static AffineExpr *getAdd(AffineExpr *expr, int64_t rhs,
+                            MLIRContext *context);
+  static AffineExpr *getSub(AffineExpr *lhs, AffineExpr *rhs,
+                            MLIRContext *context);
+
   static AffineExpr *getMul(AffineExpr *lhs, AffineExpr *rhs,
                             MLIRContext *context) {
     return get(AffineExpr::Kind::Mul, lhs, rhs, context);
@@ -119,6 +124,8 @@ public:
                                 MLIRContext *context) {
     return get(AffineExpr::Kind::CeilDiv, lhs, rhs, context);
   }
+  static AffineExpr *getCeilDiv(AffineExpr *lhs, uint64_t rhs,
+                                MLIRContext *context);
   static AffineExpr *getMod(AffineExpr *lhs, AffineExpr *rhs,
                             MLIRContext *context) {
     return get(AffineExpr::Kind::Mod, lhs, rhs, context);

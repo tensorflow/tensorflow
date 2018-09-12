@@ -108,7 +108,7 @@ private:
 
     // Check if the affine map is single dim id or single symbol identity -
     // (i)->(i) or ()[s]->(i)
-    return boundMap->getNumOperands() == 1 && boundMap->getNumResults() == 1 &&
+    return boundMap->getNumInputs() == 1 && boundMap->getNumResults() == 1 &&
            (isa<AffineDimExpr>(boundMap->getResult(0)) ||
             isa<AffineSymbolExpr>(boundMap->getResult(0)));
   }

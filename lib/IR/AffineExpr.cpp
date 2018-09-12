@@ -47,6 +47,25 @@ AffineBinaryOpExpr::AffineBinaryOpExpr(Kind kind, AffineExpr *lhs,
   }
 }
 
+AffineExpr *AffineBinaryOpExpr::getSub(AffineExpr *lhs, AffineExpr *rhs,
+                                       MLIRContext *context) {
+  return getAdd(lhs, getMul(rhs, AffineConstantExpr::get(-1, context), context),
+                context);
+}
+
+/// Get affine expression that is expr incremented by 'inc'.
+AffineExpr *AffineBinaryOpExpr::getAdd(AffineExpr *expr, int64_t rhs,
+                                       MLIRContext *context) {
+  return get(AffineExpr::Kind::Add, expr, AffineConstantExpr::get(rhs, context),
+             context);
+}
+
+AffineExpr *AffineBinaryOpExpr::getCeilDiv(AffineExpr *lhs, uint64_t rhs,
+                                           MLIRContext *context) {
+  return get(AffineExpr::Kind::CeilDiv, lhs,
+             AffineConstantExpr::get(rhs, context), context);
+}
+
 /// Returns true if this expression is made out of only symbols and
 /// constants (no dimensional identifiers).
 bool AffineExpr::isSymbolicOrConstant() const {
@@ -101,7 +120,8 @@ bool AffineExpr::isPureAffine() const {
   }
 }
 
-uint64_t AffineExpr::getKnownGcd() const {
+/// Returns the greatest known integral divisor of this affine expression.
+uint64_t AffineExpr::getLargestKnownDivisor() const {
   AffineBinaryOpExpr *binExpr = nullptr;
   switch (kind) {
   case Kind::SymbolId:
@@ -112,15 +132,17 @@ uint64_t AffineExpr::getKnownGcd() const {
     return std::abs(cast<AffineConstantExpr>(this)->getValue());
   case Kind::Mul:
     binExpr = cast<AffineBinaryOpExpr>(const_cast<AffineExpr *>(this));
-    return binExpr->getLHS()->getKnownGcd() * binExpr->getRHS()->getKnownGcd();
+    return binExpr->getLHS()->getLargestKnownDivisor() *
+           binExpr->getRHS()->getLargestKnownDivisor();
   case Kind::Add:
     LLVM_FALLTHROUGH;
   case Kind::FloorDiv:
   case Kind::CeilDiv:
   case Kind::Mod:
     binExpr = cast<AffineBinaryOpExpr>(const_cast<AffineExpr *>(this));
-    return llvm::GreatestCommonDivisor64(binExpr->getLHS()->getKnownGcd(),
-                                         binExpr->getRHS()->getKnownGcd());
+    return llvm::GreatestCommonDivisor64(
+        binExpr->getLHS()->getLargestKnownDivisor(),
+        binExpr->getRHS()->getLargestKnownDivisor());
   }
 }
 
@@ -138,17 +160,18 @@ bool AffineExpr::isMultipleOf(int64_t factor) const {
     binExpr = cast<AffineBinaryOpExpr>(const_cast<AffineExpr *>(this));
     // It's probably not worth optimizing this further (to not traverse the
     // whole sub-tree under - it that would require a version of isMultipleOf
-    // that on a 'false' return also returns the known GCD).
-    return (l = binExpr->getLHS()->getKnownGcd()) % factor == 0 ||
-           (u = binExpr->getRHS()->getKnownGcd()) % factor == 0 ||
+    // that on a 'false' return also returns the largest known divisor).
+    return (l = binExpr->getLHS()->getLargestKnownDivisor()) % factor == 0 ||
+           (u = binExpr->getRHS()->getLargestKnownDivisor()) % factor == 0 ||
            (l * u) % factor == 0;
   case Kind::Add:
   case Kind::FloorDiv:
   case Kind::CeilDiv:
   case Kind::Mod:
     binExpr = cast<AffineBinaryOpExpr>(const_cast<AffineExpr *>(this));
-    return llvm::GreatestCommonDivisor64(binExpr->getLHS()->getKnownGcd(),
-                                         binExpr->getRHS()->getKnownGcd()) %
+    return llvm::GreatestCommonDivisor64(
+               binExpr->getLHS()->getLargestKnownDivisor(),
+               binExpr->getRHS()->getLargestKnownDivisor()) %
                factor ==
            0;
   }

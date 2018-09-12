@@ -38,12 +38,6 @@ class MLIRContext;
 class MLValue;
 class HyperRectangularSet;
 
-/// Simplify an affine expression through flattening and some amount of
-/// simple analysis. This has complexity linear in the number of nodes in
-/// 'expr'. Return nullptr, if the expression can't be simplified.
-AffineExpr *simplifyAffineExpr(AffineExpr *expr, unsigned numDims,
-                               unsigned numSymbols, MLIRContext *context);
-
 /// A mutable affine map. Its affine expressions are however unique.
 struct MutableAffineMap {
 public:

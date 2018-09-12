@@ -167,6 +167,10 @@
 // CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (0, 0, 0, (d0 * 4 + 3) mod 2)
 #map49 = (i, j)[s0] -> ( (i * 4 + 8) mod 4, 32 * j * s0 * 8 mod 256, (4*i + (j * (s0 * 2))) mod 2, (4*i + 3) mod 2)
 
+// Floordiv, ceildiv divide by one.
+// CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0 * 2 + 1, d1 + s0)
+#map50 = (i, j)[s0] -> ( (i * 2 + 1) ceildiv 1, (j + s0) floordiv 1)
+
 // CHECK: extfunc @f0(memref<2x4xi8, #map{{[0-9]+}}, 1>)
 extfunc @f0(memref<2x4xi8, #map0, 1>)
 
@@ -331,3 +335,6 @@ extfunc @f48(memref<100x100x100xi8, #map48>)
 
 // CHECK: extfunc @f49(memref<100x100xi8, #map{{[0-9]+}}>)
 extfunc @f49(memref<100x100xi8, #map49>)
+
+// CHECK: extfunc @f50(memref<100x100xi8, #map{{[0-9]+}}>)
+extfunc @f50(memref<100x100xi8, #map50>)

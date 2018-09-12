@@ -2357,8 +2357,8 @@ ParseResult MLFunctionParser::parseBound(SmallVectorImpl<MLValue *> &operands,
     if (!map)
       return ParseFailure;
 
-    if (parseDimAndSymbolList(operands, map->getNumDims(),
-                              map->getNumOperands(), "affine map"))
+    if (parseDimAndSymbolList(operands, map->getNumDims(), map->getNumInputs(),
+                              "affine map"))
       return ParseFailure;
     return ParseSuccess;
   }

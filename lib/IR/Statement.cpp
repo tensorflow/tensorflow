@@ -278,9 +278,9 @@ bool OperationStmt::isReturn() const { return is<ReturnOp>(); }
 ForStmt *ForStmt::create(Location *location, ArrayRef<MLValue *> lbOperands,
                          AffineMap *lbMap, ArrayRef<MLValue *> ubOperands,
                          AffineMap *ubMap, int64_t step, MLIRContext *context) {
-  assert(lbOperands.size() == lbMap->getNumOperands() &&
+  assert(lbOperands.size() == lbMap->getNumInputs() &&
          "lower bound operand count does not match the affine map");
-  assert(ubOperands.size() == ubMap->getNumOperands() &&
+  assert(ubOperands.size() == ubMap->getNumInputs() &&
          "upper bound operand count does not match the affine map");
 
   unsigned numOperands = lbOperands.size() + ubOperands.size();
@@ -306,11 +306,11 @@ ForStmt::ForStmt(Location *location, unsigned numOperands, AffineMap *lbMap,
 }
 
 const AffineBound ForStmt::getLowerBound() const {
-  return AffineBound(*this, 0, lbMap->getNumOperands(), lbMap);
+  return AffineBound(*this, 0, lbMap->getNumInputs(), lbMap);
 }
 
 const AffineBound ForStmt::getUpperBound() const {
-  return AffineBound(*this, lbMap->getNumOperands(), getNumOperands(), ubMap);
+  return AffineBound(*this, lbMap->getNumInputs(), getNumOperands(), ubMap);
 }
 
 void ForStmt::setLowerBound(ArrayRef<MLValue *> operands, AffineMap *map) {
@@ -324,6 +324,18 @@ void ForStmt::setUpperBound(ArrayRef<MLValue *> operands, AffineMap *map) {
   // TODO: handle the case when number of existing or new operands is non-zero.
   assert(getNumOperands() == 0 && operands.empty());
 
+  this->ubMap = map;
+}
+
+void ForStmt::setLowerBoundMap(AffineMap *map) {
+  assert(lbMap->getNumDims() == map->getNumDims() &&
+         lbMap->getNumSymbols() == map->getNumSymbols());
+  this->lbMap = map;
+}
+
+void ForStmt::setUpperBoundMap(AffineMap *map) {
+  assert(ubMap->getNumDims() == map->getNumDims() &&
+         ubMap->getNumSymbols() == map->getNumSymbols());
   this->ubMap = map;
 }
 
@@ -341,24 +353,6 @@ int64_t ForStmt::getConstantLowerBound() const {
 
 int64_t ForStmt::getConstantUpperBound() const {
   return ubMap->getSingleConstantResult();
-}
-
-Optional<uint64_t> ForStmt::getConstantTripCount() const {
-  // TODO(bondhugula): handle arbitrary lower/upper bounds.
-  if (!hasConstantBounds())
-    return None;
-  int64_t lb = getConstantLowerBound();
-  int64_t ub = getConstantUpperBound();
-  int64_t step = getStep();
-
-  // 0 iteration loops.
-  if ((step >= 1 && lb > ub) || (step <= -1 && lb < ub))
-    return 0;
-
-  uint64_t tripCount = static_cast<uint64_t>((ub - lb + 1) % step == 0
-                                                 ? (ub - lb + 1) / step
-                                                 : (ub - lb + 1) / step + 1);
-  return tripCount;
 }
 
 void ForStmt::setConstantLowerBound(int64_t value) {
@@ -463,9 +457,9 @@ Statement *Statement::clone(DenseMap<const MLValue *, MLValue *> &operandMap,
 
     auto *newFor = ForStmt::create(
         getLoc(),
-        ArrayRef<MLValue *>(operands).take_front(lbMap->getNumOperands()),
-        lbMap, ArrayRef<MLValue *>(operands).take_back(ubMap->getNumOperands()),
-        ubMap, forStmt->getStep(), context);
+        ArrayRef<MLValue *>(operands).take_front(lbMap->getNumInputs()), lbMap,
+        ArrayRef<MLValue *>(operands).take_back(ubMap->getNumInputs()), ubMap,
+        forStmt->getStep(), context);
 
     // Remember the induction variable mapping.
     operandMap[forStmt] = newFor;
