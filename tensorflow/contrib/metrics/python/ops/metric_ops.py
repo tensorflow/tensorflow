@@ -3222,11 +3222,11 @@ def streaming_covariance(predictions,
     # batch_mean_prediction is E[x_B] in the update equation
     batch_mean_prediction = math_ops.div_no_nan(
         math_ops.reduce_sum(weighted_predictions),
-        math_ops.maximum(batch_count, 0),
+        batch_count,
         name='batch_mean_prediction')
     delta_mean_prediction = math_ops.div_no_nan(
         (batch_mean_prediction - mean_prediction) * batch_count,
-        math_ops.maximum(update_count, 0),
+        update_count,
         name='delta_mean_prediction')
     update_mean_prediction = state_ops.assign_add(mean_prediction,
                                                   delta_mean_prediction)
@@ -3236,11 +3236,11 @@ def streaming_covariance(predictions,
     # batch_mean_label is E[y_B] in the update equation
     batch_mean_label = math_ops.div_no_nan(
         math_ops.reduce_sum(weighted_labels),
-        math_ops.maximum(batch_count, 0),
+        batch_count,
         name='batch_mean_label')
     delta_mean_label = math_ops.div_no_nan(
         (batch_mean_label - mean_label) * batch_count,
-        math_ops.maximum(update_count, 0),
+        update_count,
         name='delta_mean_label')
     update_mean_label = state_ops.assign_add(mean_label, delta_mean_label)
     # prev_mean_label is E[y_A] in the update equation
