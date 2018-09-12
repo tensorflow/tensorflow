@@ -50,23 +50,6 @@ class Relu6Op : public XlaOpKernel {
   }
 };
 
-class LeakyReluOp : public XlaOpKernel {
- public:
-  explicit LeakyReluOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("alpha", &alpha_));
-  }
-  // Compute the max of the input x and alpha*x.
-  void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* builder = ctx->builder();
-    auto alpha = XlaHelpers::FloatLiteral(builder, input_type(0),
-                                          static_cast<double>(alpha_));
-    ctx->SetOutput(0, xla::Max(xla::Mul(alpha, ctx->Input(0)), ctx->Input(0)));
-  }
-
- private:
-  float alpha_;
-};
-
 class ReluGradOp : public XlaOpKernel {
  public:
   explicit ReluGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
@@ -101,35 +84,10 @@ class Relu6GradOp : public XlaOpKernel {
   }
 };
 
-class LeakyReluGradOp : public XlaOpKernel {
- public:
-  explicit LeakyReluGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("alpha", &alpha_));
-  }
-  // Return the lhs (incoming gradient) if the rhs (input feature) > 0,
-  // otherwise return the alpha * lhs.
-  void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* b = ctx->builder();
-    const TensorShape shape = ctx->InputShape(0);
-    const auto zero =
-        xla::Broadcast(XlaHelpers::Zero(b, input_type(0)), shape.dim_sizes());
-    const auto pred = xla::Gt(ctx->Input(1), zero);
-    auto alpha =
-        XlaHelpers::FloatLiteral(b, input_type(0), static_cast<double>(alpha_));
-    ctx->SetOutput(
-        0, xla::Select(pred, ctx->Input(0), xla::Mul(alpha, ctx->Input(0))));
-  }
-
- private:
-  float alpha_;
-};
-
 REGISTER_XLA_OP(Name("Relu"), ReluOp);
 REGISTER_XLA_OP(Name("Relu6"), Relu6Op);
-REGISTER_XLA_OP(Name("LeakyRelu"), LeakyReluOp);
 REGISTER_XLA_OP(Name("ReluGrad"), ReluGradOp);
 REGISTER_XLA_OP(Name("Relu6Grad"), Relu6GradOp);
-REGISTER_XLA_OP(Name("LeakyReluGrad"), LeakyReluGradOp);
 
 }  // namespace
 }  // namespace tensorflow
