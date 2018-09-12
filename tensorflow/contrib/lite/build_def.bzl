@@ -283,6 +283,7 @@ def generated_test_models():
         "sparse_to_dense",
         "split",
         "sqrt",
+        "square",
         "squeeze",
         "strided_slice",
         "strided_slice_1d_exhaustive",
