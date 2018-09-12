@@ -123,6 +123,7 @@ py_test(
     size = "medium",
     srcs = ["python/saved_model/keras_saved_model_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":keras_saved_model",
         "//tensorflow/python:client_testlib",

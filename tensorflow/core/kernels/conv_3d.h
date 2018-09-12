@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_CONV_3D_H_
 
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/eigen_backward_cuboid_convolutions.h"
 #include "tensorflow/core/kernels/eigen_cuboid_convolution.h"
 
 namespace tensorflow {
@@ -27,6 +28,10 @@ namespace functor {
 // Applies a 3D convolution to a batch of multi-channel volumes.
 template <typename Device, typename T>
 struct CuboidConvolution;
+
+// Backward input pass for the cuboid convolution.
+template <typename Device, typename T>
+struct CuboidConvolutionBackwardInput;
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
@@ -39,6 +44,23 @@ struct CuboidConvolution<CPUDevice, T> {
                   const Eigen::PaddingType& padding) {
     output.device(d) = Eigen::CuboidConvolution(
         input, filter, stride_planes, stride_rows, stride_cols, padding);
+  }
+};
+
+template <typename T>
+struct CuboidConvolutionBackwardInput<CPUDevice, T> {
+  void operator()(const CPUDevice& d,
+                  typename TTypes<T, 5>::Tensor input_backward,
+                  typename TTypes<T, 5>::ConstTensor filter,
+                  typename TTypes<T, 5>::ConstTensor output_backward,
+                  int stride_planes, int stride_rows, int stride_cols) {
+    // Need to swap the order of plane/row/col strides when calling Eigen.
+    input_backward.device(d) = Eigen::CuboidConvolutionBackwardInput(
+        filter, output_backward,
+        input_backward.dimension(3),  // input_planes
+        input_backward.dimension(2),  // input_rows
+        input_backward.dimension(1),  // input_cols
+        stride_cols, stride_rows, stride_planes);
   }
 };
 

@@ -239,8 +239,8 @@ CuboidConvolutionBackwardInput(
     }
   }
 
-  // We will contract along the fused dimension that contains the kernelFilters,
-  // kernelPlanes, kernelRows and kernelCols.
+  // We will contract along the collapsed dimension that contains the
+  // kernelFilters, kernelPlanes, kernelRows and kernelCols.
   array<IndexPair<TensorIndex>, 1> contract_dims;
   if (isColMajor) {
     // col-major: kernel.contract(output.patches)
@@ -331,24 +331,18 @@ EIGEN_ALWAYS_INLINE static const typename internal::conditional<
             const TensorReshapingOp<
                 const DSizes<typename internal::traits<Input>::Index, 2>,
                 const OutputBackward>,
-            const TensorShufflingOp<
-                const array<typename internal::traits<OutputBackward>::Index,
-                            2>,
-                const TensorReshapingOp<
-                    const DSizes<typename internal::traits<Input>::Index, 2>,
-                    const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
-                                              const Input> > > > >,
+            const TensorReshapingOp<
+                const DSizes<typename internal::traits<Input>::Index, 2>,
+                const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
+                                          const Input> > > >,
     TensorReshapingOp<
         const DSizes<typename internal::traits<Input>::Index, 5>,
         const TensorContractionOp<
             const array<IndexPair<typename internal::traits<Input>::Index>, 1>,
-            const TensorShufflingOp<
-                const array<typename internal::traits<OutputBackward>::Index,
-                            2>,
-                const TensorReshapingOp<
-                    const DSizes<typename internal::traits<Input>::Index, 2>,
-                    const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
-                                              const Input> > >,
+            const TensorReshapingOp<
+                const DSizes<typename internal::traits<Input>::Index, 2>,
+                const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
+                                          const Input> >,
             const TensorReshapingOp<
                 const DSizes<typename internal::traits<Input>::Index, 2>,
                 const OutputBackward> > > >::type
@@ -458,12 +452,16 @@ CuboidConvolutionBackwardKernel(
     eigen_assert(output_dims[0] == pre_contract_dims[0]);
   }
 
-  array<TensorIndex, 2> shuffle_dims;
-  shuffle_dims[0] = 1;
-  shuffle_dims[1] = 0;
-
+  // We will contract along the collapsed dimension that contains the
+  // outputCols, outputRows, outputPlanes and OTHERS.
   array<IndexPair<TensorIndex>, 1> contract_dims;
-  contract_dims[0] = IndexPair<TensorIndex>(1, 0);
+  if (isColMajor) {
+    // col-major: output_backward.contract(input.patches)
+    contract_dims[0] = IndexPair<TensorIndex>(1, 1);
+  } else {
+    // row-major: input.patches.contract(output_backward)
+    contract_dims[0] = IndexPair<TensorIndex>(0, 0);
+  }
 
   DSizes<TensorIndex, 5> kernel_dims;
   if (isColMajor) {
@@ -489,8 +487,7 @@ CuboidConvolutionBackwardKernel(
                             strideRows, strideCols, 1, 1, 1, padding_top_z,
                             padding_bottom_z, padding_top, padding_bottom,
                             padding_left, padding_right)
-                        .reshape(pre_contract_dims)
-                        .shuffle(shuffle_dims),
+                        .reshape(pre_contract_dims),
                     contract_dims)
           .reshape(kernel_dims),
       input
@@ -499,7 +496,6 @@ CuboidConvolutionBackwardKernel(
                                   padding_top_z, padding_bottom_z, padding_top,
                                   padding_bottom, padding_left, padding_right)
           .reshape(pre_contract_dims)
-          .shuffle(shuffle_dims)
           .contract(output_backward.reshape(output_dims), contract_dims)
           .reshape(kernel_dims));
 }

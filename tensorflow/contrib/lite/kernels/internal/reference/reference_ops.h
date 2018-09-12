@@ -4877,16 +4877,22 @@ inline void Pow(const RuntimeShape& input1_shape, const T* input1_data,
 }
 
 template <typename T>
-inline void BroadcastPow4DSlow(const RuntimeShape& input1_shape,
+inline void BroadcastPow4DSlow(const RuntimeShape& unextended_input1_shape,
                                const T* input1_data,
-                               const RuntimeShape& input2_shape,
+                               const RuntimeShape& unextended_input2_shape,
                                const T* input2_data,
-                               const RuntimeShape& output_shape,
+                               const RuntimeShape& unextended_output_shape,
                                T* output_data) {
+  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
-                                      &desc2);
+  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
+                                      unextended_input2_shape, &desc1, &desc2);
 
   for (int b = 0; b < output_shape.Dims(0); ++b) {
     for (int y = 0; y < output_shape.Dims(1); ++y) {

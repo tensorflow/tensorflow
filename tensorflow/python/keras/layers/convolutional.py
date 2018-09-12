@@ -64,7 +64,7 @@ class Conv(Layer):
       specifying the stride length of the convolution.
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
-    padding: One of `"valid"` or `"same"` (case-insensitive).
+    padding: One of `"valid"`,  `"same"`, or `"causal"` (case-insensitive).
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
@@ -126,6 +126,10 @@ class Conv(Layer):
         kernel_size, rank, 'kernel_size')
     self.strides = conv_utils.normalize_tuple(strides, rank, 'strides')
     self.padding = conv_utils.normalize_padding(padding)
+    if (self.padding == 'causal' and not isinstance(self,
+                                                    (Conv1D, SeparableConv1D))):
+      raise ValueError('Causal padding is only supported for `Conv1D`'
+                       'and ``SeparableConv1D`.')
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.dilation_rate = conv_utils.normalize_tuple(
         dilation_rate, rank, 'dilation_rate')
@@ -172,12 +176,16 @@ class Conv(Layer):
       self.bias = None
     self.input_spec = InputSpec(ndim=self.rank + 2,
                                 axes={channel_axis: input_dim})
+    if self.padding == 'causal':
+      op_padding = 'valid'
+    else:
+      op_padding = self.padding
     self._convolution_op = nn_ops.Convolution(
         input_shape,
         filter_shape=self.kernel.get_shape(),
         dilation_rate=self.dilation_rate,
         strides=self.strides,
-        padding=self.padding.upper(),
+        padding=op_padding.upper(),
         data_format=conv_utils.convert_data_format(self.data_format,
                                                    self.rank + 2))
     self.built = True
@@ -263,6 +271,15 @@ class Conv(Layer):
     }
     base_config = super(Conv, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
+
+  def _compute_causal_padding(self):
+    """Calculates padding for 'causal' option for 1-d conv layers."""
+    left_pad = self.dilation_rate[0] * (self.kernel_size[0] - 1)
+    if self.data_format == 'channels_last':
+      causal_padding = [[0, 0], [left_pad, 0], [0, 0]]
+    else:
+      causal_padding = [[0, 0], [0, 0], [left_pad, 0]]
+    return causal_padding
 
 
 @tf_export('keras.layers.Conv1D', 'keras.layers.Convolution1D')
@@ -360,6 +377,11 @@ class Conv1D(Conv):
         kernel_constraint=constraints.get(kernel_constraint),
         bias_constraint=constraints.get(bias_constraint),
         **kwargs)
+
+  def call(self, inputs):
+    if self.padding == 'causal':
+      inputs = array_ops.pad(inputs, self._compute_causal_padding())
+    return super(Conv1D, self).call(inputs)
 
 
 @tf_export('keras.layers.Conv2D', 'keras.layers.Convolution2D')
@@ -1261,31 +1283,44 @@ class SeparableConv(Conv):
 
   def get_config(self):
     config = {
-        'filters': self.filters,
-        'kernel_size': self.kernel_size,
-        'strides': self.strides,
-        'padding': self.padding,
-        'data_format': self.data_format,
-        'dilation_rate': self.dilation_rate,
-        'activation': activations.serialize(self.activation),
-        'use_bias': self.use_bias,
+        'filters':
+            self.filters,
+        'kernel_size':
+            self.kernel_size,
+        'strides':
+            self.strides,
+        'padding':
+            self.padding,
+        'data_format':
+            self.data_format,
+        'depth_multiplier':
+            self.depth_multiplier,
+        'dilation_rate':
+            self.dilation_rate,
+        'activation':
+            activations.serialize(self.activation),
+        'use_bias':
+            self.use_bias,
         'depthwise_initializer':
             initializers.serialize(self.depthwise_initializer),
         'pointwise_initializer':
             initializers.serialize(self.pointwise_initializer),
-        'bias_initializer': initializers.serialize(self.bias_initializer),
+        'bias_initializer':
+            initializers.serialize(self.bias_initializer),
         'depthwise_regularizer':
             regularizers.serialize(self.depthwise_regularizer),
         'pointwise_regularizer':
             regularizers.serialize(self.pointwise_regularizer),
-        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
+        'bias_regularizer':
+            regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
         'depthwise_constraint':
             constraints.serialize(self.depthwise_constraint),
         'pointwise_constraint':
             constraints.serialize(self.pointwise_constraint),
-        'bias_constraint': constraints.serialize(self.bias_constraint)
+        'bias_constraint':
+            constraints.serialize(self.bias_constraint)
     }
     base_config = super(SeparableConv, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -1311,7 +1346,7 @@ class SeparableConv1D(SeparableConv):
       of the convolution.
       Specifying any `stride` value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
-    padding: One of `"valid"` or `"same"` (case-insensitive).
+    padding: One of `"valid"`, `"same"`, or `"causal"` (case-insensitive).
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
@@ -1397,6 +1432,8 @@ class SeparableConv1D(SeparableConv):
         **kwargs)
 
   def call(self, inputs):
+    if self.padding == 'causal':
+      inputs = array_ops.pad(inputs, self._compute_causal_padding())
     if self.data_format == 'channels_last':
       strides = (1,) + self.strides * 2 + (1,)
       spatial_start_dim = 1
@@ -1411,12 +1448,16 @@ class SeparableConv1D(SeparableConv):
     pointwise_kernel = array_ops.expand_dims(self.pointwise_kernel, 0)
     dilation_rate = (1,) + self.dilation_rate
 
+    if self.padding == 'causal':
+      op_padding = 'valid'
+    else:
+      op_padding = self.padding
     outputs = nn.separable_conv2d(
         inputs,
         depthwise_kernel,
         pointwise_kernel,
         strides=strides,
-        padding=self.padding.upper(),
+        padding=op_padding.upper(),
         rate=dilation_rate,
         data_format=conv_utils.convert_data_format(self.data_format, ndim=4))
 

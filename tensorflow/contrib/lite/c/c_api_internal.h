@@ -374,6 +374,11 @@ typedef struct TfLiteContext {
   // WARNING: This is an experimental interface that is subject to change.
   void (*SetExternalContext)(struct TfLiteContext*, TfLiteExternalContextType,
                              TfLiteExternalContext*);
+
+  // Flag for allowing float16 precision for FP32 calculation.
+  // default: false.
+  // WARNING: This is an experimental API and subject to change.
+  bool allow_fp32_relax_to_fp16;
 } TfLiteContext;
 
 typedef struct _TfLiteRegistration {
