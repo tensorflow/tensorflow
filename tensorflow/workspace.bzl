@@ -910,7 +910,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         ],
         sha256 = "a621876c8f8aaa02842a64331d64aae03e747acd6bf6567d45ec385846a5c2b2",
         strip_prefix = "rccl-allreduce-fix-3",
-        build_file = str(Label("//third_party:rccl.BUILD")),
+        build_file = clean_dep("//third_party:rccl.BUILD"),
     )
 
     ##############################################################################
