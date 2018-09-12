@@ -1753,7 +1753,7 @@ class ControlFlowTest(test.TestCase):
 
   def _testWhileGrad_ColocateGradients(self, colocate):
     gpu_dev_name = test.gpu_device_name() if test.is_gpu_available(
-    ) else "/device:GPU:0"
+    ) else "/device:CPU:0"
 
     graph = ops.Graph()
     with graph.as_default():
