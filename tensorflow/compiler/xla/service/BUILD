@@ -1963,6 +1963,7 @@ tf_cc_test(
     deps = [
         ":hlo",
         ":hlo_matchers",
+        ":hlo_memory_scheduler",
         ":hlo_parser",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
