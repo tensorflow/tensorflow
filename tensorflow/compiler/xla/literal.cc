@@ -1769,6 +1769,10 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
     case PRED:
       CopyToRepeatedField(proto->mutable_preds(), data<bool>());
       break;
+    case S8:
+      proto->set_s8s(static_cast<const signed char*>(data<int8>().data()),
+                     element_count());
+      break;
     case U8:
       proto->set_u8s(static_cast<const unsigned char*>(data<uint8>().data()),
                      element_count());
@@ -1859,6 +1863,11 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
     case PRED:
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<bool>(), proto.preds()));
       break;
+    case S8: {
+      auto s8_data = data<int8>();
+      TF_RET_CHECK(proto.s8s().size() == s8_data.size());
+      std::copy(proto.s8s().begin(), proto.s8s().end(), s8_data.begin());
+    } break;
     case U8: {
       auto u8_data = data<uint8>();
       TF_RET_CHECK(proto.u8s().size() == u8_data.size());
