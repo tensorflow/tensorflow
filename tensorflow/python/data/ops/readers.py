@@ -292,7 +292,8 @@ class FixedLengthRecordDataset(dataset_ops.Dataset):
         argument_dtype=dtypes.string)
 
   def _as_variant_tensor(self):
-    if self._compression_type is not None or compat.forward_compatible(2018, 9, 30):
+    if (self._compression_type is not None or
+        compat.forward_compatible(2018, 9, 30)):
       return gen_dataset_ops.fixed_length_record_dataset_v2(
           self._filenames, self._header_bytes, self._record_bytes,
           self._footer_bytes, self._buffer_size, self._compression_type)
