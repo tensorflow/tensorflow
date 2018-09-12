@@ -348,6 +348,8 @@ class ResourceHandleOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override;
 
+  bool IsExpensive() override { return false; }
+
  private:
   string container_;
   string name_;
