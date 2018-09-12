@@ -79,6 +79,8 @@ def main(_):
     return predict_features
 
   prediction_iterable = estimator.predict(input_fn=predict_input_fn)
+  # Create a list containing each of the prediction dictionaries that map 
+  # the key 'logits' to an array of model outputs.
   predictions = [prediction_iterable.next() for _ in range(10)]
   print("Prediction results: {}".format(predictions))
 
