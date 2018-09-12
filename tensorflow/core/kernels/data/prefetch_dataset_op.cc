@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
@@ -111,7 +112,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         while (!cancelled_ && buffer_.empty() && !prefetch_thread_finished_ &&
                auto_tuner_.buffer_limit() != 0) {
           auto_tuner_.RecordEmpty();
+          StopWork(ctx);
           cond_var_.wait(l);
+          StartWork(ctx);
         }
 
         if (cancelled_) {
@@ -239,10 +242,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     Status EnsurePrefetchThreadStarted(IteratorContext* ctx)
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!prefetch_thread_) {
-        prefetch_thread_.reset(
-            ctx->env()->StartThread({}, "prefetch_thread",
-                                    std::bind(&Iterator::PrefetchThread, this,
-                                              new IteratorContext(*ctx))));
+        std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
+        prefetch_thread_.reset(ctx->env()->StartThread(
+            {}, "prefetch_thread",
+            [this, new_ctx]() { PrefetchThread(new_ctx); }));
       }
       return Status::OK();
     }
@@ -251,8 +254,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     // buffer.
     //
     // It owns the iterator context passed to it.
-    void PrefetchThread(IteratorContext* ctx) {
-      std::unique_ptr<IteratorContext> cleanup(ctx);
+    void PrefetchThread(const std::shared_ptr<IteratorContext>& ctx) {
+      StartWork(ctx.get());
+      auto cleanup = gtl::MakeCleanup([this, ctx] { StopWork(ctx.get()); });
       while (true) {
         std::vector<Tensor> value;
 
@@ -260,7 +264,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         {
           mutex_lock l(mu_);
           while (!cancelled_ && buffer_.size() >= auto_tuner_.buffer_limit()) {
+            StopWork(ctx.get());
             cond_var_.wait(l);
+            StartWork(ctx.get());
           }
 
           if (cancelled_) {
@@ -277,8 +283,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         mutex_lock parent_l(parent_mu_);
         bool end_of_sequence;
         BufferElement buffer_element;
-        buffer_element.status =
-            input_impl_->GetNext(ctx, &buffer_element.value, &end_of_sequence);
+        buffer_element.status = input_impl_->GetNext(
+            ctx.get(), &buffer_element.value, &end_of_sequence);
         if (buffer_element.status.ok() && end_of_sequence) {
           mutex_lock l(mu_);
           prefetch_thread_finished_ = true;
