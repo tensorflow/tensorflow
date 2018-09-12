@@ -201,50 +201,23 @@ class Conv3DBackpropInputOp : public OpKernel {
       input_shape = context->input(0).shape();
     }
     EXTRACT_AND_VERIFY_DIMENSIONS("Conv3DBackpropInput");
-    Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 5> pad_dims{
-        {0, 0},
-        {top_pad_planes, bottom_pad_planes},
-        {top_pad_rows, bottom_pad_rows},
-        {left_pad_cols, right_pad_cols},
-        {0, 0}};
+
     Tensor* in_backprop;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
 
-    // Fill out a padded out_backprop.
-    TensorShape padded_out_shape({batch, padded_out_planes, padded_out_rows,
-                                  padded_out_cols, out_depth});
-    Tensor padded_output;
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(DataTypeToEnum<T>::v(),
-                                          padded_out_shape, &padded_output));
-    Eigen::DSizes<Eigen::DenseIndex, 5> no_op_shuffle{0, 1, 2, 3, 4};
-    Eigen::DSizes<Eigen::DenseIndex, 5> eigen_strides{1, strides[0], strides[1],
-                                                      strides[2], 1};
-    functor::InflatePadAndShuffle<Device, T, 5, Eigen::DenseIndex>()(
-        context->eigen_device<Device>(), out_backprop.tensor<T, 5>(),
-        eigen_strides, pad_dims, no_op_shuffle, padded_output.tensor<T, 5>());
-    const Tensor& padded_output_cref = padded_output;
-
-    // Fill a new "reverted" filter. We need to transpose the in_depth and
-    // out_depth for the filter and reverse the planes, rows and cols.
-    TensorShape r_filter_shape(
-        {filter_size[0], filter_size[1], filter_size[2], out_depth, in_depth});
-    Tensor r_filter;
-    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::v(),
-                                                   r_filter_shape, &r_filter));
-    Eigen::DSizes<Eigen::DenseIndex, 5> filter_order{0, 1, 2, 4, 3};
-    Eigen::array<bool, 5> filter_rev_dims{true, true, true, false, false};
-    functor::ShuffleAndReverse<Device, T, 5, Eigen::DenseIndex>()(
-        context->eigen_device<Device>(), filter.tensor<T, 5>(), filter_order,
-        filter_rev_dims, r_filter.tensor<T, 5>());
-    const Tensor& r_filter_cref = r_filter;
-
-    // Now we can call conv_3d directly.
-    functor::CuboidConvolution<Device, T>()(
-        context->eigen_device<Device>(), in_backprop->tensor<T, 5>(),
-        padded_output_cref.tensor<T, 5>(), r_filter_cref.tensor<T, 5>(), 1, 1,
-        1, BrainPadding2EigenPadding(VALID));
+    // There is no need to explicitly compute padding values (and pad
+    // out_backprop), because Eigen uses the same padding inference mechanism as
+    // Tensorflow.
+    functor::CuboidConvolutionBackwardInput<Device, T>()(
+        context->eigen_device<Device>(),
+        in_backprop->tensor<T, 5>(),  // input_backward
+        filter.tensor<T, 5>(),        // filter
+        out_backprop.tensor<T, 5>(),  // output_backward
+        // Order of strides will be reversed before passing to Eigen.
+        static_cast<int>(strides[0]),   // stride_planes
+        static_cast<int>(strides[1]),   // stride_rows
+        static_cast<int>(strides[2]));  // stride_cols
   }
 
  private:

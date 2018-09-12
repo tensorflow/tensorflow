@@ -96,37 +96,11 @@ def _yield_value(iterable):
       yield value
 
 
-def is_sequence(seq):
-  """Returns a true if `seq` is a Sequence or dict (except strings/lists).
+# See the swig file (../../util/util.i) for documentation.
+is_sequence = _pywrap_tensorflow.IsSequenceForData
 
-  NOTE(mrry): This differs from `tensorflow.python.util.nest.is_sequence()`,
-  which *does* treat a Python list as a sequence. For ergonomic
-  reasons, `tf.data` users would prefer to treat lists as
-  implicit `tf.Tensor` objects, and dicts as (nested) sequences.
-
-  Args:
-    seq: an input sequence.
-
-  Returns:
-    True if the sequence is a not a string or list and is a
-    collections.Sequence.
-  """
-  return _pywrap_tensorflow.IsSequenceForData(seq)
-
-
-def flatten(nest):
-  """Returns a flat sequence from a given nested structure.
-
-  If `nest` is not a sequence, this returns a single-element list: `[nest]`.
-
-  Args:
-    nest: an arbitrarily nested structure or a scalar object.
-      Note, numpy arrays are considered scalars.
-
-  Returns:
-    A Python list, the flattened version of the input.
-  """
-  return _pywrap_tensorflow.FlattenForData(nest)
+# See the swig file (../../util/util.i) for documentation.
+flatten = _pywrap_tensorflow.FlattenForData
 
 
 def assert_same_structure(nest1, nest2, check_types=True):

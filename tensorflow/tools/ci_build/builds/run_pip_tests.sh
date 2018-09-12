@@ -76,7 +76,7 @@ ln -s $(pwd)/tensorflow ${PIP_TEST_ROOT}/tensorflow
 
 # Do not run tests with "no_pip" tag. If running GPU tests, also do not run
 # tests with no_pip_gpu tag.
-PIP_TEST_FILTER_TAG="-no_pip,-no_oss"
+PIP_TEST_FILTER_TAG="-no_pip,-no_oss,-benchmark-test"
 if [[ ${IS_OSS_SERIAL} == "1" ]]; then
   PIP_TEST_FILTER_TAG="$(echo "${PIP_TEST_FILTER_TAG}" | sed s/-no_oss//)"
   PIP_TEST_FILTER_TAG="${PIP_TEST_FILTER_TAG},oss_serial"
@@ -85,7 +85,7 @@ else
 fi
 
 if [[ ${IS_GPU} == "1" ]]; then
-  PIP_TEST_FILTER_TAG="-no_pip_gpu,${PIP_TEST_FILTER_TAG}"
+  PIP_TEST_FILTER_TAG="-no_gpu,-no_pip_gpu,${PIP_TEST_FILTER_TAG}"
 fi
 if [[ ${IS_MAC} == "1" ]]; then
   PIP_TEST_FILTER_TAG="-nomac,${PIP_TEST_FILTER_TAG}"

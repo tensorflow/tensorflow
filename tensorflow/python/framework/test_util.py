@@ -413,15 +413,13 @@ def enable_cond_v2(fn):
     The wrapped function
   """
 
-  # pylint: disable=protected-access
   def wrapper(*args, **kwargs):
-    prev_value = control_flow_ops._ENABLE_COND_V2
-    control_flow_ops._ENABLE_COND_V2 = True
+    prev_value = control_flow_ops.ENABLE_COND_V2
+    control_flow_ops.ENABLE_COND_V2 = True
     try:
       fn(*args, **kwargs)
     finally:
-      control_flow_ops._ENABLE_COND_V2 = prev_value
-  # pylint: enable=protected-access
+      control_flow_ops.ENABLE_COND_V2 = prev_value
 
   return wrapper
 
@@ -438,7 +436,7 @@ def with_cond_v2(cls):
   Returns:
     cls with new test methods added
   """
-  if control_flow_ops._ENABLE_COND_V2:
+  if control_flow_ops.ENABLE_COND_V2:
     return cls
 
   for name, value in cls.__dict__.copy().items():
@@ -1663,7 +1661,7 @@ class TensorFlowTestCase(googletest.TestCase):
         if any of the elements do not fall in the specified range.
     """
     target = self._GetNdArray(target)
-    if not (np.issubdtype(target.dtype, np.float) or
+    if not (np.issubdtype(target.dtype, np.floating) or
             np.issubdtype(target.dtype, np.integer)):
       raise AssertionError(
           "The value of %s does not have an ordered numeric type, instead it "

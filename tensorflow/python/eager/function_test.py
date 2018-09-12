@@ -22,6 +22,8 @@ import functools
 from multiprocessing.pool import ThreadPool
 import sys
 
+import numpy
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import backprop
@@ -314,6 +316,7 @@ class FunctionTest(test.TestCase):
   def testDefunNumpyArraysConvertedToTensors(self):
 
     def f(x):
+      self.assertIsInstance(x, ops.Tensor)
       return x
 
     x = random_ops.random_uniform([2, 2]).numpy()
@@ -326,6 +329,12 @@ class FunctionTest(test.TestCase):
     # A NumPy array with different values but the same shape and dtype
     # shouldn't trigger another function definition.
     self.assertEqual(len(defined._function_cache), 1)
+
+    # Test that the numpy array is properly an argument to the graph function.
+    self.assertEqual(1., defined(numpy.ones([])).numpy())
+    self.assertEqual(0., defined(numpy.zeros([])).numpy())
+    self.assertEqual(1., defined(array_ops.ones([])).numpy())
+    self.assertEqual(0., defined(array_ops.zeros([])).numpy())
 
   def testDefunCapturedInt32(self):
     x = constant_op.constant(1, dtype=dtypes.int32)
@@ -1491,6 +1500,67 @@ class FunctionTest(test.TestCase):
     # Whereas calling the python function directly should create a side-effect.
     side_effecting_function.python_function()
     self.assertAllEqual(state, [0, 0])
+
+  def testFunctionWithExtraAttributes(self):
+    @function.defun_with_attributes(attributes={'experimental_1': 'value1',
+                                                'experimental_2': 2})
+    def matmul(x, y):
+      return math_ops.matmul(x, y)
+
+    def add(x, y):
+      return math_ops.add(x, y)
+    defun_add = function.defun_with_attributes(
+        add, attributes={'experimental_3': True, 'experimental_4': 1.0})
+
+    with context.graph_mode(), self.test_session():
+      with ops.get_default_graph().as_default():
+        t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+        sq = matmul(t, t)
+        double = defun_add(t, t)
+        self.assertAllEqual(sq.eval().reshape(-1), [7, 10, 15, 22])
+        self.assertAllEqual(double.eval().reshape(-1), [2, 4, 6, 8])
+
+        graph = ops.get_default_graph()
+        # pylint: disable=protected-access
+        self.assertEqual(len(graph._functions), 2)
+        functions = list(graph._functions.values())
+        self.assertRegexpMatches(
+            functions[0].definition.signature.name, '.*matmul.*')
+        attrs = functions[0].definition.attr
+        self.assertEqual(len(attrs), 2)
+        self.assertEqual(attrs['experimental_1'].s, b'value1')
+        self.assertEqual(attrs['experimental_2'].i, 2)
+
+        self.assertRegexpMatches(
+            functions[1].definition.signature.name, '.*add.*')
+        attrs = functions[1].definition.attr
+        self.assertEqual(len(attrs), 2)
+        self.assertEqual(attrs['experimental_3'].b, True)
+        self.assertEqual(attrs['experimental_4'].f, 1.0)
+        # pylint: enable=protected-access
+
+  def testFunctionWithInvalidAttribute(self):
+    @function.defun_with_attributes(attributes={'attr1': 'value1'})
+    def matmul(x, y):
+      return math_ops.matmul(x, y)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 '.*Attribute name is not whitelisted.*'):
+      with context.graph_mode(), self.test_session():
+        with ops.get_default_graph().as_default():
+          t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+          matmul(t, t)
+
+    @function.defun_with_attributes(attributes={'experimental_1': ['value1']})
+    def add(x, y):
+      return math_ops.add(x, y)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 '.*Unsupported attribute type.*'):
+      with context.graph_mode(), self.test_session():
+        with ops.get_default_graph().as_default():
+          t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+          add(t, t)
 
 
 @test_util.with_c_shapes

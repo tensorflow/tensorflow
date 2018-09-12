@@ -246,7 +246,8 @@ class ProcessInputOp : public OpKernel {
     const Tensor& input_weights = context->input(7);
     const Tensor& leaf_ids_tensor = context->input(8);
 
-    std::unique_ptr<TensorDataSet> data_set(new TensorDataSet(input_spec_, 0));
+    std::unique_ptr<TensorDataSet> data_set(
+        new TensorDataSet(input_spec_, random_seed_));
     data_set->set_input_tensors(input_data, sparse_input_indices,
                                 sparse_input_values, sparse_input_shape);
 

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset_stateful_op_whitelist.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -291,6 +292,9 @@ class IteratorContext {
 
     // The Allocator to be used to allocate the output of an iterator.
     std::function<Allocator*(AllocatorAttributes)> allocator_getter = nullptr;
+
+    // If non-null, identifies the object used for performance modeling.
+    std::shared_ptr<model::Model> model = nullptr;
   };
 
   explicit IteratorContext(Params params) : params_(std::move(params)) {}
@@ -342,6 +346,10 @@ class IteratorContext {
     return params_.stats_aggregator_getter;
   }
 
+  std::shared_ptr<model::Model> model() { return params_.model; }
+
+  Params params() { return params_; }
+
  private:
   Params params_;
 };
@@ -376,7 +384,11 @@ class SerializationContext {
 // defined below.
 class IteratorBase {
  public:
-  virtual ~IteratorBase() {}
+  virtual ~IteratorBase() {
+    for (auto rit = cleanup_fns_.rbegin(); rit != cleanup_fns_.rend(); ++rit) {
+      (*rit)();
+    }
+  }
 
   // Gets the next output from the range that this iterator is traversing.
   //
@@ -409,6 +421,10 @@ class IteratorBase {
   // (and possibly partially defined) shapes of each tuple component
   // in the outputs of this iterator.
   virtual const std::vector<PartialTensorShape>& output_shapes() const = 0;
+
+  // Returns a string that identifies the sequence of iterators leading up to
+  // this iterator.
+  virtual const string& prefix() const = 0;
 
   // Performs initialization that needs to happen outside of a constructor to
   // properly propagate errors.
@@ -449,6 +465,18 @@ class IteratorBase {
                                  IteratorStateReader* reader) {
     return errors::Unimplemented("RestoreInternal");
   }
+
+ private:
+  friend class DatasetBase;  // for access to `AddCleanupFunction`
+
+  // Registers a cleanup function to be called upon object destruction.
+  //
+  // Registered functions are invoked in the reserve order of registration.
+  void AddCleanupFunction(std::function<void()>&& cleanup_fn) {
+    cleanup_fns_.push_back(std::move(cleanup_fn));
+  }
+
+  std::vector<std::function<void()>> cleanup_fns_;
 };
 
 // Represents runtime information needed to construct a dataset.
@@ -498,6 +526,27 @@ class DatasetBase : public core::RefCounted {
   Status MakeIterator(IteratorContext* ctx, const string& prefix,
                       std::unique_ptr<IteratorBase>* iterator) const {
     *iterator = MakeIteratorInternal(prefix);
+    if (ctx->model()) {
+      // The prefix might contain an index. We need to strip it to make it
+      // possible for the model to successfully identify the output node.
+      string sanitized_prefix = prefix;
+      if (str_util::EndsWith(prefix, "]")) {
+        sanitized_prefix = prefix.substr(0, prefix.rfind('['));
+      }
+      std::shared_ptr<model::Node> node =
+          ctx->model()->AddNode((*iterator)->prefix(), sanitized_prefix);
+      std::vector<string> tokens =
+          str_util::Split((*iterator)->prefix(), ':', str_util::SkipEmpty());
+      node->set_name(tokens[tokens.size() - 1]);
+      std::shared_ptr<model::Model> model = ctx->model();
+      const string& prefix = (*iterator)->prefix();
+      (*iterator)->AddCleanupFunction([model, node, prefix]() {
+        if (node->output()) {
+          node->output()->remove_input(node);
+        }
+        model->RemoveNode(prefix);
+      });
+    }
     return (*iterator)->Initialize(ctx);
   }
 
@@ -524,6 +573,8 @@ class DatasetBase : public core::RefCounted {
                       IteratorStateWriter* writer) const;
 
  protected:
+  friend class DatasetToGraphOp;  // For access to graph related members.
+
   class DatasetGraphDefBuilder : public GraphDefBuilderWrapper {
    public:
     DatasetGraphDefBuilder(GraphDefBuilder* b) : GraphDefBuilderWrapper(b) {}
@@ -540,8 +591,6 @@ class DatasetBase : public core::RefCounted {
 
   virtual std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const = 0;
-
-  friend class DatasetToGraphOp;  // For access to graph related members.
 
  private:
   const string name_;
@@ -565,7 +614,7 @@ class DatasetBaseIterator : public IteratorBase {
   ~DatasetBaseIterator() override { params_.dataset->Unref(); }
 
   // The sequence of iterators leading up to this iterator.
-  const string& prefix() const { return params_.prefix; }
+  const string& prefix() const override { return params_.prefix; }
 
   const DataTypeVector& output_dtypes() const override {
     return params_.dataset->output_dtypes();
@@ -578,7 +627,23 @@ class DatasetBaseIterator : public IteratorBase {
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) final {
     tracing::ScopedActivity activity(params_.prefix);
-    Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
+    Status s;
+    if (ctx->model()) {
+      std::shared_ptr<model::Node> node =
+          ctx->model()->LookupNode(params_.prefix);
+      if (node->output()) {
+        node->output()->stop_work();
+      }
+      node->start_work();
+      s = GetNextInternal(ctx, out_tensors, end_of_sequence);
+      node->stop_work();
+      node->add_element();
+      if (node->output()) {
+        node->output()->start_work();
+      }
+    } else {
+      s = GetNextInternal(ctx, out_tensors, end_of_sequence);
+    }
     if (TF_PREDICT_FALSE(errors::IsOutOfRange(s) && !*end_of_sequence)) {
       s = errors::Internal(
           "Iterator \"", params_.prefix,
@@ -603,6 +668,39 @@ class DatasetBaseIterator : public IteratorBase {
 
   string full_name(const string& name) const {
     return strings::StrCat(params_.prefix, ":", name);
+  }
+
+  // When performance modeling is enabled, this method sets metadata entry for
+  // the model node corresponding to this iterator.
+  void SetMetadata(IteratorContext* ctx, const string& key, int64 value) {
+    if (ctx->model()) {
+      std::shared_ptr<model::Node> node = ctx->model()->LookupNode(prefix());
+      if (node) {
+        node->set_metadata(key, value);
+      }
+    }
+  }
+
+  // When performance modeling is enabled, this method records the fact that
+  // a thread of this iterator has started work.
+  void StartWork(IteratorContext* ctx) {
+    if (ctx->model()) {
+      std::shared_ptr<model::Node> node = ctx->model()->LookupNode(prefix());
+      if (node) {
+        node->start_work();
+      }
+    }
+  }
+
+  // When performance modeling is enabled, this method records the fact that
+  // a thread of this iterator has stopped work.
+  void StopWork(IteratorContext* ctx) {
+    if (ctx->model()) {
+      std::shared_ptr<model::Node> node = ctx->model()->LookupNode(prefix());
+      if (node) {
+        node->stop_work();
+      }
+    }
   }
 
  private:

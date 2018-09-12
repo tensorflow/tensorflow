@@ -954,7 +954,7 @@ class LSTMCell(LayerRNNCell):
     """Run one step of LSTM.
 
     Args:
-      inputs: input Tensor, 2D, `[batch, num_units].
+      inputs: input Tensor, must be 2-D, `[batch, input_size]`.
       state: if `state_is_tuple` is False, this must be a state Tensor,
         `2-D, [batch, state_size]`.  If `state_is_tuple` is True, this must be a
         tuple of state Tensors, both `2-D`, with column sizes `c_state` and
