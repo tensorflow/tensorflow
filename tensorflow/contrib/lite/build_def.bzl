@@ -338,6 +338,11 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
         kwargs["tags"].append("skip_already_failing")
         kwargs["tags"].append("no_oss")
 
+        # TODO(b/115504899): Re-enable asan, msan and tsan tests.
+        kwargs["tags"].append("noasan")
+        kwargs["tags"].append("nomsan")
+        kwargs["tags"].append("notsan")
+
     gen_zipped_test_file(
         name = "zip_%s" % test_name,
         file = "%s.zip" % test_name,
