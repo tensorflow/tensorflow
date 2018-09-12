@@ -663,7 +663,8 @@ class MIOpenSupport : public dnn::DnnSupport {
 
   template <class T, class U>
   bool DoBatchNormalizationForwardImpl(
-      Stream* stream, dnn::DataType data_type, const DeviceMemory<T>& x,
+      Stream* stream, dnn::DataType input_data_type,
+      dnn::DataType scale_data_type, const DeviceMemory<T>& x,
       const DeviceMemory<U>& scale, const DeviceMemory<U>& offset,
       const DeviceMemory<U>& estimated_mean,
       const DeviceMemory<U>& estimated_variance,
@@ -677,10 +678,10 @@ class MIOpenSupport : public dnn::DnnSupport {
 
   template <class T, class U>
   bool DoBatchNormalizationBackwardImpl(
-      Stream* stream, int miopen_type, const DeviceMemory<T>& y_backprop,
-      const DeviceMemory<T>& x, const DeviceMemory<U>& scale,
-      const DeviceMemory<U>& mean, const DeviceMemory<U>& variance,
-      const dnn::BatchDescriptor& x_desc,
+      Stream* stream, int miopen_input_type, int miopen_scale_type,
+      const DeviceMemory<T>& y_backprop, const DeviceMemory<T>& x,
+      const DeviceMemory<U>& scale, const DeviceMemory<U>& mean,
+      const DeviceMemory<U>& variance, const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<T>* x_backprop, DeviceMemory<U>* scale_backprop,
       DeviceMemory<U>* offset_backprop);
