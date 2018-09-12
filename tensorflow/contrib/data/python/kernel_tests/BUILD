@@ -44,6 +44,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/data/python/ops:grouping",
+        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
