@@ -1083,7 +1083,7 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
         'continuous', dtype=dtypes.float32)
 
     with self.assertRaisesRegexp(ValueError,
-        'only bucketized_column and indicator_column'):
+                                 'only bucketized_column and indicator_column'):
       _ = boosted_trees.BoostedTreesRegressor(
           feature_columns=[numeric_col],
           n_batches_per_layer=1,
