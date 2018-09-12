@@ -86,9 +86,7 @@ def _safe_mean(losses, num_present):
       then zero is returned.
   """
   total_loss = math_ops.reduce_sum(losses)
-  return math_ops.div_no_nan(total_loss,
-                             math_ops.maximum(num_present, 0),
-                             name="value")
+  return math_ops.div_no_nan(total_loss, num_present, name="value")
 
 
 def _num_present(losses, weights, per_batch=False):

@@ -78,9 +78,7 @@ def _safe_mean(losses, num_present):
       then zero is returned.
   """
   total_loss = math_ops.reduce_sum(losses)
-  return math_ops.div_no_nan(total_loss,
-                             math_ops.maximum(num_present, 0),
-                             name="value")
+  return math_ops.div_no_nan(total_loss, num_present, name="value")
 
 
 @deprecated("2016-12-30", "Use tf.losses.compute_weighted_loss instead.")
@@ -585,10 +583,9 @@ def mean_pairwise_squared_error(predictions,
         math_ops.square(diffs), reduction_indices=reduction_indices)
     num_present_per_batch = _num_present(diffs, weights, per_batch=True)
 
-    term1 = 2.0 * math_ops.div_no_nan(
-        sum_squares_diff_per_batch,
-        math_ops.maximum(num_present_per_batch, 0),
-        name="value")
+    term1 = 2.0 * math_ops.div_no_nan(sum_squares_diff_per_batch,
+                                      num_present_per_batch,
+                                      name="value")
 
     sum_diff = math_ops.reduce_sum(diffs, reduction_indices=reduction_indices)
     term2 = 2.0 * math_ops.div_no_nan(math_ops.square(sum_diff),
