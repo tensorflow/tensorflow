@@ -1285,13 +1285,6 @@ Status FunctionalizeCond::FunctionalizeInternal() {
   std::vector<int> switch_ids;
   std::vector<Node*> merge_order;
   DFS(*graph_, nullptr, [&](Node* n) {
-    // Nodes marked with _xla_outside_compilation are skipped, because they need
-    // to be executed on host with regular TF executor, which does not support
-    // XlaIf/XlaWhile.
-    if (HasNodeAttr(n->def(), kXlaOutsideCompilationAttrName)) {
-      return;
-    }
-
     if (IsSwitch(n)) {
       switch_ids.push_back(n->id());
     }
