@@ -322,70 +322,18 @@ class Conv3DBackpropFilterOp : public OpKernel {
       return;
     }
 
-    // For the backprop of the filter, we need to also transpose the
-    // out_backprop.
-    // The shape of backprop is
-    //   [batch, out_z, out_y, out_x, out_depth]
-    // And we need to change it to
-    //   [out_depth, out_x, out_y, out_z, batch]
-    Eigen::DSizes<Eigen::DenseIndex, 5> out_order{4, 1, 2, 3, 0};
-    TensorShape padded_out_shape({out_depth, padded_out_planes, padded_out_rows,
-                                  padded_out_cols, batch});
-    Tensor padded_output;
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(DataTypeToEnum<T>::v(),
-                                          padded_out_shape, &padded_output));
-    Eigen::DSizes<Eigen::DenseIndex, 5> eigen_strides{1, strides[0], strides[1],
-                                                      strides[2], 1};
-    functor::InflatePadAndShuffle<Device, T, 5, Eigen::DenseIndex>()(
-        context->eigen_device<Device>(), out_backprop.tensor<T, 5>(),
-        eigen_strides, pad_dims, out_order, padded_output.tensor<T, 5>());
-    const Tensor& padded_output_cref = padded_output;
-
-    // For the backprop of the filter, we need to transpose the input.
-    // The shape of input is
-    //   [batch, in_z, in_y, in_x, in_depth]
-    // And we need to change it to
-    //   [in_z, in_y, in_x, batch, in_depth]
-    Eigen::DSizes<Eigen::DenseIndex, 5> in_order{1, 2, 3, 0, 4};
-    TensorShape in_shuffle_shape(
-        {input_size[0], input_size[1], input_size[2], batch, in_depth});
-    Tensor in_shuffle;
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(DataTypeToEnum<T>::v(),
-                                          in_shuffle_shape, &in_shuffle));
-    // No need for reversing this time.
-    Eigen::array<bool, 5> no_reverse{false, false, false, false, false};
-    functor::ShuffleAndReverse<Device, T, 5, Eigen::DenseIndex>()(
-        context->eigen_device<Device>(), input.tensor<T, 5>(), in_order,
-        no_reverse, in_shuffle.tensor<T, 5>());
-    const Tensor& in_shuffle_cref = in_shuffle;
-
-    // The output of the conv_3d would be
-    //   [out_depth, filter_size[2], filter_size[1], filter_size[0], in_depth]
-    // and we need to shuffle it back to
-    //   [filter_size[2], filter_size[1], filter_size[0], in_depth, out_depth];
-    // And we need to reverse the filter backprops.
-    // So we need to allocate (sigh) yet another piece of memory to hold the
-    // output.
-    TensorShape filter_shuffle_shape(
-        {out_depth, filter_size[0], filter_size[1], filter_size[2], in_depth});
-    Tensor filter_shuffle;
-    OP_REQUIRES_OK(
-        context, context->allocate_temp(DataTypeToEnum<T>::v(),
-                                        filter_shuffle_shape, &filter_shuffle));
-    functor::CuboidConvolution<Device, T>()(
-        context->eigen_device<Device>(), filter_shuffle.tensor<T, 5>(),
-        padded_output_cref.tensor<T, 5>(), in_shuffle_cref.tensor<T, 5>(), 1, 1,
-        1, BrainPadding2EigenPadding(VALID));
-
-    // Now copy the filter_backprop back to the destination.
-    Eigen::DSizes<Eigen::DenseIndex, 5> filter_order{1, 2, 3, 4, 0};
-    Eigen::array<bool, 5> filter_rev_dims{true, true, true, false, false};
-    const Tensor& filter_shuffle_cref = filter_shuffle;
-    functor::ShuffleAndReverse<Device, T, 5, Eigen::DenseIndex>()(
-        context->eigen_device<Device>(), filter_shuffle_cref.tensor<T, 5>(),
-        filter_order, filter_rev_dims, filter_backprop->tensor<T, 5>());
+    // There is no need to explicitly compute padding values (and pad
+    // out_backprop), because Eigen uses the same padding inference mechanism as
+    // Tensorflow.
+    functor::CuboidConvolutionBackwardFilter<Device, T>()(
+        context->eigen_device<Device>(),
+        filter_backprop->tensor<T, 5>(),  // filter_backward
+        input.tensor<T, 5>(),             // input
+        out_backprop.tensor<T, 5>(),      // output_backward
+        // Order of strides will be reversed before passing to Eigen.
+        static_cast<int>(strides[0]),   // stride_planes
+        static_cast<int>(strides[1]),   // stride_rows
+        static_cast<int>(strides[2]));  // stride_cols
   }
 
  private:
