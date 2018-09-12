@@ -13,40 +13,41 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "ignite_dataset_iterator.h"
+#include "tensorflow/contrib/ignite/kernels/ignite_dataset_iterator.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
-IgniteDataset::IgniteDataset(OpKernelContext* ctx, std::string cache_name,
-                             std::string host, int32 port, bool local,
-                             int32 part, int32 page_size, std::string username,
-                             std::string password, std::string certfile,
-                             std::string keyfile, std::string cert_password,
-                             std::vector<int32> schema,
-                             std::vector<int32> permutation)
+IgniteDataset::IgniteDataset(OpKernelContext* ctx, string cache_name,
+                             string host, int32 port, bool local, int32 part,
+                             int32 page_size, string username, string password,
+                             string certfile, string keyfile,
+                             string cert_password, std::vector<int32> schema,
+                             std::vector<int32> permutation,
+                             DataTypeVector dtypes,
+                             std::vector<PartialTensorShape> shapes)
     : DatasetBase(DatasetContext(ctx)),
-      cache_name_(cache_name),
-      host_(host),
+      cache_name_(std::move(cache_name)),
+      host_(std::move(host)),
       port_(port),
       local_(local),
       part_(part),
       page_size_(page_size),
-      username_(username),
-      password_(password),
-      certfile_(certfile),
-      keyfile_(keyfile),
-      cert_password_(cert_password),
-      schema_(schema),
-      permutation_(permutation) {
-  SchemaToTypes();
-  SchemaToShapes();
-
-  LOG(INFO) << "Ignite Dataset created [cache_name='" << cache_name
-            << "', host='" << host << "', port=" << port << ", local=" << local
-            << ", part=" << part << ", page_size=" << page_size
-            << ", username='" << username << "', certfile='" << certfile
-            << "', keyfile='" << keyfile + "']";
+      username_(std::move(username)),
+      password_(std::move(password)),
+      certfile_(std::move(certfile)),
+      keyfile_(std::move(keyfile)),
+      cert_password_(std::move(cert_password)),
+      schema_(std::move(schema)),
+      permutation_(std::move(permutation)),
+      dtypes_(dtypes),
+      shapes_(shapes) {
+  LOG(INFO) << "Ignite Dataset created [cache_name='" << cache_name_
+            << "', host='" << host_ << "', port=" << port_
+            << ", local=" << local_ << ", part=" << part_
+            << ", page_size=" << page_size_ << ", username='" << username_
+            << "', certfile='" << certfile_ << "', keyfile='"
+            << keyfile_ + "']";
 }
 
 IgniteDataset::~IgniteDataset() { LOG(INFO) << "Ignite Dataset destroyed"; }
@@ -54,10 +55,12 @@ IgniteDataset::~IgniteDataset() { LOG(INFO) << "Ignite Dataset destroyed"; }
 std::unique_ptr<IteratorBase> IgniteDataset::MakeIteratorInternal(
     const string& prefix) const {
   return std::unique_ptr<IteratorBase>(new IgniteDatasetIterator(
-      {this, strings::StrCat(prefix, "::Ignite")}, this->host_, this->port_,
-      this->cache_name_, this->local_, this->part_, this->page_size_,
-      this->username_, this->password_, this->certfile_, this->keyfile_,
-      this->cert_password_, this->schema_, this->permutation_));
+      {this, strings::StrCat(prefix, "::Ignite")}, std::move(this->host_),
+      this->port_, std::move(this->cache_name_), this->local_, this->part_,
+      this->page_size_, std::move(this->username_), std::move(this->password_),
+      std::move(this->certfile_), std::move(this->keyfile_),
+      std::move(this->cert_password_), std::move(this->schema_),
+      std::move(this->permutation_)));
 }
 
 const DataTypeVector& IgniteDataset::output_dtypes() const { return dtypes_; }
@@ -73,44 +76,6 @@ Status IgniteDataset::AsGraphDefInternal(SerializationContext* ctx,
                                          Node** output) const {
   return errors::Unimplemented(
       "IgniteDataset does not support 'AsGraphDefInternal'");
-}
-
-void IgniteDataset::SchemaToTypes() {
-  for (auto e : schema_) {
-    if (e == BYTE || e == BYTE_ARR) {
-      dtypes_.push_back(DT_UINT8);
-    } else if (e == SHORT || e == SHORT_ARR) {
-      dtypes_.push_back(DT_INT16);
-    } else if (e == INT || e == INT_ARR) {
-      dtypes_.push_back(DT_INT32);
-    } else if (e == LONG || e == LONG_ARR) {
-      dtypes_.push_back(DT_INT64);
-    } else if (e == FLOAT || e == FLOAT_ARR) {
-      dtypes_.push_back(DT_FLOAT);
-    } else if (e == DOUBLE || e == DOUBLE_ARR) {
-      dtypes_.push_back(DT_DOUBLE);
-    } else if (e == UCHAR || e == UCHAR_ARR) {
-      dtypes_.push_back(DT_UINT8);
-    } else if (e == BOOL || e == BOOL_ARR) {
-      dtypes_.push_back(DT_BOOL);
-    } else if (e == STRING || e == STRING_ARR) {
-      dtypes_.push_back(DT_STRING);
-    } else {
-      LOG(ERROR) << "Unexpected type in schema [type_id=" << e << "]";
-    }
-  }
-}
-
-void IgniteDataset::SchemaToShapes() {
-  for (auto e : schema_) {
-    if (e >= 1 && e < 10) {
-      shapes_.push_back(PartialTensorShape({}));
-    } else if (e >= 12 && e < 21) {
-      shapes_.push_back(PartialTensorShape({-1}));
-    } else {
-      LOG(ERROR) << "Unexpected type in schema [type_id=" << e << "]";
-    }
-  }
 }
 
 }  // namespace tensorflow

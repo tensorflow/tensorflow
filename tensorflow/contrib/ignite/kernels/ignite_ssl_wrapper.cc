@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "ignite_ssl_wrapper.h"
+#include "tensorflow/contrib/ignite/kernels/ignite_ssl_wrapper.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -29,13 +29,15 @@ static int PasswordCb(char *buf, int size, int rwflag, void *password) {
   return (strlen(buf));
 }
 
-SslWrapper::SslWrapper(std::shared_ptr<Client> client, std::string certfile,
-                       std::string keyfile, std::string cert_password)
-    : client_(client),
-      certfile_(certfile),
-      keyfile_(keyfile),
-      cert_password_(cert_password),
-      ctx_(NULL) {}
+SslWrapper::SslWrapper(std::shared_ptr<Client> client, string certfile,
+                       string keyfile, string cert_password, bool big_endian)
+    : Client(big_endian),
+      client_(client),
+      certfile_(std::move(certfile)),
+      keyfile_(std::move(keyfile)),
+      cert_password_(std::move(cert_password)),
+      ctx_(nullptr),
+      ssl_(nullptr) {}
 
 SslWrapper::~SslWrapper() {
   if (IsConnected()) {
@@ -43,9 +45,14 @@ SslWrapper::~SslWrapper() {
     if (!status.ok()) LOG(WARNING) << status.ToString();
   }
 
-  if (ctx_ != NULL) {
+  if (ctx_ != nullptr) {
     SSL_CTX_free(ctx_);
-    ctx_ = NULL;
+    ctx_ = nullptr;
+  }
+
+  if (ssl_ != nullptr) {
+    SSL_free(ssl_);
+    ssl_ = nullptr;
   }
 }
 
@@ -63,7 +70,7 @@ Status SslWrapper::InitSslContext() {
     return errors::Internal("Couldn't load cetificate chain (file '", certfile_,
                             "')");
 
-  std::string private_key_file = keyfile_.empty() ? certfile_ : keyfile_;
+  string private_key_file = keyfile_.empty() ? certfile_ : keyfile_;
   if (SSL_CTX_use_PrivateKey_file(ctx_, private_key_file.c_str(),
                                   SSL_FILETYPE_PEM) != 1)
     return errors::Internal("Couldn't load private key (file '",
@@ -94,6 +101,7 @@ Status SslWrapper::Connect() {
 
 Status SslWrapper::Disconnect() {
   SSL_free(ssl_);
+  ssl_ = nullptr;
 
   LOG(INFO) << "SSL connection closed";
 
@@ -104,7 +112,7 @@ bool SslWrapper::IsConnected() { return client_->IsConnected(); }
 
 int SslWrapper::GetSocketDescriptor() { return client_->GetSocketDescriptor(); }
 
-Status SslWrapper::ReadData(uint8_t *buf, int32_t length) {
+Status SslWrapper::ReadData(uint8_t *buf, const int32_t length) {
   int recieved = 0;
 
   while (recieved < length) {
@@ -123,7 +131,7 @@ Status SslWrapper::ReadData(uint8_t *buf, int32_t length) {
   return Status::OK();
 }
 
-Status SslWrapper::WriteData(uint8_t *buf, int32_t length) {
+Status SslWrapper::WriteData(const uint8_t *buf, const int32_t length) {
   int sent = 0;
 
   while (sent < length) {

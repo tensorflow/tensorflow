@@ -41,19 +41,19 @@ class Readable():
 
   def read_byte(self):
     """Reads and returnes byte."""
-    return self.__read("b", 1)
+    return self._read("b", 1)
 
   def read_short(self):
     """Reads and returns short (2 bytes, little-endian)."""
-    return self.__read("h", 2)
+    return self._read("h", 2)
 
   def read_int(self):
     """Reads and returns int (4 bytes, little-endian)."""
-    return self.__read("i", 4)
+    return self._read("i", 4)
 
   def read_long(self):
     """Reads and returns long (8 bytes, little-endian)."""
-    return self.__read("q", 8)
+    return self._read("q", 8)
 
   def skip(self, length):
     """Skips the specified number of bytes."""
@@ -64,7 +64,7 @@ class Readable():
     """Reads the specified number of bytes and returns them as a buffer."""
     return None
 
-  def __read(self, data_type, length):
+  def _read(self, data_type, length):
     """Reads, unpacks and returns specified type (little-endian)."""
     data_buffer = self.read_data(length)
     return struct.unpack("<" + data_type, data_buffer)[0]
@@ -116,10 +116,10 @@ class TcpClient(Readable):
       self.sock = context.wrap_socket(self.sock)
     else:
       if keyfile is not None:
-        raise Exception("SSL is disabled, keyfile must not be specified \
+        raise RuntimeError("SSL is disabled, keyfile must not be specified \
           (to enable SSL specify certfile)")
       if password is not None:
-        raise Exception("SSL is disabled, password must not be specified \
+        raise RuntimeError("SSL is disabled, password must not be specified \
           (to enable SSL specify certfile)")
 
     self.host = host
@@ -136,19 +136,19 @@ class TcpClient(Readable):
 
   def write_byte(self, v):
     """Writes the specified byte."""
-    self.__write(v, "b")
+    self._write(v, "b")
 
   def write_short(self, v):
     """Writes the specified short (2 bytes, little-endian)."""
-    self.__write(v, "h")
+    self._write(v, "h")
 
   def write_int(self, v):
     """Writes the specified short (4 bytes, little-endian)."""
-    self.__write(v, "i")
+    self._write(v, "i")
 
   def write_long(self, v):
     """Writes the specified int (8 bytes, little-endian)."""
-    self.__write(v, "q")
+    self._write(v, "q")
 
   def write_string(self, v):
     """Writes the specified string."""
@@ -167,7 +167,7 @@ class TcpClient(Readable):
         data_buffer += buf
     return data_buffer
 
-  def __write(self, value, data_type):
+  def _write(self, value, data_type):
     """Packs and writes data using the specified type (little-endian)."""
     data_buffer = struct.pack("<" + data_type, value)
     self.sock.sendall(data_buffer)
@@ -193,6 +193,7 @@ class BinaryField():
 # Binary types defined in Apache Ignite Thin client and supported by
 # TensorFlow on Apache Ignite, see
 # https://apacheignite.readme.io/v2.6/docs/binary-client-protocol.
+# True means that type is a vector, False means type is scalar.
 types = {
     1: (dtypes.uint8, False),
     2: (dtypes.int16, False),
@@ -248,13 +249,13 @@ class TypeTreeNode():
        dataset.
     """
     if self.fields is None:
-      object_type = types[self.type_id]
-      if object_type is not None:
+      if self.type_id in types:
+        object_type = types[self.type_id]
         is_array = object_type[1]
         if is_array:
           return tensor_shape.TensorShape([None])
         return tensor_shape.TensorShape([])
-      raise Exception("Unsupported type [type_id=%d]" % self.type_id)
+      raise ValueError("Unsupported type [type_id=%d]" % self.type_id)
     output_shapes = {}
     for field in self.fields:
       output_shapes[field.name] = field.to_output_shapes()
@@ -265,10 +266,10 @@ class TypeTreeNode():
        dataset.
     """
     if self.fields is None:
-      object_type = types[self.type_id]
-      if object_type is not None:
+      if self.type_id in types:
+        object_type = types[self.type_id]
         return object_type[0]
-      raise Exception("Unsupported type [type_id=%d]" % self.type_id)
+      raise ValueError("Unsupported type [type_id=%d]" % self.type_id)
     else:
       output_types = {}
       for field in self.fields:
@@ -276,11 +277,11 @@ class TypeTreeNode():
       return output_types
 
   def to_flat(self):
-    """Returns a list of leaf node types."""
+    """Returns a list of node types."""
     return self.to_flat_rec([])
 
   def to_permutation(self):
-    """Returns a permutation that should be applied to order object leafs."""
+    """Returns a permutation that should be applied to order object leaves."""
     correct_order_dict = {}
     self.traversal_rec(correct_order_dict, 0)
     object_order = []
@@ -288,9 +289,10 @@ class TypeTreeNode():
     return [correct_order_dict[o] for o in object_order]
 
   def to_flat_rec(self, flat):
-    """Formats a list of leaf node types."""
-    flat.append(self.type_id)
-    if self.fields is not None:
+    """Formats a list of leaf node types in pre-order."""
+    if self.fields is None:
+      flat.append(self.type_id)
+    else:
       for field in self.fields:
         field.to_flat_rec(flat)
     return flat
@@ -320,8 +322,8 @@ class IgniteClient(TcpClient):
      have the same structure (homogeneous objects) and the cache contains at
      least one object.
   """
-  def __init__(self, host, port, username=None, password=None, certfile=None,\
-    keyfile=None, cert_password=None):
+  def __init__(self, host, port, username=None, password=None, certfile=None,
+               keyfile=None, cert_password=None):
     """Constructs a new instance of IgniteClient.
 
     Args:
@@ -385,12 +387,13 @@ class IgniteClient(TcpClient):
       serv_ver_major = self.read_short()
       serv_ver_minor = self.read_short()
       serv_ver_patch = self.read_short()
-      err_msg = self.__parse_string()
+      err_msg = self._parse_string()
       if err_msg is None:
-        raise Exception("Handshake Error [result=%d, version=%d.%d.%d]" \
-            % (res, serv_ver_major, serv_ver_minor, serv_ver_patch))
+        raise RuntimeError("Handshake Error [result=%d, version=%d.%d.%d]"
+                           % (res, serv_ver_major, serv_ver_minor,
+                              serv_ver_patch))
       else:
-        raise Exception("Handshake Error [result=%d, version=%d.%d.%d, \
+        raise RuntimeError("Handshake Error [result=%d, version=%d.%d.%d, \
             message='%s']" % (
                 res,
                 serv_ver_major,
@@ -403,7 +406,7 @@ class IgniteClient(TcpClient):
     """Collects type information about objects stored in the specified
        cache.
     """
-    cache_name_hash = self.__java_hash_code(cache_name)
+    cache_name_hash = self._java_hash_code(cache_name)
     self.write_int(25)        # Message length
     self.write_short(2000)      # Operation code
     self.write_long(0)        # Request ID
@@ -419,18 +422,18 @@ class IgniteClient(TcpClient):
     status = self.read_int()
 
     if status != 0:
-      err_msg = self.__parse_string()
+      err_msg = self._parse_string()
       if err_msg is None:
-        raise Exception("Scan Query Error [status=%s]" % status)
+        raise RuntimeError("Scan Query Error [status=%s]" % status)
       else:
-        raise Exception("Scan Query Error [status=%s, message='%s']" \
-            % (status, err_msg))
+        raise RuntimeError("Scan Query Error [status=%s, message='%s']"
+                           % (status, err_msg))
 
     self.read_long()          # Cursor id
     row_count = self.read_int()
 
     if row_count == 0:
-      raise Exception("Scan Query returned empty result, so it's \
+      raise RuntimeError("Scan Query returned empty result, so it's \
         impossible to derive the cache type")
 
     payload = DataBuffer(self.read_data(result_length - 25))
@@ -438,20 +441,20 @@ class IgniteClient(TcpClient):
     self.read_byte()          # Next page
 
     res = TypeTreeNode("root", 0, [
-        self.__collect_types("key", payload),
-        self.__collect_types("val", payload)
+        self._collect_types("key", payload),
+        self._collect_types("val", payload)
     ], [0, 1])
 
     return res
 
-  def __java_hash_code(self, s):
+  def _java_hash_code(self, s):
     """Computes hash code of the specified string using Java code."""
     h = 0
     for c in s:
       h = (31 * h + ord(c)) & 0xFFFFFFFF
     return ((h + 0x80000000) & 0xFFFFFFFF) - 0x80000000
 
-  def __collect_types(self, field_name, data):
+  def _collect_types(self, field_name, data):
     """Extracts type information from the specified object."""
     type_id = data.read_byte()
 
@@ -570,7 +573,7 @@ class IgniteClient(TcpClient):
         elif header == 101:
           pass
         else:
-          raise Exception("Unknown binary type when expected string \
+          raise RuntimeError("Unknown binary type when expected string \
             [type_id=%d]" % header)
       return TypeTreeNode(field_name, type_id)
 
@@ -591,7 +594,7 @@ class IgniteClient(TcpClient):
       length = data.read_int()
       inner_data = data.read_data(length)
       data.read_int()   # Offset
-      return self.__collect_types(field_name, DataBuffer(inner_data))
+      return self._collect_types(field_name, DataBuffer(inner_data))
 
     # Complex Object.
     if type_id == 103:
@@ -603,11 +606,11 @@ class IgniteClient(TcpClient):
       data.read_int()   # Object schema id
       obj_schema_offset = data.read_int()
 
-      obj_type = self.__get_type(obj_type_id)
+      obj_type = self._get_type(obj_type_id)
       children = []
 
       for obj_field in obj_type.fields:
-        child = self.__collect_types(obj_field.field_name, data)
+        child = self._collect_types(obj_field.field_name, data)
         children.append(child)
 
       children_sorted = sorted(children, key=lambda child: child.name)
@@ -618,9 +621,9 @@ class IgniteClient(TcpClient):
 
       return TypeTreeNode(field_name, type_id, children, permutation)
 
-    raise Exception("Unknown binary type [type_id=%d]" % type_id)
+    raise RuntimeError("Unknown binary type [type_id=%d]" % type_id)
 
-  def __get_type(self, type_id):
+  def _get_type(self, type_id):
     """Queries Apache Ignite information about type by type id."""
     self.write_int(14)      # Message length
     self.write_short(3002)  # Operation code
@@ -632,25 +635,25 @@ class IgniteClient(TcpClient):
     status = self.read_int()
 
     if status != 0:
-      err_msg = self.__parse_string()
+      err_msg = self._parse_string()
       if err_msg is None:
-        raise Exception("Get Binary Type Error [status=%d, message='%s']" \
-            % (status, err_msg))
+        raise RuntimeError("Get Binary Type Error [status=%d, message='%s']"
+                           % (status, err_msg))
       else:
-        raise Exception("Get Binary Type Error [status=%d]" % status)
+        raise RuntimeError("Get Binary Type Error [status=%d]" % status)
 
     binary_type_exists = self.read_byte()
 
     if binary_type_exists == 0:
-      raise Exception("Binary type not found [type_id=%d] " % type_id)
+      raise RuntimeError("Binary type not found [type_id=%d] " % type_id)
 
     binary_type_id = self.read_int()
-    binary_type_name = self.__parse_string()
-    self.__parse_string()   # Affinity field name
+    binary_type_name = self._parse_string()
+    self._parse_string()   # Affinity field name
 
     fields = []
     for _ in range(self.read_int()):
-      field_name = self.__parse_string()
+      field_name = self._parse_string()
       field_type_id = self.read_int()
       field_id = self.read_int()
 
@@ -659,7 +662,7 @@ class IgniteClient(TcpClient):
 
     is_enum = self.read_byte()
     if is_enum == 1:
-      raise Exception("Enum fields are not supported yet")
+      raise RuntimeError("Enum fields are not supported yet")
 
     schema_cnt = self.read_int()
     for _ in range(schema_cnt):
@@ -669,7 +672,7 @@ class IgniteClient(TcpClient):
 
     return BinaryType(binary_type_id, binary_type_name, fields)
 
-  def __parse_string(self):
+  def _parse_string(self):
     """Parses string."""
     header = self.read_byte()
     if header == 9:
@@ -677,8 +680,8 @@ class IgniteClient(TcpClient):
       return self.read_data(length).decode("utf-8")
     if header == 101:
       return None
-    raise Exception("Unknown binary type when expected string [type_id=%d]" \
-        % header)
+    raise RuntimeError("Unknown binary type when expected string [type_id=%d]"
+                       % header)
 
 class IgniteDataset(Dataset):
   """Apache Ignite is a memory-centric distributed database, caching, and
@@ -692,9 +695,9 @@ class IgniteDataset(Dataset):
      Ignite Binary Client Protocol.
   """
 
-  def __init__(self, cache_name, host="localhost", port=10800, local=False,\
-    part=-1, page_size=100, username=None, password=None, certfile=None,\
-    keyfile=None, cert_password=None):
+  def __init__(self, cache_name, host="localhost", port=10800, local=False,
+               part=-1, page_size=100, username=None, password=None,
+               certfile=None, keyfile=None, cert_password=None):
     """Create a IgniteDataset.
 
     Args:
@@ -716,39 +719,44 @@ class IgniteDataset(Dataset):
     """
     super(IgniteDataset, self).__init__()
 
-    with IgniteClient(host, port, username, password, certfile, keyfile,\
-        cert_password) as client:
+    with IgniteClient(host, port, username, password, certfile, keyfile,
+                      cert_password) as client:
       client.handshake()
       self.cache_type = client.get_cache_type(cache_name)
 
-    self.cache_name = ops.convert_to_tensor(cache_name, dtype=dtypes.string,\
-        name="cache_name")
+    self.cache_name = ops.convert_to_tensor(cache_name, dtype=dtypes.string,
+                                            name="cache_name")
     self.host = ops.convert_to_tensor(host, dtype=dtypes.string, name="host")
     self.port = ops.convert_to_tensor(port, dtype=dtypes.int32, name="port")
     self.local = ops.convert_to_tensor(local, dtype=dtypes.bool, name="local")
     self.part = ops.convert_to_tensor(part, dtype=dtypes.int32, name="part")
-    self.page_size = ops.convert_to_tensor(page_size, dtype=dtypes.int32,\
-        name="page_size")
-    self.username = ops.convert_to_tensor("" if username is None else username,\
-        dtype=dtypes.string, name="username")
-    self.password = ops.convert_to_tensor("" if password is None else password,\
-        dtype=dtypes.string, name="password")
-    self.certfile = ops.convert_to_tensor("" if certfile is None else certfile,\
-        dtype=dtypes.string, name="certfile")
-    self.keyfile = ops.convert_to_tensor("" if keyfile is None else keyfile,\
-        dtype=dtypes.string, name="keyfile")
-    self.cert_password = ops.convert_to_tensor("" if cert_password is None\
-        else cert_password, dtype=dtypes.string, name="cert_password")
-    self.schema = ops.convert_to_tensor(self.cache_type.to_flat(),\
-        dtype=dtypes.int32, name="schema")
-    self.permutation = ops.convert_to_tensor(self.cache_type.to_permutation(),\
-        dtype=dtypes.int32, name="permutation")
+    self.page_size = ops.convert_to_tensor(page_size, dtype=dtypes.int32,
+                                           name="page_size")
+    self.username = ops.convert_to_tensor("" if username is None else username,
+                                          dtype=dtypes.string, name="username")
+    self.password = ops.convert_to_tensor("" if password is None else password,
+                                          dtype=dtypes.string, name="password")
+    self.certfile = ops.convert_to_tensor("" if certfile is None else certfile,
+                                          dtype=dtypes.string, name="certfile")
+    self.keyfile = ops.convert_to_tensor("" if keyfile is None else keyfile,
+                                         dtype=dtypes.string, name="keyfile")
+    self.cert_password = ops.convert_to_tensor("" if cert_password is None
+                                               else cert_password,
+                                               dtype=dtypes.string,
+                                               name="cert_password")
+    self.schema = ops.convert_to_tensor(self.cache_type.to_flat(),
+                                        dtype=dtypes.int32, name="schema")
+    self.permutation = ops.convert_to_tensor(self.cache_type.to_permutation(),
+                                             dtype=dtypes.int32,
+                                             name="permutation")
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.ignite_dataset(self.cache_name, self.host,\
-        self.port, self.local, self.part, self.page_size, self.username,\
-        self.password, self.certfile, self.keyfile, self.cert_password,\
-        self.schema, self.permutation)
+    return gen_dataset_ops.ignite_dataset(self.cache_name, self.host,
+                                          self.port, self.local, self.part,
+                                          self.page_size, self.username,
+                                          self.password, self.certfile,
+                                          self.keyfile, self.cert_password,
+                                          self.schema, self.permutation)
 
   @property
   def output_classes(self):

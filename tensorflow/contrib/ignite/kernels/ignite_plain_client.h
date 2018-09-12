@@ -13,28 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "ignite_client.h"
+#ifndef TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_PLAIN_CLIENT_H_
+#define TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_PLAIN_CLIENT_H_
 
-#include <string>
+#include "tensorflow/contrib/ignite/kernels/ignite_client.h"
 
 namespace tensorflow {
 
 class PlainClient : public Client {
  public:
-  PlainClient(std::string host, int port);
+  PlainClient(string host, int port, bool big_endian);
   ~PlainClient();
 
   virtual Status Connect();
   virtual Status Disconnect();
   virtual bool IsConnected();
   virtual int GetSocketDescriptor();
-  virtual Status ReadData(uint8_t* buf, int32_t length);
-  virtual Status WriteData(uint8_t* buf, int32_t length);
+  virtual Status ReadData(uint8_t* buf, const int32_t length);
+  virtual Status WriteData(const uint8_t* buf, const int32_t length);
 
  private:
-  const std::string host_;
+  const string host_;
   const int port_;
   int sock_;
 };
 
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_PLAIN_CLIENT_H_

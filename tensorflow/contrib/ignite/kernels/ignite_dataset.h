@@ -13,18 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_DATASET_H_
+#define TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_DATASET_H_
+
 #include "tensorflow/core/framework/dataset.h"
 
 namespace tensorflow {
 
 class IgniteDataset : public DatasetBase {
  public:
-  IgniteDataset(OpKernelContext* ctx, std::string cache_name, std::string host,
+  IgniteDataset(OpKernelContext* ctx, string cache_name, string host,
                 int32 port, bool local, int32 part, int32 page_size,
-                std::string username, std::string password,
-                std::string certfile, std::string keyfile,
-                std::string cert_password, std::vector<int32> schema,
-                std::vector<int32> permutation);
+                string username, string password, string certfile,
+                string keyfile, string cert_password, std::vector<int32> schema,
+                std::vector<int32> permutation, DataTypeVector dtypes,
+                std::vector<PartialTensorShape> shapes);
   ~IgniteDataset();
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override;
@@ -38,25 +41,23 @@ class IgniteDataset : public DatasetBase {
                             Node** output) const override;
 
  private:
-  const std::string cache_name_;
-  const std::string host_;
+  const string cache_name_;
+  const string host_;
   const int32 port_;
   const bool local_;
   const int32 part_;
   const int32 page_size_;
-  const std::string username_;
-  const std::string password_;
-  const std::string certfile_;
-  const std::string keyfile_;
-  const std::string cert_password_;
+  const string username_;
+  const string password_;
+  const string certfile_;
+  const string keyfile_;
+  const string cert_password_;
   const std::vector<int32> schema_;
   const std::vector<int32> permutation_;
-
-  DataTypeVector dtypes_;
-  std::vector<PartialTensorShape> shapes_;
-
-  void SchemaToTypes();
-  void SchemaToShapes();
+  const DataTypeVector dtypes_;
+  const std::vector<PartialTensorShape> shapes_;
 };
 
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_DATASET_H_

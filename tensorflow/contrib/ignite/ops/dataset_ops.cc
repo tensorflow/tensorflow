@@ -37,6 +37,8 @@ REGISTER_OP("IgniteDataset")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
+IgniteDataset that allows to get data from Apache Ignite.
+
 Apache Ignite is a memory-centric distributed database, caching, and processing
 platform for transactional, analytical, and streaming workloads, delivering 
 in-memory speeds at petabyte scale. This contrib package contains an 

@@ -13,29 +13,73 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/contrib/ignite/kernels/ignite_dataset.h"
 #include <stdlib.h>
-#include "ignite_dataset.h"
+#include "tensorflow/contrib/ignite/kernels/ignite_binary_object_parser.h"
 #include "tensorflow/core/framework/dataset.h"
 
 namespace tensorflow {
 namespace {
+
+Status SchemaToTypes(const std::vector<int32>& schema, DataTypeVector* dtypes) {
+  for (auto e : schema) {
+    if (e == BYTE || e == BYTE_ARR) {
+      dtypes->push_back(DT_UINT8);
+    } else if (e == SHORT || e == SHORT_ARR) {
+      dtypes->push_back(DT_INT16);
+    } else if (e == INT || e == INT_ARR) {
+      dtypes->push_back(DT_INT32);
+    } else if (e == LONG || e == LONG_ARR) {
+      dtypes->push_back(DT_INT64);
+    } else if (e == FLOAT || e == FLOAT_ARR) {
+      dtypes->push_back(DT_FLOAT);
+    } else if (e == DOUBLE || e == DOUBLE_ARR) {
+      dtypes->push_back(DT_DOUBLE);
+    } else if (e == USHORT || e == USHORT_ARR) {
+      dtypes->push_back(DT_UINT8);
+    } else if (e == BOOL || e == BOOL_ARR) {
+      dtypes->push_back(DT_BOOL);
+    } else if (e == STRING || e == STRING_ARR) {
+      dtypes->push_back(DT_STRING);
+    } else {
+      return errors::Unknown("Unexpected type in schema [type_id=", e, "]");
+    }
+  }
+
+  return Status::OK();
+}
+
+Status SchemaToShapes(const std::vector<int32>& schema,
+                      std::vector<PartialTensorShape>* shapes) {
+  for (auto e : schema) {
+    if (e >= 1 && e < 10) {
+      shapes->push_back(PartialTensorShape({}));
+    } else if (e >= 12 && e < 21) {
+      shapes->push_back(PartialTensorShape({-1}));
+    } else {
+      return errors::Unknown("Unexpected type in schema [type_id=", e, "]");
+    }
+  }
+
+  return Status::OK();
+}
 
 class IgniteDatasetOp : public DatasetOpKernel {
  public:
   using DatasetOpKernel::DatasetOpKernel;
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
-    std::string cache_name = "";
-    std::string host = "";
+    string cache_name = "";
+    string host = "";
     int32 port = -1;
     bool local = false;
     int32 part = -1;
     int32 page_size = -1;
-    std::string username = "";
-    std::string password = "";
-    std::string certfile = "";
-    std::string keyfile = "";
-    std::string cert_password = "";
+    string username = "";
+    string password = "";
+    string certfile = "";
+    string keyfile = "";
+    string cert_password = "";
 
     const char* env_cache_name = std::getenv("IGNITE_DATASET_CACHE_NAME");
     const char* env_host = std::getenv("IGNITE_DATASET_HOST");
@@ -50,15 +94,15 @@ class IgniteDatasetOp : public DatasetOpKernel {
     const char* env_cert_password = std::getenv("IGNITE_DATASET_CERT_PASSWORD");
 
     if (env_cache_name)
-      cache_name = std::string(env_cache_name);
+      cache_name = string(env_cache_name);
     else
-      OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "cache_name",
-                                                           &cache_name));
+      OP_REQUIRES_OK(
+          ctx, ParseScalarArgument<string>(ctx, "cache_name", &cache_name));
 
     if (env_host)
-      host = std::string(env_host);
+      host = string(env_host);
     else
-      OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "host", &host));
+      OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "host", &host));
 
     if (env_port)
       port = atoi(env_port);
@@ -82,34 +126,34 @@ class IgniteDatasetOp : public DatasetOpKernel {
                      ParseScalarArgument<int32>(ctx, "page_size", &page_size));
 
     if (env_username)
-      username = std::string(env_username);
+      username = string(env_username);
     else
-      OP_REQUIRES_OK(
-          ctx, ParseScalarArgument<std::string>(ctx, "username", &username));
+      OP_REQUIRES_OK(ctx,
+                     ParseScalarArgument<string>(ctx, "username", &username));
 
     if (env_password)
-      password = std::string(env_password);
+      password = string(env_password);
     else
-      OP_REQUIRES_OK(
-          ctx, ParseScalarArgument<std::string>(ctx, "password", &password));
+      OP_REQUIRES_OK(ctx,
+                     ParseScalarArgument<string>(ctx, "password", &password));
 
     if (env_certfile)
-      certfile = std::string(env_certfile);
+      certfile = string(env_certfile);
     else
-      OP_REQUIRES_OK(
-          ctx, ParseScalarArgument<std::string>(ctx, "certfile", &certfile));
+      OP_REQUIRES_OK(ctx,
+                     ParseScalarArgument<string>(ctx, "certfile", &certfile));
 
     if (env_keyfile)
-      keyfile = std::string(env_keyfile);
+      keyfile = string(env_keyfile);
     else
-      OP_REQUIRES_OK(
-          ctx, ParseScalarArgument<std::string>(ctx, "keyfile", &keyfile));
+      OP_REQUIRES_OK(ctx,
+                     ParseScalarArgument<string>(ctx, "keyfile", &keyfile));
 
     if (env_cert_password)
-      cert_password = std::string(env_cert_password);
+      cert_password = string(env_cert_password);
     else
-      OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "cert_password",
-                                                           &cert_password));
+      OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "cert_password",
+                                                      &cert_password));
 
     const Tensor* schema_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("schema", &schema_tensor));
@@ -124,19 +168,28 @@ class IgniteDatasetOp : public DatasetOpKernel {
 
     const Tensor* permutation_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("permutation", &permutation_tensor));
-    OP_REQUIRES(ctx, schema_tensor->dims() == 1,
+    OP_REQUIRES(ctx, permutation_tensor->dims() == 1,
                 errors::InvalidArgument("`permutation` must be a vector."));
 
     std::vector<int32> permutation;
-    permutation.reserve(permutation_tensor->NumElements());
+    permutation.resize(permutation_tensor->NumElements());
     for (int i = 0; i < permutation_tensor->NumElements(); i++) {
-      permutation.push_back(permutation_tensor->flat<int32>()(i));
+      // Inversed permutation.
+      permutation[permutation_tensor->flat<int32>()(i)] = i;
     }
 
-    *output =
-        new IgniteDataset(ctx, cache_name, host, port, local, part, page_size,
-                          username, password, certfile, keyfile, cert_password,
-                          std::move(schema), std::move(permutation));
+    DataTypeVector dtypes;
+    std::vector<PartialTensorShape> shapes;
+
+    OP_REQUIRES_OK(ctx, SchemaToTypes(schema, &dtypes));
+    OP_REQUIRES_OK(ctx, SchemaToShapes(schema, &shapes));
+
+    *output = new IgniteDataset(
+        ctx, std::move(cache_name), std::move(host), port, local, part,
+        page_size, std::move(username), std::move(password),
+        std::move(certfile), std::move(keyfile), std::move(cert_password),
+        std::move(schema), std::move(permutation), std::move(dtypes),
+        std::move(shapes));
   }
 };
 
