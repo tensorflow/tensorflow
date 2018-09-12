@@ -345,6 +345,56 @@ void VerboseLogUnknownDimensionSources(
   }
 }
 
+bool IsShapeFullyDefinedIntegerVectorOrScalar(
+    InferenceContext* ic, const ShapeHandle& shape,
+    const ShapeHandle& tensor_as_shape, const DataType& dtype) {
+  if (!ic->FullyDefined(shape) || ic->Rank(shape) > 1 ||
+      !ic->FullyDefined(tensor_as_shape) ||
+      (dtype != DT_INT32 && dtype != DT_INT64)) {
+    return false;
+  }
+  return true;
+}
+
+// Returned tensor's shape is like `shape`, and its values and dtype are from
+// `tensor_as_shape` and `dtype`.
+TensorProto MakeTensorProtoFromShape(InferenceContext* ic,
+                                     const ShapeHandle& shape,
+                                     const ShapeHandle& tensor_as_shape,
+                                     const DataType& dtype) {
+  TensorProto tensor_proto;
+  tensor_proto.set_dtype(dtype);
+  auto* shape_proto = tensor_proto.mutable_tensor_shape();
+  if (ic->Rank(shape) == 1) {
+    shape_proto->add_dim()->set_size(ic->Rank(tensor_as_shape));
+  }
+  // For a scalar tensor, tensor_shape field will be left empty; no dim.
+  for (int i = 0; i < ic->Rank(tensor_as_shape); i++) {
+    int64 value = ic->Value(ic->Dim(tensor_as_shape, i));
+    if (dtype == DT_INT32) {
+      tensor_proto.add_int_val(value);
+    } else {
+      tensor_proto.add_int64_val(value);
+    }
+  }
+  return tensor_proto;
+}
+
+// Returns a Const NodeDef with shape = `shape`, values = `tensor_as_shape`,
+// and dtype = `dtype`.
+NodeDef MakeConstNodeDefFromShape(InferenceContext* ic,
+                                  const ShapeHandle& shape,
+                                  const ShapeHandle& tensor_as_shape,
+                                  const DataType& dtype) {
+  NodeDef const_node;
+  const_node.set_name("const_from_shape");
+  const_node.set_op("Const");
+  auto* attr = const_node.mutable_attr();
+  (*attr)["dtype"].set_type(dtype);
+  auto* tensor = (*attr)["value"].mutable_tensor();
+  *tensor = MakeTensorProtoFromShape(ic, shape, tensor_as_shape, dtype);
+  return const_node;
+}
 }  // namespace
 
 // Queue of nodes to process. Nodes can be enqueued in any order, but will be
@@ -494,14 +544,26 @@ class SymbolicShapeRefiner {
 
     // Replace input Placeholders with Consts, if values are known. Note that
     // we don't check exceptions here as it's done in the above loop.
+    auto* ctx = GetNodeContext(function_node);
+    auto* ic = ctx->inference_context.get();
     for (int i = grappler_function_item.inputs().size() - 1; i >= 0; --i) {
       const string& input = function_node->input(i);
       const string& node_name = NodeName(input);
       NodeDef* input_node = graph_.GetNode(node_name);
-      // TODO(dyoon): also use Const when output_tensors_as_shape is available.
       if (IsConstant(*input_node)) {
         TF_CHECK_OK(
             ReplaceInputWithConst(*input_node, i, &grappler_function_item));
+      } else if (ic->input_tensors_as_shapes().size() > i &&
+                 IsShapeFullyDefinedIntegerVectorOrScalar(
+                     ic, ic->input(i), ic->input_tensors_as_shapes()[i],
+                     ctx->input_types[i])) {
+        // We have fully defined input_tensors_as_shapes for this input; use it
+        // as a const input to the function node.
+        NodeDef const_input_node = MakeConstNodeDefFromShape(
+            ic, ic->input(i), ic->input_tensors_as_shapes()[i],
+            ctx->input_types[i]);
+        TF_CHECK_OK(ReplaceInputWithConst(const_input_node, i,
+                                          &grappler_function_item));
       }
     }
 
@@ -510,8 +572,8 @@ class SymbolicShapeRefiner {
     TF_RETURN_IF_ERROR(gp.InferStatically(true));
 
     // Add return nodes for output shapes.
-    auto ic = GetContext(function_node);
     int output = 0;
+    ctx->output_tensors_as_shapes.resize(grappler_function_item.output_size());
     for (auto const& out_arg : grappler_function_item.outputs()) {
       if (out_arg.output_tensors.size() > 1) {
         // TODO(jmdecker): Handle case of multiple output tensors
@@ -544,6 +606,14 @@ class SymbolicShapeRefiner {
       ShapeHandle out;
       TF_RETURN_IF_ERROR(ic->MakeShapeFromShapeProto(shape, &out));
       ic->set_output(output, out);
+      if (outprop.has_value()) {
+        // Forward tensor value to output_tensors_as_shape.
+        Tensor tensor;
+        if (tensor.FromProto(outprop.value())) {
+          MaybeSetTensorValueToShape(ic, tensor,
+                                     &ctx->output_tensors_as_shapes[output]);
+        }
+      }
       output++;
     }
 
@@ -586,21 +656,9 @@ class SymbolicShapeRefiner {
           if (const_values[dst_input].FromProto(
                   input->attr().at("value").tensor())) {
             input_tensors[dst_input] = &const_values[dst_input];
-            // Integer tensors of rank one can also be interpreted as a shape
-            // provided all their values are >= -1.
-            if (const_values[dst_input].dims() == 1 &&
-                (const_values[dst_input].dtype() == DT_INT32 ||
-                 const_values[dst_input].dtype() == DT_INT64)) {
-              ShapeHandle tensor_shape = inference_context->Vector(
-                  const_values[dst_input].NumElements());
-              ShapeHandle shp;
-              if (inference_context
-                      ->MakeShapeFromTensor(input_tensors[dst_input],
-                                            tensor_shape, &shp)
-                      .ok()) {
-                input_tensors_as_shapes[dst_input] = shp;
-              }
-            }
+            MaybeSetTensorValueToShape(inference_context,
+                                       const_values[dst_input],
+                                       &input_tensors_as_shapes[dst_input]);
           }
         } else if (IsRank(*input)) {
           if (c->inference_context->RankKnown(c->inference_context->input(0))) {
@@ -968,13 +1026,25 @@ class SymbolicShapeRefiner {
                                                 : t->scalar<int64>()();
             dims.push_back(size < 0 ? ic->UnknownDim() : ic->MakeDim(size));
           } else {
-            dims.push_back(ic->UnknownDim());
+            // Don't have tensor value, but use input_tensors_as_shapes, if
+            // possible.
+            const ShapeHandle& shape_handle = ic->input_tensors_as_shapes()[i];
+            if (ic->RankKnown(shape_handle) && ic->Rank(shape_handle) >= 1 &&
+                ic->ValueKnown(ic->Dim(shape_handle, 0))) {
+              dims.push_back(ic->Dim(shape_handle, 0));
+            } else {
+              dims.push_back(ic->UnknownDim());
+            }
           }
         }
         if (valid) {
           c->output_tensors_as_shapes.resize(1);
           c->output_tensors_as_shapes[0] = ic->MakeShape(dims);
         }
+      } else if (IsIdentity(node)) {
+        // Pass input_tensors_as_shapes to output_tensors_as_shapes.
+        c->output_tensors_as_shapes.resize(1);
+        c->output_tensors_as_shapes[0] = ic->input_tensors_as_shapes()[0];
       } else if (IsSlice(node)) {
         ShapeHandle input = ic->input_tensors_as_shapes()[0];
         bool valid = ic->RankKnown(input);
@@ -1079,6 +1149,46 @@ class SymbolicShapeRefiner {
   }
 
  private:
+  bool IsIntegerVector(const Tensor& tensor) {
+    if (tensor.dims() == 1 &&
+        (tensor.dtype() == DT_INT32 || tensor.dtype() == DT_INT64)) {
+      return true;
+    }
+    return false;
+  }
+
+  bool IsIntegerScalar(const Tensor& tensor) {
+    if (tensor.dims() == 0 &&
+        (tensor.dtype() == DT_INT32 || tensor.dtype() == DT_INT64) &&
+        tensor.NumElements() == 1) {
+      return true;
+    }
+    return false;
+  }
+
+  void MaybeSetTensorValueToShape(InferenceContext* ic, const Tensor& tensor,
+                                  ShapeHandle* tensors_as_shapes) {
+    // Integer tensors of rank one can also be interpreted as a shape
+    // provided all their values are >= -1.
+    if (IsIntegerVector(tensor)) {
+      ShapeHandle tensor_shape = ic->Vector(tensor.NumElements());
+      ShapeHandle shp;
+      // Note that MakeShapeFromTensor filters out invalid values (e.g., < -1).
+      if (ic->MakeShapeFromTensor(&tensor, tensor_shape, &shp).ok()) {
+        *tensors_as_shapes = shp;
+      }
+    } else if (IsIntegerScalar(tensor)) {
+      // Scalar constant.
+      int64 value = tensor.dtype() == DT_INT32 ? tensor.flat<int32>()(0)
+                                               : tensor.flat<int64>()(0);
+      // Ideally, values can be < -1, but MakeDim() fails with a value < -1.
+      // It's a limitation as we use ShapeHandle as a means to pass values.
+      if (value >= -1) {
+        *tensors_as_shapes = ic->MakeShape({ic->MakeDim(value)});
+      }
+    }
+  }
+
   const GraphView& graph_;
   int graph_def_version_;
   std::unordered_map<const NodeDef*, NodeContext> node_to_context_;
@@ -1554,6 +1664,8 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
       continue;
     }
 
+    auto* ic = ctx->inference_context.get();
+
     // Fill input properties.
     {
       auto& input_properties = input_properties_[node.name()];
@@ -1561,19 +1673,26 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
       // Should always be empty, node names in graph are supposed to be unique.
       CHECK_EQ(input_properties.size(), 0);
 
-      input_properties.resize(ctx->inference_context->num_inputs());
+      input_properties.resize(ic->num_inputs());
       GraphView::InputPort input(&node, -1);
-      for (int i = 0; i < ctx->inference_context->num_inputs(); ++i) {
-        shape_manager.AsTensorProperties(ctx->inference_context->input(i),
-                                         ctx->input_types[i],
+      for (int i = 0; i < ic->num_inputs(); ++i) {
+        shape_manager.AsTensorProperties(ic->input(i), ctx->input_types[i],
                                          &input_properties[i]);
         input.port_id = i;
         GraphView::OutputPort fanin = graph_view.GetRegularFanin(input);
-        if (!IsConstant(*fanin.node)) {
-          continue;
+        // Export tensor value (either const tensor or input_tensors_as_shapes)
+        // to input_properties.value.
+        if (IsConstant(*fanin.node)) {
+          const TensorProto& raw_val = fanin.node->attr().at("value").tensor();
+          *input_properties[i].mutable_value() = raw_val;
+        } else if (ic->input_tensors_as_shapes().size() > i &&
+                   IsShapeFullyDefinedIntegerVectorOrScalar(
+                       ic, ic->input(i), ic->input_tensors_as_shapes()[i],
+                       ctx->input_types[i])) {
+          *input_properties[i].mutable_value() = MakeTensorProtoFromShape(
+              ic, ic->input(i), ic->input_tensors_as_shapes()[i],
+              ctx->input_types[i]);
         }
-        const TensorProto& raw_val = fanin.node->attr().at("value").tensor();
-        *input_properties[i].mutable_value() = raw_val;
       }
     }
 
@@ -1584,11 +1703,23 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
       // Should always be empty, node names in graph are supposed to be unique.
       CHECK_EQ(output_properties.size(), 0);
 
-      output_properties.resize(ctx->inference_context->num_outputs());
-      for (int i = 0; i < ctx->inference_context->num_outputs(); ++i) {
-        shape_manager.AsTensorProperties(ctx->inference_context->output(i),
-                                         ctx->output_types[i],
+      output_properties.resize(ic->num_outputs());
+      for (int i = 0; i < ic->num_outputs(); ++i) {
+        shape_manager.AsTensorProperties(ic->output(i), ctx->output_types[i],
                                          &output_properties[i]);
+        // Export tensor value (either const tensor or input_tensors_as_shapes)
+        // to output_properties.value.
+        if (IsConstant(node)) {
+          const TensorProto& raw_val = node.attr().at("value").tensor();
+          *output_properties[i].mutable_value() = raw_val;
+        } else if (ctx->output_tensors_as_shapes.size() > i &&
+                   IsShapeFullyDefinedIntegerVectorOrScalar(
+                       ic, ic->output(i), ctx->output_tensors_as_shapes[i],
+                       ctx->output_types[i])) {
+          *output_properties[i].mutable_value() = MakeTensorProtoFromShape(
+              ic, ic->output(i), ctx->output_tensors_as_shapes[i],
+              ctx->output_types[i]);
+        }
       }
     }
   }
