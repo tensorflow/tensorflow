@@ -1506,7 +1506,7 @@ class TensorArrayTest(test.TestCase):
 
   def testTensorArrayInt64GPU(self):
     if not test.is_gpu_available():
-       return
+      return
     with self.test_session(use_gpu=True, force_gpu=True) as sess:
       value = array_ops.placeholder(dtypes.int64)
       ta = tensor_array_ops.TensorArray(dtype=dtypes.int64, size=2)
