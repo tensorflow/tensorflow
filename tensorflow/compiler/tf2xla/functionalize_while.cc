@@ -519,7 +519,7 @@ Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
 
   // Builds a While operator.
   NodeDef while_def;
-  NodeDefBuilder builder(frame->loop_cond->name(), "XlaWhile", library);
+  NodeDefBuilder builder(frame->loop_cond->name(), "While", library);
   builder.Attr("T", arg_types);
   builder.Attr("cond", cond_name);
   builder.Attr("body", body_name);
@@ -650,14 +650,8 @@ Status FunctionalizeWhileLoop(const FunctionLibraryDefinition* lookup_library,
       continue;
     }
 
-    // Nodes marked with _xla_outside_compilation are skipped, because they need
-    // to be executed on host with regular TF executor, which does not support
-    // XlaIf/XlaWhile.
-    string name;
-    if (!HasNodeAttr(frame->loop_cond->def(), kXlaOutsideCompilationAttrName)) {
-      TF_RETURN_IF_ERROR(
-          FunctionalizeLoop(lookup_library, graph, frame, library));
-    }
+    TF_RETURN_IF_ERROR(
+        FunctionalizeLoop(lookup_library, graph, frame, library));
 
     // If the parent has no remaining children, add it to the worklist.
     --frame->parent->num_children;
@@ -668,9 +662,9 @@ Status FunctionalizeWhileLoop(const FunctionLibraryDefinition* lookup_library,
 
   // There should be no cycle at this point, since while loops have been removed
   // from graph.
-  // Check that the newly added XlaWhile nodes don't feed into themselves.
+  // Check that the newly added While nodes don't feed into themselves.
   for (const Node* node : graph->op_nodes()) {
-    if (node->def().op() == "XlaWhile") {
+    if (node->def().op() == "While") {
       TF_RETURN_WITH_CONTEXT_IF_ERROR(
           CheckNodeNotInCycle(node, graph->num_node_ids()),
           "Functionalizing loop failed.");
