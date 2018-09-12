@@ -76,6 +76,7 @@ cc_library(
     deps = [
         ":common",
         ":dump_graph",
+        ":functionalize_control_flow",
         ":tf2xla_proto",
         ":tf2xla_util",
         ":xla_compiler",
@@ -188,7 +189,6 @@ cc_library(
     deps = [
         ":common",
         ":dump_graph",
-        ":functionalize_control_flow",
         ":host_compute_metadata_proto",
         ":sharding_util",
         ":side_effect_util",
@@ -284,6 +284,7 @@ cc_library(
     deps = [
         ":sharding_util",
         ":tf2xla_proto",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -479,6 +480,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -506,9 +508,21 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
     ],
+)
+
+cc_library(
+    name = "functionalize_control_flow_pass_registration",
+    srcs = [
+        "functionalize_control_flow_pass_registration.cc",
+    ],
+    deps = [
+        ":functionalize_control_flow",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -520,6 +534,7 @@ cc_library(
         "functionalize_while.h",
     ],
     deps = [
+        ":functionalize_cond",
         ":functionalize_control_flow_util",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:union_find",
@@ -530,6 +545,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
     ],
