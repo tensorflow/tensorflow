@@ -45,7 +45,7 @@ class TFExampleDecoderTest(test.TestCase):
         int64_list=feature_pb2.Int64List(value=ndarray.flatten().tolist()))
 
   def _EncodedBytesFeature(self, tf_encoded):
-    with self.test_session():
+    with self.cached_session():
       encoded = tf_encoded.eval()
 
     def BytesList(value):
@@ -133,7 +133,7 @@ class TFExampleDecoderTest(test.TestCase):
     tf_image = self.DecodeExample(serialized_example, item_handler,
                                   image_format)
 
-    with self.test_session():
+    with self.cached_session():
       decoded_image = tf_image.eval()
 
       # We need to recast them here to avoid some issues with uint8.
@@ -265,7 +265,7 @@ class TFExampleDecoderTest(test.TestCase):
 
     serialized_example = example.SerializeToString()
 
-    with self.test_session():
+    with self.cached_session():
       serialized_example = array_ops.reshape(serialized_example, shape=[])
       keys_to_features = {
           'labels':
@@ -296,7 +296,7 @@ class TFExampleDecoderTest(test.TestCase):
 
     serialized_example = example.SerializeToString()
 
-    with self.test_session():
+    with self.cached_session():
       serialized_example = array_ops.reshape(serialized_example, shape=[])
       keys_to_features = {
           'array': parsing_ops.FixedLenFeature(np_array.shape, dtypes.float32)
@@ -319,7 +319,7 @@ class TFExampleDecoderTest(test.TestCase):
 
     serialized_example = example.SerializeToString()
 
-    with self.test_session():
+    with self.cached_session():
       serialized_example = array_ops.reshape(serialized_example, shape=[])
       keys_to_features = {
           'array': parsing_ops.FixedLenFeature(np_array.shape, dtypes.int64)
@@ -342,7 +342,7 @@ class TFExampleDecoderTest(test.TestCase):
 
     serialized_example = example.SerializeToString()
 
-    with self.test_session():
+    with self.cached_session():
       serialized_example = array_ops.reshape(serialized_example, shape=[])
       keys_to_features = {
           'labels': parsing_ops.VarLenFeature(dtype=dtypes.int64),
@@ -366,7 +366,7 @@ class TFExampleDecoderTest(test.TestCase):
 
     serialized_example = example.SerializeToString()
 
-    with self.test_session():
+    with self.cached_session():
       serialized_example = array_ops.reshape(serialized_example, shape=[])
       keys_to_features = {
           'labels':
@@ -390,7 +390,7 @@ class TFExampleDecoderTest(test.TestCase):
 
     serialized_example = example.SerializeToString()
 
-    with self.test_session():
+    with self.cached_session():
       serialized_example = array_ops.reshape(serialized_example, shape=[])
       keys_to_features = {
           'labels': parsing_ops.VarLenFeature(dtype=dtypes.int64),
@@ -423,7 +423,7 @@ class TFExampleDecoderTest(test.TestCase):
 
     serialized_example = example.SerializeToString()
 
-    with self.test_session():
+    with self.cached_session():
       serialized_example = array_ops.reshape(serialized_example, shape=[])
       keys_to_features = {
           'image': parsing_ops.VarLenFeature(dtype=dtypes.float32),
@@ -468,7 +468,7 @@ class TFExampleDecoderTest(test.TestCase):
 
     serialized_example = example.SerializeToString()
 
-    with self.test_session():
+    with self.cached_session():
       serialized_example = array_ops.reshape(serialized_example, shape=[])
       keys_to_features = {
           'image': parsing_ops.VarLenFeature(dtype=dtypes.float32),
@@ -505,7 +505,7 @@ class TFExampleDecoderTest(test.TestCase):
 
     serialized_example = example.SerializeToString()
 
-    with self.test_session():
+    with self.cached_session():
       serialized_example = array_ops.reshape(serialized_example, shape=[])
       keys_to_features = {
           'indices': parsing_ops.VarLenFeature(dtype=dtypes.int64),
@@ -536,7 +536,7 @@ class TFExampleDecoderTest(test.TestCase):
 
     serialized_example = example.SerializeToString()
 
-    with self.test_session():
+    with self.cached_session():
       serialized_example = array_ops.reshape(serialized_example, shape=[])
       keys_to_features = {
           'indices': parsing_ops.VarLenFeature(dtype=dtypes.int64),
@@ -567,7 +567,7 @@ class TFExampleDecoderTest(test.TestCase):
 
     serialized_example = example.SerializeToString()
 
-    with self.test_session():
+    with self.cached_session():
       serialized_example = array_ops.reshape(serialized_example, shape=[])
       keys_to_features = {
           'indices': parsing_ops.VarLenFeature(dtype=dtypes.int64),
@@ -598,7 +598,7 @@ class TFExampleDecoderTest(test.TestCase):
 
     serialized_example = example.SerializeToString()
 
-    with self.test_session():
+    with self.cached_session():
       serialized_example = array_ops.reshape(serialized_example, shape=[])
       keys_to_features = {
           'indices': parsing_ops.VarLenFeature(dtype=dtypes.int64),
@@ -625,7 +625,7 @@ class TFExampleDecoderTest(test.TestCase):
 
     serialized_example = example.SerializeToString()
 
-    with self.test_session():
+    with self.cached_session():
       serialized_example = array_ops.reshape(serialized_example, shape=[])
 
       keys_to_features = {
@@ -657,7 +657,7 @@ class TFExampleDecoderTest(test.TestCase):
 
     serialized_example = example.SerializeToString()
 
-    with self.test_session():
+    with self.cached_session():
       serialized_example = array_ops.reshape(serialized_example, shape=[])
 
       keys_to_features = {
@@ -692,7 +692,7 @@ class TFExampleDecoderTest(test.TestCase):
       image, serialized_example = self.GenerateImage(
           image_format=image_encoding, image_shape=image_shape)
 
-      with self.test_session():
+      with self.cached_session():
 
         def ConditionalDecoding(keys_to_tensors):
           """See base class."""
@@ -759,7 +759,7 @@ class TFExampleDecoderTest(test.TestCase):
             }))
     serialized_example = example.SerializeToString()
 
-    with self.test_session():
+    with self.cached_session():
       serialized_example = array_ops.reshape(serialized_example, shape=[])
 
       keys_to_features = {
@@ -800,7 +800,7 @@ class TFExampleDecoderTest(test.TestCase):
             }))
     serialized_example = example.SerializeToString()
 
-    with self.test_session():
+    with self.cached_session():
       serialized_example = array_ops.reshape(serialized_example, shape=[])
 
       keys_to_features = {
@@ -837,7 +837,7 @@ class TFExampleDecoderTest(test.TestCase):
     image, _ = self.GenerateImage(
         image_format=image_format, image_shape=image_shape)
     tf_encoded = self._Encoder(image, image_format)
-    with self.test_session():
+    with self.cached_session():
       tf_string = tf_encoded.eval()
 
     example = example_pb2.Example(
@@ -852,7 +852,7 @@ class TFExampleDecoderTest(test.TestCase):
             }))
     serialized_example = example.SerializeToString()
 
-    with self.test_session():
+    with self.cached_session():
       serialized_example = array_ops.reshape(serialized_example, shape=[])
 
       decoder = tfexample_decoder.TFExampleDecoder(
@@ -885,7 +885,7 @@ class TFExampleDecoderTest(test.TestCase):
     table = lookup_ops.index_table_from_tensor(
         constant_op.constant(['dog', 'guinea pig', 'cat']))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(lookup_ops.tables_initializer())
 
       serialized_example = array_ops.reshape(serialized_example, shape=[])
@@ -943,7 +943,7 @@ class TFExampleDecoderTest(test.TestCase):
     decoder = tfexample_decoder.TFExampleDecoder(keys_to_features,
                                                  items_to_handlers)
     obtained_class_ids_each_example = []
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(lookup_ops.tables_initializer())
       for example in [example1, example2, example3]:
         serialized_example = array_ops.reshape(
