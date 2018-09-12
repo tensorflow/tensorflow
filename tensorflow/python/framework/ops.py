@@ -58,6 +58,7 @@ from tensorflow.python.util import decorator_utils
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lock_util
+from tensorflow.python.util import memory
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_stack
 from tensorflow.python.util.deprecation import deprecated_args
@@ -5824,23 +5825,11 @@ def dismantle_graph(graph):
     graph: A `Graph` object to destroy. Neither it nor any of its ops are usable
       after this function runs.
   """
-  # pylint: disable=protected-access
-  # OrderedDict, constructed on Graph creation, makes a simple reference loop
-  # and hides it in an __attribute in some Python versions. We don't need to
-  # throw an error if we can't find it, but if we do find it we can break the
-  # loop to avoid creating work for the garbage collector.
-  graph_operations = graph.get_operations()
-  problematic_cycle = graph._functions.__dict__.get("_OrderedDict__root", None)
-  # pylint: enable=protected-access
-  if problematic_cycle:
-    try:
-      del problematic_cycle[0][:]
-    except TypeError:
-      # This is probably not one of the problematic Python versions. Continue
-      # with the rest of our cleanup.
-      pass
+  memory.dismantle_ordered_dict(graph._functions)  # pylint: disable=protected-access
+
   # Now clean up Operation<->Graph reference cycles by clearing all of the
   # attributes for the Graph and its ops.
+  graph_operations = graph.get_operations()
   for op in graph_operations:
     op.__dict__ = {}
   graph.__dict__ = {}
