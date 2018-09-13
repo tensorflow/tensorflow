@@ -196,19 +196,12 @@ class IpuXlaCacheConvTest(test_util.TensorFlowTestCase):
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
-            'Copy_{XLA_Args/arg0.*_input,XLA_Args/arg1.*_weights}_to_{in,partialTranspose}/OnTileCopy',
-            'Copy_partialReduceOut_to_partialReduceOut[[]cloned[]]/OnTileCopy',
-            'Copy_{XLA_Args/arg2.*_weights,partialReduceOut[[]cloned[]]}_to_{in,partialTranspose}',
+            'Copy_',
             'Sum/reduce.*/ReduceOnTile/InToIntermediateNoExchange/Reduce',
             'Sum/reduce.*/ReduceFinalStage/IntermediateToOutput/Reduce',
             'gradients/vs/conv2d_1/Conv2D_grad/Conv2DBackpropInput/convolution.*.clone/WeightTranspose',
-            'Copy_<const>_to_in',
-            'Copy_{<const>,XLA_Args/arg0.*_input,partialReduceOut}_to_{inRearranged,weightsRearranged}',
             'gradients/vs/conv2d/Conv2D_grad/Conv2DBackpropFilter/convolution.*/Conv_4x4',
-            'Copy_partialReduceOut_to_partialReduceOut[[]cloned[]]/OnTileCopy',
             'GradientDescent/update_vs/conv2d/kernel/ResourceApplyGradientDescent/call*/AddTo',
-            'Copy_{<const>,partialReduceOut[[]cloned[]]}_to_{XLA_Args/arg0.*_input,partialReduceOut}',
-            'Copy_partialReduceOut_to_partialReduceOut[[]cloned[]]/OnTileCopy',
             'GradientDescent/update_vs/conv2d_1/kernel/ResourceApplyGradientDescent/call*/AddTo',]
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
