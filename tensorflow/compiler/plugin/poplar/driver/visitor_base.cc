@@ -22,8 +22,10 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -452,7 +454,17 @@ Status BaseVisitor::HandleAfterAll(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleIota(HloInstruction* inst) {
-  return Unimplemented(inst);
+  VLOG(1) << "Processing " << inst->name();
+  auto* iota = Cast<HloIotaInstruction>(inst);
+  poplar::Tensor t;
+  TF_ASSIGN_OR_RETURN(
+      t, AddIotaTensor(graph_, std::make_pair(inst, 0),
+                       GetOutputShape(inst), iota->iota_dimension(),
+                       resources_));
+  TF_CHECK_OK(
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, t)
+          .status());
+  return Status::OK();
 }
 
 Status BaseVisitor::HandleScatter(HloInstruction* inst) {

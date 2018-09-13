@@ -62,8 +62,8 @@ StatusOr<poplar::Type> PoplarDataType(const xla::Shape& shape) {
     case F32:
       return poplar::FLOAT;
     default:
-      return xla::FailedPrecondition("unsupported primitive type in poplar %d",
-                                     shape.element_type());
+      return xla::FailedPrecondition("unsupported primitive type in poplar %s",
+                                     PrimitiveType_Name(shape.element_type()));
   }
 }
 
@@ -515,6 +515,37 @@ StatusOr<poplar::Tensor> AddConstantTensor(poplar::Graph& graph,
     std::vector<std::size_t> dim = PoplarShapeFromXlaShape(shape);
     return tensor.reshape(dim);
   }
+}
+
+template <typename TYPE>
+static Literal GetIotaLiteral(int64 len) {
+  std::vector<TYPE> data(len);
+  std::iota(data.begin(), data.end(), 0);
+  return LiteralUtil::CreateR1<TYPE>(data);
+}
+
+StatusOr<poplar::Tensor> AddIotaTensor(poplar::Graph& graph,
+                                       const TensorSource& src,
+                                       const xla::Shape& shape,
+                                       int64 iota_dimension,
+                                       CompilerResources& resources) {
+  poplar::Type type;
+  TF_ASSIGN_OR_RETURN(type, PoplarDataType(shape));
+
+  int64 len = shape.dimensions(iota_dimension);
+  Literal literal;
+
+  switch (shape.element_type()) {
+    case S32:
+    case U32:
+      literal = GetIotaLiteral<int>(len);
+      break;
+    default:
+      return xla::FailedPrecondition("unsupported primitive type for iota: %s",
+                                     PrimitiveType_Name(shape.element_type()));
+  }
+
+  return AddConstantTensor(graph, src, shape, literal, resources);
 }
 
 template <typename T>
