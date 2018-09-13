@@ -2,6 +2,7 @@
 
 /tenosrflow/core/debug @caisq
 /tensorflow/core/platform/windows/ @mrry
+/tensorflow/core/platform/s3 @yongtang
 /tensorflow/go @asimshankar
 /tensorflow/java/ @asimshankar
 /tensorflow/python/debug @caisq
