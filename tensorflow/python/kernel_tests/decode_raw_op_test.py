@@ -79,7 +79,7 @@ class DecodeRawOpTest(test.TestCase):
       decode = parsing_ops.decode_raw(in_bytes, out_type=dtypes.float16)
       self.assertEqual([None, None], decode.get_shape().as_list())
 
-      expected_result = np.matrix([[1, -2, -3, 4]], dtype=np.float16)
+      expected_result = np.matrix([[1, -2, -3, 4]], dtype="<f2")
       result = decode.eval(feed_dict={in_bytes: [expected_result.tostring()]})
 
       self.assertAllEqual(expected_result, result)
