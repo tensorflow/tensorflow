@@ -93,7 +93,7 @@ class BincountTest(test_util.TensorFlowTestCase):
 
   def test_negative(self):
     # unsorted_segment_sum will only report InvalidArgumentError on CPU
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(errors.InvalidArgumentError):
         math_ops.bincount([1, 2, 3, -1, 6, 8]).eval()
 
