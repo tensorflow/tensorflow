@@ -114,7 +114,7 @@ class InverseOpTest(test.TestCase):
 
   def testNotInvertible(self):
     # The input should be invertible.
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("Input is not invertible."):
         # All rows of the matrix below add to zero.
         tensor3 = constant_op.constant([[1., 0., -1.], [-1., 1., 0.],

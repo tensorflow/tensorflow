@@ -107,7 +107,7 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [y])
 
   def testNoInputs(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       pred = array_ops.placeholder(dtypes.bool, name="pred")
 
       def true_fn():
@@ -527,7 +527,7 @@ class CondV2Test(test.TestCase):
             }), [5., 0.])
 
   def testSecondDerivative(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       pred = array_ops.placeholder(dtypes.bool, name="pred")
       x = constant_op.constant(3.0, name="x")
 

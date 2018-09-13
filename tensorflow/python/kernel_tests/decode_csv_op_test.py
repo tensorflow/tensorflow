@@ -27,7 +27,7 @@ from tensorflow.python.platform import test
 class DecodeCSVOpTest(test.TestCase):
 
   def _test(self, args, expected_out=None, expected_err_re=None):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       decode = parsing_ops.decode_csv(**args)
 
       if expected_err_re is None:
