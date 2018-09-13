@@ -2563,13 +2563,18 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
   int num_retvals = 0;
   for (int i = 0; i < op_def->output_arg_size(); i++) {
     const auto& output_arg = op_def->output_arg(i);
+    int delta = 1;
     if (!output_arg.number_attr().empty()) {
-      num_retvals += attr_list_sizes[output_arg.number_attr()];
+      delta = attr_list_sizes[output_arg.number_attr()];
     } else if (!output_arg.type_list_attr().empty()) {
-      num_retvals += attr_list_sizes[output_arg.type_list_attr()];
-    } else {
-      num_retvals++;
+      delta = attr_list_sizes[output_arg.type_list_attr()];
     }
+    if (delta < 0) {
+      RaiseFallbackException(
+          "Attributes suggest that the size of an output list is less than 0");
+      return nullptr;
+    }
+    num_retvals += delta;
   }
 
   tensorflow::gtl::InlinedVector<TFE_TensorHandle*, 2> retvals(num_retvals);

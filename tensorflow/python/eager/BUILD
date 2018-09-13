@@ -345,6 +345,7 @@ py_test(
     deps = [
         ":backprop",
         ":context",
+        ":core",
         ":test",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
