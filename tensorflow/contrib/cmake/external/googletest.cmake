@@ -12,38 +12,46 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-include (ExternalProject)
+if (systemlib_GTEST)
+  set(googletest_INCLUDE_DIRS "/usr/include")
+  execute_process(COMMAND dpkg-architecture -qDEB_HOST_MULTIARCH OUTPUT_VARIABLE CMAKE_MULTIARCH_TRIPLET OUTPUT_STRIP_TRAILING_WHITESPACE)
+  set(googletest_STATIC_LIBRARIES "/usr/lib/${CMAKE_MULTIARCH_TRIPLET}/libgtest.a")
+  add_custom_target(googletest)
 
-set(googletest_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/googletest/src/googletest/googletest/include)
-set(googletest_URL https://github.com/google/googletest.git)
-set(googletest_BUILD ${CMAKE_CURRENT_BINARY_DIR}/googletest/)
-set(googletest_TAG ec44c6c1675c25b9827aacd08c02433cccde7780)
-
-if(WIN32)
-  if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
-    set(googletest_STATIC_LIBRARIES
-        ${CMAKE_CURRENT_BINARY_DIR}/googletest/src/googletest/googletest/$(Configuration)/gtest.lib)
+else (systemlib_GTEST)
+  include (ExternalProject)
+  
+  set(googletest_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/googletest/src/googletest/googletest/include)
+  set(googletest_URL https://github.com/google/googletest.git)
+  set(googletest_BUILD ${CMAKE_CURRENT_BINARY_DIR}/googletest/)
+  set(googletest_TAG ec44c6c1675c25b9827aacd08c02433cccde7780)
+  
+  if(WIN32)
+    if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+      set(googletest_STATIC_LIBRARIES
+          ${CMAKE_CURRENT_BINARY_DIR}/googletest/src/googletest/googletest/$(Configuration)/gtest.lib)
+    else()
+      set(googletest_STATIC_LIBRARIES
+          ${CMAKE_CURRENT_BINARY_DIR}/googletest/src/googletest/googletest/gtest.lib)
+    endif()
   else()
     set(googletest_STATIC_LIBRARIES
-        ${CMAKE_CURRENT_BINARY_DIR}/googletest/src/googletest/googletest/gtest.lib)
+        ${CMAKE_CURRENT_BINARY_DIR}/googletest/src/googletest/googletest/${CMAKE_BUILD_TYPE}/gtest.a)
   endif()
-else()
-  set(googletest_STATIC_LIBRARIES
-      ${CMAKE_CURRENT_BINARY_DIR}/googletest/src/googletest/googletest/${CMAKE_BUILD_TYPE}/gtest.a)
-endif()
-
-ExternalProject_Add(googletest
-    PREFIX googletest
-    GIT_REPOSITORY ${googletest_URL}
-    GIT_TAG ${googletest_TAG}
-    DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
-    BUILD_IN_SOURCE 1
-    BUILD_BYPRODUCTS ${googletest_STATIC_LIBRARIES}
-    #PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/patches/grpc/CMakeLists.txt ${GRPC_BUILD}
-    INSTALL_COMMAND ""
-    CMAKE_CACHE_ARGS
-        -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
-        -DBUILD_GMOCK:BOOL=OFF
-        -DBUILD_GTEST:BOOL=ON
-        -Dgtest_force_shared_crt:BOOL=ON
-)
+  
+  ExternalProject_Add(googletest
+      PREFIX googletest
+      GIT_REPOSITORY ${googletest_URL}
+      GIT_TAG ${googletest_TAG}
+      DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
+      BUILD_IN_SOURCE 1
+      BUILD_BYPRODUCTS ${googletest_STATIC_LIBRARIES}
+      #PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/patches/grpc/CMakeLists.txt ${GRPC_BUILD}
+      INSTALL_COMMAND ""
+      CMAKE_CACHE_ARGS
+          -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
+          -DBUILD_GMOCK:BOOL=OFF
+          -DBUILD_GTEST:BOOL=ON
+          -Dgtest_force_shared_crt:BOOL=ON
+  )
+endif (systemlib_GTEST)

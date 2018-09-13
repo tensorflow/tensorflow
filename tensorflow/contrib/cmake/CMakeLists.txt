@@ -90,10 +90,44 @@ if (NOT WIN32)
 
   # Options for linking other libraries
   option(systemlib_ZLIB "Use the system installed library as shared objects instead of downloading ZLIB and statically linking to it: ZLIB" OFF)
+  option(systemlin_GRPC "Use the system installed GRPC library" OFF)
+  option(systemlib_JSONCPP "Use the system installed JSONCPP library" OFF)
+  option(systemlib_EIGEN "Use the system installed EIGEN library" OFF)
+  option(systemlib_RE2 "Use the system installed RE2 library" OFF)
+  option(systemlib_PROTOBUF "Use the system installed PROTOBUF" OFF)
+  option(systemlib_JPEG "Use the system JPEG library" OFF)
+  option(systemlib_SNAPPY "Use the system SNAPPY library" OFF)
+  option(systemlib_PNG "Use the system PNG library" OFF)
+  option(systemlib_FARMHASH "Use the system FARMHASH library" OFF)
+  option(systemlib_DOUBLE_CONVERSION "Use the system DOUBLE-CONVERSION library" OFF)
+  option(systemlib_NSYNC "Use the system NSYNC library" OFF)
+  option(systemlib_GEMMLOWP "Use the system GEMMLOWP library" OFF)
+  option(systemlib_LMDB "Use the system LMDB library" OFF)
+  option(systemlib_SQLITE "Use the system SQLITE3 library" OFF)
+  option(systemlib_GIF "Use the system GIF library" OFF)
+  option(systemlib_HIGHWAYHASH "Use the system HIGHWAYHASH library" OFF)
+  option(systemlib_GTEST "Use the system GTEST library" OFF)
 
   option(systemlib_ALL "Turn on every possible systemlib_* options" OFF)
   if (systemlib_ALL)
     set (systemlib_ZLIB ON)
+    set (systemlib_GRPC ON)
+    set (systemlib_JSONCPP ON)
+    set (systemlib_EIGEN ON)
+    set (systemlib_RE2 ON)
+    set (systemlib_PROTOBUF ON)
+    set (systemlib_JPEG ON)
+    set (systemlib_SNAPPY ON)
+    set (systemlib_PNG ON)
+    set (systemlib_FARMHASH ON)
+    set (systemlib_DOUBLE_CONVERSION ON)
+    set (systemlib_NSYNC ON)
+    set (systemlib_GEMMLOWP ON)
+    set (systemlib_LMDB ON)
+    set (systemlib_SQLITE ON)
+    set (systemlib_GIF ON)
+    set (systemlib_HIGHWAYHASH ON)
+    set (systemlib_GTEST ON)
   endif (systemlib_ALL)
 endif()
 
@@ -237,7 +271,6 @@ include(highwayhash)
 include(nsync)
 include(protobuf)
 include(re2)
-include(cub)
 include(sqlite)
 include(double_conversion)
 if (tensorflow_BUILD_CC_TESTS)
@@ -284,7 +317,6 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     protobuf
     eigen
     gemmlowp
-    cub
     fft2d
     re2
     sqlite_copy_headers_to_destination
@@ -306,7 +338,6 @@ include_directories(
     ${jsoncpp_INCLUDE_DIR}
     ${farmhash_INCLUDE_DIR}
     ${highwayhash_INCLUDE_DIR}
-    ${cub_INCLUDE_DIR}
     ${nsync_INCLUDE_DIR}
     ${PROTOBUF_INCLUDE_DIRS}
     ${re2_INCLUDE_DIR}

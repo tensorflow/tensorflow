@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <sstream>
 
-#include "include/json/json.h"
+#include "json/json.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/cloud/curl_http_request.h"

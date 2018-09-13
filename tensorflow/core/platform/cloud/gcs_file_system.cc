@@ -25,7 +25,7 @@ limitations under the License.
 #ifdef _WIN32
 #include <io.h>  // for _mktemp
 #endif
-#include "include/json/json.h"
+#include "json/json.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"

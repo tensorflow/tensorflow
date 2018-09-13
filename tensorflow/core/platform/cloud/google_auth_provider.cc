@@ -22,7 +22,7 @@ limitations under the License.
 #endif
 #include <fstream>
 #include <utility>
-#include "include/json/json.h"
+#include "json/json.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/base64.h"
