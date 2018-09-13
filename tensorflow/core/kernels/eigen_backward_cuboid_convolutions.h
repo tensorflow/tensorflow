@@ -59,12 +59,12 @@ EIGEN_ALWAYS_INLINE static const typename internal::conditional<
                     const array<
                         typename internal::traits<OutputBackward>::Index, 5>,
                     const TensorReverseOp<const Eigen::array<bool, 5>,
-                                          const Kernel> > > >,
+                                          const Kernel>>>>,
             const TensorReshapingOp<
                 const DSizes<typename internal::traits<OutputBackward>::Index,
                              2>,
                 const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
-                                          const OutputBackward> > > >,
+                                          const OutputBackward>>>>,
     TensorReshapingOp<
         const DSizes<typename internal::traits<OutputBackward>::Index,
                      internal::traits<OutputBackward>::NumDimensions>,
@@ -75,7 +75,7 @@ EIGEN_ALWAYS_INLINE static const typename internal::conditional<
                 const DSizes<typename internal::traits<OutputBackward>::Index,
                              2>,
                 const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
-                                          const OutputBackward> >,
+                                          const OutputBackward>>,
             const Eigen::TensorForcedEvalOp<const TensorReshapingOp<
                 const DSizes<typename internal::traits<OutputBackward>::Index,
                              2>,
@@ -83,7 +83,7 @@ EIGEN_ALWAYS_INLINE static const typename internal::conditional<
                     const array<
                         typename internal::traits<OutputBackward>::Index, 5>,
                     const TensorReverseOp<const Eigen::array<bool, 5>,
-                                          const Kernel> > > > > > >::type
+                                          const Kernel>>>>>>>::type
 CuboidConvolutionBackwardInput(
     const Kernel& kernel, const OutputBackward& output_backward,
     typename internal::traits<OutputBackward>::Index inputPlanes,
@@ -94,12 +94,12 @@ CuboidConvolutionBackwardInput(
   typedef typename internal::traits<OutputBackward>::Index TensorIndex;
   const TensorRef<const Tensor<typename internal::traits<Kernel>::Scalar,
                                internal::traits<Kernel>::NumDimensions,
-                               internal::traits<Kernel>::Layout, TensorIndex> >
+                               internal::traits<Kernel>::Layout, TensorIndex>>
       kern(kernel);
   const TensorRef<
       const Tensor<typename internal::traits<OutputBackward>::Scalar,
                    internal::traits<OutputBackward>::NumDimensions,
-                   internal::traits<OutputBackward>::Layout, TensorIndex> >
+                   internal::traits<OutputBackward>::Layout, TensorIndex>>
       out(output_backward);
 
   EIGEN_STATIC_ASSERT(internal::traits<Kernel>::Layout ==
@@ -323,29 +323,69 @@ CuboidConvolutionBackwardInput(
  */
 template <typename OutputBackward, typename Input>
 EIGEN_ALWAYS_INLINE static const typename internal::conditional<
-    internal::traits<OutputBackward>::Layout == ColMajor,
-    TensorReshapingOp<
-        const DSizes<typename internal::traits<Input>::Index, 5>,
-        const TensorContractionOp<
-            const array<IndexPair<typename internal::traits<Input>::Index>, 1>,
-            const TensorReshapingOp<
-                const DSizes<typename internal::traits<Input>::Index, 2>,
-                const OutputBackward>,
-            const TensorReshapingOp<
-                const DSizes<typename internal::traits<Input>::Index, 2>,
-                const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
-                                          const Input> > > >,
-    TensorReshapingOp<
-        const DSizes<typename internal::traits<Input>::Index, 5>,
-        const TensorContractionOp<
-            const array<IndexPair<typename internal::traits<Input>::Index>, 1>,
-            const TensorReshapingOp<
-                const DSizes<typename internal::traits<Input>::Index, 2>,
-                const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
-                                          const Input> >,
-            const TensorReshapingOp<
-                const DSizes<typename internal::traits<Input>::Index, 2>,
-                const OutputBackward> > > >::type
+    internal::traits<Input>::Layout == ColMajor,
+    const TensorReverseOp<
+        const Eigen::array<typename internal::traits<Input>::Index,
+                           internal::traits<Input>::NumDimensions>,
+        const Eigen::TensorShufflingOp<
+            const Eigen::array<typename internal::traits<Input>::Index,
+                               internal::traits<Input>::NumDimensions>,
+            const Eigen::TensorReshapingOp<
+                const Eigen::DSizes<typename internal::traits<Input>::Index,
+                                    internal::traits<Input>::NumDimensions>,
+                const TensorContractionOp<
+                    const array<
+                        IndexPair<typename internal::traits<Input>::Index>, 1>,
+                    const Eigen::TensorForcedEvalOp<const TensorReshapingOp<
+                        const DSizes<typename internal::traits<Input>::Index,
+                                     2>,
+                        const Eigen::TensorShufflingOp<
+                            const Eigen::array<
+                                typename internal::traits<Input>::Index,
+                                internal::traits<Input>::NumDimensions>,
+                            const OutputBackward>>>,
+                    const TensorReshapingOp<
+                        const DSizes<typename internal::traits<Input>::Index,
+                                     2>,
+                        const TensorVolumePatchOp<
+                            Dynamic, Dynamic, Dynamic,
+                            const Eigen::TensorForcedEvalOp<
+                                const Eigen::TensorShufflingOp<
+                                    const Eigen::array<
+                                        typename internal::traits<Input>::Index,
+                                        internal::traits<Input>::NumDimensions>,
+                                    const Input>>>>>>>>,
+    const TensorReverseOp<
+        const Eigen::array<typename internal::traits<Input>::Index,
+                           internal::traits<Input>::NumDimensions>,
+        const Eigen::TensorShufflingOp<
+            const Eigen::array<typename internal::traits<Input>::Index,
+                               internal::traits<Input>::NumDimensions>,
+            const Eigen::TensorReshapingOp<
+                const Eigen::DSizes<typename internal::traits<Input>::Index,
+                                    internal::traits<Input>::NumDimensions>,
+                const TensorContractionOp<
+                    const array<
+                        IndexPair<typename internal::traits<Input>::Index>, 1>,
+                    const TensorReshapingOp<
+                        const DSizes<typename internal::traits<Input>::Index,
+                                     2>,
+                        const TensorVolumePatchOp<
+                            Dynamic, Dynamic, Dynamic,
+                            const Eigen::TensorForcedEvalOp<
+                                const Eigen::TensorShufflingOp<
+                                    const Eigen::array<
+                                        typename internal::traits<Input>::Index,
+                                        internal::traits<Input>::NumDimensions>,
+                                    const Input>>>>,
+                    const Eigen::TensorForcedEvalOp<const TensorReshapingOp<
+                        const DSizes<typename internal::traits<Input>::Index,
+                                     2>,
+                        const Eigen::TensorShufflingOp<
+                            const Eigen::array<
+                                typename internal::traits<Input>::Index,
+                                internal::traits<Input>::NumDimensions>,
+                            const OutputBackward>>>>>>>>::type
 CuboidConvolutionBackwardKernel(
     const Input& input, const OutputBackward& output_backward,
     typename internal::traits<Input>::Index kernelPlanes,
@@ -356,11 +396,11 @@ CuboidConvolutionBackwardKernel(
   typedef typename internal::traits<Input>::Index TensorIndex;
   TensorRef<Tensor<typename internal::traits<Input>::Scalar,
                    internal::traits<Input>::NumDimensions,
-                   internal::traits<Input>::Layout, TensorIndex> >
+                   internal::traits<Input>::Layout, TensorIndex>>
       in(input);
   TensorRef<Tensor<typename internal::traits<OutputBackward>::Scalar,
                    internal::traits<OutputBackward>::NumDimensions,
-                   internal::traits<OutputBackward>::Layout, TensorIndex> >
+                   internal::traits<OutputBackward>::Layout, TensorIndex>>
       out(output_backward);
 
   EIGEN_STATIC_ASSERT(internal::traits<Input>::Layout ==
@@ -372,6 +412,13 @@ CuboidConvolutionBackwardKernel(
   static const int NumDims = internal::traits<Input>::NumDimensions;
   EIGEN_STATIC_ASSERT(internal::traits<Input>::NumDimensions ==
                           internal::traits<OutputBackward>::NumDimensions,
+                      YOU_MADE_A_PROGRAMMING_MISTAKE);
+
+  // We do not support higher dimensional backward convolutions, or convolutions
+  // without batch dimension.
+  // TODO(ezhulenev): Relax this constraint, and turn on tests without batch
+  // dimension in eigen_backward_cuboid_convolutions_test.cc.
+  EIGEN_STATIC_ASSERT(internal::traits<Input>::NumDimensions == 5,
                       YOU_MADE_A_PROGRAMMING_MISTAKE);
 
   const TensorIndex inputPlanes =
@@ -395,6 +442,10 @@ CuboidConvolutionBackwardKernel(
   const TensorIndex kernelChannels =
       isColMajor ? in.dimension(0) : in.dimension(NumDims - 1);
 
+  // Number of batches in the input tensor.
+  const TensorIndex batch =
+      isColMajor ? in.dimension(4) : in.dimension(NumDims - 5);
+
   // TODO(ezhulenev): Add support for inflated strides. Without inflated strides
   // effective kernel planes/rows/cols are always the same as the kernel itself
   // (see eigen_spatial_convolutions for details).
@@ -402,6 +453,7 @@ CuboidConvolutionBackwardKernel(
   const TensorIndex kernelRowsEff = kernelRows;
   const TensorIndex kernelColsEff = kernelCols;
 
+  // Compute forward padding from input and output_backward dimensions.
   const TensorIndex padPlanes = numext::maxi<Index>(
       0, (outputPlanes - 1) * stridePlanes + kernelPlanesEff - inputPlanes);
   const TensorIndex padRows = numext::maxi<Index>(
@@ -410,94 +462,147 @@ CuboidConvolutionBackwardKernel(
       0, (outputCols - 1) * strideCols + kernelColsEff - inputCols);
 
   const TensorIndex padding_top_z = padPlanes / 2;
-  const TensorIndex padding_bottom_z = padPlanes - padding_top_z;
   const TensorIndex padding_top = padRows / 2;
-  const TensorIndex padding_bottom = padRows - padding_top;
   const TensorIndex padding_left = padCols / 2;
-  const TensorIndex padding_right = padCols - padding_left;
 
-  // Reshaped output_backward before contraction.
-  DSizes<TensorIndex, 2> output_dims;
+  // Compute paddings for output_backward before extracting patches.
+  const auto expanded_out_planes = (outputPlanes - 1) * stridePlanes + 1;
+  const auto expanded_out_rows = (outputRows - 1) * strideRows + 1;
+  const auto expanded_out_cols = (outputCols - 1) * strideCols + 1;
+  const auto padded_out_planes = inputPlanes + kernelPlanes - 1;
+  const auto padded_out_rows = inputRows + kernelRows - 1;
+  const auto padded_out_cols = inputCols + kernelCols - 1;
+  const auto top_pad_planes = kernelPlanes - 1 - padding_top_z;
+  const auto top_pad_rows = kernelRows - 1 - padding_top;
+  const auto left_pad_cols = kernelCols - 1 - padding_left;
+  const auto bottom_pad_planes =
+      padded_out_planes - expanded_out_planes - top_pad_planes;
+  const auto bottom_pad_rows =
+      padded_out_rows - expanded_out_rows - top_pad_rows;
+  const auto right_pad_cols =
+      padded_out_cols - expanded_out_cols - left_pad_cols;
+
+  // Reorder output_backward dimensions.
+  array<TensorIndex, 5> output_backward_shuffle;
   if (isColMajor) {
-    output_dims[0] = kernelFilters;
-    output_dims[1] = outputPlanes * outputRows * outputCols;
-    for (int i = 4; i < NumDims; ++i) {
-      output_dims[1] *= out.dimension(i);
-    }
+    // From: [out_depth, out_planes, out_rows, out_cols, batch]
+    // To:   [batch, out_planes, out_rows, out_cols, out_depth]
+    output_backward_shuffle = {4, 1, 2, 3, 0};
   } else {
-    output_dims[1] = kernelFilters;
-    output_dims[0] = outputCols * outputRows * outputPlanes;
-    for (int i = 0; i < NumDims - 4; ++i) {
-      output_dims[0] *= out.dimension(i);
-    }
+    // From: [batch, out_cols, out_rows, out_planes, out_depth]
+    // To:   [out_depth, out_cols, out_rows, out_planes, batch]
+    output_backward_shuffle = {4, 1, 2, 3, 0};
   }
 
-  // Reshaped extract_volume_patches(in)
+  // Reorder input dimensions.
+  array<TensorIndex, 5> input_shuffle;
+  if (isColMajor) {
+    // From: [in_depth, in_planes, in_rows, in_cols, batch]
+    // To:   [in_depth, batch, in_planes, in_rows, in_cols]
+    input_shuffle = {0, 4, 1, 2, 3};
+  } else {
+    // From: [batch, in_cols, in_rows, in_planes, in_depth]
+    // To:   [in_cols, in_rows, in_planes, batch, in_depth]
+    input_shuffle = {1, 2, 3, 0, 4};
+  }
+
+  // Input is playing the role of a "kernel" in this convolution.
+  DSizes<TensorIndex, 2> input_dims;
+  if (isColMajor) {
+    input_dims[0] = kernelChannels;
+    input_dims[1] = batch * inputPlanes * inputRows * inputCols;
+  } else {
+    input_dims[1] = kernelChannels;
+    input_dims[0] = inputCols * inputRows * inputPlanes * batch;
+  }
+
+  // Molds the output of the patch extraction result into a 2D tensor:
+  // - the first dimension (dims[0]): the patch values to be multiplied with the
+  // kernels
+  // - the second dimension (dims[1]): everything else
   DSizes<TensorIndex, 2> pre_contract_dims;
   if (isColMajor) {
-    pre_contract_dims[0] =
-        kernelChannels * kernelPlanes * kernelRows * kernelCols;
-    pre_contract_dims[1] = outputPlanes * outputRows * outputCols;
-    for (int i = 4; i < NumDims; ++i) {
-      pre_contract_dims[1] *= in.dimension(i);
-    }
-    eigen_assert(output_dims[1] == pre_contract_dims[1]);
-  } else {
+    pre_contract_dims[0] = batch * inputPlanes * inputRows * inputCols;
     pre_contract_dims[1] =
-        kernelCols * kernelRows * kernelPlanes * kernelChannels;
-    pre_contract_dims[0] = outputCols * outputRows * outputPlanes;
-    for (int i = 0; i < NumDims - 4; ++i) {
-      pre_contract_dims[0] *= in.dimension(i);
-    }
-    eigen_assert(output_dims[0] == pre_contract_dims[0]);
+        kernelPlanes * kernelRows * kernelCols * kernelFilters;
+  } else {
+    pre_contract_dims[1] = inputCols * inputRows * inputPlanes * batch;
+    pre_contract_dims[0] =
+        kernelFilters * kernelCols * kernelRows * kernelPlanes;
   }
 
   // We will contract along the collapsed dimension that contains the
-  // outputCols, outputRows, outputPlanes and OTHERS.
+  // batch, inputPlanes, inputRows and inputCols.
   array<IndexPair<TensorIndex>, 1> contract_dims;
+  contract_dims[0] = IndexPair<TensorIndex>(1, 0);
+
+  // Dimensions after contraction.
+  DSizes<TensorIndex, NumDims> post_contract_dims;
   if (isColMajor) {
-    // col-major: output_backward.contract(input.patches)
-    contract_dims[0] = IndexPair<TensorIndex>(1, 1);
+    post_contract_dims[0] = kernelChannels;
+    post_contract_dims[1] = kernelPlanes;
+    post_contract_dims[2] = kernelRows;
+    post_contract_dims[3] = kernelCols;
+    post_contract_dims[4] = kernelFilters;
   } else {
-    // row-major: input.patches.contract(output_backward)
-    contract_dims[0] = IndexPair<TensorIndex>(0, 0);
+    post_contract_dims[0] = kernelFilters;
+    post_contract_dims[1] = kernelCols;
+    post_contract_dims[2] = kernelRows;
+    post_contract_dims[3] = kernelPlanes;
+    post_contract_dims[4] = kernelChannels;
   }
 
-  DSizes<TensorIndex, 5> kernel_dims;
+  // Reorder output of contraction to valid filter shape.
+  array<TensorIndex, 5> kernel_shuffle;
   if (isColMajor) {
-    kernel_dims[0] = kernelFilters;
-    kernel_dims[1] = kernelChannels;
-    kernel_dims[2] = kernelPlanes;
-    kernel_dims[3] = kernelRows;
-    kernel_dims[4] = kernelCols;
+    // From: [in_depth, kernel_planes, kernel_rows, kernel_cols, out_depth]
+    // To:   [out_depth, in_depth, kernel_planes, kernel_rows, kernel_cols]
+    kernel_shuffle = {4, 0, 1, 2, 3};
   } else {
-    kernel_dims[4] = kernelFilters;
-    kernel_dims[3] = kernelChannels;
-    kernel_dims[2] = kernelPlanes;
-    kernel_dims[1] = kernelRows;
-    kernel_dims[0] = kernelCols;
+    // From: [out_depth, kernel_cols, kernel_rows, kernel_planes, in_depth]
+    // To:   [kernel_cols, kernel_rows, kernel_planes, in_depth, out_depth]
+    kernel_shuffle = {1, 2, 3, 4, 0};
   }
 
-  return choose(
-      Cond<internal::traits<Input>::Layout == ColMajor>(),
-      output_backward.reshape(output_dims)
-          .contract(input
+  // Reverse kernel backprop dimensions.
+  array<TensorIndex, 5> kernel_reverse;
+  if (isColMajor) {
+    kernel_reverse = {false, false, true, true, true};
+  } else {
+    kernel_reverse = {true, true, true, false, false};
+  }
+
+  // Create convolution input (aka source of patches) from output backward
+  // tensor by shuffling dimensions.
+  const auto the_input =
+      output_backward.shuffle(output_backward_shuffle).eval();
+
+  // Create convolution kernel (aka filter) from input by shuffling and
+  // reshaping.
+  const auto the_kernel =
+      input.shuffle(input_shuffle).reshape(input_dims).eval();
+
+  return choose(Cond<internal::traits<Input>::Layout == ColMajor>(),
+                the_kernel.contract(
+                    the_input
                         .extract_volume_patches(
-                            kernelPlanes, kernelRows, kernelCols, stridePlanes,
-                            strideRows, strideCols, 1, 1, 1, padding_top_z,
-                            padding_bottom_z, padding_top, padding_bottom,
-                            padding_left, padding_right)
+                            inputPlanes, inputRows, inputCols, 1, 1, 1,
+                            stridePlanes, strideRows, strideCols,
+                            top_pad_planes, bottom_pad_planes, top_pad_rows,
+                            bottom_pad_rows, left_pad_cols, right_pad_cols)
                         .reshape(pre_contract_dims),
-                    contract_dims)
-          .reshape(kernel_dims),
-      input
-          .extract_volume_patches(kernelPlanes, kernelRows, kernelCols,
-                                  stridePlanes, strideRows, strideCols, 1, 1, 1,
-                                  padding_top_z, padding_bottom_z, padding_top,
-                                  padding_bottom, padding_left, padding_right)
-          .reshape(pre_contract_dims)
-          .contract(output_backward.reshape(output_dims), contract_dims)
-          .reshape(kernel_dims));
+                    contract_dims),
+                the_input
+                    .extract_volume_patches(
+                        inputPlanes, inputRows, inputCols, 1, 1, 1,
+                        stridePlanes, strideRows, strideCols, top_pad_planes,
+                        bottom_pad_planes, top_pad_rows, bottom_pad_rows,
+                        left_pad_cols, right_pad_cols)
+                    .reshape(pre_contract_dims)
+                    .contract(the_kernel, contract_dims))
+      .reshape(post_contract_dims)
+      .shuffle(kernel_shuffle)
+      .reverse(kernel_reverse);
 }
 
 }  // end namespace Eigen

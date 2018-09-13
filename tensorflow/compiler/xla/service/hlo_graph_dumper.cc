@@ -123,8 +123,8 @@ class NodeFilter {
 // We arbitrarily set this as the boundary between "large" and "small"
 // instructions.
 bool IsSmall(const HloInstruction* instr) {
-  if (ShapeUtil::IsOpaque(instr->shape()) ||
-      ShapeUtil::IsToken(instr->shape())) {
+  if (ShapeUtil::HasPrimitiveType(instr->shape(), OPAQUE) ||
+      ShapeUtil::HasPrimitiveType(instr->shape(), TOKEN)) {
     return true;
   }
   return ShapeUtil::ElementsInRecursive(instr->shape()) < 4096;

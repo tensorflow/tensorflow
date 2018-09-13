@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import gen_string_ops
@@ -100,22 +99,20 @@ class RegexReplaceTest(test.TestCase, parameterized.TestCase):
       (as_tensor, as_string),
       (as_tensor, as_tensor))
   def testRegexReplaceDelegation(self, pattern_fn, rewrite_fn):
-    with compat.forward_compatibility_horizon(2018, 10, 11):
-      with self.test_session():
-        input_vector = constant_op.constant("foo", dtypes.string)
-        pattern = pattern_fn("[a-z]")
-        replace = rewrite_fn(".")
-        op = string_ops.regex_replace(input_vector, pattern, replace)
-        self.assertTrue(op.name.startswith("RegexReplace"))
+    with self.test_session():
+      input_vector = constant_op.constant("foo", dtypes.string)
+      pattern = pattern_fn("[a-z]")
+      replace = rewrite_fn(".")
+      op = string_ops.regex_replace(input_vector, pattern, replace)
+      self.assertTrue(op.name.startswith("RegexReplace"))
 
   def testStaticRegexReplaceDelegation(self):
-    with compat.forward_compatibility_horizon(2018, 10, 11):
-      with self.test_session():
-        input_vector = constant_op.constant("foo", dtypes.string)
-        pattern = "[a-z]"
-        replace = "."
-        op = string_ops.regex_replace(input_vector, pattern, replace)
-        self.assertTrue(op.name.startswith("StaticRegexReplace"))
+    with self.test_session():
+      input_vector = constant_op.constant("foo", dtypes.string)
+      pattern = "[a-z]"
+      replace = "."
+      op = string_ops.regex_replace(input_vector, pattern, replace)
+      self.assertTrue(op.name.startswith("StaticRegexReplace"))
 
 if __name__ == "__main__":
   test.main()

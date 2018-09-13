@@ -29,7 +29,7 @@ from tensorflow.python.platform import test
 class DecodeRawOpTest(test.TestCase):
 
   def testToUint8(self):
-    with self.test_session():
+    with self.cached_session():
       in_bytes = array_ops.placeholder(dtypes.string, shape=[2])
       decode = parsing_ops.decode_raw(in_bytes, out_type=dtypes.uint8)
       self.assertEqual([2, None], decode.get_shape().as_list())
@@ -47,7 +47,7 @@ class DecodeRawOpTest(test.TestCase):
         decode.eval(feed_dict={in_bytes: ["short", "longer"]})
 
   def testToInt16(self):
-    with self.test_session():
+    with self.cached_session():
       in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
       decode = parsing_ops.decode_raw(in_bytes, out_type=dtypes.int16)
       self.assertEqual([None, None], decode.get_shape().as_list())
@@ -62,7 +62,7 @@ class DecodeRawOpTest(test.TestCase):
         decode.eval(feed_dict={in_bytes: ["123", "456"]})
 
   def testEndianness(self):
-    with self.test_session():
+    with self.cached_session():
       in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
       decode_le = parsing_ops.decode_raw(
           in_bytes, out_type=dtypes.int32, little_endian=True)
@@ -74,7 +74,7 @@ class DecodeRawOpTest(test.TestCase):
       self.assertAllEqual([[0x01020304]], result)
 
   def testToFloat16(self):
-    with self.test_session():
+    with self.cached_session():
       in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
       decode = parsing_ops.decode_raw(in_bytes, out_type=dtypes.float16)
       self.assertEqual([None, None], decode.get_shape().as_list())
@@ -85,7 +85,7 @@ class DecodeRawOpTest(test.TestCase):
       self.assertAllEqual(expected_result, result)
 
   def testEmptyStringInput(self):
-    with self.test_session():
+    with self.cached_session():
       in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
       decode = parsing_ops.decode_raw(in_bytes, out_type=dtypes.float16)
 
@@ -94,7 +94,7 @@ class DecodeRawOpTest(test.TestCase):
         self.assertEqual((num_inputs, 0), result.shape)
 
   def testToUInt16(self):
-    with self.test_session():
+    with self.cached_session():
       in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
       decode = parsing_ops.decode_raw(in_bytes, out_type=dtypes.uint16)
       self.assertEqual([None, None], decode.get_shape().as_list())

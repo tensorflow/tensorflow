@@ -183,6 +183,10 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
                 "dense/kernel", "dense/bias", "beta1_power", "beta2_power",
                 "dense/kernel/Adam", "dense/kernel/Adam_1", "dense/bias/Adam",
                 "dense/bias/Adam_1"
+            ],
+            "Adagrad": [
+                "dense/kernel/Adagrad", "dense/kernel",
+                "dense/bias/Adagrad", "dense/bias"
             ]
         }
         variables = variables_map[optimizer_fn().get_name()]

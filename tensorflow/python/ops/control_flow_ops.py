@@ -2026,7 +2026,7 @@ def cond(pred,
   ```
 
   """
-  if ENABLE_COND_V2:
+  if ENABLE_COND_V2 and not context.executing_eagerly():
     return cond_v2_impl.cond_v2(pred, true_fn, false_fn, name)
 
   # We needed to make true_fn/false_fn keyword arguments for
