@@ -1403,9 +1403,13 @@ class PyVSpace
     PyObject* arglist =
         Py_BuildValue("(O)", reinterpret_cast<PyObject*>(tensor));
     PyObject* result = PyEval_CallObject(num_elements_, arglist);
+    Py_DECREF(arglist);
+    if (result == nullptr) {
+      // The caller detects whether a python exception has been raised.
+      return -1;
+    }
     tensorflow::int64 r = MakeInt(result);
     Py_DECREF(result);
-    Py_DECREF(arglist);
     return r;
   }
 
