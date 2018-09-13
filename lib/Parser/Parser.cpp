@@ -2367,7 +2367,7 @@ ParseResult MLFunctionParser::parseBound(SmallVectorImpl<MLValue *> &operands,
   if (getToken().isAny(Token::minus, Token::integer)) {
     int64_t val;
     if (!parseIntConstant(val)) {
-      map = builder.getConstantMap(val);
+      map = builder.getConstantAffineMap(val);
       return ParseSuccess;
     }
     return ParseFailure;

@@ -201,22 +201,59 @@ AffineExpr *Builder::getCeilDivExpr(AffineExpr *lhs, uint64_t rhs) {
                                  getConstantExpr(rhs), context);
 }
 
+/// Creates a sum of products affine expression from constant coefficients.
+/// If c_0, c_1, ... are the coefficients in the order corresponding to
+/// dimensions, symbols, and constant term, create the affine expression:
+/// expr = c_0*d0 + c_1*d1 + ... + c_{ndims-1}*d_{ndims-1} + c_{..}*s0 +
+/// c_{..}*s1 + ... + const
+AffineExpr *Builder::getAddMulPureAffineExpr(unsigned numDims,
+                                             unsigned numSymbols,
+                                             ArrayRef<int64_t> coeffs) {
+  assert(coeffs.size() == numDims + numSymbols + 1);
+
+  AffineExpr *expr = AffineConstantExpr::get(0, context);
+  // Dimensions.
+  for (unsigned j = 0; j < numDims; j++) {
+    if (coeffs[j] == 0)
+      continue;
+    AffineExpr *id = AffineDimExpr::get(j, context);
+    auto *term = AffineBinaryOpExpr::getMul(id, coeffs[j], context);
+    expr = AffineBinaryOpExpr::getAdd(expr, term, context);
+  }
+  // Symbols.
+  for (unsigned j = numDims; j < numDims + numSymbols; j++) {
+    if (coeffs[j] == 0)
+      continue;
+    AffineExpr *id = AffineSymbolExpr::get(j - numDims, context);
+    auto *term = AffineBinaryOpExpr::getMul(id, coeffs[j], context);
+    expr = AffineBinaryOpExpr::getAdd(expr, term, context);
+  }
+  // Constant term.
+  unsigned constTerm = coeffs[coeffs.size() - 1];
+  if (constTerm != 0)
+    expr = AffineBinaryOpExpr::getAdd(expr, constTerm, context);
+  return expr;
+}
+
 IntegerSet *Builder::getIntegerSet(unsigned dimCount, unsigned symbolCount,
                                    ArrayRef<AffineExpr *> constraints,
                                    ArrayRef<bool> isEq) {
   return IntegerSet::get(dimCount, symbolCount, constraints, isEq, context);
 }
 
-AffineMap *Builder::getConstantMap(int64_t val) {
-  return AffineMap::get(0, 0, getConstantExpr(val), {}, context);
+AffineMap *Builder::getConstantAffineMap(int64_t val) {
+  return AffineMap::get(/*dimCount=*/0, /*symbolCount=*/0, getConstantExpr(val),
+                        {}, context);
 }
 
 AffineMap *Builder::getDimIdentityMap() {
-  return AffineMap::get(1, 0, getDimExpr(0), {}, context);
+  return AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0, getDimExpr(0), {},
+                        context);
 }
 
 AffineMap *Builder::getSymbolIdentityMap() {
-  return AffineMap::get(0, 1, getSymbolExpr(0), {}, context);
+  return AffineMap::get(/*dimCount=*/0, /*symbolCount=*/1, getSymbolExpr(0), {},
+                        context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -280,6 +317,13 @@ ForStmt *MLFuncBuilder::createFor(Location *location,
                                step, context);
   block->getStatements().insert(insertPoint, stmt);
   return stmt;
+}
+
+ForStmt *MLFuncBuilder::createFor(Location *location, int64_t lb, int64_t ub,
+                                  int64_t step) {
+  auto *lbMap = AffineMap::getConstantMap(lb, context);
+  auto *ubMap = AffineMap::getConstantMap(ub, context);
+  return createFor(location, {}, lbMap, {}, ubMap, step);
 }
 
 IfStmt *MLFuncBuilder::createIf(Location *location,

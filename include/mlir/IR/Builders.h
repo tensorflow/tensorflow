@@ -96,10 +96,7 @@ public:
   TypeAttr *getTypeAttr(Type *type);
   FunctionAttr *getFunctionAttr(const Function *value);
 
-  // Affine Expressions and Affine Map.
-  AffineMap *getAffineMap(unsigned dimCount, unsigned symbolCount,
-                          ArrayRef<AffineExpr *> results,
-                          ArrayRef<AffineExpr *> rangeSizes);
+  // Affine expressions and affine maps.
   AffineDimExpr *getDimExpr(unsigned position);
   AffineSymbolExpr *getSymbolExpr(unsigned position);
   AffineConstantExpr *getConstantExpr(int64_t constant);
@@ -114,19 +111,31 @@ public:
   AffineExpr *getCeilDivExpr(AffineExpr *lhs, AffineExpr *rhs);
   AffineExpr *getCeilDivExpr(AffineExpr *lhs, uint64_t rhs);
 
-  // Integer set.
-  IntegerSet *getIntegerSet(unsigned dimCount, unsigned symbolCount,
-                            ArrayRef<AffineExpr *> constraints,
-                            ArrayRef<bool> isEq);
+  /// Creates a sum of products affine expression from constant coefficients.
+  /// If c_0, c_1, ... are the coefficients in the order corresponding to
+  /// dimensions, symbols, and the constant term, create the affine expression:
+  /// expr = c_0*d0 + c_1*d1 + ... + c_{ndims-1}*d_{ndims-1} + c_{..}*s0 +
+  ///        c_{..}*s1 + ... + const
+  AffineExpr *getAddMulPureAffineExpr(unsigned numDims, unsigned numSymbols,
+                                      ArrayRef<int64_t> coeffs);
+
+  AffineMap *getAffineMap(unsigned dimCount, unsigned symbolCount,
+                          ArrayRef<AffineExpr *> results,
+                          ArrayRef<AffineExpr *> rangeSizes);
 
   // Special cases of affine maps and integer sets
-  // One constant result: () -> (val).
-  AffineMap *getConstantMap(int64_t val);
+  /// Returns a single constant result affine map with 0 dimensions and 0
+  /// symbols.  One constant result: () -> (val).
+  AffineMap *getConstantAffineMap(int64_t val);
   // One dimension id identity map: (i) -> (i).
   AffineMap *getDimIdentityMap();
   // One symbol identity map: ()[s] -> (s).
   AffineMap *getSymbolIdentityMap();
 
+  // Integer set.
+  IntegerSet *getIntegerSet(unsigned dimCount, unsigned symbolCount,
+                            ArrayRef<AffineExpr *> constraints,
+                            ArrayRef<bool> isEq);
   // TODO: Helpers for affine map/exprs, etc.
 protected:
   MLIRContext *context;
@@ -301,18 +310,18 @@ public:
     this->insertPoint = insertPoint;
   }
 
-  /// Set the insertion point to the specified operation, which will cause
+  /// Sets the insertion point to the specified operation, which will cause
   /// subsequent insertions to go right before it.
   void setInsertionPoint(Statement *stmt) {
     setInsertionPoint(stmt->getBlock(), StmtBlock::iterator(stmt));
   }
 
-  /// Set the insertion point to the start of the specified block.
+  /// Sets the insertion point to the start of the specified block.
   void setInsertionPointToStart(StmtBlock *block) {
     setInsertionPoint(block, block->begin());
   }
 
-  /// Set the insertion point to the end of the specified block.
+  /// Sets the insertion point to the end of the specified block.
   void setInsertionPointToEnd(StmtBlock *block) {
     setInsertionPoint(block, block->end());
   }
@@ -334,9 +343,9 @@ public:
     return result;
   }
 
-  /// Create operation of specific op type at the current insertion point.  If
-  /// the result is an invalid op (the verifier hook fails), emit an error and
-  /// return null.
+  /// Creates an operation of specific op type at the current insertion point.
+  /// If the result is an invalid op (the verifier hook fails), emit an error
+  /// and return null.
   template <typename OpTy, typename... Args>
   OpPointer<OpTy> createChecked(Location *location, Args... args) {
     OperationState state(getContext(), location, OpTy::getOperationName());
@@ -356,8 +365,8 @@ public:
     return OpPointer<OpTy>();
   }
 
-  /// Create a deep copy of the specified statement, remapping any operands that
-  /// use values outside of the statement using the map that is provided (
+  /// Creates a deep copy of the specified statement, remapping any operands
+  /// that use values outside of the statement using the map that is provided (
   /// leaving them alone if no entry is present).  Replaces references to cloned
   /// sub-statements to the corresponding statement that is copied, and adds
   /// those mappings to the map.
@@ -368,12 +377,16 @@ public:
     return cloneStmt;
   }
 
-  // Create for statement. When step is not specified, it is set to 1.
+  // Creates a for statement. When step is not specified, it is set to 1.
   ForStmt *createFor(Location *location, ArrayRef<MLValue *> lbOperands,
                      AffineMap *lbMap, ArrayRef<MLValue *> ubOperands,
                      AffineMap *ubMap, int64_t step = 1);
 
-  /// Create if statement.
+  // Creates a for statement with known (constant) lower and upper bounds.
+  // Default step is 1.
+  ForStmt *createFor(Location *loc, int64_t lb, int64_t ub, int64_t step = 1);
+
+  /// Creates if statement.
   IfStmt *createIf(Location *location, ArrayRef<MLValue *> operands,
                    IntegerSet *set);
 

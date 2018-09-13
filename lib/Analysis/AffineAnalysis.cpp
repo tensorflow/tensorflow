@@ -31,6 +31,7 @@ using namespace mlir;
 /// products expression, 'localExprs' is expected to have the AffineExpr for it,
 /// and is substituted into. The ArrayRef 'eq' is expected to be in the format
 /// [dims, symbols, locals, constant term].
+//  TODO(bondhugula): refactor getAddMulPureAffineExpr to reuse it from here.
 static AffineExpr *toAffineExpr(ArrayRef<int64_t> eq, unsigned numDims,
                                 unsigned numSymbols,
                                 ArrayRef<AffineExpr *> localExprs,
@@ -57,8 +58,7 @@ static AffineExpr *toAffineExpr(ArrayRef<int64_t> eq, unsigned numDims,
   for (unsigned j = numDims + numSymbols; j < eq.size() - 1; j++) {
     if (eq[j] != 0) {
       auto *term = AffineBinaryOpExpr::getMul(
-          AffineConstantExpr::get(eq[j], context),
-          localExprs[j - numDims - numSymbols], context);
+          localExprs[j - numDims - numSymbols], eq[j], context);
       expr = AffineBinaryOpExpr::getAdd(expr, term, context);
     }
   }
@@ -66,8 +66,7 @@ static AffineExpr *toAffineExpr(ArrayRef<int64_t> eq, unsigned numDims,
   // Constant term.
   unsigned constTerm = eq[eq.size() - 1];
   if (constTerm != 0)
-    expr = AffineBinaryOpExpr::getAdd(
-        expr, AffineConstantExpr::get(constTerm, context), context);
+    expr = AffineBinaryOpExpr::getAdd(expr, constTerm, context);
   return expr;
 }
 

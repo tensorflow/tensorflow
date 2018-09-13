@@ -27,6 +27,12 @@ AffineMap::AffineMap(unsigned numDims, unsigned numSymbols, unsigned numResults,
     : numDims(numDims), numSymbols(numSymbols), numResults(numResults),
       results(results), rangeSizes(rangeSizes) {}
 
+/// Returns a single constant result affine map.
+AffineMap *AffineMap::getConstantMap(int64_t val, MLIRContext *context) {
+  return get(/*dimCount=*/0, /*symbolCount=*/0,
+             AffineConstantExpr::get(val, context), {}, context);
+}
+
 bool AffineMap::isIdentity() const {
   if (getNumDims() != getNumResults())
     return false;

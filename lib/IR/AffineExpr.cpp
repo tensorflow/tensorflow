@@ -53,10 +53,15 @@ AffineExpr *AffineBinaryOpExpr::getSub(AffineExpr *lhs, AffineExpr *rhs,
                 context);
 }
 
-/// Get affine expression that is expr incremented by 'inc'.
 AffineExpr *AffineBinaryOpExpr::getAdd(AffineExpr *expr, int64_t rhs,
                                        MLIRContext *context) {
   return get(AffineExpr::Kind::Add, expr, AffineConstantExpr::get(rhs, context),
+             context);
+}
+
+AffineExpr *AffineBinaryOpExpr::getMul(AffineExpr *expr, int64_t rhs,
+                                       MLIRContext *context) {
+  return get(AffineExpr::Kind::Mul, expr, AffineConstantExpr::get(rhs, context),
              context);
 }
 

@@ -116,6 +116,8 @@ public:
                             MLIRContext *context) {
     return get(AffineExpr::Kind::Mul, lhs, rhs, context);
   }
+  static AffineExpr *getMul(AffineExpr *expr, int64_t rhs,
+                            MLIRContext *context);
   static AffineExpr *getFloorDiv(AffineExpr *lhs, AffineExpr *rhs,
                                  MLIRContext *context) {
     return get(AffineExpr::Kind::FloorDiv, lhs, rhs, context);

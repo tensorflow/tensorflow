@@ -356,15 +356,11 @@ int64_t ForStmt::getConstantUpperBound() const {
 }
 
 void ForStmt::setConstantLowerBound(int64_t value) {
-  MLIRContext *context = getContext();
-  auto *expr = AffineConstantExpr::get(value, context);
-  setLowerBound({}, AffineMap::get(0, 0, expr, {}, context));
+  setLowerBound({}, AffineMap::getConstantMap(value, getContext()));
 }
 
 void ForStmt::setConstantUpperBound(int64_t value) {
-  MLIRContext *context = getContext();
-  auto *expr = AffineConstantExpr::get(value, context);
-  setUpperBound({}, AffineMap::get(0, 0, expr, {}, context));
+  setUpperBound({}, AffineMap::getConstantMap(value, getContext()));
 }
 
 //===----------------------------------------------------------------------===//

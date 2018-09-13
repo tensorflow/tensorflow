@@ -45,6 +45,9 @@ public:
                         ArrayRef<AffineExpr *> rangeSizes,
                         MLIRContext *context);
 
+  /// Returns a single constant result affine map.
+  static AffineMap *getConstantMap(int64_t val, MLIRContext *context);
+
   /// Returns true if the co-domain (or more loosely speaking, range) of this
   /// map is bounded. Bounded affine maps have a size (extent) for each of
   /// their range dimensions (more accurately co-domain dimensions).
