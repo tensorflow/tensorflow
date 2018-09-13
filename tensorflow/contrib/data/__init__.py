@@ -62,6 +62,8 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@sloppy_interleave
 @@unbatch
 @@unique
+
+@@AUTOTUNE
 """
 
 from __future__ import absolute_import
@@ -91,6 +93,10 @@ from tensorflow.contrib.data.python.ops.interleave_ops import sample_from_datase
 from tensorflow.contrib.data.python.ops.interleave_ops import sloppy_interleave
 from tensorflow.contrib.data.python.ops.iterator_ops import CheckpointInputPipelineHook
 from tensorflow.contrib.data.python.ops.iterator_ops import make_saveable_from_iterator
+
+# Optimization constant that can be used to enable auto-tuning.
+from tensorflow.contrib.data.python.ops.optimization import AUTOTUNE
+
 from tensorflow.contrib.data.python.ops.parsing_ops import parse_example_dataset
 from tensorflow.contrib.data.python.ops.prefetching_ops import copy_to_device
 from tensorflow.contrib.data.python.ops.prefetching_ops import prefetch_to_device
@@ -113,6 +119,3 @@ from tensorflow.python.data.ops.optional_ops import Optional
 
 from tensorflow.python.util.all_util import remove_undocumented
 remove_undocumented(__name__)
-
-# A constant that can be used to enable auto-tuning.
-AUTOTUNE = -1
