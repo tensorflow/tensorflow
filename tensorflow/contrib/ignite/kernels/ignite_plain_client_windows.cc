@@ -24,8 +24,8 @@ limitations under the License.
 #pragma comment(lib, "Mswsock.lib")
 #pragma comment(lib, "AdvApi32.lib")
 
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {

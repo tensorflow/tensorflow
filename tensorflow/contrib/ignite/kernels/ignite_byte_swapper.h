@@ -36,7 +36,7 @@ class ByteSwapper {
 
   inline void SwapIfRequiredUnsignedInt16(uint16_t *x) const {
     if (swap_) {
-      Swap16(reinterpret_cast<int16_t*>(x));
+      Swap16(reinterpret_cast<int16_t *>(x));
     }
   }
 
@@ -48,7 +48,7 @@ class ByteSwapper {
 
   inline void SwapIfRequiredFloat(float *x) const {
     if (swap_) {
-      Swap32(reinterpret_cast<int32_t*>(x));
+      Swap32(reinterpret_cast<int32_t *>(x));
     }
   }
 
@@ -60,7 +60,7 @@ class ByteSwapper {
 
   inline void SwapIfRequiredDouble(double *x) const {
     if (swap_) {
-      Swap64(reinterpret_cast<int64_t*>(x));
+      Swap64(reinterpret_cast<int64_t *>(x));
     }
   }
 
@@ -73,8 +73,8 @@ class ByteSwapper {
   inline void SwapIfRequiredUnsignedInt16Arr(uint16_t *x,
                                              int32_t length) const {
     if (swap_) {
-      for (int32_t i = 0; i < length; i++) 
-        Swap16(reinterpret_cast<int16_t*>(&x[i]));
+      for (int32_t i = 0; i < length; i++)
+        Swap16(reinterpret_cast<int16_t *>(&x[i]));
     }
   }
 
@@ -86,8 +86,8 @@ class ByteSwapper {
 
   inline void SwapIfRequiredFloatArr(float *x, int32_t length) const {
     if (swap_) {
-      for (int32_t i = 0; i < length; i++) 
-        Swap32(reinterpret_cast<int32_t*>(&x[i]));
+      for (int32_t i = 0; i < length; i++)
+        Swap32(reinterpret_cast<int32_t *>(&x[i]));
     }
   }
 
@@ -99,8 +99,8 @@ class ByteSwapper {
 
   inline void SwapIfRequiredDoubleArr(double *x, int32_t length) const {
     if (swap_) {
-      for (int32_t i = 0; i < length; i++) 
-        Swap64(reinterpret_cast<int64_t*>(&x[i]));
+      for (int32_t i = 0; i < length; i++)
+        Swap64(reinterpret_cast<int64_t *>(&x[i]));
     }
   }
 
