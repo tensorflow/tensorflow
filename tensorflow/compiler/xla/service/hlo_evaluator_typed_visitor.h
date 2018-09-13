@@ -249,12 +249,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(Literal result,
                         parent_->GetEvaluatedLiteralFor(operand).Convert(
                             convert->shape().element_type()));
-
-    if (LayoutUtil::LayoutsInShapesEqual(result.shape(), convert->shape())) {
-      parent_->evaluated_[convert] = std::move(result);
-    } else {
-      parent_->evaluated_[convert] = result.Relayout(convert->shape().layout());
-    }
+    parent_->evaluated_[convert] = std::move(result);
     return Status::OK();
   }
 
@@ -265,11 +260,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                         parent_->GetEvaluatedLiteralFor(operand).BitcastConvert(
                             convert->shape().element_type()));
 
-    if (LayoutUtil::LayoutsInShapesEqual(result.shape(), convert->shape())) {
-      parent_->evaluated_[convert] = std::move(result);
-    } else {
-      parent_->evaluated_[convert] = result.Relayout(convert->shape().layout());
-    }
+    parent_->evaluated_[convert] = std::move(result);
     return Status::OK();
   }
 
@@ -2350,8 +2341,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       return operand_literal.Get<ReturnT>(operand_index);
     };
 
-    auto result = LiteralUtil::CreateFromDimensions(
-        shape.element_type(), AsInt64Slice(shape.dimensions()));
+    Literal result(shape);
     TF_RETURN_IF_ERROR(result.Populate<ReturnT>(func));
     parent_->evaluated_[slice] = std::move(result);
     return Status::OK();
