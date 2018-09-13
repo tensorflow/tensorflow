@@ -801,7 +801,6 @@ class CondV2ContainerTest(test.TestCase):
 class CondV2ColocationGroupAndDeviceTest(test.TestCase):
 
   def testColocateWithBeforeCond(self):
-    self.skipTest("b/112414483")
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g):
 
@@ -826,7 +825,6 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
             self.assertEquals(cond_v2.cond_v2(True, fn2, fn2)[0].eval(), 3)
 
   def testColocateWithInAndOutOfCond(self):
-    self.skipTest("b/112414483")
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g):
 
@@ -874,7 +872,6 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
         self.assertTrue(len(run_metadata.partition_graphs) >= 2)
 
   def testDeviceBeforeCond(self):
-    self.skipTest("b/112166045")
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g):
         def fn():
