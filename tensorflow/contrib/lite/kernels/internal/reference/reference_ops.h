@@ -419,9 +419,9 @@ inline void DepthToSpace(const tflite::DepthToSpaceParams& op_params,
                          T* output_data) {
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  RuntimeShape input_shape =
+  const RuntimeShape input_shape =
       RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  RuntimeShape output_shape =
+  const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   const int input_depth = input_shape.Dims(3);
@@ -472,9 +472,9 @@ inline void SpaceToDepth(const tflite::SpaceToDepthParams& op_params,
                          T* output_data) {
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  RuntimeShape input_shape =
+  const RuntimeShape input_shape =
       RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  RuntimeShape output_shape =
+  const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   const int input_depth = input_shape.Dims(3);
@@ -1117,7 +1117,7 @@ inline void BroadcastAdd4DSlow(const ArithmeticParams& params,
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
                                       &desc2);
-  RuntimeShape extended_output_shape =
+  const RuntimeShape extended_output_shape =
       RuntimeShape::ExtendedShape(4, output_shape);
 
   // In Tensorflow, the dimensions are canonically named (batch_number, row,
@@ -1158,7 +1158,7 @@ inline void BroadcastAdd4DSlow(const ArithmeticParams& params,
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
                                       &desc2);
-  RuntimeShape extended_output_shape =
+  const RuntimeShape extended_output_shape =
       RuntimeShape::ExtendedShape(4, output_shape);
 
   // In Tensorflow, the dimensions are canonically named (batch_number, row,
@@ -1200,7 +1200,7 @@ inline void BroadcastAdd4DSlow(const ArithmeticParams& params,
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
                                       &desc2);
-  RuntimeShape extended_output_shape =
+  const RuntimeShape extended_output_shape =
       RuntimeShape::ExtendedShape(4, output_shape);
 
   // In Tensorflow, the dimensions are canonically named (batch_number, row,
@@ -1350,7 +1350,7 @@ void BroadcastMul4DSlow(const ArithmeticParams& params,
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  RuntimeShape output_shape =
+  const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   NdArrayDesc<4> desc1;
@@ -1483,7 +1483,7 @@ inline void BroadcastMul4DSlow(const ArithmeticParams& params,
   // The input shapes are extended as part of NdArrayDesc initialization.
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
                                       &desc2);
-  RuntimeShape extended_output_shape =
+  const RuntimeShape extended_output_shape =
       RuntimeShape::ExtendedShape(4, output_shape);
 
   for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
@@ -1579,7 +1579,7 @@ void BroadcastDiv4DSlow(const ArithmeticParams& params,
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  RuntimeShape output_shape =
+  const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   NdArrayDesc<4> desc1;
@@ -1713,7 +1713,7 @@ inline void BroadcastSub4DSlow(const ArithmeticParams& params,
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
                                       &desc2);
-  RuntimeShape extended_output_shape =
+  const RuntimeShape extended_output_shape =
       RuntimeShape::ExtendedShape(4, output_shape);
 
   // In Tensorflow, the dimensions are canonically named (batch_number, row,
@@ -1754,7 +1754,7 @@ inline void BroadcastSub4DSlow(const ArithmeticParams& params,
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
                                       &desc2);
-  RuntimeShape extended_output_shape =
+  const RuntimeShape extended_output_shape =
       RuntimeShape::ExtendedShape(4, output_shape);
 
   // In Tensorflow, the dimensions are canonically named (batch_number, row,
@@ -1818,7 +1818,7 @@ inline void BroadcastSub4DSlow(const ArithmeticParams& params,
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
                                       &desc2);
-  RuntimeShape extended_output_shape =
+  const RuntimeShape extended_output_shape =
       RuntimeShape::ExtendedShape(4, output_shape);
 
   // In Tensorflow, the dimensions are canonically named (batch_number, row,
@@ -1858,7 +1858,7 @@ void BroadcastSub4DSlow(const ArithmeticParams& params,
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
                                       &desc2);
-  RuntimeShape extended_output_shape =
+  const RuntimeShape extended_output_shape =
       RuntimeShape::ExtendedShape(4, output_shape);
 
   // In Tensorflow, the dimensions are canonically named (batch_number, row,
@@ -1897,7 +1897,7 @@ void Sub(const ArithmeticParams& params, const RuntimeShape& input1_shape,
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
                                       &desc2);
-  RuntimeShape extended_output_shape =
+  const RuntimeShape extended_output_shape =
       RuntimeShape::ExtendedShape(4, output_shape);
 
   // In Tensorflow, the dimensions are canonically named (batch_number, row,
@@ -3543,11 +3543,11 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_size_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  RuntimeShape input_shape =
+  const RuntimeShape input_shape =
       RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  RuntimeShape output_size_shape =
+  const RuntimeShape output_size_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_size_shape);
-  RuntimeShape output_shape =
+  const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
@@ -3606,9 +3606,9 @@ inline void SpaceToBatchND(
     const RuntimeShape& unextended_output_shape, T* output_data) {
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  RuntimeShape input1_shape =
+  const RuntimeShape input1_shape =
       RuntimeShape::ExtendedShape(4, unextended_input1_shape);
-  RuntimeShape output_shape =
+  const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   const int depth = input1_shape.Dims(3);
@@ -3663,9 +3663,9 @@ inline void BatchToSpaceND(
     const RuntimeShape& unextended_output_shape, T* output_data) {
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  RuntimeShape input1_shape =
+  const RuntimeShape input1_shape =
       RuntimeShape::ExtendedShape(4, unextended_input1_shape);
-  RuntimeShape output_shape =
+  const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   const int output_width = output_shape.Dims(2);
@@ -3719,8 +3719,10 @@ inline void PadImpl(const tflite::PadParams& op_params,
                     const RuntimeShape& input_shape, const T* input_data,
                     const P* pad_value_ptr, const RuntimeShape& output_shape,
                     T* output_data) {
-  RuntimeShape ext_input_shape = RuntimeShape::ExtendedShape(4, input_shape);
-  RuntimeShape ext_output_shape = RuntimeShape::ExtendedShape(4, output_shape);
+  const RuntimeShape ext_input_shape =
+      RuntimeShape::ExtendedShape(4, input_shape);
+  const RuntimeShape ext_output_shape =
+      RuntimeShape::ExtendedShape(4, output_shape);
   TFLITE_DCHECK_LE(op_params.left_padding_count, 4);
   TFLITE_DCHECK_LE(op_params.right_padding_count, 4);
 
@@ -3817,9 +3819,9 @@ inline void StridedSlice(const tflite::StridedSliceParams& op_params,
 
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  RuntimeShape input_shape =
+  const RuntimeShape input_shape =
       RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  RuntimeShape output_shape =
+  const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   // Reverse and pad to 4 dimensions because that is what the runtime code
@@ -3915,7 +3917,7 @@ template <typename T>
 inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape, const T* input_data,
                   const RuntimeShape& output_shape, T* output_data) {
-  RuntimeShape ext_shape = RuntimeShape::ExtendedShape(4, input_shape);
+  const RuntimeShape ext_shape = RuntimeShape::ExtendedShape(4, input_shape);
   // TODO(dkalenichenko): This op only supports 4D tensors or smaller.
   TFLITE_DCHECK_LE(op_params.begin_count, 4);
   TFLITE_DCHECK_LE(op_params.size_count, 4);
@@ -4141,9 +4143,9 @@ inline void Mean(const tflite::MeanParams& op_params,
 
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  RuntimeShape input_shape =
+  const RuntimeShape input_shape =
       RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  RuntimeShape output_shape =
+  const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   const int output_batch = output_shape.Dims(0);
@@ -4290,7 +4292,7 @@ void MaximumMinimumBroadcast4DSlow(const RuntimeShape& unextended_input1_shape,
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  RuntimeShape output_shape =
+  const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   NdArrayDesc<4> desc1;
@@ -4577,7 +4579,7 @@ inline void BroadcastComparison4DSlowImpl(
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  RuntimeShape output_shape =
+  const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   NdArrayDesc<4> desc1;
@@ -4636,7 +4638,7 @@ inline void BroadcastComparison4DSlowWithScaling(
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  RuntimeShape output_shape =
+  const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   NdArrayDesc<4> desc1;
@@ -4886,7 +4888,7 @@ inline void BroadcastPow4DSlow(const RuntimeShape& unextended_input1_shape,
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  RuntimeShape output_shape =
+  const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   NdArrayDesc<4> desc1;
@@ -4929,7 +4931,7 @@ inline void BroadcastLogical4DSlow(
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  RuntimeShape output_shape =
+  const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   NdArrayDesc<4> desc1;
@@ -4968,7 +4970,7 @@ inline void BroadcastBinaryFunction4DSlow(
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  RuntimeShape output_shape =
+  const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
   NdArrayDesc<4> desc1;
