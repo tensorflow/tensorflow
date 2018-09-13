@@ -20,9 +20,9 @@ from __future__ import print_function
 import math
 import time
 
+from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import batching
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
@@ -40,7 +40,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-class BatchDatasetTest(test.TestCase):
+class BatchDatasetTest(test.TestCase, parameterized.TestCase):
 
   def assertSparseValuesEqual(self, a, b):
     self.assertAllEqual(a.indices, b.indices)
@@ -57,7 +57,7 @@ class BatchDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
 
       for start in range(0, len(components), 4):
@@ -85,7 +85,7 @@ class BatchDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
 
       for start in range(0, len(components), 4):
@@ -123,7 +123,7 @@ class BatchDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Initialize with an input tensor of incompatible rank.
       sess.run(init_op, feed_dict={input_tensor: [[1]]})
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
@@ -148,7 +148,7 @@ class BatchDatasetTest(test.TestCase):
     iterator = data.make_one_shot_iterator()
     op = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for i in range(10):
         self.assertEqual((i,) * 3, sess.run(op))
 
@@ -168,7 +168,7 @@ class BatchDatasetTest(test.TestCase):
     iterator = data.make_one_shot_iterator()
     op = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for i in range(10):
         self.assertEqual((i, compat.as_bytes(str(i)), i), sess.run(op))
 
@@ -187,7 +187,7 @@ class BatchDatasetTest(test.TestCase):
     iterator = data.make_one_shot_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for i in range(10):
         st_row = sess.run(next_element)
         self.assertEqual([i], st_row.indices)
@@ -208,7 +208,7 @@ class BatchDatasetTest(test.TestCase):
     iterator = data.make_one_shot_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for i in range(10):
         dense_elem, st_row = sess.run(next_element)
         self.assertEqual(i, dense_elem)
@@ -230,7 +230,7 @@ class BatchDatasetTest(test.TestCase):
     iterator = data.make_one_shot_iterator()
     op = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for i in range(10):
         self.assertEqual(((i,),) * 3, sess.run(op))
 
@@ -250,7 +250,7 @@ class BatchDatasetTest(test.TestCase):
     iterator = data.make_one_shot_iterator()
     op = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for i in range(10):
         self.assertEqual(((i, b"hi"), (10 + i, b"hi"), (20 + i, b"hi")),
                          sess.run(op))
@@ -266,7 +266,7 @@ class BatchDatasetTest(test.TestCase):
     iterator = data.make_one_shot_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -284,7 +284,7 @@ class BatchDatasetTest(test.TestCase):
     iterator = data.make_initializable_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Mismatch in the 0th dimension.
       sess.run(
           iterator.initializer,
@@ -293,7 +293,7 @@ class BatchDatasetTest(test.TestCase):
               ph2: np.arange(8).astype(np.int32)
           })
       with self.assertRaises(errors.InvalidArgumentError):
-        print(sess.run(next_element))
+        sess.run(next_element)
 
       # No 0th dimension (i.e. scalar value) for one component.
       sess.run(
@@ -303,7 +303,7 @@ class BatchDatasetTest(test.TestCase):
               ph2: 7
           })
       with self.assertRaises(errors.InvalidArgumentError):
-        print(sess.run(next_element))
+        sess.run(next_element)
 
   def testBatchAndDropRemainder(self):
     components = (np.arange(7),
@@ -319,7 +319,7 @@ class BatchDatasetTest(test.TestCase):
 
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for test_batch_size in [1, 3, 7, 10]:
         sess.run(iterator.initializer, feed_dict={batch_size: test_batch_size})
         num_batches = 7 // test_batch_size
@@ -343,7 +343,7 @@ class BatchDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(2):
         actual = sess.run(get_next)
@@ -374,7 +374,7 @@ class BatchDatasetTest(test.TestCase):
 
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for test_batch_size in [1, 3, 7, 10]:
         sess.run(iterator.initializer, feed_dict={batch_size: test_batch_size})
         num_batches = 7 // test_batch_size
@@ -427,7 +427,13 @@ class BatchDatasetTest(test.TestCase):
     self.assertEqual([None], dataset.output_shapes[1][0].as_list())
     self.assertEqual([None, 30], dataset.output_shapes[1][1].as_list())
 
-  def _testMapAndBatchDatasetHelper(self, num_parallel_batches=1):
+  @parameterized.named_parameters(
+      ("Default", None, None),
+      ("SequentialCalls", 1, None),
+      ("ParallelCalls", 2, None),
+      ("ParallelBatches", None, 10),
+  )
+  def testMapAndBatch(self, num_parallel_calls, num_parallel_batches):
     """Test a dataset that maps a TF function across its input elements."""
     # The pipeline is TensorSliceDataset ->
     # RepeatDataset(count) -> MapAndBatchDataset(square_3, batch_size).
@@ -446,6 +452,7 @@ class BatchDatasetTest(test.TestCase):
             batching.map_and_batch(
                 map_func=_map_fn,
                 batch_size=batch_size,
+                num_parallel_calls=num_parallel_calls,
                 num_parallel_batches=num_parallel_batches))
         .make_initializable_iterator())
     init_op = iterator.initializer
@@ -454,7 +461,7 @@ class BatchDatasetTest(test.TestCase):
     self.assertEqual([[None] + list(c.shape[1:]) for c in components],
                      [t.shape.as_list() for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Batch of a finite input, where the batch_size divides the
       # total number of elements.
       sess.run(init_op, feed_dict={count: 28, batch_size: 14})
@@ -497,13 +504,11 @@ class BatchDatasetTest(test.TestCase):
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(init_op, feed_dict={count: 14, batch_size: 0})
 
-  def testMapAndBatchDataset(self):
-    return self._testMapAndBatchDatasetHelper()
-
-  def testMapAndBatchDatasetWithParallelBatching(self):
-    return self._testMapAndBatchDatasetHelper(num_parallel_batches=10)
-
-  def _testMapAndBatchPartialBatchHelper(self, drop_remainder=False):
+  @parameterized.named_parameters(
+      ("Even", False),
+      ("Uneven", True),
+  )
+  def testMapAndBatchPartialBatch(self, drop_remainder):
     iterator = (
         dataset_ops.Dataset.range(10).apply(
             batching.map_and_batch(
@@ -515,19 +520,13 @@ class BatchDatasetTest(test.TestCase):
     else:
       self.assertEqual([None, 1], iterator.output_shapes.as_list())
     next_element = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual([[0], [1], [4], [9]], sess.run(next_element))
       self.assertAllEqual([[16], [25], [36], [49]], sess.run(next_element))
       if not drop_remainder:
         self.assertAllEqual([[64], [81]], sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
-
-  def testMapAndBatchPartialBatch(self):
-    return self._testMapAndBatchPartialBatchHelper()
-
-  def testMapAndBatchPartialBatchDropRemainder(self):
-    return self._testMapAndBatchPartialBatchHelper(drop_remainder=True)
 
   def testMapAndBatchYieldsPartialBatch(self):
     iterator = (dataset_ops.Dataset.range(10)
@@ -536,12 +535,50 @@ class BatchDatasetTest(test.TestCase):
                 .make_one_shot_iterator())
     self.assertEqual([None, 1], iterator.output_shapes.as_list())
     next_element = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual([[0], [1], [4], [9]], sess.run(next_element))
       self.assertAllEqual([[16], [25], [36], [49]], sess.run(next_element))
       self.assertAllEqual([[64], [81]], sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
+
+  def testMapAndBatchParallelGetNext(self):
+    iterator = (dataset_ops.Dataset.range(50000)
+                .apply(batching.map_and_batch(lambda x: x, batch_size=100))
+                .make_one_shot_iterator())
+    elements = []
+    for _ in range(100):
+      elements.append(iterator.get_next())
+    with self.cached_session() as sess:
+      for i in range(5):
+        got = sess.run(elements)
+        got.sort(key=lambda x: x[0])
+        expected = []
+        for j in range(100):
+          expected.append(range(i*10000+j*100, i*10000+(j+1)*100))
+        self.assertAllEqual(got, expected)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(elements)
+
+  def testMapAndBatchParallelGetNextDropRemainder(self):
+    iterator = (
+        dataset_ops.Dataset.range(49999).apply(
+            batching.map_and_batch(
+                lambda x: x, batch_size=100, drop_remainder=True))
+        .make_one_shot_iterator())
+    elements = []
+    for _ in range(100):
+      elements.append(iterator.get_next())
+    with self.cached_session() as sess:
+      for i in range(4):
+        got = sess.run(elements)
+        got.sort(key=lambda x: x[0])
+        expected = []
+        for j in range(100):
+          expected.append(range(i*10000+j*100, i*10000+(j+1)*100))
+        self.assertAllEqual(got, expected)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(elements)
 
   def testMapAndBatchSparse(self):
 
@@ -554,7 +591,7 @@ class BatchDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(2):
         actual = sess.run(get_next)
@@ -567,7 +604,7 @@ class BatchDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  def testMapAndBatchDatasetFails(self):
+  def testMapAndBatchFails(self):
     """Test a dataset that maps a TF function across its input elements."""
     dataset = dataset_ops.Dataset.from_tensors(
         array_ops.check_numerics(
@@ -577,11 +614,11 @@ class BatchDatasetTest(test.TestCase):
         dataset.apply(batching.map_and_batch(lambda x: x, batch_size))
         .make_initializable_iterator())
     init_op = iterator.initializer
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesRegexp(errors.InvalidArgumentError, "oops"):
         sess.run(init_op, feed_dict={batch_size: 14})
 
-  def testMapAndBatchDatasetShapeMismatch(self):
+  def testMapAndBatchShapeMismatch(self):
     """Test a dataset that maps a TF function across its input elements."""
 
     def generator():
@@ -598,175 +635,107 @@ class BatchDatasetTest(test.TestCase):
         .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "number of elements does not match"):
         sess.run(get_next)
 
+  def testMapAndBatchImplicitDispose(self):
+    # Tests whether a map and batch dataset will be cleaned up correctly when
+    # the pipeline does not run it until exhaustion.
+    # The pipeline is TensorSliceDataset -> RepeatDataset(1000) ->
+    # MapAndBatchDataset(f=square_3, batch_size=100).
+    components = (np.arange(1000),
+                  np.array([[1, 2, 3]]) * np.arange(1000)[:, np.newaxis],
+                  np.array(37.0) * np.arange(1000))
 
-class BatchDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    def _map_fn(x, y, z):
+      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
 
-  def build_dataset(self, multiplier=15.0, tensor_slice_len=2, batch_size=2):
-    components = (
-        np.arange(tensor_slice_len),
-        np.array([[1, 2, 3]]) * np.arange(tensor_slice_len)[:, np.newaxis],
-        np.array(multiplier) * np.arange(tensor_slice_len))
+    dataset = dataset_ops.Dataset.from_tensor_slices(components).repeat(
+        1000).apply(batching.map_and_batch(_map_fn, batch_size=100))
+    dataset = dataset.prefetch(5)
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next()
 
-    return dataset_ops.Dataset.from_tensor_slices(components).batch(batch_size)
+    with self.cached_session() as sess:
+      for _ in range(3):
+        sess.run(get_next)
 
-  def testCore(self):
-    tensor_slice_len = 8
-    batch_size = 2
-    num_outputs = tensor_slice_len // batch_size
-    self.run_core_tests(
-        lambda: self.build_dataset(15.0, tensor_slice_len, batch_size),
-        lambda: self.build_dataset(20.0, tensor_slice_len, batch_size),
-        num_outputs)
+  @parameterized.named_parameters(
+      ("1", 0),
+      ("2", 5),
+      ("3", 10),
+      ("4", 90),
+      ("5", 95),
+      ("6", 99),
+  )
+  def testMapAndBatchOutOfRangeError(self, threshold):
 
-  def _build_dataset_dense_to_sparse(self, components):
-    return dataset_ops.Dataset.from_tensor_slices(components).map(
-        lambda x: array_ops.fill([x], x)).apply(
-            batching.dense_to_sparse_batch(4, [12]))
+    def raising_py_fn(i):
+      if i >= threshold:
+        raise StopIteration()
+      else:
+        return i
 
-  # TODO(b/70988345): Re-enable when sparse tensors are properly supported by
-  # the DatasetSerializationTestBase.
-  def _testDenseToSparseBatchDatasetCore(self):
-    components = np.random.randint(5, size=(40,)).astype(np.int32)
-    diff_comp = np.random.randint(2, size=(100,)).astype(np.int32)
+    iterator = (
+        dataset_ops.Dataset.range(100).apply(
+            batching.map_and_batch(
+                lambda x: script_ops.py_func(raising_py_fn, [x], dtypes.int64),
+                batch_size=10)).make_one_shot_iterator())
+    get_next = iterator.get_next()
 
-    num_outputs = len(components) // 4
-    self.run_core_tests(lambda: self._build_dataset_dense_to_sparse(components),
-                        lambda: self._build_dataset_dense_to_sparse(diff_comp),
-                        num_outputs)
+    with self.cached_session() as sess:
+      for i in range(threshold // 10):
+        self.assertAllEqual([i * 10 + j for j in range(10)], sess.run(get_next))
+      if threshold % 10 != 0:
+        self.assertAllEqual(
+            [threshold // 10 * 10 + j for j in range(threshold % 10)],
+            sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
 
-  def _sparse(self, i):
-    return sparse_tensor.SparseTensorValue(
-        indices=[[0]], values=(i * [1]), dense_shape=[1])
+  @parameterized.named_parameters(
+      ("1", False, dtypes.bool),
+      ("2", -42, dtypes.int8),
+      ("3", -42, dtypes.int16),
+      ("4", -42, dtypes.int32),
+      ("5", -42, dtypes.int64),
+      ("6", 42, dtypes.uint8),
+      ("7", 42, dtypes.uint16),
+      ("8", 42.0, dtypes.float16),
+      ("9", 42.0, dtypes.float32),
+      ("10", 42.0, dtypes.float64),
+      ("11", b"hello", dtypes.string),
+  )
+  def testMapAndBatchTypes(self, element, dtype):
+    def gen():
+      yield element
 
-  def _build_dataset_sparse(self, batch_size=5):
-    return dataset_ops.Dataset.range(10).map(self._sparse).batch(batch_size)
+    dataset = dataset_ops.Dataset.from_generator(gen, dtype).repeat(100).apply(
+        batching.map_and_batch(lambda x: x, batch_size=10))
 
-  def testSparseCore(self):
-    self.run_core_tests(self._build_dataset_sparse,
-                        lambda: self._build_dataset_sparse(2), 2)
+    get_next = dataset.make_one_shot_iterator().get_next()
 
-  def _build_dataset_nested_sparse(self):
-    return dataset_ops.Dataset.range(10).map(self._sparse).batch(5).batch(2)
-
-  def testNestedSparseCore(self):
-    self.run_core_tests(self._build_dataset_nested_sparse, None, 1)
-
-
-class UnbatchDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
-
-  def build_dataset(self, multiplier=15.0, tensor_slice_len=2, batch_size=2):
-    components = (
-        np.arange(tensor_slice_len),
-        np.array([[1, 2, 3]]) * np.arange(tensor_slice_len)[:, np.newaxis],
-        np.array(multiplier) * np.arange(tensor_slice_len))
-
-    return dataset_ops.Dataset.from_tensor_slices(components).batch(
-        batch_size).apply(batching.unbatch())
-
-  def testCore(self):
-    tensor_slice_len = 8
-    batch_size = 2
-    num_outputs = tensor_slice_len
-    self.run_core_tests(
-        lambda: self.build_dataset(15.0, tensor_slice_len, batch_size),
-        lambda: self.build_dataset(20.0, tensor_slice_len, batch_size),
-        num_outputs)
-
-
-class MapAndBatchDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
-
-  def testSerializationCore(self):
-    range_size = 11
-    num_repeats = 2
-    batch_size = 5
-    total_outputs = range_size * num_repeats
-    num_outputs_drop_remainder = total_outputs // batch_size
-    num_outputs_keep_remainder = int(math.ceil(total_outputs / batch_size))
-    num_parallel_batches = 2
-
-    def build_ds(range_start, drop_remainder=False):
-
-      def _map_fn(x):
-        return math_ops.square(x)
-
-      return dataset_ops.Dataset.range(
-          range_start, range_start + range_size).repeat(num_repeats).apply(
-              batching.map_and_batch(
-                  map_func=_map_fn,
-                  batch_size=batch_size,
-                  num_parallel_batches=num_parallel_batches,
-                  drop_remainder=drop_remainder))
-
-    self.run_core_tests(lambda: build_ds(10), lambda: build_ds(15),
-                        num_outputs_keep_remainder)
-    self.run_core_tests(lambda: build_ds(10, True), lambda: build_ds(15, True),
-                        num_outputs_drop_remainder)
-
-
-class PaddedBatchDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
-
-  def testPaddedBatch(self):
-
-    def build_dataset(seq_lens):
-      return dataset_ops.Dataset.from_tensor_slices(seq_lens).map(
-          lambda x: array_ops.fill([x], x)).padded_batch(
-              4, padded_shapes=[-1])
-
-    seq_lens1 = np.random.randint(1, 20, size=(32,)).astype(np.int32)
-    seq_lens2 = np.random.randint(21, 40, size=(32,)).astype(np.int32)
-    self.run_core_tests(lambda: build_dataset(seq_lens1),
-                        lambda: build_dataset(seq_lens2), 8)
-
-  def testPaddedBatchNonDefaultPadding(self):
-
-    def build_dataset(seq_lens):
-
-      def fill_tuple(x):
-        filled = array_ops.fill([x], x)
-        return (filled, string_ops.as_string(filled))
-
-      padded_shape = [-1]
-      return dataset_ops.Dataset.from_tensor_slices(seq_lens).map(
-          fill_tuple).padded_batch(
-              4,
-              padded_shapes=(padded_shape, padded_shape),
-              padding_values=(-1, "<end>"))
-
-    seq_lens1 = np.random.randint(1, 20, size=(32,)).astype(np.int32)
-    seq_lens2 = np.random.randint(21, 40, size=(32,)).astype(np.int32)
-    self.run_core_tests(lambda: build_dataset(seq_lens1),
-                        lambda: build_dataset(seq_lens2), 8)
+    with self.cached_session() as sess:
+      for _ in range(10):
+        self.assertAllEqual([element for _ in range(10)], sess.run(get_next))
 
 
 class RestructuredDatasetTest(test.TestCase):
 
   def test_assert_element_shape(self):
 
-    def create_unknown_shape_dataset(x):
-      return script_ops.py_func(
-          lambda _: (  # pylint: disable=g-long-lambda
-              np.ones(2, dtype=np.float32),
-              np.zeros((3, 4), dtype=np.int32)),
-          [x],
-          [dtypes.float32, dtypes.int32])
+    def create_dataset(_):
+      return (array_ops.ones(2, dtype=dtypes.float32),
+              array_ops.zeros((3, 4), dtype=dtypes.int32))
 
-    dataset = dataset_ops.Dataset.range(5).map(create_unknown_shape_dataset)
-    unknown_shapes = (tensor_shape.TensorShape(None),
-                      tensor_shape.TensorShape(None))
-    self.assertEqual(unknown_shapes, dataset.output_shapes)
-
+    dataset = dataset_ops.Dataset.range(5).map(create_dataset)
     expected_shapes = (tensor_shape.TensorShape(2),
                        tensor_shape.TensorShape((3, 4)))
+    self.assertEqual(expected_shapes, dataset.output_shapes)
+
     result = dataset.apply(batching.assert_element_shape(expected_shapes))
     self.assertEqual(expected_shapes, result.output_shapes)
 
@@ -792,6 +761,36 @@ class RestructuredDatasetTest(test.TestCase):
     with self.assertRaises(ValueError):
       dataset.apply(batching.assert_element_shape(wrong_shapes))
 
+  def test_assert_element_shape_on_unknown_shape_dataset(self):
+
+    def create_unknown_shape_dataset(x):
+      return script_ops.py_func(
+          lambda _: (  # pylint: disable=g-long-lambda
+              np.ones(2, dtype=np.float32),
+              np.zeros((3, 4), dtype=np.int32)),
+          [x],
+          [dtypes.float32, dtypes.int32])
+
+    dataset = dataset_ops.Dataset.range(5).map(create_unknown_shape_dataset)
+    unknown_shapes = (tensor_shape.TensorShape(None),
+                      tensor_shape.TensorShape(None))
+    self.assertEqual(unknown_shapes, dataset.output_shapes)
+
+    expected_shapes = (tensor_shape.TensorShape(2),
+                       tensor_shape.TensorShape((3, 4)))
+    result = dataset.apply(batching.assert_element_shape(expected_shapes))
+    self.assertEqual(expected_shapes, result.output_shapes)
+
+    iterator = result.make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+    with self.cached_session() as sess:
+      sess.run(init_op)
+      for _ in range(5):
+        sess.run(get_next)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
   def test_assert_wrong_element_shape_on_unknown_shape_dataset(self):
 
     def create_unknown_shape_dataset(x):
@@ -815,6 +814,101 @@ class RestructuredDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
     with self.test_session() as sess:
+      sess.run(init_op)
+      with self.assertRaises(errors.InvalidArgumentError):
+        sess.run(get_next)
+
+  def test_assert_partial_element_shape(self):
+
+    def create_dataset(_):
+      return (array_ops.ones(2, dtype=dtypes.float32),
+              array_ops.zeros((3, 4), dtype=dtypes.int32))
+
+    dataset = dataset_ops.Dataset.range(5).map(create_dataset)
+    partial_expected_shape = (tensor_shape.TensorShape(None),       # Unknown shape
+                              tensor_shape.TensorShape((None, 4)))  # Partial shape
+    result = dataset.apply(
+        batching.assert_element_shape(partial_expected_shape))
+    # Partial shapes are merged with actual shapes:
+    actual_shapes = (tensor_shape.TensorShape(2),
+                     tensor_shape.TensorShape((3, 4)))
+    self.assertEqual(actual_shapes, result.output_shapes)
+
+    iterator = result.make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for _ in range(5):
+        sess.run(get_next)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def test_assert_wrong_partial_element_shape(self):
+
+    def create_dataset(_):
+      return (array_ops.ones(2, dtype=dtypes.float32),
+              array_ops.zeros((3, 4), dtype=dtypes.int32))
+
+    dataset = dataset_ops.Dataset.range(3).map(create_dataset)
+    wrong_shapes = (tensor_shape.TensorShape(2),
+                    tensor_shape.TensorShape((None, 10)))
+    with self.assertRaises(ValueError):
+      dataset.apply(batching.assert_element_shape(wrong_shapes))
+
+  def test_assert_partial_element_shape_on_unknown_shape_dataset(self):
+
+    def create_unknown_shape_dataset(x):
+      return script_ops.py_func(
+          lambda _: (  # pylint: disable=g-long-lambda
+              np.ones(2, dtype=np.float32),
+              np.zeros((3, 4), dtype=np.int32)),
+          [x],
+          [dtypes.float32, dtypes.int32])
+
+    dataset = dataset_ops.Dataset.range(5).map(create_unknown_shape_dataset)
+    unknown_shapes = (tensor_shape.TensorShape(None),
+                      tensor_shape.TensorShape(None))
+    self.assertEqual(unknown_shapes, dataset.output_shapes)
+
+    expected_shapes = (tensor_shape.TensorShape(2),
+                       tensor_shape.TensorShape((None, 4)))
+    result = dataset.apply(batching.assert_element_shape(expected_shapes))
+    self.assertEqual(expected_shapes, result.output_shapes)
+
+    iterator = result.make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for _ in range(5):
+        sess.run(get_next)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def test_assert_wrong_partial_element_shape_on_unknown_shape_dataset(self):
+
+    def create_unknown_shape_dataset(x):
+      return script_ops.py_func(
+          lambda _: (  # pylint: disable=g-long-lambda
+              np.ones(2, dtype=np.float32),
+              np.zeros((3, 4), dtype=np.int32)),
+          [x],
+          [dtypes.float32, dtypes.int32])
+
+    dataset = dataset_ops.Dataset.range(3).map(create_unknown_shape_dataset)
+    unknown_shapes = (tensor_shape.TensorShape(None),
+                      tensor_shape.TensorShape(None))
+    self.assertEqual(unknown_shapes, dataset.output_shapes)
+
+    wrong_shapes = (tensor_shape.TensorShape(2),
+                    tensor_shape.TensorShape((None, 10)))
+    iterator = (
+        dataset.apply(batching.assert_element_shape(wrong_shapes))
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+    with self.cached_session() as sess:
       sess.run(init_op)
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(get_next)

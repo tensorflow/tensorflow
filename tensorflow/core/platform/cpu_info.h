@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_CPU_INFO_H_
-#define TENSORFLOW_PLATFORM_CPU_INFO_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_CPU_INFO_H_
+#define TENSORFLOW_CORE_PLATFORM_CPU_INFO_H_
 
 #include <string>
 
@@ -34,6 +34,10 @@ namespace port {
 // process, but it might change if the underlying cluster management
 // software can change it dynamically.
 int NumSchedulableCPUs();
+
+// Returns an estimate of the number of hyperthreads per physical core
+// on the CPU
+int NumHyperthreadsPerCore();
 
 // Mostly ISA related features that we care about
 enum CPUFeature {
@@ -107,7 +111,10 @@ int CPUModelNum();
 // Returns nominal core processor cycles per second of each processor.
 double NominalCPUFrequency();
 
+// Returns num of hyperthreads per physical core
+int CPUIDNumSMT();
+
 }  // namespace port
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_CPU_INFO_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_CPU_INFO_H_

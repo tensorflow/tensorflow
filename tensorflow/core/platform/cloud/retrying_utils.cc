@@ -44,9 +44,9 @@ bool IsRetriable(error::Code code) {
 
 Status RetryingUtils::CallWithRetries(const std::function<Status()>& f,
                                       const int64 initial_delay_microseconds) {
-  return CallWithRetries(f, initial_delay_microseconds,
-                         std::bind(&Env::SleepForMicroseconds, Env::Default(),
-                                   std::placeholders::_1));
+  return CallWithRetries(f, initial_delay_microseconds, [](int64 micros) {
+    return Env::Default()->SleepForMicroseconds(micros);
+  });
 }
 
 Status RetryingUtils::CallWithRetries(

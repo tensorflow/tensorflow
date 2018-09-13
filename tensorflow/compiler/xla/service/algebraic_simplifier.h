@@ -47,7 +47,7 @@ class AlgebraicSimplifier : public HloPassInterface {
         enable_dot_strength_reduction_(enable_dot_strength_reduction),
         enable_conv_simplification_(enable_conv_simplification) {}
   ~AlgebraicSimplifier() override = default;
-  tensorflow::StringPiece name() const override { return "algsimp"; }
+  absl::string_view name() const override { return "algsimp"; }
 
   // Run algebraic simplification on the given computation. Returns whether the
   // computation was changed.

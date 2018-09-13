@@ -60,7 +60,7 @@ py_library(
         ":base_predictor",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
-        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/saved_model:signature_constants",
     ],
 )
@@ -90,9 +90,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/estimator",
-        "//tensorflow/python/estimator:export",
-        "//tensorflow/python/estimator:export_output",
-        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/saved_model:signature_constants",
     ],
 )

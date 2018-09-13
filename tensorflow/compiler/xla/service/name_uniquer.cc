@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -52,8 +53,8 @@ NameUniquer::NameUniquer(const string& separator) {
   return result;
 }
 
-string NameUniquer::GetUniqueName(tensorflow::StringPiece prefix) {
-  string root = GetSanitizedName(prefix.empty() ? "name" : prefix.ToString());
+string NameUniquer::GetUniqueName(absl::string_view prefix) {
+  string root = GetSanitizedName(prefix.empty() ? "name" : string(prefix));
 
   // Strip away numeric suffix (if any). Only recognize separator if it is in
   // the middle of the name.
@@ -63,26 +64,23 @@ string NameUniquer::GetUniqueName(tensorflow::StringPiece prefix) {
   if (separator_index != string::npos && (separator_index > 0) &&
       (separator_index < root.size() - 1)) {
     string after_suffix = root.substr(separator_index + 1);
-    if (tensorflow::strings::safe_strto64(after_suffix, &numeric_suffix)) {
+    if (absl::SimpleAtoi(after_suffix, &numeric_suffix)) {
       has_numeric_suffix = true;
       // Remove numeric suffix from root.
       root = root.substr(0, separator_index);
-      // Update count to at least the numeric suffix value to avoid future
-      // colisions with this name.
-      generated_names_[root] = std::max(generated_names_[root], numeric_suffix);
+    } else {
+      // absl::SimpleAtoi may modify numeric_suffix even if it returns false.
+      numeric_suffix = 0;
     }
   }
-  int64* count = &(generated_names_[root]);
-  if (*count == 0) {
-    *count = 1;
-    return has_numeric_suffix ? tensorflow::strings::StrCat(root, separator_, 0)
-                              : root;
-  } else {
-    tensorflow::strings::StrAppend(&root, separator_, *count);
-    // Increment lookup under old 'root' name.
-    (*count)++;
-    return root;
+
+  SequentialIdGenerator& id_generator = generated_names_[root];
+  numeric_suffix = id_generator.RegisterId(numeric_suffix);
+  if (numeric_suffix == 0) {
+    return has_numeric_suffix ? absl::StrCat(root, separator_, 0) : root;
   }
+  absl::StrAppend(&root, separator_, numeric_suffix);
+  return root;
 }
 
 }  // namespace xla

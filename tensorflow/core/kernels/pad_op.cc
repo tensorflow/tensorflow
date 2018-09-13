@@ -320,7 +320,7 @@ namespace functor {
   DECLARE_GPU_SPEC(T, 5);    \
   DECLARE_GPU_SPEC(T, 6);
 
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
+TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPECS);
 TF_CALL_int8(DECLARE_GPU_SPECS);
 }  // namespace functor
 
@@ -353,7 +353,7 @@ TF_CALL_int8(DECLARE_GPU_SPECS);
                               .HostMemory("constant_values"),     \
                           PadOp<GPUDevice, T, int64>)
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
+TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNEL);
 TF_CALL_int8(REGISTER_GPU_KERNEL);
 
 // A special GPU kernel for int32.

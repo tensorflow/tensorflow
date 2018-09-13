@@ -44,10 +44,11 @@ class ScopedActivateExecutorContext {
   // fatal failure if it is not CUDA inside.
   explicit ScopedActivateExecutorContext(StreamExecutor* stream_exec);
 
+  ScopedActivateExecutorContext(ScopedActivateExecutorContext&& other);
+
   ~ScopedActivateExecutorContext();
 
  private:
-
   // The cuda.h-using datatype that we wrap.
   ScopedActivateContext* driver_scoped_activate_context_;
 

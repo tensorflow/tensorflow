@@ -51,13 +51,16 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/platform/variant_coding.h"
 
 namespace tensorflow {
 
 // Allow Tensors to be stored inside Variants with automatic
 // encoding/decoding when those Variants are themselves being decoded
 // in a Tensor's FromProto.
+//
+// NOTE(mrry): The corresponding "copy function" registrations can be found in
+// ../common_runtime/copy_tensor.cc (due to dependencies on other common_runtime
+// code).
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(Tensor, "tensorflow::Tensor");
 
 namespace {
@@ -207,7 +210,8 @@ struct Helper<ResourceHandle> {
   // "out", which is usually the TensorProto::tensor_content.
   template <typename Destination>
   static void Encode(TensorBuffer* in, int64 n, Destination* out) {
-    port::EncodeResourceHandleList(in->base<const ResourceHandle>(), n, out);
+    EncodeResourceHandleList(in->base<const ResourceHandle>(), n,
+                             port::NewStringListEncoder(out));
   }
 
   // Decodes "n" elements of type string from "in" and constructs a
@@ -217,7 +221,8 @@ struct Helper<ResourceHandle> {
   static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
     auto* buf = new Buffer<ResourceHandle>(a, n);
     ResourceHandle* ps = buf->template base<ResourceHandle>();
-    if (ps == nullptr || !port::DecodeResourceHandleList(in, ps, n)) {
+    if (ps == nullptr ||
+        !DecodeResourceHandleList(port::NewStringListDecoder(in), ps, n)) {
       buf->Unref();
       return nullptr;
     }
@@ -237,7 +242,8 @@ struct Helper<Variant> {
   // "out", which is usually the TensorProto::tensor_content.
   template <typename Destination>
   static void Encode(TensorBuffer* in, int64 n, Destination* out) {
-    port::EncodeVariantList(in->base<const Variant>(), n, out);
+    EncodeVariantList(in->base<const Variant>(), n,
+                      port::NewStringListEncoder(out));
   }
 
   // Decodes "n" elements of type Variant from "in" and constructs a
@@ -247,7 +253,8 @@ struct Helper<Variant> {
   static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
     auto* buf = new Buffer<Variant>(a, n);
     Variant* ps = buf->template base<Variant>();
-    if (ps == nullptr || !port::DecodeVariantList(in, ps, n)) {
+    if (ps == nullptr ||
+        !DecodeVariantList(port::NewStringListDecoder(in), ps, n)) {
       buf->Unref();
       return nullptr;
     }
@@ -610,16 +617,16 @@ bool Tensor::IsInitialized() const {
 }
 
 void Tensor::CheckType(DataType expected_dtype) const {
-  CHECK_EQ(dtype(), expected_dtype)
+  CHECK_EQ(dtype(), expected_dtype) << " "
       << DataTypeString(expected_dtype) << " expected, got "
       << DataTypeString(dtype());
 }
 
 void Tensor::CheckTypeAndIsAligned(DataType expected_dtype) const {
-  CHECK_EQ(dtype(), expected_dtype)
+  CHECK_EQ(dtype(), expected_dtype) << " "
       << DataTypeString(expected_dtype) << " expected, got "
       << DataTypeString(dtype());
-  CHECK(IsAligned()) << "CheckTypeAndIsAligned";
+  CHECK(IsAligned()) << "ptr = " << base<void>();
 }
 
 void Tensor::CheckIsAlignedAndSingleElement() const {
@@ -912,7 +919,13 @@ void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
   // We have reached the right-most dimension of the tensor.
   if (dim_index == shape_size - 1) {
     for (int64 i = 0; i < element_count; i++) {
-      if (*data_index >= limit) return;
+      if (*data_index >= limit) {
+        // If not enough elements has been printed, append "...".
+        if (dim_index != 0 && i < element_count) {
+          strings::StrAppend(result, "...");
+        }
+        return;
+      }
       if (i > 0) strings::StrAppend(result, " ");
       strings::StrAppend(result, PrintOneElement(data[(*data_index)++]));
     }

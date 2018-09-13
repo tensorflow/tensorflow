@@ -24,8 +24,10 @@ cc_library(
     deps = [
         ":types",
         "//tensorflow/contrib/lite/schema:schema_fbs",
+        "//tensorflow/contrib/lite/toco:graph_transformations",
         "//tensorflow/contrib/lite/toco:model",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:ptr_util",
         "@com_google_absl//absl/memory",
         "@flatbuffers",
     ],
@@ -36,6 +38,7 @@ tf_cc_test(
     srcs = [
         "operator_test.cc",
     ],
+    tags = ["no_oss"],
     deps = [
         ":operator",
         "//tensorflow/contrib/lite/toco:tooling_util",
@@ -65,6 +68,7 @@ tf_cc_test(
     srcs = [
         "types_test.cc",
     ],
+    tags = ["no_oss"],
     deps = [
         ":types",
         "@com_google_googletest//:gtest_main",
@@ -87,6 +91,7 @@ cc_library(
         "//tensorflow/contrib/lite/schema:schema_fbs",
         "//tensorflow/contrib/lite/toco:model",
         "//tensorflow/contrib/lite/toco:tooling_util",
+        "//tensorflow/contrib/lite/tools/optimize:quantize_weights",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
     ],
@@ -97,6 +102,7 @@ tf_cc_test(
     srcs = [
         "export_test.cc",
     ],
+    tags = ["no_oss"],
     deps = [
         ":export",
         "//tensorflow/contrib/lite/schema:schema_fbs",
@@ -130,6 +136,7 @@ tf_cc_test(
     srcs = [
         "import_test.cc",
     ],
+    tags = ["no_oss"],
     deps = [
         ":import",
         "//tensorflow/contrib/lite:schema_fbs_version",

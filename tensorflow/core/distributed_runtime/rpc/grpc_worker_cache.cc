@@ -54,6 +54,11 @@ class GrpcWorkerCache : public WorkerCachePartial {
     channel_cache_->ListWorkers(workers);
   }
 
+  void ListWorkersInJob(const string& job_name,
+                        std::vector<string>* workers) const override {
+    channel_cache_->ListWorkersInJob(job_name, workers);
+  }
+
   WorkerInterface* CreateWorker(const string& target) override {
     if (target == local_target_) {
       return local_worker_;
@@ -115,7 +120,7 @@ class GrpcWorkerCache : public WorkerCachePartial {
 
   size_t AssignWorkerToThread(const string& target) {
     // Round-robin target assignment, but keeps the same target on the same
-    // polling thread always, as this is important for gRPC performace
+    // polling thread always, as this is important for gRPC performance
     mutex_lock lock(assignment_mu_);
     auto it = target_assignments_.find(target);
     if (it == target_assignments_.end()) {

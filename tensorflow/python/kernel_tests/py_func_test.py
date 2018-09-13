@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
 import re
 
 import numpy as np
@@ -26,6 +27,7 @@ from six.moves import queue
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
@@ -34,6 +36,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
@@ -58,7 +61,7 @@ class PyFuncTest(test.TestCase):
     for dtype in [dtypes.float16, dtypes.float32, dtypes.float64,
                   dtypes.uint8, dtypes.int8, dtypes.uint16, dtypes.int16,
                   dtypes.int32, dtypes.int64]:
-      with self.test_session():
+      with self.cached_session():
         x = constant_op.constant(1, dtype=dtype)
         y = constant_op.constant(2, dtype=dtype)
         z = self.evaluate(script_ops.py_func(sum_func, [x, y], dtype))
@@ -68,7 +71,7 @@ class PyFuncTest(test.TestCase):
     def sub_func(x, y):
       return x - y
     for dtype in [dtypes.complex64, dtypes.complex128]:
-      with self.test_session():
+      with self.cached_session():
         x = constant_op.constant(1 + 1j, dtype=dtype)
         y = constant_op.constant(2 - 2j, dtype=dtype)
         z = self.evaluate(script_ops.py_func(sub_func, [x, y], dtype))
@@ -78,21 +81,21 @@ class PyFuncTest(test.TestCase):
     def and_func(x, y):
       return x and y
     dtype = dtypes.bool
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(True, dtype=dtype)
       y = constant_op.constant(False, dtype=dtype)
       z = self.evaluate(script_ops.py_func(and_func, [x, y], dtype))
       self.assertEqual(z, False)
 
   def testSingleType(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(1.0, dtypes.float32)
       y = constant_op.constant(2.0, dtypes.float32)
       z = self.evaluate(script_ops.py_func(np_func, [x, y], dtypes.float32))
       self.assertEqual(z, np_func(1.0, 2.0).astype(np.float32))
 
   def testScalar(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(1.0, dtypes.float32)
       y = constant_op.constant(2.0, dtypes.float32)
       z = self.evaluate(
@@ -100,7 +103,7 @@ class PyFuncTest(test.TestCase):
       self.assertEqual(z[0], np_func(1.0, 2.0).astype(np.float32))
 
   def testArray(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant([1.0, 2.0], dtypes.float64)
       y = constant_op.constant([2.0, 3.0], dtypes.float64)
       z = self.evaluate(script_ops.py_func(np_func, [x, y], [dtypes.float64]))
@@ -108,14 +111,14 @@ class PyFuncTest(test.TestCase):
                           np_func([1.0, 2.0], [2.0, 3.0]).astype(np.float64))
 
   def testComplexType(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(1 + 2j, dtypes.complex64)
       y = constant_op.constant(3 + 4j, dtypes.complex64)
       z = self.evaluate(script_ops.py_func(np_func, [x, y], dtypes.complex64))
       self.assertAllClose(z, np_func(1 + 2j, 3 + 4j))
 
   def testRFFT(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant([1., 2., 3., 4.], dtypes.float32)
 
       def rfft(x):
@@ -125,7 +128,7 @@ class PyFuncTest(test.TestCase):
       self.assertAllClose(y, np.fft.rfft([1., 2., 3., 4.]))
 
   def testPythonLiteral(self):
-    with self.test_session():
+    with self.cached_session():
 
       def literal(x):
         return 1.0 if float(x) == 0.0 else 0.0
@@ -135,7 +138,7 @@ class PyFuncTest(test.TestCase):
       self.assertAllClose(y, 1.0)
 
   def testList(self):
-    with self.test_session():
+    with self.cached_session():
 
       def list_func(x):
         return [x, x + 1]
@@ -147,7 +150,7 @@ class PyFuncTest(test.TestCase):
 
   def testTuple(self):
     # returns a tuple
-    with self.test_session():
+    with self.cached_session():
 
       def tuple_func(x):
         return x, x + 1
@@ -158,7 +161,7 @@ class PyFuncTest(test.TestCase):
       self.assertAllClose(y, [0.0, 1.0])
 
     # returns a tuple, Tout and inp a tuple
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(0.0, dtypes.float64)
       y = self.evaluate(
           script_ops.py_func(tuple_func, (x,),
@@ -173,7 +176,7 @@ class PyFuncTest(test.TestCase):
     def read_and_return_strings(x, y):
       return x + y
 
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant([b"hello", b"hi"], dtypes.string)
       y = self.evaluate(
           script_ops.py_func(read_fixed_length_numpy_strings, [],
@@ -190,7 +193,7 @@ class PyFuncTest(test.TestCase):
     def read_and_return_strings(x, y):
       return x + y
 
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(["hello", "hi"], dtypes.string)
       y = self.evaluate(
           script_ops.py_func(read_fixed_length_numpy_strings, [],
@@ -207,7 +210,7 @@ class PyFuncTest(test.TestCase):
     def read_and_return_strings(x, y):
       return x + y
 
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(["hello", "hi"], dtypes.string)
       y, = script_ops.py_func(read_object_array, [],
                               [dtypes.string])
@@ -216,19 +219,19 @@ class PyFuncTest(test.TestCase):
 
   def testStringPadding(self):
     correct = [b"this", b"is", b"a", b"test"]
-    with self.test_session():
+    with self.cached_session():
       s, = script_ops.py_func(lambda: [correct], [], [dtypes.string])
       self.assertAllEqual(s.eval(), correct)
 
   def testStringPaddingAreConvertedToBytes(self):
     inp = ["this", "is", "a", "test"]
     correct = [b"this", b"is", b"a", b"test"]
-    with self.test_session():
+    with self.cached_session():
       s, = script_ops.py_func(lambda: [inp], [], [dtypes.string])
       self.assertAllEqual(s.eval(), correct)
 
   def testLarge(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = array_ops.zeros([1000000], dtype=np.float32)
       y = script_ops.py_func(lambda x: x + 1, [x], [dtypes.float32])
       z = script_ops.py_func(lambda x: x * 2, [x], [dtypes.float32])
@@ -236,12 +239,12 @@ class PyFuncTest(test.TestCase):
         sess.run([y[0].op, z[0].op])
 
   def testNoInput(self):
-    with self.test_session():
+    with self.cached_session():
       x = self.evaluate(script_ops.py_func(lambda: 42.0, [], dtypes.float64))
       self.assertAllClose(x, 42.0)
 
   def testAlias(self):
-    with self.test_session():
+    with self.cached_session():
       np_array = np.array([1.0, 2.0], dtype=np.float32)
       tf_array = script_ops.py_func(lambda: np_array, [], [dtypes.float32])
       value = tf_array + constant_op.constant([2.0, 3.0], dtype=dtypes.float32)
@@ -249,7 +252,7 @@ class PyFuncTest(test.TestCase):
       self.assertAllEqual(np_array, [1.0, 2.0])
 
   def testReturnUnicodeString(self):
-    with self.test_session():
+    with self.cached_session():
       correct = u"你好 世界"
 
       def unicode_string():
@@ -259,7 +262,7 @@ class PyFuncTest(test.TestCase):
       self.assertEqual(z.eval(), correct.encode("utf8"))
 
   def testBadNumpyReturnType(self):
-    with self.test_session():
+    with self.cached_session():
 
       def bad():
         # Structured numpy arrays aren't supported.
@@ -272,7 +275,7 @@ class PyFuncTest(test.TestCase):
         y.eval()
 
   def testBadReturnType(self):
-    with self.test_session():
+    with self.cached_session():
 
       def bad():
         # Non-string python objects aren't supported.
@@ -285,7 +288,7 @@ class PyFuncTest(test.TestCase):
         z.eval()
 
   def testReturnInput(self):
-    with self.test_session():
+    with self.cached_session():
 
       def ident(x):
         return x[0]
@@ -300,7 +303,7 @@ class PyFuncTest(test.TestCase):
       self.assertEqual(0.0, z.eval(feed_dict={p: [0.0]}))
 
   def testStateful(self):
-    # Not using self.test_session(), which disables optimization.
+    # Not using self.cached_session(), which disables optimization.
     with session_lib.Session() as sess:
       producer = iter(range(3))
       x, = script_ops.py_func(lambda: next(producer), [], [dtypes.int64])
@@ -309,7 +312,7 @@ class PyFuncTest(test.TestCase):
       self.assertEqual(sess.run(x), 2)
 
   def testStateless(self):
-    # Not using self.test_session(), which disables optimization.
+    # Not using self.cached_session(), which disables optimization.
     with session_lib.Session() as sess:
       producer = iter(range(3))
       x, = script_ops.py_func(
@@ -328,7 +331,7 @@ class PyFuncTest(test.TestCase):
     self.assertEqual(None, ops.get_gradient_function(y.op))
 
   def testCOrder(self):
-    with self.test_session():
+    with self.cached_session():
       val = [[1, 2], [3, 4]]
       x, = script_ops.py_func(lambda: np.array(val, order="F"), [],
                               [dtypes.int64])
@@ -336,7 +339,7 @@ class PyFuncTest(test.TestCase):
 
   def testParallel(self):
     # Tests that tf.py_func's can run in parallel if they release the GIL.
-    with self.test_session() as session:
+    with self.cached_session() as session:
       q = queue.Queue(1)
 
       def blocking_put():
@@ -372,7 +375,7 @@ class PyFuncTest(test.TestCase):
       def value(self):
         return self._value
 
-    with self.test_session():
+    with self.cached_session():
       s = State()
       op = s.increment(constant_op.constant(2, dtypes.int64))
       ret = self.evaluate(op)
@@ -386,7 +389,7 @@ class PyFuncTest(test.TestCase):
 
     f = script_ops.py_func(
         do_nothing, [constant_op.constant(3, dtypes.int64)], [], stateful=False)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual(sess.run(f), [])
 
   def _testExceptionHandling(self, py_exp, tf_exp, eager=False):
@@ -414,43 +417,59 @@ class PyFuncTest(test.TestCase):
     else:
       f = script_ops.py_func(raise_exception, [], [])
 
-    with self.test_session():
-      with self.assertRaisesWithPredicateMatch(tf_exp, expected_error_check):
-        self.evaluate(f)
+    with self.assertRaisesWithPredicateMatch(tf_exp, expected_error_check):
+      self.evaluate(f)
 
   def testExceptionHandling(self):
-    self._testExceptionHandling(ValueError, errors.InvalidArgumentError)
-    self._testExceptionHandling(TypeError, errors.InvalidArgumentError)
-    self._testExceptionHandling(StopIteration, errors.OutOfRangeError)
-    self._testExceptionHandling(MemoryError, errors.ResourceExhaustedError)
-    self._testExceptionHandling(NotImplementedError, errors.UnimplementedError)
+    with self.cached_session():
+      self._testExceptionHandling(ValueError, errors.InvalidArgumentError)
+      self._testExceptionHandling(TypeError, errors.InvalidArgumentError)
+      self._testExceptionHandling(StopIteration, errors.OutOfRangeError)
+      self._testExceptionHandling(MemoryError, errors.ResourceExhaustedError)
+      self._testExceptionHandling(NotImplementedError,
+                                  errors.UnimplementedError)
 
-    class WeirdError(Exception):
-      pass
+      class WeirdError(Exception):
+        pass
 
-    self._testExceptionHandling(WeirdError, errors.UnknownError)
+      self._testExceptionHandling(WeirdError, errors.UnknownError)
 
   # ----- Tests shared by py_func and eager_py_func -----
   def testCleanup(self):
-    for _ in xrange(1000):
-      g = ops.Graph()
-      with g.as_default():
-        c = constant_op.constant([1.], dtypes.float32)
-        _ = script_ops.py_func(lambda x: x + 1, [c], [dtypes.float32])
-        _ = script_ops.eager_py_func(lambda x: x + 1, [c], [dtypes.float32])
-    self.assertTrue(script_ops._py_funcs.size() < 100)
+    # Delete everything created by previous tests to avoid side effects.
+    ops.reset_default_graph()
+    gc.collect()
+    initial_size = script_ops._py_funcs.size()
+    # Encapsulate the graph generation, so locals can be deleted.
+    def make_graphs():
+      for _ in xrange(1000):
+        g = ops.Graph()
+        with g.as_default():
+          c = constant_op.constant([1.], dtypes.float32)
+          _ = script_ops.py_func(lambda x: x + 1, [c], [dtypes.float32])
+          _ = script_ops.eager_py_func(lambda x: x + 1, [c], [dtypes.float32])
+          # These ops have a reference to 'c' which has a reference to the graph.
+          # Checks if the functions are being deleted though the graph is referenced from them.
+          # (see #18292)
+          _ = script_ops.py_func(lambda x: x + c.shape[0], [c], [dtypes.float32])
+          _ = script_ops.eager_py_func(lambda x: x + c.shape[0], [c], [dtypes.float32])
+
+    # Call garbage collector to enforce deletion.
+    make_graphs()
+    ops.reset_default_graph()
+    gc.collect()
+    self.assertEqual(initial_size, script_ops._py_funcs.size())
 
   # ----- Tests for eager_py_func -----
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerSingleOutputInt32(self):
     a = array_ops.ones((3, 3), dtype=dtypes.int32)
     x = array_ops.ones((3, 1), dtype=dtypes.int32)
     output = script_ops.eager_py_func(matmul, inp=[a, x], Tout=dtypes.int32)
-    with self.test_session():
-      ret = self.evaluate(output)
-      self.assertAllEqual(ret, [[3], [3], [3]])
+    ret = self.evaluate(output)
+    self.assertAllEqual(ret, [[3], [3], [3]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerSingleOutputFloat32(self):
     with test_util.device(use_gpu=True):
       a = array_ops.ones((3, 3), dtype=dtypes.float32)
@@ -459,7 +478,7 @@ class PyFuncTest(test.TestCase):
       ret = self.evaluate(output)
       self.assertAllClose(ret, [[3.0], [3.0], [3.0]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerArrayOutput(self):
     with test_util.device(use_gpu=True):
       a = array_ops.ones((3, 3), dtype=dtypes.float32)
@@ -469,7 +488,7 @@ class PyFuncTest(test.TestCase):
       ret = self.evaluate(output)
       self.assertAllEqual(ret, [[[3.0], [3.0], [3.0]]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerReturnNone(self):
     with test_util.device(use_gpu=True):
       def no_return_value():
@@ -482,7 +501,7 @@ class PyFuncTest(test.TestCase):
       else:
         self.assertIsNone(ret)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerPyFuncInDefun(self):
     with test_util.device(use_gpu=True):
       def wrapper():
@@ -494,7 +513,7 @@ class PyFuncTest(test.TestCase):
       ret = self.evaluate(wrapped())
       self.assertAllEqual(ret, [[3.0], [3.0], [3.0]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerExceptionHandling(self):
     with test_util.device(use_gpu=True):
       self._testExceptionHandling(
@@ -513,17 +532,121 @@ class PyFuncTest(test.TestCase):
 
       self._testExceptionHandling(WeirdError, errors.UnknownError, eager=True)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerReturningVariableRaisesError(self):
     def return_variable():
-      variable = resource_variable_ops.ResourceVariable(0.0)
-      return variable
+      return resource_variable_ops.ResourceVariable(0.0)
 
     with self.assertRaisesRegexp(errors.UnknownError,
                                  "Attempting to return a variable"):
       output = script_ops.eager_py_func(
           return_variable, inp=[], Tout=dtypes.float32)
       self.evaluate(output)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testEagerGradientTape(self):
+
+    def f(x):
+      return x**2
+
+    x = constant_op.constant(3.0)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = script_ops.eager_py_func(f, inp=[x], Tout=dtypes.float32)
+    dy_dx = tape.gradient(y, x)
+    self.assertEqual(self.evaluate(dy_dx), 6.0)
+
+  def testEagerGradientGraph(self):
+
+    def f(x):
+      return x**2
+
+    x = constant_op.constant(3.0)
+    y = script_ops.eager_py_func(f, inp=[x], Tout=dtypes.float32)
+    dy_dx = gradients_impl.gradients(y, x)[0]
+    self.assertEqual(self.evaluate(dy_dx), 6.0)
+
+  def testEagerGradientGraphTwoOutputs(self):
+
+    def f(x, y):
+      return x * y, x / y
+
+    x = constant_op.constant(3.0)
+    y = constant_op.constant(2.0)
+    fa, fb = script_ops.eager_py_func(f, inp=[x, y],
+                                      Tout=[dtypes.float32, dtypes.float32])
+    dy_dx = gradients_impl.gradients(fa + fb, x)[0]
+    self.assertEqual(self.evaluate(dy_dx), 2.5)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testEagerGradientTapeMultipleArgs(self):
+
+    def f(x, y):
+      return x**2 + y**2
+
+    x = constant_op.constant(3.0)
+    y = constant_op.constant(4.0)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      tape.watch(y)
+      z = script_ops.eager_py_func(f, inp=[x, y], Tout=dtypes.float32)
+
+    dz_dx, dz_dy = tape.gradient(z, [x, y])
+    self.assertEqual(self.evaluate(dz_dx), 6.0)
+    self.assertEqual(self.evaluate(dz_dy), 8.0)
+
+  def testEagerGradientGraphMultipleArgs(self):
+
+    def f(x, y):
+      return x**2 + y**2
+
+    x = constant_op.constant(3.0)
+    y = constant_op.constant(4.0)
+    z = script_ops.eager_py_func(f, inp=[x, y], Tout=dtypes.float32)
+
+    dz_dx, dz_dy = gradients_impl.gradients(z, [x, y])
+    self.assertEqual(self.evaluate(dz_dx), 6.0)
+    self.assertEqual(self.evaluate(dz_dy), 8.0)
+
+  def testEagerGradientGraphLogHuber(self):
+
+    def log_huber(x, m):
+      if math_ops.abs(x) <= m:
+        return x**2
+      else:
+        return m**2 * (1 - 2 * math_ops.log(m) + math_ops.log(x**2))
+
+    x = array_ops.placeholder(dtypes.float32)
+    m = array_ops.placeholder(dtypes.float32)
+
+    y = script_ops.eager_py_func(
+        func=log_huber, inp=[x, m], Tout=dtypes.float32)
+    dy_dx = gradients_impl.gradients(y, x)[0]
+
+    with self.cached_session() as sess:
+      # Takes the first branch of log_huber.
+      y, dy_dx = sess.run([y, dy_dx], feed_dict={x: 1.0, m: 2.0})
+      self.assertEqual(y, 1.0)
+      self.assertEqual(dy_dx, 2.0)
+
+  def testEagerRespectsDevicePlacmentOfOp(self):
+
+    def f(x):
+      return math_ops.square(x)
+
+    def g(x):
+      return math_ops.add(x, x)
+
+    with ops.device("/CPU:0"):
+      # Explicitly ask for the py_funcs to execute on CPU, even if
+      # a GPU is available.
+      x = array_ops.placeholder(dtypes.float32)
+      y = script_ops.eager_py_func(func=f, inp=[x], Tout=dtypes.float32)
+      z = script_ops.eager_py_func(func=g, inp=[y], Tout=dtypes.float32)
+
+    with self.test_session(use_gpu=True) as sess:
+      output = sess.run(z, feed_dict={x: 3.0})
+      self.assertEqual(output, 18.0)
 
 
 if __name__ == "__main__":

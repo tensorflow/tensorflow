@@ -76,9 +76,6 @@ toolchain {
 
   # This adds a little bit more durability to our Clang build.
   #
-  # At the moment, this only only be needed for:
-  # - add_boringssl_s390x.patch: --Wa,--noexecstack
-  #
   # Folks who do maintenance work on TF Bazel Clang should consider
   # commenting out these lines, while doing that work, to gain a better
   # understanding of what the intersection of support looks like between GCC

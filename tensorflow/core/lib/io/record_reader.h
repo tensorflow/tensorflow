@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_IO_RECORD_READER_H_
-#define TENSORFLOW_LIB_IO_RECORD_READER_H_
+#ifndef TENSORFLOW_CORE_LIB_IO_RECORD_READER_H_
+#define TENSORFLOW_CORE_LIB_IO_RECORD_READER_H_
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -58,6 +58,14 @@ class RecordReaderOptions {
 // Note: this class is not thread safe; external synchronization required.
 class RecordReader {
  public:
+  // Format of a single record:
+  //  uint64    length
+  //  uint32    masked crc of length
+  //  byte      data[length]
+  //  uint32    masked crc of data
+  static const size_t kHeaderSize = sizeof(uint64) + sizeof(uint32);
+  static const size_t kFooterSize = sizeof(uint32);
+
   // Create a reader that will return log records from "*file".
   // "*file" must remain live while this Reader is in use.
   explicit RecordReader(
@@ -122,4 +130,4 @@ class SequentialRecordReader {
 }  // namespace io
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_IO_RECORD_READER_H_
+#endif  // TENSORFLOW_CORE_LIB_IO_RECORD_READER_H_

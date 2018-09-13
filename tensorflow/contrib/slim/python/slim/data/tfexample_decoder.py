@@ -102,7 +102,7 @@ class BoundingBox(ItemHandler):
   """An ItemHandler that concatenates a set of parsed Tensors to Bounding Boxes.
   """
 
-  def __init__(self, keys=None, prefix=None):
+  def __init__(self, keys=None, prefix=''):
     """Initialize the bounding box handler.
 
     Args:
@@ -416,12 +416,17 @@ class Image(ItemHandler):
 
     def decode_image():
       """Decodes a image based on the headers."""
-      return image_ops.decode_image(image_buffer, channels=self._channels)
+      return math_ops.cast(
+          image_ops.decode_image(image_buffer, channels=self._channels),
+          self._dtype)
 
     def decode_jpeg():
       """Decodes a jpeg image with specified '_dct_method'."""
-      return image_ops.decode_jpeg(
-          image_buffer, channels=self._channels, dct_method=self._dct_method)
+      return math_ops.cast(
+          image_ops.decode_jpeg(
+              image_buffer,
+              channels=self._channels,
+              dct_method=self._dct_method), self._dtype)
 
     def check_jpeg():
       """Checks if an image is jpeg."""

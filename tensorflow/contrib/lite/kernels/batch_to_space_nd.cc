@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <string.h>
 #include <vector>
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
@@ -40,9 +40,9 @@ struct BatchToSpaceNDContext {
     crops = GetInput(context, node, 2);
     output = GetOutput(context, node, 0);
   }
-  TfLiteTensor* input;
-  TfLiteTensor* block_shape;
-  TfLiteTensor* crops;
+  const TfLiteTensor* input;
+  const TfLiteTensor* block_shape;
+  const TfLiteTensor* crops;
   TfLiteTensor* output;
 };
 
@@ -66,12 +66,10 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   TF_LITE_ENSURE_EQ(context, NumDimensions(op_context->crops),
                     kSpatialDimensionNum);
 
-  // TODO(ycling): Add crops as part of calculation. Remove check for a crops
-  // containing all zeroes.
-  TF_LITE_ENSURE_EQ(context, crops[0], 0);
-  TF_LITE_ENSURE_EQ(context, crops[1], 0);
-  TF_LITE_ENSURE_EQ(context, crops[2], 0);
-  TF_LITE_ENSURE_EQ(context, crops[3], 0);
+  TF_LITE_ENSURE(context, crops[0] >= 0);
+  TF_LITE_ENSURE(context, crops[1] >= 0);
+  TF_LITE_ENSURE(context, crops[2] >= 0);
+  TF_LITE_ENSURE(context, crops[3] >= 0);
 
   // Number of batch must be multiple of (block_shape[0] * block_shape[1]).
   TF_LITE_ENSURE_EQ(context,
@@ -79,8 +77,16 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
 
   const int output_batch_size =
       input_size->data[0] / (block_shape[0] * block_shape[1]);
-  const int output_height = input_size->data[1] * block_shape[0];
-  const int output_width = input_size->data[2] * block_shape[1];
+
+  const int crops_top = crops[0];
+  const int crops_bottom = crops[1];
+  const int crops_left = crops[2];
+  const int crops_right = crops[3];
+  const int output_height =
+      input_size->data[1] * block_shape[0] - crops_top - crops_bottom;
+  const int output_width =
+      input_size->data[2] * block_shape[1] - crops_left - crops_right;
+
   const int output_channel_size = input_size->data[3];
 
   TfLiteIntArray* output_size = TfLiteIntArrayCopy(input_size);
@@ -119,14 +125,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
 #define TF_LITE_BATCH_TO_SPACE_ND(type, scalar)                        \
-  type::BatchToSpaceND(GetTensorData<scalar>(op_context.input),        \
-                       GetTensorDims(op_context.input),                \
+  type::BatchToSpaceND(GetTensorShape(op_context.input),               \
+                       GetTensorData<scalar>(op_context.input),        \
+                       GetTensorShape(op_context.block_shape),         \
                        GetTensorData<int32_t>(op_context.block_shape), \
-                       GetTensorDims(op_context.block_shape),          \
+                       GetTensorShape(op_context.crops),               \
                        GetTensorData<int32_t>(op_context.crops),       \
-                       GetTensorDims(op_context.crops),                \
-                       GetTensorData<scalar>(op_context.output),       \
-                       GetTensorDims(op_context.output))
+                       GetTensorShape(op_context.output),              \
+                       GetTensorData<scalar>(op_context.output))
   switch (op_context.input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
       if (kernel_type == kReference) {
@@ -157,8 +163,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       }
       break;
     default:
-      context->ReportError(context,
-                           "Type is currently not supported by BatchToSpace.");
+      context->ReportError(
+          context, "Type %d is currently not supported by BatchToSpace.",
+          op_context.input->type);
       return kTfLiteError;
   }
 #undef TF_LITE_BATCH_TO_SPACE_ND

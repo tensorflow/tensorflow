@@ -85,7 +85,7 @@ class VarianceScalingInitializerTest(test.TestCase):
 
   def _test_variance(self, initializer, shape, variance, factor, mode, uniform):
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         var = variable_scope.get_variable(
             name='test',
             shape=shape,

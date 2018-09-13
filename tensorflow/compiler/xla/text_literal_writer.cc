@@ -17,23 +17,23 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
-/* static */ tensorflow::Status TextLiteralWriter::WriteToPath(
-    const Literal& literal, tensorflow::StringPiece path) {
+/* static */ Status TextLiteralWriter::WriteToPath(const Literal& literal,
+                                                   absl::string_view path) {
   std::unique_ptr<tensorflow::WritableFile> f;
-  auto s = tensorflow::Env::Default()->NewWritableFile(path.ToString(), &f);
+  auto s = tensorflow::Env::Default()->NewWritableFile(string(path), &f);
   if (!s.ok()) {
     return s;
   }
@@ -43,19 +43,17 @@ namespace xla {
     return s;
   }
 
-  tensorflow::Status status;
+  Status status;
   tensorflow::WritableFile* f_ptr = f.get();
   literal.EachCellAsString(
-      [f_ptr, &status](tensorflow::gtl::ArraySlice<int64> indices,
-                       const string& value) {
+      [f_ptr, &status](absl::Span<const int64> indices, const string& value) {
         if (!status.ok()) {
           return;
         }
-        string coordinates = tensorflow::strings::StrCat(
-            "(", tensorflow::str_util::Join(indices, ", "), ")");
+        string coordinates =
+            absl::StrCat("(", absl::StrJoin(indices, ", "), ")");
 
-        status = f_ptr->Append(
-            tensorflow::strings::StrCat(coordinates, ": ", value, "\n"));
+        status = f_ptr->Append(absl::StrCat(coordinates, ": ", value, "\n"));
       });
   auto ignored = f->Close();
   return status;

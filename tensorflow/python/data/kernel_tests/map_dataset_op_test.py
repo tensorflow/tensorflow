@@ -20,9 +20,12 @@ from __future__ import print_function
 from collections import namedtuple
 import threading
 import time
+import warnings
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
@@ -30,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -43,7 +47,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 
 
-class MapDatasetTest(test.TestCase):
+class MapDatasetTest(test.TestCase, parameterized.TestCase):
 
   def _buildMapDataset(self, components, count):
     def _map_fn(x, y, z):
@@ -68,7 +72,7 @@ class MapDatasetTest(test.TestCase):
     self.assertEqual([c.shape[1:] for c in components],
                      [t.shape for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test single-threaded access to the iterator.
       sess.run(init_op, feed_dict={count: 14})
       for _ in range(14):
@@ -134,7 +138,8 @@ class MapDatasetTest(test.TestCase):
     self.assertEqual([c.shape[1:] for c in components],
                      [t.shape for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
+
       def do_test(num_parallel_calls_val, output_buffer_size_val):
         # Test single-threaded access to the iterator.
         sess.run(init_op, feed_dict={
@@ -199,7 +204,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for _ in range(3):
         sess.run(get_next)
@@ -214,7 +219,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for _ in range(3):
         sess.run(get_next)
@@ -229,7 +234,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for _ in range(3):
         sess.run(get_next)
@@ -250,7 +255,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for _ in range(3):
         sess.run(get_next)
@@ -281,7 +286,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(table.init)
       sess.run(init_op)
       sess.run(get_next)
@@ -299,7 +304,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(enqueue_op)
       sess.run(close_op)
       sess.run(init_op)
@@ -324,7 +329,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(enqueue_op)
       sess.run(close_op)
       sess.run(init_op)
@@ -343,7 +348,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(counter_var.initializer)
       sess.run(init_op)
       for i in range(10):
@@ -363,7 +368,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       with self.assertRaises(errors.NotFoundError):
         sess.run(get_next)
@@ -375,7 +380,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       random_values = []
       with self.assertRaises(errors.OutOfRangeError):
@@ -400,7 +405,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(10):
         self.assertEqual(i * 2 + i ** 2, sess.run(get_next))
@@ -432,7 +437,7 @@ class MapDatasetTest(test.TestCase):
     next_namedtuple = dataset_namedtuple.make_one_shot_iterator().get_next()
 
     # make sure both datasets contain the same data
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for i in range(count):
         tuple_, namedtuple_ = sess.run([next_tuple, next_namedtuple])
         self.assertEqual(tuple_, namedtuple_)
@@ -450,7 +455,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       self.assertAllEqual(row ** 2, sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
@@ -481,7 +486,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Simple test that prefetch yields the expected values in the
       # expected order.
       for buffer_size in [1, 10, 100, 1000]:
@@ -519,7 +524,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(10):
         self.assertEqual((i, 37.0), sess.run(get_next))
@@ -540,7 +545,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(10):
         self.assertEqual((i, 37.0), sess.run(get_next))
@@ -566,7 +571,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(10):
         actual = sess.run(get_next)
@@ -593,7 +598,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(10):
         actual = sess.run(get_next)
@@ -617,7 +622,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(100):
         self.assertEqual(i, sess.run(get_next))
@@ -631,12 +636,105 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(10):
         self.assertEqual((i, b"hello", 10), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+  def testWarnOnLookupTable(self):
+    def collecting_function(x):
+      _ = lookup_ops.HashTable(
+          lookup_ops.KeyValueTensorInitializer([], []), 0.0, name="t1")
+      return x
+
+    warnings.simplefilter("always")
+    with warnings.catch_warnings(record=True) as w:
+      _ = dataset_ops.Dataset.range(10).map(collecting_function)
+    # NOTE(mrry): Python 3 prints other warnings in addition to the one we are
+    # testing, so we search for the expected warning.
+    self.assertGreaterEqual(len(w), 1)
+    found_warning = False
+    for warning in w:
+      if ("Creating lookup tables inside a function passed to Dataset.map() is "
+          "not supported." in str(warning)):
+        found_warning = True
+        break
+    self.assertTrue(found_warning)
+
+  def testNestedDatasetError(self):
+    dataset = dataset_ops.Dataset.from_tensors([1.0, 2.0, 3.0])
+    with self.assertRaisesRegexp(
+        NotImplementedError, r"The Dataset.map\(\) transformation does not "
+        "currently support nested datasets as outputs."):
+      _ = dataset.map(dataset_ops.Dataset.from_tensor_slices)
+
+  def testReturnValueError(self):
+    dataset = dataset_ops.Dataset.from_tensors([1.0, 2.0, 3.0])
+    with self.assertRaisesRegexp(
+        TypeError, r"Unsupported return value from function passed to "
+        r"Dataset.map\(\): None."):
+      _ = dataset.map(lambda x: None)
+
+  def testBrokenFunctionErrorOnInitialization(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices([1.0, 2.0, 3.0])
+
+    def broken_function(_):
+      """A function deliberately designed to fail on instantiation."""
+      value = []
+      tensor_value = attr_value_pb2.AttrValue()
+      tensor_value.tensor.CopyFrom(
+          tensor_util.make_tensor_proto(
+              value, dtype=dtypes.float32, shape=[0], verify_shape=False))
+      dtype_value = attr_value_pb2.AttrValue(type=dtypes.int32.as_datatype_enum)
+
+      # Create a "Const" op with a `tf.float32` value and a `tf.int32` type
+      # attr.
+      const_tensor = ops.get_default_graph().create_op(
+          "Const", [], [dtypes.int32],
+          attrs={
+              "value": tensor_value,
+              "dtype": dtype_value
+          },
+          name="BrokenConst").outputs[0]
+      return const_tensor
+
+    dataset = dataset.map(broken_function)
+    iterator = dataset.make_initializable_iterator()
+
+    with self.cached_session() as sess:
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "BrokenConst"):
+        sess.run(iterator.initializer)
+
+# pylint: disable=g-long-lambda
+  @parameterized.named_parameters(
+      ("Map", lambda dataset, func:
+       dataset_ops.MapDataset(dataset, func, use_inter_op_parallelism=False)),
+      ("ParallelMap", lambda dataset, func:
+       dataset_ops.ParallelMapDataset(dataset, func, num_parallel_calls=1,
+                                      use_inter_op_parallelism=False)),
+  )
+  def testNoInterOpParallelism(self, make_dataset_fn):
+    dataset = dataset_ops.Dataset.from_tensors(0)
+
+    def _get_tid():
+      return np.int64(threading.current_thread().ident)
+
+    def _map_fn(_):
+      tids = []
+      for _ in range(10):
+        tids.append(script_ops.py_func(_get_tid, [], dtypes.int64))
+      return tids
+
+    dataset = make_dataset_fn(dataset, _map_fn)
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      tids = sess.run(get_next)
+      self.assertTrue(all(tids[0] == tid for tid in tids))
+# pylint: enable=g-long-lambda
 
 
 class MapDatasetBenchmark(test.Benchmark):
@@ -644,57 +742,74 @@ class MapDatasetBenchmark(test.Benchmark):
   def benchmarkChainOfMaps(self):
     chain_lengths = [0, 1, 2, 5, 10, 20, 50]
     for chain_length in chain_lengths:
-      with ops.Graph().as_default():
-        dataset = dataset_ops.Dataset.from_tensors(0).repeat(None)
-        for _ in range(chain_length):
-          dataset = dataset.map(lambda x: x)
-        iterator = dataset.make_one_shot_iterator()
-        next_element = iterator.get_next()
+      for use_inter_op_parallelism in [False, True]:
+        with ops.Graph().as_default():
+          dataset = dataset_ops.Dataset.from_tensors(0).repeat(None)
+          for _ in range(chain_length):
+            dataset = dataset_ops.MapDataset(
+                dataset,
+                lambda x: x,
+                use_inter_op_parallelism=use_inter_op_parallelism)
+          iterator = dataset.make_one_shot_iterator()
+          next_element = iterator.get_next()
 
-        with session.Session() as sess:
-          for _ in range(5):
-            sess.run(next_element.op)
-          deltas = []
-          for _ in range(100):
-            start = time.time()
-            for _ in range(100):
+          with session.Session() as sess:
+            for _ in range(5):
               sess.run(next_element.op)
-            end = time.time()
-            deltas.append(end - start)
+            deltas = []
+            for _ in range(100):
+              start = time.time()
+              for _ in range(100):
+                sess.run(next_element.op)
+              end = time.time()
+              deltas.append(end - start)
 
-          median_wall_time = np.median(deltas) / 100
-          print("Map dataset chain length: %d Median wall time: %f"
-                % (chain_length, median_wall_time))
-          self.report_benchmark(
-              iters=1000, wall_time=median_wall_time,
-              name="benchmark_map_dataset_chain_latency_%d" % chain_length)
+            median_wall_time = np.median(deltas) / 100
+            print("Map dataset chain length%s: %d Median wall time: %f" %
+                  (" (single threaded mode)" if not use_inter_op_parallelism
+                   else "", chain_length, median_wall_time))
+            self.report_benchmark(
+                iters=1000,
+                wall_time=median_wall_time,
+                name="benchmark_map_dataset_chain_latency_%d%s" %
+                (chain_length, "_single_threaded"
+                 if not use_inter_op_parallelism else ""))
 
   def benchmarkMapFanOut(self):
     fan_outs = [1, 2, 5, 10, 20, 50, 100]
     for fan_out in fan_outs:
-      with ops.Graph().as_default():
-        dataset = dataset_ops.Dataset.from_tensors(
-            tuple(0 for _ in range(fan_out))).repeat(None).map(lambda *xs: xs)
-        iterator = dataset.make_one_shot_iterator()
-        next_element = iterator.get_next()
+      for use_inter_op_parallelism in [False, True]:
+        with ops.Graph().as_default():
+          dataset = dataset_ops.Dataset.from_tensors(
+              tuple(0 for _ in range(fan_out))).repeat(None)
+          dataset = dataset_ops.MapDataset(
+              dataset,
+              lambda *xs: xs,
+              use_inter_op_parallelism=use_inter_op_parallelism)
+          iterator = dataset.make_one_shot_iterator()
+          next_element = iterator.get_next()
 
-        with session.Session() as sess:
-          for _ in range(5):
-            sess.run(next_element[0].op)
-          deltas = []
-          for _ in range(100):
-            start = time.time()
-            for _ in range(100):
+          with session.Session() as sess:
+            for _ in range(5):
               sess.run(next_element[0].op)
-            end = time.time()
-            deltas.append(end - start)
+            deltas = []
+            for _ in range(100):
+              start = time.time()
+              for _ in range(100):
+                sess.run(next_element[0].op)
+              end = time.time()
+              deltas.append(end - start)
 
-          median_wall_time = np.median(deltas) / 100
-          print("Map dataset fan out: %d Median wall time: %f"
-                % (fan_out, median_wall_time))
-          self.report_benchmark(
-              iters=1000, wall_time=median_wall_time,
-              name="benchmark_map_dataset_fan_out_%d" % fan_out)
+            median_wall_time = np.median(deltas) / 100
+            print("Map dataset fan out%s: %d Median wall time: %f" %
+                  (" (single threaded mode)" if not use_inter_op_parallelism
+                   else "", fan_out, median_wall_time))
+            self.report_benchmark(
+                iters=1000,
+                wall_time=median_wall_time,
+                name="benchmark_map_dataset_fan_out_%d%s" %
+                (fan_out, "_single_threaded"
+                 if not use_inter_op_parallelism else ""))
 
 
 if __name__ == "__main__":

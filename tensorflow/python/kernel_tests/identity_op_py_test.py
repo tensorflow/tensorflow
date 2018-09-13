@@ -31,24 +31,24 @@ from tensorflow.python.platform import test
 class IdentityOpTest(test.TestCase):
 
   def testInt32_6(self):
-    with self.test_session():
+    with self.cached_session():
       value = array_ops.identity([1, 2, 3, 4, 5, 6]).eval()
     self.assertAllEqual(np.array([1, 2, 3, 4, 5, 6]), value)
 
   def testInt32_2_3(self):
-    with self.test_session():
+    with self.cached_session():
       inp = constant_op.constant([10, 20, 30, 40, 50, 60], shape=[2, 3])
       value = array_ops.identity(inp).eval()
     self.assertAllEqual(np.array([[10, 20, 30], [40, 50, 60]]), value)
 
   def testString(self):
     source = [b"A", b"b", b"C", b"d", b"E", b"f"]
-    with self.test_session():
+    with self.cached_session():
       value = array_ops.identity(source).eval()
     self.assertAllEqual(source, value)
 
   def testIdentityShape(self):
-    with self.test_session():
+    with self.cached_session():
       shape = [2, 3]
       array_2x3 = [[1, 2, 3], [6, 5, 4]]
       tensor = constant_op.constant(array_2x3)
@@ -59,7 +59,7 @@ class IdentityOpTest(test.TestCase):
                         array_ops.identity(np.array(array_2x3)).get_shape())
 
   def testRefIdentityShape(self):
-    with self.test_session():
+    with self.cached_session():
       shape = [2, 3]
       tensor = variables.Variable(
           constant_op.constant(

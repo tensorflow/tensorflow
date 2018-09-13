@@ -81,7 +81,8 @@ def LastValueQuantize(inputs,
     a tensor containing quantized values.
   """
   with variable_scope.variable_scope(
-      None, default_name=name_prefix, values=[inputs], reuse=reuse):
+      None, default_name=name_prefix, values=[inputs], reuse=reuse) as scope:
+    scope.set_partitioner(None)
     input_shape = inputs.get_shape()
     input_dim = len(input_shape)
     if per_channel:
@@ -189,7 +190,8 @@ def MovingAvgQuantize(inputs,
     a tensor containing quantized values.
   """
   with variable_scope.variable_scope(
-      None, default_name=name_prefix, values=[inputs], reuse=reuse):
+      None, default_name=name_prefix, values=[inputs], reuse=reuse) as scope:
+    scope.set_partitioner(None)
     input_shape = inputs.get_shape()
     input_dim = len(input_shape)
     if per_channel:

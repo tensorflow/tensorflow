@@ -32,6 +32,7 @@ from tensorflow.contrib.testing.python.framework import util_test
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import debug_pb2
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.distribute import distribute_coordinator
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -44,6 +45,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
 from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as saver_lib
@@ -78,7 +80,7 @@ class ScaffoldTest(test.TestCase):
       self.assertTrue(isinstance(scaffold.ready_for_local_init_op, ops.Tensor))
       self.assertTrue(isinstance(scaffold.local_init_op, ops.Operation))
       self.assertTrue(isinstance(scaffold.saver, saver_lib.Saver))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         self.assertItemsEqual([b'my_var', b'my_local_var'],
                               sess.run(scaffold.ready_op))
         self.assertItemsEqual([b'my_var'],
@@ -380,6 +382,119 @@ class MonitoredTrainingSessionTest(test.TestCase):
         self.assertEqual(0, session.run(gstep))
 
 
+class MockStrategy(object):
+
+  def __init__(self,
+               between_graph=False,
+               should_init=True,
+               should_checkpoint=None,
+               should_save_summary=None):
+    self._between_graph = between_graph
+    self._should_init = should_init
+    self._should_checkpoint = should_checkpoint
+    self._should_save_summary = should_save_summary
+
+  @property
+  def between_graph(self):
+    return self._between_graph
+
+  @property
+  def should_init(self):
+    return self._should_init
+
+  @property
+  def should_checkpoint(self):
+    return self._should_checkpoint
+
+  @property
+  def should_save_summary(self):
+    return self._should_save_summary
+
+
+class MonitoredTrainingSessionWithDistributeCoordinatorTest(test.TestCase):
+  """Test distribute coordinator controls summary saving and checkpointing."""
+
+  def test_summary_hook_enabled(self):
+    context = distribute_coordinator._WorkerContext(
+        MockStrategy(should_save_summary=True), None, None, None)
+
+    logdir = _test_dir(self.get_temp_dir(), 'test_summaries_enabled')
+    with ops.Graph().as_default():
+      gstep = variables_lib.get_or_create_global_step()
+      new_gstep = state_ops.assign_add(gstep, 1)
+      summary.scalar('my_summary_tag', new_gstep * 2)
+      with context, monitored_session.MonitoredTrainingSession(
+          checkpoint_dir=logdir,
+          save_summaries_steps=100,
+          log_step_count_steps=10) as session:
+        for _ in range(101):
+          session.run(new_gstep)
+
+    summaries = util_test.latest_summaries(logdir)
+    tags = [s.summary.value[0].tag for s in summaries]
+    self.assertIn('my_summary_tag', tags)
+    self.assertIn('global_step/sec', tags)
+
+  def test_summary_hook_disabled(self):
+    context = distribute_coordinator._WorkerContext(
+        MockStrategy(should_save_summary=False), None, None, None)
+
+    logdir = _test_dir(self.get_temp_dir(), 'test_summaries_disabled')
+    with ops.Graph().as_default():
+      gstep = variables_lib.get_or_create_global_step()
+      new_gstep = state_ops.assign_add(gstep, 1)
+      summary.scalar('my_summary_tag', new_gstep * 2)
+      with context, monitored_session.MonitoredTrainingSession(
+          checkpoint_dir=logdir,
+          save_summaries_steps=100,
+          log_step_count_steps=10) as session:
+        for _ in range(101):
+          session.run(new_gstep)
+
+    # No summary is saved.
+    summaries = util_test.latest_summaries(logdir)
+    self.assertEqual(len(summaries), 0)
+
+  def test_checkpoint_hook_enabled(self):
+    context = distribute_coordinator._WorkerContext(
+        MockStrategy(should_checkpoint=True), None, None, None)
+
+    logdir = _test_dir(self.get_temp_dir(), 'test_save_checkpoint_enabled')
+    with ops.Graph().as_default():
+      gstep = variables_lib.get_or_create_global_step()
+      new_gstep = state_ops.assign_add(gstep, 1)
+      with context, monitored_session.MonitoredTrainingSession(
+          checkpoint_dir=logdir,
+          save_checkpoint_steps=100,
+          log_step_count_steps=10) as session:
+        for _ in range(100):
+          session.run(new_gstep)
+
+      # A restart will find the checkpoint and recover automatically.
+      with monitored_session.MonitoredTrainingSession(
+          is_chief=True, checkpoint_dir=logdir) as session:
+        self.assertEqual(100, session.run(gstep))
+
+  def test_checkpoint_hook_disabled(self):
+    context = distribute_coordinator._WorkerContext(
+        MockStrategy(should_checkpoint=False), None, None, None)
+
+    logdir = _test_dir(self.get_temp_dir(), 'test_save_checkpoint_disabled')
+    with ops.Graph().as_default():
+      gstep = variables_lib.get_or_create_global_step()
+      new_gstep = state_ops.assign_add(gstep, 1)
+      with context, monitored_session.MonitoredTrainingSession(
+          checkpoint_dir=logdir,
+          save_checkpoint_steps=100,
+          log_step_count_steps=10) as session:
+        for _ in range(100):
+          session.run(new_gstep)
+
+    # No checkpoint is saved.
+    checkpoint = checkpoint_management.latest_checkpoint(logdir)
+    self.assertIsNone(checkpoint)
+
+
 class StopAtNSession(monitored_session._WrappedSession):
   """A wrapped session that stops at the N-th call to _check_stop."""
 
@@ -398,21 +513,21 @@ class WrappedSessionTest(test.TestCase):
   """_WrappedSession tests."""
 
   def test_properties(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       constant_op.constant(0.0)
       wrapped_sess = monitored_session._WrappedSession(sess)
       self.assertEquals(sess.graph, wrapped_sess.graph)
       self.assertEquals(sess.sess_str, wrapped_sess.sess_str)
 
   def test_should_stop_on_close(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       wrapped_sess = monitored_session._WrappedSession(sess)
       self.assertFalse(wrapped_sess.should_stop())
       wrapped_sess.close()
       self.assertTrue(wrapped_sess.should_stop())
 
   def test_should_stop_uses_check_stop(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       wrapped_sess = StopAtNSession(sess, 3)
       self.assertFalse(wrapped_sess.should_stop())
       self.assertFalse(wrapped_sess.should_stop())
@@ -420,7 +535,7 @@ class WrappedSessionTest(test.TestCase):
       self.assertTrue(wrapped_sess.should_stop())
 
   def test_should_stop_delegates_to_wrapped_session(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       wrapped_sess0 = StopAtNSession(sess, 4)
       wrapped_sess1 = monitored_session._WrappedSession(wrapped_sess0)
       self.assertFalse(wrapped_sess1.should_stop())
@@ -430,7 +545,7 @@ class WrappedSessionTest(test.TestCase):
       self.assertTrue(wrapped_sess1.should_stop())
 
   def test_close_twice(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       wrapped_sess = monitored_session._WrappedSession(sess)
       wrapped_sess.close()
       self.assertTrue(wrapped_sess.should_stop())
@@ -438,7 +553,7 @@ class WrappedSessionTest(test.TestCase):
       self.assertTrue(wrapped_sess.should_stop())
 
   def test_run(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       c = constant_op.constant(0)
       v = array_ops.identity(c)
       self.assertEqual(42, sess.run(v, feed_dict={c: 42}))
@@ -455,7 +570,7 @@ class CoordinatedSessionTest(test.TestCase):
   """_CoordinatedSession tests."""
 
   def test_properties(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       constant_op.constant(0.0)
       coord = coordinator.Coordinator()
       coord_sess = monitored_session._CoordinatedSession(sess, coord)
@@ -463,7 +578,7 @@ class CoordinatedSessionTest(test.TestCase):
       self.assertEquals(sess.sess_str, coord_sess.sess_str)
 
   def test_run(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       c = constant_op.constant(0)
       v = array_ops.identity(c)
       coord = coordinator.Coordinator()
@@ -471,7 +586,7 @@ class CoordinatedSessionTest(test.TestCase):
       self.assertEqual(42, coord_sess.run(v, feed_dict={c: 42}))
 
   def test_should_stop_on_close(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       coord = coordinator.Coordinator()
       coord_sess = monitored_session._CoordinatedSession(sess, coord)
       self.assertFalse(coord_sess.should_stop())
@@ -479,7 +594,7 @@ class CoordinatedSessionTest(test.TestCase):
       self.assertTrue(coord_sess.should_stop())
 
   def test_should_stop_on_coord_stop(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       coord = coordinator.Coordinator()
       coord_sess = monitored_session._CoordinatedSession(sess, coord)
       self.assertFalse(coord_sess.should_stop())
@@ -487,7 +602,7 @@ class CoordinatedSessionTest(test.TestCase):
       self.assertTrue(coord_sess.should_stop())
 
   def test_dont_request_stop_on_exception_in_main_thread(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       c = constant_op.constant(0)
       v = array_ops.identity(c)
       coord = coordinator.Coordinator()
@@ -501,7 +616,7 @@ class CoordinatedSessionTest(test.TestCase):
       self.assertFalse(coord_sess.should_stop())
 
   def test_stop_threads_on_close_after_exception(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       c = constant_op.constant(0)
       v = array_ops.identity(c)
       coord = coordinator.Coordinator()
@@ -531,7 +646,7 @@ class CoordinatedSessionTest(test.TestCase):
       self.assertTrue(coord_sess.should_stop())
 
   def test_stop_threads_on_close(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       coord = coordinator.Coordinator()
       threads = [
           threading.Thread(
@@ -549,7 +664,7 @@ class CoordinatedSessionTest(test.TestCase):
 
   def test_propagates_exception_trace(self):
     assertion = control_flow_ops.Assert(False, ['This should fail.'])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       coord = coordinator.Coordinator(clean_stop_exception_types=())
       coord_sess = monitored_session._CoordinatedSession(sess, coord)
       try:
@@ -695,7 +810,7 @@ class RecoverableSessionTest(test.TestCase):
       return self._sess
 
   def test_properties(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       constant_op.constant(0.0)
       recoverable_sess = monitored_session._RecoverableSession(
           self._SessionReturner(sess))
@@ -703,7 +818,7 @@ class RecoverableSessionTest(test.TestCase):
       self.assertEquals(sess.sess_str, recoverable_sess.sess_str)
 
   def test_run(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       c = constant_op.constant(0)
       v = array_ops.identity(c)
       recoverable_sess = monitored_session._RecoverableSession(
@@ -711,7 +826,7 @@ class RecoverableSessionTest(test.TestCase):
       self.assertEqual(51, recoverable_sess.run(v, feed_dict={c: 51}))
 
   def test_recovery(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
       class StackSessionCreator(object):
 
@@ -757,7 +872,7 @@ class RecoverableSessionTest(test.TestCase):
         recoverable_sess.run(v, feed_dict={c: -12})
 
   def test_recovery_from_coordinator_exception(self):
-    with self.test_session() as test_session:
+    with self.cached_session() as test_session:
       session_creator = CountingSessionCreator(test_session)
       session = monitored_session.MonitoredSession(
           session_creator,
@@ -782,7 +897,7 @@ class RecoverableSessionTest(test.TestCase):
       self.assertEqual(2, session_creator.number_of_sessions_created)
 
   def test_recovery_from_non_preemption_in_coordinator(self):
-    with self.test_session() as test_session:
+    with self.cached_session() as test_session:
       session_creator = CountingSessionCreator(test_session)
       hook = StopCoordinatorWithException(
           calls_before_stopping=2,
@@ -811,7 +926,7 @@ class RecoverableSessionTest(test.TestCase):
         session.close()
 
   def test_recovery_from_session_getting_stuck(self):
-    with self.test_session() as test_session:
+    with self.cached_session() as test_session:
       session_creator = CountingSessionCreator(test_session)
       session = monitored_session.MonitoredSession(
           session_creator,
@@ -835,7 +950,7 @@ class RecoverableSessionTest(test.TestCase):
       self.assertEqual(2, session_creator.number_of_sessions_created)
 
   def test_step_fn_recovery_from_coordinator_exception_when_run_hooks(self):
-    with self.test_session() as test_session:
+    with self.cached_session() as test_session:
       session_creator = CountingSessionCreator(test_session)
       session = monitored_session.MonitoredSession(
           session_creator,
@@ -865,7 +980,7 @@ class RecoverableSessionTest(test.TestCase):
       self.assertEqual(2, session_creator.number_of_sessions_created)
 
   def test_recovery_from_non_preemption_in_coordinator_when_run_hooks(self):
-    with self.test_session() as test_session:
+    with self.cached_session() as test_session:
       session_creator = CountingSessionCreator(test_session)
       hook = StopCoordinatorWithException(
           calls_before_stopping=2,
@@ -899,7 +1014,7 @@ class RecoverableSessionTest(test.TestCase):
         session.close()
 
   def test_recovery_from_session_getting_stuck_when_run_hooks(self):
-    with self.test_session() as test_session:
+    with self.cached_session() as test_session:
       session_creator = CountingSessionCreator(test_session)
       session = monitored_session.MonitoredSession(
           session_creator,
@@ -943,7 +1058,7 @@ class RecoverableSessionTest(test.TestCase):
     return session
 
   def test_step_fn_recovery_from_coordinator_exception_with_raw_session(self):
-    with self.test_session() as test_session:
+    with self.cached_session() as test_session:
       session_creator = CountingSessionCreator(test_session)
       session = self.create_raw_session_with_failing_coordinator(
           session_creator,
@@ -975,7 +1090,7 @@ class RecoverableSessionTest(test.TestCase):
       self.assertEqual(2, session_creator.number_of_sessions_created)
 
   def test_recovery_from_non_preemption_in_coordinator_with_raw_session(self):
-    with self.test_session() as test_session:
+    with self.cached_session() as test_session:
       session_creator = CountingSessionCreator(test_session)
       session = self.create_raw_session_with_failing_coordinator(
           session_creator,
@@ -1012,7 +1127,7 @@ class RecoverableSessionTest(test.TestCase):
         session.close()
 
   def test_recovery_from_session_getting_stuck_with_raw_session(self):
-    with self.test_session() as test_session:
+    with self.cached_session() as test_session:
       session_creator = CountingSessionCreator(test_session)
       session = self.create_raw_session_with_failing_coordinator(
           session_creator,
@@ -1364,8 +1479,8 @@ class MonitoredSessionTest(test.TestCase):
       with monitored_session.MonitoredSession(
           session_creator=monitored_session.ChiefSessionCreator(
               scaffold,
-              checkpoint_filename_with_path=saver_lib.latest_checkpoint(
-                  logdir))) as session:
+              checkpoint_filename_with_path=checkpoint_management.
+              latest_checkpoint(logdir))) as session:
         self.assertEqual(2, session.run(gstep))
 
   def test_retry_initialization_on_aborted_error(self):
@@ -1932,7 +2047,7 @@ class MonitoredSessionTest(test.TestCase):
 
         return value
 
-      with self.test_session() as test_session:
+      with self.cached_session() as test_session:
         with monitored_session.MonitoredSession(
             CountingSessionCreator(test_session)) as session:
           session.run(variables.global_variables_initializer())
@@ -1995,7 +2110,7 @@ class MonitoredSessionTest(test.TestCase):
         step_context.session.run(graph_side_effect)
         return step_context.run_with_hooks(fetches=v, feed_dict={c: 1.3})
 
-      with self.test_session() as test_session:
+      with self.cached_session() as test_session:
         with monitored_session.MonitoredSession(
             CountingSessionCreator(test_session),
             hooks=[Hook(self)]) as session:

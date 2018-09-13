@@ -31,7 +31,7 @@ from tensorflow.python.platform import googletest
 
 
 def _inner_product(x, y):
-  """Inner product between tensors x and y.
+  r"""Inner product between tensors x and y.
 
   The input tensors are assumed to be in ROW representation, that is, the method
   returns \\(x * y^T\\).
@@ -131,10 +131,6 @@ class RandomFourierFeatureMapperTest(TensorFlowTestCase):
     mapped_dim = 5000
     stddev = 5.0
 
-    # TODO(sibyl-vie3Poto): Reduce test's running time before moving to third_party. One
-    # possible way to speed the test up is to compute both the approximate and
-    # the exact kernel matrix directly using matrix operations instead of
-    # computing the values for each pair of points separately.
     points_shape = [1, input_dim]
     points = [
         random_ops.random_uniform(shape=points_shape, maxval=1.0)

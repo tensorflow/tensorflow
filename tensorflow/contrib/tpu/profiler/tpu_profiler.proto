@@ -11,6 +11,9 @@ service TPUProfiler {
   // Starts a profiling session, blocks until it completes, and returns data.
   rpc Profile(ProfileRequest) returns (ProfileResponse) {
   }
+  // Collects profiling data and returns user-friendly metrics.
+  rpc Monitor(MonitorRequest) returns (MonitorResponse) {
+  }
 }
 
 message ProfileOptions {
@@ -68,7 +71,8 @@ message ProfileRequest {
 }
 
 message ProfileToolData {
-  // The tool's name which this data is associated. (e.g. "input_pipeline".)
+  // The file name which this data is associated (e.g. "input_pipeline.json",
+  // "cluster_xxx.memory_viewer.json").
   string name = 1;
 
   // The data payload (likely json) for the specific tool.
@@ -102,4 +106,27 @@ message ProfileResponse {
   bool empty_trace = 7;
 
   // next-field: 8
+}
+
+message MonitorRequest {
+  // Duration for which to profile between each update.
+  uint64 duration_ms = 1;
+
+  // Indicates the level at which we want to monitor. Currently, two levels are
+  // supported:
+  // Level 1: An ultra lightweight mode that captures only some utilization
+  // metrics.
+  // Level 2: More verbose than level 1. Collects utilization metrics, device
+  // information, step time information, etc. Do not use this option if the TPU
+  // host is being very heavily used.
+  int32 monitoring_level = 2;
+
+  // next-field: 3
+}
+
+message MonitorResponse {
+  // Properly formatted string data that can be directly returned back to user.
+  string data = 1;
+
+  // next-field: 2
 }

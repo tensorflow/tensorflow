@@ -18,8 +18,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import types
+
 from tensorflow.python.platform import googletest
 from tensorflow.tools.docs import doc_generator_visitor
+from tensorflow.tools.docs import generate_lib
+
+
+class NoDunderVisitor(doc_generator_visitor.DocGeneratorVisitor):
+
+  def __call__(self, parent_name, parent, children):
+    """Drop all the dunder methods to make testing easier."""
+    children = [
+        (name, obj) for (name, obj) in children if not name.startswith('_')
+    ]
+    super(NoDunderVisitor, self).__call__(parent_name, parent, children)
 
 
 class DocGeneratorVisitorTest(googletest.TestCase):
@@ -57,52 +70,184 @@ class DocGeneratorVisitorTest(googletest.TestCase):
     with self.assertRaises(RuntimeError):
       visitor('non_class_or_module', 'non_class_or_module_object', [])
 
-  def test_duplicates(self):
-    visitor = doc_generator_visitor.DocGeneratorVisitor()
-    visitor(
-        'submodule.DocGeneratorVisitor',
-        doc_generator_visitor.DocGeneratorVisitor,
-        [('index', doc_generator_visitor.DocGeneratorVisitor.index),
-         ('index2', doc_generator_visitor.DocGeneratorVisitor.index)])
-    visitor(
-        'submodule2.DocGeneratorVisitor',
-        doc_generator_visitor.DocGeneratorVisitor,
-        [('index', doc_generator_visitor.DocGeneratorVisitor.index),
-         ('index2', doc_generator_visitor.DocGeneratorVisitor.index)])
-    visitor(
-        'DocGeneratorVisitor2',
-        doc_generator_visitor.DocGeneratorVisitor,
-        [('index', doc_generator_visitor.DocGeneratorVisitor.index),
-         ('index2', doc_generator_visitor.DocGeneratorVisitor.index)])
+  def test_duplicates_module_class_depth(self):
 
-    # The shorter path should be master, or if equal, the lexicographically
-    # first will be.
-    self.assertEqual(
-        {'DocGeneratorVisitor2': sorted(['submodule.DocGeneratorVisitor',
-                                         'submodule2.DocGeneratorVisitor',
-                                         'DocGeneratorVisitor2']),
-         'DocGeneratorVisitor2.index': sorted([
-             'submodule.DocGeneratorVisitor.index',
-             'submodule.DocGeneratorVisitor.index2',
-             'submodule2.DocGeneratorVisitor.index',
-             'submodule2.DocGeneratorVisitor.index2',
-             'DocGeneratorVisitor2.index',
-             'DocGeneratorVisitor2.index2'
-         ]),
-        }, visitor.duplicates)
+    class Parent(object):
+
+      class Nested(object):
+        pass
+
+    tf = types.ModuleType('tf')
+    tf.Parent = Parent
+    tf.submodule = types.ModuleType('submodule')
+    tf.submodule.Parent = Parent
+
+    visitor = generate_lib.extract(
+        [('tf', tf)],
+        private_map={},
+        do_not_descend_map={},
+        visitor_cls=NoDunderVisitor)
+
     self.assertEqual({
-        'submodule.DocGeneratorVisitor': 'DocGeneratorVisitor2',
-        'submodule.DocGeneratorVisitor.index': 'DocGeneratorVisitor2.index',
-        'submodule.DocGeneratorVisitor.index2': 'DocGeneratorVisitor2.index',
-        'submodule2.DocGeneratorVisitor': 'DocGeneratorVisitor2',
-        'submodule2.DocGeneratorVisitor.index': 'DocGeneratorVisitor2.index',
-        'submodule2.DocGeneratorVisitor.index2': 'DocGeneratorVisitor2.index',
-        'DocGeneratorVisitor2.index2': 'DocGeneratorVisitor2.index'
+        'tf.submodule.Parent':
+            sorted([
+                'tf.Parent',
+                'tf.submodule.Parent',
+            ]),
+        'tf.submodule.Parent.Nested':
+            sorted([
+                'tf.Parent.Nested',
+                'tf.submodule.Parent.Nested',
+            ]),
+    }, visitor.duplicates)
+
+    self.assertEqual({
+        'tf.Parent.Nested': 'tf.submodule.Parent.Nested',
+        'tf.Parent': 'tf.submodule.Parent',
     }, visitor.duplicate_of)
+
     self.assertEqual({
-        id(doc_generator_visitor.DocGeneratorVisitor): 'DocGeneratorVisitor2',
-        id(doc_generator_visitor.DocGeneratorVisitor.index):
-        'DocGeneratorVisitor2.index',
+        id(Parent): 'tf.submodule.Parent',
+        id(Parent.Nested): 'tf.submodule.Parent.Nested',
+        id(tf): 'tf',
+        id(tf.submodule): 'tf.submodule',
+    }, visitor.reverse_index)
+
+  def test_duplicates_contrib(self):
+
+    class Parent(object):
+      pass
+
+    tf = types.ModuleType('tf')
+    tf.contrib = types.ModuleType('contrib')
+    tf.submodule = types.ModuleType('submodule')
+    tf.contrib.Parent = Parent
+    tf.submodule.Parent = Parent
+
+    visitor = generate_lib.extract(
+        [('tf', tf)],
+        private_map={},
+        do_not_descend_map={},
+        visitor_cls=NoDunderVisitor)
+
+    self.assertEqual({
+        'tf.submodule.Parent':
+            sorted(['tf.contrib.Parent', 'tf.submodule.Parent']),
+    }, visitor.duplicates)
+
+    self.assertEqual({
+        'tf.contrib.Parent': 'tf.submodule.Parent',
+    }, visitor.duplicate_of)
+
+    self.assertEqual({
+        id(tf): 'tf',
+        id(tf.submodule): 'tf.submodule',
+        id(Parent): 'tf.submodule.Parent',
+        id(tf.contrib): 'tf.contrib',
+    }, visitor.reverse_index)
+
+  def test_duplicates_defining_class(self):
+
+    class Parent(object):
+      obj1 = object()
+
+    class Child(Parent):
+      pass
+
+    tf = types.ModuleType('tf')
+    tf.Parent = Parent
+    tf.Child = Child
+
+    visitor = generate_lib.extract(
+        [('tf', tf)],
+        private_map={},
+        do_not_descend_map={},
+        visitor_cls=NoDunderVisitor)
+
+    self.assertEqual({
+        'tf.Parent.obj1': sorted([
+            'tf.Parent.obj1',
+            'tf.Child.obj1',
+        ]),
+    }, visitor.duplicates)
+
+    self.assertEqual({
+        'tf.Child.obj1': 'tf.Parent.obj1',
+    }, visitor.duplicate_of)
+
+    self.assertEqual({
+        id(tf): 'tf',
+        id(Parent): 'tf.Parent',
+        id(Child): 'tf.Child',
+        id(Parent.obj1): 'tf.Parent.obj1',
+    }, visitor.reverse_index)
+
+  def test_duplicates_module_depth(self):
+
+    class Parent(object):
+      pass
+
+    tf = types.ModuleType('tf')
+    tf.submodule = types.ModuleType('submodule')
+    tf.submodule.submodule2 = types.ModuleType('submodule2')
+    tf.Parent = Parent
+    tf.submodule.submodule2.Parent = Parent
+
+    visitor = generate_lib.extract(
+        [('tf', tf)],
+        private_map={},
+        do_not_descend_map={},
+        visitor_cls=NoDunderVisitor)
+
+    self.assertEqual({
+        'tf.Parent': sorted(['tf.Parent', 'tf.submodule.submodule2.Parent']),
+    }, visitor.duplicates)
+
+    self.assertEqual({
+        'tf.submodule.submodule2.Parent': 'tf.Parent'
+    }, visitor.duplicate_of)
+
+    self.assertEqual({
+        id(tf): 'tf',
+        id(tf.submodule): 'tf.submodule',
+        id(tf.submodule.submodule2): 'tf.submodule.submodule2',
+        id(Parent): 'tf.Parent',
+    }, visitor.reverse_index)
+
+  def test_duplicates_name(self):
+
+    class Parent(object):
+      obj1 = object()
+
+    Parent.obj2 = Parent.obj1
+
+    tf = types.ModuleType('tf')
+    tf.submodule = types.ModuleType('submodule')
+    tf.submodule.Parent = Parent
+
+    visitor = generate_lib.extract(
+        [('tf', tf)],
+        private_map={},
+        do_not_descend_map={},
+        visitor_cls=NoDunderVisitor)
+
+    self.assertEqual({
+        'tf.submodule.Parent.obj1':
+            sorted([
+                'tf.submodule.Parent.obj1',
+                'tf.submodule.Parent.obj2',
+            ]),
+    }, visitor.duplicates)
+
+    self.assertEqual({
+        'tf.submodule.Parent.obj2': 'tf.submodule.Parent.obj1',
+    }, visitor.duplicate_of)
+
+    self.assertEqual({
+        id(tf): 'tf',
+        id(tf.submodule): 'tf.submodule',
+        id(Parent): 'tf.submodule.Parent',
+        id(Parent.obj1): 'tf.submodule.Parent.obj1',
     }, visitor.reverse_index)
 
 if __name__ == '__main__':

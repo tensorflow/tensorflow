@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 // Simple benchmarking facility.
-#ifndef TENSORFLOW_PLATFORM_TEST_BENCHMARK_H_
-#define TENSORFLOW_PLATFORM_TEST_BENCHMARK_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_TEST_BENCHMARK_H_
+#define TENSORFLOW_CORE_PLATFORM_TEST_BENCHMARK_H_
 
 #include <utility>
 #include <vector>
@@ -42,8 +42,42 @@ namespace testing {
 #if defined(PLATFORM_GOOGLE)
 
 using ::testing::Benchmark;
+using ::testing::DoNotOptimize;
 
 #else
+
+// The DoNotOptimize(...) function can be used to prevent a value or
+// expression from being optimized away by the compiler. This function is
+// intended to add little to no overhead.
+// See: http://stackoverflow.com/questions/28287064
+//
+// The specific guarantees of DoNotOptimize(x) are:
+//  1) x, and any data it transitively points to, will exist (in a register or
+//     in memory) at the current point in the program.
+//  2) The optimizer will assume that DoNotOptimize(x) could mutate x or
+//     anything it transitively points to (although it actually doesn't).
+//
+// To see this in action:
+//
+//   void BM_multiply(benchmark::State& state) {
+//     int a = 2;
+//     int b = 4;
+//     for (auto _ : state) {
+//       testing::DoNotOptimize(a);
+//       testing::DoNotOptimize(b);
+//       int c = a * b;
+//       testing::DoNotOptimize(c);
+//     }
+//   }
+//   BENCHMARK(BM_multiply);
+//
+// Guarantee (2) applied to 'a' and 'b' prevents the compiler lifting the
+// multiplication outside of the loop. Guarantee (1) applied to 'c' prevents the
+// compiler from optimizing away 'c' as dead code.
+template <class T>
+void DoNotOptimize(const T& var) {
+  asm volatile("" : "+m"(const_cast<T&>(var)));
+}
 
 class Benchmark {
  public:
@@ -81,4 +115,4 @@ void UseRealTime();
 }  // namespace testing
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_TEST_BENCHMARK_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_TEST_BENCHMARK_H_

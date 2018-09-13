@@ -39,10 +39,11 @@ tf_cc_binary(
     srcs = ["grpc_service_main.cc"],
     deps = [
         ":grpc_service",
+        "//tensorflow:grpc++",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "@grpc//:grpc++_unsecure",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -54,14 +55,15 @@ tf_cc_test(
     ],
     deps = [
         ":grpc_stub",
+        "//tensorflow:grpc++",
         "//tensorflow/compiler/xla/client",
-        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@grpc//:grpc++_unsecure",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -71,9 +73,9 @@ cc_library(
     hdrs = ["grpc_service.h"],
     deps = [
         ":xla_service_proto",
+        "//tensorflow:grpc++",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
-        "@grpc//:grpc++_unsecure",
     ],
 )

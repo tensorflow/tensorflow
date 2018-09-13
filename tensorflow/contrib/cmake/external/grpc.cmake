@@ -20,6 +20,10 @@ set(GRPC_BUILD ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc)
 set(GRPC_TAG d184fa229d75d336aedea0041bd59cb93e7e267f)
 
 if(WIN32)
+  # We use unsecure gRPC because boringssl does not build on windows
+  set(grpc_TARGET grpc++_unsecure)
+  set(grpc_DEPENDS protobuf zlib)
+  set(grpc_SSL_PROVIDER NONE)
   if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
     set(grpc_STATIC_LIBRARIES
         ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/grpc++_unsecure.lib
@@ -32,9 +36,12 @@ if(WIN32)
         ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/gpr.lib)
   endif()
 else()
+  set(grpc_TARGET grpc++)
+  set(grpc_DEPENDS boringssl protobuf zlib)
+  set(grpc_SSL_PROVIDER module)
   set(grpc_STATIC_LIBRARIES
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc++_unsecure.a
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc_unsecure.a
+      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc++.a
+      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc.a
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libaddress_sorting.a
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/third_party/cares/cares/lib/libcares.a
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgpr.a)
@@ -44,13 +51,13 @@ add_definitions(-DGRPC_ARES=0)
 
 ExternalProject_Add(grpc
     PREFIX grpc
-    DEPENDS protobuf zlib
+    DEPENDS ${grpc_DEPENDS}
     GIT_REPOSITORY ${GRPC_URL}
     GIT_TAG ${GRPC_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     BUILD_IN_SOURCE 1
     BUILD_BYPRODUCTS ${grpc_STATIC_LIBRARIES}
-    BUILD_COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc++_unsecure
+    BUILD_COMMAND ${CMAKE_COMMAND} --build . --config Release --target ${grpc_TARGET}
     COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc_cpp_plugin
     INSTALL_COMMAND ""
     CMAKE_CACHE_ARGS
@@ -59,7 +66,7 @@ ExternalProject_Add(grpc
         -DPROTOBUF_INCLUDE_DIRS:STRING=${PROTOBUF_INCLUDE_DIRS}
         -DPROTOBUF_LIBRARIES:STRING=${protobuf_STATIC_LIBRARIES}
         -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
-	-DgRPC_SSL_PROVIDER:STRING=NONE
+	-DgRPC_SSL_PROVIDER:STRING=${grpc_SSL_PROVIDER}
 )
 
 # grpc/src/core/ext/census/tracing.c depends on the existence of openssl/rand.h.

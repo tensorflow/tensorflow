@@ -289,12 +289,9 @@ TEST(safe_strtof, Float) {
 
   EXPECT_FALSE(safe_strtof("-infinity is awesome", &result));
 
-  // Make sure we exit cleanly if the string is not terminated
+  // Make sure we exit cleanly if the string is too long
   char test_str[2 * kFastToBufferSize];
   for (int i = 0; i < 2 * kFastToBufferSize; ++i) test_str[i] = 'a';
-  EXPECT_FALSE(safe_strtof(test_str, &result));
-
-  // Make sure we exit cleanly if the string is too long
   test_str[kFastToBufferSize + 1] = '\0';
   EXPECT_FALSE(safe_strtof(test_str, &result));
 
@@ -330,12 +327,9 @@ TEST(safe_strtod, Double) {
   EXPECT_EQ(0.1234567890123, result);
   EXPECT_FALSE(safe_strtod("0.1234567890123abc", &result));
 
-  // Make sure we exit cleanly if the string is not terminated
+  // Make sure we exit cleanly if the string is too long
   char test_str[2 * kFastToBufferSize];
   for (int i = 0; i < 2 * kFastToBufferSize; ++i) test_str[i] = 'a';
-  EXPECT_FALSE(safe_strtod(test_str, &result));
-
-  // Make sure we exit cleanly if the string is too long
   test_str[kFastToBufferSize + 1] = '\0';
   EXPECT_FALSE(safe_strtod(test_str, &result));
 

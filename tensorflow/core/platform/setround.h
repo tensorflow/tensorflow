@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_SETROUND_H_
-#define TENSORFLOW_PLATFORM_SETROUND_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_SETROUND_H_
+#define TENSORFLOW_CORE_PLATFORM_SETROUND_H_
 
 #include <cfenv>
 
@@ -42,4 +42,4 @@ class ScopedSetRound {
 }  // namespace port
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_SETROUND_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_SETROUND_H_

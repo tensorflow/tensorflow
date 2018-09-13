@@ -39,6 +39,18 @@ class LinearEstimator(estimator.Estimator):
       feature_columns=[categorical_column_a,
                        categorical_feature_a_x_categorical_feature_b])
 
+  # Or estimator using an optimizer with a learning rate decay.
+  estimator = LinearEstimator(
+      head=tf.contrib.estimator.multi_label_head(n_classes=3),
+      feature_columns=[categorical_column_a,
+                       categorical_feature_a_x_categorical_feature_b],
+      optimizer=lambda: tf.train.FtrlOptimizer(
+          learning_rate=tf.exponential_decay(
+              learning_rate=0.1,
+              global_step=tf.get_global_step(),
+              decay_steps=10000,
+              decay_rate=0.96))
+
   # Or estimator using the FTRL optimizer with regularization.
   estimator = LinearEstimator(
       head=tf.contrib.estimator.multi_label_head(n_classes=3),
@@ -87,7 +99,8 @@ class LinearEstimator(estimator.Estimator):
                model_dir=None,
                optimizer='Ftrl',
                config=None,
-               partitioner=None):
+               partitioner=None,
+               sparse_combiner='sum'):
     """Initializes a `LinearEstimator` instance.
 
     Args:
@@ -99,10 +112,16 @@ class LinearEstimator(estimator.Estimator):
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator
         to continue training a previously saved model.
-      optimizer: An instance of `tf.Optimizer` used to train the model. Defaults
-        to FTRL optimizer.
+      optimizer: An instance of `tf.Optimizer` used to train the model. Can also
+        be a string (one of 'Adagrad', 'Adam', 'Ftrl', 'RMSProp', 'SGD'), or
+        callable. Defaults to FTRL optimizer.
       config: `RunConfig` object to configure the runtime settings.
       partitioner: Optional. Partitioner for input layer.
+      sparse_combiner: A string specifying how to reduce if a categorical column
+        is multivalent.  One of "mean", "sqrtn", and "sum" -- these are
+        effectively different ways to do example-level normalization, which can
+        be useful for bag-of-words features. for more details, see
+        `tf.feature_column.linear_model`.
     """
     def _model_fn(features, labels, mode, config):
       return linear_lib._linear_model_fn(  # pylint: disable=protected-access
@@ -113,6 +132,7 @@ class LinearEstimator(estimator.Estimator):
           feature_columns=tuple(feature_columns or []),
           optimizer=optimizer,
           partitioner=partitioner,
-          config=config)
+          config=config,
+          sparse_combiner=sparse_combiner)
     super(LinearEstimator, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config)

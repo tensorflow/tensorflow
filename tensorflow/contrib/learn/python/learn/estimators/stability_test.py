@@ -68,12 +68,12 @@ class StabilityTest(test.TestCase):
     minval = -0.3333
     maxval = 0.3333
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         g.seed = my_seed
         x = random_ops.random_uniform([10, 10], minval=minval, maxval=maxval)
         val1 = session.run(x)
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         g.seed = my_seed
         x = random_ops.random_uniform([10, 10], minval=minval, maxval=maxval)
         val2 = session.run(x)

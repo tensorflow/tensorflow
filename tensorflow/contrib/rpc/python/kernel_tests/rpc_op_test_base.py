@@ -51,23 +51,23 @@ class RpcOpTestBase(object):
   def testScalarHostPortRpc(self):
     with self.test_session() as sess:
       request_tensors = (
-          test_example_pb2.TestCase(shape=[1, 2, 3]).SerializeToString())
+          test_example_pb2.TestCase(values=[1, 2, 3]).SerializeToString())
       response_tensors = self.rpc(
-          method=self.get_method_name('IncrementTestShapes'),
+          method=self.get_method_name('Increment'),
           address=self._address,
           request=request_tensors)
       self.assertEqual(response_tensors.shape, ())
       response_values = sess.run(response_tensors)
     response_message = test_example_pb2.TestCase()
     self.assertTrue(response_message.ParseFromString(response_values))
-    self.assertAllEqual([2, 3, 4], response_message.shape)
+    self.assertAllEqual([2, 3, 4], response_message.values)
 
   def testScalarHostPortTryRpc(self):
     with self.test_session() as sess:
       request_tensors = (
-          test_example_pb2.TestCase(shape=[1, 2, 3]).SerializeToString())
+          test_example_pb2.TestCase(values=[1, 2, 3]).SerializeToString())
       response_tensors, status_code, status_message = self.try_rpc(
-          method=self.get_method_name('IncrementTestShapes'),
+          method=self.get_method_name('Increment'),
           address=self._address,
           request=request_tensors)
       self.assertEqual(status_code.shape, ())
@@ -77,7 +77,7 @@ class RpcOpTestBase(object):
           sess.run((response_tensors, status_code, status_message)))
     response_message = test_example_pb2.TestCase()
     self.assertTrue(response_message.ParseFromString(response_values))
-    self.assertAllEqual([2, 3, 4], response_message.shape)
+    self.assertAllEqual([2, 3, 4], response_message.values)
     # For the base Rpc op, don't expect to get error status back.
     self.assertEqual(errors.OK, status_code_values)
     self.assertEqual(b'', status_message_values)
@@ -86,7 +86,7 @@ class RpcOpTestBase(object):
     with self.test_session() as sess:
       request_tensors = []
       response_tensors = self.rpc(
-          method=self.get_method_name('IncrementTestShapes'),
+          method=self.get_method_name('Increment'),
           address=self._address,
           request=request_tensors)
       self.assertAllEqual(response_tensors.shape, [0])
@@ -95,7 +95,7 @@ class RpcOpTestBase(object):
 
   def testInvalidMethod(self):
     for method in [
-        '/InvalidService.IncrementTestShapes',
+        '/InvalidService.Increment',
         self.get_method_name('InvalidMethodName')
     ]:
       with self.test_session() as sess:
@@ -115,12 +115,12 @@ class RpcOpTestBase(object):
       with self.assertRaises(errors.UnavailableError):
         sess.run(
             self.rpc(
-                method=self.get_method_name('IncrementTestShapes'),
+                method=self.get_method_name('Increment'),
                 address=address,
                 request=''))
       _, status_code_value, status_message_value = sess.run(
           self.try_rpc(
-              method=self.get_method_name('IncrementTestShapes'),
+              method=self.get_method_name('Increment'),
               address=address,
               request=''))
       self.assertEqual(errors.UNAVAILABLE, status_code_value)
@@ -182,10 +182,10 @@ class RpcOpTestBase(object):
     with self.test_session() as sess:
       request_tensors = [
           test_example_pb2.TestCase(
-              shape=[i, i + 1, i + 2]).SerializeToString() for i in range(20)
+              values=[i, i + 1, i + 2]).SerializeToString() for i in range(20)
       ]
       response_tensors = self.rpc(
-          method=self.get_method_name('IncrementTestShapes'),
+          method=self.get_method_name('Increment'),
           address=self._address,
           request=request_tensors)
       self.assertEqual(response_tensors.shape, (20,))
@@ -194,17 +194,17 @@ class RpcOpTestBase(object):
     for i in range(20):
       response_message = test_example_pb2.TestCase()
       self.assertTrue(response_message.ParseFromString(response_values[i]))
-      self.assertAllEqual([i + 1, i + 2, i + 3], response_message.shape)
+      self.assertAllEqual([i + 1, i + 2, i + 3], response_message.values)
 
   def testVecHostPortManyParallelRpcs(self):
     with self.test_session() as sess:
       request_tensors = [
           test_example_pb2.TestCase(
-              shape=[i, i + 1, i + 2]).SerializeToString() for i in range(20)
+              values=[i, i + 1, i + 2]).SerializeToString() for i in range(20)
       ]
       many_response_tensors = [
           self.rpc(
-              method=self.get_method_name('IncrementTestShapes'),
+              method=self.get_method_name('Increment'),
               address=self._address,
               request=request_tensors) for _ in range(10)
       ]
@@ -216,25 +216,25 @@ class RpcOpTestBase(object):
       for i in range(20):
         response_message = test_example_pb2.TestCase()
         self.assertTrue(response_message.ParseFromString(response_values[i]))
-        self.assertAllEqual([i + 1, i + 2, i + 3], response_message.shape)
+        self.assertAllEqual([i + 1, i + 2, i + 3], response_message.values)
 
   def testVecHostPortRpcUsingEncodeAndDecodeProto(self):
     with self.test_session() as sess:
       request_tensors = encode_proto_op.encode_proto(
           message_type='tensorflow.contrib.rpc.TestCase',
-          field_names=['shape'],
+          field_names=['values'],
           sizes=[[3]] * 20,
           values=[
               [[i, i + 1, i + 2] for i in range(20)],
           ])
       response_tensor_strings = self.rpc(
-          method=self.get_method_name('IncrementTestShapes'),
+          method=self.get_method_name('Increment'),
           address=self._address,
           request=request_tensors)
       _, (response_shape,) = decode_proto_op.decode_proto(
           bytes=response_tensor_strings,
           message_type='tensorflow.contrib.rpc.TestCase',
-          field_names=['shape'],
+          field_names=['values'],
           output_types=[dtypes.int32])
       response_shape_values = sess.run(response_shape)
     self.assertAllEqual([[i + 1, i + 2, i + 3]
@@ -285,9 +285,9 @@ class RpcOpTestBase(object):
       addresses = flatten([[
           self._address, 'unix:/tmp/this_unix_socket_doesnt_exist_97820348!!@'
       ] for _ in range(10)])
-      request = test_example_pb2.TestCase(shape=[0, 1, 2]).SerializeToString()
+      request = test_example_pb2.TestCase(values=[0, 1, 2]).SerializeToString()
       response_tensors, status_code, _ = self.try_rpc(
-          method=self.get_method_name('IncrementTestShapes'),
+          method=self.get_method_name('Increment'),
           address=addresses,
           request=request)
       response_tensors_values, status_code_values = sess.run((response_tensors,
@@ -303,9 +303,9 @@ class RpcOpTestBase(object):
     flatten = lambda x: list(itertools.chain.from_iterable(x))
     with self.test_session() as sess:
       methods = flatten(
-          [[self.get_method_name('IncrementTestShapes'), 'InvalidMethodName']
+          [[self.get_method_name('Increment'), 'InvalidMethodName']
            for _ in range(10)])
-      request = test_example_pb2.TestCase(shape=[0, 1, 2]).SerializeToString()
+      request = test_example_pb2.TestCase(values=[0, 1, 2]).SerializeToString()
       response_tensors, status_code, _ = self.try_rpc(
           method=methods, address=self._address, request=request)
       response_tensors_values, status_code_values = sess.run((response_tensors,
@@ -325,10 +325,10 @@ class RpcOpTestBase(object):
       ] for _ in range(10)])
       requests = [
           test_example_pb2.TestCase(
-              shape=[i, i + 1, i + 2]).SerializeToString() for i in range(20)
+              values=[i, i + 1, i + 2]).SerializeToString() for i in range(20)
       ]
       response_tensors, status_code, _ = self.try_rpc(
-          method=self.get_method_name('IncrementTestShapes'),
+          method=self.get_method_name('Increment'),
           address=addresses,
           request=requests)
       response_tensors_values, status_code_values = sess.run((response_tensors,
@@ -343,4 +343,4 @@ class RpcOpTestBase(object):
           response_message = test_example_pb2.TestCase()
           self.assertTrue(
               response_message.ParseFromString(response_tensors_values[i]))
-          self.assertAllEqual([i + 1, i + 2, i + 3], response_message.shape)
+          self.assertAllEqual([i + 1, i + 2, i + 3], response_message.values)

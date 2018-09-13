@@ -97,7 +97,7 @@ Status OpRegistry::LookUp(const string& op_type_name,
         "Make sure the Op and Kernel are registered in the "
         "binary running in this process. Note that if you "
         "are loading a saved graph which used ops from "
-        "tf.contrib, accessing (e.g.) `tf.contrib.resampler` should be done"
+        "tf.contrib, accessing (e.g.) `tf.contrib.resampler` should be done "
         "before importing the graph, as contrib ops are lazily registered "
         "when the module is first accessed.");
     VLOG(1) << status.ToString();
@@ -256,7 +256,7 @@ Status OpListOpRegistry::LookUp(const string& op_type_name,
         "Make sure the Op and Kernel are registered in the "
         "binary running in this process. Note that if you "
         "are loading a saved graph which used ops from "
-        "tf.contrib, accessing (e.g.) `tf.contrib.resampler` should be done"
+        "tf.contrib, accessing (e.g.) `tf.contrib.resampler` should be done "
         "before importing the graph, as contrib ops are lazily registered "
         "when the module is first accessed.");
   }

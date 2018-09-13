@@ -115,7 +115,7 @@ ShapePartitionIterator::ShapePartitionIterator(
   for (int i = 0; i < dimension_partition_sizes_.size(); ++i) {
     const int64 dim_size = shape_.dimensions(dimensions_[i]);
     dimension_partition_sizes_[i] =
-        std::max(1LL, dim_size / dimension_partition_counts_[i]);
+        std::max(int64{1}, dim_size / dimension_partition_counts_[i]);
   }
 
   // Calculate the partition strides for each dimension.

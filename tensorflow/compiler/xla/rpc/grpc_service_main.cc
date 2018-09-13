@@ -15,11 +15,11 @@ limitations under the License.
 
 // Basic server binary that exposes a xla::Service through a GRPC interface
 // on a configurable port.
-#include "grpc++/security/server_credentials.h"
-#include "grpc++/server.h"
-#include "grpc++/server_builder.h"
+#include "grpcpp/security/server_credentials.h"
+#include "grpcpp/server.h"
+#include "grpcpp/server_builder.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/rpc/grpc_service.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -44,7 +44,7 @@ int RealMain(int argc, char** argv) {
       xla::GRPCService::NewService().ConsumeValueOrDie();
 
   ::grpc::ServerBuilder builder;
-  string server_address(tensorflow::strings::Printf("localhost:%d", port));
+  string server_address(absl::StrFormat("localhost:%d", port));
 
   builder.AddListeningPort(server_address, ::grpc::InsecureServerCredentials());
   builder.RegisterService(service.get());

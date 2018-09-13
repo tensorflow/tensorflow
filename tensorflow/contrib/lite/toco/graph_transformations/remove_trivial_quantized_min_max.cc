@@ -47,11 +47,11 @@ bool IsTrivialMinMax(GraphTransformation* transformation, const Model& model,
   double clamp_min;
   double clamp_max;
   switch (op_type) {
-    case OperatorType::kTensorFlowMinimum:
+    case OperatorType::kMinimum:  //  Element-wise Minimum
       clamp_min = -std::numeric_limits<double>::infinity();
       clamp_max = clamp_value;
       break;
-    case OperatorType::kTensorFlowMaximum:
+    case OperatorType::kMaximum:  //  Element-wise Maximum
       clamp_min = clamp_value;
       clamp_max = std::numeric_limits<double>::infinity();
       break;
@@ -72,8 +72,8 @@ bool IsTrivialMinMax(GraphTransformation* transformation, const Model& model,
 bool RemoveTrivialQuantizedMinMax::Run(Model* model, std::size_t op_index) {
   const auto it = model->operators.begin() + op_index;
   auto* op = it->get();
-  if ((op->type != OperatorType::kTensorFlowMinimum &&
-       op->type != OperatorType::kTensorFlowMaximum) ||
+  if ((op->type != OperatorType::kMinimum &&
+       op->type != OperatorType::kMaximum) ||
       op->inputs.size() != 2) {
     return false;
   }

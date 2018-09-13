@@ -95,11 +95,12 @@ class LSTMOpModel : public SingleOpModel {
       projection_bias_ = AddNullInput();
     }
 
-    scratch_buffer_ = AddOutput(TensorType_FLOAT32);
-    // TODO(ghodrat): Modify these states when we have a permanent solution for
-    // persistent buffer.
-    output_state_ = AddOutput(TensorType_FLOAT32);
-    cell_state_ = AddOutput(TensorType_FLOAT32);
+    // Adding the 2 input state tensors.
+    input_activation_state_ =
+        AddInput(TensorData{TensorType_FLOAT32, {n_output_ * n_batch_}}, true);
+    input_cell_state_ =
+        AddInput(TensorData{TensorType_FLOAT32, {n_cell_ * n_batch_}}, true);
+
     output_ = AddOutput(TensorType_FLOAT32);
 
     SetBuiltinOp(BuiltinOperator_LSTM, BuiltinOptions_LSTMOptions,
@@ -177,22 +178,6 @@ class LSTMOpModel : public SingleOpModel {
     PopulateTensor(projection_bias_, f);
   }
 
-  void ResetOutputState() {
-    const int zero_buffer_size = n_cell_ * n_batch_;
-    std::unique_ptr<float[]> zero_buffer(new float[zero_buffer_size]);
-    memset(zero_buffer.get(), 0, zero_buffer_size * sizeof(float));
-    PopulateTensor(output_state_, 0, zero_buffer.get(),
-                   zero_buffer.get() + zero_buffer_size);
-  }
-
-  void ResetCellState() {
-    const int zero_buffer_size = n_cell_ * n_batch_;
-    std::unique_ptr<float[]> zero_buffer(new float[zero_buffer_size]);
-    memset(zero_buffer.get(), 0, zero_buffer_size * sizeof(float));
-    PopulateTensor(cell_state_, 0, zero_buffer.get(),
-                   zero_buffer.get() + zero_buffer_size);
-  }
-
   void SetInput(int offset, float* begin, float* end) {
     PopulateTensor(input_, offset, begin, end);
   }
@@ -231,11 +216,10 @@ class LSTMOpModel : public SingleOpModel {
 
   int projection_weights_;
   int projection_bias_;
+  int input_activation_state_;
+  int input_cell_state_;
 
   int output_;
-  int output_state_;
-  int cell_state_;
-  int scratch_buffer_;
 
   int n_batch_;
   int n_input_;
@@ -319,10 +303,6 @@ TEST(LSTMOpTest, BlackBoxTestWithCifgWithPeepholeNoProjectionNoClipping) {
       {0.47485286, -0.51955009, -0.24458408, 0.31544167});
   lstm.SetCellToOutputWeights(
       {-0.17135078, 0.82760304, 0.85573703, -0.77109635});
-
-  // Resetting cell_state and output_state
-  lstm.ResetCellState();
-  lstm.ResetOutputState();
 
   // Verify the model by unpacking it.
   lstm.Verify();

@@ -1691,14 +1691,20 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
   const int filter_width = ArraySize(filter_dims, 1);
   const int output_height = ArraySize(output_dims, 2);
   const int output_width = ArraySize(output_dims, 1);
+#ifdef USE_NEON
+  const bool shift_left = (output_shift <= 0);
+  const int32 multiplier_power_of_two = shift_left ? (1 << -output_shift) : 1;
+#endif
   TFLITE_DCHECK(output_depth == input_depth * depth_multiplier);
 
-#ifdef __aarch64__
+// Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
+// Jetson TX-2. This compiler does not support the offsetof() macro.
+#if defined(__aarch64__) && !defined(GOOGLE_L4T)
   // Call kernel optimized for depthwise convolutions using 3x3 filters if
   // parameters are supported.
-  if (Fast3x3FilterKernelSupported(input_dims, filter_dims, stride_width,
-                                   stride_height, pad_width, pad_height,
-                                   depth_multiplier, output_dims)) {
+  if (Fast3x3FilterKernelSupported(
+          input_dims, filter_dims, stride_width, stride_height, pad_width,
+          pad_height, depth_multiplier, output_dims, output_shift)) {
     DepthwiseConv3x3Filter(input_data, input_dims, input_offset, filter_data,
                            filter_dims, filter_offset, bias_data, bias_dims,
                            stride_width, stride_height, pad_width, pad_height,
@@ -1833,12 +1839,20 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
             acc[j] = vld1q_s32(acc_buffer + i + 4 * j);
           }
 
-          // Fixed-point multiplication.
-          for (int j = 0; j < 4; j++) {
-            acc[j] = vqrdmulhq_n_s32(acc[j], output_multiplier);
-          }
-          for (int j = 0; j < 4; j++) {
-            acc[j] = RoundingDivideByPOT(acc[j], output_shift);
+          if (!shift_left) {
+            // Fixed-point multiplication.
+            for (int j = 0; j < 4; j++) {
+              acc[j] = vqrdmulhq_n_s32(acc[j], output_multiplier);
+            }
+            for (int j = 0; j < 4; j++) {
+              acc[j] = RoundingDivideByPOT(acc[j], output_shift);
+            }
+          } else {
+            // Fixed-point multiplication.
+            for (int j = 0; j < 4; j++) {
+              acc[j] = vmulq_n_s32(acc[j], multiplier_power_of_two);
+              acc[j] = vqrdmulhq_n_s32(acc[j], output_multiplier);
+            }
           }
           // Add the output offset.
           for (int j = 0; j < 4; j++) {
@@ -1870,12 +1884,21 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
         for (; i <= num_output_values - 8; i += 8) {
           int32x4_t acc0 = vld1q_s32(acc_buffer + i);
           int32x4_t acc1 = vld1q_s32(acc_buffer + i + 4);
-          // Fixed-point multiplication.
-          acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-          acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-          // Rounding right shift.
-          acc0 = RoundingDivideByPOT(acc0, output_shift);
-          acc1 = RoundingDivideByPOT(acc1, output_shift);
+          if (!shift_left) {
+            // Fixed-point multiplication.
+            acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
+            acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
+            // Rounding right shift.
+            acc0 = RoundingDivideByPOT(acc0, output_shift);
+            acc1 = RoundingDivideByPOT(acc1, output_shift);
+          } else {
+            // Fixed-point multiplication.
+            acc0 = vmulq_n_s32(acc0, multiplier_power_of_two);
+            acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
+
+            acc1 = vmulq_n_s32(acc1, multiplier_power_of_two);
+            acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
+          }
           // Add the output offset.
           acc0 = vaddq_s32(acc0, output_offset_vec);
           acc1 = vaddq_s32(acc1, output_offset_vec);
@@ -1899,10 +1922,16 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
         // that will have to go through the very slow scalar code.
         for (; i <= num_output_values - 4; i += 4) {
           int32x4_t acc = vld1q_s32(acc_buffer + i);
-          // Fixed-point multiplication.
-          acc = vqrdmulhq_n_s32(acc, output_multiplier);
-          // Rounding right shift.
-          acc = RoundingDivideByPOT(acc, output_shift);
+          if (!shift_left) {
+            // Fixed-point multiplication.
+            acc = vqrdmulhq_n_s32(acc, output_multiplier);
+            // Rounding right shift.
+            acc = RoundingDivideByPOT(acc, output_shift);
+          } else {
+            // Fixed-point multiplication.
+            acc = vmulq_n_s32(acc, multiplier_power_of_two);
+            acc = vqrdmulhq_n_s32(acc, output_multiplier);
+          }
           // Add the output offset.
           acc = vaddq_s32(acc, output_offset_vec);
           // Apply the activation function.
@@ -1923,8 +1952,8 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
         // Handle leftover values, one by one. This is very slow.
         for (; i < num_output_values; i++) {
           int32 acc = acc_buffer[i];
-          acc = MultiplyByQuantizedMultiplierSmallerThanOne(
-              acc, output_multiplier, output_shift);
+          acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
+                                              -output_shift);
           acc += output_offset;
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);

@@ -295,7 +295,7 @@ inline const cudaStream_t& GetCudaStream(OpKernelContext* context) {
       reinterpret_cast<const cudaStream_t*>(context->op_device_context()
                                                 ->stream()
                                                 ->implementation()
-                                                ->CudaStreamMemberHack()));
+                                                ->GpuStreamMemberHack()));
   return *ptr;
 }
 

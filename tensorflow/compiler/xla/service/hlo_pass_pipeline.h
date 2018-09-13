@@ -21,7 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -34,7 +34,7 @@ namespace xla {
 class HloPassPipeline : public HloPassInterface {
  public:
   explicit HloPassPipeline(const string& name) : name_(name) {}
-  tensorflow::StringPiece name() const override { return name_; }
+  absl::string_view name() const override { return name_; }
 
   // Add a pass to the pipeline. It should be called with the arguments for the
   // pass constructor:

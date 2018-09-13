@@ -97,7 +97,7 @@ py_binary(
 
 py_test(
     name = "fully_connected_feed_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "fully_connected_feed.py",
     ],

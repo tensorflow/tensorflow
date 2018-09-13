@@ -37,8 +37,8 @@ bool IsElementwiseOperator(OperatorType optype) {
     case OperatorType::kRelu1:
     case OperatorType::kRelu6:
     case OperatorType::kTanh:
-    case OperatorType::kTensorFlowSqrt:
-    case OperatorType::kTensorFlowSquare:
+    case OperatorType::kSqrt:
+    case OperatorType::kSquare:
       return true;
     default:
       return false;
@@ -51,7 +51,7 @@ bool IsMoveOperator(OperatorType optype) {
     case OperatorType::kExpandDims:
     case OperatorType::kSpaceToDepth:
     case OperatorType::kSqueeze:
-    case OperatorType::kTensorFlowReshape:
+    case OperatorType::kReshape:
     case OperatorType::kTranspose:
       return true;
     default:

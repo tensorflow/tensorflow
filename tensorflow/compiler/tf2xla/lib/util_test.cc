@@ -21,8 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/lib/batch_dot.h"
 #include "tensorflow/compiler/xla/array2d.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -65,14 +64,13 @@ xla::Array3D<float> BatchedAValsFull() {
 }
 
 XLA_TEST_F(UtilTest, Simple2dLookup) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, x, y;
+  xla::XlaOp a, x, y;
   auto a_data = CreateR2Parameter<float>(BValsRight(), 0, "a", &builder, &a);
   auto x_data = CreateR0Parameter<int>(2, 1, "x", &builder, &x);
   auto y_data = CreateR0Parameter<int>(1, 2, "y", &builder, &y);
-  auto result = DynamicSliceInMinorDims(&builder, a, {x, y}, {1, 1});
-  TF_ASSERT_OK(result.status());
+  DynamicSliceInMinorDims(a, {x, y}, {1, 1});
 
   ComputeAndCompareR2<float>(&builder, {{10}},
                              {a_data.get(), x_data.get(), y_data.get()},
@@ -80,33 +78,30 @@ XLA_TEST_F(UtilTest, Simple2dLookup) {
 }
 
 XLA_TEST_F(UtilTest, Simple3dLookup) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, index;
+  xla::XlaOp a, index;
   auto a_data =
       CreateR3Parameter<float>(BatchedAValsFull(), 0, "a", &builder, &a);
   auto index_data = CreateR0Parameter<int>(1, 1, "index", &builder, &index);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto l_index,
-      DynamicSliceInMinorDims(&builder, a,
-                              {index, builder.ConstantR0<int32>(0)}, {1, 4}));
+  DynamicSliceInMinorDims(a, {index, xla::ConstantR0<int32>(&builder, 0)},
+                          {1, 4});
 
   ComputeAndCompareR3<float>(&builder, {{{3, 6, 0, 1}}, {{24, 61, 82, 48}}},
                              {a_data.get(), index_data.get()});
 }
 
 XLA_TEST_F(UtilTest, SimpleSliceUpdate) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b, x, y;
+  xla::XlaOp a, b, x, y;
   auto a_data = CreateR2Parameter<float>(AValsFull(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>({{9, 1, -10}}, 1, "b", &builder, &b);
   auto x_data = CreateR0Parameter<int>(2, 2, "x", &builder, &x);
   auto y_data = CreateR0Parameter<int>(1, 3, "y", &builder, &y);
 
-  auto result = DynamicUpdateSliceInMinorDims(&builder, a, b, {x, y});
-  TF_ASSERT_OK(result.status());
+  DynamicUpdateSliceInMinorDims(a, b, {x, y});
 
   xla::Array2D<float> expected(
       {{{2, 0, 1, 2}, {3, 6, 0, 1}, {4, 9, 1, -10}, {5, 8, 10, 11}}});
@@ -117,11 +112,11 @@ XLA_TEST_F(UtilTest, SimpleSliceUpdate) {
 }
 
 XLA_TEST_F(UtilTest, RowBatchDot) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
   int n = 4;
 
-  xla::ComputationDataHandle a, row, index;
+  xla::XlaOp a, row, index;
   auto a_data =
       CreateR3Parameter<float>(BatchedAValsFull(), 0, "a", &builder, &a);
   auto row_data = CreateR3Parameter<float>({{{9, 1, 0, 0}}, {{2, 4, 0, 0}}}, 1,
@@ -129,13 +124,9 @@ XLA_TEST_F(UtilTest, RowBatchDot) {
   // Select {{3, 6, 0, 1}, {24, 61,  82,  48}} out of BatchedAValsFull().
   auto index_data = CreateR0Parameter<int>(1, 2, "index", &builder, &index);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto l_index,
-      DynamicSliceInMinorDims(&builder, a,
-                              {index, builder.ConstantR0<int32>(0)}, {1, n}));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto dot, BatchDot(&builder, l_index, row,
-                         /*transpose_x=*/false, /*transpose_y=*/true));
+  auto l_index = DynamicSliceInMinorDims(
+      a, {index, xla::ConstantR0<int32>(&builder, 0)}, {1, n});
+  BatchDot(l_index, row, /*transpose_x=*/false, /*transpose_y=*/true);
 
   ComputeAndCompareR3<float>(&builder, {{{33}}, {{292}}},
                              {a_data.get(), row_data.get(), index_data.get()});

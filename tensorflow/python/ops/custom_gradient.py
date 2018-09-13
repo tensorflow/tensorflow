@@ -26,6 +26,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -72,7 +73,7 @@ def custom_gradient(f):
   With this definition, the gradient at x=100 will be correctly evaluated as
   1.0.
 
-  See also @{tf.RegisterGradient} which registers a gradient function for a
+  See also `tf.RegisterGradient` which registers a gradient function for a
   primitive TensorFlow operation. `tf.custom_gradient` on the other hand allows
   for fine grained control over the gradient computation of a sequence of
   operations.
@@ -81,25 +82,25 @@ def custom_gradient(f):
   scope must be using `ResourceVariable`s.
 
   Args:
-    f: function `f(x)` that returns a tuple `(y, grad_fn)` where:
-       - `x` is a `Tensor` or sequence of `Tensor` inputs to the function.
+    f: function `f(*x)` that returns a tuple `(y, grad_fn)` where:
+       - `x` is a sequence of `Tensor` inputs to the function.
        - `y` is a `Tensor` or sequence of `Tensor` outputs of applying
-         TensorFlow
-         operations in `f` to `x`.
+         TensorFlow operations in `f` to `x`.
        - `grad_fn` is a function with the signature `g(*grad_ys)` which returns
          a list of `Tensor`s - the derivatives of `Tensor`s in `y` with respect
-         to the `Tensor`s in `x.  `grad_ys` is a `Tensor` or sequence of
+         to the `Tensor`s in `x`.  `grad_ys` is a `Tensor` or sequence of
          `Tensor`s the same size as `y` holding the initial value gradients for
          each `Tensor` in `y`. If `f` uses `Variable`s (that are not part of the
          inputs), i.e. through `get_variable`, then `grad_fn` should have
          signature `g(*grad_ys, variables=None)`, where `variables` is a list of
          the `Variable`s, and return a 2-tuple `(grad_xs, grad_vars)`, where
          `grad_xs` is the same as above, and `grad_vars` is a `list<Tensor>`
-         with the derivatives of `Tensor`s in `y` with respect to the variables.
+         with the derivatives of `Tensor`s in `y` with respect to the variables
+         (that is, grad_vars has one Tensor per variable in variables).
 
   Returns:
     A function `h(x)` which returns the same value as `f(x)[0]` and whose
-    gradient (as calculated by @{tf.gradients}) is determined by `f(x)[1]`.
+    gradient (as calculated by `tf.gradients`) is determined by `f(x)[1]`.
   """
 
   def decorated(*args, **kwargs):
@@ -121,17 +122,42 @@ def _graph_mode_decorator(f, *args, **kwargs):
         "arguments only when eager execution is enabled.")
   name = "CustomGradient-%s" % ops.uid()
   args = [ops.convert_to_tensor(x) for x in args]
+
+  # Checking global and local variables attempts to ensure that no non-resource
+  # Variables are added to the graph.
+  current_var_scope = variable_scope.get_variable_scope()
+  before_vars = set(current_var_scope.global_variables() +
+                    current_var_scope.local_variables())
   with backprop.GradientTape() as tape:
     result, grad_fn = f(*args)
+  after_vars = set(current_var_scope.global_variables() +
+                   current_var_scope.local_variables())
+  new_vars = after_vars - before_vars
+  for v in new_vars:
+    if not isinstance(v, resource_variable_ops.ResourceVariable):
+      raise TypeError(
+          "All variables used by a function wrapped with @custom_gradient must "
+          "be `ResourceVariable`s. Ensure that no `variable_scope` is created "
+          "with `use_resource=False`.")
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
   variables = list(set(tape.watched_variables()) - set(args))
-  grad_argspec = tf_inspect.getargspec(grad_fn)
-  if "variables" in grad_argspec.args:
+  grad_argspec = tf_inspect.getfullargspec(grad_fn)
+  variables_in_signature = ("variables" in grad_argspec.args or
+                            grad_argspec.varkw)
+  if variables and not variables_in_signature:
+    raise TypeError("If using @custom_gradient with a function that "
+                    "uses variables, then grad_fn must accept a keyword "
+                    "argument 'variables'.")
+  if variables_in_signature and not variables:
+    # User seems to intend to use variables but none were captured.
     if not variable_scope.get_variable_scope().use_resource:
       raise TypeError("If using @custom_gradient with a function that "
-                      "creates variables, the enclosing variable scope must "
+                      "uses variables, the enclosing variable scope must "
                       "have use_resource=True.")
+    else:
+      logging.warn("@custom_gradient grad_fn has 'variables' in signature, but "
+                   "no ResourceVariables were used on the forward pass.")
   flat_result = nest.flatten(result)
   all_tensors = flat_result + args + variables
 
@@ -167,11 +193,13 @@ def _eager_mode_decorator(f, *args, **kwargs):
   all_inputs = list(args) + list(kwargs.values())
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
-  variable_inputs = [
-      arg for arg in all_inputs
-      if isinstance(arg, resource_variable_ops.ResourceVariable)
-  ]
-  variables = list(set(tape.watched_variables()) - set(variable_inputs))
+  variables = [v for v in set(tape.watched_variables()) if v not in all_inputs]
+  grad_argspec = tf_inspect.getfullargspec(grad_fn)
+  if (variables and ("variables" not in grad_argspec.args) and
+      not grad_argspec.varkw):
+    raise TypeError("If using @custom_gradient with a function that "
+                    "uses variables, then grad_fn must accept a keyword "
+                    "argument 'variables'.")
   flat_result = nest.flatten(result)
   # TODO(apassos) consider removing the identity below.
   flat_result = [gen_array_ops.identity(x) for x in flat_result]

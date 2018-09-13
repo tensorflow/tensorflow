@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/sql/sqlite_query_connection.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace sql {
 
 std::unique_ptr<QueryConnection> DriverManager::CreateQueryConnection(
@@ -30,5 +30,5 @@ std::unique_ptr<QueryConnection> DriverManager::CreateQueryConnection(
 }
 
 }  // namespace sql
-
+}  // namespace data
 }  // namespace tensorflow

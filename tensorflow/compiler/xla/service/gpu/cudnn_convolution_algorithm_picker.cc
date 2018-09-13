@@ -14,79 +14,66 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/core/lib/gtl/optional.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
+using absl::optional;
 using se::DeviceMemoryBase;
 using se::dnn::AlgorithmConfig;
 using se::dnn::AlgorithmDesc;
-using tensorflow::gtl::nullopt;
-using tensorflow::gtl::optional;
 
 class ScratchAllocator : public se::ScratchAllocator {
  public:
   ScratchAllocator(int device_ordinal, DeviceMemoryAllocator* memory_allocator)
       : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
 
-  ~ScratchAllocator() override;
-
   int64 GetMemoryLimitInBytes(se::Stream* stream) override {
     return 1LL << 32;  // 4GB.  TODO(jlebar): Tune this?
   }
   int64 TotalAllocatedBytes() { return total_allocated_bytes_; }
 
-  se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
-      se::Stream* stream, int64 byte_size) override;
+  StatusOr<se::DeviceMemory<uint8>> AllocateBytes(se::Stream* stream,
+                                                  int64 byte_size) override;
 
  private:
   const int device_ordinal_;
   DeviceMemoryAllocator* memory_allocator_;
-  std::vector<se::DeviceMemoryBase> allocated_buffers_;
+  std::vector<OwningDeviceMemory> allocated_buffers_;
   int64 total_allocated_bytes_ = 0;
 };
 
-ScratchAllocator::~ScratchAllocator() {
-  for (auto& allocated_buffer : allocated_buffers_) {
-    if (!memory_allocator_->Deallocate(device_ordinal_, &allocated_buffer)
-             .ok()) {
-      // The program can still continue with failed deallocation.
-      LOG(ERROR) << "Failed to deallocate the allocated buffer: "
-                 << allocated_buffer.opaque();
-    }
-  }
-}
-
-se::port::StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
+StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
     se::Stream* stream, int64 byte_size) {
   CHECK_GE(byte_size, 0) << "byte_size must be positive.";
   if (byte_size > GetMemoryLimitInBytes(stream)) {
     return se::port::Status(
         se::port::error::RESOURCE_EXHAUSTED,
-        tensorflow::strings::Printf(
-            "Allocating %lld bytes exceeds the memory limit of %lld bytes.",
+        absl::StrFormat(
+            "Allocating %d bytes exceeds the memory limit of %d bytes.",
             byte_size, GetMemoryLimitInBytes(stream)));
   }
 
-  auto status_or_memory =
-      memory_allocator_->Allocate(device_ordinal_, byte_size,
-                                  /*retry_on_failure=*/false);
-  if (!status_or_memory.ok()) {
-    return se::port::Status(se::port::error::RESOURCE_EXHAUSTED,
-                            tensorflow::strings::Printf(
-                                "Failed to allocate %lld bytes on device %d.",
-                                byte_size, device_ordinal_));
-  }
-  se::DeviceMemoryBase allocated_buffer = status_or_memory.ValueOrDie();
-  allocated_buffers_.push_back(allocated_buffer);
+  TF_ASSIGN_OR_RETURN(OwningDeviceMemory allocated_buffer,
+                      memory_allocator_->Allocate(device_ordinal_, byte_size,
+                                                  /*retry_on_failure=*/false));
   total_allocated_bytes_ += byte_size;
-  return se::DeviceMemory<uint8>(allocated_buffer);
+
+  se::DeviceMemoryBase buffer_addr = allocated_buffer.AsDeviceMemoryBase();
+  allocated_buffers_.push_back(std::move(allocated_buffer));
+  return se::DeviceMemory<uint8>(buffer_addr);
 }
 
 // Determines whether we can safely perform a winograd non-fused convolution for
@@ -97,8 +84,7 @@ bool ShouldIncludeWinogradNonfusedAlgo(const Shape& input_shape,
                                        const ConvolutionDimensionNumbers& dnums,
                                        se::StreamExecutor* stream_exec) {
   // Skip this check for cudnn7 and newer.
-  auto version =
-      stream_exec->AsDnn()->GetVersion();
+  auto version = stream_exec->AsDnn()->GetVersion();
   if (version.ok() && version.ValueOrDie().major_version() >= 7) {
     return true;
   }
@@ -144,14 +130,36 @@ std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
 
 string AlgorithmToString(const AlgorithmDesc& algo) {
   if (algo.tensor_ops_enabled()) {
-    return tensorflow::strings::StrCat(algo.algo_id(), "+TC");
+    return absl::StrCat(algo.algo_id(), "+TC");
   }
-  return tensorflow::strings::StrCat(algo.algo_id());
+  return absl::StrCat(algo.algo_id());
 }
 
 string NumBytesToString(int64 bytes) {
-  return tensorflow::strings::StrCat(
-      tensorflow::strings::HumanReadableNumBytes(bytes), " (", bytes, "B)");
+  return absl::StrCat(tensorflow::strings::HumanReadableNumBytes(bytes), " (",
+                      bytes, "B)");
+}
+
+// Acquires a process-global lock on the device pointed to by the given
+// StreamExecutor.
+//
+// This is used to prevent other XLA instances from trying to autotune on this
+// device while we're using it.
+tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec) {
+  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  // se::Platform*s are global singletons guaranteed to live forever.
+  static auto* mutexes =
+      new std::map<std::pair<const se::Platform*, /*device_ordinal*/ int64>,
+                   tensorflow::mutex>();
+
+  tensorflow::mutex_lock global_lock(mu);
+  auto it = mutexes
+                ->emplace(std::piecewise_construct,
+                          std::make_tuple(stream_exec->platform(),
+                                          stream_exec->device_ordinal()),
+                          std::make_tuple())
+                .first;
+  return tensorflow::mutex_lock{it->second};
 }
 
 }  // anonymous namespace
@@ -167,11 +175,35 @@ string NumBytesToString(int64 bytes) {
 // cache misses and doing extra work.  Overall, caching doesn't seem worth the
 // trouble, but we may want to revisit this if we ever find a model where
 // caching would speed up compilation a lot.
-optional<std::tuple<int64, bool, int64>>
+StatusOr<std::tuple<int64, bool, int64>>
 CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
-    CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
-    const Shape& output_shape, const Window& window,
-    const ConvolutionDimensionNumbers& dnums, HloInstruction* instr) {
+    const HloCustomCallInstruction* instr) {
+  CudnnConvParams params;
+  TF_RETURN_IF_ERROR(PopulateCudnnConvParams(instr, &params));
+
+  const Shape& input_shape = *params.input_shape;
+  const Shape& filter_shape = *params.filter_shape;
+  const Shape& output_shape = *params.output_shape;
+
+  CHECK_EQ(input_shape.element_type(), filter_shape.element_type());
+  CHECK_EQ(input_shape.element_type(), output_shape.element_type());
+  // TODO(timshen): for now only check fp16. It can be expanded to other types,
+  // with some work on the HLO routines.
+  const bool cross_check_enabled = input_shape.element_type() == xla::F16;
+
+  // Don't run this function concurrently on the same GPU.
+  //
+  // This is a bit of a hack and doesn't protect us against arbitrary concurrent
+  // use of a GPU, but it's sufficient to let us compile two HLO modules
+  // concurrently and then run them sequentially.
+  tensorflow::mutex_lock lock = LockGpu(stream_exec_);
+
+  // Make sure any previous activity on this executor is done. We don't want to
+  // interfere with programs that are still running on the GPU.
+  if (!stream_exec_->SynchronizeAllActivity()) {
+    return InternalError("Failed to synchronize GPU for autotuning.");
+  }
+
   // Create a stream for us to do our work on.
   se::Stream stream{stream_exec_};
   stream.Init();
@@ -184,55 +216,131 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
   if (allocator_ != nullptr) {
     allocator = allocator_;
   } else {
-    se_allocator.emplace(
-        stream_exec_->platform(),
-        tensorflow::gtl::ArraySlice<se::StreamExecutor*>({stream_exec_}));
+    se_allocator.emplace(stream_exec_->platform(),
+                         absl::Span<se::StreamExecutor* const>({stream_exec_}));
     allocator = &*se_allocator;
   }
 
   // Allocate space for the input, filter, and output of the convolution.  We
   // use a ScratchAllocator for this instead of calling allocator_ directly so
   // that our allocations don't leak.
-  //
-  // We don't put any data in these buffers, because (in theory, anyway) the
-  // speed of a conv isn't affected by the data being convolved.
   ScratchAllocator input_output_allocator(device_ordinal, allocator);
-  se::port::StatusOr<DeviceMemoryBase> input_buf =
-      input_output_allocator.AllocateBytes(&stream,
-                                           ShapeUtil::ByteSizeOf(input_shape));
-  se::port::StatusOr<DeviceMemoryBase> filter_buf =
-      input_output_allocator.AllocateBytes(&stream,
-                                           ShapeUtil::ByteSizeOf(filter_shape));
-  se::port::StatusOr<DeviceMemoryBase> output_buf =
-      input_output_allocator.AllocateBytes(&stream,
-                                           ShapeUtil::ByteSizeOf(output_shape));
-  if (!input_buf.ok() || !filter_buf.ok() || !output_buf.ok()) {
-    LOG(WARNING)
-        << "Couldn't allocate space for input/filter/output of convolution "
-        << instr->ToString() << ".  Falling back to default algorithm.";
-    return nullopt;
+  TF_ASSIGN_OR_RETURN(params.input_buf,
+                      input_output_allocator.AllocateBytes(
+                          &stream, ShapeUtil::ByteSizeOf(input_shape)));
+  TF_ASSIGN_OR_RETURN(params.filter_buf,
+                      input_output_allocator.AllocateBytes(
+                          &stream, ShapeUtil::ByteSizeOf(filter_shape)));
+  TF_ASSIGN_OR_RETURN(params.output_buf,
+                      input_output_allocator.AllocateBytes(
+                          &stream, ShapeUtil::ByteSizeOf(output_shape)));
+
+  if (cross_check_enabled) {
+    // Broadcast a constant to the buffer, instead of zeroing the buffer. A
+    // non-zero constant is useful for the cross checking, because zero-inputs
+    // may not always reveal the bugs.
+    const auto initialize_f16 = [&stream](DeviceMemoryBase buffer) {
+      CHECK_EQ(0, (uintptr_t)buffer.opaque() % 4);
+      size_t left_over_bytes = buffer.size() % 4;
+      CHECK_EQ(0, left_over_bytes % 2);
+
+      constexpr float kBroadcastedConstant = 0.1f;
+      static const Eigen::half halfs[2] = {Eigen::half(kBroadcastedConstant),
+                                           Eigen::half(kBroadcastedConstant)};
+      uint32 bits;
+      static_assert(sizeof(bits) == sizeof(halfs), "");
+      memcpy(&bits, halfs, sizeof(bits));
+
+      size_t aligned_size = buffer.size() / 4 * 4;
+      stream.ThenMemset32(&buffer, bits, aligned_size);
+
+      DeviceMemoryBase left_over(
+          static_cast<char*>(buffer.opaque()) + aligned_size, left_over_bytes);
+      stream.ThenMemcpy(&left_over, halfs, left_over_bytes);
+    };
+    initialize_f16(params.input_buf);
+    initialize_f16(params.filter_buf);
+    initialize_f16(params.output_buf);
+  } else {
+    // Although we don't have evidence this matters, zero out the buffers before
+    // autotuning.  It's conceivable that using uninitialized memory as the
+    // inputs might affect performance if e.g. the inputs contain denormals, and
+    // this is easy enough.
+    stream.ThenMemZero(&params.input_buf, params.input_buf.size())
+        .ThenMemZero(&params.filter_buf, params.filter_buf.size())
+        .ThenMemZero(&params.output_buf, params.output_buf.size());
   }
 
+  DeviceMemoryBase* result_buf = [&] {
+    switch (params.kind) {
+      case CudnnConvKind::kBackwardFilter:
+        return &params.filter_buf;
+      case CudnnConvKind::kBackwardInput:
+        return &params.input_buf;
+      case CudnnConvKind::kForward:
+        return &params.output_buf;
+    }
+  }();
+
   const bool use_winograd_nonfused = ShouldIncludeWinogradNonfusedAlgo(
-      input_shape, output_shape, dnums, stream_exec_);
+      input_shape, output_shape, *params.dnums, stream_exec_);
   se::dnn::ProfileResult best_result;
   int64 best_result_bytes_used = 0;
 
+  optional<F16BufferComparator> comparator;
+  // Use the first algorithm that's supported as reference. There isn't a
+  // particular reason to use it, as any algorithm sufficies. It doesn't make
+  // this algorithm considered correct, though.
+  optional<AlgorithmDesc> first_algorithm;
   for (const AlgorithmDesc& alg :
-       GetAlgorithms(kind, use_winograd_nonfused, stream_exec_)) {
+       GetAlgorithms(params.kind, use_winograd_nonfused, stream_exec_)) {
     ScratchAllocator scratch_allocator(device_ordinal, allocator);
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr->ToString();
 
-    bool launch_ok = RunCudnnConvolution(
-                         kind, input_shape, filter_shape, output_shape,
-                         input_buf.ValueOrDie(), filter_buf.ValueOrDie(),
-                         output_buf.ValueOrDie(), &scratch_allocator, window,
-                         dnums, AlgorithmConfig(alg), &stream, &profile_result)
+    params.algorithm = AlgorithmConfig(alg);
+    bool launch_ok = RunCudnnConvolution(params, &scratch_allocator, &stream,
+                                         &profile_result)
                          .ok();
 
     if (launch_ok && profile_result.is_valid()) {
+      const bool crash_on_checking_failure =
+          instr->GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_crash_on_verification_failures();
+      if (comparator.has_value()) {
+        StatusOr<bool> result = comparator->CompareEqual(
+            se::DeviceMemory<Eigen::half>(*result_buf));
+        if (!result.ok()) {
+          LOG(ERROR) << "Unable to compare "
+                     << AlgorithmToString(*first_algorithm) << " against "
+                     << AlgorithmToString(alg) << " for " << instr->ToString()
+                     << ": " << result.status();
+          CHECK(!crash_on_checking_failure);
+        } else if (!result.ValueOrDie()) {
+          LOG(ERROR) << "Results mismatch between different convolution "
+                        "algorithms. This is likely a bug in convolution, or "
+                        "an excessive loss of precision in convolution. "
+                     << instr->ToString() << " for "
+                     << AlgorithmToString(*first_algorithm) << " vs "
+                     << AlgorithmToString(alg);
+          CHECK(!crash_on_checking_failure);
+        }
+      } else if (cross_check_enabled) {
+        auto comp = F16BufferComparator::Create(
+            se::DeviceMemory<Eigen::half>(*result_buf), compiler_, allocator,
+            &stream);
+        if (comp.ok()) {
+          comparator.emplace(comp.ConsumeValueOrDie());
+          first_algorithm.emplace(alg);
+        } else {
+          LOG(ERROR) << "Fail to initialize buffer comparator: "
+                     << comp.status() << ", instruction: " << instr->ToString();
+          CHECK(!crash_on_checking_failure);
+        }
+      }
       int64 scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
       VLOG(3) << "Run of algorithm " << AlgorithmToString(alg)
               << " succeeded, taking " << profile_result.elapsed_time_in_ms()
@@ -259,41 +367,21 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
                            best_result_bytes_used);
   }
 
-  LOG(WARNING) << "All algorithms tried for convolution " << instr->ToString()
-               << " failed.  Falling back to default algorithm.";
-  return nullopt;
+  return InternalError(
+      "All algorithms tried for convolution %s failed.  Falling back to "
+      "default algorithm.",
+      instr->ToString());
 }
 
 StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
     HloInstruction* instr) {
   CHECK(IsCustomCallToDnnConvolution(*instr));
 
-  const auto& call_target = instr->custom_call_target();
-  const auto& lhs_shape = instr->operand(0)->shape();
-  const auto& rhs_shape = instr->operand(1)->shape();
-  const auto& conv_result_shape = instr->shape().tuple_shapes(0);
-  optional<std::tuple<int64, bool, int64>> alg_scratch_and_tc;
-  if (call_target == kCudnnConvForwardCallTarget) {
-    alg_scratch_and_tc = PickBestAlgorithm(
-        CudnnConvKind::kForward, /*input_shape=*/lhs_shape,
-        /*filter_shape=*/rhs_shape, /*output_shape=*/conv_result_shape,
-        instr->window(), instr->convolution_dimension_numbers(), instr);
-  } else if (call_target == kCudnnConvBackwardInputCallTarget) {
-    alg_scratch_and_tc = PickBestAlgorithm(
-        CudnnConvKind::kBackwardInput, /*input_shape=*/conv_result_shape,
-        /*filter_shape=*/rhs_shape, /*output_shape=*/lhs_shape, instr->window(),
-        instr->convolution_dimension_numbers(), instr);
-  } else if (call_target == kCudnnConvBackwardFilterCallTarget) {
-    alg_scratch_and_tc = PickBestAlgorithm(
-        CudnnConvKind::kBackwardFilter, /*input_shape=*/lhs_shape,
-        /*filter_shape=*/conv_result_shape, /*output_shape=*/rhs_shape,
-        instr->window(), instr->convolution_dimension_numbers(), instr);
-  } else {
-    LOG(FATAL) << "Unknown custom call target for cudnn conv: "
-               << instr->ToString();
-  }
+  StatusOr<std::tuple<int64, bool, int64>> alg_scratch_and_tc =
+      PickBestAlgorithm(Cast<HloCustomCallInstruction>(instr));
 
-  if (!alg_scratch_and_tc.has_value()) {
+  if (!alg_scratch_and_tc.ok()) {
+    LOG(ERROR) << alg_scratch_and_tc.status();
     return false;
   }
 
@@ -301,7 +389,8 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
   bool tensor_ops_enabled;
   int64 scratch_bytes;
 
-  std::tie(algorithm, tensor_ops_enabled, scratch_bytes) = *alg_scratch_and_tc;
+  std::tie(algorithm, tensor_ops_enabled, scratch_bytes) =
+      alg_scratch_and_tc.ConsumeValueOrDie();
 
   VLOG(1) << "Setting cudnn conv to use algorithm " << algorithm << " and "
           << NumBytesToString(scratch_bytes)
@@ -314,21 +403,15 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
   Shape new_call_shape =
       ShapeUtil::MakeTupleShape({instr->shape().tuple_shapes(0),
                                  ShapeUtil::MakeShape(U8, {scratch_bytes})});
-  HloInstruction* algorithm_hlo = computation->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int64>(algorithm)));
-  HloInstruction* tensor_ops_enabled_hlo =
-      computation->AddInstruction(HloInstruction::CreateConstant(
-          Literal::CreateR0<bool>(tensor_ops_enabled)));
 
-  HloInstruction* new_call =
-      computation->AddInstruction(HloInstruction::CreateCustomCall(
-          new_call_shape,
-          {instr->mutable_operand(0), instr->mutable_operand(1), algorithm_hlo,
-           tensor_ops_enabled_hlo},
-          instr->custom_call_target()));
-  new_call->set_window(instr->window());
-  new_call->set_convolution_dimension_numbers(
-      instr->convolution_dimension_numbers());
+  CudnnConvBackendConfig backend_config;
+  backend_config.set_algorithm(algorithm);
+  backend_config.set_tensor_ops_enabled(tensor_ops_enabled);
+
+  HloInstruction* new_call = computation->AddInstruction(
+      instr->CloneWithNewOperands(new_call_shape, {instr->mutable_operand(0),
+                                                   instr->mutable_operand(1)}));
+  TF_RETURN_IF_ERROR(new_call->set_backend_config(backend_config));
 
   // Repackage new_call so it has the same shape as the original call, namely
   // (conv_result, u8[0]).
@@ -336,8 +419,8 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
       computation->AddInstruction(HloInstruction::CreateTuple(
           {computation->AddInstruction(HloInstruction::CreateGetTupleElement(
                new_call_shape.tuple_shapes(0), new_call, 0)),
-           computation->AddInstruction(
-               HloInstruction::CreateConstant(Literal::CreateR1<uint8>({})))}));
+           computation->AddInstruction(HloInstruction::CreateConstant(
+               LiteralUtil::CreateR1<uint8>({})))}));
 
   TF_RETURN_IF_ERROR(instr->parent()->ReplaceInstruction(instr, new_tuple));
   return true;

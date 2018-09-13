@@ -75,7 +75,7 @@ TEST_F(HloSubcomputationUnificationTest, UnifyIdentities) {
       module->AddEmbeddedComputation(CreateR0S32IdentityComputation());
 
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int32>(5)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(5)));
   auto x = builder.AddInstruction(
       HloInstruction::CreateCall(r0s32_, {constant}, callee1));
   auto y = builder.AddInstruction(
@@ -112,9 +112,9 @@ TEST_F(HloSubcomputationUnificationTest, UnifyAdditions) {
       module->AddEmbeddedComputation(CreateR0S32AdditionComputation());
 
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int32>(5)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(5)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int32>(3)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(3)));
   auto x = builder.AddInstruction(
       HloInstruction::CreateCall(r0s32_, {constant1, constant2}, callee1));
   auto y = builder.AddInstruction(

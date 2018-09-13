@@ -31,7 +31,7 @@ class ResourceOpsTest(test_util.TensorFlowTestCase):
   """Tests resource_ops."""
 
   def testCreate(self):
-    with self.test_session():
+    with self.cached_session():
       ensemble = boosted_trees_ops.TreeEnsemble('ensemble')
       resources.initialize_resources(resources.shared_resources()).run()
       stamp_token = ensemble.get_stamp_token()
@@ -44,7 +44,7 @@ class ResourceOpsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([0, 1], nodes_range.eval())
 
   def testCreateWithProto(self):
-    with self.test_session():
+    with self.cached_session():
       ensemble_proto = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge(
           """
@@ -161,7 +161,7 @@ class ResourceOpsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([16, 19], nodes_range.eval())
 
   def testSerializeDeserialize(self):
-    with self.test_session():
+    with self.cached_session():
       # Initialize.
       ensemble = boosted_trees_ops.TreeEnsemble('ensemble', stamp_token=5)
       resources.initialize_resources(resources.shared_resources()).run()

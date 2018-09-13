@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMMON_RUNTIME_BUF_RENDEZVOUS_H_
-#define TENSORFLOW_COMMON_RUNTIME_BUF_RENDEZVOUS_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_BUF_RENDEZVOUS_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_BUF_RENDEZVOUS_H_
 
 #include <functional>
 #include <string>
@@ -79,7 +79,7 @@ class BufRendezvous {
                   const ProducerCallback& done);
 
   // Called to request access to a Tensor value corresponding to key.
-  // Consumer is provide with a Hook as soon as availble.
+  // Consumer is provide with a Hook as soon as available.
   void ConsumeBuf(const string& key, const ConsumerCallback& done);
 
   // Consumer must call this function when it's done reading the Hook provided
@@ -100,4 +100,4 @@ class BufRendezvous {
   void PurgeTable(const Status& s, HookTable* table);
 };
 }  // namespace tensorflow
-#endif  // TENSORFLOW_COMMON_RUNTIME_BUF_RENDEZVOUS_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_BUF_RENDEZVOUS_H_

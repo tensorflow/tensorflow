@@ -1,0 +1,10 @@
+name: TensorFlow Lite
+breadcrumb_name: Mobile
+home_url: /mobile/
+parent_project_metadata_path: /_project.yaml
+description: >
+  TensorFlow Lite is a lightweight solution for mobile and embedded devices.
+use_site_branding: True
+hide_from_products_list: True
+content_license: cc3-apache2
+buganizer_id: 316308

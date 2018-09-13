@@ -33,6 +33,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
 
 
@@ -154,6 +155,51 @@ class SendTracebacksTest(test_util.TensorFlowTestCase):
                          server.query_call_types())
         self.assertEqual(["dummy_run_key"], server.query_call_keys())
         self.assertEqual([sess.graph.version], server.query_graph_versions())
+
+  def testSourceFileSizeExceedsGrpcMessageLengthLimit(self):
+    """In case source file size exceeds the grpc message length limit.
+
+    it ought not to have been sent to the server.
+    """
+    this_func_name = "testSourceFileSizeExceedsGrpcMessageLengthLimit"
+
+    # Patch the method to simulate a very small message length limit.
+    with test.mock.patch.object(
+        source_remote, "grpc_message_length_bytes", return_value=2):
+      with session.Session() as sess:
+        a = variables.Variable(21.0, name="two/a")
+        a_lineno = line_number_above()
+        b = variables.Variable(2.0, name="two/b")
+        b_lineno = line_number_above()
+        x = math_ops.add(a, b, name="two/x")
+        x_lineno = line_number_above()
+
+        send_traceback = traceback.extract_stack()
+        send_lineno = line_number_above()
+        source_remote.send_graph_tracebacks(
+            [self._server_address, self._server_address_2],
+            "dummy_run_key", send_traceback, sess.graph)
+
+        servers = [self._server, self._server_2]
+        for server in servers:
+          # Even though the source file content is not sent, the traceback
+          # should have been sent.
+          tb = server.query_op_traceback("two/a")
+          self.assertIn((self._curr_file_path, a_lineno, this_func_name), tb)
+          tb = server.query_op_traceback("two/b")
+          self.assertIn((self._curr_file_path, b_lineno, this_func_name), tb)
+          tb = server.query_op_traceback("two/x")
+          self.assertIn((self._curr_file_path, x_lineno, this_func_name), tb)
+
+          self.assertIn(
+              (self._curr_file_path, send_lineno, this_func_name),
+              server.query_origin_stack()[-1])
+
+          tf_trace_file_path = (
+              self._findFirstTraceInsideTensorFlowPyLibrary(x.op))
+          # Verify that the source content is not sent to the server.
+          with self.assertRaises(ValueError):
+            self._server.query_source_file_line(tf_trace_file_path, 0)
 
   def testSendEagerTracebacksToSingleDebugServer(self):
     this_func_name = "testSendEagerTracebacksToSingleDebugServer"
