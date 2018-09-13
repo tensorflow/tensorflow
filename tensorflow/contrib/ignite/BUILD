@@ -6,14 +6,14 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_gen_op_wrapper_py",
-    "tf_kernel_library",
+    "if_not_windows",
+    "if_windows",
     "tf_custom_op_library",
     "tf_custom_op_py_library",
     "tf_gen_op_libs",
+    "tf_gen_op_wrapper_py",
+    "tf_kernel_library",
     "tf_py_test",
-    "if_not_windows",
-    "if_windows",
 )
 
 py_library(
@@ -55,15 +55,15 @@ cc_library(
     ]) + if_windows([
         "kernels/ignite_plain_client_windows.cc",
     ]),
+    copts = if_windows([
+        "-DWIN32_LEAN_AND_MEAN",
+    ]),
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
         "@boringssl//:ssl",
         "@protobuf_archive//:protobuf_headers",
     ],
-    copts = if_windows([
-        "-DWIN32_LEAN_AND_MEAN",
-    ]),
     alwayslink = 1,
 )
 
