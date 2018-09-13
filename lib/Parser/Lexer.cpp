@@ -114,11 +114,6 @@ Token Lexer::lexToken() {
     return formToken(Token::minus, tokStart);
 
   case '?':
-    if (*curPtr == '?') {
-      ++curPtr;
-      return formToken(Token::questionquestion, tokStart);
-    }
-
     return formToken(Token::question, tokStart);
 
   case '/':

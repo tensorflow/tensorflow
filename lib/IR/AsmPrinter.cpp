@@ -521,7 +521,7 @@ void ModulePrinter::printType(const Type *type) {
   }
   case Type::Kind::UnrankedTensor: {
     auto *v = cast<UnrankedTensorType>(type);
-    os << "tensor<??";
+    os << "tensor<*x";
     printType(v->getElementType());
     os << '>';
     return;

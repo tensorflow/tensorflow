@@ -57,8 +57,8 @@ extfunc @int_types(i1, i2, i4, i7, i87) -> (i1, affineint, i19)
 // CHECK: extfunc @vectors(vector<1xf32>, vector<2x4xf32>)
 extfunc @vectors(vector<1 x f32>, vector<2x4xf32>)
 
-// CHECK: extfunc @tensors(tensor<??f32>, tensor<??vector<2x4xf32>>, tensor<1x?x4x?x?xi32>, tensor<i8>)
-extfunc @tensors(tensor<?? f32>, tensor<?? vector<2x4xf32>>,
+// CHECK: extfunc @tensors(tensor<*xf32>, tensor<*xvector<2x4xf32>>, tensor<1x?x4x?x?xi32>, tensor<i8>)
+extfunc @tensors(tensor<* x f32>, tensor<* x vector<2x4xf32>>,
                  tensor<1x?x4x?x?xi32>, tensor<i8>)
 
 // CHECK: extfunc @memrefs(memref<1x?x4x?x?xi32, #map{{[0-9]+}}>, memref<i8, #map{{[0-9]+}}>)
@@ -394,8 +394,8 @@ bb0:
 // CHECK-LABEL: cfgfunc @typeattr
 cfgfunc @typeattr() -> () {
 bb0:
-// CHECK: "foo"() {bar: tensor<??f32>} : () -> ()
-  "foo"(){bar: tensor<??f32>} : () -> ()
+// CHECK: "foo"() {bar: tensor<*xf32>} : () -> ()
+  "foo"(){bar: tensor<*xf32>} : () -> ()
   return
 }
 

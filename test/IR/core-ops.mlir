@@ -132,12 +132,12 @@ mlfunc @calls(%arg0 : i32) {
   return
 }
 
-// CHECK-LABEL: mlfunc @extract_element(%arg0 : tensor<??i32>, %arg1 : tensor<4x4xf32>) -> i32 {
-mlfunc @extract_element(%arg0 : tensor<??i32>, %arg1 : tensor<4x4xf32>) -> i32 {
+// CHECK-LABEL: mlfunc @extract_element(%arg0 : tensor<*xi32>, %arg1 : tensor<4x4xf32>) -> i32 {
+mlfunc @extract_element(%arg0 : tensor<*xi32>, %arg1 : tensor<4x4xf32>) -> i32 {
   %c0 = "constant"() {value: 0} : () -> affineint
 
-  // CHECK: %0 = extract_element %arg0[%c0, %c0, %c0, %c0] : tensor<??i32>
-  %0 = extract_element %arg0[%c0, %c0, %c0, %c0] : tensor<??i32>
+  // CHECK: %0 = extract_element %arg0[%c0, %c0, %c0, %c0] : tensor<*xi32>
+  %0 = extract_element %arg0[%c0, %c0, %c0, %c0] : tensor<*xi32>
 
   // CHECK: %1 = extract_element %arg1[%c0, %c0] : tensor<4x4xf32>
   %1 = extract_element %arg1[%c0, %c0] : tensor<4x4xf32>
@@ -146,12 +146,12 @@ mlfunc @extract_element(%arg0 : tensor<??i32>, %arg1 : tensor<4x4xf32>) -> i32 {
 }
 
 // CHECK-LABEL: mlfunc @shape_cast(%arg0
-mlfunc @shape_cast(%arg0 : tensor<??f32>, %arg1 : tensor<4x4xf32>, %arg2 : tensor<?x?xf32>) {
-  // CHECK: %0 = shape_cast %arg0 : tensor<??f32> to tensor<?x?xf32>
-  %0 = shape_cast %arg0 : tensor<??f32> to tensor<?x?xf32>
+mlfunc @shape_cast(%arg0 : tensor<*xf32>, %arg1 : tensor<4x4xf32>, %arg2 : tensor<?x?xf32>) {
+  // CHECK: %0 = shape_cast %arg0 : tensor<*xf32> to tensor<?x?xf32>
+  %0 = shape_cast %arg0 : tensor<*xf32> to tensor<?x?xf32>
 
-  // CHECK: %1 = shape_cast %arg1 : tensor<4x4xf32> to tensor<??f32>
-  %1 = shape_cast %arg1 : tensor<4x4xf32> to tensor<??f32>
+  // CHECK: %1 = shape_cast %arg1 : tensor<4x4xf32> to tensor<*xf32>
+  %1 = shape_cast %arg1 : tensor<4x4xf32> to tensor<*xf32>
 
   // CHECK: %2 = shape_cast %arg2 : tensor<?x?xf32> to tensor<4x?xf32>
   %2 = shape_cast %arg2 : tensor<?x?xf32> to tensor<4x?xf32>

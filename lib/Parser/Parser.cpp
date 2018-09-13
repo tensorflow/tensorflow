@@ -177,6 +177,7 @@ public:
 
   // Type parsing.
   VectorType *parseVectorType();
+  ParseResult parseXInDimensionList();
   ParseResult parseDimensionListRanked(SmallVectorImpl<int> &dimensions);
   Type *parseTensorType();
   Type *parseMemRefType();
@@ -387,6 +388,23 @@ VectorType *Parser::parseVectorType() {
   return VectorType::get(dimensions, elementType);
 }
 
+/// Parse an 'x' token in a dimension list, handling the case where the x is
+/// juxtaposed with an element type, as in "xf32", leaving the "f32" as the next
+/// token.
+ParseResult Parser::parseXInDimensionList() {
+  if (getToken().isNot(Token::bare_identifier) || getTokenSpelling()[0] != 'x')
+    return emitError("expected 'x' in dimension list");
+
+  // If we had a prefix of 'x', lex the next token immediately after the 'x'.
+  if (getTokenSpelling().size() != 1)
+    state.lex.resetPointer(getTokenSpelling().data() + 1);
+
+  // Consume the 'x'.
+  consumeToken(Token::bare_identifier);
+
+  return ParseSuccess;
+}
+
 /// Parse a dimension list of a tensor or memref type.  This populates the
 /// dimension list, returning -1 for the '?' dimensions.
 ///
@@ -407,16 +425,8 @@ ParseResult Parser::parseDimensionListRanked(SmallVectorImpl<int> &dimensions) {
     }
 
     // Make sure we have an 'x' or something like 'xbf32'.
-    if (getToken().isNot(Token::bare_identifier) ||
-        getTokenSpelling()[0] != 'x')
-      return emitError("expected 'x' in dimension list");
-
-    // If we had a prefix of 'x', lex the next token immediately after the 'x'.
-    if (getTokenSpelling().size() != 1)
-      state.lex.resetPointer(getTokenSpelling().data() + 1);
-
-    // Consume the 'x'.
-    consumeToken(Token::bare_identifier);
+    if (parseXInDimensionList())
+      return ParseFailure;
   }
 
   return ParseSuccess;
@@ -425,7 +435,7 @@ ParseResult Parser::parseDimensionListRanked(SmallVectorImpl<int> &dimensions) {
 /// Parse a tensor type.
 ///
 ///   tensor-type ::= `tensor` `<` dimension-list element-type `>`
-///   dimension-list ::= dimension-list-ranked | `??`
+///   dimension-list ::= dimension-list-ranked | `*x`
 ///
 Type *Parser::parseTensorType() {
   consumeToken(Token::kw_tensor);
@@ -436,8 +446,13 @@ Type *Parser::parseTensorType() {
   bool isUnranked;
   SmallVector<int, 4> dimensions;
 
-  if (consumeIf(Token::questionquestion)) {
+  if (consumeIf(Token::star)) {
+    // This is an unranked tensor type.
     isUnranked = true;
+
+    if (parseXInDimensionList())
+      return nullptr;
+
   } else {
     isUnranked = false;
     if (parseDimensionListRanked(dimensions))
