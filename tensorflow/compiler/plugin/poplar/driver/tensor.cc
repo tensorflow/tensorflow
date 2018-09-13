@@ -161,7 +161,7 @@ static StatusOr<poplar::Tensor> AddConvolutionInput(
   auto name = StrCat(GetDebugName(inst), "_input");
   poplar::OptionFlags opts;
   poplar::Tensor out = poplin::createInput(graph, params, name, opts,
-                                            &resources.convolution_cache);
+                                           &resources.convolution_cache);
   return ShuffleConvolutionInputToTensorflow(conv_target, out);
 }
 
@@ -175,7 +175,7 @@ static StatusOr<poplar::Tensor> AddConvolutionWeights(
   auto name = StrCat(GetDebugName(inst), "_weights");
   poplar::OptionFlags opts;
   poplar::Tensor out = poplin::createWeights(graph, params, name, opts,
-                                              &resources.convolution_cache);
+                                             &resources.convolution_cache);
 
   out = RemoveGroupsDimensionFromWeights(params, out, false);
 
@@ -537,15 +537,24 @@ StatusOr<poplar::Tensor> AddIotaTensor(poplar::Graph& graph,
 
   switch (shape.element_type()) {
     case S32:
-    case U32:
+    case U32: {
       literal = GetIotaLiteral<int>(len);
       break;
+    }
+    case F32: {
+      literal = GetIotaLiteral<float>(len);
+      break;
+    }
     default:
       return xla::FailedPrecondition("unsupported primitive type for iota: %s",
                                      PrimitiveType_Name(shape.element_type()));
   }
-
-  return AddConstantTensor(graph, src, shape, literal, resources);
+  poplar::Tensor t;
+  auto iota_shape = ShapeUtil::MakeShape(shape.element_type(),
+                                         {shape.dimensions(iota_dimension)});
+  TF_ASSIGN_OR_RETURN(
+      t, AddConstantTensor(graph, src, iota_shape, literal, resources));
+  return BroadcastTensor(t, shape, {iota_dimension});
 }
 
 template <typename T>
