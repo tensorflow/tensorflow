@@ -276,11 +276,15 @@ table Pool2DOptions {
 }
 
 table DepthwiseConv2DOptions {
+  // Parameters for DepthwiseConv version 1 or above.
   padding:Padding;
   stride_w:int;
   stride_h:int;
   depth_multiplier:int;
   fused_activation_function:ActivationFunctionType;
+  // Parameters for DepthwiseConv version 2 or above.
+  dilation_w_factor:int = 1;
+  dilation_h_factor:int = 1;
 }
 
 table ConcatEmbeddingsOptions {
