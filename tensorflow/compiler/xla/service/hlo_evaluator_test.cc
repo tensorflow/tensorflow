@@ -2570,6 +2570,25 @@ ENTRY main {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, Evaluate({&arg})));
 }
 
+TEST_P(HloEvaluatorTest, SliceWithDifferentLayout) {
+  // Regression test for b/114735354.
+  const string hlo_text = R"(
+HloModule SliceWithDifferentLayout
+
+ENTRY main {
+  arg = f32[2,2,2]{0,1,2} parameter(0)
+  ROOT %slice = f32[2,2,2]{1,0,2} slice(f32[2,2,2]{0,1,2} %arg), slice={[0:2], [0:2], [0:2]}
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+
+  Literal arg = LiteralUtil::CreateR3WithLayout<float>(
+      {{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}},
+      LayoutUtil::MakeLayout({0, 1, 2}));
+  Literal actual = Evaluate({&arg});
+  EXPECT_TRUE(LiteralTestUtil::Equal(arg, actual));
+}
+
 INSTANTIATE_TEST_CASE_P(HloEvaluatorTest_Instantiation, HloEvaluatorTest,
                         ::testing::ValuesIn(use_bf16_params));
 

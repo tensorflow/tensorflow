@@ -1339,6 +1339,12 @@ Status HloEvaluator::Preprocess(HloInstruction* hlo) {
 Status HloEvaluator::Postprocess(HloInstruction* hlo) {
   VLOG(2) << "Finished visiting " << hlo->ToString()
           << "; evaluated value is: " << GetEvaluatedLiteralFor(hlo).ToString();
+  // Out of convenience the literal may have been produced with a different
+  // layout. Relayout as indicated by the HLO instruction.
+  if (!LayoutUtil::LayoutsInShapesEqual(GetEvaluatedLiteralFor(hlo).shape(),
+                                        hlo->shape())) {
+    evaluated_.at(hlo) = evaluated_.at(hlo).Relayout(hlo->shape());
+  }
   return Status::OK();
 }
 
