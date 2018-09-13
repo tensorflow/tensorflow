@@ -104,6 +104,10 @@ typedef enum {
   Dim3d_I = 1
 } MklDnnDims3D;
 
+typedef enum {
+  QUANTIZED_VERSION = 0,
+  FP_VERSION,
+} MklQuantization;
 static const int kSmallBatchSize = 32;
 
 #ifdef INTEL_MKL_ML_ONLY
@@ -1386,6 +1390,18 @@ static memory::data_type MklDnnType();
 template <>
 memory::data_type MklDnnType<float>() {
   return memory::data_type::f32;
+}
+template <>
+memory::data_type MklDnnType<quint8>() {
+  return memory::data_type::u8;
+}
+template <>
+memory::data_type MklDnnType<qint8>() {
+  return memory::data_type::s8;
+}
+template <>
+memory::data_type MklDnnType<qint32>() {
+  return memory::data_type::s32;
 }
 
 /// Map TensorFlow's data format into MKL-DNN 3D data format
