@@ -51,7 +51,7 @@ class MinimizeLossOptimizerV2Test(test.TestCase, parameterized.TestCase):
                 model_fn, iterator.get_next(), run_concurrently=layer.built)))
 
       if not context.executing_eagerly():
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           run_step = sess.make_callable(run_step())
         self.evaluate(variables.global_variables_initializer())
 
@@ -59,8 +59,8 @@ class MinimizeLossOptimizerV2Test(test.TestCase, parameterized.TestCase):
       for _ in range(10):
         run_step()
 
-        weights.append(self.evaluate(distribution.fetch(layer.kernel)))
-        biases.append(self.evaluate(distribution.fetch(layer.bias)))
+        weights.append(self.evaluate(layer.kernel))
+        biases.append(self.evaluate(layer.bias))
 
       error = abs(numpy.add(numpy.squeeze(weights), numpy.squeeze(biases)) - 1)
       is_not_increasing = all(y <= x for x, y in zip(error, error[1:]))

@@ -415,6 +415,7 @@ struct LaunchConvOp<GPUDevice, T> {
         in_batch,
         in_depth,
         {{in_planes, in_rows, in_cols}},
+        FORMAT_NCHW,
         out_depth,
         {{filter_planes, filter_rows, filter_cols}},
         {{dilations[0], dilations[1], dilations[2]}},

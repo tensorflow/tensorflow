@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gather_expander.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 
 namespace xla {
 namespace {
@@ -28,15 +28,15 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2147483647,5] parameter(1)
   ROOT gather = s32[2147483647,3,5] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={1},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=2,
-      window_bounds={3, 1}
+      slice_sizes={3, 1}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_text));
+                          ParseHloString(hlo_text));
 
   Status status = GatherExpander{}.Run(module.get()).status();
   EXPECT_EQ(status.code(), tensorflow::error::UNIMPLEMENTED);
@@ -55,15 +55,15 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2] parameter(1)
   ROOT gather = s32[3,2] gather(operand, indices),
-      output_window_dims={0},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={0},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=1,
-      window_bounds={3, 1}
+      slice_sizes={3, 1}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_text));
+                          ParseHloString(hlo_text));
   TF_ASSERT_OK_AND_ASSIGN(bool changed, GatherExpander{}.Run(module.get()));
   ASSERT_TRUE(changed);
 

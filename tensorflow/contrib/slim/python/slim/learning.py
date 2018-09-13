@@ -571,7 +571,7 @@ def train(train_op,
       default, two `Boolean`, scalar ops called "should_stop" and "should_log"
       are provided.
     log_every_n_steps: The frequency, in terms of global steps, that the loss
-      and global step and logged.
+      and global step are logged.
     graph: The graph to pass to the supervisor. If no graph is supplied the
       default graph is used.
     master: The address of the tensorflow master.

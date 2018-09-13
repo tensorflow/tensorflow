@@ -128,7 +128,7 @@ class AdjointTest(test.TestCase):
       matrix_np = np.array([[1 + 1j, 2 + 2j, 3 + 3j], [4 + 4j, 5 + 5j,
                                                        6 + 6j]]).astype(dtype)
       expected_transposed = np.conj(matrix_np.T)
-      with self.test_session():
+      with self.cached_session():
         matrix = ops.convert_to_tensor(matrix_np)
         transposed = linalg.adjoint(matrix)
         self.assertEqual((3, 2), transposed.get_shape())

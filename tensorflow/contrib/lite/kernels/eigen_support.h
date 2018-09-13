@@ -15,7 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_EIGEN_SUPPORT_H_
 #define TENSORFLOW_CONTRIB_LITE_KERNELS_EIGEN_SUPPORT_H_
 
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
+
+namespace EigenForTFLite {
+struct ThreadPoolDevice;
+}
 
 namespace tflite {
 namespace eigen_support {
@@ -28,8 +32,8 @@ void IncrementUsageCounter(TfLiteContext* context);
 // usages all temporary Eigen objects will be deleted.
 void DecrementUsageCounter(TfLiteContext* context);
 
-// Set the number of threads that can be used by Eigen.
-void SetNumThreads(TfLiteContext* context, int num_threads);
+const EigenForTFLite::ThreadPoolDevice* GetThreadPoolDevice(
+    TfLiteContext* context);
 
 }  // namespace eigen_support
 }  // namespace tflite

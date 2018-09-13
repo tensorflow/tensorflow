@@ -17,11 +17,11 @@ limitations under the License.
 #include <array>
 #include <memory>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/padding.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -88,19 +88,19 @@ TEST_F(ConvolutionDimensionNumbersTest, InvalidOutputDimensionNumbers) {
 
 XLA_TEST_F(ConvolutionDimensionNumbersTest,
            TwoConvsWithDifferentDimensionNumbers) {
-  auto input_array = MakeUnique<Array4D<float>>(2, 3, 5, 5);
+  auto input_array = absl::make_unique<Array4D<float>>(2, 3, 5, 5);
   input_array->FillWithMultiples(0.1);
-  auto weight_array = MakeUnique<Array4D<float>>(4, 3, 1, 1);
+  auto weight_array = absl::make_unique<Array4D<float>>(4, 3, 1, 1);
   weight_array->FillWithMultiples(0.2);
   auto weight_data =
-      client_->TransferToServer(*Literal::CreateR4FromArray4D(*weight_array))
+      client_->TransferToServer(LiteralUtil::CreateR4FromArray4D(*weight_array))
           .ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());
-  auto input = builder.ConstantR4FromArray4D<float>(*input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, *input_array);
   auto weight =
-      builder.Parameter(0, ShapeUtil::MakeShape(F32, {4, 3, 1, 1}), "weight");
-  auto conv1 = builder.Conv(input, weight, {1, 1}, Padding::kValid);
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {4, 3, 1, 1}), "weight");
+  auto conv1 = Conv(input, weight, {1, 1}, Padding::kValid);
 
   ConvolutionDimensionNumbers dim_nums =
       XlaBuilder::CreateDefaultConvDimensionNumbers();
@@ -117,8 +117,7 @@ XLA_TEST_F(ConvolutionDimensionNumbersTest,
   dim_nums.set_kernel_input_feature_dimension(
       dim_nums.kernel_output_feature_dimension());
   dim_nums.set_kernel_output_feature_dimension(old_kernel_input_feature_dim);
-  builder.ConvWithGeneralDimensions(input, conv1, {1, 1}, Padding::kValid,
-                                    dim_nums);
+  ConvWithGeneralDimensions(input, conv1, {1, 1}, Padding::kValid, dim_nums);
 
   auto expected_conv1 = ReferenceUtil::ConvArray4D(*input_array, *weight_array,
                                                    {1, 1}, Padding::kValid);

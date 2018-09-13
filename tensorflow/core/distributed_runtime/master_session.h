@@ -141,6 +141,8 @@ class MasterSession : public core::RefCounted {
 
   std::atomic<int64> partial_run_handle_counter_ = {0};
 
+  uint64 NewStepId(int64 graph_key);
+
   mutex mu_;
   std::unique_ptr<GraphExecutionState> execution_state_ GUARDED_BY(mu_);
   int64 graph_version_;
@@ -175,6 +177,7 @@ class MasterSession : public core::RefCounted {
     std::unordered_map<string, bool> pending_outputs;  // true if fetched
     ReffedClientGraph* rcg = nullptr;
     uint64 step_id;
+    int64 collective_graph_key;
     int64 count = 0;
     PerStepState pss;
     std::unique_ptr<ProfileHandler> ph;

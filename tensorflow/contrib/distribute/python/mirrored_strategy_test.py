@@ -22,12 +22,13 @@ from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
 
 
-@test_util.with_c_api
 class MirroredOneCPUDistributionTest(strategy_test_lib.DistributionTestBase):
 
   def _get_distribution_strategy(self):
@@ -48,12 +49,11 @@ class MirroredOneCPUDistributionTest(strategy_test_lib.DistributionTestBase):
   def testTowerId(self):
     self._test_tower_id(self._get_distribution_strategy())
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testCallAndMergeExceptions(self):
     self._test_call_and_merge_exceptions(self._get_distribution_strategy())
 
 
-@test_util.with_c_api
 class VariableCreatorStackTest(test.TestCase):
 
   def testCreatorStacksAreThreadLocal(self):
@@ -62,6 +62,7 @@ class VariableCreatorStackTest(test.TestCase):
 
     def model_fn(device_id):
       assert isinstance(device_id, int)
+
       def thread_creator_fn(next_creator, *args, **kwargs):
         return next_creator(*args, **kwargs) + ":thread_" + str(device_id)
 
@@ -70,7 +71,8 @@ class VariableCreatorStackTest(test.TestCase):
         v = variable_scope.variable(1.0)
 
         # This will pause the current thread, and execute the other thread.
-        distribute_lib.get_tower_context().merge_call(lambda _: _)
+        distribution_strategy_context.get_tower_context().merge_call(
+            lambda _: _)
       return v
 
     def main_thread_creator(next_creator, *args, **kwargs):
@@ -85,6 +87,22 @@ class VariableCreatorStackTest(test.TestCase):
       result = dist.unwrap(result)
       expected = ["main_thread:thread_0", "main_thread:thread_1"]
       self.assertEquals(expected, result)
+
+
+class MultiWorkerMirroredStrategyTest(test.TestCase):
+
+  def testDeviceScope(self):
+    """Test the device scope of multi-worker MirroredStrategy."""
+    with context.graph_mode():
+      strategy = mirrored_strategy.MirroredStrategy(num_gpus=context.num_gpus())
+      strategy.configure(
+          cluster_spec={"worker": ["/job:worker/task:0", "/job:worker/task:1"]})
+      with strategy.scope():
+        a = constant_op.constant(1.)
+        with ops.device("/cpu:0"):
+          b = constant_op.constant(1.)
+        self.assertEqual(a.device, "/job:worker/task:0")
+        self.assertEqual(b.device, "/job:worker/task:0/device:CPU:0")
 
 
 if __name__ == "__main__":

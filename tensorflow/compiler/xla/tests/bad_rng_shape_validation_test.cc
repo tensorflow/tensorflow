@@ -19,8 +19,8 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -35,10 +35,10 @@ class BadRngShapeValidationTest : public ClientLibraryTestBase {};
 
 TEST_F(BadRngShapeValidationTest, DefaultConstructedShapeCreatesError) {
   XlaBuilder builder(TestName());
-  auto zero = builder.ConstantR0<float>(0.0);
-  auto one = builder.ConstantR0<float>(1.0);
+  auto zero = ConstantR0<float>(&builder, 0.0);
+  auto one = ConstantR0<float>(&builder, 1.0);
   Shape default_constructed;
-  builder.RngUniform(zero, one, default_constructed);
+  RngUniform(zero, one, default_constructed);
 
   StatusOr<XlaComputation> computation = builder.Build();
   EXPECT_FALSE(computation.ok());
@@ -49,13 +49,13 @@ TEST_F(BadRngShapeValidationTest, DefaultConstructedShapeCreatesError) {
 
 TEST_F(BadRngShapeValidationTest, ShapeWithoutLayoutIsOk) {
   XlaBuilder builder(TestName());
-  auto zero = builder.ConstantR0<float>(0.0);
-  auto one = builder.ConstantR0<float>(1.0);
+  auto zero = ConstantR0<float>(&builder, 0.0);
+  auto one = ConstantR0<float>(&builder, 1.0);
   Shape sans_layout;
   sans_layout.set_element_type(F32);
   sans_layout.add_dimensions(1);
 
-  builder.RngUniform(zero, one, sans_layout);
+  RngUniform(zero, one, sans_layout);
 
   StatusOr<XlaComputation> computation = builder.Build();
   ASSERT_TRUE(computation.ok());

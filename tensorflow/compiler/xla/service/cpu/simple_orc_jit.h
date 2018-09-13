@@ -29,7 +29,6 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/disassembler.h"
-#include "tensorflow/compiler/xla/service/cpu/external_constant_pool.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
@@ -91,9 +90,11 @@ class SimpleOrcJIT {
 
   llvm::TargetMachine* target_machine() const { return target_machine_.get(); }
 
-  ExternalConstantPool* external_constant_pool() {
-    return &external_constant_pool_;
-  }
+  // Creates an llvm::TargetMachine suitable for JITting code that will run on
+  // the current machine.
+  static std::unique_ptr<llvm::TargetMachine> InferTargetMachineForJIT(
+      const llvm::TargetOptions& target_options,
+      llvm::CodeGenOpt::Level opt_level);
 
  private:
   llvm::JITSymbol ResolveRuntimeSymbol(const std::string& name);
@@ -106,7 +107,6 @@ class SimpleOrcJIT {
   std::shared_ptr<llvm::orc::SymbolResolver> symbol_resolver_;
   ObjLayerT object_layer_;
   CompileLayerT compile_layer_;
-  ExternalConstantPool external_constant_pool_;
 };
 
 }  // namespace cpu

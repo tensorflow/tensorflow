@@ -17,8 +17,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 
 namespace tensorflow {
-
-namespace dataset {
+namespace data {
 
 Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const std::vector<Tensor>& input_element,
@@ -41,23 +40,9 @@ Status MakeIteratorFromInputElement(
       GetDatasetFromVariantTensor(return_values[0], &returned_dataset));
 
   // Create an iterator for the dataset that was returned by `f`.
-  *out_iterator = returned_dataset->MakeIterator(
-      strings::StrCat(prefix, "[", thread_index, "]"));
-  return Status::OK();
+  return returned_dataset->MakeIterator(
+      ctx, strings::StrCat(prefix, "[", thread_index, "]"), out_iterator);
 }
 
-IteratorContext MakeIteratorContext(OpKernelContext* ctx) {
-  IteratorContext::Params params;
-  params.env = ctx->env();
-  params.runner = *(ctx->runner());
-  params.lib = ctx->function_library();
-  DeviceBase* device = ctx->function_library()->device();
-  params.allocator_getter = [device](AllocatorAttributes attrs) {
-    return device->GetAllocator(attrs);
-  };
-  return IteratorContext(params);
-}
-
-}  // namespace dataset
-
+}  // namespace data
 }  // namespace tensorflow

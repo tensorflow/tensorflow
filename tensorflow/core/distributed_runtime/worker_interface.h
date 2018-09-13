@@ -112,6 +112,23 @@ class WorkerInterface {
   virtual void TracingAsync(const TracingRequest* request,
                             TracingResponse* response, StatusCallback done) = 0;
 
+  virtual void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
+                            RecvBufResponse* response, StatusCallback done) = 0;
+
+  virtual void CompleteGroupAsync(CallOptions* opts,
+                                  const CompleteGroupRequest* request,
+                                  CompleteGroupResponse* response,
+                                  StatusCallback done) = 0;
+
+  virtual void CompleteInstanceAsync(CallOptions* ops,
+                                     const CompleteInstanceRequest* request,
+                                     CompleteInstanceResponse* response,
+                                     StatusCallback done) = 0;
+
+  virtual void GetStepSequenceAsync(const GetStepSequenceRequest* request,
+                                    GetStepSequenceResponse* response,
+                                    StatusCallback done) = 0;
+
   Status GetStatus(const GetStatusRequest* request,
                    GetStatusResponse* response) {
     return CallAndWait(&ME::GetStatusAsync, request, response);
@@ -154,6 +171,11 @@ class WorkerInterface {
 
   Status Tracing(const TracingRequest* request, TracingResponse* response) {
     return CallAndWait(&ME::TracingAsync, request, response);
+  }
+
+  Status GetStepSequence(const GetStepSequenceRequest* request,
+                         GetStepSequenceResponse* response) {
+    return CallAndWait(&ME::GetStepSequenceAsync, request, response);
   }
 
  protected:

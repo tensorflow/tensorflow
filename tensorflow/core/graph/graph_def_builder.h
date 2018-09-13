@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPH_GRAPH_DEF_BUILDER_H_
-#define TENSORFLOW_GRAPH_GRAPH_DEF_BUILDER_H_
+#ifndef TENSORFLOW_CORE_GRAPH_GRAPH_DEF_BUILDER_H_
+#define TENSORFLOW_CORE_GRAPH_GRAPH_DEF_BUILDER_H_
 
 #include <vector>
 #include "tensorflow/core/framework/graph.pb.h"
@@ -128,7 +128,7 @@ class GraphDefBuilder {
     Options WithControlInputsImpl(gtl::ArraySlice<Node*> control_inputs);
     template <class T>
     Options WithAttrImpl(StringPiece name, T&& value) {
-      attrs_.emplace_back(name.ToString(), AttrValue());
+      attrs_.emplace_back(string(name), AttrValue());
       SetAttrValue(std::forward<T>(value), &attrs_.back().second);
       return *this;
     }
@@ -203,4 +203,4 @@ Node* BinaryOp(const string& op_name, NodeOut a, NodeOut b,
 }  // namespace ops
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_GRAPH_DEF_BUILDER_H_
+#endif  // TENSORFLOW_CORE_GRAPH_GRAPH_DEF_BUILDER_H_

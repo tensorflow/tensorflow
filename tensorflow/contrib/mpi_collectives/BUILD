@@ -52,6 +52,7 @@ tf_custom_op_library(
     deps = [
         ":mpi_defines",
         ":mpi_message_proto_cc",
+        "//tensorflow/stream_executor:stream_executor_headers_lib",
         "//third_party/mpi",
     ],
 )

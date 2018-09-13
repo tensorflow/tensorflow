@@ -53,7 +53,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   which replicas can fetch the new variables and continue.
 
   The following accumulators/queue are created:
-  <empty line>
+
   * N `gradient accumulators`, one per variable to train. Gradients are pushed
     to them and the chief worker will wait until enough gradients are collected
     and then average them before applying to variables. The accumulator will
@@ -68,7 +68,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   The optimizer adds nodes to the graph to collect gradients and pause the
   trainers until variables are updated.
   For the Parameter Server job:
-  <empty line>
+
   1. An accumulator is created for each variable, and each replica pushes the
      gradients into the accumulators instead of directly applying them to the
      variables.
@@ -81,7 +81,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
      update its local_step variable and start the next batch.
 
   For the replicas:
-  <empty line>
+
   1. Start a step: fetch variables and compute gradients.
   2. Once the gradients have been computed, push them into gradient
      accumulators. Each accumulator will check the staleness and drop the stale.

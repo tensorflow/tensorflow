@@ -30,6 +30,8 @@ namespace io {
 
 PyRecordReader::PyRecordReader() {}
 
+// NOTE(sethtroisi): At this time PyRecordReader doesn't benefit from taking
+// RecordReaderOptions, if this changes the API can be updated at that time.
 PyRecordReader* PyRecordReader::New(const string& filename, uint64 start_offset,
                                     const string& compression_type_string,
                                     TF_Status* out_status) {

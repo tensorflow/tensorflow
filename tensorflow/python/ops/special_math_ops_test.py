@@ -25,23 +25,25 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.platform import test
-
+from tensorflow.python.platform import tf_logging
 
 class LBetaTest(test.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes
   def test_one_dimensional_arg(self):
     # Should evaluate to 1 and 1/2.
     x_one = [1, 1.]
     x_one_half = [2, 1.]
     with self.test_session(use_gpu=True):
-      self.assertAllClose(1, math_ops.exp(special_math_ops.lbeta(x_one)).eval())
-      self.assertAllClose(0.5,
-                          math_ops.exp(
-                              special_math_ops.lbeta(x_one_half)).eval())
+      self.assertAllClose(
+          1, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_one))))
+      self.assertAllClose(
+          0.5, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_one_half))))
       self.assertEqual([], special_math_ops.lbeta(x_one).get_shape())
 
   def test_one_dimensional_arg_dynamic(self):
@@ -52,7 +54,8 @@ class LBetaTest(test.TestCase):
       ph = array_ops.placeholder(dtypes.float32)
       beta_ph = math_ops.exp(special_math_ops.lbeta(ph))
       self.assertAllClose(1, beta_ph.eval(feed_dict={ph: x_one}))
-      self.assertAllClose(0.5, beta_ph.eval(feed_dict={ph: x_one_half}))
+      self.assertAllClose(0.5,
+                          beta_ph.eval(feed_dict={ph: x_one_half}))
 
   def test_four_dimensional_arg_with_partial_shape_dynamic(self):
     x_ = np.ones((3, 2, 3, 4))
@@ -65,15 +68,17 @@ class LBetaTest(test.TestCase):
     with self.test_session(use_gpu=True):
       x_ph = array_ops.placeholder(dtypes.float32, [3, 2, 3, None])
       beta_ph = math_ops.exp(special_math_ops.lbeta(x_ph))
-      self.assertAllClose(expected_beta_x, beta_ph.eval(feed_dict={x_ph: x_}))
+      self.assertAllClose(expected_beta_x,
+                          beta_ph.eval(feed_dict={x_ph: x_}))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_two_dimensional_arg(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
     with self.test_session(use_gpu=True):
-      self.assertAllClose([0.5, 0.5],
-                          math_ops.exp(
-                              special_math_ops.lbeta(x_one_half)).eval())
+      self.assertAllClose(
+          [0.5, 0.5],
+          self.evaluate(math_ops.exp(special_math_ops.lbeta(x_one_half))))
       self.assertEqual((2,), special_math_ops.lbeta(x_one_half).get_shape())
 
   def test_two_dimensional_arg_dynamic(self):
@@ -82,50 +87,59 @@ class LBetaTest(test.TestCase):
     with self.test_session(use_gpu=True):
       ph = array_ops.placeholder(dtypes.float32)
       beta_ph = math_ops.exp(special_math_ops.lbeta(ph))
-      self.assertAllClose([0.5, 0.5], beta_ph.eval(feed_dict={ph: x_one_half}))
+      self.assertAllClose([0.5, 0.5],
+                          beta_ph.eval(feed_dict={ph: x_one_half}))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_two_dimensional_proper_shape(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
     with self.test_session(use_gpu=True):
-      self.assertAllClose([0.5, 0.5],
-                          math_ops.exp(
-                              special_math_ops.lbeta(x_one_half)).eval())
+      self.assertAllClose(
+          [0.5, 0.5],
+          self.evaluate(math_ops.exp(special_math_ops.lbeta(x_one_half))))
       self.assertEqual(
           (2,),
-          array_ops.shape(special_math_ops.lbeta(x_one_half)).eval())
+          self.evaluate(array_ops.shape(special_math_ops.lbeta(x_one_half))))
       self.assertEqual(
           tensor_shape.TensorShape([2]),
           special_math_ops.lbeta(x_one_half).get_shape())
 
+  @test_util.run_in_graph_and_eager_modes
   def test_complicated_shape(self):
     with self.test_session(use_gpu=True):
       x = ops.convert_to_tensor(np.random.rand(3, 2, 2))
-      self.assertAllEqual((3, 2),
-                          array_ops.shape(special_math_ops.lbeta(x)).eval())
+      self.assertAllEqual(
+          (3, 2), self.evaluate(array_ops.shape(special_math_ops.lbeta(x))))
       self.assertEqual(
           tensor_shape.TensorShape([3, 2]),
           special_math_ops.lbeta(x).get_shape())
 
+  @test_util.run_in_graph_and_eager_modes
   def test_length_1_last_dimension_results_in_one(self):
     # If there is only one coefficient, the formula still works, and we get one
     # as the answer, always.
     x_a = [5.5]
     x_b = [0.1]
     with self.test_session(use_gpu=True):
-      self.assertAllClose(1, math_ops.exp(special_math_ops.lbeta(x_a)).eval())
-      self.assertAllClose(1, math_ops.exp(special_math_ops.lbeta(x_b)).eval())
+      self.assertAllClose(
+          1, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_a))))
+      self.assertAllClose(
+          1, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_b))))
       self.assertEqual((), special_math_ops.lbeta(x_a).get_shape())
 
+  @test_util.run_in_graph_and_eager_modes
   def test_empty_rank1_returns_negative_infinity(self):
     with self.test_session(use_gpu=True):
       x = constant_op.constant([], shape=[0])
       lbeta_x = special_math_ops.lbeta(x)
       expected_result = constant_op.constant(-np.inf, shape=())
 
-      self.assertAllEqual(expected_result.eval(), lbeta_x.eval())
+      self.assertAllEqual(self.evaluate(expected_result),
+                          self.evaluate(lbeta_x))
       self.assertEqual(expected_result.get_shape(), lbeta_x.get_shape())
 
+  @test_util.run_in_graph_and_eager_modes
   def test_empty_rank2_with_zero_last_dim_returns_negative_infinity(self):
     with self.test_session(use_gpu=True):
       event_size = 0
@@ -134,9 +148,11 @@ class LBetaTest(test.TestCase):
         lbeta_x = special_math_ops.lbeta(x)
         expected_result = constant_op.constant(-np.inf, shape=[batch_size])
 
-        self.assertAllEqual(expected_result.eval(), lbeta_x.eval())
+        self.assertAllEqual(self.evaluate(expected_result),
+                            self.evaluate(lbeta_x))
         self.assertEqual(expected_result.get_shape(), lbeta_x.get_shape())
 
+  @test_util.run_in_graph_and_eager_modes
   def test_empty_rank2_with_zero_batch_dim_returns_empty(self):
     with self.test_session(use_gpu=True):
       batch_size = 0
@@ -146,8 +162,38 @@ class LBetaTest(test.TestCase):
 
         expected_result = constant_op.constant([], shape=[batch_size])
 
-        self.assertAllEqual(expected_result.eval(), lbeta_x.eval())
+        self.assertAllEqual(self.evaluate(expected_result),
+                            self.evaluate(lbeta_x))
         self.assertEqual(expected_result.get_shape(), lbeta_x.get_shape())
+
+
+class BesselTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_bessel_i0(self):
+    x_single = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float32)
+    x_double = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float64)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(special.i0(x_single),
+                          self.evaluate(special_math_ops.bessel_i0(x_single)))
+      self.assertAllClose(special.i0(x_double),
+                          self.evaluate(special_math_ops.bessel_i0(x_double)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_bessel_i1(self):
+    x_single = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float32)
+    x_double = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float64)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(special.i1(x_single),
+                          self.evaluate(special_math_ops.bessel_i1(x_single)))
+      self.assertAllClose(special.i1(x_double),
+                          self.evaluate(special_math_ops.bessel_i1(x_double)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
 
 
 class EinsumTest(test.TestCase):
@@ -195,6 +241,12 @@ class EinsumTest(test.TestCase):
       'iJ,Jk->ik',
       'iJ,Ki->JK',
       'iJk,Jklm->Jk'
+      'ij, jk, kl -> il',
+      'a, ab, abc -> abc',
+      'ab, ab, cd, cd, ef, ef -> ',
+      'abc, bac',
+      'iJ, Ki -> JK',
+      'iJk, Jklm -> Jk'
   ]
 
   long_cases = [
@@ -203,6 +255,8 @@ class EinsumTest(test.TestCase):
       'ea,fb,gc,hd,abcd->efgh',
       'ea,fb,abcd,gc,hd->efgh',
       'abhe,hidj,jgba,hiab,gab',
+      'efc, dbc, acf, fd -> abe',
+      'abhe, hidj, jgba, hiab, gab',
   ]
 
   invalid_cases = [
@@ -273,20 +327,20 @@ class EinsumTest(test.TestCase):
     input_axes, _, _ = axes.partition('->')
 
     for idx in input_axes.split(','):
-      shape = [all_axes[ax] for ax in idx]
+      shape = [all_axes[ax] for ax in idx if ax.isalpha()]
       input_vals.append(np.random.random(shape))
 
     input_tensors = [constant_op.constant(val) for val in input_vals]
     output_tensor = special_math_ops.einsum(axes, *input_tensors)
 
     with self.test_session(use_gpu=True):
-      output_value = output_tensor.eval()
+      output_value = self.evaluate(output_tensor)
 
     correct_value = np.einsum(axes, *input_vals)
 
     err = np.abs(correct_value - output_value).max()
-    print(axes, err)
-    assert err < 1e-8
+    # print(axes, err)
+    self.assertLess(err, 1e-8)
 
   def test_input_is_placeholder(self):
     with ops.Graph().as_default():
@@ -298,8 +352,7 @@ class EinsumTest(test.TestCase):
             m0: [[1, 2, 3]],
             m1: [[2], [1], [1]],
         }
-        np.testing.assert_almost_equal([[7]], sess.run(
-            out, feed_dict=feed_dict))
+        self.assertAllClose([[7]], sess.run(out, feed_dict=feed_dict))
 
     with ops.Graph().as_default():
       m0 = array_ops.placeholder(dtypes.int32, shape=(None, 3))
@@ -310,7 +363,7 @@ class EinsumTest(test.TestCase):
             m0: [[1, 2, 3]],
             m1: [2, 1, 1],
         }
-        np.testing.assert_almost_equal([7], sess.run(out, feed_dict=feed_dict))
+        self.assertAllClose([7], sess.run(out, feed_dict=feed_dict))
 
     # Tests for placeholders which have two or more None values
     with ops.Graph().as_default():
@@ -322,8 +375,7 @@ class EinsumTest(test.TestCase):
             m0: [[[1, 2]]],
             m1: [[3], [2]],
         }
-        np.testing.assert_almost_equal([[[7]]],
-                                       sess.run(out, feed_dict=feed_dict))
+        self.assertAllClose([[[7]]], sess.run(out, feed_dict=feed_dict))
 
     with ops.Graph().as_default():
       m0 = array_ops.placeholder(dtypes.int32, shape=(2, 1))
@@ -334,8 +386,7 @@ class EinsumTest(test.TestCase):
             m0: [[3], [2]],
             m1: [[[1, 2]]],
         }
-        np.testing.assert_almost_equal([[[7]]],
-                                       sess.run(out, feed_dict=feed_dict))
+        self.assertAllClose([[[7]]], sess.run(out, feed_dict=feed_dict))
 
     with ops.Graph().as_default():
       m0 = array_ops.placeholder(dtypes.int32, shape=(None, None, 2))
@@ -346,8 +397,7 @@ class EinsumTest(test.TestCase):
             m0: [[[1, 2]]],
             m1: [3, 2],
         }
-        np.testing.assert_almost_equal([[7]], sess.run(
-            out, feed_dict=feed_dict))
+        self.assertAllClose([[7]], sess.run(out, feed_dict=feed_dict))
 
     with ops.Graph().as_default():
       m0 = array_ops.placeholder(dtypes.int32, shape=(None, 2, None, 2))
@@ -358,8 +408,7 @@ class EinsumTest(test.TestCase):
             m0: [[[[1, 2]], [[2, 1]]]],
             m1: [[3, 2]],
         }
-        np.testing.assert_almost_equal([[[7, 8]]],
-                                       sess.run(out, feed_dict=feed_dict))
+        self.assertAllClose([[[7, 8]]], sess.run(out, feed_dict=feed_dict))
 
 
 if __name__ == '__main__':

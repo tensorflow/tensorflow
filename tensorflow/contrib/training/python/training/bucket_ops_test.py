@@ -112,7 +112,7 @@ class BucketTest(test.TestCase):
     self.assertAllEqual(
         [[32], [32, None], [32, 3], [None, None]],
         [out.get_shape().as_list() for out in bucketed_dynamic[1]])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for v in range(32):
         self.enqueue_inputs(sess, {
             self.scalar_int_feed: v,
@@ -162,7 +162,7 @@ class BucketTest(test.TestCase):
     self.assertAllEqual(
         [[None], [None, None], [None, 3], [None, None]],
         [out.get_shape().as_list() for out in bucketed_dynamic[1]])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for v in range(15):
         self.enqueue_inputs(sess, {
             self.scalar_int_feed: v,
@@ -204,7 +204,7 @@ class BucketTest(test.TestCase):
     self.assertAllEqual(
         [[32], [32, None], [32, 3], [None, None]],
         [out.get_shape().as_list() for out in bucketed_dynamic[1]])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for v in range(64):
         self.enqueue_inputs(sess, {
             self.scalar_int_feed: v,
@@ -286,7 +286,7 @@ class BucketTest(test.TestCase):
     self.assertAllEqual(
         [[32], [32, None], [32, 3]],
         [out.get_shape().as_list() for out in bucketed_dynamic[1]])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for v in range(128):
         self.enqueue_inputs(sess, {
             self.scalar_int_feed: v,
@@ -405,7 +405,7 @@ class BucketBySequenceLengthTest(test.TestCase):
               num_pairs_to_enqueue - (batch_size - 1) * num_buckets,
               num_pairs_dequeued)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       coord = coordinator.Coordinator()
 
       # Feed the inputs, then close the input thread.

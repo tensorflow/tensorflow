@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_SELECTIVE_REGISTRATION_H_
-#define TENSORFLOW_FRAMEWORK_SELECTIVE_REGISTRATION_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_SELECTIVE_REGISTRATION_H_
+#define TENSORFLOW_CORE_FRAMEWORK_SELECTIVE_REGISTRATION_H_
 
 #include <string.h>
 
@@ -55,4 +55,4 @@ static_assert(false, "ops_to_register.h must define SHOULD_REGISTER macros");
 #define SHOULD_REGISTER_OP_KERNEL(clz) true
 #endif
 
-#endif  // TENSORFLOW_FRAMEWORK_SELECTIVE_REGISTRATION_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_SELECTIVE_REGISTRATION_H_

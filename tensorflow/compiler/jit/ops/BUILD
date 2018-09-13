@@ -10,10 +10,3 @@ cc_library(
     deps = ["//tensorflow/core:framework"],
     alwayslink = 1,
 )
-
-cc_library(
-    name = "parallel_check_op",
-    srcs = ["parallel_check_op.cc"],
-    deps = ["//tensorflow/core:framework"],
-    alwayslink = 1,
-)

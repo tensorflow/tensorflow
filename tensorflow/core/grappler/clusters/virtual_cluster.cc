@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/grappler/clusters/utils.h"
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 
@@ -38,11 +39,16 @@ VirtualCluster::VirtualCluster(
   devices_ = devices;
 }
 
-VirtualCluster::VirtualCluster(
-    const std::unordered_map<string, DeviceProperties>& devices,
-    const DeviceSet* device_set)
-    : VirtualCluster(devices) {
+VirtualCluster::VirtualCluster(const DeviceSet* device_set)
+    : VirtualCluster(std::unordered_map<string, DeviceProperties>()) {
   device_set_ = device_set;
+  for (const auto& device : device_set_->devices()) {
+    DeviceProperties props = GetDeviceInfo(device->parsed_name());
+    if (props.type() == "UNKNOWN") continue;
+    auto attrs = device->attributes();
+    props.set_memory_size(attrs.memory_limit());
+    devices_[device->name()] = props;
+  }
 }
 
 VirtualCluster::~VirtualCluster() {}

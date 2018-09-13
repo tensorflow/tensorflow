@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_LIB_BATCH_DOT_H_
 #define TENSORFLOW_COMPILER_TF2XLA_LIB_BATCH_DOT_H_
 
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace tensorflow {
 
@@ -43,10 +43,11 @@ namespace tensorflow {
 // It is computed as:
 //
 //     output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
-xla::StatusOr<xla::ComputationDataHandle> BatchDot(
-    xla::ComputationBuilder* builder, xla::ComputationDataHandle x,
-    xla::ComputationDataHandle y, bool transpose_x, bool transpose_y,
-    bool conjugate_x = false, bool conjugate_y = false);
+xla::XlaOp BatchDot(
+    xla::XlaOp x, xla::XlaOp y, bool transpose_x = false,
+    bool transpose_y = false, bool conjugate_x = false,
+    bool conjugate_y = false,
+    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
 
 }  // namespace tensorflow
 

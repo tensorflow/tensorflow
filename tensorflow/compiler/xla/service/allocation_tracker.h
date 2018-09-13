@@ -76,10 +76,7 @@ class AllocationTracker {
   // Data structure encapsulating single memory allocation on the device.
   struct Allocation {
     // The pointer to this allocation.
-    se::DeviceMemoryBase device_memory;
-
-    // The device that the memory is allocated on.
-    int device_ordinal;
+    OwningDeviceMemory device_memory;
 
     // This is the number of times this memory allocation is referred to by
     // registered data handles.
@@ -126,7 +123,10 @@ class AllocationTracker {
   int64 next_handle_ GUARDED_BY(mutex_);
 
   // A map from device ordinal to AllocationMap.
-  tensorflow::gtl::FlatMap<int, AllocationMap> opaque_to_allocation_map_
+  //
+  // This is not a TF FlatMap because (currently) FlatMap (and therefore
+  // AllocationMap) is not movable.
+  std::unordered_map<int, AllocationMap> opaque_to_allocation_map_
       GUARDED_BY(mutex_);
 
   // A map from data handle to a vector of shaped buffers that represent the

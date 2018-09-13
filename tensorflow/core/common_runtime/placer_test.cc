@@ -575,6 +575,10 @@ REGISTER_KERNEL_BUILDER(Name("HandleAssignCPU").Device("FakeCPU"), DummyOp);
 REGISTER_OP("HandleAssignGPU").Input("i: resource").Input("v: float");
 REGISTER_KERNEL_BUILDER(Name("HandleAssignGPU").Device("FakeGPU"), DummyOp);
 
+REGISTER_OP("TestTwoHandlesIn").Input("i: resource").Input("j: resource");
+REGISTER_KERNEL_BUILDER(Name("TestTwoHandlesIn").Device("FakeCPU"), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("TestTwoHandlesIn").Device("FakeGPU"), DummyOp);
+
 // Tests all combinations of resource handles and ops using them.
 TEST_F(PlacerTest, TestResourceHandle) {
   auto handle_test = [this](const string& var_op_name,
@@ -607,6 +611,42 @@ TEST_F(PlacerTest, TestResourceHandle) {
       handle_test("HandleVariableGPU", "HandleAssignCPU", "FakeCPU").ok());
   EXPECT_FALSE(
       handle_test("HandleVariableCPU", "HandleAssignGPU", "FakeCPU").ok());
+}
+
+TEST_F(PlacerTest, TestResourceHandlesOnDifferentDevicesFails) {
+  auto handle_test = [this](bool allow_soft_placement) {
+    Graph g(OpRegistry::Global());
+    {  // Scope for temporary variables used to construct g.
+      GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+      Node* var_cpu =
+          ops::SourceOp("TestHandleVariable", b.opts().WithName("var_cpu"));
+      Node* var_gpu =
+          ops::SourceOp("TestHandleVariable", b.opts().WithName("var_gpu"));
+      ops::BinaryOp("TestTwoHandlesIn", var_cpu, var_gpu,
+                    b.opts().WithName("two_handles_in"));
+      TF_EXPECT_OK(BuildGraph(b, &g));
+
+      GetNodeByName(g, "var_cpu")
+          ->set_assigned_device_name(
+              "/job:a/replica:0/task:0/device:fakecpu:0");
+      GetNodeByName(g, "var_gpu")
+          ->set_assigned_device_name(
+              "/job:a/replica:0/task:0/device:fakegpu:0");
+    }
+
+    SessionOptions options;
+    options.config.set_allow_soft_placement(allow_soft_placement);
+    options.config.set_log_device_placement(true);
+    Status s = Place(&g, &options);
+    EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+    EXPECT_TRUE(str_util::StrContains(
+        s.error_message(),
+        "Could not colocate node with its resource and reference inputs"));
+    return Status::OK();
+  };
+
+  TF_EXPECT_OK(handle_test(false));
+  TF_EXPECT_OK(handle_test(true));
 }
 
 // Test that an assignment of an operator to the wrong device
@@ -760,11 +800,11 @@ TEST_F(PlacerTest, TestInvalidMultipleColocationGroups) {
   }
 
   Status s = Place(&g);
-  EXPECT_TRUE(
-      str_util::StrContains(s.error_message(),
-                            "Cannot colocate nodes 'foo' and 'in' because no "
-                            "device type supports both of those nodes and the "
-                            "other nodes colocated with them"));
+  EXPECT_TRUE(str_util::StrContains(
+      s.error_message(),
+      "Cannot colocate nodes {{colocation_node foo}} and "
+      "{{colocation_node in}} because no device type supports both of those "
+      "nodes and the other nodes colocated with them"));
 }
 
 TEST_F(PlacerTest, TestColocationGroupWithReferenceConnections) {
@@ -827,9 +867,9 @@ TEST_F(PlacerTest, TestColocationGroupWithUnsatisfiableReferenceConnections) {
   Status s = Place(&g);
   EXPECT_TRUE(str_util::StrContains(
       s.error_message(),
-      "Cannot colocate nodes 'var3' and 'assign3' because no "
-      "device type supports both of those nodes and the other "
-      "nodes colocated with them."));
+      "Cannot colocate nodes {{colocation_node var3}} and {{colocation_node "
+      "assign3}} because no device type supports both of those nodes and the "
+      "other nodes colocated with them."));
 }
 
 TEST_F(PlacerTest, TestColocationAndReferenceConnections) {
@@ -1102,6 +1142,26 @@ TEST_F(PlacerTest, TestNonexistentGpuNoAllowSoftPlacement) {
   EXPECT_TRUE(str_util::StrContains(s.error_message(), "/device:fakegpu:11"));
 }
 
+// Test that the "Cannot assign a device" error message contains a format tag
+// when requested.
+TEST_F(PlacerTest, TestNonexistentGpuNoAllowSoftPlacementFormatTag) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    ops::SourceOp("TestDevice",
+                  b.opts().WithName("in").WithDevice("/device:fakegpu:11"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  SessionOptions options;
+  Status s = Place(&g, &options);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  LOG(WARNING) << s.error_message();
+  EXPECT_TRUE(str_util::StrContains(s.error_message(),
+                                    "Cannot assign a device for operation in"));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(), "{{node in}}"));
+}
+
 // Test that placement fails when a node requests an explicit device that is not
 // supported by the registered kernels if allow_soft_placement is no set.
 TEST_F(PlacerTest, TestUnsupportedDeviceNoAllowSoftPlacement) {
@@ -1205,8 +1265,9 @@ TEST_F(PlacerTest, TestUnsatisfiableConstraintWithReferenceConnections) {
 
   Status s = Place(&g);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(str_util::StrContains(
-      s.error_message(), "Cannot colocate nodes 'var' and 'assign'"));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(),
+                                    "Cannot colocate nodes {{colocation_node "
+                                    "var}} and {{colocation_node assign}}"));
 }
 
 // Test that a generator node follows its consumers (where there are several

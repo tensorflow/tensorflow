@@ -34,7 +34,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 # TODO(b/27419586) Change docstring for required dtype of x once int allowed
 @tf_export('lbeta')
-def lbeta(x, name='lbeta'):
+def lbeta(x, name=None):
   r"""Computes \\(ln(|Beta(x)|)\\), reducing along the last dimension.
 
   Given one-dimensional `z = [z_0,...,z_{K-1}]`, we define
@@ -64,7 +64,7 @@ def lbeta(x, name='lbeta'):
   # This is consistent with a convention that the sum over the empty set 0, and
   # the product is 1.
   # This is standard.  See https://en.wikipedia.org/wiki/Empty_set.
-  with ops.name_scope(name, values=[x]):
+  with ops.name_scope(name, 'lbeta', [x]):
     x = ops.convert_to_tensor(x, name='x')
 
     # Note reduce_sum([]) = 0.
@@ -80,6 +80,54 @@ def lbeta(x, name='lbeta'):
     result = log_prod_gamma_x - log_gamma_sum_x
 
     return result
+
+
+@tf_export('math.bessel_i0')
+def bessel_i0(x, name=None):
+  """Computes the Bessel i0 function of `x` element-wise.
+
+  Modified Bessel function of order 0.
+
+  It is preferable to use the numerically stabler function `i0e(x)` instead.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.i0
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_i0', [x]):
+    return math_ops.exp(math_ops.abs(x)) * math_ops.bessel_i0e(x)
+
+
+@tf_export('math.bessel_i1')
+def bessel_i1(x, name=None):
+  """Computes the Bessel i1 function of `x` element-wise.
+
+  Modified Bessel function of order 1.
+
+  It is preferable to use the numerically stabler function `i1e(x)` instead.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.i1
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_i1', [x]):
+    return math_ops.exp(math_ops.abs(x)) * math_ops.bessel_i1e(x)
 
 
 @tf_export('einsum', 'linalg.einsum')
@@ -153,6 +201,8 @@ def einsum(equation, *inputs, **kwargs):
         indices in its subscript, or
       - the input shapes are inconsistent along a particular axis.
   """
+  equation = equation.replace(' ', '')
+
   name = kwargs.pop('name', None)
   if kwargs:
     raise TypeError('invalid keyword arguments for this function: ' + ', '.join(

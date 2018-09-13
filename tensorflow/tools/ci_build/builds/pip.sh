@@ -314,7 +314,10 @@ create_activate_virtualenv_and_install_tensorflow() {
 
   # Upgrade pip so it supports tags such as cp27mu, manylinux1 etc.
   echo "Upgrade pip in virtualenv"
-  pip install --upgrade pip==9.0.1
+
+  # NOTE: pip install --upgrade pip leads to a documented TLS issue for
+  # some versions in python
+  curl https://bootstrap.pypa.io/get-pip.py | python
 
   # Force tensorflow reinstallation. Otherwise it may not get installed from
   # last build if it had the same version number as previous build.
@@ -322,6 +325,10 @@ create_activate_virtualenv_and_install_tensorflow() {
   pip install -v ${PIP_FLAGS} ${WHL_PATH} || \
     die "pip install (forcing to reinstall tensorflow) FAILED"
   echo "Successfully installed pip package ${TF_WHEEL_PATH}"
+
+  # Force downgrade setuptools.
+  pip install --upgrade setuptools==39.1.0
+
 }
 
 ################################################################################

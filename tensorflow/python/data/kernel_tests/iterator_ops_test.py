@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import os
 import warnings
 
@@ -25,6 +26,7 @@ import numpy as np
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
@@ -45,7 +47,9 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import server_lib
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 from tensorflow.python.util import compat
 
 
@@ -87,7 +91,7 @@ class IteratorTest(test.TestCase):
     self.assertEqual([c.shape[1:] for c in components],
                      [t.shape for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for _ in range(14):
         for i in range(7):
           result = sess.run(get_next)
@@ -113,7 +117,7 @@ class IteratorTest(test.TestCase):
     self.assertEqual([c.shape[1:] for c in components],
                      [t.shape for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for _ in range(14):
         for i in range(7):
           result = sess.run(get_next)
@@ -204,7 +208,7 @@ class IteratorTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesRegexp(errors.InvalidArgumentError, "oops"):
         sess.run(next_element)
 
@@ -212,7 +216,7 @@ class IteratorTest(test.TestCase):
       with self.assertRaisesRegexp(errors.InvalidArgumentError, "oops"):
         sess.run(next_element)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
       def consumer_thread():
         with self.assertRaisesRegexp(errors.InvalidArgumentError, "oops"):
@@ -283,7 +287,7 @@ class IteratorTest(test.TestCase):
         .make_initializable_iterator())
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesRegexp(errors.FailedPreconditionError,
                                    "iterator has not been initialized"):
         sess.run(get_next)
@@ -304,7 +308,7 @@ class IteratorTest(test.TestCase):
     self.assertEqual(dataset_4.output_types, iterator.output_types)
     self.assertEqual([None], iterator.output_shapes.as_list())
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The iterator is initially uninitialized.
       with self.assertRaises(errors.FailedPreconditionError):
         sess.run(get_next)
@@ -376,7 +380,7 @@ class IteratorTest(test.TestCase):
     self.assertEqual(dataset_4.output_types, feedable_iterator.output_types)
     self.assertEqual([], feedable_iterator.output_shapes)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       iterator_3_handle = sess.run(iterator_3.string_handle())
       iterator_4_handle = sess.run(iterator_4.string_handle())
 
@@ -414,6 +418,69 @@ class IteratorTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(
             next_element, feed_dict={handle_placeholder: iterator_4_handle})
+
+  def testIteratorStringHandleFuture(self):
+    with forward_compat.forward_compatibility_horizon(2018, 8, 4):
+      dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+      dataset_4 = dataset_ops.Dataset.from_tensor_slices([10, 20, 30, 40])
+
+      iterator_3 = dataset_3.make_one_shot_iterator()
+      iterator_4 = dataset_4.make_one_shot_iterator()
+
+      handle_placeholder = array_ops.placeholder(dtypes.string, shape=[])
+      feedable_iterator = iterator_ops.Iterator.from_string_handle(
+          handle_placeholder, dataset_3.output_types, dataset_3.output_shapes)
+      next_element = feedable_iterator.get_next()
+
+      self.assertEqual(dataset_3.output_types, feedable_iterator.output_types)
+      self.assertEqual(dataset_4.output_types, feedable_iterator.output_types)
+      self.assertEqual([], feedable_iterator.output_shapes)
+
+      with self.cached_session() as sess:
+        iterator_3_handle = sess.run(iterator_3.string_handle())
+        iterator_4_handle = sess.run(iterator_4.string_handle())
+
+        self.assertEqual(
+            10,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_4_handle}))
+        self.assertEqual(
+            1,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_3_handle}))
+        self.assertEqual(
+            20,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_4_handle}))
+        self.assertEqual(
+            2,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_3_handle}))
+        self.assertEqual(
+            30,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_4_handle}))
+        self.assertEqual(
+            3,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_3_handle}))
+        self.assertEqual(
+            40,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_4_handle}))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(
+              next_element, feed_dict={handle_placeholder: iterator_3_handle})
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(
+              next_element, feed_dict={handle_placeholder: iterator_4_handle})
 
   def testIteratorStringHandleReuseTensorObject(self):
     dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
@@ -457,7 +524,7 @@ class IteratorTest(test.TestCase):
     feedable_int_any = iterator_ops.Iterator.from_string_handle(
         handle_placeholder, dtypes.int32)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       handle_int_scalar = sess.run(
           dataset_int_scalar.make_one_shot_iterator().string_handle())
       handle_float_vector = sess.run(
@@ -620,7 +687,7 @@ class IteratorTest(test.TestCase):
           f=_remote_fn,
           target=target_placeholder)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       elem = sess.run(
           remote_op,
           feed_dict={
@@ -689,7 +756,7 @@ class IteratorTest(test.TestCase):
     # Saving iterator for RangeDataset graph.
     with ops.Graph().as_default() as g:
       init_op, _, save_op, _ = _build_range_dataset_graph()
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         sess.run(save_op)
 
@@ -700,7 +767,7 @@ class IteratorTest(test.TestCase):
     # IteratorResource::set_iterator.
     with ops.Graph().as_default() as g:
       _, _, _, restore_op = _build_reader_dataset_graph()
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         with self.assertRaises(errors.InvalidArgumentError):
           sess.run(restore_op)
 
@@ -722,6 +789,96 @@ class IteratorTest(test.TestCase):
       for foo in dataset:
         self.assertEqual(val, foo.numpy())
         val += 1
+
+
+class IteratorCheckpointingTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSaveRestoreOneShotIterator(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3, 4, 5, 6]).map(
+        math_ops.square).batch(2)
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next if context.executing_eagerly(
+    ) else functools.partial(self.evaluate, iterator.get_next())
+    checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
+    self.assertAllEqual([1, 4], get_next())
+    save_path = checkpoint.save(checkpoint_prefix)
+    self.assertAllEqual([9, 16], get_next())
+    self.assertAllEqual([25, 36], get_next())
+    checkpoint.restore(save_path).run_restore_ops()
+    self.assertAllEqual([9, 16], get_next())
+    self.assertAllEqual([25, 36], get_next())
+    with self.assertRaises(errors.OutOfRangeError):
+      get_next()
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSaveRestoreMultipleIterator(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    dataset = dataset.map(math_ops.square).batch(2)
+    iterator_1 = dataset.make_one_shot_iterator()
+    get_next_1 = iterator_1.get_next if context.executing_eagerly(
+    ) else functools.partial(self.evaluate, iterator_1.get_next())
+    iterator_2 = dataset.make_one_shot_iterator()
+    get_next_2 = iterator_2.get_next if context.executing_eagerly(
+    ) else functools.partial(self.evaluate, iterator_2.get_next())
+    dataset_2 = dataset_ops.Dataset.range(10)
+    iterator_3 = dataset_2.make_one_shot_iterator()
+    get_next_3 = iterator_3.get_next if context.executing_eagerly(
+    ) else functools.partial(self.evaluate, iterator_3.get_next())
+    checkpoint = checkpointable_utils.Checkpoint(
+        iterator_1=iterator_1, iterator_2=iterator_2, iterator_3=iterator_3)
+    self.assertAllEqual([1, 4], get_next_1())
+    self.assertAllEqual(0, get_next_3())
+    self.assertAllEqual(1, get_next_3())
+    self.assertAllEqual(2, get_next_3())
+    save_path = checkpoint.save(checkpoint_prefix)
+    self.assertAllEqual([1, 4], get_next_2())
+    self.assertAllEqual([9, 16], get_next_2())
+    self.assertAllEqual(3, get_next_3())
+    checkpoint.restore(save_path).run_restore_ops()
+    self.assertAllEqual([9, 16], get_next_1())
+    self.assertAllEqual([1, 4], get_next_2())
+    self.assertAllEqual(3, get_next_3())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testRestoreExhaustedIterator(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    dataset = dataset_ops.Dataset.range(3)
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next if context.executing_eagerly(
+    ) else functools.partial(self.evaluate, iterator.get_next())
+    checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
+    self.assertAllEqual(0, get_next())
+    self.assertAllEqual(1, get_next())
+    save_path = checkpoint.save(checkpoint_prefix)
+    self.assertAllEqual(2, get_next())
+    checkpoint.restore(save_path).run_restore_ops()
+    self.assertAllEqual(2, get_next())
+    save_path = checkpoint.save(checkpoint_prefix)
+    checkpoint.restore(save_path).run_restore_ops()
+    with self.assertRaises(errors.OutOfRangeError):
+      get_next()
+
+  def testRestoreInReconstructedIteratorInitializable(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    dataset = dataset_ops.Dataset.range(10)
+    iterator = dataset.make_initializable_iterator()
+    get_next = iterator.get_next()
+    checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
+    for i in range(5):
+      with self.cached_session() as sess:
+        checkpoint.restore(checkpoint_management.latest_checkpoint(
+            checkpoint_directory)).initialize_or_restore(sess)
+        for j in range(2):
+          self.assertEqual(i * 2 + j, sess.run(get_next))
+        checkpoint.save(file_prefix=checkpoint_prefix)
 
 
 if __name__ == "__main__":

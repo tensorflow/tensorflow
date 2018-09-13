@@ -67,7 +67,7 @@ class TestReportingBenchmark(test.Benchmark):
     with session.Session() as sess:
       a = constant_op.constant(0.0)
       a_plus_a = a + a
-      self.run_op_benchmark(
+      return self.run_op_benchmark(
           sess, a_plus_a, min_iters=1000, store_trace=True, name="op_benchmark")
 
 
@@ -148,7 +148,7 @@ class BenchmarkTest(test.TestCase):
       reporting = TestReportingBenchmark()
       reporting.benchmarkReport1()  # This should write
       reporting.benchmarkReport2()  # This should write
-      reporting.benchmark_times_an_op()  # This should write
+      benchmark_values3 = reporting.benchmark_times_an_op()  # This should write
 
       # Check the files were written
       self.assertTrue(gfile.Exists(expected_output_file))
@@ -186,8 +186,12 @@ class BenchmarkTest(test.TestCase):
       self.assertEquals(expected_3.name, read_benchmark_3.name)
       self.assertEquals(expected_3.iters, read_benchmark_3.iters)
       self.assertGreater(read_benchmark_3.wall_time, 0)
-      full_trace = read_benchmark_3.extras["full_trace_chrome_format"]
-      json_trace = json.loads(full_trace.string_value)
+
+      # Trace is not stored in benchmark entry. Instead we get it from
+      # return value of `run_op_benchmark` call.
+      full_trace = benchmark_values3["extras"]["full_trace_chrome_format"]
+      json_trace = json.loads(full_trace)
+
       self.assertTrue(isinstance(json_trace, dict))
       self.assertTrue("traceEvents" in json_trace.keys())
       allocator_keys = [k for k in read_benchmark_3.extras.keys()

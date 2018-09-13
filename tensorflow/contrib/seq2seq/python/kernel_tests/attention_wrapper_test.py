@@ -512,7 +512,7 @@ class AttentionWrapperTest(test.TestCase):
 
     for axis in [0, 1]:
       for exclusive in [True, False]:
-        with self.test_session():
+        with self.cached_session():
           # Compute cumprod with regular tf.cumprod
           cumprod_output = math_ops.cumprod(
               test_input, axis=axis, exclusive=exclusive).eval()
@@ -548,7 +548,7 @@ class AttentionWrapperTest(test.TestCase):
         for p, a in zip(p_choose_i, previous_attention)])
 
     # Compute output with TensorFlow function, for both calculation types
-    with self.test_session():
+    with self.cached_session():
       recursive_output = wrapper.monotonic_attention(
           p_choose_i, previous_attention, 'recursive').eval()
 
@@ -569,7 +569,7 @@ class AttentionWrapperTest(test.TestCase):
         for p, a in zip(p_choose_i, previous_attention)])
 
     # Compute output with TensorFlow function, for both calculation types
-    with self.test_session():
+    with self.cached_session():
       parallel_output = wrapper.monotonic_attention(
           p_choose_i, previous_attention, 'parallel').eval()
 
@@ -594,7 +594,7 @@ class AttentionWrapperTest(test.TestCase):
         for p, a in zip(p_choose_i, previous_attention)])
 
     # Compute output with TensorFlow function, for both calculation types
-    with self.test_session():
+    with self.cached_session():
       hard_output = wrapper.monotonic_attention(
           # TensorFlow is unhappy when these are not wrapped as tf.constant
           constant_op.constant(p_choose_i),
@@ -634,7 +634,7 @@ class AttentionWrapperTest(test.TestCase):
     recursive_output = [np.array([1] + [0]*(p_choose_i.shape[1] - 1),
                                  np.float32)]
     # Compute output with TensorFlow function, for both calculation types
-    with self.test_session():
+    with self.cached_session():
       for j in range(p_choose_i.shape[0]):
         # Compute attention distribution for this output time step
         recursive_output.append(wrapper.monotonic_attention(

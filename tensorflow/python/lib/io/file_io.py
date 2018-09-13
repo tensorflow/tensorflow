@@ -21,6 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import binascii
 import os
 import uuid
 
@@ -32,6 +33,10 @@ from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
+
+# A good default block size depends on the system in question.
+# A somewhat conservative default chosen here.
+_DEFAULT_BLOCK_SIZE = 16 * 1024 * 1024
 
 
 class FileIO(object):
@@ -551,3 +556,56 @@ def stat(filename):
   with errors.raise_exception_on_not_ok_status() as status:
     pywrap_tensorflow.Stat(compat.as_bytes(filename), file_statistics, status)
     return file_statistics
+
+
+def filecmp(filename_a, filename_b):
+  """Compare two files, returning True if they are the same, False otherwise.
+
+  We check size first and return False quickly if the files are different sizes.
+  If they are the same size, we continue to generating a crc for the whole file.
+
+  You might wonder: why not use Python's filecmp.cmp() instead? The answer is
+  that the builtin library is not robust to the many different filesystems
+  TensorFlow runs on, and so we here perform a similar comparison with
+  the more robust FileIO.
+
+  Args:
+    filename_a: string path to the first file.
+    filename_b: string path to the second file.
+
+  Returns:
+    True if the files are the same, False otherwise.
+  """
+  size_a = FileIO(filename_a, "rb").size()
+  size_b = FileIO(filename_b, "rb").size()
+  if size_a != size_b:
+    return False
+
+  # Size is the same. Do a full check.
+  crc_a = file_crc32(filename_a)
+  crc_b = file_crc32(filename_b)
+  return crc_a == crc_b
+
+
+def file_crc32(filename, block_size=_DEFAULT_BLOCK_SIZE):
+  """Get the crc32 of the passed file.
+
+  The crc32 of a file can be used for error checking; two files with the same
+  crc32 are considered equivalent. Note that the entire file must be read
+  to produce the crc32.
+
+  Args:
+    filename: string, path to a file
+    block_size: Integer, process the files by reading blocks of `block_size`
+      bytes. Use -1 to read the file as once.
+
+  Returns:
+    hexadecimal as string, the crc32 of the passed file.
+  """
+  crc = 0
+  with FileIO(filename, mode="rb") as f:
+    chunk = f.read(n=block_size)
+    while chunk:
+      crc = binascii.crc32(chunk, crc)
+      chunk = f.read(n=block_size)
+  return hex(crc & 0xFFFFFFFF)

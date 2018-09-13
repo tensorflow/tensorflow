@@ -49,11 +49,11 @@ tf_cc_binary(
         ":tpu_profiler_analysis_proto_cc",
         ":tpu_profiler_proto_cc",
         ":version",
+        "//tensorflow:grpc++",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/platform/cloud:gcs_file_system",
-        "@grpc//:grpc++_unsecure",
     ],
 )
 

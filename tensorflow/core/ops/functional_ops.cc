@@ -31,11 +31,23 @@ REGISTER_OP("SymbolicGradient")
       if (c->num_inputs() < c->num_outputs()) {
         return errors::InvalidArgument("len(inputs) < len(outputs)");
       }
+      std::vector<DataType> types;
+      TF_RETURN_IF_ERROR(c->GetAttr("Tin", &types));
       // Say, (u, v) = f(x, y, z), _symbolic_gradient(f) is a function of
       // (x, y, z, du, dv) -> (dx, dy, dz). Therefore, shapes of its
       // outputs (dx, dy, dz) are the same as (x, y, z).
       for (int i = 0; i < c->num_outputs(); ++i) {
-        c->set_output(i, c->input(i));
+        if (types[i] == DT_RESOURCE) {
+          const std::vector<shape_inference::ShapeAndType>* handle_type =
+              c->input_handle_shapes_and_types(i);
+          if (handle_type != nullptr) {
+            c->set_output(i, handle_type->at(0).shape);
+          } else {
+            c->set_output(i, c->UnknownShape());
+          }
+        } else {
+          c->set_output(i, c->input(i));
+        }
       }
       return Status::OK();
     });
@@ -60,6 +72,7 @@ REGISTER_OP("_If")
     .Attr("Tout: list(type)")
     .Attr("then_branch: func")
     .Attr("else_branch: func")
+    .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 output = cond ? then_branch(input) : else_branch(input)
@@ -77,15 +90,27 @@ else_branch: A function that takes 'inputs' and returns a list of
     tensors.  whose types are the same as what then_branch returns.
 )doc");
 
+REGISTER_OP("StatelessIf")
+    .Input("cond: Tcond")
+    .Input("input: Tin")
+    .Output("output: Tout")
+    .Attr("Tcond: type")
+    .Attr("Tin: list(type) >= 0")
+    .Attr("Tout: list(type) >= 0")
+    .Attr("then_branch: func")
+    .Attr("else_branch: func")
+    .SetShapeFn(shape_inference::UnknownShape);
+
 REGISTER_OP("If")
     .Input("cond: Tcond")
     .Input("input: Tin")
     .Output("output: Tout")
     .Attr("Tcond: type")
-    .Attr("Tin: list(type)")
-    .Attr("Tout: list(type)")
+    .Attr("Tin: list(type) >= 0")
+    .Attr("Tout: list(type) >= 0")
     .Attr("then_branch: func")
     .Attr("else_branch: func")
+    .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 
 // TODO(drpng): remove this.
@@ -119,8 +144,6 @@ body: A function that takes a list of tensors and returns another
       by T.
 )doc");
 
-// TODO(b/37549631) setting the While Op to always be stateful is too
-// conservative.
 REGISTER_OP("While")
     .Input("input: T")
     .Output("output: T")
@@ -128,6 +151,19 @@ REGISTER_OP("While")
     .Attr("cond: func")
     .Attr("body: func")
     .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      for (int i = 0; i < c->num_outputs(); ++i) {
+        c->set_output(i, c->input(i));
+      }
+      return Status::OK();
+    });
+
+REGISTER_OP("StatelessWhile")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: list(type) >= 0")
+    .Attr("cond: func")
+    .Attr("body: func")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       for (int i = 0; i < c->num_outputs(); ++i) {
         c->set_output(i, c->input(i));
@@ -145,7 +181,6 @@ REGISTER_OP("For")
     .Attr("body: func")
     .SetShapeFn(shape_inference::UnknownShape);
 
-// TODO(b/73826847, b/37549631) Mark as stateful.
 REGISTER_OP("PartitionedCall")
     .Input("args: Tin")
     .Output("output: Tout")
@@ -153,5 +188,31 @@ REGISTER_OP("PartitionedCall")
     .Attr("Tout: list(type) >= 0")
     .Attr("f: func")
     .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("StatefulPartitionedCall")
+    .Input("args: Tin")
+    .Output("output: Tout")
+    .Attr("Tin: list(type) >= 0")
+    .Attr("Tout: list(type) >= 0")
+    .Attr("f: func")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape);
+
+// This op is used as a placeholder in If branch functions. It doesn't provide a
+// valid output when run, so must either be removed (e.g. replaced with a
+// function input) or guaranteed not to be used (e.g. if mirroring an
+// intermediate output needed for the gradient computation of the other branch).
+REGISTER_OP("FakeParam")
+    .Output("output: dtype")
+    .Attr("dtype: type")
+    .Attr("shape: shape")
+    .SetShapeFn([](InferenceContext* c) {
+      PartialTensorShape shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
+      shape_inference::ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    });
 
 }  // end namespace tensorflow

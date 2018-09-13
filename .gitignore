@@ -14,8 +14,10 @@ __pycache__
 *.swp
 .vscode/
 cmake_build/
+tensorflow/contrib/cmake/_build/
 .idea/**
 /build/
+[Bb]uild/
 /tensorflow/core/util/version_info.cc
 /tensorflow/python/framework/fast_tensor_util.cpp
 Pods
@@ -28,6 +30,8 @@ Podfile.lock
 /tensorflow/contrib/lite/examples/ios/simple/data/*.tflite
 xcuserdata/**
 /api_init_files_list.txt
+/estimator_api_init_files_list.txt
+*.whl
 
 # Android
 .gradle

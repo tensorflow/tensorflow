@@ -17,7 +17,7 @@
 ### API
 
 This module provides functions for image manipulation; currently, chrominance
-transformas (including changing saturation and hue) in YIQ space and
+transforms (including changing saturation and hue) in YIQ space and
 projective transforms (including rotation) are supported.
 
 ## Image Transformation `Ops`

@@ -491,5 +491,96 @@ class FileIoTest(test.TestCase):
     v = file_io.file_exists(file_path)
     self.assertEqual(v, True)
 
+  def testFilecmp(self):
+    file1 = os.path.join(self._base_dir, "file1")
+    file_io.write_string_to_file(file1, "This is a sentence\n" * 100)
+
+    file2 = os.path.join(self._base_dir, "file2")
+    file_io.write_string_to_file(file2, "This is another sentence\n" * 100)
+
+    file3 = os.path.join(self._base_dir, "file3")
+    file_io.write_string_to_file(file3, u"This is another sentence\n" * 100)
+
+    self.assertFalse(file_io.filecmp(file1, file2))
+    self.assertTrue(file_io.filecmp(file2, file3))
+
+  def testFilecmpSameSize(self):
+    file1 = os.path.join(self._base_dir, "file1")
+    file_io.write_string_to_file(file1, "This is a sentence\n" * 100)
+
+    file2 = os.path.join(self._base_dir, "file2")
+    file_io.write_string_to_file(file2, "This is b sentence\n" * 100)
+
+    file3 = os.path.join(self._base_dir, "file3")
+    file_io.write_string_to_file(file3, u"This is b sentence\n" * 100)
+
+    self.assertFalse(file_io.filecmp(file1, file2))
+    self.assertTrue(file_io.filecmp(file2, file3))
+
+  def testFilecmpBinary(self):
+    file1 = os.path.join(self._base_dir, "file1")
+    file_io.FileIO(file1, "wb").write("testing\n\na")
+
+    file2 = os.path.join(self._base_dir, "file2")
+    file_io.FileIO(file2, "wb").write("testing\n\nb")
+
+    file3 = os.path.join(self._base_dir, "file3")
+    file_io.FileIO(file3, "wb").write("testing\n\nb")
+
+    file4 = os.path.join(self._base_dir, "file4")
+    file_io.FileIO(file4, "wb").write("testing\n\ntesting")
+
+    self.assertFalse(file_io.filecmp(file1, file2))
+    self.assertFalse(file_io.filecmp(file1, file4))
+    self.assertTrue(file_io.filecmp(file2, file3))
+
+  def testFileCrc32(self):
+    file1 = os.path.join(self._base_dir, "file1")
+    file_io.write_string_to_file(file1, "This is a sentence\n" * 100)
+    crc1 = file_io.file_crc32(file1)
+
+    file2 = os.path.join(self._base_dir, "file2")
+    file_io.write_string_to_file(file2, "This is another sentence\n" * 100)
+    crc2 = file_io.file_crc32(file2)
+
+    file3 = os.path.join(self._base_dir, "file3")
+    file_io.write_string_to_file(file3, "This is another sentence\n" * 100)
+    crc3 = file_io.file_crc32(file3)
+
+    self.assertTrue(crc1 != crc2)
+    self.assertEqual(crc2, crc3)
+
+  def testFileCrc32WithBytes(self):
+    file1 = os.path.join(self._base_dir, "file1")
+    file_io.write_string_to_file(file1, "This is a sentence\n" * 100)
+    crc1 = file_io.file_crc32(file1, block_size=24)
+
+    file2 = os.path.join(self._base_dir, "file2")
+    file_io.write_string_to_file(file2, "This is another sentence\n" * 100)
+    crc2 = file_io.file_crc32(file2, block_size=24)
+
+    file3 = os.path.join(self._base_dir, "file3")
+    file_io.write_string_to_file(file3, "This is another sentence\n" * 100)
+    crc3 = file_io.file_crc32(file3, block_size=-1)
+
+    self.assertTrue(crc1 != crc2)
+    self.assertEqual(crc2, crc3)
+
+  def testFileCrc32Binary(self):
+    file1 = os.path.join(self._base_dir, "file1")
+    file_io.FileIO(file1, "wb").write("testing\n\n")
+    crc1 = file_io.file_crc32(file1)
+
+    file2 = os.path.join(self._base_dir, "file2")
+    file_io.FileIO(file2, "wb").write("testing\n\n\n")
+    crc2 = file_io.file_crc32(file2)
+
+    file3 = os.path.join(self._base_dir, "file3")
+    file_io.FileIO(file3, "wb").write("testing\n\n\n")
+    crc3 = file_io.file_crc32(file3)
+
+    self.assertTrue(crc1 != crc2)
+    self.assertEqual(crc2, crc3)
+
 if __name__ == "__main__":
   test.main()

@@ -32,6 +32,9 @@ string BuildGraphOptions::DebugString() const {
   for (auto& s : callable_options.target()) {
     strings::StrAppend(&rv, s, ", ");
   }
+  if (collective_graph_key != kNoCollectiveGraphKey) {
+    strings::StrAppend(&rv, "\ncollective_graph_key: ", collective_graph_key);
+  }
   return rv;
 }
 

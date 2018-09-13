@@ -79,7 +79,7 @@ def _Index(struct, index):
   """
   index = ops.convert_to_tensor(index)
   index.get_shape().assert_has_rank(0)
-  return nest.map_structure(lambda x: x[index], struct)
+  return nest.map_structure(lambda x: array_ops.gather(x, index), struct)
 
 
 def _Update(struct_acc, struct_x, t):

@@ -185,7 +185,7 @@ py_test(
 
 py_test(
     name = "normalization_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/layers/normalization_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_windows"],  # TODO: needs investigation on Windows
@@ -381,7 +381,7 @@ py_test(
 
 py_test(
     name = "rev_block_lib_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/layers/rev_block_lib_test.py"],
     srcs_version = "PY2AND3",
     deps = [

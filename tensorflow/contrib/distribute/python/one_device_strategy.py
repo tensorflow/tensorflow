@@ -21,10 +21,14 @@ from __future__ import print_function
 import six
 
 from tensorflow.contrib.distribute.python import values
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.util import nest
 
 
 # TODO(josh11b): Replace asserts in this file with if ...: raise ...
@@ -36,16 +40,13 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
   # doing something that won't work with other DistributionStrategy
   # implementations?
 
-  def __init__(self, device):
+  def __init__(self, device, prefetch_on_device=None):
     super(OneDeviceStrategy, self).__init__()
     self._device = device
+    self._prefetch_on_device = prefetch_on_device
+    self._default_device = device
 
   def _create_variable(self, next_creator, *args, **kwargs):
-    # No need to distinguish tower-local variables when not mirroring,
-    # we just enforce that they are not trainable.
-    if kwargs.pop("tower_local_reduce_method", None) is not None:
-      kwargs["trainable"] = False
-
     colocate_with = kwargs.pop("colocate_with", None)
     if colocate_with is None:
       with ops.device(self._device):
@@ -61,10 +62,60 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
       return next_creator(*args, **kwargs)
 
   def distribute_dataset(self, dataset_fn):
-    return self._call_dataset_fn(dataset_fn)
+    return values.PerDeviceDataset(
+        self._call_dataset_fn(dataset_fn), [self._device],
+        self._prefetch_on_device)
 
   def _broadcast(self, tensor, destinations):
+    del destinations
     return tensor
+
+  # TODO(priyag): Deal with OutOfRange errors  once b/111349762 is fixed.
+  def _run_steps_on_dataset(self, fn, iterator, iterations,
+                            initial_loop_values=None):
+    if initial_loop_values is None:
+      initial_loop_values = {}
+    initial_loop_values = nest.flatten(initial_loop_values)
+
+    ctx = values.MultiStepContext()
+    def body(i, *args):
+      """A wrapper around `fn` to create the while loop body."""
+      del args
+      fn_inputs = iterator.get_next()
+      if not isinstance(fn_inputs, tuple):
+        fn_inputs = (fn_inputs,)
+      fn_result = fn(ctx, *fn_inputs)
+      flat_last_step_outputs = nest.flatten(ctx.last_step_outputs)
+      with ops.control_dependencies([fn_result]):
+        return [i + 1] + flat_last_step_outputs
+
+    # We capture the control_flow_context at this point, before we run `fn`
+    # inside a while_loop. This is useful in cases where we might need to exit
+    # these contexts and get back to the outer context to do some things, for
+    # e.g. create an op which should be evaluated only once at the end of the
+    # loop on the host. One such usage is in creating metrics' value op.
+    self._outer_control_flow_context = (
+        ops.get_default_graph()._get_control_flow_context())  # pylint: disable=protected-access
+
+    # TODO(priyag): Use max_iterations instead of an explicit counter.
+    cond = lambda i, *args: i < iterations
+    i = constant_op.constant(0)
+    loop_result = control_flow_ops.while_loop(
+        cond, body, [i] + initial_loop_values, name="",
+        parallel_iterations=1, back_prop=False, swap_memory=False,
+        return_same_structure=True)
+    del self._outer_control_flow_context
+
+    ctx.run_op = control_flow_ops.group(loop_result)
+
+    # Convert the last_step_outputs from a list to the original dict structure
+    # of last_step_outputs.
+    last_step_tensor_outputs = loop_result[1:]
+    last_step_tensor_outputs_dict = nest.pack_sequence_as(
+        ctx.last_step_outputs, last_step_tensor_outputs)
+
+    ctx._set_last_step_outputs(last_step_tensor_outputs_dict)  # pylint: disable=protected-access
+    return ctx
 
   def _call_for_each_tower(self, fn, *args, **kwargs):
     # We don't run `fn` in multiple threads in OneDeviceStrategy.
@@ -76,15 +127,16 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     with ops.device(self._device):
       return values.MapOutput([fn(m, *args, **kwargs) for m in map_over])
 
-  def _reduce(self, method_string, value, destinations):
+  def _reduce(self, aggregation, value, destinations):
+    del destinations
     if not isinstance(value, values.MapOutput):
       return value
     l = value.get()
     assert l
     with ops.device(self._device):
-      if method_string == "sum":
+      if aggregation == vs.VariableAggregation.SUM:
         return math_ops.add_n(l)
-      elif method_string == "mean":
+      elif aggregation == vs.VariableAggregation.MEAN:
         return math_ops.add_n(l) / len(l)
       else:
         assert False
@@ -98,15 +150,15 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     with ops.device(self._device), distribute_lib.UpdateContext(self._device):
       return fn(*args, **kwargs)
 
-  def _fetch(self, val, destination, fn):
-    """Return a copy of `val` or `fn(val)` on `destination`."""
-    with ops.device(self._device):
-      v = fn(val)
-    with ops.device(destination):
-      return array_ops.identity(v)
+  def read_var(self, tower_local_var):
+    """Read the aggregate value of a tower-local variable."""
+    return array_ops.identity(tower_local_var)
 
   def _unwrap(self, value):
     return [value]
+
+  def value_container(self, value):
+    return value
 
   @property
   def is_single_tower(self):

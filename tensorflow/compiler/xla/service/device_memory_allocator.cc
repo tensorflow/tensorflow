@@ -25,37 +25,31 @@ namespace xla {
 
 StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
     const se::Platform* platform,
-    tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors)
+    absl::Span<se::StreamExecutor* const> stream_executors)
     : DeviceMemoryAllocator(platform),
       stream_executors_(stream_executors.begin(), stream_executors.end()) {}
 
-StatusOr<se::DeviceMemoryBase> StreamExecutorMemoryAllocator::Allocate(
+StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
     int device_ordinal, uint64 size, bool retry_on_failure) {
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * stream_executor,
                       GetStreamExecutor(device_ordinal));
   se::DeviceMemoryBase result = stream_executor->AllocateArray<uint8>(size);
   if (size > 0 && result == nullptr) {
     return ResourceExhausted(
-        "Failed to allocate request for %s (%lluB) on device ordinal %d",
-        tensorflow::strings::HumanReadableNumBytes(size).c_str(), size,
-        device_ordinal);
+        "Failed to allocate request for %s (%uB) on device ordinal %d",
+        tensorflow::strings::HumanReadableNumBytes(size), size, device_ordinal);
   }
-  return result;
+  return OwningDeviceMemory(result, device_ordinal, this);
 }
 
-tensorflow::Status StreamExecutorMemoryAllocator::Deallocate(
-    int device_ordinal, se::DeviceMemoryBase* mem) {
-  if (!mem->is_null()) {
+Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
+                                                 se::DeviceMemoryBase mem) {
+  if (!mem.is_null()) {
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * stream_executor,
                         GetStreamExecutor(device_ordinal));
-    // We make a local copy of 'mem' so the original is not zeroed out by the
-    // Deallocate() call below. This gives us a better chance of
-    // catching double-free bugs, since Deallocate silently succeeds for null
-    // values.
-    se::DeviceMemoryBase mem_copy(*mem);
-    stream_executor->Deallocate(&mem_copy);
+    stream_executor->Deallocate(&mem);
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 StatusOr<se::StreamExecutor*> StreamExecutorMemoryAllocator::GetStreamExecutor(
@@ -66,12 +60,12 @@ StatusOr<se::StreamExecutor*> StreamExecutorMemoryAllocator::GetStreamExecutor(
   }
   if (device_ordinal >= stream_executors_.size()) {
     return InvalidArgument(
-        "device ordinal value (%d) >= number of devices (%zu)", device_ordinal,
+        "device ordinal value (%d) >= number of devices (%u)", device_ordinal,
         stream_executors_.size());
   }
   if (stream_executors_[device_ordinal] == nullptr) {
     return NotFound("Device %s:%d present but not supported",
-                    platform()->Name().c_str(), device_ordinal);
+                    platform()->Name(), device_ordinal);
   }
   return stream_executors_[device_ordinal];
 }

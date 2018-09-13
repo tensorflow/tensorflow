@@ -47,7 +47,7 @@ def _recursive_apply(tensors, apply_fn):
   tensors_type = type(tensors)
   if tensors_type is ops.Tensor:
     return apply_fn(tensors)
-  elif tensors_type is variables.Variable:
+  elif isinstance(tensors, variables.Variable):
     return apply_fn(tensors.value())
   elif isinstance(tensors, (list, tuple)):
     tensors = [_recursive_apply(t, apply_fn) for t in tensors]
@@ -137,12 +137,7 @@ def _subscribe_new(tensor, side_effects, control_cache):
     # are subscribed at the same time, we remove the control dependency from
     # the original op only once and we add the dependencies to all the
     # new identities.
-    if ops._USE_C_API:  # pylint: disable=protected-access
-      new_control_inputs = consumer_op.control_inputs
-    else:
-      # Make a copy so we don't modify the actual control inputs (this is fixed
-      # in the C API).
-      new_control_inputs = list(consumer_op.control_inputs)
+    new_control_inputs = consumer_op.control_inputs
     if tensor.op in new_control_inputs:
       new_control_inputs.remove(tensor.op)
     new_control_inputs.append(out.op)

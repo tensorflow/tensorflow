@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <string.h>
 #include <vector>
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/interpreter.h"
 
 namespace tflite {
@@ -105,7 +105,7 @@ void DynamicBuffer::WriteToTensor(TfLiteTensor* tensor) {
   dims->data[0] = offset_.size() - 1;  // Store number of strings.
   TfLiteTensorReset(tensor->type, tensor->name, dims, tensor->params,
                     tensor_buffer, bytes, kTfLiteDynamic, tensor->allocation,
-                    tensor);
+                    tensor->is_variable, tensor);
 }
 
 int GetStringCount(const char* raw_buffer) {
