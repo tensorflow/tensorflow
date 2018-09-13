@@ -1198,7 +1198,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "xla_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["xla_ops_test.py"],
     disabled_backends = ["cpu_ondemand"],
     deps = [
