@@ -291,7 +291,7 @@ class SparseTest(test.TestCase):
       self.assertEqual(a, b)
       return
     self.assertTrue(isinstance(b, sparse_tensor.SparseTensor))
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(a.eval().indices, b.eval().indices)
       self.assertAllEqual(a.eval().values, b.eval().values)
       self.assertAllEqual(a.eval().dense_shape, b.eval().dense_shape)

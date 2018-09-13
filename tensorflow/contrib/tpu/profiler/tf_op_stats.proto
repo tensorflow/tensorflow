@@ -79,12 +79,15 @@ message StepInfoResult {
   // The step duration in picoseconds.
   optional uint64 duration_ps = 2;
   // The infeed duration in picoseconds.
-  // Can turn into a map if we want a variable number of ops.
   optional uint64 infeed_duration_ps = 3;
+  // The outfeed duration in picoseconds.
+  optional uint64 host_outfeed_ps = 8;
   // The start time of this step in picoseconds.
   optional uint64 begin_ps = 4;
   // The waiting time within this step in picoseconds.
   optional uint64 wait_duration_ps = 5;
+  // The unit b outfeed duration in picoseconds.
+  optional uint64 unit_b_outfeed_ps = 9;
   // The time spent on cross-replica-sum in picoseconds.
   optional uint64 crs_duration_ps = 6;
   // Percentage of unit b time spent on infeed.

@@ -41,12 +41,41 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
 
+
+# pylint: disable=redefined-builtin
+def regex_full_match(input, pattern, name=None):
+  r"""Match elements of `input` with regex `pattern`.
+
+  Args:
+    input: string `Tensor`, the source strings to process.
+    pattern: string or scalar string `Tensor`, regular expression to use,
+      see more details at https://github.com/google/re2/wiki/Syntax
+    name: Name of the op.
+
+  Returns:
+    bool `Tensor` of the same shape as `input` with match results.
+  """
+  # TODO(b/112455102): Remove compat.forward_compatible once past the horizon.
+  if not compat.forward_compatible(2018, 11, 10):
+    return gen_string_ops.regex_full_match(
+        input=input, pattern=pattern, name=name)
+  if isinstance(pattern, util_compat.bytes_or_text_types):
+    # When `pattern` is static through the life of the op we can
+    # use a version which performs the expensive regex compilation once at
+    # creation time.
+    return gen_string_ops.static_regex_full_match(
+        input=input, pattern=pattern, name=name)
+  return gen_string_ops.regex_full_match(
+      input=input, pattern=pattern, name=name)
+
+regex_full_match.__doc__ = gen_string_ops.regex_full_match.__doc__
+
 # Expose regex_full_match in strings namespace
 tf_export("strings.regex_full_match")(regex_full_match)
 
 
 def regex_replace(source, pattern, rewrite, replace_global=True):
-  r"""Replace elements of `source` matching regex `pattern with `rewrite`.
+  r"""Replace elements of `source` matching regex `pattern` with `rewrite`.
 
   Args:
     source: string `Tensor`, the source strings to process.
@@ -128,6 +157,7 @@ def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=inv
   shape.set_shape([2])
   return sparse_tensor.SparseTensor(indices, values, shape)
 
+
 @tf_export("strings.split")
 def string_split_v2(source, sep=None, maxsplit=-1):
   """Split elements of `source` based on `sep` into a `SparseTensor`.
@@ -170,7 +200,7 @@ def string_split_v2(source, sep=None, maxsplit=-1):
     second column corresponds to the index of the split component in this row.
   """
   if sep is None:
-    sep = ''
+    sep = ""
   sep = ops.convert_to_tensor(sep, dtype=dtypes.string)
   source = ops.convert_to_tensor(source, dtype=dtypes.string)
 

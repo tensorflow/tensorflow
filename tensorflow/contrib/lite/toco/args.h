@@ -247,6 +247,10 @@ struct ParsedTocoFlags {
   Arg<bool> allow_nudging_weights_to_use_fast_gemm_kernel = Arg<bool>(false);
   Arg<int64> dedupe_array_min_size_bytes = Arg<int64>(64);
   Arg<bool> split_tflite_lstm_inputs = Arg<bool>(true);
+  // WARNING: Experimental interface, subject to change
+  Arg<bool> allow_eager_ops = Arg<bool>(false);
+  // WARNING: Experimental interface, subject to change
+  Arg<bool> force_eager_ops = Arg<bool>(false);
 };
 
 }  // namespace toco

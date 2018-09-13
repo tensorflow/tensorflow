@@ -148,10 +148,9 @@ Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
   }
 
   const DeviceAttributes attrs = Device::BuildDeviceAttributes(
-      strings::StrCat(name_prefix, "/device:", device_name, ":",
-                      device_ordinal),
+      absl::StrCat(name_prefix, "/device:", device_name, ":", device_ordinal),
       DeviceType(device_name), Bytes(16ULL << 30), DeviceLocality(),
-      strings::StrCat("device: ", device_name, " device"));
+      absl::StrCat("device: ", device_name, " device"));
 
   device->reset(
       new XlaDevice(options, attrs, device_ordinal, DeviceType(jit_device_name),

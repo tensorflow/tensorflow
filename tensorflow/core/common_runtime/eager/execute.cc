@@ -296,7 +296,7 @@ Status EagerLocalExecute(EagerOperation* op,
       LOG(INFO) << "Executing op " << ndef.op() << " in device "
                 << device->name();
     }
-    kernel = new KernelAndDevice(ctx->GetRendezvous());
+    kernel = new KernelAndDevice(ctx->GetRendezvous(), ctx->LogMemory());
     auto* flr = ctx->func_lib(device);
 
     if (flr == nullptr) {

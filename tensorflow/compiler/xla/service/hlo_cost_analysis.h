@@ -67,6 +67,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleRecvDone(const HloInstruction* recv_done) override;
   Status HandleConvert(const HloInstruction* convert) override;
   Status HandleCopy(const HloInstruction* copy) override;
+  Status HandleDomain(const HloInstruction* domain) override;
   Status HandleDot(const HloInstruction* dot) override;
   Status HandleConvolution(const HloInstruction* convolution) override;
   Status HandleFft(const HloInstruction* fft) override;

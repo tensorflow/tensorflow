@@ -698,8 +698,24 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":lib_internal",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "feature_util",
+    srcs = ["example/feature_util.cc"],
+    hdrs = [
+        "example/feature_util.h",
+        "platform/types.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":core_stringpiece",
+        ":platform_protobuf",
+        ":protos_all_cc",
     ],
 )
 
@@ -1341,6 +1357,7 @@ cc_library(
         "//tensorflow/core/kernels:mkl_relu_op",
         "//tensorflow/core/kernels:mkl_reshape_op",
         "//tensorflow/core/kernels:mkl_softmax_op",
+        "//tensorflow/core/kernels:mkl_transpose_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
         "//tensorflow/core/kernels:mkl_aggregate_ops",
     ]) + if_cuda([
@@ -3235,7 +3252,6 @@ tf_cc_tests(
         "lib/gtl/edit_distance_test.cc",
         "lib/gtl/flatmap_test.cc",
         "lib/gtl/flatset_test.cc",
-        "lib/gtl/inlined_vector_test.cc",
         "lib/gtl/int_type_test.cc",
         "lib/gtl/iterator_range_test.cc",
         "lib/gtl/manual_constructor_test.cc",
@@ -3727,6 +3743,7 @@ tf_cc_test_mkl(
         ":core_cpu_internal",
         ":framework",
         ":framework_internal",
+        ":lib",
         ":test",
         ":test_main",
         ":testlib",

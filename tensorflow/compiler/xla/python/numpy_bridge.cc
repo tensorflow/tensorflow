@@ -368,10 +368,10 @@ PyObject* PyObjectFromXlaLiteral(const LiteralSlice& literal) {
   }
 }
 
-StatusOr<std::unique_ptr<Literal>> XlaLiteralFromPyObject(PyObject* o) {
+StatusOr<Literal> XlaLiteralFromPyObject(PyObject* o) {
   if (PyTuple_Check(o)) {
     int num_elements = PyTuple_Size(o);
-    std::vector<std::unique_ptr<Literal>> elements;
+    std::vector<Literal> elements;
     elements.reserve(num_elements);
     for (int i = 0; i < num_elements; i++) {
       PyObject* element = PyTuple_GetItem(o, i);
@@ -389,8 +389,7 @@ StatusOr<std::unique_ptr<Literal>> XlaLiteralFromPyObject(PyObject* o) {
     int np_type = PyArray_TYPE(py_array);
     auto literal = LiteralUtil::CreateFromDimensions(
         NumpyTypeToPrimitiveType(np_type), dimensions);
-    TF_RETURN_IF_ERROR(
-        CopyNumpyArrayToLiteral(np_type, py_array, literal.get()));
+    TF_RETURN_IF_ERROR(CopyNumpyArrayToLiteral(np_type, py_array, &literal));
     return std::move(literal);
   } else {
     return InvalidArgument(

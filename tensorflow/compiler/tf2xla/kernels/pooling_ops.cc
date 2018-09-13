@@ -138,7 +138,7 @@ xla::TensorFormat XlaTensorFormat(tensorflow::TensorFormat data_format,
   int num_dims = num_spatial_dims + 2;
   int batch_dimension = GetTensorBatchDimIndex(num_dims, data_format);
   int feature_dimension = GetTensorFeatureDimIndex(num_dims, data_format);
-  gtl::InlinedVector<int64, 4> spatial_dimensions(num_spatial_dims);
+  absl::InlinedVector<int64, 4> spatial_dimensions(num_spatial_dims);
   for (int spatial_dim = 0; spatial_dim < num_spatial_dims; ++spatial_dim) {
     spatial_dimensions[spatial_dim] =
         GetTensorSpatialDimIndex(num_dims, data_format, spatial_dim);

@@ -26,9 +26,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::testing::Eq;
-using ::testing::HasSubstr;
-
 class WhileTransformerTest : public HloTestBase {
  protected:
   WhileTransformerTest()

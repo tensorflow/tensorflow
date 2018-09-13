@@ -713,7 +713,7 @@ class RNNClassifierTrainingTest(test.TestCase):
 
     # Uses same checkpoint and examples as testBinaryClassEvaluationMetrics.
     # See that test for loss calculation.
-    mock_optimizer = self._mock_optimizer(expected_loss=1.119661)
+    mock_optimizer = self._mock_optimizer(expected_loss=0.559831)
 
     sequence_feature_columns = [
         seq_fc.sequence_numeric_column('price', shape=(1,))]
@@ -748,7 +748,7 @@ class RNNClassifierTrainingTest(test.TestCase):
 
     # Uses same checkpoint and examples as testMultiClassEvaluationMetrics.
     # See that test for loss calculation.
-    mock_optimizer = self._mock_optimizer(expected_loss=2.662932)
+    mock_optimizer = self._mock_optimizer(expected_loss=1.331465)
 
     sequence_feature_columns = [
         seq_fc.sequence_numeric_column('price', shape=(1,))]
@@ -812,20 +812,32 @@ class RNNClassifierEvaluationTest(test.TestCase):
     # probability = exp(logits) / (1 + exp(logits)) = [[0.353593], [0.504930]]
     # loss = -label * ln(p) - (1 - label) * ln(1 - p)
     #      = [[0.436326], [0.683335]]
+    # sum_over_batch_size = (0.436326 + 0.683335)/2
     expected_metrics = {
-        ops.GraphKeys.GLOBAL_STEP: global_step,
-        metric_keys.MetricKeys.LOSS: 1.119661,
-        metric_keys.MetricKeys.LOSS_MEAN: 0.559831,
-        metric_keys.MetricKeys.ACCURACY: 1.0,
-        metric_keys.MetricKeys.PREDICTION_MEAN: 0.429262,
-        metric_keys.MetricKeys.LABEL_MEAN: 0.5,
-        metric_keys.MetricKeys.ACCURACY_BASELINE: 0.5,
+        ops.GraphKeys.GLOBAL_STEP:
+            global_step,
+        metric_keys.MetricKeys.LOSS:
+            0.559831,
+        metric_keys.MetricKeys.LOSS_MEAN:
+            0.559831,
+        metric_keys.MetricKeys.ACCURACY:
+            1.0,
+        metric_keys.MetricKeys.PREDICTION_MEAN:
+            0.429262,
+        metric_keys.MetricKeys.LABEL_MEAN:
+            0.5,
+        metric_keys.MetricKeys.ACCURACY_BASELINE:
+            0.5,
         # With default threshold of 0.5, the model is a perfect classifier.
-        metric_keys.MetricKeys.RECALL: 1.0,
-        metric_keys.MetricKeys.PRECISION: 1.0,
+        metric_keys.MetricKeys.RECALL:
+            1.0,
+        metric_keys.MetricKeys.PRECISION:
+            1.0,
         # Positive example is scored above negative, so AUC = 1.0.
-        metric_keys.MetricKeys.AUC: 1.0,
-        metric_keys.MetricKeys.AUC_PR: 1.0,
+        metric_keys.MetricKeys.AUC:
+            1.0,
+        metric_keys.MetricKeys.AUC_PR:
+            1.0,
     }
     self.assertAllClose(
         sorted_key_dict(expected_metrics), sorted_key_dict(eval_metrics))
@@ -871,9 +883,10 @@ class RNNClassifierEvaluationTest(test.TestCase):
     #                          [0.059494, 0.572639, 0.367866]]
     # loss = -1. * log(softmax[label])
     #      = [[2.105432], [0.557500]]
+    # sum_over_batch_size = (2.105432 + 0.557500)/2
     expected_metrics = {
         ops.GraphKeys.GLOBAL_STEP: global_step,
-        metric_keys.MetricKeys.LOSS: 2.662932,
+        metric_keys.MetricKeys.LOSS: 1.331465,
         metric_keys.MetricKeys.LOSS_MEAN: 1.331466,
         metric_keys.MetricKeys.ACCURACY: 0.5,
     }

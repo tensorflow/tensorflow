@@ -30,16 +30,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/service/hlo_scheduling.h"
+#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace xla {
@@ -120,14 +122,10 @@ class BufferAssignmentTest : public HloVerifiedTestBase {
       HloModule* module,
       absl::Span<const HloInstruction* const> instruction_sequence,
       int64 alignment = 1) {
-    SequentialHloOrdering::HloModuleSequence module_sequence;
-    module_sequence[module->entry_computation()] =
-        std::vector<const HloInstruction*>(instruction_sequence.begin(),
-                                           instruction_sequence.end());
+    HloSchedule schedule(module);
+    schedule.set_sequence(module->entry_computation(), instruction_sequence);
     return BufferAssigner::Run(
-               module,
-               absl::make_unique<SequentialHloOrdering>(module,
-                                                        module_sequence),
+               module, absl::make_unique<SequentialHloOrdering>(schedule),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allow_input_output_aliasing=*/false,
@@ -1247,9 +1245,10 @@ TEST_F(BufferAssignmentTest, TupleConstantAsOutput) {
   // Test that a tuple constant which is forwarded to the computation output
   // is properly handled.
   auto builder = HloComputation::Builder(TestName());
+  Literal elements[] = {LiteralUtil::CreateR0<int64>(0),
+                        LiteralUtil::CreateR0<int64>(1)};
   builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::MakeTuple({LiteralUtil::CreateR0<int64>(0).get(),
-                              LiteralUtil::CreateR0<int64>(1).get()})));
+      LiteralUtil::MakeTuple({&elements[0], &elements[1]})));
 
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
@@ -1490,10 +1489,13 @@ TEST_F(BufferAssignmentTest, OneTempAllocation) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto dot_ab = builder.AddInstruction(
-      HloInstruction::CreateDot(shape_2x4, param_a, param_b, dot_dnums));
-  auto dot_bc = builder.AddInstruction(
-      HloInstruction::CreateDot(shape_3x4, param_b, param_c, dot_dnums));
+  PrecisionConfig precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      2, PrecisionConfig::DEFAULT);
+  auto dot_ab = builder.AddInstruction(HloInstruction::CreateDot(
+      shape_2x4, param_a, param_b, dot_dnums, precision_config));
+  auto dot_bc = builder.AddInstruction(HloInstruction::CreateDot(
+      shape_3x4, param_b, param_c, dot_dnums, precision_config));
   builder.AddInstruction(
       HloInstruction::CreateConcatenate(shape_5x4, {dot_ab, dot_bc}, 0));
 
@@ -1782,11 +1784,10 @@ class WhileBufferAssignmentTest : public HloVerifiedTestBase {
 
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
                                                         int64 alignment = 1) {
-    auto sequence =
-        ScheduleComputationsInModule(*module, ByteSizeOf).ConsumeValueOrDie();
+    HloSchedule schedule =
+        ScheduleModule(*module, ByteSizeOf).ConsumeValueOrDie();
     return BufferAssigner::Run(
-               module,
-               absl::make_unique<SequentialHloOrdering>(module, sequence),
+               module, absl::make_unique<SequentialHloOrdering>(schedule),
                ByteSizeOf,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allow_input_output_aliasing=*/false,
@@ -2093,17 +2094,25 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
   // Create a sequential order among all the instructions in the entry
   // computation, since the issue this test stresses depends on the order the
   // nodes are traversed during BufferAssignment.
-  SequentialHloOrdering::HloModuleSequence sequence;
-  sequence[module->entry_computation()] = {
-      token, infeed, infeed_data, while0, while1, zero, add, while2, tuple};
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(*module, [](const BufferValue& buffer) {
+        return ShapeUtil::ByteSizeOf(buffer.shape(),
+                                     /*pointer_size=*/sizeof(void*));
+      }));
+  schedule.set_sequence(
+      module->entry_computation(),
+      {token, infeed, infeed_data, while0, while1, zero, add, while2, tuple});
+  TF_ASSERT_OK(schedule.Verify());
+
   TF_ASSERT_OK_AND_ASSIGN(
       auto assignment,
-      BufferAssigner::Run(
-          module, absl::make_unique<SequentialHloOrdering>(module, sequence),
-          backend().compiler()->BufferSizeBytesFunction(),
-          [](LogicalBuffer::Color) { return 1; },
-          /*allow_input_output_aliasing=*/false,
-          /*allocate_buffers_for_constants=*/true));
+      BufferAssigner::Run(module,
+                          absl::make_unique<SequentialHloOrdering>(schedule),
+                          backend().compiler()->BufferSizeBytesFunction(),
+                          [](LogicalBuffer::Color) { return 1; },
+                          /*allow_input_output_aliasing=*/false,
+                          /*allocate_buffers_for_constants=*/true));
 
   // The result tuple elements must be assigned with different buffers.
   TF_ASSERT_OK_AND_ASSIGN(auto slice0, assignment->GetUniqueSlice(tuple, {0}));
@@ -2260,29 +2269,6 @@ ENTRY Main {
             GetAllocation(*buffers, param0, {1, 1}));
 }
 
-static bool IsPostOrderTraversal(
-    const std::vector<const HloInstruction*>& sequence) {
-  tensorflow::gtl::FlatSet<const HloInstruction*> seen_so_far;
-  auto has_not_been_seen_yet = [&](const HloInstruction* instruction) {
-    return seen_so_far.count(instruction) == 0;
-  };
-
-  for (auto instruction : sequence) {
-    if (std::any_of(instruction->operands().begin(),
-                    instruction->operands().end(), has_not_been_seen_yet) ||
-        std::any_of(instruction->control_predecessors().begin(),
-                    instruction->control_predecessors().end(),
-                    has_not_been_seen_yet)) {
-      return false;  // Not a post order.
-    }
-    if (!seen_so_far.insert(instruction).second) {
-      return false;  // Not a "traversal".
-    }
-  }
-
-  return true;
-}
-
 TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
   auto module = CreateNewModule();
   auto builder = HloComputation::Builder(TestName());
@@ -2337,27 +2323,27 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
 
   RunCopyInsertion(module);
 
-  auto sequence =
-      ScheduleComputationsInModule(*module, ByteSizeOf).ConsumeValueOrDie();
+  HloSchedule schedule =
+      ScheduleModule(*module, ByteSizeOf).ConsumeValueOrDie();
 
-  // To trigger b/38494731, we want a specific Hlo sequence for the
+  // To trigger b/38494731, we want a specific Hlo schedule for the
   // root computation, so we overwrite that entry with a manually
   // crafted sequence.
-  sequence[module->entry_computation()] = {
-      input1, weights1, one,     output1, while1->operand(0), while1,
-      input0, weights0, zero,    output0, while0->operand(0), while0,
-      gte0,   gte1,     root_add};
+  schedule.set_sequence(module->entry_computation(),
+                        {input1, weights1, one, output1, while1->operand(0),
+                         while1, input0, weights0, zero, output0,
+                         while0->operand(0), while0, gte0, gte1, root_add});
 
-  // If this ASSERT_TRUE fails, we constructed a bogus sequence above
-  // and this test itself is buggy.
-  ASSERT_TRUE(IsPostOrderTraversal(sequence[module->entry_computation()]));
+  // If this ASSERT fails, we constructed a bogus sequence above and this test
+  // itself is buggy.
+  TF_ASSERT_OK(schedule.Verify());
 
   auto assignment =
-      BufferAssigner::Run(
-          module, absl::make_unique<SequentialHloOrdering>(module, sequence),
-          ByteSizeOf, [](LogicalBuffer::Color) { return 1; },
-          /*allow_input_output_aliasing=*/false,
-          /*allocate_buffers_for_constants=*/true)
+      BufferAssigner::Run(module,
+                          absl::make_unique<SequentialHloOrdering>(schedule),
+                          ByteSizeOf, [](LogicalBuffer::Color) { return 1; },
+                          /*allow_input_output_aliasing=*/false,
+                          /*allocate_buffers_for_constants=*/true)
           .ConsumeValueOrDie();
 
   EXPECT_TRUE(BuffersDistinct({while0}, {while1}, *assignment));

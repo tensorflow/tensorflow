@@ -700,6 +700,20 @@ py_test(
 )
 
 py_test(
+    name = "feature_columns_integration_test",
+    size = "small",
+    srcs = ["engine/feature_columns_integration_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/feature_column:feature_column_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "training_eager_test",
     size = "medium",
     srcs = ["engine/training_eager_test.py"],

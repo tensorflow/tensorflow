@@ -247,8 +247,8 @@ class DynamicStitchOpImplCPU : public DynamicStitchOpImplBase<T> {
             data.shaped<T, 2>({indices_vec.dimension(0), slice_size});
 
         if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
-          T* merged_base = &merged_flat(0, 0);
-          const T* data_base = &data_flat(0, 0);
+          T* merged_base = merged_flat.data();
+          const T* data_base = data_flat.data();
           for (int i = 0; i < indices_vec.size(); i++) {
             int32 index = internal::SubtleMustCopy(indices_vec(i));
             OP_REQUIRES(

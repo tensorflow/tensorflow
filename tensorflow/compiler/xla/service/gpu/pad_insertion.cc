@@ -68,9 +68,8 @@ HloInstruction* MaybePaddedAndSlicedInput(
           conv_window.dimensions(i).base_dilation() - 1);
     }
     PrimitiveType element_type = input->shape().element_type();
-    HloInstruction* padding =
-        computation->AddInstruction(HloInstruction::CreateConstant(
-            absl::make_unique<Literal>(LiteralUtil::Zero(element_type))));
+    HloInstruction* padding = computation->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
     input = MakePadHlo(input, padding, padding_config).ValueOrDie();
   }
 
@@ -125,9 +124,8 @@ HloInstruction* MaybePaddedKernel(const Window& conv_window,
 
   HloComputation* computation = kernel->parent();
   PrimitiveType element_type = kernel->shape().element_type();
-  HloInstruction* padding =
-      computation->AddInstruction(HloInstruction::CreateConstant(
-          absl::make_unique<Literal>(LiteralUtil::Zero(element_type))));
+  HloInstruction* padding = computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
   return MakePadHlo(kernel, padding, padding_config).ValueOrDie();
 }
 }  // namespace
@@ -236,9 +234,9 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
   // Create a new backward convolution replacing the old one.
   HloComputation* computation = backward_conv->parent();
   HloInstruction* output = backward_conv->mutable_operand(1);
-  HloInstruction* padding = computation->AddInstruction(
-      HloInstruction::CreateConstant(absl::make_unique<Literal>(
-          LiteralUtil::Zero(input->shape().element_type()))));
+  HloInstruction* padding =
+      computation->AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::Zero(input->shape().element_type())));
   HloInstruction* padded_input =
       MakePadHlo(input, padding, input_padding_config).ValueOrDie();
 

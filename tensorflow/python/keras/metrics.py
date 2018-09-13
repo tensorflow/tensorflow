@@ -22,7 +22,10 @@ from __future__ import print_function
 from abc import ABCMeta
 from abc import abstractmethod
 
+import functools
+import sys
 import types
+import weakref
 import six
 
 from tensorflow.python.eager import context
@@ -135,6 +138,21 @@ def result_wrapper(result_fn):
     return result_t
 
   return tf_decorator.make_decorator(result_fn, decorated)
+
+
+def weakmethod(method):
+  """Creates a weak reference to the bound method."""
+
+  cls = method.im_class
+  func = method.im_func
+  instance_ref = weakref.ref(method.im_self)
+
+  @functools.wraps(method)
+  def inner(*args, **kwargs):
+    return func.__get__(instance_ref(), cls)(*args, **kwargs)
+
+  del method
+  return inner
 
 
 def safe_div(numerator, denominator):
@@ -318,14 +336,27 @@ class Metric(Layer):
 
   def __new__(cls, *args, **kwargs):
     obj = super(Metric, cls).__new__(cls)
-    # TODO(psv): Fix reference cycle issue here.
 
-    # Converting update_state_fn() into a graph function, so that
-    # we can return a single op that performs all of the variable updates.
-    defuned_update_state_fn = function.defun(obj.update_state)
-    obj.update_state = types.MethodType(
-        update_state_wrapper(defuned_update_state_fn), obj)
-    obj.result = types.MethodType(result_wrapper(obj.result), obj)
+    if sys.version_info < (3,):
+      # Wrap methods in `weakmethod` function to remove binding and create a
+      # weak reference. This is to remove reference cycle that is created here.
+      # This is not an issue in python versions > 3.
+      if context.executing_eagerly():
+        update_state = weakmethod(obj.update_state)
+      else:
+        update_state = function.defun(obj.update_state)
+      obj.update_state = weakmethod(
+          types.MethodType(update_state_wrapper(update_state), obj))
+      result = weakmethod(obj.result)
+      obj.result = weakmethod(types.MethodType(result_wrapper(result), obj))
+    else:
+      # Converting update_state_fn() into a graph function, so that
+      # we can return a single op that performs all of the variable updates.
+      defuned_update_state_fn = function.defun(obj.update_state)
+      obj.update_state = types.MethodType(
+          update_state_wrapper(defuned_update_state_fn), obj)
+      obj.result = types.MethodType(result_wrapper(obj.result), obj)
+
     return obj
 
   def __call__(self, *args, **kwargs):

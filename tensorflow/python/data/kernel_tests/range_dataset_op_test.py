@@ -49,7 +49,7 @@ class RangeDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, feed_dict={stop: 5})
       for i in range(5):
         self.assertEqual(i, sess.run(get_next))
@@ -64,7 +64,7 @@ class RangeDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, feed_dict={start: 2, stop: 5})
       for i in range(2, 5):
         self.assertEqual(i, sess.run(get_next))
@@ -80,7 +80,7 @@ class RangeDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, feed_dict={start: 2, stop: 10, step: 2})
       for i in range(2, 10, 2):
         self.assertEqual(i, sess.run(get_next))
@@ -95,7 +95,7 @@ class RangeDatasetTest(test.TestCase):
                                          step).make_initializable_iterator()
     init_op = iterator.initializer
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(init_op, feed_dict={start: 2, stop: 10, step: 0})
 
@@ -108,7 +108,7 @@ class RangeDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, feed_dict={start: 2, stop: 10, step: -1})
       # This for loop is a no-op but will ensure that the implementation is
       # consistent with range if it ever changes.
@@ -125,7 +125,7 @@ class RangeDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, feed_dict={start: 10, stop: 2})
       # This for loop is a no-op but will ensure that the implementation is
       # consistent with range if it ever changes.
@@ -143,7 +143,7 @@ class RangeDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, feed_dict={start: 10, stop: 2, step: 2})
       # This for loop is a no-op but will ensure that the implementation is
       # consistent with range if it ever changes.
@@ -161,7 +161,7 @@ class RangeDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, feed_dict={start: 10, stop: 2, step: -1})
       for i in range(10, 2, -1):
         self.assertEqual(i, sess.run(get_next))

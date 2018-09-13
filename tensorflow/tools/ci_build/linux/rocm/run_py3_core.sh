@@ -36,7 +36,7 @@ yes "" | $PYTHON_BIN_PATH configure.py
 
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchmark-test -k \
-    --test_lang_filters=py --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 \
+    --test_lang_filters=py --jobs=${N_JOBS} --test_timeout 600,900,2400,7200 \
     --build_tests_only --test_output=errors --local_test_jobs=${TF_GPU_COUNT} --config=opt \
     --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute -- \
     //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/... \

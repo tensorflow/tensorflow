@@ -49,7 +49,7 @@ class ConcatenateDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(9):
         result = sess.run(get_next)
@@ -83,7 +83,7 @@ class ConcatenateDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(9):
         result = sess.run(get_next)

@@ -27,7 +27,6 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
-from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -105,7 +104,7 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(step(), 2.0)
 
   def testGraphGradientVariable(self):
-    with ops.Graph().as_default(), self.test_session():
+    with ops.Graph().as_default(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
 
       @function.defun
@@ -212,7 +211,7 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(f(), x)
 
   def testSymGradGatherNd(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
 
       @function.defun
       def f(x):
@@ -482,7 +481,7 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(backprop.implicit_grad(f)()[0][0], 2.0)
 
   def testGraphModeCaptureVariable(self):
-    with context.graph_mode(), self.test_session() as sess:
+    with context.graph_mode(), self.cached_session() as sess:
 
       class HasAVar(object):
 
@@ -510,12 +509,12 @@ class FunctionTest(test.TestCase):
       x = constant_op.constant(1.0)
       l = f(x, v)
       _, dv = gradients_impl.gradients(l, [x, v])
-      with self.test_session():
+      with self.cached_session():
         v.initializer.run()
         self.assertAllEqual(dv.eval(), 0.0)
 
   def testGraphModeManyFunctions(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
 
       @function.defun
       def f(x):
@@ -616,7 +615,6 @@ class FunctionTest(test.TestCase):
 
     @function.defun
     def g(x):
-      tape.watch_variable(x)
       y = math_ops.add(x, three)
       f(y)
 
@@ -630,7 +628,6 @@ class FunctionTest(test.TestCase):
       return math_ops.add(x, three)
 
     def g(x):
-      tape.watch_variable(three)
       return f(x)
 
     g = backprop.implicit_grad(g)(constant_op.constant(1.0))[0][0]
@@ -937,7 +934,7 @@ class FunctionTest(test.TestCase):
     self.assertEqual(1, int(read()))
 
   def testReturnCapturedGraphTensor(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       t = constant_op.constant(1)
 
       @function.defun
@@ -1427,14 +1424,14 @@ class FunctionTest(test.TestCase):
     grad_t, = backprop.gradients_function(sq, [0])(t)
     self.assertAllEqual(grad_t, [[6, 6], [14, 14]])
 
-    with backprop.GradientTape(persistent=True) as gtape:
-      gtape.watch(t)
+    with backprop.GradientTape(persistent=True) as tape:
+      tape.watch(t)
       one = matmul(t, b=t, transpose_a=True)
       two = matmul(b=t, a=t, transpose_a=True)
       three = matmul(a=t, b=t, transpose_a=True)
 
     for output in [one, two, three]:
-      self.assertAllEqual(gtape.gradient(output, t), [[6, 6], [14, 14]])
+      self.assertAllEqual(tape.gradient(output, t), [[6, 6], [14, 14]])
 
   def testGradientInFunctionWithKeywordArguments(self):
 
@@ -1500,7 +1497,7 @@ class FunctionTest(test.TestCase):
 class AutomaticControlDependenciesTest(test.TestCase):
 
   def testBasic(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
       variables.global_variables_initializer().run()
       with function.AutomaticControlDependencies() as c:
@@ -1511,7 +1508,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(), 4.0)
 
   def testCondMustRun(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
       variables.global_variables_initializer().run()
       p = array_ops.placeholder(dtype=dtypes.bool)
@@ -1532,7 +1529,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(feed_dict={p: True}), 6.0)
 
   def testCondMustRunSeparateRead(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
       variables.global_variables_initializer().run()
       p = array_ops.placeholder(dtype=dtypes.bool)
@@ -1555,7 +1552,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(v.read_value().eval(), 6.0)
 
   def testCondNested(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
       variables.global_variables_initializer().run()
       p = array_ops.placeholder(dtype=dtypes.bool)
@@ -1589,7 +1586,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(feed_dict={p: True, q: False}), 8.0)
 
   def testCondOneBranch(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
       variables.global_variables_initializer().run()
       p = array_ops.placeholder(dtype=dtypes.bool)
@@ -1609,7 +1606,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(feed_dict={p: True}), 5.0)
 
   def testCondOneBranchUpdateBefore(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
       variables.global_variables_initializer().run()
       p = array_ops.placeholder(dtype=dtypes.bool)
@@ -1630,7 +1627,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(feed_dict={p: True}), 12.0)
 
   def testCondOneBranchUpdateAfter(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
       variables.global_variables_initializer().run()
       p = array_ops.placeholder(dtype=dtypes.bool)
@@ -1666,7 +1663,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
     self.assertAllEqual(out, [3, 4, 5])
 
   def testDecorator(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
       variables.global_variables_initializer().run()
 

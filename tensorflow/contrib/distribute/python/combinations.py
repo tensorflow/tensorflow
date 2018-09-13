@@ -328,6 +328,10 @@ tpu_strategy = NamedDistribution(
     "TPU", lambda: tpu_lib.TPUStrategy(
         TPUClusterResolver(""), steps_per_run=5),
     required_tpu=True)
+tpu_strategy_one_step = NamedDistribution(
+    "TPU", lambda: tpu_lib.TPUStrategy(
+        TPUClusterResolver(""), steps_per_run=1),
+    required_tpu=True)
 # Note that we disable prefetching for testing since prefetching makes
 # the input non-deterministic.
 mirrored_strategy_with_gpu_and_cpu = NamedDistribution(
