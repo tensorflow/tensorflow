@@ -1607,6 +1607,84 @@ class FunctionTest(test.TestCase):
           t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
           add(t, t)
 
+  def testRegisterFunction(self):
+    @function.defun
+    def add(x, y):
+      return math_ops.add(x, y)
+
+    def matmul(x, y):
+      return math_ops.matmul(x, y)
+    defun_matmul = function.defun(matmul)
+
+    with context.graph_mode(), self.cached_session():
+      with ops.get_default_graph().as_default():
+        t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+        function.register(defun_matmul, t, t)
+        function.register(add, t, t)
+
+        graph = ops.get_default_graph()
+        # pylint: disable=protected-access
+        self.assertEqual(len(graph._functions), 2)
+        functions = list(graph._functions.values())
+        pre_register_matmul_func_name = functions[0].definition.signature.name
+        self.assertRegexpMatches(pre_register_matmul_func_name, '.*matmul.*')
+        pre_register_add_func_name = functions[1].definition.signature.name
+        self.assertRegexpMatches(pre_register_add_func_name, '.*add.*')
+
+        sq = defun_matmul(t, t)
+        double = add(t, t)
+        self.assertAllEqual(sq.eval().reshape(-1), [7, 10, 15, 22])
+        self.assertAllEqual(double.eval().reshape(-1), [2, 4, 6, 8])
+        # Make sure the pre registered function is used, and no other function
+        # is added.
+        self.assertEqual(len(graph._functions), 2)
+        functions = list(graph._functions.values())
+        called_func_name = functions[0].definition.signature.name
+        self.assertEqual(pre_register_matmul_func_name, called_func_name)
+        called_func_name = functions[1].definition.signature.name
+        self.assertEqual(pre_register_add_func_name, called_func_name)
+
+  def testRegisterFunctionWithInputSignature(self):
+    def matmul(x, y):
+      return math_ops.matmul(x, y)
+    defun_matmul = function.defun(
+        matmul,
+        input_signature=[
+            tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32),
+            tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32)
+        ])
+    with context.graph_mode(), self.cached_session():
+      with ops.get_default_graph().as_default():
+        t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+        function.register(defun_matmul, t, t)
+
+        graph = ops.get_default_graph()
+        # pylint: disable=protected-access
+        self.assertEqual(len(graph._functions), 1)
+
+        # Test input param shape mismatch
+        t2 = constant_op.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+        with self.assertRaisesRegexp(
+            ValueError, 'Python inputs incompatible with input_signature'):
+          function.register(defun_matmul, t2, t2)
+
+  def testRegisterFunctionWithCache(self):
+    def matmul(x, y):
+      return math_ops.matmul(x, y)
+    defun_matmul = function.defun(matmul)
+
+    with context.graph_mode(), self.cached_session():
+      with ops.get_default_graph().as_default():
+        t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+        t2 = constant_op.constant([[2.0, 3.0], [4.0, 5.0]])
+        function.register(defun_matmul, t, t)
+        function.register(defun_matmul, t2, t2)
+
+        graph = ops.get_default_graph()
+        # Only one function is registered since the input param are in same type
+        # pylint: disable=protected-access
+        self.assertEqual(len(graph._functions), 1)
+
 
 @test_util.with_c_shapes
 class AutomaticControlDependenciesTest(test.TestCase):
