@@ -905,11 +905,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "rccl_archive",
         urls = [
-            "https://mirror.bazel.build/github.com/ROCmSoftwarePlatform/rccl/archive/allreduce-fix-3.tar.gz",
-            "https://github.com/ROCmSoftwarePlatform/rccl/archive/allreduce-fix-3.tar.gz",
+            "https://mirror.bazel.build/github.com/ROCmSoftwarePlatform/rccl/archive/v0.4.tar.gz",
+            "https://github.com/ROCmSoftwarePlatform/rccl/archive/v0.4.tar.gz",
         ],
         sha256 = "a621876c8f8aaa02842a64331d64aae03e747acd6bf6567d45ec385846a5c2b2",
-        strip_prefix = "rccl-allreduce-fix-3",
+        strip_prefix = "rccl-0.4",
         build_file = clean_dep("//third_party:rccl.BUILD"),
     )
 
