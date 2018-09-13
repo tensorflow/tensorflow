@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/ignite/kernels/ignite_dataset.h"
 #include <stdlib.h>
 #include "tensorflow/contrib/ignite/kernels/ignite_binary_object_parser.h"
+#include "tensorflow/contrib/ignite/kernels/ignite_dataset.h"
 #include "tensorflow/core/framework/dataset.h"
 
 namespace tensorflow {
