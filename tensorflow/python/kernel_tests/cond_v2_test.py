@@ -892,11 +892,13 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
 
   def testDeviceInAndOutOfCond(self):
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g):
+      with self.test_session(
+          graph=g, config=config_pb2.ConfigProto(device_count={"CPU": 2})):
+
         def fn2():
-          with ops.device("/device:GPU:0"):
+          with ops.device("/device:CPU:1"):
             c = constant_op.constant(3.0)
-            self.assertEqual("/device:GPU:0", c.op.device)
+            self.assertEqual("/device:CPU:1", c.op.device)
             return c
 
         with ops.device("/device:CPU:0"):
