@@ -300,6 +300,7 @@ filegroup(
     name = "platform_base_hdrs",
     srcs = [
         "platform/byte_order.h",
+        "platform/cord.h",
         "platform/env_time.h",
         "platform/logging.h",
         "platform/macros.h",
