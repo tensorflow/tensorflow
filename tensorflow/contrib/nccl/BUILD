@@ -27,10 +27,10 @@ tf_custom_op_library(
         "ops/nccl_ops.cc",
     ],
     gpu_srcs = if_not_windows_cuda([
-        "kernels/nccl_rewrite.cc",
         "kernels/nccl_manager.cc",
         "kernels/nccl_manager.h",
         "kernels/nccl_ops.cc",
+        "kernels/nccl_rewrite.cc",
     ]),
     deps = [] + if_cuda([
         "@local_config_nccl//:nccl",
