@@ -21,7 +21,6 @@ import random
 
 import numpy as np
 
-from tensorflow.contrib import layers
 from tensorflow.contrib.data.python.ops import grouping
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
@@ -537,6 +536,40 @@ def _element_length_fn(x, y=None):
   return array_ops.shape(x)[0]
 
 
+def _to_sparse_tensor(record):
+  return sparse_tensor.SparseTensor(**record)
+
+
+def _format_record(array, sparse):
+  if sparse:
+    return {
+        "values": array,
+        "indices": [[i] for i in range(len(array))],
+        "dense_shape": (len(array),)
+    }
+  return array
+
+
+def _get_record_type(sparse):
+  if sparse:
+    return {
+        "values": dtypes.int64,
+        "indices": dtypes.int64,
+        "dense_shape": dtypes.int64
+    }
+  return dtypes.int32
+
+
+def _get_record_shape(sparse):
+  if sparse:
+    return {
+        "values": tensor_shape.TensorShape([None,]),
+        "indices": tensor_shape.TensorShape([None, 1]),
+        "dense_shape": tensor_shape.TensorShape([1,])
+    }
+  return tensor_shape.TensorShape([None])
+
+
 class BucketBySequenceLength(test.TestCase):
 
   def testBucket(self):
@@ -545,23 +578,28 @@ class BucketBySequenceLength(test.TestCase):
     batch_sizes = [10, 8, 4, 2]
     lengths = [8, 13, 25, 35]
 
-    def element_gen():
-      # Produce 1 batch for each bucket
-      elements = []
-      for batch_size, length in zip(batch_sizes, lengths):
-        record_len = length - 1
-        for _ in range(batch_size):
-          elements.append([1] * record_len)
-          record_len = length
-      random.shuffle(elements)
-      for el in elements:
-        yield (el,)
+    def build_dataset(sparse):
+      def _generator():
+        # Produce 1 batch for each bucket
+        elements = []
+        for batch_size, length in zip(batch_sizes, lengths):
+          record_len = length - 1
+          for _ in range(batch_size):
+            elements.append([1] * record_len)
+            record_len = length
+        random.shuffle(elements)
+        for el in elements:
+          yield (_format_record(el, sparse),)
+      dataset = dataset_ops.Dataset.from_generator(
+          _generator,
+          (_get_record_type(sparse),),
+          (_get_record_shape(sparse),))
+      if sparse:
+        dataset = dataset.map(lambda x: (_to_sparse_tensor(x),))
+      return dataset
 
     def _test_bucket_by_padding(no_padding):
-      dataset = dataset_ops.Dataset.from_generator(
-          element_gen, (dtypes.int64,), ([None],))
-      if no_padding:
-        dataset = dataset.map(lambda x: (layers.dense_to_sparse(x),))
+      dataset = build_dataset(sparse=no_padding)
       dataset = dataset.apply(
           grouping.bucket_by_sequence_length(
               _element_length_fn,
@@ -677,20 +715,23 @@ class BucketBySequenceLength(test.TestCase):
 
   def testTupleElements(self):
 
-    def elements_gen():
-      text = [[1, 2, 3], [3, 4, 5, 6, 7], [1, 2], [8, 9, 0, 2, 3]]
-      label = [1, 2, 1, 2]
-      for x, y in zip(text, label):
-        yield (x, y)
+    def build_dataset(sparse):
+      def _generator():
+        text = [[1, 2, 3], [3, 4, 5, 6, 7], [1, 2], [8, 9, 0, 2, 3]]
+        label = [1, 2, 1, 2]
+        for x, y in zip(text, label):
+          yield (_format_record(x, sparse), y)
+      dataset = dataset_ops.Dataset.from_generator(
+          generator=_generator,
+          output_types=(_get_record_type(sparse), dtypes.int32),
+          output_shapes=(_get_record_shape(sparse),
+                         tensor_shape.TensorShape([])))
+      if sparse:
+        dataset = dataset.map(lambda x, y: (_to_sparse_tensor(x), y))
+      return dataset
 
     def _test_tuple_elements_by_padding(no_padding):
-      dataset = dataset_ops.Dataset.from_generator(
-          generator=elements_gen,
-          output_shapes=(tensor_shape.TensorShape([None]),
-                         tensor_shape.TensorShape([])),
-          output_types=(dtypes.int32, dtypes.int32))
-      if no_padding:
-        dataset = dataset.map(lambda x, y: (layers.dense_to_sparse(x), y))
+      dataset = build_dataset(sparse=no_padding)
       dataset = dataset.apply(grouping.bucket_by_sequence_length(
           element_length_func=_element_length_fn,
           bucket_batch_sizes=[2, 2, 2],
@@ -727,12 +768,11 @@ class BucketBySequenceLength(test.TestCase):
       input_data = [range(i+1) for i in range(min_len, max_len)]
       def generator_fn():
         for record in input_data:
-          yield record
+          yield _format_record(record, sparse=True)
       dataset = dataset_ops.Dataset.from_generator(
           generator=generator_fn,
-          output_shapes=(tensor_shape.TensorShape([None])),
-          output_types=(dtypes.int64))
-      dataset = dataset.map(lambda x: layers.dense_to_sparse(x, eos_token=-1))
+          output_types=_get_record_type(sparse=True))
+      dataset = dataset.map(_to_sparse_tensor)
       return dataset
 
     def _compute_expected_batches():
