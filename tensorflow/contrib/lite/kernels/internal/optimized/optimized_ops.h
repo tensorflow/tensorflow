@@ -200,6 +200,8 @@ struct TTypes {
       UnalignedConstMatrix;
 };
 
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
 // TODO(b/62193649): this function is only needed as long
 // as we have the --variable_batch hack.
 template <typename Scalar, int N>
@@ -208,6 +210,18 @@ MatrixMap<Scalar> MapAsMatrixWithGivenNumberOfRows(Scalar* data,
                                                    int rows) {
   const int flatsize = FlatSize(dims);
   TFLITE_DCHECK((flatsize % rows) == 0);
+  const int cols = flatsize / rows;
+  return MatrixMap<Scalar>(data, rows, cols);
+}
+
+// TODO(b/62193649): this function is only needed as long
+// as we have the --variable_batch hack.
+template <typename Scalar>
+MatrixMap<Scalar> MapAsMatrixWithGivenNumberOfRows(Scalar* data,
+                                                   const RuntimeShape& shape,
+                                                   int rows) {
+  const int flatsize = shape.FlatSize();
+  TFLITE_DCHECK_EQ(flatsize % rows, 0);
   const int cols = flatsize / rows;
   return MatrixMap<Scalar>(data, rows, cols);
 }
@@ -393,21 +407,24 @@ inline void optimized_ops_preload_l1_keep(const uint8* ptr) {
 // to a matrix*vector product. LSTM cells contain a fully-connected node;
 // when quantized, this becomes a special type of GEMV operation where
 // the output is 16bit-quantized, thus needs its own special path.
-inline void GEMVForLstmCell(const uint8* input_data, const Dims<4>& input_dims,
-                            const uint8* weights_data,
-                            const Dims<4>& weights_dims,
-                            uint8 weights_zero_point, const int32* bias_data,
-                            const Dims<4>& bias_dims, int32 accum_multiplier,
-                            int accum_shift, int16* output_data,
-                            const Dims<4>& output_dims) {
+inline void GEMVForLstmCell(const RuntimeShape& input_shape,
+                            const uint8* input_data,
+                            const RuntimeShape& weights_shape,
+                            const uint8* weights_data, uint8 weights_zero_point,
+                            const RuntimeShape& bias_shape,
+                            const int32* bias_data, int32 accum_multiplier,
+                            int accum_shift, const RuntimeShape& output_shape,
+                            int16* output_data) {
   gemmlowp::ScopedProfilingLabel label("GEMVForLstmCell");
-  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(weights_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(bias_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
-  TFLITE_DCHECK_EQ(FlatSizeSkipDim(output_dims, 0), 1);
-  const int input_size = FlatSizeSkipDim(input_dims, 3);
-  const int output_size = MatchingArraySize(weights_dims, 1, output_dims, 0);
+  TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
+  TFLITE_DCHECK_GE(weights_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
+  const int output_dim_count = output_shape.DimensionsCount();
+  const int weights_dim_count = weights_shape.DimensionsCount();
+  TFLITE_DCHECK_EQ(FlatSizeSkipDim(output_shape, output_dim_count - 1), 1);
+  const int input_size = FlatSizeSkipDim(input_shape, 0);
+  const int output_size = MatchingDim(weights_shape, weights_dim_count - 2,
+                                      output_shape, output_dim_count - 1);
   // This special fast path for quantized LSTM cells does not try to support
   // odd sizes that we haven't encountered in any LSTM cell, that would
   // require special code (that would go untested until any LSTM cell
@@ -580,18 +597,21 @@ inline void GEMVForLstmCell(const uint8* input_data, const Dims<4>& input_dims,
 
 #ifdef GEMMLOWP_NEON
 inline void GEMVForLstmCellWithSymmetricRange(
-    const uint8* input_data, const Dims<4>& input_dims,
-    const uint8* weights_data, const Dims<4>& weights_dims,
-    const int32* bias_data, const Dims<4>& bias_dims, int32 accum_multiplier,
-    int accum_shift, int16* output_data, const Dims<4>& output_dims) {
+    const RuntimeShape& input_shape, const uint8* input_data,
+    const RuntimeShape& weights_shape, const uint8* weights_data,
+    const RuntimeShape& bias_shape, const int32* bias_data,
+    int32 accum_multiplier, int accum_shift, const RuntimeShape& output_shape,
+    int16* output_data) {
   gemmlowp::ScopedProfilingLabel label("GEMVForLstmCellWithSymmetricRange");
-  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(weights_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(bias_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
-  TFLITE_DCHECK_EQ(FlatSizeSkipDim(output_dims, 0), 1);
-  const int input_size = FlatSizeSkipDim(input_dims, 3);
-  const int output_size = MatchingArraySize(weights_dims, 1, output_dims, 0);
+  TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
+  TFLITE_DCHECK_GE(weights_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
+  const int output_dim_count = output_shape.DimensionsCount();
+  const int weights_dim_count = weights_shape.DimensionsCount();
+  TFLITE_DCHECK_EQ(FlatSizeSkipDim(output_shape, output_dim_count - 1), 1);
+  const int input_size = FlatSizeSkipDim(input_shape, 0);
+  const int output_size = MatchingDim(weights_shape, weights_dim_count - 2,
+                                      output_shape, output_dim_count - 1);
   // This special fast path for quantized LSTM cells does not try to support
   // odd sizes that we haven't encountered in any LSTM cell, that would
   // require special code (that would go untested until any LSTM cell
@@ -867,14 +887,16 @@ inline void GEMVForLstmCellWithSymmetricRange(
 }
 #endif
 
-inline void FullyConnected(const float* input_data, const Dims<4>& input_dims,
-                           const float* weights_data,
-                           const Dims<4>& weights_dims, const float* bias_data,
-                           const Dims<4>& bias_dims,
-                           float output_activation_min,
-                           float output_activation_max, float* output_data,
-                           const Dims<4>& output_dims) {
+inline void FullyConnected(
+    const FullyConnectedParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& weights_shape,
+    const float* weights_data, const RuntimeShape& bias_shape,
+    const float* bias_data, const RuntimeShape& output_shape,
+    float* output_data) {
   gemmlowp::ScopedProfilingLabel label("FullyConnected");
+  const float output_activation_min = params.float_activation_min;
+  const float output_activation_max = params.float_activation_max;
+
   // TODO(b/62193649): this convoluted shape computation (determining
   // input_rows from the weights_dims, then MapAsMatrixWithGivenNumberOfRows)
   // is because the current --variable_batch hack consists in overwriting the
@@ -883,18 +905,38 @@ inline void FullyConnected(const float* input_data, const Dims<4>& input_dims,
   // When that is fixed, this should become:
   // const auto input_matrix_map =
   //     MapAsMatrixWithFirstDimAsRows(input_data, input_dims);
-  const int input_rows = ArraySize(weights_dims, 0);
+  const int dims_count = weights_shape.DimensionsCount();
+  const int input_rows = weights_shape.Dims(dims_count - 1);
   const auto input_matrix_map =
-      MapAsMatrixWithGivenNumberOfRows(input_data, input_dims, input_rows);
+      MapAsMatrixWithGivenNumberOfRows(input_data, input_shape, input_rows);
   const auto filter_matrix_map =
-      MapAsMatrixWithFirstDimAsRows(weights_data, weights_dims);
+      MapAsMatrixWithLastDimAsRows(weights_data, weights_shape);
   auto output_matrix_map =
-      MapAsMatrixWithFirstDimAsRows(output_data, output_dims);
+      MapAsMatrixWithLastDimAsRows(output_data, output_shape);
 
   Gemm(filter_matrix_map.transpose(), input_matrix_map, &output_matrix_map);
-  AddBiasAndEvalActivationFunction(bias_data, bias_dims, output_data,
-                                   output_dims, output_activation_min,
-                                   output_activation_max);
+  AddBiasAndEvalActivationFunction(output_activation_min, output_activation_max,
+                                   bias_shape, bias_data, output_shape,
+                                   output_data);
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void FullyConnected(const float* input_data, const Dims<4>& input_dims,
+                           const float* weights_data,
+                           const Dims<4>& weights_dims, const float* bias_data,
+                           const Dims<4>& bias_dims,
+                           float output_activation_min,
+                           float output_activation_max, float* output_data,
+                           const Dims<4>& output_dims) {
+  tflite::FullyConnectedParams op_params;
+  op_params.float_activation_min = output_activation_min;
+  op_params.float_activation_max = output_activation_max;
+
+  FullyConnected(op_params, DimsToShape(input_dims), input_data,
+                 DimsToShape(weights_dims), weights_data,
+                 DimsToShape(bias_dims), bias_data, DimsToShape(output_dims),
+                 output_data);
 }
 
 // legacy, for compatibility with old checked-in code
@@ -912,20 +954,23 @@ void FullyConnected(const float* input_data, const Dims<4>& input_dims,
 
 #ifdef USE_NEON
 inline void FullyConnectedAsGEMV(
-    const uint8* input_data, const Dims<4>& input_dims, int32 input_offset,
-    const uint8* filter_data, const Dims<4>& filter_dims, int32 filter_offset,
-    const int32* bias_data, const Dims<4>& bias_dims, int32 output_offset,
+    const RuntimeShape& input_shape, const uint8* input_data,
+    int32 input_offset, const RuntimeShape& filter_shape,
+    const uint8* filter_data, int32 filter_offset,
+    const RuntimeShape& bias_shape, const int32* bias_data, int32 output_offset,
     int32 output_multiplier, int output_shift, int32 output_activation_min,
-    int32 output_activation_max, uint8* output_data,
-    const Dims<4>& output_dims) {
+    int32 output_activation_max, const RuntimeShape& output_shape,
+    uint8* output_data) {
   gemmlowp::ScopedProfilingLabel label("FullyConnectedAsGEMV/8bit");
-  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(filter_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(bias_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
-  TFLITE_DCHECK_EQ(FlatSizeSkipDim(output_dims, 0), 1);
-  const int input_size = FlatSizeSkipDim(input_dims, 3);
-  const int output_size = MatchingArraySize(filter_dims, 1, output_dims, 0);
+  TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
+  TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
+  const int output_dim_count = output_shape.DimensionsCount();
+  const int filter_dim_count = filter_shape.DimensionsCount();
+  TFLITE_DCHECK_EQ(FlatSizeSkipDim(output_shape, output_dim_count - 1), 1);
+  const int input_size = FlatSizeSkipDim(input_shape, 0);
+  const int output_size = MatchingDim(filter_shape, filter_dim_count - 2,
+                                      output_shape, output_dim_count - 1);
   static constexpr int kPeel = 4;
   const bool shift_left = (output_shift <= 0);
   for (int k = 0; k < input_size; k += 64) {
@@ -1096,42 +1141,47 @@ struct GemmlowpOutputPipeline {
   }
 };
 
-inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
-                           int32 input_offset, const uint8* filter_data,
-                           const Dims<4>& filter_dims, int32 filter_offset,
-                           const int32* bias_data, const Dims<4>& bias_dims,
-                           int32 output_offset, int32 output_multiplier,
-                           int output_shift, int32 output_activation_min,
-                           int32 output_activation_max, uint8* output_data,
-                           const Dims<4>& output_dims,
-                           gemmlowp::GemmContext* gemm_context) {
+inline void FullyConnected(
+    const FullyConnectedParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    uint8* output_data, gemmlowp::GemmContext* gemm_context) {
   gemmlowp::ScopedProfilingLabel label("FullyConnected/8bit");
+  const int32 input_offset = params.input_offset;
+  const int32 filter_offset = params.weights_offset;
+  const int32 output_offset = params.output_offset;
+  const int32 output_multiplier = params.output_multiplier;
+  const int output_shift = params.output_shift;
+  const int32 output_activation_min = params.quantized_activation_min;
+  const int32 output_activation_max = params.quantized_activation_max;
+  TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
   // TODO(benoitjacob): This really should be:
   //     const int batches = ArraySize(output_dims, 1);
   // but the current --variable_batch hack consists in overwriting the 3rd
   // dimension with the runtime batch size, as we don't keep track for each
   // array of which dimension is the batch dimension in it.
-  const int batches = FlatSizeSkipDim(output_dims, 0);
+  const int output_dim_count = output_shape.DimensionsCount();
+  const int filter_dim_count = filter_shape.DimensionsCount();
+  const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
 #ifdef USE_NEON
-  const int output_size = MatchingArraySize(filter_dims, 1, output_dims, 0);
+  const int output_size = MatchingDim(filter_shape, filter_dim_count - 2,
+                                      output_shape, output_dim_count - 1);
   if (batches == 1 && !(output_size % 4)) {
     return FullyConnectedAsGEMV(
-        input_data, input_dims, input_offset, filter_data, filter_dims,
-        filter_offset, bias_data, bias_dims, output_offset, output_multiplier,
-        output_shift, output_activation_min, output_activation_max, output_data,
-        output_dims);
+        input_shape, input_data, input_offset, filter_shape, filter_data,
+        filter_offset, bias_shape, bias_data, output_offset, output_multiplier,
+        output_shift, output_activation_min, output_activation_max,
+        output_shape, output_data);
   }
 #endif  // USE_NEON
-  const int filter_rows = filter_dims.sizes[1];
-  const int filter_cols = filter_dims.sizes[0];
-  TFLITE_DCHECK_EQ(filter_dims.sizes[2], 1);
-  TFLITE_DCHECK_EQ(filter_dims.sizes[3], 1);
-  const int output_rows = output_dims.sizes[0];
+  const int filter_rows = filter_shape.Dims(filter_dim_count - 2);
+  const int filter_cols = filter_shape.Dims(filter_dim_count - 1);
+  TFLITE_DCHECK_EQ(filter_shape.FlatSize(), filter_rows * filter_cols);
+  const int output_rows = output_shape.Dims(output_dim_count - 1);
   TFLITE_DCHECK_EQ(output_rows, filter_rows);
-  TFLITE_DCHECK_EQ(bias_dims.sizes[0], output_rows);
-  TFLITE_DCHECK_EQ(bias_dims.sizes[1], 1);
-  TFLITE_DCHECK_EQ(bias_dims.sizes[2], 1);
-  TFLITE_DCHECK_EQ(bias_dims.sizes[3], 1);
+  TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_rows);
 
   gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::RowMajor> filter_matrix(
       filter_data, output_rows, filter_cols, filter_cols);
@@ -1148,30 +1198,65 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
       input_offset, output_pipeline);
 }
 
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
+                           int32 input_offset, const uint8* filter_data,
+                           const Dims<4>& filter_dims, int32 filter_offset,
+                           const int32* bias_data, const Dims<4>& bias_dims,
+                           int32 output_offset, int32 output_multiplier,
+                           int output_shift, int32 output_activation_min,
+                           int32 output_activation_max, uint8* output_data,
+                           const Dims<4>& output_dims,
+                           gemmlowp::GemmContext* gemm_context) {
+  tflite::FullyConnectedParams op_params;
+  op_params.input_offset = input_offset;
+  op_params.weights_offset = filter_offset;
+  op_params.output_offset = output_offset;
+  op_params.output_multiplier = output_multiplier;
+  op_params.output_shift = output_shift;
+  op_params.quantized_activation_min = output_activation_min;
+  op_params.quantized_activation_max = output_activation_max;
+
+  FullyConnected(op_params, DimsToShape(input_dims), input_data,
+                 DimsToShape(filter_dims), filter_data, DimsToShape(bias_dims),
+                 bias_data, DimsToShape(output_dims), output_data,
+                 gemm_context);
+}
+
 inline void FullyConnected(
-    const uint8* input_data, const Dims<4>& input_dims, int32 input_offset,
-    const uint8* filter_data, const Dims<4>& filter_dims, int32 filter_offset,
-    const int32* bias_data_int32, const Dims<4>& bias_dims, int32 output_offset,
-    int32 output_multiplier, int output_shift, int32 output_activation_min,
-    int32 output_activation_max, int16* output_data, const Dims<4>& output_dims,
-    gemmlowp::GemmContext* gemm_context) {
+    const FullyConnectedParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data_int32, const RuntimeShape& output_shape,
+    int16* output_data, gemmlowp::GemmContext* gemm_context) {
   gemmlowp::ScopedProfilingLabel label("FullyConnected/Uint8Int16");
+  const int32 input_offset = params.input_offset;
+  const int32 filter_offset = params.weights_offset;
+  const int32 output_offset = params.output_offset;
+  const int32 output_multiplier = params.output_multiplier;
+  const int output_shift = params.output_shift;
+  const int32 output_activation_min = params.quantized_activation_min;
+  const int32 output_activation_max = params.quantized_activation_max;
   // This is a copy of the reference implementation. We do not currently have a
   // properly optimized version.
   (void)gemm_context;  // only used in properly optimized code.
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
   TFLITE_DCHECK_EQ(output_offset, 0);
+  TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
 
   // TODO(benoitjacob): This really should be:
   //     const int batches = ArraySize(output_dims, 1);
   // but the current --variable_batch hack consists in overwriting the 3rd
   // dimension with the runtime batch size, as we don't keep track for each
   // array of which dimension is the batch dimension in it.
-  const int batches = FlatSizeSkipDim(output_dims, 0);
-  const int output_depth = MatchingArraySize(filter_dims, 1, output_dims, 0);
-  const int accum_depth = ArraySize(filter_dims, 0);
-  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(filter_dims));
+  const int output_dim_count = output_shape.DimensionsCount();
+  const int filter_dim_count = filter_shape.DimensionsCount();
+  const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
+  const int output_depth = MatchingDim(filter_shape, filter_dim_count - 2,
+                                       output_shape, output_dim_count - 1);
+  const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
 
   // Implementation of the fully connected node suited to the inside of an LSTM
   // cell. The operands are 8-bit integers, the accumulators are internally
@@ -1182,17 +1267,17 @@ inline void FullyConnected(
   if (batches == 1 && input_offset == -128 && output_activation_min == -32768 &&
       output_activation_max == 32767) {
     if (filter_offset == -128 && !(output_depth % 4) && !(accum_depth % 64)) {
-      GEMVForLstmCellWithSymmetricRange(input_data, input_dims, filter_data,
-                                        filter_dims, bias_data_int32, bias_dims,
-                                        output_multiplier, -output_shift,
-                                        output_data, output_dims);
+      GEMVForLstmCellWithSymmetricRange(
+          input_shape, input_data, filter_shape, filter_data, bias_shape,
+          bias_data_int32, output_multiplier, -output_shift, output_shape,
+          output_data);
       return;
     }
     if (!(output_depth % 4) && !(accum_depth % 8)) {
-      GEMVForLstmCell(input_data, input_dims, filter_data, filter_dims,
-                      filter_offset, bias_data_int32, bias_dims,
-                      output_multiplier, -output_shift, output_data,
-                      output_dims);
+      GEMVForLstmCell(input_shape, input_data, filter_shape, filter_data,
+                      filter_offset, bias_shape, bias_data_int32,
+                      output_multiplier, -output_shift, output_shape,
+                      output_data);
       return;
     }
   }
@@ -1226,6 +1311,31 @@ inline void FullyConnected(
       input_offset, output_pipeline);
 }
 
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void FullyConnected(
+    const uint8* input_data, const Dims<4>& input_dims, int32 input_offset,
+    const uint8* filter_data, const Dims<4>& filter_dims, int32 filter_offset,
+    const int32* bias_data_int32, const Dims<4>& bias_dims, int32 output_offset,
+    int32 output_multiplier, int output_shift, int32 output_activation_min,
+    int32 output_activation_max, int16* output_data, const Dims<4>& output_dims,
+    gemmlowp::GemmContext* gemm_context) {
+  tflite::FullyConnectedParams op_params;
+  op_params.input_offset = input_offset;
+  op_params.weights_offset = filter_offset;
+  op_params.output_offset = output_offset;
+  op_params.output_multiplier = output_multiplier;
+  op_params.output_shift = output_shift;
+  op_params.quantized_activation_min = output_activation_min;
+  op_params.quantized_activation_max = output_activation_max;
+
+  FullyConnected(op_params, DimsToShape(input_dims), input_data,
+                 DimsToShape(filter_dims), filter_data, DimsToShape(bias_dims),
+                 bias_data_int32, DimsToShape(output_dims), output_data,
+                 gemm_context);
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
 void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
@@ -1568,26 +1678,34 @@ struct ShuffledFullyConnectedWorkerTask : gemmlowp::Task {
 };
 
 inline void ShuffledFullyConnected(
-    const uint8* input_data, const Dims<4>& input_dims,
-    const uint8* shuffled_weights_data, const Dims<4>& weights_dims,
-    const int32* bias_data, const Dims<4>& bias_dims, int32 output_multiplier,
-    int output_shift, int32 output_activation_min, int32 output_activation_max,
-    int16* output_data, const Dims<4>& output_dims,
-    uint8* shuffled_input_workspace_data, gemmlowp::GemmContext* gemm_context) {
+    const FullyConnectedParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& weights_shape,
+    const uint8* shuffled_weights_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    int16* output_data, uint8* shuffled_input_workspace_data,
+    gemmlowp::GemmContext* gemm_context) {
   gemmlowp::ScopedProfilingLabel label("ShuffledFullyConnected/8bit");
+  const int32 output_multiplier = params.output_multiplier;
+  const int output_shift = params.output_shift;
+  const int32 output_activation_min = params.quantized_activation_min;
+  const int32 output_activation_max = params.quantized_activation_max;
   (void)gemm_context;  // only used in optimized code.
   TFLITE_DCHECK_EQ(output_activation_min, -32768);
   TFLITE_DCHECK_EQ(output_activation_max, 32767);
+  TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
+  TFLITE_DCHECK_GE(weights_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
   // TODO(benoitjacob): This really should be:
   //     const int batches = ArraySize(output_dims, 1);
   // but the current --variable_batch hack consists in overwriting the 3rd
   // dimension with the runtime batch size, as we don't keep track for each
   // array of which dimension is the batch dimension in it.
-  const int batches = FlatSizeSkipDim(output_dims, 0);
-  const int output_depth = MatchingArraySize(weights_dims, 1, output_dims, 0);
-  const int accum_depth = ArraySize(weights_dims, 0);
-  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(weights_dims));
+  const int output_dim_count = output_shape.DimensionsCount();
+  const int weights_dim_count = weights_shape.DimensionsCount();
+  const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
+  const int output_depth = MatchingDim(weights_shape, weights_dim_count - 2,
+                                       output_shape, output_dim_count - 1);
+  const int accum_depth = weights_shape.Dims(weights_dim_count - 1);
   TFLITE_DCHECK((accum_depth % 16) == 0);
   TFLITE_DCHECK((output_depth % 4) == 0);
   // Shuffled weights have had their sign bit (0x80) pre-flipped (xor'd)
@@ -1682,6 +1800,28 @@ inline void ShuffledFullyConnected(
   }
   TFLITE_DCHECK_EQ(row_start, output_depth);
   gemm_context->workers_pool()->Execute(tasks);
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void ShuffledFullyConnected(
+    const uint8* input_data, const Dims<4>& input_dims,
+    const uint8* shuffled_weights_data, const Dims<4>& weights_dims,
+    const int32* bias_data, const Dims<4>& bias_dims, int32 output_multiplier,
+    int output_shift, int32 output_activation_min, int32 output_activation_max,
+    int16* output_data, const Dims<4>& output_dims,
+    uint8* shuffled_input_workspace_data, gemmlowp::GemmContext* gemm_context) {
+  tflite::FullyConnectedParams op_params;
+  op_params.output_multiplier = output_multiplier;
+  op_params.output_shift = output_shift;
+  op_params.quantized_activation_min = output_activation_min;
+  op_params.quantized_activation_max = output_activation_max;
+
+  ShuffledFullyConnected(op_params, DimsToShape(input_dims), input_data,
+                         DimsToShape(weights_dims), shuffled_weights_data,
+                         DimsToShape(bias_dims), bias_data,
+                         DimsToShape(output_dims), output_data,
+                         shuffled_input_workspace_data, gemm_context);
 }
 
 template <typename T>
@@ -3635,10 +3775,11 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
   bool gemm_already_performed = false;
 #ifdef GEMMLOWP_NEON
   if (fc_batches == 1 && !(fc_output_depth % 4) && !(fc_accum_depth % 8)) {
-    GEMVForLstmCell(concat_temp_data_uint8, concat_temp_dims,
-                    weights_data_uint8, weights_dims, weights_zero_point,
-                    bias_data_int32, bias_dims, accum_multiplier, accum_shift,
-                    activ_temp_data_int16, activ_temp_dims);
+    GEMVForLstmCell(DimsToShape(concat_temp_dims), concat_temp_data_uint8,
+                    DimsToShape(weights_dims), weights_data_uint8,
+                    weights_zero_point, DimsToShape(bias_dims), bias_data_int32,
+                    accum_multiplier, accum_shift, DimsToShape(activ_temp_dims),
+                    activ_temp_data_int16);
     gemm_already_performed = true;
   }
 #endif
