@@ -1147,6 +1147,37 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "hlo_module_group",
+    srcs = ["hlo_module_group.cc"],
+    hdrs = ["hlo_module_group.h"],
+    deps = [
+        ":hlo",
+        ":hlo_proto",
+        "//tensorflow/compiler/xla:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_module_group_test",
+    srcs = ["hlo_module_group_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_matchers",
+        ":hlo_module_group",
+        ":hlo_parser",
+        ":hlo_proto",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "hlo_module_group_metadata",
     srcs = ["hlo_module_group_metadata.cc"],
     hdrs = ["hlo_module_group_metadata.h"],
