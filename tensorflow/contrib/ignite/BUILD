@@ -61,6 +61,9 @@ cc_library(
         "@boringssl//:ssl",
         "@protobuf_archive//:protobuf_headers",
     ],
+    copts = if_windows([
+        "-DWIN32_LEAN_AND_MEAN",
+    ]),
     alwayslink = 1,
 )
 
