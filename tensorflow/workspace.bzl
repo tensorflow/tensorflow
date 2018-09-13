@@ -908,7 +908,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
             "https://mirror.bazel.build/github.com/ROCmSoftwarePlatform/rccl/archive/v0.4.tar.gz",
             "https://github.com/ROCmSoftwarePlatform/rccl/archive/v0.4.tar.gz",
         ],
-        sha256 = "a621876c8f8aaa02842a64331d64aae03e747acd6bf6567d45ec385846a5c2b2",
+        sha256 = "606d2528321fe174d259e45cb3e24647a03d7528b15ebc9602411449ddfe1226",
         strip_prefix = "rccl-0.4",
         build_file = clean_dep("//third_party:rccl.BUILD"),
     )
