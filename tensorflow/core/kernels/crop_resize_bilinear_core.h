@@ -3619,7 +3619,7 @@ class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
     // copy xs values, but filter out the following:
     // xs[].lower == xs[].upper AND xs[].lerp == 0
     // xs[].lower == xs[].upper AND xs[].lerp == 1
-    assert( min_ix_ <= max_ix_ );
+    assert(min_ix_ <= max_ix_);
     xs_ = new CachedInterpolation[max_ix_ - min_ix_ + 1];
     for (int i = min_ix_; i <= max_ix_; ++i) {
       int ix = i - min_ix_;
