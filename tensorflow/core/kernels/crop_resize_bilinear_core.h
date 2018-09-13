@@ -478,7 +478,21 @@ void crop_resize_single_image(const T* image, const int64 in_height,
   }
 }
 
-#ifdef __SSE4_1__
+// template for method that calls either explicitly vectorized method
+// or the fallback method, depending on what is appropriate for the
+// machine you are running on
+template <typename T, typename U>
+void crop_resize_single_image_common(
+    const T* image, const int64 in_height, const int64 in_width,
+    const int64 out_height, const int64 out_width, const int channels,
+    const int min_ix, const int max_ix, const CachedInterpolation* xs,
+    const int min_iy, const int max_iy, const CachedInterpolation* ys,
+    const float extrapolated_value, const bool flip_x, const bool flip_y,
+    U* output) TF_ATTRIBUTE_NOINLINE;
+
+// For now, only compile vectorized code on LINUX systems.
+// to-do: Test vectorized code on other platforms (MacOS and Windows).
+#if defined(__linux__) && defined(__SSE4_1__)
 
 //
 // The remaining code implements explicitly vectorized versions of a bilinear
@@ -3605,6 +3619,7 @@ class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
     // copy xs values, but filter out the following:
     // xs[].lower == xs[].upper AND xs[].lerp == 0
     // xs[].lower == xs[].upper AND xs[].lerp == 1
+    assert( min_ix_ <= max_ix_ );
     xs_ = new CachedInterpolation[max_ix_ - min_ix_ + 1];
     for (int i = min_ix_; i <= max_ix_; ++i) {
       int ix = i - min_ix_;
@@ -3731,11 +3746,6 @@ class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
   bool Load4_ok_(const int min_xidx, const int max_xidx);
   bool Load8_ok_(const int min_xidx, const int max_xidx);
 
-  // debugging
-  int y_;
-  const T* input_image_;
-  U* output_image_;
-
  public:
   //
   // public client methods
@@ -3751,9 +3761,6 @@ class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
 
 template <class T, class U>
 void CropResizeCastImage<T, U>::Resize(const T* input_image, U* output_image) {
-  // store these for debugging
-  input_image_ = input_image;
-  output_image_ = output_image_;
   //
   U uEx = cast_to<U>(extrapolated_value_, _f_min_val, _f_max_val, _u_min_val,
                      _u_max_val);
@@ -3798,7 +3805,6 @@ void CropResizeCastImage<T, U>::Resize(const T* input_image, U* output_image) {
   // interpolation region
   int y = y0_;
   for (y = y0_; y + 1 <= y1_; y += 2) {
-    y_ = y;
     const int iyA = flip_y_ ? out_height_ - 1 - min_iy_ - y : y - min_iy_;
     const float yA_lerp = ys_[iyA].lerp;
     const __m128 ysA_lerp = _mm_set1_ps(yA_lerp);
@@ -3903,11 +3909,8 @@ void CropResizeCastImage<T, U>::Resize(const T* input_image, U* output_image) {
     } else {
       assert(false);
     }
-    // printf("*2 :: y=%d, channels_=%d,
-    // num_load8_=%d\n",y,channels_,num_load8_);
   }
   for (; y <= y1_; ++y) {
-    y_ = y;
     const int iyA = flip_y_ ? out_height_ - 1 - min_iy_ - y : y - min_iy_;
     const float yA_lerp = ys_[iyA].lerp;
     const __m128 ysA_lerp = _mm_set1_ps(yA_lerp);
@@ -3963,7 +3966,6 @@ void CropResizeCastImage<T, U>::Resize(const T* input_image, U* output_image) {
     } else {
       assert(false);
     }
-    // printf("*1 :: y=%d\n",y);
   }
 }
 
@@ -5025,7 +5027,6 @@ void CropResizeCastImage<T, U>::Configure_() {
     assert(load_group >= 0 && load_group <= 4);
     int current = num_cases[load_group];
     assert(current >= 0);
-    // printf(" ... load_group=%d, current=%d\n",load_group,current);
     if (load_group == 0) {
       // general case
       assert(current < num_general_);
@@ -5036,7 +5037,6 @@ void CropResizeCastImage<T, U>::Configure_() {
       load1_x_[current] = x;
       int min_xidx, max_xidx;
       ComputeXIndexRange_(x, &min_xidx, &max_xidx);
-      // printf(" ... x=%d, min_xidx=%d, max_xidx=%d\n",x,min_xidx,max_xidx);
       load1_offsets_[current] = min_xidx * channels_;
       float* xs_lerp = (float*)(load1_shuffle_masks_ + current * channels_ * 3);
       char* shufmasks1 =
@@ -5049,15 +5049,12 @@ void CropResizeCastImage<T, U>::Configure_() {
         float lerp = xs_[ix].lerp;
         int widx0 = xs_[ix].lower -
                     load1_offsets_[current];  // word index within SSE vector
-        // printf(" ..... pix_ix=%d, lerp=%f, widx0=%d\n",ix,lerp,widx0);
         for (int ch = 0; ch < channels_; ++ch) {
           int idx = pix * channels_ + ch;
           xs_lerp[idx] = lerp;
           int shufvec = idx / 4;
           int shufidx = idx % 4;
           int widx = widx0 + ch;
-          // printf(" ....... ch=%d, idx=%d, shufvec=%d, shufidx=%d, widx=%d,
-          // shufmasks1[%ld...]=...\n",ch,idx,shufvec,shufidx,widx,shufvec*16+shufidx*sizeof(T));
           for (int b = 0; b < sizeof(T); ++b) {
             shufmasks1[shufvec * 16 + shufidx * sizeof(T) + b] =
                 widx * sizeof(T) + b;
@@ -5111,12 +5108,6 @@ void CropResizeCastImage<T, U>::Configure_() {
           xs_lerp[idx] = lerp;
         }
       }
-      /* debug
-      printf("load4from4_%dch :: x=%d -
-      index={%ld",channels_,x,index[0]*sizeof(T));
-      for (int i = 1;  i < 4;  ++i) printf(",%ld",index[i]*sizeof(T));
-      printf("}\n");
-      */
     } else if (load_group == 4) {
       // load4from8
       assert(current < num_load8_);
@@ -5133,20 +5124,6 @@ void CropResizeCastImage<T, U>::Configure_() {
           xs_lerp[idx] = lerp;
         }
       }
-      /* debug
-      printf("x=%d :: load8_x_[%d] = %d",x,current,load8_x_[current]);
-      printf(", load8_offsets_[%d] = {%d",current*4,load8_offsets_[current*4]);
-      for (int pix = 1;  pix < 4;  ++pix)
-      printf(",%d",load8_offsets_[current*4+pix]);
-      printf("}");
-      for (int ch = 0;  ch < channels_;  ++ch) {
-        float* p = (float*)(load8_mmxs_lerp_ + current * channels_ + ch);
-        printf(", lerp[%d] = {%.3f",current*channels_+ch,p[0]);
-        for (int j = 1;  j < 4;  ++j) printf(",%.3f",p[j]);
-        printf("}");
-      }
-      printf("\n");
-      */
     } else {
       assert(false);
     }
@@ -5517,19 +5494,6 @@ bool CropResizeCastImage<float, float>::clip_necessary() {
   return false;
 }
 
-#endif  // __SSE4_1__
-
-template <typename T, typename U>
-void crop_resize_single_image_common(
-    const T* image, const int64 in_height, const int64 in_width,
-    const int64 out_height, const int64 out_width, const int channels,
-    const int min_ix, const int max_ix, const CachedInterpolation* xs,
-    const int min_iy, const int max_iy, const CachedInterpolation* ys,
-    const float extrapolated_value, const bool flip_x, const bool flip_y,
-    U* output) TF_ATTRIBUTE_NOINLINE;
-
-#ifdef __SSE4_1__
-
 // full specializations of crop_resize_single_image_common for data types that
 // have vectorized implementations.
 // at the moment, this is uint8, int8, uint16, int16, int32, Eigen::half,
@@ -5594,8 +5558,9 @@ CROP_RESIZE_SINGLE_IMAGE_REGULAR(double, float)
 
 #else
 
-// the vectorized implementations need at least SSE4.1 to compile.
-// if that is not enabled, default to original code.
+// compile fall-back code if either
+// a) target is not a linux machine
+// b) target architecture does not support at least SSE4.1
 
 template <class T, class U>
 void crop_resize_single_image_common(

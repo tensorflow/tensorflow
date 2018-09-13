@@ -90,12 +90,13 @@ struct ResizeBilinear<CPUDevice, T> {
       return;
     }
 
-    std::vector<CachedInterpolation> ys(out_height + 1);
-    std::vector<CachedInterpolation> xs(out_width + 1);
-
     // Compute the cached interpolation weights on the x and y dimensions.
+    std::vector<CachedInterpolation> ys;
+    ys.resize(out_height + 1);
     compute_interpolation_weights(out_height, in_height, height_scale,
                                   ys.data());
+    std::vector<CachedInterpolation> xs;
+    xs.resize(out_width + 1);
     compute_interpolation_weights(out_width, in_width, width_scale, xs.data());
 
     // Scale x interpolation weights to avoid a multiplication during iteration.
@@ -111,6 +112,7 @@ struct ResizeBilinear<CPUDevice, T> {
           out_height - 1, ys.data(), 0.0f, false, false,
           output.data() + (int64)b * out_batch_num_values);
     }
+    // xs and ys are freed when they go out of scope
   }
 };
 }  // namespace functor
