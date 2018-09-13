@@ -39,7 +39,6 @@ mkdir -p /var/lock
 # So, we iterate over TF_TESTS_PER_GPU first.
 for j in `seq 0 $((TF_TESTS_PER_GPU-1))`; do
   for i in `seq 0 $((TF_GPU_COUNT-1))`; do
-    echo "Trying to lock GPU $i for index $j"
     exec {lock_fd}>/var/lock/gpulock${i}_${j} || exit 1
     if flock -n "$lock_fd";
     then
