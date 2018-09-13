@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/dump_graph_flags.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 
@@ -52,9 +52,9 @@ string MakeUniqueFilename(string name) {
 
   string filename = name;
   if (count > 0) {
-    strings::StrAppend(&filename, "_", count);
+    absl::StrAppend(&filename, "_", count);
   }
-  strings::StrAppend(&filename, ".pbtxt");
+  absl::StrAppend(&filename, ".pbtxt");
   return filename;
 }
 
@@ -69,7 +69,7 @@ string WriteTextProtoToUniqueFile(
                  << proto_type << ": " << status;
     return "(unavailable)";
   }
-  string filepath = strings::StrCat(dirname, "/", MakeUniqueFilename(name));
+  string filepath = absl::StrCat(dirname, "/", MakeUniqueFilename(name));
   status = WriteTextProto(Env::Default(), filepath, proto);
   if (!status.ok()) {
     LOG(WARNING) << "Failed to dump " << proto_type << " to file: " << filepath

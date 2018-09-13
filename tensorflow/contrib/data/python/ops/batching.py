@@ -272,9 +272,9 @@ def _padded_batch_dense_window(dataset, padded_shape, padding_value=None):
       padding_value = 0
 
   def batch_init_fn(_):
-    return array_ops.fill(
-        array_ops.concat([np.array([0], dtype=np.int32), padded_shape], 0),
-        constant_op.constant(padding_value, dtype=dataset.output_types))
+    batch_shape = array_ops.concat(
+        [np.array([0], dtype=np.int32), padded_shape], 0)
+    return gen_array_ops.empty(batch_shape, dtype=dataset.output_types)
 
   def batch_reduce_fn(state, value):
     return array_ops.concat([state, [value]], 0)

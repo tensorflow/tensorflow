@@ -327,7 +327,8 @@ Status ImagenetModelEvaluator::EvaluateModel() const {
     const auto& image_label = img_labels[i];
     const uint64_t shard_id = i + 1;
     shard_id_image_count_map[shard_id] = image_label.size();
-    auto func = [&]() {
+    auto func = [shard_id, &image_label, &model_labels, this, &observer, &eval,
+                 &counter]() {
       TF_CHECK_OK(EvaluateModelForShard(shard_id, image_label, model_labels,
                                         model_info_, params_, &observer,
                                         &eval));

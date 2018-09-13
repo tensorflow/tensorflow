@@ -42,6 +42,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -172,6 +173,11 @@ class MicroBenchmarks(test.Benchmark):
 
     def func():
       ops.EagerTensor(value, context=handle, device=device, dtype=dtype)
+
+    self._run(func, 30000)
+
+  def benchmark_create_constant(self):
+    func = lambda: constant_op.constant(3.0)
 
     self._run(func, 30000)
 
@@ -711,6 +717,25 @@ class MicroBenchmarks(test.Benchmark):
     func()
     assert np.equal(func(), make_keras_model()(data)).all()
     self._run(func, 30000)
+
+  def benchmarkScan(self):
+    elems = math_ops.range(1600)
+
+    def scan():
+      return functional_ops.scan(
+          lambda a, x: a + x, elems, parallel_iterations=1)
+
+    self._run(scan, 100)
+
+  def benchmarkScanDefun(self):
+    elems = math_ops.range(1600)
+
+    @function.defun
+    def scan():
+      return functional_ops.scan(
+          lambda a, x: a + x, elems, parallel_iterations=1)
+
+    self._run(scan, 100)
 
 
 if __name__ == "__main__":

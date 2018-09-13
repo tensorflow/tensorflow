@@ -74,9 +74,10 @@ class CpuExecutable : public Executable {
   static int64 ShapeSizeBytes(const Shape& shape);
 
   // Type of the computation function we expect in the JIT.
-  using ComputeFunctionType = void (*)(
-      void* /*result*/, const ExecutableRunOptions* /*run_options*/,
-      const void** /*args*/, void** /*temps*/, int64* /*profile_counters*/);
+  using ComputeFunctionType =
+      void (*)(void* /*result*/, const ExecutableRunOptions* /*run_options*/,
+               const void** /*args*/, void** /*buffer_table*/,
+               int64* /*profile_counters*/);
 
   const ComputeFunctionType& compute_function() const {
     return compute_function_;
@@ -95,15 +96,15 @@ class CpuExecutable : public Executable {
       absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile);
 
-  // Creates an array suitable for passing as the "temps" argument to the JIT
-  // compiled function pointer.
+  // Creates an array suitable for passing as the "buffer_table" argument to the
+  // JIT compiled function pointer.
   //
   // Returns (unowning_buffers, owning_buffers) where:
   //
-  //  - unowning_buffers.data() can be passed as the temps argument as-is and
-  //    includes pointers to the scratch storage required by the computation,
-  //    the live-out buffer into which the result will be written and entry
-  //    computation parameters.
+  //  - unowning_buffers.data() can be passed as the buffer_table argument as-is
+  //    and includes pointers to the scratch storage required by the
+  //    computation, the live-out buffer into which the result will be written
+  //    and entry computation parameters.
   //
   //  - owning_buffers contains owning pointers to the buffers that were
   //    allocated by this routine.  This routine allocates buffers for temporary
@@ -111,8 +112,8 @@ class CpuExecutable : public Executable {
   //    result.
   StatusOr<std::pair<std::vector<se::DeviceMemoryBase>,
                      std::vector<OwningDeviceMemory>>>
-  CreateTempArray(DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-                  absl::Span<const ShapedBuffer* const> arguments);
+  CreateBufferTable(DeviceMemoryAllocator* memory_allocator, int device_ordinal,
+                    absl::Span<const ShapedBuffer* const> arguments);
 
   // Calls the generated function performing the computation with the given
   // arguments using the supplied buffers.

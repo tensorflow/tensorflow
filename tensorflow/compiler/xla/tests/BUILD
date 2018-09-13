@@ -75,7 +75,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_headers_lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
@@ -648,6 +647,7 @@ xla_test(
     ],
     shard_count = 48,
     tags = [
+        "broken",
         "manual",
         "notap",
     ],
@@ -2135,6 +2135,8 @@ xla_test(
     shard_count = 30,
     tags = [
         "enable_for_xla_interpreter",
+        # Require optimized builds, iota_test_cpu is very slow in fastbuild.
+        "optonly",
     ],
     deps = [
         ":client_library_test_base",

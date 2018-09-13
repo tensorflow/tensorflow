@@ -117,7 +117,7 @@ TEST(CTCBeamSearchTest, SimpleTest) {
   EXPECT_THAT(decoded_outputs[2], ElementsAre(1, 1));
   // Check log probabilities output.
   EXPECT_THAT(m.GetLogProbabilitiesOutput(),
-              ElementsAreArray(ArrayFloatNear({0.32134813})));
+              ElementsAreArray(ArrayFloatNear({-0.357094})));
 }
 
 TEST(CTCBeamSearchTest, MultiBatchTest) {
@@ -148,9 +148,8 @@ TEST(CTCBeamSearchTest, MultiBatchTest) {
   EXPECT_THAT(decoded_outputs[1], ElementsAre(1, 0, 0, 0));
   EXPECT_THAT(decoded_outputs[2], ElementsAre(3, 2));
   // Check log probabilities output.
-  EXPECT_THAT(
-      m.GetLogProbabilitiesOutput(),
-      ElementsAreArray(ArrayFloatNear({0.46403232, 0.49500442, 0.40443572})));
+  EXPECT_THAT(m.GetLogProbabilitiesOutput(),
+              ElementsAreArray(ArrayFloatNear({-1.88343, -1.41188, -1.20958})));
 }
 
 TEST(CTCBeamSearchTest, MultiPathsTest) {
@@ -188,8 +187,8 @@ TEST(CTCBeamSearchTest, MultiPathsTest) {
   EXPECT_THAT(decoded_outputs[5], ElementsAre(2, 2));
   // Check log probabilities output.
   EXPECT_THAT(m.GetLogProbabilitiesOutput(),
-              ElementsAreArray(ArrayFloatNear(
-                  {0.91318405, 0.9060272, 1.0780245, 0.64358956})));
+              ElementsAreArray(
+                  ArrayFloatNear({-2.65148, -2.65864, -2.17914, -2.61357})));
 }
 
 TEST(CTCBeamSearchTest, NonEqualSequencesTest) {
@@ -223,7 +222,7 @@ TEST(CTCBeamSearchTest, NonEqualSequencesTest) {
   EXPECT_THAT(decoded_outputs[2], ElementsAre(3, 1));
   // Check log probabilities output.
   EXPECT_THAT(m.GetLogProbabilitiesOutput(),
-              ElementsAreArray(ArrayFloatNear({0., 1.0347567, 0.7833005})));
+              ElementsAreArray(ArrayFloatNear({-0.97322, -1.16334, -2.15553})));
 }
 
 }  // namespace

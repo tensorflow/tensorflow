@@ -42,7 +42,7 @@ string SerializedToReadable(string serialized) {
   string result;
   result += '"';
   for (char c : serialized)
-    result += strings::StrCat("\\x", strings::Hex(c, strings::ZERO_PAD_2));
+    result += strings::StrCat("\\x", strings::Hex(c, strings::kZeroPad2));
   result += '"';
   return result;
 }

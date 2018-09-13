@@ -1543,6 +1543,10 @@ def main():
       if environ_cp.get('TF_DOWNLOAD_CLANG') != '1':
         # Set up which clang we should use as the cuda / host compiler.
         set_clang_cuda_compiler_path(environ_cp)
+      else:
+        # Use downloaded LLD for linking.
+        write_to_bazelrc('build:cuda_clang --config=download_clang_use_lld')
+        write_to_bazelrc('test:cuda_clang --config=download_clang_use_lld')
     else:
       # Set up which gcc nvcc should use as the host compiler
       # No need to set this on Windows

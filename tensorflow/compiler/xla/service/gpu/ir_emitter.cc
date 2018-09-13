@@ -764,5 +764,20 @@ StatusOr<llvm::Value*> IrEmitter::ComputeNestedElement(
   return Load(return_buffer);
 }
 
+std::vector<llvm_ir::IrArray> IrEmitter::ConstructIrArrayForOutputs(
+    const HloInstruction& hlo) {
+  std::vector<llvm_ir::IrArray> output_arrays;
+  if (ShapeUtil::IsTuple(hlo.shape())) {
+    int64 num_outputs = ShapeUtil::TupleElementCount(hlo.shape());
+    output_arrays.reserve(num_outputs);
+    for (int64 i = 0; i < num_outputs; ++i) {
+      output_arrays.push_back(GetIrArray(hlo, hlo, {i}));
+    }
+  } else {
+    output_arrays.push_back(GetIrArray(hlo, hlo));
+  }
+  return output_arrays;
+}
+
 }  // namespace gpu
 }  // namespace xla

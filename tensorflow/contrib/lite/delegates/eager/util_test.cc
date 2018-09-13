@@ -26,6 +26,7 @@ namespace eager {
 namespace {
 
 using tensorflow::DT_FLOAT;
+using tensorflow::DT_INT32;
 using tensorflow::Tensor;
 using ::testing::ElementsAre;
 
@@ -71,27 +72,41 @@ TEST(UtilTest, ConvertStatus) {
   EXPECT_TRUE(context.error.empty());
 }
 
-TEST(UtilTest, CopyShape) {
+TEST(UtilTest, CopyShapeAndType) {
   TestContext context;
   context.ReportError = ReportError;
   context.ResizeTensor = ResizeTensor;
 
   TfLiteTensor dst;
 
-  EXPECT_EQ(CopyShape(&context, Tensor(), &dst), kTfLiteOk);
+  EXPECT_EQ(CopyShapeAndType(&context, Tensor(), &dst), kTfLiteOk);
   EXPECT_THAT(context.new_size, ElementsAre(0));
+  EXPECT_EQ(dst.type, kTfLiteFloat32);
 
-  EXPECT_EQ(CopyShape(&context, Tensor(DT_FLOAT, {1, 2}), &dst), kTfLiteOk);
+  EXPECT_EQ(CopyShapeAndType(&context, Tensor(DT_FLOAT, {1, 2}), &dst),
+            kTfLiteOk);
   EXPECT_THAT(context.new_size, ElementsAre(1, 2));
+  EXPECT_EQ(dst.type, kTfLiteFloat32);
 
-  EXPECT_EQ(CopyShape(&context, Tensor(DT_FLOAT, {1LL << 44, 2}), &dst),
+  EXPECT_EQ(CopyShapeAndType(&context, Tensor(DT_INT32, {1, 2}), &dst),
+            kTfLiteOk);
+  EXPECT_THAT(context.new_size, ElementsAre(1, 2));
+  EXPECT_EQ(dst.type, kTfLiteInt32);
+
+  EXPECT_EQ(CopyShapeAndType(&context, Tensor(DT_FLOAT, {1LL << 44, 2}), &dst),
             kTfLiteError);
   EXPECT_EQ(context.error,
             "Dimension value in TensorFlow shape is larger than supported by "
             "TF Lite");
+
+  EXPECT_EQ(
+      CopyShapeAndType(&context, Tensor(tensorflow::DT_HALF, {1, 2}), &dst),
+      kTfLiteError);
+  EXPECT_EQ(context.error,
+            "TF Lite does not support TensorFlow data type: half");
 }
 
-TEST(UtilTest, TypeConversions) {
+TEST(UtilTest, TypeConversionsFromTFLite) {
   EXPECT_EQ(TF_FLOAT, GetTensorFlowDataType(kTfLiteNoType));
   EXPECT_EQ(TF_FLOAT, GetTensorFlowDataType(kTfLiteFloat32));
   EXPECT_EQ(TF_INT16, GetTensorFlowDataType(kTfLiteInt16));
@@ -101,6 +116,19 @@ TEST(UtilTest, TypeConversions) {
   EXPECT_EQ(TF_COMPLEX64, GetTensorFlowDataType(kTfLiteComplex64));
   EXPECT_EQ(TF_STRING, GetTensorFlowDataType(kTfLiteString));
   EXPECT_EQ(TF_BOOL, GetTensorFlowDataType(kTfLiteBool));
+}
+
+TEST(UtilTest, TypeConversionsFromTensorFlow) {
+  EXPECT_EQ(kTfLiteFloat32, GetTensorFlowLiteType(TF_FLOAT));
+  EXPECT_EQ(kTfLiteInt16, GetTensorFlowLiteType(TF_INT16));
+  EXPECT_EQ(kTfLiteInt32, GetTensorFlowLiteType(TF_INT32));
+  EXPECT_EQ(kTfLiteUInt8, GetTensorFlowLiteType(TF_UINT8));
+  EXPECT_EQ(kTfLiteInt64, GetTensorFlowLiteType(TF_INT64));
+  EXPECT_EQ(kTfLiteComplex64, GetTensorFlowLiteType(TF_COMPLEX64));
+  EXPECT_EQ(kTfLiteString, GetTensorFlowLiteType(TF_STRING));
+  EXPECT_EQ(kTfLiteBool, GetTensorFlowLiteType(TF_BOOL));
+  EXPECT_EQ(kTfLiteNoType, GetTensorFlowLiteType(TF_RESOURCE));
+  EXPECT_EQ(kTfLiteNoType, GetTensorFlowLiteType(TF_VARIANT));
 }
 
 }  // namespace

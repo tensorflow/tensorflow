@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -43,6 +44,20 @@ using absl::StrFormat;
 using absl::StrJoin;
 
 const double kF16max = 65504;
+
+// Creates and returns a schedule created using the order of the instructions in
+// the HloComputation::instructions() vectors in the module.
+HloSchedule ScheduleFromInstructionOrder(const HloModule* module) {
+  HloSchedule schedule(module);
+  for (const HloComputation* computation : module->computations()) {
+    if (!computation->IsFusionComputation()) {
+      for (const HloInstruction* instruction : computation->instructions()) {
+        schedule.GetOrCreateSequence(computation).push_back(instruction);
+      }
+    }
+  }
+  return schedule;
+}
 
 // Parser for the HloModule::ToString() format text.
 class HloParser {
@@ -90,16 +105,13 @@ class HloParser {
                             string* root_name);
   bool ParseInstruction(HloComputation::Builder* builder, string* root_name);
   bool ParseControlPredecessors(HloInstruction* instruction);
-  bool ParseLiteral(std::unique_ptr<Literal>* literal, const Shape& shape);
-  bool ParseTupleLiteral(std::unique_ptr<Literal>* literal, const Shape& shape);
-  bool ParseNonTupleLiteral(std::unique_ptr<Literal>* literal,
-                            const Shape& shape);
-  bool ParseDenseLiteral(std::unique_ptr<Literal>* literal, const Shape& shape);
-  bool ParseSparseLiteral(std::unique_ptr<Literal>* literal,
-                          const Shape& shape);
+  bool ParseLiteral(Literal* literal, const Shape& shape);
+  bool ParseTupleLiteral(Literal* literal, const Shape& shape);
+  bool ParseNonTupleLiteral(Literal* literal, const Shape& shape);
+  bool ParseDenseLiteral(Literal* literal, const Shape& shape);
+  bool ParseSparseLiteral(Literal* literal, const Shape& shape);
   template <typename LiteralNativeT>
-  bool ParseSparseLiteralHelper(std::unique_ptr<Literal>* literal,
-                                const Shape& shape);
+  bool ParseSparseLiteralHelper(Literal* literal, const Shape& shape);
 
   // Sets the sub-value of literal at the given index to the given value. The
   // literal's shape must have the default layout.
@@ -221,7 +233,7 @@ class HloParser {
   bool ParseWindowPad(std::vector<std::vector<tensorflow::int64>>* pad);
 
   bool ParseSliceRanges(SliceRanges* result);
-  bool ParsePrecisionList(std::vector<PrecisionConfigProto::Precision>* result);
+  bool ParsePrecisionList(std::vector<PrecisionConfig::Precision>* result);
   bool ParseInt64List(const TokKind start, const TokKind end,
                       const TokKind delim,
                       std::vector<tensorflow::int64>* result);
@@ -240,7 +252,7 @@ class HloParser {
   bool ParseFftType(FftType* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseRandomDistribution(RandomDistribution* result);
-  bool ParsePrecision(PrecisionConfigProto::Precision* result);
+  bool ParsePrecision(PrecisionConfig::Precision* result);
   bool ParseInt64(tensorflow::int64* result);
   bool ParseDouble(double* result);
   bool ParseBool(bool* result);
@@ -366,9 +378,25 @@ bool HloParser::ParseHloModule() {
     return false;
   }
 
+  absl::optional<bool> is_scheduled;
+  std::unordered_map<string, AttrConfig> attrs;
+  attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
+  if (!ParseAttributes(attrs)) {
+    return false;
+  }
+
   module_ = absl::make_unique<HloModule>(name, config_);
 
-  return ParseComputations();
+  if (!ParseComputations()) {
+    return false;
+  }
+
+  if (is_scheduled.has_value() && *is_scheduled) {
+    TF_CHECK_OK(
+        module_->set_schedule(ScheduleFromInstructionOrder(module_.get())));
+  }
+
+  return true;
 }
 
 // computations ::= (computation)+
@@ -530,10 +558,6 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
   attrs["backend_config"] = {/*required=*/false, AttrTy::kString,
                              &backend_config};
 
-  optional<std::vector<PrecisionConfigProto::Precision>> operand_precision;
-  attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
-                                &operand_precision};
-
   HloInstruction* instruction;
   switch (opcode) {
     case HloOpcode::kParameter: {
@@ -550,7 +574,7 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kConstant: {
-      std::unique_ptr<Literal> literal;
+      Literal literal;
       if (!ParseToken(TokKind::kLparen,
                       "expects '(' before constant literal") ||
           !ParseLiteral(&literal, shape) ||
@@ -913,6 +937,9 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
       attrs["feature_group_count"] = {/*required=*/false, AttrTy::kInt64,
                                       &feature_group_count};
+      optional<std::vector<PrecisionConfig::Precision>> operand_precision;
+      attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
+                                    &operand_precision};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
@@ -923,9 +950,17 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       if (!feature_group_count) {
         feature_group_count = 1;
       }
+      PrecisionConfig precision_config;
+      if (operand_precision) {
+        *precision_config.mutable_operand_precision() = {
+            operand_precision->begin(), operand_precision->end()};
+      } else {
+        precision_config.mutable_operand_precision()->Resize(
+            operands.size(), PrecisionConfig::DEFAULT);
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateConvolve(
-          shape, /*lhs=*/operands[0], /*rhs=*/operands[1], *window, *dnums,
-          feature_group_count.value()));
+          shape, /*lhs=*/operands[0], /*rhs=*/operands[1],
+          feature_group_count.value(), *window, *dnums, precision_config));
       break;
     }
     case HloOpcode::kFft: {
@@ -1241,11 +1276,14 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       optional<string> custom_call_target;
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
+      optional<int64> feature_group_count;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["dim_labels"] = {/*required=*/false,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
+      attrs["feature_group_count"] = {/*required=*/false, AttrTy::kInt64,
+                                      &feature_group_count};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -1256,6 +1294,9 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       }
       if (dnums.has_value()) {
         instruction->set_convolution_dimension_numbers(*dnums);
+      }
+      if (feature_group_count.has_value()) {
+        instruction->set_feature_group_count(*feature_group_count);
       }
       break;
     }
@@ -1272,6 +1313,9 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       optional<std::vector<tensorflow::int64>> rhs_batch_dims;
       attrs["rhs_batch_dims"] = {/*required=*/false, AttrTy::kBracedInt64List,
                                  &rhs_batch_dims};
+      optional<std::vector<PrecisionConfig::Precision>> operand_precision;
+      attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
+                                    &operand_precision};
 
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
@@ -1296,8 +1340,17 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
                                                 rhs_batch_dims->end()};
       }
 
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateDot(shape, operands[0], operands[1], dnum));
+      PrecisionConfig precision_config;
+      if (operand_precision) {
+        *precision_config.mutable_operand_precision() = {
+            operand_precision->begin(), operand_precision->end()};
+      } else {
+        precision_config.mutable_operand_precision()->Resize(
+            operands.size(), PrecisionConfig::DEFAULT);
+      }
+
+      instruction = builder->AddInstruction(HloInstruction::CreateDot(
+          shape, operands[0], operands[1], dnum, precision_config));
       break;
     }
     case HloOpcode::kGather: {
@@ -1413,12 +1466,6 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
   }
   if (backend_config) {
     instruction->set_raw_backend_config_string(std::move(*backend_config));
-  }
-  if (operand_precision) {
-    PrecisionConfigProto precision_config;
-    *precision_config.mutable_operand_precision() = {operand_precision->begin(),
-                                                     operand_precision->end()};
-    instruction->set_precision_config(precision_config);
   }
   return AddInstruction(name, instruction, name_loc);
 }  // NOLINT(readability/fn_size)
@@ -1760,8 +1807,7 @@ bool HloParser::EatShapeAndCheckCompatible(const Shape& shape) {
 // literal
 //  ::= tuple
 //  ::= non_tuple
-bool HloParser::ParseLiteral(std::unique_ptr<Literal>* literal,
-                             const Shape& shape) {
+bool HloParser::ParseLiteral(Literal* literal, const Shape& shape) {
   return ShapeUtil::IsTuple(shape) ? ParseTupleLiteral(literal, shape)
                                    : ParseNonTupleLiteral(literal, shape);
 }
@@ -1771,8 +1817,7 @@ bool HloParser::ParseLiteral(std::unique_ptr<Literal>* literal,
 // literal_list
 //  ::= /*empty*/
 //  ::= literal (',' literal)*
-bool HloParser::ParseTupleLiteral(std::unique_ptr<Literal>* literal,
-                                  const Shape& shape) {
+bool HloParser::ParseTupleLiteral(Literal* literal, const Shape& shape) {
   if (!EatShapeAndCheckCompatible(shape)) {
     return TokenError(StrCat("expects tuple constant in shape ",
                              ShapeUtil::HumanString(shape)));
@@ -1780,8 +1825,7 @@ bool HloParser::ParseTupleLiteral(std::unique_ptr<Literal>* literal,
   if (!ParseToken(TokKind::kLparen, "expects '(' in front of tuple elements")) {
     return false;
   }
-  std::vector<std::unique_ptr<Literal>> elements(
-      ShapeUtil::TupleElementCount(shape));
+  std::vector<Literal> elements(ShapeUtil::TupleElementCount(shape));
 
   if (lexer_.GetKind() == TokKind::kRparen) {
     // empty
@@ -1807,8 +1851,7 @@ bool HloParser::ParseTupleLiteral(std::unique_ptr<Literal>* literal,
 //   ::= rank01
 //   ::= rank2345
 // rank2345 ::= shape sparse_or_nested_array
-bool HloParser::ParseNonTupleLiteral(std::unique_ptr<Literal>* literal,
-                                     const Shape& shape) {
+bool HloParser::ParseNonTupleLiteral(Literal* literal, const Shape& shape) {
   if (LayoutUtil::IsSparseArray(shape)) {
     return ParseSparseLiteral(literal, shape);
   }
@@ -1817,8 +1860,7 @@ bool HloParser::ParseNonTupleLiteral(std::unique_ptr<Literal>* literal,
   return ParseDenseLiteral(literal, shape);
 }
 
-bool HloParser::ParseDenseLiteral(std::unique_ptr<Literal>* literal,
-                                  const Shape& shape) {
+bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
   const tensorflow::int64 rank = ShapeUtil::Rank(shape);
   if (rank > 1 && !EatShapeAndCheckCompatible(shape)) {
     return false;
@@ -1912,7 +1954,7 @@ bool HloParser::ParseDenseLiteral(std::unique_ptr<Literal>* literal,
           // TODO(congliu): bool type literals with rank >= 1 are actually
           // printed in a compact form instead of "true" or "false". Fix that.
           if (!SetValueInLiteral(lexer_.GetKind() == TokKind::kw_true,
-                                 linear_index++, literal->get())) {
+                                 linear_index++, literal)) {
             return false;
           }
           lexer_.Lex();
@@ -1923,7 +1965,7 @@ bool HloParser::ParseDenseLiteral(std::unique_ptr<Literal>* literal,
             return Error(loc, StrCat("expects integer for primitive type: ",
                                      PrimitiveType_Name(shape.element_type())));
           }
-          if (!SetValueInLiteral(value, linear_index++, literal->get())) {
+          if (!SetValueInLiteral(value, linear_index++, literal)) {
             return false;
           }
         } else if (primitive_util::IsFloatingPointType(shape.element_type())) {
@@ -1934,7 +1976,7 @@ bool HloParser::ParseDenseLiteral(std::unique_ptr<Literal>* literal,
                 loc, StrCat("expect floating point value for primitive type: ",
                             PrimitiveType_Name(shape.element_type())));
           }
-          if (!SetValueInLiteral(value, linear_index++, literal->get())) {
+          if (!SetValueInLiteral(value, linear_index++, literal)) {
             return false;
           }
         } else {
@@ -1946,12 +1988,11 @@ bool HloParser::ParseDenseLiteral(std::unique_ptr<Literal>* literal,
     }  // end of switch
   } while (nest_level > 0);
 
-  *literal = (*literal)->Relayout(shape.layout());
+  *literal = literal->Relayout(shape.layout());
   return true;
 }
 
-bool HloParser::ParseSparseLiteral(std::unique_ptr<Literal>* literal,
-                                   const Shape& shape) {
+bool HloParser::ParseSparseLiteral(Literal* literal, const Shape& shape) {
   if (!EatShapeAndCheckCompatible(shape)) {
     return false;
   }
@@ -1991,13 +2032,12 @@ bool HloParser::ParseSparseLiteral(std::unique_ptr<Literal>* literal,
 }
 
 template <typename LiteralNativeT>
-bool HloParser::ParseSparseLiteralHelper(std::unique_ptr<Literal>* literal,
-                                         const Shape& shape) {
+bool HloParser::ParseSparseLiteralHelper(Literal* literal, const Shape& shape) {
   std::vector<tensorflow::int64> index;
 
   tensorflow::int64 rank = ShapeUtil::Rank(shape);
 
-  *literal = absl::make_unique<Literal>(shape);
+  *literal = Literal(shape);
 
   if (!ParseToken(TokKind::kLbrace,
                   "expects '{' at the beginning of a sparse literal")) {
@@ -2071,7 +2111,7 @@ bool HloParser::ParseSparseLiteralHelper(std::unique_ptr<Literal>* literal,
       return false;
     }
 
-    if ((*literal)->sparse_element_count() + 1 ==
+    if (literal->sparse_element_count() + 1 ==
         LayoutUtil::MaxSparseElements(shape.layout())) {
       return Error(
           lexer_.GetLoc(),
@@ -2079,10 +2119,10 @@ bool HloParser::ParseSparseLiteralHelper(std::unique_ptr<Literal>* literal,
                  ShapeUtil::HumanStringWithLayout(shape)));
     }
 
-    (*literal)->AppendSparseElement(index, value);
+    literal->AppendSparseElement(index, value);
   }
 
-  (*literal)->SortSparseElements();
+  literal->SortSparseElements();
   return true;
 }
 
@@ -2397,11 +2437,11 @@ bool HloParser::ParseAttributeHelper(
         return ParseDomain(static_cast<DomainData*>(attr_out_ptr));
       }
       case AttrTy::kPrecisionList: {
-        std::vector<PrecisionConfigProto::Precision> result;
+        std::vector<PrecisionConfig::Precision> result;
         if (!ParsePrecisionList(&result)) {
           return false;
         }
-        static_cast<optional<std::vector<PrecisionConfigProto::Precision>>*>(
+        static_cast<optional<std::vector<PrecisionConfig::Precision>>*>(
             attr_out_ptr)
             ->emplace(result);
         return true;
@@ -2685,9 +2725,9 @@ bool HloParser::ParseSliceRanges(SliceRanges* result) {
 //   ::= /*empty*/
 //   ::= precision_val (delim precision_val)*
 bool HloParser::ParsePrecisionList(
-    std::vector<PrecisionConfigProto::Precision>* result) {
+    std::vector<PrecisionConfig::Precision>* result) {
   auto parse_and_add_item = [&]() {
-    PrecisionConfigProto::Precision item;
+    PrecisionConfig::Precision item;
     if (!ParsePrecision(&item)) {
       return false;
     }
@@ -3019,7 +3059,7 @@ bool HloParser::ParseRandomDistribution(RandomDistribution* result) {
   return true;
 }
 
-bool HloParser::ParsePrecision(PrecisionConfigProto::Precision* result) {
+bool HloParser::ParsePrecision(PrecisionConfig::Precision* result) {
   VLOG(1) << "ParsePrecision";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects random distribution");

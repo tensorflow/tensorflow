@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -111,8 +112,8 @@ TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfDotUnfused) {
   HloComputation::Builder builder(TestName());
   auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(S32, {1, 1}), "0"));
-  auto dot1 = builder.AddInstruction(HloInstruction::CreateCanonicalDot(
-      ShapeUtil::MakeShape(S32, {1, 1}), param0, param0));
+  auto dot1 = builder.AddInstruction(
+      CreateCanonicalDot(ShapeUtil::MakeShape(S32, {1, 1}), param0, param0));
   auto reshape2 = builder.AddInstruction(HloInstruction::CreateReshape(
       ShapeUtil::MakeShape(S32, {1, 1, 1}), dot1));
 
@@ -128,8 +129,8 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfDotUnfused) {
   HloComputation::Builder builder(TestName());
   auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(S32, {1, 1}), "0"));
-  auto dot1 = builder.AddInstruction(HloInstruction::CreateCanonicalDot(
-      ShapeUtil::MakeShape(S32, {1, 1}), param0, param0));
+  auto dot1 = builder.AddInstruction(
+      CreateCanonicalDot(ShapeUtil::MakeShape(S32, {1, 1}), param0, param0));
   auto transpose2 = builder.AddInstruction(HloInstruction::CreateTranspose(
       ShapeUtil::MakeShape(S32, {1, 1}), dot1, {0, 1}));
 

@@ -267,14 +267,17 @@ class IndexedArrayAnalysis {
 
   StatusOr<Array*> ComputeArrayForDotWithIndexedLhs(
       const Shape& shape, const DotDimensionNumbers& dim_numbers,
-      ScalarIndexedConstantArray* lhs, ConstantArray* rhs);
+      const PrecisionConfig& precision_config, ScalarIndexedConstantArray* lhs,
+      ConstantArray* rhs);
 
   StatusOr<Array*> ComputeArrayForDotWithIndexedRhs(
       const Shape& shape, const DotDimensionNumbers& dim_numbers,
-      ConstantArray* lhs, ScalarIndexedConstantArray* rhs);
+      const PrecisionConfig& precision_config, ConstantArray* lhs,
+      ScalarIndexedConstantArray* rhs);
 
   StatusOr<Array*> ComputeArrayForDot(const Shape& shape,
                                       const DotDimensionNumbers& dim_numbers,
+                                      const PrecisionConfig& precision_config,
                                       Array* lhs, Array* rhs);
 
   // This tries to fold a ScalarIndexedArray which has another
@@ -344,21 +347,19 @@ class IndexedArrayAnalysis {
     }
   }
 
-  Literal* TakeOwnership(std::unique_ptr<Literal> literal) {
+  Literal* TakeOwnership(Literal literal) {
     owned_literals_.push_back(std::move(literal));
-    return owned_literals_.back().get();
+    return &owned_literals_.back();
   }
 
-  StatusOr<Literal*> TakeOwnership(
-      StatusOr<std::unique_ptr<Literal>> literal_or_error) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
-                        std::move(literal_or_error));
+  StatusOr<Literal*> TakeOwnership(StatusOr<Literal> literal_or_error) {
+    TF_ASSIGN_OR_RETURN(Literal literal, std::move(literal_or_error));
     owned_literals_.push_back(std::move(literal));
-    return owned_literals_.back().get();
+    return &owned_literals_.back();
   }
 
   std::vector<std::unique_ptr<Array>> owned_tensors_;
-  std::vector<std::unique_ptr<Literal>> owned_literals_;
+  std::vector<Literal> owned_literals_;
   tensorflow::gtl::FlatMap<const HloInstruction*, Array*> cache_;
 };
 

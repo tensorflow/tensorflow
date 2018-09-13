@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/allocation.h"
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/builtin_ops.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/context_util.h"
 #include "tensorflow/contrib/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
@@ -1115,6 +1115,14 @@ class NNAPIDelegateKernel {
     CHECK_NN(context, ANeuralNetworksModel_identifyInputsAndOutputs(
                           nn_model_.get(), inputs.size(), inputs.data(),
                           outputs.size(), outputs.data()));
+
+    // Set relaxed computation mode for fp32 if possible.
+    if (kAndroidSdkVersion >= kMinSdkVersionForNNAPI11) {
+      CHECK_NN(context,
+               ANeuralNetworksModel_relaxComputationFloat32toFloat16(
+                   nn_model_.get(), context->allow_fp32_relax_to_fp16));
+    }
+
     // Finalize the model
     CHECK_NN(context, ANeuralNetworksModel_finish(nn_model_.get()));
 

@@ -240,7 +240,7 @@ TEST_F(ConstantFoldingTest, AddTree) {
   }
 }
 
-TEST_F(ConstantFoldingTest, ConvPushDownTestNHWC) {
+TEST_F(ConstantFoldingTest, ConvPushDownTest) {
   // Tests if the following rewrite is performed:
   //
   //         *                       Conv2D
@@ -2030,6 +2030,130 @@ TEST_F(ConstantFoldingTest, TileWithMultipliesBeingOne) {
   CompareGraphs(want, got);
 }
 
+TEST_F(ConstantFoldingTest, MergeConcat) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Output in1 = ops::Variable(scope.WithOpName("in1"), {4, 6}, DT_FLOAT);
+  Output in2 = ops::Variable(scope.WithOpName("in2"), {4, 6}, DT_FLOAT);
+  Output in3 = ops::Variable(scope.WithOpName("in3"), {4, 6}, DT_FLOAT);
+  Output axis = ops::Const(scope.WithOpName("axis"), 0, {});
+
+  ops::Concat c1(scope.WithOpName("c1"), {in1, in2}, axis);
+  ops::Concat c2(scope.WithOpName("c2"), {Output(c1), in3}, axis);
+
+  GrapplerItem item;
+  item.fetch = {"c2"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef got;
+  Status status = optimizer.Optimize(nullptr, item, &got);
+  TF_EXPECT_OK(status);
+
+  GraphDef want;
+  AddNode("in1", "VariableV2", {}, {}, &want);
+  AddNode("in2", "VariableV2", {}, {}, &want);
+  AddNode("in3", "VariableV2", {}, {}, &want);
+  AddNode("axis", "Const", {}, {}, &want);
+  AddNode("c2", "ConcatV2", {"in1", "in2", "in3", "axis"}, {}, &want);
+
+  CompareGraphs(want, got);
+}
+
+TEST_F(ConstantFoldingTest, MergeConcat_SameInput) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Output in1 = ops::Variable(scope.WithOpName("in1"), {4, 6}, DT_FLOAT);
+  Output in2 = ops::Variable(scope.WithOpName("in2"), {4, 6}, DT_FLOAT);
+  Output in3 = ops::Variable(scope.WithOpName("in3"), {4, 6}, DT_FLOAT);
+  Output axis = ops::Const(scope.WithOpName("axis"), 0, {});
+
+  ops::Concat c1(scope.WithOpName("c1"), {in1, in2}, axis);
+  ops::Concat c2(scope.WithOpName("c2"), {Output(c1), in3, Output(c1)}, axis);
+
+  GrapplerItem item;
+  item.fetch = {"c2"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef got;
+  Status status = optimizer.Optimize(nullptr, item, &got);
+  TF_EXPECT_OK(status);
+
+  GraphDef want;
+  AddNode("in1", "VariableV2", {}, {}, &want);
+  AddNode("in2", "VariableV2", {}, {}, &want);
+  AddNode("in3", "VariableV2", {}, {}, &want);
+  AddNode("axis", "Const", {}, {}, &want);
+  AddNode("c2", "ConcatV2", {"in1", "in2", "in3", "in1", "in2", "axis"}, {},
+          &want);
+
+  CompareGraphs(want, got);
+}
+
+TEST_F(ConstantFoldingTest, MergeConcat_ConcatWithConst) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Output in1 = ops::Variable(scope.WithOpName("in1"), {2, 6}, DT_FLOAT);
+  Output in2 = ops::Variable(scope.WithOpName("in2"), {}, DT_FLOAT);
+  Output in3 = ops::Variable(scope.WithOpName("in3"), {4, 6}, DT_FLOAT);
+  Output axis = ops::Const(scope.WithOpName("axis"), 0, {});
+
+  ops::Concat c1(scope.WithOpName("c1"), {in1, in2}, axis);
+  ops::Concat c2(scope.WithOpName("c2"), {Output(c1), in3}, axis);
+
+  GrapplerItem item;
+  item.fetch = {"c2"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef got;
+  Status status = optimizer.Optimize(nullptr, item, &got);
+  TF_EXPECT_OK(status);
+
+  GraphDef want;
+  AddNode("in1", "VariableV2", {}, {}, &want);
+  AddNode("in2", "VariableV2", {}, {}, &want);
+  AddNode("in3", "VariableV2", {}, {}, &want);
+  AddNode("axis", "Const", {}, {}, &want);
+  AddNode("c2", "ConcatV2", {"in1", "in2", "in3", "axis"}, {}, &want);
+
+  CompareGraphs(want, got);
+}
+
+TEST_F(ConstantFoldingTest, MergeConcat_AxisMismatch) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Output in1 = ops::Variable(scope.WithOpName("in1"), {2, 5}, DT_FLOAT);
+  Output in2 = ops::Variable(scope.WithOpName("in2"), {}, DT_FLOAT);
+  Output in3 = ops::Variable(scope.WithOpName("in3"), {4, 6}, DT_FLOAT);
+  Output axis1 = ops::Const(scope.WithOpName("axis1"), 0, {});
+  Output axis2 = ops::Const(scope.WithOpName("axis2"), 1, {});
+
+  ops::Concat c1(scope.WithOpName("c1"), {in1, in2}, axis2);
+  ops::Concat c2(scope.WithOpName("c2"), {Output(c1), in3}, axis1);
+
+  GrapplerItem item;
+  item.fetch = {"c2"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef got;
+  Status status = optimizer.Optimize(nullptr, item, &got);
+  TF_EXPECT_OK(status);
+
+  GraphDef want;
+  AddNode("in1", "VariableV2", {}, {}, &want);
+  AddNode("in2", "VariableV2", {}, {}, &want);
+  AddNode("in3", "VariableV2", {}, {}, &want);
+  AddNode("axis1", "Const", {}, {}, &want);
+  AddNode("axis2", "Const", {}, {}, &want);
+  AddNode("c1", "ConcatV2", {"in1", "in2", "axis2"}, {}, &want);
+  AddNode("c2", "ConcatV2", {"c1", "in3", "axis1"}, {}, &want);
+
+  CompareGraphs(want, got);
+}
+
 TEST_F(ConstantFoldingTest, PaddingWithZeroSize) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
 
@@ -3079,110 +3203,6 @@ TEST_F(ConstantFoldingTest, FoldingPreservesDenormalFlushing) {
   EXPECT_EQ(1, tensors.size());
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
-
-#if GOOGLE_CUDA
-TEST_F(ConstantFoldingTest, ConvPushDownTestNCHW) {
-  // Tests if the following rewrite is performed:
-  //
-  //         *                       Conv2D
-  //        / \                       / \
-  //       c  Conv2D        -->      x  (c * filter)
-  //           / \
-  //          x  filter
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-
-  int input_channel = 1;
-  int output_channel = 2;
-  int filter_size = 1;
-
-  TensorShape filter_shape(
-      {filter_size, filter_size, input_channel, output_channel});
-
-  // Filter shape: [1, 1, 1, 2]
-  // Filter for output channel 0 = {2.f}
-  // Filter for output channel 1 = {-2.f}
-  // clang-format off
-  Output filter =
-      ops::Const(s.WithOpName("filter"), {
-          {
-              {{2.f, -2.f}}
-          }
-      });
-  // clang-format on
-
-  int batch_size = 1;
-  int matrix_size = 3;
-  // input shape: [1,1,3,3]
-  TensorShape input_shape(
-      {batch_size, input_channel, matrix_size, matrix_size});
-  Output input = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
-                                  ops::Placeholder::Shape(input_shape));
-
-  Output conv = ops::Conv2D(s.WithOpName("conv"), input, filter, {1, 1, 1, 1},
-                            "VALID", ops::Conv2D::DataFormat("NCHW"));
-  Output c = ops::Const(s.WithOpName("c"), 2.0f, /* shape */ {1, 2, 1, 1});
-  Output mul = ops::Mul(s.WithOpName("mul"), c, conv);
-
-  GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-
-  ConstantFolding fold(nullptr);
-  GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
-
-  // Here only op/IO are checked. The values are verified by EvaluateNodes
-  // below.
-  int found = 0;
-  for (const auto& node : output.node()) {
-    if (node.name() == "mul") {
-      ++found;
-      EXPECT_EQ("Conv2D", node.op());
-      EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("x", node.input(0));
-      EXPECT_EQ("conv/merged_input", node.input(1));
-    } else if (node.name() == "conv/merged_input") {
-      ++found;
-      EXPECT_EQ("Const", node.op());
-      EXPECT_EQ(0, node.input_size());
-    }
-  }
-  EXPECT_EQ(2, found);
-
-  // Check that const folded multiplication node has the expected value.
-  std::vector<string> fetch = {"mul"};
-  // Input shape (NCHW) is [1,1,3,3], filter is [1,1,1,2] output shape should be
-  // (NCHW) [1,2,3,3]
-  ::tensorflow::Input::Initializer x{
-      {
-          {
-              {1.f, 2.f, 3.f},  // H = 0
-              {4.f, 5.f, 6.f},  // H = 1
-              {7.f, 8.f, 9.f}   // H = 2
-          }                     // C = 0
-      }                         // N = 0
-  };
-
-  //       |1,2,3|
-  // conv( |4,5,6|,       // input
-  //       |7,8,9|
-  //      [[[2,-2]]])     // filter
-  //    *  [1,2,1,1]      // mul by const
-  //          =
-  //     [
-  //       |4, 8, 12|
-  //       |16,20,24|   ==> output channel 0
-  //       |28,32,36|
-  //
-  //       | -4, -8,-12|
-  //       |-16,-20,-24|   ==> output channel 1
-  //       |-28,-32,-36|
-  //     ]
-  auto actual = EvaluateNodes(output, fetch, {{"x", x.tensor}});
-  auto expected = EvaluateNodes(item.graph, fetch, {{"x", x.tensor}});
-  test::ExpectTensorEqual<float>(expected[0], actual[0]);
-}
-#endif
 
 }  // namespace
 }  // namespace grappler

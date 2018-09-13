@@ -1149,7 +1149,9 @@ class Unpack : public BuiltinOperator<UnpackOperator, ::tflite::UnpackOptions,
 
 class TensorFlowUnsupported : public BaseOperator {
  public:
-  using BaseOperator::BaseOperator;
+  TensorFlowUnsupported(const string& name, OperatorType type,
+                        bool allow_eager_ops)
+      : BaseOperator(name, type), allow_eager_ops_(allow_eager_ops) {}
 
   Options Serialize(const Operator& op,
                     flatbuffers::FlatBufferBuilder* builder) const override {
@@ -1165,6 +1167,9 @@ class TensorFlowUnsupported : public BaseOperator {
   std::unique_ptr<Operator> Deserialize(
       const BuiltinOptions* builtin_options,
       const CustomOptions* custom_options) const override {
+    // Deserializing Eager ops doesn't work now.
+    // TODO(ycling): Revisit and decide if we should fix the flow for importing
+    // TFLite models with Eager ops.
     auto op = absl::make_unique<TensorFlowUnsupportedOperator>();
     if (custom_options) {
       auto flexbuffer_map =
@@ -1183,6 +1188,16 @@ class TensorFlowUnsupported : public BaseOperator {
     if (!node_def.ParseFromString(op.tensorflow_node_def)) {
       LOG(ERROR) << "Failed to parse TensorFlow NodeDef";
       return std::unique_ptr<flexbuffers::Builder>();
+    }
+
+    if (allow_eager_ops_) {
+      fbb->Vector([&]() {
+        fbb->String(node_def.op());
+        fbb->String(op.tensorflow_node_def);
+      });
+      fbb->Finish();
+      LOG(INFO) << "Writing eager op: " << node_def.op();
+      return std::unique_ptr<flexbuffers::Builder>(fbb.release());
     }
 
     bool has_valid_attr = false;
@@ -1285,11 +1300,15 @@ class TensorFlowUnsupported : public BaseOperator {
     // custom ops.
     return 1;
   }
+
+ private:
+  const bool allow_eager_ops_;
 };
 
 namespace {
 // Build a vector containing all the known operators.
-std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
+std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
+    bool allow_eager_ops = false) {
   std::vector<std::unique_ptr<BaseOperator>> ops;
   using tensorflow::MakeUnique;
   // Builtin Operators.
@@ -1400,8 +1419,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       MakeUnique<DepthToSpace>("DEPTH_TO_SPACE", OperatorType::kDepthToSpace));
   ops.push_back(MakeUnique<CTCBeamSearchDecoder>(
       "CTC_BEAM_SEARCH_DECODER", OperatorType::kCTCBeamSearchDecoder));
-  ops.push_back(MakeUnique<TensorFlowUnsupported>("TENSORFLOW_UNSUPPORTED",
-                                                  OperatorType::kUnsupported));
+  ops.push_back(MakeUnique<TensorFlowUnsupported>(
+      "TENSORFLOW_UNSUPPORTED", OperatorType::kUnsupported, allow_eager_ops));
 
   // There operators are supported by Toco, but not by TF Lite, and has no
   // attributes.
@@ -1469,15 +1488,19 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       "SQRT", OperatorType::kSqrt));
   ops.push_back(MakeUnique<SimpleOperator<TensorFlowRsqrtOperator>>(
       "RSQRT", OperatorType::kRsqrt));
+  ops.push_back(MakeUnique<SimpleOperator<TensorFlowSquareOperator>>(
+      "SQUARE", OperatorType::kSquare));
 
   return ops;
 }
 }  // namespace
 
-std::map<OperatorType, std::unique_ptr<BaseOperator>> BuildOperatorByTypeMap() {
+std::map<OperatorType, std::unique_ptr<BaseOperator>> BuildOperatorByTypeMap(
+    bool allow_eager_ops) {
   std::map<OperatorType, std::unique_ptr<BaseOperator>> result;
 
-  std::vector<std::unique_ptr<BaseOperator>> ops = BuildOperatorList();
+  std::vector<std::unique_ptr<BaseOperator>> ops =
+      BuildOperatorList(allow_eager_ops);
   for (auto& op : ops) {
     result[op->type()] = std::move(op);
   }
@@ -1485,10 +1508,12 @@ std::map<OperatorType, std::unique_ptr<BaseOperator>> BuildOperatorByTypeMap() {
   return result;
 }
 
-std::map<string, std::unique_ptr<BaseOperator>> BuildOperatorByNameMap() {
+std::map<string, std::unique_ptr<BaseOperator>> BuildOperatorByNameMap(
+    bool allow_eager_ops) {
   std::map<string, std::unique_ptr<BaseOperator>> result;
 
-  std::vector<std::unique_ptr<BaseOperator>> ops = BuildOperatorList();
+  std::vector<std::unique_ptr<BaseOperator>> ops =
+      BuildOperatorList(allow_eager_ops);
   for (auto& op : ops) {
     result[op->name()] = std::move(op);
   }

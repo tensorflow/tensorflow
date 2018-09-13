@@ -1229,7 +1229,8 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
                dtype,
                shape=None,
                shared_name=None,
-               name="conditional_accumulator"):
+               name="conditional_accumulator",
+               reduction_type="MEAN"):
     """Creates a new ConditionalAccumulator.
 
     Args:
@@ -1238,9 +1239,14 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
       shared_name: Optional. If non-empty, this accumulator will be shared under
         the given name across multiple sessions.
       name: Optional name for the accumulator.
+      reduction_type: Reduction type to use when taking the gradient.
     """
     accumulator_ref = gen_data_flow_ops.conditional_accumulator(
-        dtype=dtype, shape=shape, shared_name=shared_name, name=name)
+        dtype=dtype,
+        shape=shape,
+        shared_name=shared_name,
+        name=name,
+        reduction_type=reduction_type)
     super(ConditionalAccumulator, self).__init__(dtype, shape, accumulator_ref)
 
   def apply_grad(self, grad, local_step=0, name=None):
@@ -1312,15 +1318,21 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
     shared_name: Optional. If non-empty, this accumulator will be shared under
       the given name across multiple sessions.
     name: Optional name for the accumulator.
+    reduction_type: Reduction type to use when taking the gradient.
   """
 
   def __init__(self,
                dtype,
                shape=None,
                shared_name=None,
-               name="sparse_conditional_accumulator"):
+               name="sparse_conditional_accumulator",
+               reduction_type="MEAN"):
     accumulator_ref = gen_data_flow_ops.sparse_conditional_accumulator(
-        dtype=dtype, shape=shape, shared_name=shared_name, name=name)
+        dtype=dtype,
+        shape=shape,
+        shared_name=shared_name,
+        name=name,
+        reduction_type=reduction_type)
     super(SparseConditionalAccumulator, self).__init__(dtype, shape,
                                                        accumulator_ref)
 

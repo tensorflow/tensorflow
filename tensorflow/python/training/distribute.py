@@ -372,7 +372,7 @@ class DistributionStrategy(object):
     use its API, including `merge_call()` to get back to cross-tower
     context), once for each tower. May use values with locality T or
     M, and any variable.
-  * `d.reduce(m, t)`: in cross-tower context, accepts t with locality T
+  * `d.reduce(m, t, t)`: in cross-tower context, accepts t with locality T
     and produces a value with locality M.
   * `d.reduce(m, t, v)`: in cross-tower context, accepts t with
     locality T and produces a value with locality V(`v`).
@@ -405,10 +405,11 @@ class DistributionStrategy(object):
 
   Another thing you might want to do in the middle of your tower function
   is an all-reduce of some intermediate value, using `d.reduce()` or
-  `d.batch_reduce()` without supplying a variable as the destination.
+  `d.batch_reduce()`. You simply provide the same tensor as the input and
+  destination.
 
   Layers should expect to be called in a tower context, and can use
-  the `get_tower_context()` function to get a `TowerContext` object.  The
+  the `get_tower_context()` function to get a `TowerContext` object. The
   `TowerContext` object has a `merge_call()` method for entering
   cross-tower context where you can use `reduce()` (or
   `batch_reduce()`) and then optionally `update()` to update state.
@@ -719,7 +720,7 @@ class DistributionStrategy(object):
   def _call_for_each_tower(self, fn, *args, **kwargs):
     raise NotImplementedError("must be implemented in descendants")
 
-  def reduce(self, aggregation, value, destinations=None):
+  def reduce(self, aggregation, value, destinations):
     """Combine (via e.g. sum or mean) values across towers.
 
     Args:
@@ -727,11 +728,10 @@ class DistributionStrategy(object):
         are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`,
         `tf.VariableAggregation.ONLY_FIRST_TOWER`.
       value: A per-device value with one value per tower.
-      destinations: An optional mirrored variable, a device string,
-        list of device strings. The return value will be copied to all
-        destination devices (or all the devices where the mirrored
-        variable resides). If `None` or unspecified, the destinations
-        will match the devices `value` resides on.
+      destinations: A mirrored variable, a per-device tensor, a device string,
+        or list of device strings. The return value will be copied to all
+        destination devices (or all the devices where the `destinations` value
+        resides). To perform an all-reduction, pass `value` to `destinations`.
 
     Returns:
       A value mirrored to `destinations`.
@@ -1077,10 +1077,15 @@ class TowerContext(object):
     require_tower_context(self)
     return device_util.current()
 
-  # TODO(josh11b): Implement `start_all_reduce(method, t)` that returns
-  # a function returning the result of reducing `t` across all
-  # towers. Most likely can be implemented in terms of `merge_call()`
-  # and `batch_reduce()`.
+  # TODO(josh11b): Implement `start_all_reduce(method, t)` for efficient
+  # all-reduce. It would return a function returning the result of reducing `t`
+  # across all towers. The caller would wait to call this function until they
+  # needed the reduce result, allowing an efficient implementation:
+  # * With eager execution, the reduction could be performed asynchronously
+  #   in the background, not blocking until the result was needed.
+  # * When constructing a graph, it could batch up all reduction requests up
+  #   to that point that the first result is needed. Most likely this can be
+  #   implemented in terms of `merge_call()` and `batch_reduce()`.
 
 # ------------------------------------------------------------------------------
 

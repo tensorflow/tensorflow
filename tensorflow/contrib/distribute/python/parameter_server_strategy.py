@@ -83,19 +83,12 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   create conflicts of device assignment.
   """
 
-  def __init__(self,
-               num_gpus_per_worker=0,
-               cluster_spec=None,
-               task_type=None,
-               task_id=None):
+  def __init__(self, num_gpus_per_worker=0):
     """Initializes this strategy.
 
     Args:
-      num_gpus_per_worker: number of local GPUs or GPUs per worker.
-      cluster_spec: a dict, ClusterDef or ClusterSpec object specifying the
-        cluster configurations.
-      task_type: the current task type.
-      task_id: the current task id.
+      num_gpus_per_worker: number of local GPUs or GPUs per worker, the default
+        is 0 meaning CPU only.
 
     Raises:
       ValueError: if `cluster_spec` is given but `task_type` or `task_id` is
@@ -103,11 +96,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     """
     super(ParameterServerStrategy, self).__init__()
     self._num_gpus_per_worker = num_gpus_per_worker
-    if cluster_spec:
-      self._initialize_multi_worker(num_gpus_per_worker, cluster_spec,
-                                    task_type, task_id)
-    else:
-      self._initialize_local(num_gpus_per_worker)
+    self._initialize_local(num_gpus_per_worker)
 
     # We typically don't need to do all-reduce in this strategy.
     self._cross_tower_ops = (
@@ -422,6 +411,8 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
 
     if not session_config or not self._cluster_spec:
       return
+
+    session_config.isolate_session_state = False
 
     assert self._cluster_spec
     assert self._task_type

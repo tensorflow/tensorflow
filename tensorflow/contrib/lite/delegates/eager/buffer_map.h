@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <map>
 
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tflite {

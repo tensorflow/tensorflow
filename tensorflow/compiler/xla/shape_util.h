@@ -180,6 +180,10 @@ class ShapeUtil {
   // As ElementsIn(), but recurses through tuples.
   static int64 ElementsInRecursive(const Shape& shape);
 
+  // Returns true if shape has the primitive type, recurses through tuples.
+  static bool HasPrimitiveType(const Shape& shape,
+                               PrimitiveType primitive_type);
+
   // Returns true if 'shape' is an array with zero elements.
   static bool IsZeroElementArray(const Shape& shape);
 

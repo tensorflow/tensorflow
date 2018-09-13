@@ -7,6 +7,34 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_test(
+    name = "assert_next_dataset_op_test",
+    size = "medium",
+    srcs = ["assert_next_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/ops:optimization",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_test(
+    name = "latency_all_edges_test",
+    size = "small",
+    srcs = ["latency_all_edges_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/kernel_tests:stats_dataset_test_base",
+        "//tensorflow/contrib/data/python/ops:optimization",
+        "//tensorflow/contrib/data/python/ops:stats_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_test(
     name = "map_vectorization_test",
     size = "small",
     srcs = ["map_vectorization_test.py"],
@@ -46,16 +74,34 @@ py_test(
 )
 
 py_test(
-    name = "latency_all_edges_test",
-    size = "small",
-    srcs = ["latency_all_edges_test.py"],
+    name = "model_dataset_op_test",
+    size = "medium",
+    srcs = ["model_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "optonly",
+    ],
     deps = [
-        "//tensorflow/contrib/data/python/kernel_tests:stats_dataset_test_base",
+        "//tensorflow/contrib/data/python/ops:batching",
+        "//tensorflow/contrib/data/python/ops:interleave_ops",
         "//tensorflow/contrib/data/python/ops:optimization",
-        "//tensorflow/contrib/data/python/ops:stats_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "optimize_dataset_op_test",
+    size = "small",
+    srcs = ["optimize_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/ops:optimization",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
     ],
 )

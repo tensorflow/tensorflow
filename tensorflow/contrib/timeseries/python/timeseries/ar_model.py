@@ -264,10 +264,10 @@ class ARModel(model.TimeSeriesModel):
     elif (not isinstance(periodicities, list) and
           not isinstance(periodicities, tuple)):
       periodicities = [periodicities]
-    self._periods = [int(p) for p in periodicities]
-    for p in self._periods:
+    self._periodicities = [int(p) for p in periodicities]
+    for p in self._periodicities:
       assert p > 0
-    assert len(self._periods) or self.input_window_size
+    assert len(self._periodicities) or self.input_window_size
     assert output_window_size > 0
 
   def initialize_graph(self, input_statistics=None):
@@ -364,9 +364,9 @@ class ARModel(model.TimeSeriesModel):
     input_feature_size = 0
     output_window_features = []
     output_feature_size = 0
-    if self._periods:
+    if self._periodicities:
       _, time_features = self._compute_time_features(times)
-      num_time_features = self._buckets * len(self._periods)
+      num_time_features = self._buckets * len(self._periodicities)
       time_features = array_ops.reshape(
           time_features,
           [batch_size,
@@ -849,12 +849,12 @@ class ARModel(model.TimeSeriesModel):
   def _compute_time_features(self, time):
     """Compute some features on the time value."""
     batch_size = array_ops.shape(time)[0]
-    num_periods = len(self._periods)
+    num_periods = len(self._periodicities)
     # Reshape to 3D.
     periods = constant_op.constant(
-        self._periods, shape=[1, 1, num_periods, 1], dtype=time.dtype)
+        self._periodicities, shape=[1, 1, num_periods, 1], dtype=time.dtype)
     time = array_ops.reshape(time, [batch_size, -1, 1, 1])
-    window_offset = time / self._periods
+    window_offset = time / self._periodicities
     # Cast to appropriate type and scale to [0, 1) range
     mod = (math_ops.cast(time % periods, self.dtype) * self._buckets /
            math_ops.cast(periods, self.dtype))

@@ -27,8 +27,8 @@ from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 # These imports are brought in so that keras.initializers.deserialize
 # has them available in module_objects.
 from tensorflow.python.ops.init_ops import Constant
-from tensorflow.python.ops.init_ops import glorot_normal_initializer
-from tensorflow.python.ops.init_ops import glorot_uniform_initializer
+from tensorflow.python.ops.init_ops import GlorotNormal
+from tensorflow.python.ops.init_ops import GlorotUniform
 from tensorflow.python.ops.init_ops import he_normal  # pylint: disable=unused-import
 from tensorflow.python.ops.init_ops import he_uniform  # pylint: disable=unused-import
 from tensorflow.python.ops.init_ops import Identity
@@ -126,8 +126,8 @@ normal = random_normal = RandomNormal
 truncated_normal = TruncatedNormal
 identity = Identity
 orthogonal = Orthogonal
-glorot_normal = glorot_normal_initializer
-glorot_uniform = glorot_uniform_initializer
+glorot_normal = GlorotNormal
+glorot_uniform = GlorotUniform
 
 
 # Utility functions

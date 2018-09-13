@@ -150,6 +150,35 @@ def expand_cmake_vars(name, src, dst, cmake_vars):
 
 # The set of CMake variables common to all targets.
 cmake_vars = {
+    # LLVM features
+    "ENABLE_BACKTRACES": 1,
+    "LLVM_BINDIR": "/dev/null",
+    "LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING": 0,
+    "LLVM_ENABLE_ABI_BREAKING_CHECKS": 0,
+    "LLVM_ENABLE_THREADS": 1,
+    "LLVM_ENABLE_ZLIB": 1,
+    "LLVM_HAS_ATOMICS": 1,
+    "LLVM_INCLUDEDIR": "/dev/null",
+    "LLVM_INFODIR": "/dev/null",
+    "LLVM_MANDIR": "/dev/null",
+    "LLVM_NATIVE_TARGET": 1,
+    "LLVM_NATIVE_TARGETINFO": 1,
+    "LLVM_NATIVE_TARGETMC": 1,
+    "LLVM_NATIVE_ASMPRINTER": 1,
+    "LLVM_NATIVE_ASMPARSER": 1,
+    "LLVM_NATIVE_DISASSEMBLER": 1,
+    "LLVM_PREFIX": "/dev/null",
+    "LLVM_VERSION_MAJOR": 0,
+    "LLVM_VERSION_MINOR": 0,
+    "LLVM_VERSION_PATCH": 0,
+    "PACKAGE_NAME": "llvm",
+    "PACKAGE_STRING": "llvm tensorflow-trunk",
+    "PACKAGE_VERSION": "tensorflow-trunk",
+    "RETSIGTYPE": "void",
+}
+
+# The set of CMake variables common to POSIX targets.
+posix_cmake_vars = {
     # Headers
     "HAVE_DIRENT_H": 1,
     "HAVE_DLFCN_H": 1,
@@ -206,32 +235,8 @@ cmake_vars = {
     "HAVE__UNWIND_BACKTRACE": 1,
 
     # LLVM features
-    "ENABLE_BACKTRACES": 1,
-    "LLVM_BINDIR": "/dev/null",
-    "LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING": 0,
-    "LLVM_ENABLE_ABI_BREAKING_CHECKS": 0,
-    "LLVM_ENABLE_THREADS": 1,
-    "LLVM_ENABLE_ZLIB": 1,
-    "LLVM_HAS_ATOMICS": 1,
-    "LLVM_INCLUDEDIR": "/dev/null",
-    "LLVM_INFODIR": "/dev/null",
-    "LLVM_MANDIR": "/dev/null",
-    "LLVM_NATIVE_TARGET": 1,
-    "LLVM_NATIVE_TARGETINFO": 1,
-    "LLVM_NATIVE_TARGETMC": 1,
-    "LLVM_NATIVE_ASMPRINTER": 1,
-    "LLVM_NATIVE_ASMPARSER": 1,
-    "LLVM_NATIVE_DISASSEMBLER": 1,
     "LLVM_ON_UNIX": 1,
-    "LLVM_PREFIX": "/dev/null",
-    "LLVM_VERSION_MAJOR": 0,
-    "LLVM_VERSION_MINOR": 0,
-    "LLVM_VERSION_PATCH": 0,
     "LTDL_SHLIB_EXT": ".so",
-    "PACKAGE_NAME": "llvm",
-    "PACKAGE_STRING": "llvm tensorflow-trunk",
-    "PACKAGE_VERSION": "tensorflow-trunk",
-    "RETSIGTYPE": "void",
 }
 
 # CMake variables specific to the Linux platform
@@ -247,6 +252,40 @@ darwin_cmake_vars = {
     "HAVE_MALLOC_MALLOC_H": 1,
 }
 
+# CMake variables specific to the Windows platform.
+win32_cmake_vars = {
+    # Headers
+    "HAVE_ERRNO_H": 1,
+    "HAVE_EXECINFO_H": 1,
+    "HAVE_FCNTL_H": 1,
+    "HAVE_FENV_H": 1,
+    "HAVE_INTTYPES_H": 1,
+    "HAVE_MALLOC_H": 1,
+    "HAVE_SIGNAL_H": 1,
+    "HAVE_STDINT_H": 1,
+    "HAVE_SYS_STAT_H": 1,
+    "HAVE_SYS_TYPES_H": 1,
+    "HAVE_ZLIB_H": 1,
+
+    # Features
+    "BACKTRACE_HEADER": "execinfo.h",
+    "HAVE_GETCWD": 1,
+    "HAVE_INT64_T": 1,
+    "HAVE_STRERROR": 1,
+    "HAVE_STRTOLL": 1,
+    "HAVE_SYSCONF": 1,
+    "HAVE_UINT64_T": 1,
+    "HAVE__CHSIZE_S": 1,
+    "HAVE___CHKSTK": 1,
+
+    # MSVC specific
+    "stricmp": "_stricmp",
+    "strdup": "_strdup",
+
+    # LLVM features
+    "LTDL_SHLIB_EXT": ".dll",
+}
+
 # Select a set of CMake variables based on the platform.
 # TODO(phawkins): use a better method to select the right host triple, rather
 # than hardcoding x86_64.
@@ -255,6 +294,7 @@ llvm_all_cmake_vars = select({
         _dict_add(
             cmake_vars,
             llvm_target_cmake_vars("X86", "x86_64-apple-darwin"),
+            posix_cmake_vars,
             darwin_cmake_vars,
         ),
     ),
@@ -262,35 +302,111 @@ llvm_all_cmake_vars = select({
         _dict_add(
             cmake_vars,
             llvm_target_cmake_vars("PowerPC", "powerpc64le-unknown-linux_gnu"),
+            posix_cmake_vars,
             linux_cmake_vars,
+        ),
+    ),
+    "@org_tensorflow//tensorflow:windows": cmake_var_string(
+        _dict_add(
+            cmake_vars,
+            llvm_target_cmake_vars("X86", "x86_64-pc-win32"),
+            win32_cmake_vars,
         ),
     ),
     "//conditions:default": cmake_var_string(
         _dict_add(
             cmake_vars,
             llvm_target_cmake_vars("X86", "x86_64-unknown-linux_gnu"),
+            posix_cmake_vars,
             linux_cmake_vars,
         ),
     ),
 })
 
-llvm_linkopts = ["-ldl", "-lm", "-lpthread"]
+llvm_linkopts = select({
+    "@org_tensorflow//tensorflow:windows": [],
+    "//conditions:default": ["-ldl", "-lm", "-lpthread"],
+})
 
-llvm_defines = [
+llvm_defines = select({
+    "@org_tensorflow//tensorflow:windows": [
+        "_CRT_SECURE_NO_DEPRECATE",
+        "_CRT_SECURE_NO_WARNINGS",
+        "_CRT_NONSTDC_NO_DEPRECATE",
+        "_CRT_NONSTDC_NO_WARNINGS",
+        "_SCL_SECURE_NO_DEPRECATE",
+        "_SCL_SECURE_NO_WARNINGS",
+        "UNICODE",
+        "_UNICODE",
+    ],
+    "//conditions:default": ["_DEBUG"],
+}) + [
     "LLVM_ENABLE_STATS",
     "__STDC_LIMIT_MACROS",
     "__STDC_CONSTANT_MACROS",
     "__STDC_FORMAT_MACROS",
-    "_DEBUG",
     "LLVM_BUILD_GLOBAL_ISEL",
 ]
 
-llvm_copts = []
+llvm_copts = select({
+    "@org_tensorflow//tensorflow:windows": [
+        "-Zc:inline",
+        "-Zc:strictStrings",
+        "-Zc:rvalueCast",
+        "-Oi",
+        "-wd4141",
+        "-wd4146",
+        "-wd4180",
+        "-wd4244",
+        "-wd4258",
+        "-wd4267",
+        "-wd4291",
+        "-wd4345",
+        "-wd4351",
+        "-wd4355",
+        "-wd4456",
+        "-wd4457",
+        "-wd4458",
+        "-wd4459",
+        "-wd4503",
+        "-wd4624",
+        "-wd4722",
+        "-wd4800",
+        "-wd4100",
+        "-wd4127",
+        "-wd4512",
+        "-wd4505",
+        "-wd4610",
+        "-wd4510",
+        "-wd4702",
+        "-wd4245",
+        "-wd4706",
+        "-wd4310",
+        "-wd4701",
+        "-wd4703",
+        "-wd4389",
+        "-wd4611",
+        "-wd4805",
+        "-wd4204",
+        "-wd4577",
+        "-wd4091",
+        "-wd4592",
+        "-wd4319",
+        "-wd4324",
+        "-w14062",
+        "-we4238",
+    ],
+    "//conditions:default": [],
+})
 
 # Platform specific sources for libSupport.
 
 def llvm_support_platform_specific_srcs_glob():
     return select({
+        "@org_tensorflow//tensorflow:windows": native.glob([
+            "lib/Support/Windows/*.inc",
+            "lib/Support/Windows/*.h",
+        ]),
         "//conditions:default": native.glob([
             "lib/Support/Unix/*.inc",
             "lib/Support/Unix/*.h",

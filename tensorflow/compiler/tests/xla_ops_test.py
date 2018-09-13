@@ -25,6 +25,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
@@ -97,9 +98,9 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         args=(np.array([0xFFFFFFFF, 16], dtype=np.uint32), np.uint32(4)),
         expected=np.array([0xFFFFFFFF, 1], dtype=np.uint32))
 
-  PRECISION_VALUES = (None, xla_data_pb2.PrecisionConfigProto.DEFAULT,
-                      xla_data_pb2.PrecisionConfigProto.HIGH,
-                      xla_data_pb2.PrecisionConfigProto.HIGHEST)
+  PRECISION_VALUES = (None, xla_data_pb2.PrecisionConfig.DEFAULT,
+                      xla_data_pb2.PrecisionConfig.HIGH,
+                      xla_data_pb2.PrecisionConfig.HIGHEST)
 
   @parameterized.parameters(*PRECISION_VALUES)
   def testConv(self, precision):
@@ -120,7 +121,7 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         dnums.output_spatial_dimensions.extend(range(2, 2 + num_spatial_dims))
         precision_config = None
         if precision:
-          precision_config = xla_data_pb2.PrecisionConfigProto()
+          precision_config = xla_data_pb2.PrecisionConfig()
           precision_config.operand_precision.extend([precision, precision])
         return xla.conv(
             lhs,
@@ -151,7 +152,7 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         dnums.rhs_batch_dimensions.append(0)
         precision_config = None
         if precision:
-          precision_config = xla_data_pb2.PrecisionConfigProto()
+          precision_config = xla_data_pb2.PrecisionConfig()
           precision_config.operand_precision.extend([precision, precision])
         return xla.dot_general(
             lhs,
@@ -295,6 +296,44 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       v = np.arange(4, dtype=np.int32).astype(dtype).reshape([2, 2])
       self._assertOpOutputMatchesExpected(
           lambda x: xla.transpose(x, [1, 0]), args=(v,), expected=v.T)
+
+  def testDynamicSlice(self):
+    for dtype in self.numeric_types:
+      self._assertOpOutputMatchesExpected(
+          xla.dynamic_slice,
+          args=(np.arange(1000,
+                          dtype=np.int32).astype(dtype).reshape([10, 10, 10]),
+                np.array([5, 7, 3]), np.array([2, 3, 2])),
+          expected=np.array(
+              np.array([[[573, 574], [583, 584], [593, 594]],
+                        [[673, 674], [683, 684], [693, 694]]]),
+              dtype=dtype))
+
+  def testDynamicSliceWithIncorrectStartIndicesShape(self):
+    with self.test_session() as session:
+      with self.test_scope():
+        output = xla.dynamic_slice(
+            np.arange(1000, dtype=np.int32).reshape([10, 10, 10]),
+            np.array([5, 7]), np.array([2, 3, 4]))
+      with self.assertRaises(errors.InvalidArgumentError) as invalid_arg_error:
+        session.run(output)
+      self.assertRegexpMatches(
+          invalid_arg_error.exception.message,
+          (r'^start_indices must be a vector with length equal to input rank, '
+           r'but input rank is 3 and start_indices has shape \[2\].*'))
+
+  def testDynamicSliceWithIncorrectSizeIndicesShape(self):
+    with self.test_session() as session:
+      with self.test_scope():
+        output = xla.dynamic_slice(
+            np.arange(1000, dtype=np.int32).reshape([10, 10, 10]),
+            np.array([5, 7, 3]), np.array([2, 3]))
+      with self.assertRaises(errors.InvalidArgumentError) as invalid_arg_error:
+        session.run(output)
+      self.assertRegexpMatches(
+          invalid_arg_error.exception.message,
+          (r'^size_indices must be a vector with length equal to input rank, '
+           r'but input rank is 3 and size_indices has shape \[2\].*'))
 
 
 if __name__ == '__main__':

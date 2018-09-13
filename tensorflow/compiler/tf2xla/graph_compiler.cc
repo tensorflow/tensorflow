@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
-#include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -81,7 +80,7 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
       TF_ASSIGN_OR_RETURN(auto literal,
                           client->ComputeConstant(constant_graph));
       TF_RETURN_IF_ERROR(
-          LiteralToHostTensor(*literal, arg.type, &arg.constant_value));
+          LiteralToHostTensor(literal, arg.type, &arg.constant_value));
     } else {
       arg.kind = XlaCompiler::Argument::kParameter;
     }
@@ -127,7 +126,7 @@ Status GraphCompiler::Compile() {
     TF_RET_CHECK(!n->IsRecv() && !n->IsSend() && !n->IsSwitch())
         << "Not supported node: " << n->DebugString();
     params.op_kernel = op_kernel.get();
-    gtl::InlinedVector<AllocatorAttributes, 4> output_attr(n->num_outputs());
+    absl::InlinedVector<AllocatorAttributes, 4> output_attr(n->num_outputs());
     params.output_attr_array = output_attr.data();
 
     // tensor_inputs_ is a buffer reused across graph traversal. We clean up and

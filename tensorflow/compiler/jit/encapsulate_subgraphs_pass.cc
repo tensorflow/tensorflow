@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -755,7 +755,7 @@ Status Encapsulator::Subgraph::RecordArg(
   if (inserted) {
     NodeDef arg_def;
     NodeDefBuilder builder(
-        strings::StrCat(src_node->name(), "_", src_slot, "_arg"), kArgOp);
+        absl::StrCat(src_node->name(), "_", src_slot, "_arg"), kArgOp);
     DataType dtype = edge->dst()->input_type(edge->dst_input());
     builder.Attr("T", dtype);
     builder.Attr("index", arg_index);
@@ -790,7 +790,7 @@ Status Encapsulator::Subgraph::RecordResult(
   if (inserted) {
     NodeDef ret_def;
     NodeDefBuilder builder(
-        strings::StrCat(src_node->name(), "_", src_slot, "_retval"), kRetValOp);
+        absl::StrCat(src_node->name(), "_", src_slot, "_retval"), kRetValOp);
     DataType dtype = src_node->output_type(src_slot);
     builder.Attr("T", dtype);
     builder.Attr("index", ret_index);
@@ -950,16 +950,15 @@ Status Encapsulator::Subgraph::AddHostComputes(
       }
 
       NodeDef host_compute_def;
-      NodeDefBuilder builder(strings::StrCat("outside_compilation_",
-                                             oc_subgraph_name, "_host_compute"),
+      NodeDefBuilder builder(absl::StrCat("outside_compilation_",
+                                          oc_subgraph_name, "_host_compute"),
                              kHostComputeOp);
       builder.Input(inputs);
       builder.Attr("Tinputs", input_dtypes);
       builder.Attr("Toutputs", output_dtypes);
       builder.Attr("ancestors", host_compute_ancestors);
-      builder.Attr("key",
-                   strings::StrCat("host_compute_channel_", subgraph_name, "_",
-                                   oc_subgraph_name));
+      builder.Attr("key", absl::StrCat("host_compute_channel_", subgraph_name,
+                                       "_", oc_subgraph_name));
       builder.Attr("_outside_compilation_subgraph", oc_subgraph_name);
       Status s = builder.Finalize(&host_compute_def);
       if (!s.ok()) return s;
@@ -1017,8 +1016,7 @@ Status Encapsulator::Subgraph::MakeSequencingNode(const string& subgraph_name,
                                                   Graph* graph_out) {
   if (sequencer_ == nullptr) {
     NodeDef seq_def;
-    NodeDefBuilder builder(strings::StrCat(subgraph_name, "_sequencer"),
-                           "NoOp");
+    NodeDefBuilder builder(absl::StrCat(subgraph_name, "_sequencer"), "NoOp");
     builder.Attr(kXlaHostTransferSequencerAttr, subgraph_name);
     builder.Device(device_);
     Status s = builder.Finalize(&seq_def);
@@ -1091,10 +1089,10 @@ Status Encapsulator::Subgraph::BuildFunctionDef(
 
   if (VLOG_IS_ON(1)) {
     VLOG(2) << "Build function def " << name;
-    dump_graph::DumpGraphToFile(
-        strings::StrCat("encapsulate_fdef_graph_", name), *graph_, library);
-    dump_graph::DumpFunctionDefToFile(
-        strings::StrCat("encapsulate_fdef_", name), fdef);
+    dump_graph::DumpGraphToFile(absl::StrCat("encapsulate_fdef_graph_", name),
+                                *graph_, library);
+    dump_graph::DumpFunctionDefToFile(absl::StrCat("encapsulate_fdef_", name),
+                                      fdef);
   }
 
   if (!reuse_existing_functions || library->Find(name) == nullptr) {
@@ -1130,8 +1128,8 @@ Status Encapsulator::Subgraph::AddShapeInferenceInfo(
     host_compute->AddAttr("shapes", shapes);
   } else {
     string inference_graph_name =
-        strings::StrCat("_outside_compilation_shape_inference_", subgraph_name,
-                        "_", outside_compilation_subgraph_name);
+        absl::StrCat("_outside_compilation_shape_inference_", subgraph_name,
+                     "_", outside_compilation_subgraph_name);
     FunctionDef fdef;
     TF_RETURN_IF_ERROR(
         GraphToFunctionDef(*inference_graph, inference_graph_name, &fdef));
@@ -1155,10 +1153,10 @@ Status Encapsulator::Subgraph::ReplaceFunctionDef(
   if (VLOG_IS_ON(1)) {
     VLOG(2) << "Replace function def " << name;
     dump_graph::DumpGraphToFile(
-        strings::StrCat("replace_encapsulate_fdef_graph_", name), *graph_,
+        absl::StrCat("replace_encapsulate_fdef_graph_", name), *graph_,
         library);
     dump_graph::DumpFunctionDefToFile(
-        strings::StrCat("replace_encapsulate_fdef_", name), fdef);
+        absl::StrCat("replace_encapsulate_fdef_", name), fdef);
   }
 
   TF_RETURN_IF_ERROR(library->ReplaceFunction(name, fdef));
@@ -1186,8 +1184,7 @@ Status Encapsulator::Subgraph::AddHostComputeKeyPlaceholder(
   GraphDefBuilder::Options options(graph_out, /*status=*/nullptr);
   NodeDef key_def;
   NodeDefBuilder builder(
-      strings::StrCat(call_node_def_.name(), "_key_placeholder"),
-      "Placeholder");
+      absl::StrCat(call_node_def_.name(), "_key_placeholder"), "Placeholder");
   builder.Attr("dtype", DT_STRING);
   builder.Attr("shape", shape_proto);
   builder.Attr("_host_compute_call_node", call_node_def_.name());
@@ -1221,16 +1218,16 @@ Status Encapsulator::Subgraph::AddRecvAtHostNode(
   }
 
   NodeDef recv_def;
-  NodeDefBuilder builder(strings::StrCat("outside_compilation_", subgraph_name,
-                                         "_", oc_subgraph_name, "_recv"),
+  NodeDefBuilder builder(absl::StrCat("outside_compilation_", subgraph_name,
+                                      "_", oc_subgraph_name, "_recv"),
                          kRecvAtHostOp);
   builder.Device(device_);
   builder.Attr("Toutputs", dtypes);
   // The correct device_ordinal will be inserted during replication in a
   // subsequent rewrite.
   builder.Attr("device_ordinal", 0);
-  builder.Attr("key", strings::StrCat("host_compute_channel_", subgraph_name,
-                                      "_", oc_subgraph_name));
+  builder.Attr("key", absl::StrCat("host_compute_channel_", subgraph_name, "_",
+                                   oc_subgraph_name));
   builder.Attr(group_attribute, subgraph_name);
   builder.Attr(outside_compilation_attribute, oc_subgraph_name);
   builder.Input(host_compute_key_placeholder_->name(), 0, DT_STRING);
@@ -1276,13 +1273,13 @@ Status Encapsulator::Subgraph::AddSendFromHostNode(
   }
 
   NodeDef send_def;
-  NodeDefBuilder builder(strings::StrCat("outside_compilation_", subgraph_name,
-                                         "_", oc_subgraph_name, "_send"),
+  NodeDefBuilder builder(absl::StrCat("outside_compilation_", subgraph_name,
+                                      "_", oc_subgraph_name, "_send"),
                          kSendFromHostOp);
   builder.Device(device_);
   builder.Attr("Tinputs", dtypes);
-  builder.Attr("key", strings::StrCat("host_compute_channel_", subgraph_name,
-                                      "_", oc_subgraph_name));
+  builder.Attr("key", absl::StrCat("host_compute_channel_", subgraph_name, "_",
+                                   oc_subgraph_name));
   // The correct device_ordinal will be inserted during replication in a
   // subsequent rewrite.
   builder.Attr("device_ordinal", 0);
@@ -1516,7 +1513,7 @@ Status Encapsulator::SplitIntoSubgraphs(FunctionLibraryDefinition* library) {
     // Dump subgraphs.
     for (auto& entry : subgraphs_) {
       dump_graph::DumpGraphToFile(
-          strings::StrCat("encapsulate_subgraphs_subgraph_", entry.first),
+          absl::StrCat("encapsulate_subgraphs_subgraph_", entry.first),
           *entry.second.GetGraph(), library);
     }
   }
@@ -2052,7 +2049,7 @@ struct PathDetails {
   struct SubgraphAndClusterHash {
     inline std::size_t operator()(const SubgraphAndCluster& v) const {
       return hash<string>()(
-          strings::StrCat(v.subgraph, v.outside_compilation_cluster));
+          absl::StrCat(v.subgraph, v.outside_compilation_cluster));
     }
   };
 

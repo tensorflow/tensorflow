@@ -227,6 +227,14 @@ Status HloCostAnalysis::HandleCopy(const HloInstruction*) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleDomain(const HloInstruction* domain) {
+  // Domain does not have any computation or data transfer.
+  current_should_compute_bottleneck_time_ = false;
+  current_properties_[kBytesAccessedKey] = 0;
+  current_properties_[kOptimalSecondsKey] = 0;
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
   const Shape& lhs_shape = dot->operand(0)->shape();
   const Shape& rhs_shape = dot->operand(1)->shape();
@@ -507,8 +515,9 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
     valid_position_counts.push_back(valid_position_count);
   }
 
-  const int64 fma_count =
-      input_feature * output_feature * batch * Product(valid_position_counts);
+  const int64 fma_count = (input_feature / convolution->feature_group_count()) *
+                          output_feature * batch *
+                          Product(valid_position_counts);
   current_properties_[kFlopsKey] = fma_count * kFmaFlops;
   return Status::OK();
 }

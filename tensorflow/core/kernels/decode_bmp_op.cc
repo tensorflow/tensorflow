@@ -108,8 +108,7 @@ class DecodeBmpOp : public OpKernel {
     const int32 abs_height = abs(height);
 
     // there may be padding bytes when the width is not a multiple of 4 bytes
-    // 8 * channels == bits per pixel
-    const int row_size = (8 * channels_ * width + 31) / 32 * 4;
+    const int row_size = (channels_ * width + 3) / 4 * 4;
 
     const int64 last_pixel_offset = static_cast<int64>(header_size) +
                                     (abs_height - 1) * row_size +

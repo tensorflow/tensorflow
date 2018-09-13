@@ -43,6 +43,14 @@ namespace optimized_ops {
 // Unoptimized reference ops:
 using reference_ops::ArgMax;
 using reference_ops::ArgMinMax;
+using reference_ops::Broadcast4DSlowGreater;
+using reference_ops::Broadcast4DSlowGreaterEqual;
+using reference_ops::Broadcast4DSlowGreaterEqualWithScaling;
+using reference_ops::Broadcast4DSlowGreaterWithScaling;
+using reference_ops::Broadcast4DSlowLess;
+using reference_ops::Broadcast4DSlowLessEqual;
+using reference_ops::Broadcast4DSlowLessEqualWithScaling;
+using reference_ops::Broadcast4DSlowLessWithScaling;
 using reference_ops::BroadcastAdd4DSlow;
 using reference_ops::BroadcastGreater;
 using reference_ops::BroadcastGreaterEqual;
@@ -58,8 +66,12 @@ using reference_ops::FakeQuant;
 using reference_ops::Gather;
 using reference_ops::Greater;
 using reference_ops::GreaterEqual;
+using reference_ops::GreaterEqualWithScaling;
+using reference_ops::GreaterWithScaling;
 using reference_ops::Less;
 using reference_ops::LessEqual;
+using reference_ops::LessEqualWithScaling;
+using reference_ops::LessWithScaling;
 using reference_ops::Mean;
 using reference_ops::RankOneSelect;
 using reference_ops::Relu1;
@@ -67,6 +79,7 @@ using reference_ops::Relu6;
 using reference_ops::ReluX;
 using reference_ops::Select;
 using reference_ops::SpaceToBatchND;
+using reference_ops::Split;
 using reference_ops::StridedSlice;
 using reference_ops::Transpose;
 
@@ -1948,7 +1961,7 @@ inline void HybridConv(const int8_t* input_data, const Dims<4>& input_dims,
   const int filter_width = ArraySize(filter_dims, 1);
   const int filter_height = ArraySize(filter_dims, 2);
 
-  const int8* gemm_input_data = nullptr;
+  const int8_t* gemm_input_data = nullptr;
   int num_input;
   const bool need_im2col = stride_width != 1 || stride_height != 1 ||
                            filter_width != 1 || filter_height != 1;

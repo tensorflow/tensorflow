@@ -2524,32 +2524,69 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
 }
 
 template <typename Scalar>
-void TensorFlowSplit(const Scalar* input_data, const Dims<4>& input_dims,
-                     int axis, int outputs_count, Scalar* const* output_data,
-                     const Dims<4>* const* output_dims) {
-  const int batches = ArraySize(*output_dims[0], 3);
-  const int height = ArraySize(*output_dims[0], 2);
-  const int width = ArraySize(*output_dims[0], 1);
-  const int depth = ArraySize(*output_dims[0], 0);
+void Split(const SplitParams& params, const RuntimeShape& input_shape,
+           const Scalar* input_data, const RuntimeShape* const* output_shapes,
+           Scalar* const* output_data) {
+  const int concat_dimensions = input_shape.DimensionsCount();
+  int axis = params.axis < 0 ? params.axis + concat_dimensions : params.axis;
+  int outputs_count = params.num_split;
+  TFLITE_DCHECK_LT(axis, concat_dimensions);
 
-  const int slice_size = ArraySize(*output_dims[0], axis);
-
-  for (int i = 0; i < outputs_count; ++i) {
-    int offset = i * slice_size * input_dims.strides[axis];
-    for (int b = 0; b < batches; ++b) {
-      for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-          for (int c = 0; c < depth; ++c) {
-            auto out = Offset(*output_dims[i], c, x, y, b);
-            auto in = Offset(input_dims, c, x, y, b);
-            output_data[i][out] = input_data[offset + in];
-          }
-        }
+  int64_t concat_size = 0;
+  for (int i = 0; i < outputs_count; i++) {
+    TFLITE_DCHECK_EQ(output_shapes[i]->DimensionsCount(), concat_dimensions);
+    for (int j = 0; j < concat_dimensions; j++) {
+      if (j != axis) {
+        MatchingDim(*output_shapes[i], j, input_shape, j);
       }
+    }
+    concat_size += output_shapes[i]->Dims(axis);
+  }
+  TFLITE_DCHECK_EQ(concat_size, input_shape.Dims(axis));
+  int64_t outer_size = 1;
+  for (int i = 0; i < axis; ++i) {
+    outer_size *= input_shape.Dims(i);
+  }
+  // For all output arrays,
+  // FlatSize() = outer_size * Dims(axis) * base_inner_size;
+  int64_t base_inner_size = 1;
+  for (int i = axis + 1; i < concat_dimensions; ++i) {
+    base_inner_size *= input_shape.Dims(i);
+  }
+
+  const Scalar* input_ptr = input_data;
+  for (int k = 0; k < outer_size; k++) {
+    for (int i = 0; i < outputs_count; ++i) {
+      const int copy_size = output_shapes[i]->Dims(axis) * base_inner_size;
+      memcpy(output_data[i] + k * copy_size, input_ptr,
+             copy_size * sizeof(Scalar));
+      input_ptr += copy_size;
     }
   }
 }
 
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy Dims<4>.
+template <typename Scalar>
+void TensorFlowSplit(const Scalar* input_data, const Dims<4>& input_dims,
+                     int axis, int outputs_count, Scalar* const* output_data,
+                     const Dims<4>* const* output_dims) {
+  std::vector<RuntimeShape> output_shapes(outputs_count);
+  std::vector<const RuntimeShape*> output_shapes_indirect(outputs_count);
+  for (int i = 0; i < outputs_count; ++i) {
+    ShapeFromDims(*output_dims[i], &output_shapes[i]);
+    output_shapes_indirect[i] = &output_shapes[i];
+  }
+  tflite::SplitParams op_params;
+  op_params.axis = 3 - axis;
+  op_params.num_split = outputs_count;
+
+  Split(op_params, DimsToShape(input_dims), input_data,
+        output_shapes_indirect.data(), output_data);
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy Dims<4>.
 template <FusedActivationFunctionType Ac, typename Scalar>
 void TensorFlowSplit(const Scalar* input_data, const Dims<4>& input_dims,
                      int outputs_count, Scalar* const* output_data,
@@ -2560,9 +2597,8 @@ void TensorFlowSplit(const Scalar* input_data, const Dims<4>& input_dims,
     /* height = */ MatchingArraySize(*output_dims[i], 2, input_dims, 2);
     /* width = */ MatchingArraySize(*output_dims[i], 1, input_dims, 1);
   }
-  // for now we dont have a model with a TensorFlowSplit
-  // with fused activation function.
-  TFLITE_DCHECK(Ac == FusedActivationFunctionType::kNone);
+  // For now we don't have a model with a Split with fused activation.
+  TFLITE_DCHECK_EQ(Ac, FusedActivationFunctionType::kNone);
 
   TensorFlowSplit(input_data, input_dims, /*axis=*/0, outputs_count,
                   output_data, output_dims);
@@ -3362,10 +3398,12 @@ inline void Tanh(const int16* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Dequantize(const uint8* input_data, const Dims<4>& input_dims,
-                       int32 zero_point, double scale, float* output_data,
-                       const Dims<4>& output_dims) {
-  const int flat_size = MatchingFlatSize(output_dims, input_dims);
+inline void Dequantize(const tflite::DequantizationParams& op_params,
+                       const RuntimeShape& input_shape, const uint8* input_data,
+                       const RuntimeShape& output_shape, float* output_data) {
+  int32 zero_point = op_params.zero_point;
+  double scale = op_params.scale;
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
     int32 val = input_data[i];
@@ -3374,9 +3412,25 @@ inline void Dequantize(const uint8* input_data, const Dims<4>& input_dims,
   }
 }
 
-inline void FakeQuant(const float* input_data, const Dims<4>& input_dims,
-                      float rmin, float rmax, int num_bits, float* output_data,
-                      const Dims<4>& output_dims) {
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy Dims<4>.
+inline void Dequantize(const uint8* input_data, const Dims<4>& input_dims,
+                       int32 zero_point, double scale, float* output_data,
+                       const Dims<4>& output_dims) {
+  tflite::DequantizationParams op_params;
+  op_params.zero_point = zero_point;
+  op_params.scale = scale;
+
+  Dequantize(op_params, DimsToShape(input_dims), input_data,
+             DimsToShape(output_dims), output_data);
+}
+
+inline void FakeQuant(const tflite::FakeQuantParams& op_params,
+                      const RuntimeShape& input_shape, const float* input_data,
+                      const RuntimeShape& output_shape, float* output_data) {
+  float rmin = op_params.minmax.min;
+  float rmax = op_params.minmax.max;
+  int num_bits = op_params.num_bits;
   // 0 should always be a representable value. Let's assume that the initial
   // min,max range contains 0.
   TFLITE_DCHECK_LE(rmin, 0.0f);
@@ -3389,9 +3443,23 @@ inline void FakeQuant(const float* input_data, const Dims<4>& input_dims,
   float nudged_min, nudged_max, nudged_scale;
   NudgeQuantizationRange(rmin, rmax, quant_min, quant_max, &nudged_min,
                          &nudged_max, &nudged_scale);
-  const int flat_size = MatchingFlatSize(output_dims, input_dims);
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
   FakeQuantizeArray(nudged_scale, nudged_min, nudged_max, input_data,
                     output_data, flat_size);
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy Dims<4>.
+inline void FakeQuant(const float* input_data, const Dims<4>& input_dims,
+                      float rmin, float rmax, int num_bits, float* output_data,
+                      const Dims<4>& output_dims) {
+  tflite::FakeQuantParams op_params;
+  op_params.num_bits = num_bits;
+  op_params.minmax.min = rmin;
+  op_params.minmax.max = rmax;
+
+  FakeQuant(op_params, DimsToShape(input_dims), input_data,
+            DimsToShape(output_dims), output_data);
 }
 
 template <typename SrcT, typename DstT>
@@ -3416,21 +3484,52 @@ inline void Floor(const RuntimeShape& input_shape, const float* input_data,
 }
 
 template <typename T>
-inline void Gather(const T* input_data, const Dims<4>& input_dims,
-                   int input_rank, const int32* coords_data,
-                   const Dims<4>& coords_dims, T* output_data,
-                   const Dims<4>& output_dims) {
-  TFLITE_DCHECK(coords_dims.sizes[0] == output_dims.sizes[input_rank - 1]);
-  int stride = input_dims.strides[input_rank - 1];
+inline void Gather(const tflite::GatherParams& op_params,
+                   const RuntimeShape& input_shape, const T* input_data,
+                   const RuntimeShape& coords_shape, const int32* coords_data,
+                   const RuntimeShape& output_shape, T* output_data) {
+  // Enable these checks when moving legacy ops to legacy_reference_ops.
+  //
+  // TFLITE_DCHECK_EQ(coords_shape.DimensionsCount(), 1);
+  const int input_rank = op_params.input_rank;
+  const int gather_dimensions = output_shape.DimensionsCount();
+  TFLITE_DCHECK_LE(input_shape.DimensionsCount(), gather_dimensions);
+  const int axis = gather_dimensions - input_rank;
+  TFLITE_DCHECK_LT(axis, gather_dimensions);
+  TFLITE_DCHECK_GE(axis, 0);
+  const int coords_count = coords_shape.FlatSize();
+  TFLITE_DCHECK_EQ(coords_count, output_shape.Dims(axis));
+
+  int64_t stride = 1;
+  for (int i = axis + 1; i < gather_dimensions; ++i) {
+    stride *= input_shape.Dims(i);
+  }
   T* out = output_data;
 
-  for (int i = 0; i < coords_dims.sizes[0]; i++) {
+  for (int i = 0; i < coords_count; ++i) {
     TFLITE_DCHECK_GE(coords_data[i], 0);
-    TFLITE_DCHECK_LT(coords_data[i], input_dims.sizes[input_rank - 1]);
+    TFLITE_DCHECK_LT(coords_data[i], input_shape.Dims(axis));
     const T* in = input_data + coords_data[i] * stride;
     memcpy(out, in, sizeof(T) * stride);
     out += stride;
   }
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy Dims<4> version.
+// When moving legacy ops to legacy_reference_ops, replace content with looser
+// implementation.
+template <typename T>
+inline void Gather(const T* input_data, const Dims<4>& input_dims,
+                   int input_rank, const int32* coords_data,
+                   const Dims<4>& coords_dims, T* output_data,
+                   const Dims<4>& output_dims) {
+  tflite::GatherParams op_params;
+  op_params.input_rank = input_rank;
+
+  Gather(op_params, DimsToShape(input_dims), input_data,
+         DimsToShape(coords_dims), coords_data, DimsToShape(output_dims),
+         output_data);
 }
 
 template <typename T>
@@ -3708,56 +3807,108 @@ inline void Pad(const tflite::PadParams& op_params,
 }
 
 template <typename T>
+inline void StridedSlice(const tflite::StridedSliceParams& op_params,
+                         const RuntimeShape& unextended_input_shape,
+                         const T* input_data,
+                         const RuntimeShape& unextended_output_shape,
+                         T* output_data) {
+  // Note that the output_shape is not used herein.
+  tflite::StridedSliceParams params_copy = op_params;
+
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
+  // Reverse and pad to 4 dimensions because that is what the runtime code
+  // requires (ie. all shapes must be 4D and are given backwards).
+  strided_slice::StridedSlicePadIndices(&params_copy, 4);
+
+  const int start_b = strided_slice::StartForAxis(params_copy, input_shape, 0);
+  const int stop_b =
+      strided_slice::StopForAxis(params_copy, input_shape, 0, start_b);
+  const int start_h = strided_slice::StartForAxis(params_copy, input_shape, 1);
+  const int stop_h =
+      strided_slice::StopForAxis(params_copy, input_shape, 1, start_h);
+  const int start_w = strided_slice::StartForAxis(params_copy, input_shape, 2);
+  const int stop_w =
+      strided_slice::StopForAxis(params_copy, input_shape, 2, start_w);
+  const int start_d = strided_slice::StartForAxis(params_copy, input_shape, 3);
+  const int stop_d =
+      strided_slice::StopForAxis(params_copy, input_shape, 3, start_d);
+
+  T* out_ptr = output_data;
+  for (int in_b = start_b;
+       !strided_slice::LoopCondition(in_b, stop_b, params_copy.strides[0]);
+       in_b += params_copy.strides[0]) {
+    for (int in_h = start_h;
+         !strided_slice::LoopCondition(in_h, stop_h, params_copy.strides[1]);
+         in_h += params_copy.strides[1]) {
+      for (int in_w = start_w;
+           !strided_slice::LoopCondition(in_w, stop_w, params_copy.strides[2]);
+           in_w += params_copy.strides[2]) {
+        for (int in_d = start_d; !strided_slice::LoopCondition(
+                 in_d, stop_d, params_copy.strides[3]);
+             in_d += params_copy.strides[3]) {
+          *out_ptr++ = input_data[Offset(input_shape, in_b, in_h, in_w, in_d)];
+        }
+      }
+    }
+  }
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline uint32 LegacyReverseBits32(uint32 n) {
+  n = ((n >> 1) & 0x55555555) | ((n & 0x55555555) << 1);
+  n = ((n >> 2) & 0x33333333) | ((n & 0x33333333) << 2);
+  n = ((n >> 4) & 0x0F0F0F0F) | ((n & 0x0F0F0F0F) << 4);
+  return (((n & 0xFF) << 24) | ((n & 0xFF00) << 8) | ((n & 0xFF0000) >> 8) |
+          ((n & 0xFF000000) >> 24));
+}
+
+inline void StridedSliceReverseIndices(tflite::StridedSliceParams* p) {
+  TFLITE_CHECK_EQ(p->start_indices_count, p->stop_indices_count);
+  TFLITE_CHECK_EQ(p->stop_indices_count, p->strides_count);
+
+  std::reverse(p->start_indices, p->start_indices + p->start_indices_count);
+  std::reverse(p->stop_indices, p->stop_indices + p->stop_indices_count);
+  std::reverse(p->strides, p->strides + p->strides_count);
+
+  p->begin_mask = LegacyReverseBits32(static_cast<uint32>(p->begin_mask)) >>
+                  (32 - p->start_indices_count);
+  p->ellipsis_mask =
+      LegacyReverseBits32(static_cast<uint32>(p->ellipsis_mask)) >>
+      (32 - p->start_indices_count);
+  p->end_mask = LegacyReverseBits32(static_cast<uint32>(p->end_mask)) >>
+                (32 - p->start_indices_count);
+  p->new_axis_mask =
+      LegacyReverseBits32(static_cast<uint32>(p->new_axis_mask)) >>
+      (32 - p->start_indices_count);
+  p->shrink_axis_mask =
+      LegacyReverseBits32(static_cast<uint32>(p->shrink_axis_mask)) >>
+      (32 - p->start_indices_count);
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+template <typename T>
 inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
                          int begin_mask, int end_mask, int shrink_axis_mask,
                          const std::vector<int>& start_indices,
                          const std::vector<int>& stop_indices,
                          const std::vector<int>& strides, T* output_data,
                          const Dims<4>& output_dims) {
-  // Note that the axis orders are reversed for runtime ops, so the indices,
-  // strides and masks must be as well too.
   TFLITE_DCHECK_EQ(start_indices.size(), 4);
-  TFLITE_DCHECK_EQ(stop_indices.size(), 4);
-  TFLITE_DCHECK_EQ(strides.size(), 4);
-  const int start_b = strided_slice::StartForAxis(begin_mask, start_indices,
-                                                  strides, input_dims.sizes, 3);
-  const int stop_b =
-      strided_slice::StopForAxis(end_mask, shrink_axis_mask, stop_indices,
-                                 strides, input_dims.sizes, 3, start_b);
-  const int start_h = strided_slice::StartForAxis(begin_mask, start_indices,
-                                                  strides, input_dims.sizes, 2);
-  const int stop_h =
-      strided_slice::StopForAxis(end_mask, shrink_axis_mask, stop_indices,
-                                 strides, input_dims.sizes, 2, start_h);
-  const int start_w = strided_slice::StartForAxis(begin_mask, start_indices,
-                                                  strides, input_dims.sizes, 1);
-  const int stop_w =
-      strided_slice::StopForAxis(end_mask, shrink_axis_mask, stop_indices,
-                                 strides, input_dims.sizes, 1, start_w);
-  const int start_d = strided_slice::StartForAxis(begin_mask, start_indices,
-                                                  strides, input_dims.sizes, 0);
-  const int stop_d =
-      strided_slice::StopForAxis(end_mask, shrink_axis_mask, stop_indices,
-                                 strides, input_dims.sizes, 0, start_d);
+  auto op_params = strided_slice::BuildStridedSliceParams(
+      begin_mask, end_mask, shrink_axis_mask, start_indices, stop_indices,
+      strides);
+  StridedSliceReverseIndices(&op_params);
 
-  T* out_ptr = output_data;
-  for (int in_b = start_b;
-       !strided_slice::LoopCondition(in_b, stop_b, strides[3]);
-       in_b += strides[3]) {
-    for (int in_h = start_h;
-         !strided_slice::LoopCondition(in_h, stop_h, strides[2]);
-         in_h += strides[2]) {
-      for (int in_w = start_w;
-           !strided_slice::LoopCondition(in_w, stop_w, strides[1]);
-           in_w += strides[1]) {
-        for (int in_d = start_d;
-             !strided_slice::LoopCondition(in_d, stop_d, strides[0]);
-             in_d += strides[0]) {
-          *out_ptr++ = input_data[Offset(input_dims, in_d, in_w, in_h, in_b)];
-        }
-      }
-    }
-  }
+  StridedSlice(op_params, DimsToShape(input_dims), input_data,
+               DimsToShape(output_dims), output_data);
 }
 
 template <typename T>
@@ -3982,22 +4133,32 @@ inline bool Mean(const T* input_data, const int* input_dims,
 }
 
 template <typename T>
-inline void Mean(const T* input_data, const Dims<4>& input_dims,
-                 const std::vector<int>& reduction_indices, T* output_data,
-                 const Dims<4>& output_dims) {
-  const int output_batch = ArraySize(output_dims, 3);
-  const int output_height = ArraySize(output_dims, 2);
-  const int output_width = ArraySize(output_dims, 1);
-  const int output_depth = ArraySize(output_dims, 0);
+inline void Mean(const tflite::MeanParams& op_params,
+                 const RuntimeShape& unextended_input_shape,
+                 const T* input_data,
+                 const RuntimeShape& unextended_output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Mean");
 
-  const int input_height = ArraySize(input_dims, 2);
-  const int input_width = ArraySize(input_dims, 1);
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
+  const int output_batch = output_shape.Dims(0);
+  const int output_height = output_shape.Dims(1);
+  const int output_width = output_shape.Dims(2);
+  const int output_depth = output_shape.Dims(3);
+
+  const int input_height = input_shape.Dims(1);
+  const int input_width = input_shape.Dims(2);
 
   // The current implementation only supports simultaneous reduction over
   // width and height.
-  TFLITE_DCHECK_EQ(reduction_indices.size(), 2);
-  TFLITE_DCHECK((reduction_indices[0] == 1 && reduction_indices[1] == 2) ||
-                (reduction_indices[0] == 2 && reduction_indices[1] == 1));
+  TFLITE_DCHECK_EQ(op_params.axis_count, 2);
+  TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+                (op_params.axis[0] == 2 && op_params.axis[1] == 1));
   TFLITE_DCHECK_EQ(output_height, 1);
   TFLITE_DCHECK_EQ(output_width, 1);
 
@@ -4006,13 +4167,29 @@ inline void Mean(const T* input_data, const Dims<4>& input_dims,
       float value = 0;
       for (int in_h = 0; in_h < input_height; ++in_h) {
         for (int in_w = 0; in_w < input_width; ++in_w) {
-          value += input_data[Offset(input_dims, out_d, in_w, in_h, out_b)];
+          value += input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
         }
       }
-      output_data[Offset(output_dims, out_d, 0, 0, out_b)] =
+      output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
           value / (input_width * input_height);
     }
   }
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy Dims<4>.
+template <typename T>
+inline void Mean(const T* input_data, const Dims<4>& input_dims,
+                 const std::vector<int>& reduction_indices, T* output_data,
+                 const Dims<4>& output_dims) {
+  tflite::MeanParams op_params;
+  op_params.axis_count = reduction_indices.size();
+  for (int i = 0; i < op_params.axis_count; ++i) {
+    op_params.axis[i] = reduction_indices[op_params.axis_count - 1 - i];
+  }
+
+  Mean(op_params, DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+       output_data);
 }
 
 // Computes the mean of elements across dimensions given in axis.
@@ -4301,9 +4478,10 @@ template <typename T>
 using ComparisonFn = bool (*)(T, T);
 
 template <typename T, ComparisonFn<T> F>
-inline void Comparison(const RuntimeShape& input1_shape, const T* input1_data,
-                       const RuntimeShape& input2_shape, const T* input2_data,
-                       const RuntimeShape& output_shape, bool* output_data) {
+inline void ComparisonImpl(
+    const ComparisonParams& op_params, const RuntimeShape& input1_shape,
+    const T* input1_data, const RuntimeShape& input2_shape,
+    const T* input2_data, const RuntimeShape& output_shape, bool* output_data) {
   const int64_t flatsize =
       MatchingFlatSize(input1_shape, input2_shape, output_shape);
   for (int64_t i = 0; i < flatsize; ++i) {
@@ -4311,15 +4489,62 @@ inline void Comparison(const RuntimeShape& input1_shape, const T* input1_data,
   }
 }
 
+template <ComparisonFn<float> F>
+inline void Comparison(const ComparisonParams& op_params,
+                       const RuntimeShape& input1_shape,
+                       const float* input1_data,
+                       const RuntimeShape& input2_shape,
+                       const float* input2_data,
+                       const RuntimeShape& output_shape, bool* output_data) {
+  ComparisonImpl<float, F>(op_params, input1_shape, input1_data, input2_shape,
+                           input2_data, output_shape, output_data);
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
 template <typename T, ComparisonFn<T> F>
 inline void Comparison(const T* input1_data, const Dims<4>& input1_dims,
                        const T* input2_data, const Dims<4>& input2_dims,
                        bool* output_data, const Dims<4>& output_dims) {
-  Comparison<T, F>(DimsToShape(input1_dims), input1_data,
-                   DimsToShape(input2_dims), input2_data,
-                   DimsToShape(output_dims), output_data);
+  ComparisonParams op_params;
+  // No parameters needed.
+  ComparisonImpl<T, F>(op_params, DimsToShape(input1_dims), input1_data,
+                       DimsToShape(input2_dims), input2_data,
+                       DimsToShape(output_dims), output_data);
 }
 
+template <typename T, ComparisonFn<int32> F>
+inline void ComparisonWithScaling(
+    const ComparisonParams& op_params, const RuntimeShape& input1_shape,
+    const T* input1_data, const RuntimeShape& input2_shape,
+    const T* input2_data, const RuntimeShape& output_shape, bool* output_data) {
+  int left_shift = op_params.left_shift;
+  int32 input1_offset = op_params.input1_offset;
+  int32 input1_multiplier = op_params.input1_multiplier;
+  int input1_shift = op_params.input1_shift;
+  int32 input2_offset = op_params.input2_offset;
+  int32 input2_multiplier = op_params.input2_multiplier;
+  int input2_shift = op_params.input2_shift;
+
+  const int64_t flatsize =
+      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+  for (int64_t i = 0; i < flatsize; ++i) {
+    const int32 input1_val = input1_offset + input1_data[i];
+    const int32 input2_val = input2_offset + input2_data[i];
+    const int32 shifted_input1_val = input1_val * (1 << left_shift);
+    const int32 shifted_input2_val = input2_val * (1 << left_shift);
+    const int32 scaled_input1_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input1_val, input1_multiplier, input1_shift);
+    const int32 scaled_input2_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input2_val, input2_multiplier, input2_shift);
+    output_data[i] = F(scaled_input1_val, scaled_input2_val);
+  }
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
 template <typename T, ComparisonFn<int32> F>
 inline void Comparison(int left_shift, const T* input1_data,
                        const Dims<4>& input1_dims, int32 input1_offset,
@@ -4328,47 +4553,131 @@ inline void Comparison(int left_shift, const T* input1_data,
                        int32 input2_offset, int32 input2_multiplier,
                        int input2_shift, bool* output_data,
                        const Dims<4>& output_dims) {
-  const int64_t flatsize =
-      MatchingFlatSize(input1_dims, input2_dims, output_dims);
-  for (int64_t i = 0; i < flatsize; ++i) {
-    const int32 input1_val = input1_offset + input1_data[i];
-    const int32 input2_val = input2_offset + input2_data[i];
-    const int32 shifted_input1_val = input1_val * (1 << left_shift);
-    const int32 shifted_input2_val = input2_val * (1 << left_shift);
-    const int32 scaled_input1_val =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_input1_val, input1_multiplier,
-            kReverseShift * input1_shift);
-    const int32 scaled_input2_val =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_input2_val, input2_multiplier,
-            kReverseShift * input2_shift);
-    output_data[i] = F(scaled_input1_val, scaled_input2_val);
-  }
+  tflite::ComparisonParams op_params;
+  op_params.left_shift = left_shift;
+  op_params.input1_offset = input1_offset;
+  op_params.input1_multiplier = input1_multiplier;
+  op_params.input1_shift = kReverseShift * input1_shift;
+  op_params.input2_offset = input2_offset;
+  op_params.input2_multiplier = input2_multiplier;
+  op_params.input2_shift = kReverseShift * input2_shift;
+
+  ComparisonWithScaling<T, F>(op_params, DimsToShape(input1_dims), input1_data,
+                              DimsToShape(input2_dims), input2_data,
+                              DimsToShape(output_dims), output_data);
 }
 
+template <typename T, ComparisonFn<T> F>
+inline void BroadcastComparison4DSlowImpl(
+    const ComparisonParams& op_params,
+    const RuntimeShape& unextended_input1_shape, const T* input1_data,
+    const RuntimeShape& unextended_input2_shape, const T* input2_data,
+    const RuntimeShape& unextended_output_shape, bool* output_data) {
+  gemmlowp::ScopedProfilingLabel label("BroadcastComparison4DSlow");
+  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
+                                      unextended_input2_shape, &desc1, &desc2);
+
+  for (int b = 0; b < output_shape.Dims(0); ++b) {
+    for (int y = 0; y < output_shape.Dims(1); ++y) {
+      for (int x = 0; x < output_shape.Dims(2); ++x) {
+        for (int c = 0; c < output_shape.Dims(3); ++c) {
+          output_data[Offset(output_shape, b, y, x, c)] =
+              F(input1_data[SubscriptToIndex(desc1, b, y, x, c)],
+                input2_data[SubscriptToIndex(desc2, b, y, x, c)]);
+        }
+      }
+    }
+  }
+}
+template <ComparisonFn<float> F>
+inline void BroadcastComparison4DSlow(const ComparisonParams& op_params,
+                                      const RuntimeShape& input1_shape,
+                                      const float* input1_data,
+                                      const RuntimeShape& input2_shape,
+                                      const float* input2_data,
+                                      const RuntimeShape& output_shape,
+                                      bool* output_data) {
+  BroadcastComparison4DSlowImpl<float, F>(op_params, input1_shape, input1_data,
+                                          input2_shape, input2_data,
+                                          output_shape, output_data);
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
 template <typename T, ComparisonFn<T> F>
 inline void BroadcastComparison(const T* input1_data,
                                 const Dims<4>& input1_dims,
                                 const T* input2_data,
                                 const Dims<4>& input2_dims, bool* output_data,
                                 const Dims<4>& output_dims) {
+  ComparisonParams op_params;
+  // No parameters needed.
+  BroadcastComparison4DSlowImpl<T, F>(op_params, DimsToShape(input1_dims),
+                                      input1_data, DimsToShape(input2_dims),
+                                      input2_data, DimsToShape(output_dims),
+                                      output_data);
+}
+
+template <typename T, ComparisonFn<int32> F>
+inline void BroadcastComparison4DSlowWithScaling(
+    const ComparisonParams& op_params,
+    const RuntimeShape& unextended_input1_shape, const T* input1_data,
+    const RuntimeShape& unextended_input2_shape, const T* input2_data,
+    const RuntimeShape& unextended_output_shape, bool* output_data) {
+  gemmlowp::ScopedProfilingLabel label("BroadcastComparison4DSlowWithScaling");
+  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
-  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
-    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
-      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
-        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] =
-              F(input1_data[SubscriptToIndex(desc1, c, x, y, b)],
-                input2_data[SubscriptToIndex(desc2, c, x, y, b)]);
+  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
+                                      unextended_input2_shape, &desc1, &desc2);
+
+  int left_shift = op_params.left_shift;
+  int32 input1_offset = op_params.input1_offset;
+  int32 input1_multiplier = op_params.input1_multiplier;
+  int input1_shift = op_params.input1_shift;
+  int32 input2_offset = op_params.input2_offset;
+  int32 input2_multiplier = op_params.input2_multiplier;
+  int input2_shift = op_params.input2_shift;
+
+  for (int b = 0; b < output_shape.Dims(0); ++b) {
+    for (int y = 0; y < output_shape.Dims(1); ++y) {
+      for (int x = 0; x < output_shape.Dims(2); ++x) {
+        for (int c = 0; c < output_shape.Dims(3); ++c) {
+          const int32 input1_val =
+              input1_offset + input1_data[SubscriptToIndex(desc1, b, y, x, c)];
+          const int32 input2_val =
+              input2_offset + input2_data[SubscriptToIndex(desc2, b, y, x, c)];
+          const int32 shifted_input1_val = input1_val * (1 << left_shift);
+          const int32 shifted_input2_val = input2_val * (1 << left_shift);
+          const int32 scaled_input1_val =
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input1_val, input1_multiplier, input1_shift);
+          const int32 scaled_input2_val =
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input2_val, input2_multiplier, input2_shift);
+          output_data[Offset(output_shape, b, y, x, c)] =
+              F(scaled_input1_val, scaled_input2_val);
         }
       }
     }
   }
 }
 
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
 template <typename T, ComparisonFn<int32> F>
 inline void BroadcastComparison(int left_shift, const T* input1_data,
                                 const Dims<4>& input1_dims, int32 input1_offset,
@@ -4377,80 +4686,107 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
                                 const Dims<4>& input2_dims, int32 input2_offset,
                                 int32 input2_multiplier, int input2_shift,
                                 bool* output_data, const Dims<4>& output_dims) {
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
-  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
-    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
-      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
-        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
-          const int32 input1_val =
-              input1_offset + input1_data[SubscriptToIndex(desc1, c, x, y, b)];
-          const int32 input2_val =
-              input2_offset + input2_data[SubscriptToIndex(desc2, c, x, y, b)];
-          const int32 shifted_input1_val = input1_val * (1 << left_shift);
-          const int32 shifted_input2_val = input2_val * (1 << left_shift);
-          const int32 scaled_input1_val =
-              MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                  shifted_input1_val, input1_multiplier,
-                  kReverseShift * input1_shift);
-          const int32 scaled_input2_val =
-              MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                  shifted_input2_val, input2_multiplier,
-                  kReverseShift * input2_shift);
-          output_data[Offset(output_dims, c, x, y, b)] =
-              F(scaled_input1_val, scaled_input2_val);
-        }
-      }
-    }
-  }
+  ComparisonParams op_params;
+
+  op_params.left_shift = left_shift;
+  op_params.input1_offset = input1_offset;
+  op_params.input1_multiplier = input1_multiplier;
+  op_params.input1_shift = kReverseShift * input1_shift;
+  op_params.input2_offset = input2_offset;
+  op_params.input2_multiplier = input2_multiplier;
+  op_params.input2_shift = kReverseShift * input2_shift;
+
+  BroadcastComparison4DSlowWithScaling<T, F>(
+      op_params, DimsToShape(input1_dims), input1_data,
+      DimsToShape(input2_dims), input2_data, DimsToShape(output_dims),
+      output_data);
 }
 
-#define TFLITE_COMPARISON_OP(name)                                            \
-  template <typename T>                                                       \
-  inline void name(const T* input1_data, const Dims<4>& input1_dims,          \
-                   const T* input2_data, const Dims<4>& input2_dims,          \
-                   bool* output_data, const Dims<4>& output_dims) {           \
-    gemmlowp::ScopedProfilingLabel label(#name);                              \
-    Comparison<T, name##Fn>(input1_data, input1_dims, input2_data,            \
-                            input2_dims, output_data, output_dims);           \
-  }                                                                           \
-  template <typename T>                                                       \
-  inline void name(                                                           \
-      int left_shift, const T* input1_data, const Dims<4>& input1_dims,       \
-      int32 input1_offset, int32 input1_multiplier, int input1_shift,         \
-      const T* input2_data, const Dims<4>& input2_dims, int32 input2_offset,  \
-      int32 input2_multiplier, int input2_shift, bool* output_data,           \
-      const Dims<4>& output_dims) {                                           \
-    gemmlowp::ScopedProfilingLabel label(#name "/8bit");                      \
-    Comparison<T, name##Fn>(left_shift, input1_data, input1_dims,             \
-                            input1_offset, input1_multiplier, input1_shift,   \
-                            input2_data, input2_dims, input2_offset,          \
-                            input2_multiplier, input2_shift, output_data,     \
-                            output_dims);                                     \
-  }                                                                           \
-  template <typename T>                                                       \
-  inline void Broadcast##name(                                                \
-      const T* input1_data, const Dims<4>& input1_dims, const T* input2_data, \
-      const Dims<4>& input2_dims, bool* output_data,                          \
-      const Dims<4>& output_dims) {                                           \
-    gemmlowp::ScopedProfilingLabel label("Broadcast" #name);                  \
-    BroadcastComparison<T, name##Fn>(input1_data, input1_dims, input2_data,   \
-                                     input2_dims, output_data, output_dims);  \
-  }                                                                           \
-  template <typename T>                                                       \
-  inline void Broadcast##name(                                                \
-      int left_shift, const T* input1_data, const Dims<4>& input1_dims,       \
-      int32 input1_offset, int32 input1_multiplier, int input1_shift,         \
-      const T* input2_data, const Dims<4>& input2_dims, int32 input2_offset,  \
-      int32 input2_multiplier, int input2_shift, bool* output_data,           \
-      const Dims<4>& output_dims) {                                           \
-    gemmlowp::ScopedProfilingLabel label("Broadcast" #name "/8bit");          \
-    BroadcastComparison<T, name##Fn>(left_shift, input1_data, input1_dims,    \
-                                     input1_offset, input1_multiplier,        \
-                                     input1_shift, input2_data, input2_dims,  \
-                                     input2_offset, input2_multiplier,        \
-                                     input2_shift, output_data, output_dims); \
+#define TFLITE_COMPARISON_OP(name)                                             \
+  template <typename T>                                                        \
+  inline void name(const T* input1_data, const Dims<4>& input1_dims,           \
+                   const T* input2_data, const Dims<4>& input2_dims,           \
+                   bool* output_data, const Dims<4>& output_dims) {            \
+    gemmlowp::ScopedProfilingLabel label(#name);                               \
+    Comparison<T, name##Fn>(input1_data, input1_dims, input2_data,             \
+                            input2_dims, output_data, output_dims);            \
+  }                                                                            \
+  template <typename T>                                                        \
+  inline void name(                                                            \
+      int left_shift, const T* input1_data, const Dims<4>& input1_dims,        \
+      int32 input1_offset, int32 input1_multiplier, int input1_shift,          \
+      const T* input2_data, const Dims<4>& input2_dims, int32 input2_offset,   \
+      int32 input2_multiplier, int input2_shift, bool* output_data,            \
+      const Dims<4>& output_dims) {                                            \
+    gemmlowp::ScopedProfilingLabel label(#name "/8bit");                       \
+    Comparison<T, name##Fn>(left_shift, input1_data, input1_dims,              \
+                            input1_offset, input1_multiplier, input1_shift,    \
+                            input2_data, input2_dims, input2_offset,           \
+                            input2_multiplier, input2_shift, output_data,      \
+                            output_dims);                                      \
+  }                                                                            \
+  template <typename T>                                                        \
+  inline void Broadcast##name(                                                 \
+      const T* input1_data, const Dims<4>& input1_dims, const T* input2_data,  \
+      const Dims<4>& input2_dims, bool* output_data,                           \
+      const Dims<4>& output_dims) {                                            \
+    gemmlowp::ScopedProfilingLabel label("Broadcast" #name);                   \
+    BroadcastComparison<T, name##Fn>(input1_data, input1_dims, input2_data,    \
+                                     input2_dims, output_data, output_dims);   \
+  }                                                                            \
+  template <typename T>                                                        \
+  inline void Broadcast##name(                                                 \
+      int left_shift, const T* input1_data, const Dims<4>& input1_dims,        \
+      int32 input1_offset, int32 input1_multiplier, int input1_shift,          \
+      const T* input2_data, const Dims<4>& input2_dims, int32 input2_offset,   \
+      int32 input2_multiplier, int input2_shift, bool* output_data,            \
+      const Dims<4>& output_dims) {                                            \
+    gemmlowp::ScopedProfilingLabel label("Broadcast" #name "/8bit");           \
+    BroadcastComparison<T, name##Fn>(left_shift, input1_data, input1_dims,     \
+                                     input1_offset, input1_multiplier,         \
+                                     input1_shift, input2_data, input2_dims,   \
+                                     input2_offset, input2_multiplier,         \
+                                     input2_shift, output_data, output_dims);  \
+  }                                                                            \
+  inline void name(const ComparisonParams& op_params,                          \
+                   const RuntimeShape& input1_shape, const float* input1_data, \
+                   const RuntimeShape& input2_shape, const float* input2_data, \
+                   const RuntimeShape& output_shape, bool* output_data) {      \
+    gemmlowp::ScopedProfilingLabel label(#name);                               \
+    Comparison<name##Fn>(op_params, input1_shape, input1_data, input2_shape,   \
+                         input2_data, output_shape, output_data);              \
+  }                                                                            \
+  template <typename T>                                                        \
+  inline void name##WithScaling(                                               \
+      const ComparisonParams& op_params, const RuntimeShape& input1_shape,     \
+      const T* input1_data, const RuntimeShape& input2_shape,                  \
+      const T* input2_data, const RuntimeShape& output_shape,                  \
+      bool* output_data) {                                                     \
+    gemmlowp::ScopedProfilingLabel label(#name "/8bit");                       \
+    ComparisonWithScaling<T, name##Fn>(op_params, input1_shape, input1_data,   \
+                                       input2_shape, input2_data,              \
+                                       output_shape, output_data);             \
+  }                                                                            \
+  inline void Broadcast4DSlow##name(                                           \
+      const ComparisonParams& op_params, const RuntimeShape& input1_shape,     \
+      const float* input1_data, const RuntimeShape& input2_shape,              \
+      const float* input2_data, const RuntimeShape& output_shape,              \
+      bool* output_data) {                                                     \
+    gemmlowp::ScopedProfilingLabel label("Broadcast" #name);                   \
+    BroadcastComparison4DSlow<name##Fn>(op_params, input1_shape, input1_data,  \
+                                        input2_shape, input2_data,             \
+                                        output_shape, output_data);            \
+  }                                                                            \
+  template <typename T>                                                        \
+  inline void Broadcast4DSlow##name##WithScaling(                              \
+      const ComparisonParams& op_params, const RuntimeShape& input1_shape,     \
+      const T* input1_data, const RuntimeShape& input2_shape,                  \
+      const T* input2_data, const RuntimeShape& output_shape,                  \
+      bool* output_data) {                                                     \
+    gemmlowp::ScopedProfilingLabel label("Broadcast" #name "/8bit");           \
+    BroadcastComparison4DSlowWithScaling<T, name##Fn>(                         \
+        op_params, input1_shape, input1_data, input2_shape, input2_data,       \
+        output_shape, output_data);                                            \
   }
 TFLITE_COMPARISON_OP(Equal);
 TFLITE_COMPARISON_OP(NotEqual);
@@ -4541,16 +4877,22 @@ inline void Pow(const RuntimeShape& input1_shape, const T* input1_data,
 }
 
 template <typename T>
-inline void BroadcastPow4DSlow(const RuntimeShape& input1_shape,
+inline void BroadcastPow4DSlow(const RuntimeShape& unextended_input1_shape,
                                const T* input1_data,
-                               const RuntimeShape& input2_shape,
+                               const RuntimeShape& unextended_input2_shape,
                                const T* input2_data,
-                               const RuntimeShape& output_shape,
+                               const RuntimeShape& unextended_output_shape,
                                T* output_data) {
+  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
-                                      &desc2);
+  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
+                                      unextended_input2_shape, &desc1, &desc2);
 
   for (int b = 0; b < output_shape.Dims(0); ++b) {
     for (int y = 0; y < output_shape.Dims(1); ++y) {

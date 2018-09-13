@@ -36,7 +36,7 @@ class PrefetchDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, feed_dict={buffer_size_t: buffer_size})
       for m in range(10):
         self.assertEqual(m, sess.run(get_next))
@@ -51,7 +51,7 @@ class PrefetchDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
 
     with self.assertRaisesRegexp(errors.InvalidArgumentError, "buffer_size"):
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         sess.run(init_op, feed_dict={buffer_size_t: buffer_size})
 
 

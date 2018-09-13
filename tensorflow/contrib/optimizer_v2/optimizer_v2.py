@@ -214,7 +214,8 @@ class _OptimizerV2State(object):
     # with that Tensor cast to that dtype.
     with ops.init_scope():
       self._hyper = {name: {None: ops.convert_to_tensor(value, name=name)}
-                     for name, (dynamic, value) in hyper.items() if not dynamic}
+                     for name, (dynamic, value) in sorted(hyper.items())
+                     if not dynamic}
     self._slots = {}
     self._non_slot_dict = {}
     # Extra state to help Optimizers implement Checkpointable. Holds information
@@ -231,7 +232,8 @@ class _OptimizerV2State(object):
     ret._deferred_dependencies = self._deferred_dependencies
     ret._deferred_slot_restorations = self._deferred_slot_restorations
     ret._hyper = {name: {None: _resolve(value, name)}
-                  for name, (dynamic, value) in hyper.items() if dynamic}
+                  for name, (dynamic, value) in sorted(hyper.items())
+                  if dynamic}
     ret._hyper.update(self._hyper)
     ret._non_slot_devices = non_slot_devices
     ret._distribution = distribution

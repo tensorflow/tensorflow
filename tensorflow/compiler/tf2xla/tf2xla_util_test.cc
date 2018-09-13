@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/data_flow_ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
@@ -25,8 +27,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -153,7 +153,7 @@ static tf2xla::Config FetchesConfig(std::vector<string> fetches) {
   tf2xla::Config config;
   for (const auto& fetch_node_name : fetches) {
     auto* fetch = config.add_fetch();
-    fetch->set_name(strings::StrCat("fetch_", fetch_node_name));
+    fetch->set_name(absl::StrCat("fetch_", fetch_node_name));
     fetch->mutable_id()->set_node_name(fetch_node_name);
   }
   return config;

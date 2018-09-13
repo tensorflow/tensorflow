@@ -406,11 +406,7 @@ TokKind HloLexer::LexString() {
     absl::string_view raw =
         StringPieceFromPointers(token_start_ + 1, current_ptr_ - 1);
     string error;
-    // TODO(b/113077997): Change to absl::CUnescape once it works properly with
-    // copy-on-write std::string implementations.
-    if (!tensorflow::str_util::CUnescape(                     // non-absl ok
-            tensorflow::StringPiece(raw.data(), raw.size()),  // non-absl ok
-            &str_val_, &error)) {
+    if (!absl::CUnescape(raw, &str_val_, &error)) {
       LOG(ERROR) << "Failed unescaping string: " << raw << ". error: " << error;
       return TokKind::kError;
     }

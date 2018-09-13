@@ -54,6 +54,7 @@ tf_cc_test(
     linkopts = common_linkopts,
     linkstatic = 1,
     tags = [
+        "no_oss",  # b/114307765
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
     ],

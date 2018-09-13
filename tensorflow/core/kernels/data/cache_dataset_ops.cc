@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level description of
@@ -69,7 +69,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
-          new FileIterator({this, strings::StrCat(prefix, "::FileIterator")}));
+          new FileIterator({this, strings::StrCat(prefix, "::FileCache")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -553,7 +553,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(new MemoryIterator(
-          {this, strings::StrCat(prefix, "::MemoryIterator")}, cache_));
+          {this, strings::StrCat(prefix, "::MemoryCache")}, cache_));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -891,5 +891,5 @@ REGISTER_KERNEL_BUILDER(Name("CacheDataset").Device(DEVICE_CPU),
                         CacheDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow
