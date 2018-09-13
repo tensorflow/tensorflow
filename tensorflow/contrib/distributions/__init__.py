@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Classes representing statistical distributions and ops for working with them.
+
+Use [tfp.distributions](/probability/api_docs/python/tfp/distributions) instead.
 """
 from __future__ import absolute_import
 from __future__ import division
