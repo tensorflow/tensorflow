@@ -430,10 +430,10 @@ StatusOr<poplar::program::Program> ConvBiasApply(poplar::Graph& graph,
   // Find the learning rate constant
   const auto& literal = root->operand(1)->operand(1)->operand(0)->literal();
 
-  std::unique_ptr<Literal> float_lit;
+  Literal float_lit;
   TF_ASSIGN_OR_RETURN(float_lit, literal.Convert(F32));
 
-  float learning_rate = float_lit->GetFirstElement<float>();
+  float learning_rate = float_lit.GetFirstElement<float>();
 
   // Find reduction
   const auto* reduce = root->operand(1)->operand(0);

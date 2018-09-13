@@ -45,11 +45,11 @@ StatusOr<std::vector<int64>> LiteralVectorToInt64Vector(
     return xla::FailedPrecondition("Literal rank != 1");
   }
 
-  std::unique_ptr<Literal> s64_lit;
+  Literal s64_lit;
   TF_ASSIGN_OR_RETURN(s64_lit, lit.Convert(S64));
 
-  const int64* start = static_cast<const int64*>(s64_lit->untyped_data());
-  return std::vector<int64>(start, start + s64_lit->shape().dimensions(0));
+  const int64* start = static_cast<const int64*>(s64_lit.untyped_data());
+  return std::vector<int64>(start, start + s64_lit.shape().dimensions(0));
 }
 
 StatusOr<std::vector<int64>> WideConstToInt64Vector(
@@ -70,10 +70,10 @@ StatusOr<int64> LiteralScalarInt64toInt64(const xla::Literal& lit) {
     return xla::FailedPrecondition("Literal is not scalar");
   }
 
-  std::unique_ptr<Literal> s64_lit;
+  Literal s64_lit;
   TF_ASSIGN_OR_RETURN(s64_lit, lit.Convert(S64));
 
-  return *static_cast<const int64*>(s64_lit->untyped_data());
+  return *static_cast<const int64*>(s64_lit.untyped_data());
 }
 
 StatusOr<double> LiteralScalarDoubleToDouble(const xla::Literal& lit) {
@@ -81,10 +81,10 @@ StatusOr<double> LiteralScalarDoubleToDouble(const xla::Literal& lit) {
     return xla::FailedPrecondition("Literal is not scalar");
   }
 
-  std::unique_ptr<Literal> double_lit;
+  Literal double_lit;
   TF_ASSIGN_OR_RETURN(double_lit, lit.Convert(F64));
 
-  return *static_cast<const double*>(double_lit->untyped_data());
+  return *static_cast<const double*>(double_lit.untyped_data());
 }
 
 bool IsPopOpsCall(const xla::HloComputation* comp, const std::string& postfix) {

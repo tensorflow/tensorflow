@@ -20,10 +20,10 @@ static StatusOr<double> DoubleValueOfScalarLiteral(const xla::Literal& lit) {
     return xla::FailedPrecondition("Literal element count != 1");
   }
 
-  std::unique_ptr<Literal> double_lit;
+  Literal double_lit;
   TF_ASSIGN_OR_RETURN(double_lit, lit.Convert(F64));
 
-  const double* val = static_cast<const double*>(double_lit->untyped_data());
+  const double* val = static_cast<const double*>(double_lit.untyped_data());
   return *val;
 }
 

@@ -28,7 +28,7 @@ PoplarExecutable::PoplarExecutable(
     std::unique_ptr<HloProfileIndexMap> profile_index_map,
     std::shared_ptr<poplar::Engine> engine,
     const ::xla::poplarplugin::OutputMap& output_map,
-    std::vector<std::unique_ptr<Literal>> literal_output,
+    std::vector<Literal> literal_output,
     const std::vector<bool>& parameter_streamed,
     const std::vector<bool>& output_streamed)
     : Executable(std::move(hlo_module), std::move(profile_printer),

@@ -576,7 +576,7 @@ std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::RemapArgs(
 
 std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::ConstantOutput(
     xla::DeviceMemoryAllocator* allocator, const xla::Shape& shape,
-    const int64 n, const std::vector<std::unique_ptr<Literal>>& constant) {
+    const int64 n, const std::vector<Literal>& constant) {
   if (shape.element_type() != xla::TUPLE) {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape));
     se::DeviceMemoryBase allocated =
@@ -588,7 +588,7 @@ std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::ConstantOutput(
     tc->output_convertor = nullptr;
 
     void* buf(static_cast<void*>(tc->data));
-    memcpy(buf, constant[n]->untyped_data(), constant[n]->size_bytes());
+    memcpy(buf, constant[n].untyped_data(), constant[n].size_bytes());
 
     return std::make_tuple(allocated, n + 1);
   } else {

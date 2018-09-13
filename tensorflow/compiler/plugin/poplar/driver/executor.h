@@ -324,7 +324,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   std::tuple<se::DeviceMemoryBase, int64> ConstantOutput(
       xla::DeviceMemoryAllocator* allocator, const xla::Shape& shape,
-      const int64 n, const std::vector<std::unique_ptr<Literal>>& constant);
+      const int64 n, const std::vector<Literal>& constant);
 
   Status MoveDeviceToHost();
 

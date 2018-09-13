@@ -124,7 +124,7 @@ static bool OkToStream(const Shape& shape) {
 }
 
 static bool GetConstantOutput(const HloInstruction* root, const Shape& layout,
-                              std::vector<std::unique_ptr<Literal>>& result) {
+                              std::vector<Literal>& result) {
   if (root->opcode() == HloOpcode::kConstant) {
     auto literal = root->literal().Relayout(layout);
     result.emplace_back(std::move(literal));
@@ -472,7 +472,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   std::shared_ptr<poplar::Engine> engine;
   std::vector<poplar::program::Program> progs;
-  std::vector<std::unique_ptr<Literal>> constant_output;
+  std::vector<Literal> constant_output;
 
   EntryVisitor visitor(graph, resources, num_inputs, num_outputs);
 

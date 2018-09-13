@@ -463,5 +463,9 @@ Status BaseVisitor::HandleAllToAll(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
+Status BaseVisitor::HandleCollectivePermute(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
 }  // namespace poplarplugin
 }  // namespace xla

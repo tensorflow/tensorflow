@@ -87,7 +87,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_query",
-        "//tensorflow/compiler/xla/service:hlo_scheduling",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
