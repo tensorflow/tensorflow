@@ -427,6 +427,10 @@ class ReturnOp
 public:
   static StringRef getOperationName() { return "return"; }
 
+  // TODO When there is a client.
+  // static void build(Builder *builder, OperationState *result,
+  //                  ArrayRef<SSAValue *> results);
+
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
@@ -461,10 +465,8 @@ public:
   }
 
   // Hooks to customize behavior of this op.
-  // TODO(clattner): Add parse/print hooks when we agree about the concrete
-  // syntax.
-  // static bool parse(OpAsmParser *parser, OperationState *result);
-  // void print(OpAsmPrinter *p) const;
+  static bool parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p) const;
   bool verify() const;
 
 private:

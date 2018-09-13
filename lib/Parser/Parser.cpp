@@ -1733,6 +1733,14 @@ public:
     return false;
   }
 
+  /// Parse a keyword followed by a type.
+  bool parseKeywordType(const char *keyword, Type *&result) override {
+    if (parser.getTokenSpelling() != keyword)
+      return parser.emitError("expected '" + Twine(keyword) + "'");
+    parser.consumeToken();
+    return !(result = parser.parseType());
+  }
+
   /// Parse an arbitrary attribute and return it in result.  This also adds the
   /// attribute to the specified attribute list with the specified name.  this
   /// captures the location of the attribute in 'loc' if it is non-null.

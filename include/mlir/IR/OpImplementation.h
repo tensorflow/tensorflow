@@ -186,6 +186,9 @@ public:
   /// Parse a colon followed by a type list, which must have at least one type.
   virtual bool parseColonTypeList(SmallVectorImpl<Type *> &result) = 0;
 
+  /// Parse a keyword followed by a type.
+  virtual bool parseKeywordType(const char *keyword, Type *&result) = 0;
+
   /// Add the specified type to the end of the specified type list and return
   /// false.  This is a helper designed to allow parse methods to be simple and
   /// chain through || operators.

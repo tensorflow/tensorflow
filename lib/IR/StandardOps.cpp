@@ -754,6 +754,20 @@ bool ShapeCastOp::verify() const {
   return false;
 }
 
+void ShapeCastOp::print(OpAsmPrinter *p) const {
+  *p << "shape_cast " << *getOperand() << " : " << *getOperand()->getType()
+     << " to " << *getType();
+}
+
+bool ShapeCastOp::parse(OpAsmParser *parser, OperationState *result) {
+  OpAsmParser::OperandType srcInfo;
+  Type *srcType, *dstType;
+  return parser->parseOperand(srcInfo) || parser->parseColonType(srcType) ||
+         parser->resolveOperand(srcInfo, srcType, result->operands) ||
+         parser->parseKeywordType("to", dstType) ||
+         parser->addTypeToList(dstType, result->types);
+}
+
 //===----------------------------------------------------------------------===//
 // StoreOp
 //===----------------------------------------------------------------------===//
