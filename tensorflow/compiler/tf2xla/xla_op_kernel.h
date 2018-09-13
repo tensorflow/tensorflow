@@ -71,6 +71,9 @@ class XlaOpKernelContext {
   // Returns the type of input `index`.
   DataType input_type(int index) const;
 
+  // Returns the type of input `name`.
+  DataType InputType(absl::string_view name);
+
   // Returns the type of input `index` as an xla::PrimitiveType. If the type
   // is not representable as an XLA type, sets an error status and returns
   // xla::PRIMITIVE_TYPE_INVALID.
@@ -79,7 +82,7 @@ class XlaOpKernelContext {
   // Returns the shape of input `index`.
   TensorShape InputShape(int index);
 
-  // Returns the shape of input `name`.
+  // Returns the shape of input with name `name`.
   TensorShape InputShape(absl::string_view name);
 
   // Returns input `index` as a XlaOp. Unlike

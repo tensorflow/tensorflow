@@ -29,14 +29,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 namespace {
 
-class MinimumMemoryForSequenceTest : public HloTestBase {};
+class MinimumMemoryForSequenceTest : public HloVerifiedTestBase {};
 
 TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
   auto module = CreateNewModule();
@@ -86,7 +86,7 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   };
 
-  HloSchedule schedule(module.get());
+  HloSchedule schedule(module);
   schedule.set_sequence(cond_computation,
                         {cond_param, cond_iter, cond_data, cond_lt});
   schedule.set_sequence(body_computation, {body_param});
@@ -233,7 +233,7 @@ class HeapSimulatorTracker {
   HeapSimulator::Result result_;
 };
 
-class HeapSimulatorTest : public HloTestBase {
+class HeapSimulatorTest : public HloVerifiedTestBase {
  protected:
   HeapSimulatorTest() {}
   ~HeapSimulatorTest() override {}

@@ -134,11 +134,12 @@ XlaOp XlaBuilder::ReportErrorOrReturn(
 
 StatusOr<ProgramShape> XlaBuilder::GetProgramShape(int64 root_id) const {
   TF_RETURN_IF_ERROR(first_error_);
-  TF_RET_CHECK((root_id >= 0) && (root_id < instructions_.size()));
+  TF_ASSIGN_OR_RETURN(const HloInstructionProto* root_proto,
+                      LookUpInstructionByHandle(root_id));
 
   ProgramShape program_shape;
 
-  *program_shape.mutable_result() = instructions_[root_id].shape();
+  *program_shape.mutable_result() = root_proto->shape();
 
   // Check that the parameter numbers are continuous from 0, and add parameter
   // shapes and names to the program shape.
@@ -181,9 +182,8 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
     return;
   }
 
-  CHECK(op_handle < instructions_.size() && op_handle >= 0);
-
-  const HloInstructionProto& instr = instructions_[op_handle];
+  const HloInstructionProto& instr =
+      *(LookUpInstructionByHandle(op_handle).ValueOrDie());
   const HloOpcode opcode = StringToHloOpcode(instr.opcode()).ValueOrDie();
   switch (opcode) {
     default:
@@ -283,6 +283,7 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
 
   // Clear data held by this builder.
   this->instructions_.clear();
+  this->handle_to_index_.clear();
   this->embedded_.clear();
   this->parameter_numbers_.clear();
 
@@ -738,7 +739,7 @@ void XlaBuilder::Trace(const string& tag, const XlaOp& operand) {
   ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     *instr.mutable_shape() = ShapeUtil::MakeNil();
-    *instr.mutable_literal() = LiteralUtil::CreateR1U8(tag)->ToProto();
+    *instr.mutable_literal() = LiteralUtil::CreateR1U8(tag).ToProto();
     return AddInstruction(std::move(instr), HloOpcode::kTrace, {operand});
   });
 }
@@ -2285,7 +2286,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
   *program_shape->mutable_result() = root->shape();
 
   // We use std::set to keep the instruction ids in ascending order (which is
-  // also a valid denpendency order). The related ops will be added to the
+  // also a valid dependency order). The related ops will be added to the
   // subgraph in the same order.
   std::set<int64> related_ops;
   tensorflow::gtl::FlatSet<int64> related_calls;  // Related computations.
@@ -2293,14 +2294,16 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
   worklist.push(root->id());
   related_ops.insert(root->id());
   while (!worklist.empty()) {
-    int64 node = worklist.front();
+    int64 handle = worklist.front();
     worklist.pop();
-    for (int64 id : instructions_[node].operand_ids()) {
+    TF_ASSIGN_OR_RETURN(const HloInstructionProto* instr_proto,
+                        LookUpInstructionByHandle(handle));
+    for (int64 id : instr_proto->operand_ids()) {
       if (related_ops.insert(id).second) {
         worklist.push(id);
       }
     }
-    for (int64 called_id : instructions_[node].called_computation_ids()) {
+    for (int64 called_id : instr_proto->called_computation_ids()) {
       related_calls.insert(called_id);
     }
   }
@@ -2308,7 +2311,9 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
   // Add related ops to the computation.
   for (int64 id : related_ops) {
     auto* instr = entry.add_instructions();
-    *instr = instructions_[id];
+    TF_ASSIGN_OR_RETURN(const HloInstructionProto* instr_src,
+                        LookUpInstructionByHandle(id));
+    *instr = *instr_src;
     // Ensures that the instruction names are unique among the graph.
     const string& new_name =
         StrCat(instr->name(), ".", entry.id(), ".", instr->id());
@@ -2415,11 +2420,11 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
                                            absl::Span<const XlaOp> operands) {
   TF_RETURN_IF_ERROR(first_error_);
 
-  const int64 handle = instructions_.size();
+  const int64 handle = GetUniqueId();
   instr.set_id(handle);
   instr.set_opcode(HloOpcodeString(opcode));
   if (instr.name().empty()) {
-    instr.set_name(StrCat(instr.opcode()));
+    instr.set_name(instr.opcode());
   }
   for (const auto& operand : operands) {
     if (operand.builder_ == nullptr) {
@@ -2437,7 +2442,8 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
     *instr.mutable_sharding() = *sharding_;
   }
 
-  instructions_.push_back(instr);
+  handle_to_index_[handle] = instructions_.size();
+  instructions_.push_back(std::move(instr));
 
   XlaOp op(handle, this);
   return op;
@@ -2467,10 +2473,16 @@ StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstruction(
         op.handle(), op.builder_->name(), this->name());
   }
 
-  if (op.handle() >= instructions_.size() || op.handle() < 0) {
-    return InvalidArgument("no XlaOp value %d", op.handle());
+  return LookUpInstructionByHandle(op.handle());
+}
+
+StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstructionByHandle(
+    int64 handle) const {
+  auto it = handle_to_index_.find(handle);
+  if (it == handle_to_index_.end()) {
+    return InvalidArgument("No XlaOp with handle %d", handle);
   }
-  return &instructions_[op.handle()];
+  return &instructions_[it->second];
 }
 
 // Enqueues a "retrieve parameter value" instruction for a parameter that was

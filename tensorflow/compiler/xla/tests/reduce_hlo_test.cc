@@ -92,7 +92,7 @@ XLA_TEST_P(ReduceWithLayoutTest, DISABLED_ON_GPU(Reduce)) {
   *reduce_input_shape->mutable_layout() =
       LayoutUtil::MakeLayout(reduce_layout.input_minor_to_major);
 
-  std::unique_ptr<Literal> reduce_input = LiteralUtil::CreateR4<float>(
+  Literal reduce_input = LiteralUtil::CreateR4<float>(
       {{ /*i0=0*/
         {/*i1=0*/
          {-0.246092796, -0.179497838, -0.161181688},

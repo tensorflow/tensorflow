@@ -136,7 +136,7 @@ ScopedShapedBuffer LocalClientTestBase::LiteralToShapedBuffer(
       .ConsumeValueOrDie();
 }
 
-std::unique_ptr<Literal> LocalClientTestBase::ShapedBufferToLiteral(
+Literal LocalClientTestBase::ShapedBufferToLiteral(
     const ShapedBuffer& shaped_buffer) {
   return local_client_->ShapedBufferToLiteral(shaped_buffer)
       .ConsumeValueOrDie();

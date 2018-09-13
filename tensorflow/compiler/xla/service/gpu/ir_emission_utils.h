@@ -20,7 +20,9 @@ limitations under the License.
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 
 // TODO(jlebar): Move functions related to cublas/cudnn to a separate file; they
 // don't belong in "ir_emission_utils".
@@ -147,6 +149,11 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
 // https://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl-sync
 llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
                                      llvm::IRBuilder<>* builder);
+
+// Populates params using conv, which must be a custom-call to a cudnn
+// convolution.  Does not modify any buffers in the params.
+Status PopulateCudnnConvParams(const HloCustomCallInstruction* custom_call,
+                               CudnnConvParams* params);
 
 }  // namespace gpu
 }  // namespace xla

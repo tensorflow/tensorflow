@@ -43,8 +43,7 @@ function cp_external() {
 
 PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
 function is_windows() {
-  # On windows, the shell script is actually running in msys
-  if [[ "${PLATFORM}" =~ (mingw64|msys)_nt* ]]; then
+  if [[ "${PLATFORM}" =~ (cygwin|mingw32|mingw64|msys)_nt* ]]; then
     true
   else
     false

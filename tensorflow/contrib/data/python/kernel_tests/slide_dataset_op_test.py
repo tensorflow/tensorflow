@@ -75,7 +75,7 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
     self.assertEqual([[None] + list(c.shape[1:]) for c in components],
                      [t.shape.as_list() for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -139,7 +139,7 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
     self.assertEqual([[None] + list(c.shape[1:]) for c in components],
                      [t.shape.as_list() for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -180,7 +180,7 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
                 window_stride=window_stride_t)).make_initializable_iterator())
     init_op = iterator.initializer
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(
             init_op,
@@ -214,7 +214,7 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       num_batches = (10 - 5) // 3 + 1
       for i in range(num_batches):
@@ -243,7 +243,7 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       num_batches = (10 - 5) // 3 + 1
       for i in range(num_batches):
@@ -277,7 +277,7 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       # Slide: 1st batch.
       actual = sess.run(get_next)
@@ -316,7 +316,7 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
         .make_initializable_iterator())
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,

@@ -801,6 +801,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
@@ -822,6 +823,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
@@ -946,6 +948,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
     ],
@@ -971,6 +974,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

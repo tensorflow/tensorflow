@@ -2932,9 +2932,9 @@ TEST_F(AlgebraicSimplifierTest, ConstantTupleBecomesTupleOfConstants) {
   HloComputation::Builder builder(TestName());
   const float constant_scalar = 7.3f;
   std::initializer_list<float> constant_vector = {1.1f, 2.0f, 3.3f};
-  std::unique_ptr<Literal> value = LiteralUtil::MakeTuple(
-      {LiteralUtil::CreateR0<float>(constant_scalar).get(),
-       LiteralUtil::CreateR1<float>(constant_vector).get()});
+  Literal elements[] = {LiteralUtil::CreateR0<float>(constant_scalar),
+                        LiteralUtil::CreateR1<float>(constant_vector)};
+  Literal value = LiteralUtil::MakeTuple({&elements[0], &elements[1]});
   builder.AddInstruction(HloInstruction::CreateConstant(std::move(value)));
 
   auto computation = module().AddEntryComputation(builder.Build());

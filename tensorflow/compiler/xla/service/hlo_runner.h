@@ -72,7 +72,7 @@ class HloRunner {
 
     // A pointer to a vector where the outfeed values will be stored. If
     // nullptr, the values will be read and discarded.
-    std::vector<std::unique_ptr<Literal>>* outfeed_values = nullptr;
+    std::vector<Literal>* outfeed_values = nullptr;
 
     // Whether the HLO passes should be run on the input module. Usually
     // saved modules are coming from after the HLO pass pipeline, so triggering
@@ -106,24 +106,23 @@ class HloRunner {
   StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
       const absl::Span<const Literal* const> literals);
   StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
-      const absl::Span<const std::unique_ptr<Literal>> literals);
-  StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDevice(
-      const ShapedBuffer& buffer);
+      const absl::Span<const Literal> literals);
+  StatusOr<Literal> TransferLiteralFromDevice(const ShapedBuffer& buffer);
 
   // Executes the given module with given literals as input and returns the
   // result as a Literal.
   //
   // If run_hlo_passes is false, the module will be executed without Hlo
   // optimization.
-  StatusOr<std::unique_ptr<Literal>> Execute(
-      std::unique_ptr<HloModule> module,
-      const absl::Span<const Literal* const> arguments,
-      bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
+  StatusOr<Literal> Execute(std::unique_ptr<HloModule> module,
+                            const absl::Span<const Literal* const> arguments,
+                            bool run_hlo_passes = true,
+                            ExecutionProfile* profile = nullptr);
 
-  StatusOr<std::unique_ptr<Literal>> Execute(
-      std::unique_ptr<HloModule> module,
-      const absl::Span<const std::unique_ptr<Literal>> arguments,
-      bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
+  StatusOr<Literal> Execute(std::unique_ptr<HloModule> module,
+                            const absl::Span<const Literal> arguments,
+                            bool run_hlo_passes = true,
+                            ExecutionProfile* profile = nullptr);
 
   // As Execute(), but accepts and returns device buffers instead of host
   // buffers.
@@ -140,7 +139,7 @@ class HloRunner {
   // Executes a given HLO module into a set of replicas, and returns a map
   // with the replica number as key, and the corresponding returned literal as
   // value.
-  StatusOr<std::vector<std::unique_ptr<Literal>>> ExecuteReplicated(
+  StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
       const ReplicatedExecuteOptions& options);
 

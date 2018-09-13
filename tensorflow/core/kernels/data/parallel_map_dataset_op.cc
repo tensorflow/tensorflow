@@ -97,31 +97,26 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
         return captured_func_->Instantiate(ctx);
       };
 
-      ParallelMapIteratorFunction map_func;
-      if (use_inter_op_parallelism_) {
-        map_func = [this](IteratorContext* ctx,
-                          std::vector<Tensor> input_element,
-                          std::vector<Tensor>* result, StatusCallback done) {
-          captured_func_->RunAsync(ctx, std::move(input_element), result,
-                                   std::move(done));
-        };
-      } else {
-        map_func = [this](IteratorContext* ctx,
-                          std::vector<Tensor> input_element,
-                          std::vector<Tensor>* result, StatusCallback done) {
-          (*ctx->runner())(std::bind(
-              [this, ctx, result](std::vector<Tensor>& input_element,
-                                  StatusCallback& done) {
-                captured_func_->RunAsync(ctx, std::move(input_element), result,
-                                         std::move(done));
-              },
-              std::move(input_element), std::move(done)));
+      const string& new_prefix = strings::StrCat(prefix, "::ParallelMap");
+      ParallelMapIteratorFunction map_func =
+          [this, new_prefix](IteratorContext* ctx,
+                             std::vector<Tensor> input_element,
+                             std::vector<Tensor>* result, StatusCallback done) {
+            captured_func_->RunAsync(ctx, std::move(input_element), result,
+                                     std::move(done), new_prefix);
+          };
+      if (!use_inter_op_parallelism_) {
+        map_func = [map_func](
+                       IteratorContext* ctx, std::vector<Tensor> input_element,
+                       std::vector<Tensor>* result, StatusCallback done) {
+          (*ctx->runner())(std::bind(map_func, ctx, std::move(input_element),
+                                     result, std::move(done)));
         };
       }
 
-      return NewParallelMapIterator(
-          {this, strings::StrCat(prefix, "::ParallelMap")}, input_,
-          std::move(init_func), std::move(map_func), num_parallel_calls_);
+      return NewParallelMapIterator({this, new_prefix}, input_,
+                                    std::move(init_func), std::move(map_func),
+                                    num_parallel_calls_);
     }
 
     const DataTypeVector& output_dtypes() const override {

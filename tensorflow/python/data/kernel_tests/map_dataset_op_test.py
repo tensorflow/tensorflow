@@ -72,7 +72,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     self.assertEqual([c.shape[1:] for c in components],
                      [t.shape for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test single-threaded access to the iterator.
       sess.run(init_op, feed_dict={count: 14})
       for _ in range(14):
@@ -138,7 +138,8 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     self.assertEqual([c.shape[1:] for c in components],
                      [t.shape for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
+
       def do_test(num_parallel_calls_val, output_buffer_size_val):
         # Test single-threaded access to the iterator.
         sess.run(init_op, feed_dict={
@@ -203,7 +204,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for _ in range(3):
         sess.run(get_next)
@@ -218,7 +219,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for _ in range(3):
         sess.run(get_next)
@@ -233,7 +234,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for _ in range(3):
         sess.run(get_next)
@@ -254,7 +255,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for _ in range(3):
         sess.run(get_next)
@@ -285,7 +286,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(table.init)
       sess.run(init_op)
       sess.run(get_next)
@@ -303,7 +304,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(enqueue_op)
       sess.run(close_op)
       sess.run(init_op)
@@ -328,7 +329,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(enqueue_op)
       sess.run(close_op)
       sess.run(init_op)
@@ -347,7 +348,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(counter_var.initializer)
       sess.run(init_op)
       for i in range(10):
@@ -367,7 +368,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       with self.assertRaises(errors.NotFoundError):
         sess.run(get_next)
@@ -379,7 +380,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       random_values = []
       with self.assertRaises(errors.OutOfRangeError):
@@ -404,7 +405,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(10):
         self.assertEqual(i * 2 + i ** 2, sess.run(get_next))
@@ -436,7 +437,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     next_namedtuple = dataset_namedtuple.make_one_shot_iterator().get_next()
 
     # make sure both datasets contain the same data
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for i in range(count):
         tuple_, namedtuple_ = sess.run([next_tuple, next_namedtuple])
         self.assertEqual(tuple_, namedtuple_)
@@ -454,7 +455,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       self.assertAllEqual(row ** 2, sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
@@ -485,7 +486,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Simple test that prefetch yields the expected values in the
       # expected order.
       for buffer_size in [1, 10, 100, 1000]:
@@ -523,7 +524,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(10):
         self.assertEqual((i, 37.0), sess.run(get_next))
@@ -544,7 +545,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(10):
         self.assertEqual((i, 37.0), sess.run(get_next))
@@ -570,7 +571,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(10):
         actual = sess.run(get_next)
@@ -597,7 +598,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(10):
         actual = sess.run(get_next)
@@ -621,7 +622,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(100):
         self.assertEqual(i, sess.run(get_next))
@@ -635,7 +636,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(10):
         self.assertEqual((i, b"hello", 10), sess.run(get_next))
@@ -702,7 +703,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     dataset = dataset.map(broken_function)
     iterator = dataset.make_initializable_iterator()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesRegexp(errors.InvalidArgumentError, "BrokenConst"):
         sess.run(iterator.initializer)
 

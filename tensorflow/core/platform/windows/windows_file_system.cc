@@ -150,7 +150,7 @@ class WindowsWritableFile : public WritableFile {
     }
   }
 
-  Status Append(const StringPiece& data) override {
+  Status Append(StringPiece data) override {
     DWORD bytes_written = 0;
     DWORD data_size = static_cast<DWORD>(data.size());
     BOOL write_result =

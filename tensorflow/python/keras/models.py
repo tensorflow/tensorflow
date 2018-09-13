@@ -444,6 +444,8 @@ def clone_and_build_model(
     clone = model
     _in_place_subclassed_model_reset(clone)
     if input_tensors is not None:
+      if isinstance(input_tensors, (list, tuple)) and len(input_tensors) == 1:
+        input_tensors = input_tensors[0]
       clone._set_inputs(input_tensors)
 
   # Compile/Build model

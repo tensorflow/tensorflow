@@ -403,12 +403,12 @@ class IteratorStateVariant {
   }
   string TypeName() const { return kIteratorVariantTypeName; }
   void Encode(VariantTensorData* data) const { *data = *data_; }
-  bool Decode(const VariantTensorData& data) {
+  bool Decode(VariantTensorData data) {
     if (data.type_name() != TypeName()) {
       return false;
     }
     std::unique_ptr<VariantTensorData> tensor_data(new VariantTensorData);
-    *tensor_data = data;
+    std::swap(*tensor_data, data);
     std::unique_ptr<VariantTensorDataReader> reader(
         new VariantTensorDataReader(tensor_data.get()));
     status_ = reader->status();

@@ -3058,6 +3058,7 @@ cuda_py_test(
         ":functional_ops",
         ":gradients",
         ":layers",
+        ":list_ops",
         ":math_grad",
         ":math_ops",
         ":nn_grad",

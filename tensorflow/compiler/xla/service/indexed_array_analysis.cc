@@ -918,7 +918,7 @@ IndexedArrayAnalysis::ComputeArrayForElementwiseBinaryOp(HloOpcode opcode,
   // inner_broadcast_result is the Broadcast'(Const0) bit in
   // BinaryOp(Broadcast'(Const0), Const1)
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Literal> inner_broadcast_result,
+      Literal inner_broadcast_result,
       broadcast_const_operand->literal().Broadcast(
           scalar_indexed_const->source()->shape(), new_inner_broadcast_dims));
 
@@ -928,12 +928,12 @@ IndexedArrayAnalysis::ComputeArrayForElementwiseBinaryOp(HloOpcode opcode,
     TF_ASSIGN_OR_RETURN(
         literal_for_new_source,
         TakeOwnership(HloEvaluator{}.EvaluateElementwiseBinaryOp(
-            opcode, scalar_indexed_const->literal(), *inner_broadcast_result)));
+            opcode, scalar_indexed_const->literal(), inner_broadcast_result)));
   } else {
     TF_ASSIGN_OR_RETURN(
         literal_for_new_source,
         TakeOwnership(HloEvaluator{}.EvaluateElementwiseBinaryOp(
-            opcode, *inner_broadcast_result, scalar_indexed_const->literal())));
+            opcode, inner_broadcast_result, scalar_indexed_const->literal())));
   }
 
   ConstantArray* new_source = Construct<ConstantArray>(literal_for_new_source);

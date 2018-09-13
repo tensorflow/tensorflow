@@ -195,9 +195,8 @@ Status LocalExecutable::RecordArguments(
     HloSnapshot* hlo_snapshot) {
   hlo_snapshot->clear_arguments();
   for (const ShapedBuffer* argument : arguments) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
-                        LiteralFromShapedBuffer(*argument));
-    *hlo_snapshot->add_arguments() = literal->ToProto();
+    TF_ASSIGN_OR_RETURN(Literal literal, LiteralFromShapedBuffer(*argument));
+    *hlo_snapshot->add_arguments() = literal.ToProto();
   }
   return Status::OK();
 }
@@ -205,13 +204,12 @@ Status LocalExecutable::RecordArguments(
 Status LocalExecutable::RecordResult(const ShapedBuffer* result,
                                      HloSnapshot* hlo_snapshot) {
   hlo_snapshot->clear_result();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
-                      LiteralFromShapedBuffer(*result));
-  *hlo_snapshot->mutable_result() = literal->ToProto();
+  TF_ASSIGN_OR_RETURN(Literal literal, LiteralFromShapedBuffer(*result));
+  *hlo_snapshot->mutable_result() = literal.ToProto();
   return Status::OK();
 }
 
-StatusOr<std::unique_ptr<Literal>> LocalExecutable::LiteralFromShapedBuffer(
+StatusOr<Literal> LocalExecutable::LiteralFromShapedBuffer(
     const ShapedBuffer& shaped_buffer) {
   TF_ASSIGN_OR_RETURN(auto stream,
                       backend_->BorrowStream(shaped_buffer.device_ordinal()));
@@ -277,7 +275,7 @@ StatusOr<ScopedShapedBuffer> LocalClient::LiteralToShapedBuffer(
   return std::move(scoped_buffer);
 }
 
-StatusOr<std::unique_ptr<Literal>> LocalClient::ShapedBufferToLiteral(
+StatusOr<Literal> LocalClient::ShapedBufferToLiteral(
     const ShapedBuffer& shaped_buffer) {
   TF_ASSIGN_OR_RETURN(auto stream, mutable_backend()->BorrowStream(
                                        shaped_buffer.device_ordinal()));
@@ -298,13 +296,13 @@ Status LocalClient::TransferToInfeedLocal(const Literal& literal,
                                                                literal);
 }
 
-StatusOr<std::unique_ptr<Literal>> LocalClient::TransferFromOutfeedLocal(
-    const Shape& shape, int device_ordinal) {
+StatusOr<Literal> LocalClient::TransferFromOutfeedLocal(const Shape& shape,
+                                                        int device_ordinal) {
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       backend().stream_executor(device_ordinal));
   auto literal = Literal::CreateFromShape(shape);
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralFromOutfeed(
-      executor, shape, literal.get()));
+      executor, shape, &literal));
   return std::move(literal);
 }
 

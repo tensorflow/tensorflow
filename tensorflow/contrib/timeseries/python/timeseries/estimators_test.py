@@ -216,6 +216,15 @@ class TimeSeriesRegressorTest(test.TestCase):
           exogenous_feature_columns=exogenous_feature_columns)
     self._fit_restore_fit_test_template(_estimator_fn, dtype=dtype)
 
+  def test_structural_ensemble_numpy_input(self):
+    numpy_data = {"times": numpy.arange(50),
+                  "values": numpy.random.normal(size=[50])}
+    estimators.StructuralEnsembleRegressor(
+        num_features=1, periodicities=[], model_dir=self.get_temp_dir(),
+        config=_SeedRunConfig()).train(
+            input_pipeline.WholeDatasetInputFn(
+                input_pipeline.NumpyReader(numpy_data)),
+            steps=1)
 
 if __name__ == "__main__":
   test.main()

@@ -54,7 +54,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for x in [1., 2., 3., 5.]:
         self.assertEqual(x, sess.run(get_next))
@@ -72,7 +72,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for x in [1., 2., 3., 5.]:
         self.assertEqual(x, sess.run(get_next))
@@ -99,7 +99,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # All of the files are present.
       sess.run(init_op)
       for filename in filenames:

@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -36,7 +36,7 @@ namespace op = xla::testing::opcode_matchers;
 
 using ::testing::_;
 
-class HloRematerializationTest : public HloTestBase {
+class HloRematerializationTest : public HloVerifiedTestBase {
  protected:
   // Creates and returns a computation which can benefit from
   // rematerialization. The computation looks like:
@@ -177,7 +177,7 @@ TEST_F(HloRematerializationTest, SingleComputation) {
   // with rematerialization so pick a memory limit between these values (14KB).
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
-                              /*memory_limit_bytes=*/14 * 1024, module.get()));
+                              /*memory_limit_bytes=*/14 * 1024, module));
   EXPECT_TRUE(changed);
 
   // Root should not have changed.
@@ -211,7 +211,7 @@ TEST_F(HloRematerializationTest, SingleComputationNoRematerialization) {
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
-                              /*memory_limit_bytes=*/20 * 1024, module.get()));
+                              /*memory_limit_bytes=*/20 * 1024, module));
 
   // No instructions should have been materialized.
   EXPECT_FALSE(changed);
@@ -249,7 +249,7 @@ TEST_F(HloRematerializationTest, RematerializeAroundWhile) {
   // bit lower (17KB) to force rematerialization of the entry computation.
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
-                              /*memory_limit_bytes=*/17 * 1024, module.get()));
+                              /*memory_limit_bytes=*/17 * 1024, module));
   EXPECT_TRUE(changed);
 
   // Only the entry computation should have a rematerialized instruction added.
@@ -282,7 +282,7 @@ TEST_F(HloRematerializationTest, RematerializeEntryAndWhileBody) {
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
-                              /*memory_limit_bytes=*/15 * 1024, module.get()));
+                              /*memory_limit_bytes=*/15 * 1024, module));
   EXPECT_TRUE(changed);
 
   // Both computations should have rematerialized instructions added.
@@ -321,7 +321,7 @@ TEST_F(HloRematerializationTest, RematerializeNestedComputations) {
   // ~12K so pick something slightly larger.
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
-                              /*memory_limit_bytes=*/13 * 1024, module.get()));
+                              /*memory_limit_bytes=*/13 * 1024, module));
   EXPECT_TRUE(changed);
 
   // All computations should have rematerialized instructions added.
@@ -390,7 +390,7 @@ TEST_F(HloRematerializationTest, RngNotRematerialized) {
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
       RunHloRematerialization(
-          /*memory_limit_bytes=*/4 * ByteSizeOf(vec1024_shape_), module.get()));
+          /*memory_limit_bytes=*/4 * ByteSizeOf(vec1024_shape_), module));
   EXPECT_TRUE(changed);
   // The rng should not have been rematerialized.
   EXPECT_EQ(count_rngs(entry_computation), 1);
@@ -482,7 +482,7 @@ TEST_F(HloRematerializationTest, InstructionRematerializedMultipleTimes) {
   // rematerialization).
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
-                              /*memory_limit_bytes=*/22 * 1024, module.get()));
+                              /*memory_limit_bytes=*/22 * 1024, module));
   EXPECT_TRUE(changed);
 
   // The broadcast should have been rematerialized 3 times.
@@ -576,7 +576,7 @@ TEST_P(IndirectUseTest, IndirectUseNotRematerialized) {
   // rematerialization).
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
-                              /*memory_limit_bytes=*/22 * 1024, module.get()));
+                              /*memory_limit_bytes=*/22 * 1024, module));
   // Rematerialization should only occur if the rematerializable instruction has
   // no indirect uses.
   if (indirectly_used) {

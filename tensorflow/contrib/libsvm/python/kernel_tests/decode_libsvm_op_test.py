@@ -29,7 +29,7 @@ from tensorflow.python.platform import test
 class DecodeLibsvmOpTest(test.TestCase):
 
   def testBasic(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       content = [
           "1 1:3.4 2:0.5 4:0.231", "1 2:2.5 3:inf 5:0.503",
           "2 3:2.5 2:nan 1:0.105"
@@ -48,7 +48,7 @@ class DecodeLibsvmOpTest(test.TestCase):
                      [0, 0.105, np.nan, 2.5, 0, 0]])
 
   def testNDimension(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       content = [["1 1:3.4 2:0.5 4:0.231", "1 1:3.4 2:0.5 4:0.231"],
                  ["1 2:2.5 3:inf 5:0.503", "1 2:2.5 3:inf 5:0.503"],
                  ["2 3:2.5 2:nan 1:0.105", "2 3:2.5 2:nan 1:0.105"]]

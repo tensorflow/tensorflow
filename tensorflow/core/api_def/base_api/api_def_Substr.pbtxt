@@ -32,8 +32,10 @@ For each string in the input `Tensor`, creates a substring starting at index
 If `len` defines a substring that would extend beyond the length of the input
 string, then as many characters as possible are used.
 
-If `pos` is negative or specifies a character index larger than any of the input
-strings, then an `InvalidArgumentError` is thrown.
+A negative `pos` indicates distance within the string backwards from the end.
+
+If `pos` specifies an index which is out of range for any of the input strings,
+then an `InvalidArgumentError` is thrown.
 
 `pos` and `len` must have the same shape, otherwise a `ValueError` is thrown on
 Op creation.
