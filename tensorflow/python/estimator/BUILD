@@ -685,7 +685,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
-        "notsan",
+        "notsan",  # b/67510291
     ],
     deps = [
         ":keras",

@@ -43,7 +43,7 @@ XlaResource::XlaResource(Kind kind, int arg_num, string name, DataType type,
   for (const string& gradient : tensor_array_gradients) {
     tensor_array_gradients_[gradient].reset(new XlaResource(
         /*kind=*/kTensorArray, /*arg_num=*/-1,
-        /*name=*/strings::StrCat("TensorArrayGrad: ", name_), type_, shape_,
+        /*name=*/absl::StrCat("TensorArrayGrad: ", name_), type_, shape_,
         xla::XlaOp(), tensor_array_size_, /*tensor_array_gradients=*/{}));
   }
 }
@@ -135,7 +135,7 @@ Status XlaResource::GetOrCreateTensorArrayGradient(const string& source,
         xla::Broadcast(XlaHelpers::Zero(builder, type_), ta_shape.dim_sizes());
     gradient.reset(
         new XlaResource(/*kind=*/kTensorArray, /*arg_num=*/-1,
-                        /*name=*/strings::StrCat("TensorArrayGrad: ", name_),
+                        /*name=*/absl::StrCat("TensorArrayGrad: ", name_),
                         type_, shape_, gradient_value, tensor_array_size_,
                         /*tensor_array_gradients=*/{}));
   }

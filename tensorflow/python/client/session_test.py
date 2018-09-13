@@ -49,6 +49,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_control_flow_ops
+# Import gradients to resolve circular imports
+from tensorflow.python.ops import gradients  # pylint: disable=unused-import
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
@@ -1760,7 +1762,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       session.register_session_run_conversion_functions(SquaredTensor, fetch_fn,
                                                         feed_fn1, feed_fn2)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       np1 = np.array([1.0, 1.5, 2.0, 2.5])
       np2 = np.array([3.0, 3.5, 4.0, 4.5])
       squared_tensor = SquaredTensor(np2)
@@ -1920,7 +1922,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       pass
 
   def testAutoConvertAndCheckData(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       a = array_ops.placeholder(dtype=dtypes.string)
       with self.assertRaisesRegexp(
           TypeError, 'Type of feed value 1 with type <(\w+) \'int\'> is not'):

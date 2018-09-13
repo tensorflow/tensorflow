@@ -855,8 +855,7 @@ void LayoutAssignment::SetupCopiedInstruction(const HloInstruction& instruction,
             ? instruction.sharding().GetSubSharding(instruction.shape(), index)
             : instruction.sharding();
     // We propagate the sharding to the copied instruction only if it is a
-    // special sharding, like tiled ones, or special devices like the
-    // HostCompute module.
+    // special sharding, like tiled ones.
     // Otherwise it is preferable to leave the new instruction without device,
     // and let the automatic device placer to choose the best location.
     auto device = sharding.UniqueDevice();

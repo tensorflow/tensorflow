@@ -69,6 +69,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
+from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.protobuf import compare
@@ -413,15 +414,13 @@ def enable_cond_v2(fn):
     The wrapped function
   """
 
-  # pylint: disable=protected-access
   def wrapper(*args, **kwargs):
-    prev_value = control_flow_ops._ENABLE_COND_V2
-    control_flow_ops._ENABLE_COND_V2 = True
+    prev_value = control_flow_ops.ENABLE_COND_V2
+    control_flow_ops.ENABLE_COND_V2 = True
     try:
       fn(*args, **kwargs)
     finally:
-      control_flow_ops._ENABLE_COND_V2 = prev_value
-  # pylint: enable=protected-access
+      control_flow_ops.ENABLE_COND_V2 = prev_value
 
   return wrapper
 
@@ -438,7 +437,7 @@ def with_cond_v2(cls):
   Returns:
     cls with new test methods added
   """
-  if control_flow_ops._ENABLE_COND_V2:
+  if control_flow_ops.ENABLE_COND_V2:
     return cls
 
   for name, value in cls.__dict__.copy().items():
@@ -465,29 +464,31 @@ def assert_no_new_pyobjects_executing_eagerly(f):
       f(self, **kwargs)
       gc.collect()
       previous_count = len(gc.get_objects())
-      collection_sizes_before = {
-          collection: len(ops.get_collection(collection))
-          for collection in ops.get_default_graph().collections
-      }
+      if ops.has_default_graph():
+        collection_sizes_before = {
+            collection: len(ops.get_collection(collection))
+            for collection in ops.get_default_graph().collections
+        }
       for _ in range(3):
         f(self, **kwargs)
       # Note that gc.get_objects misses anything that isn't subject to garbage
       # collection (C types). Collections are a common source of leaks, so we
       # test for collection sizes explicitly.
-      for collection_key in ops.get_default_graph().collections:
-        collection = ops.get_collection(collection_key)
-        size_before = collection_sizes_before.get(collection_key, 0)
-        if len(collection) > size_before:
-          raise AssertionError(
-              ("Collection %s increased in size from "
-               "%d to %d (current items %s).") % (collection_key, size_before,
-                                                  len(collection), collection))
-        # Make sure our collection checks don't show up as leaked memory by
-        # removing references to temporary variables.
-        del collection
-        del collection_key
-        del size_before
-      del collection_sizes_before
+      if ops.has_default_graph():
+        for collection_key in ops.get_default_graph().collections:
+          collection = ops.get_collection(collection_key)
+          size_before = collection_sizes_before.get(collection_key, 0)
+          if len(collection) > size_before:
+            raise AssertionError(
+                ("Collection %s increased in size from "
+                 "%d to %d (current items %s).") %
+                (collection_key, size_before, len(collection), collection))
+          # Make sure our collection checks don't show up as leaked memory by
+          # removing references to temporary variables.
+          del collection
+          del collection_key
+          del size_before
+        del collection_sizes_before
       gc.collect()
       # There should be no new Python objects hanging around.
       new_count = len(gc.get_objects())
@@ -535,15 +536,16 @@ def assert_no_new_tensors(f):
 
     tensors_before = set(
         id(obj) for obj in gc.get_objects() if _is_tensorflow_object(obj))
-    if context.executing_eagerly():
-      f(self, **kwargs)
-      ops.reset_default_graph()
-    else:
-      # Run the test in a new graph so that collections get cleared when it's
-      # done, but inherit the graph key so optimizers behave.
-      outside_graph_key = ops.get_default_graph()._graph_key
-      with ops.Graph().as_default():
-        ops.get_default_graph()._graph_key = outside_graph_key
+    outside_executed_eagerly = context.executing_eagerly()
+    # Run the test in a new graph so that collections get cleared when it's
+    # done, but inherit the graph key so optimizers behave.
+    outside_graph_key = ops.get_default_graph()._graph_key
+    with ops.Graph().as_default():
+      ops.get_default_graph()._graph_key = outside_graph_key
+      if outside_executed_eagerly:
+        with context.eager_mode():
+          f(self, **kwargs)
+      else:
         f(self, **kwargs)
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
@@ -1072,13 +1074,9 @@ class TensorFlowTestCase(googletest.TestCase):
     if context.executing_eagerly():
       yield None
     else:
-      sess = self._create_session(graph, config, use_gpu, force_gpu)
-      with self._constrain_devices_and_set_default(
-          sess, use_gpu, force_gpu) as constrained_sess:
-        # We need to do this to make sure the session closes, otherwise, even
-        # if the user does with self.session():, it will not close the session.
-        with constrained_sess:
-          yield constrained_sess
+      with self._create_session(graph, config, force_gpu) as sess:
+        with self._constrain_devices_and_set_default(sess, use_gpu, force_gpu):
+          yield sess
 
   @contextlib.contextmanager
   def cached_session(self,
@@ -1126,10 +1124,11 @@ class TensorFlowTestCase(googletest.TestCase):
     if context.executing_eagerly():
       yield None
     else:
-      with self._get_cached_session(
-          graph, config, use_gpu, force_gpu,
-          crash_if_inconsistent_args=True) as sess:
-        yield sess
+      sess = self._get_cached_session(
+          graph, config, force_gpu, crash_if_inconsistent_args=True)
+      with self._constrain_devices_and_set_default(sess, use_gpu,
+                                                   force_gpu) as cached:
+        yield cached
 
   @contextlib.contextmanager
   def test_session(self,
@@ -1145,10 +1144,11 @@ class TensorFlowTestCase(googletest.TestCase):
       yield None
     else:
       if graph is None:
-        with self._get_cached_session(
-            graph, config, use_gpu, force_gpu,
-            crash_if_inconsistent_args=False) as sess:
-          yield sess
+        sess = self._get_cached_session(
+            graph, config, force_gpu, crash_if_inconsistent_args=False)
+        with self._constrain_devices_and_set_default(sess, use_gpu,
+                                                     force_gpu) as cached:
+          yield cached
       else:
         with self.session(graph, config, use_gpu, force_gpu) as sess:
           yield sess
@@ -1326,9 +1326,17 @@ class TensorFlowTestCase(googletest.TestCase):
   def _assertArrayLikeAllClose(self, a, b, rtol=1e-6, atol=1e-6, msg=None):
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
-    self.assertEqual(
-        a.shape, b.shape,
-        "Shape mismatch: expected %s, got %s." % (a.shape, b.shape))
+    # When the array rank is small, print its contents. Numpy array printing is
+    # implemented using inefficient recursion so prints can cause tests to
+    # time out.
+    if a.shape != b.shape and (b.ndim <= 3 or b.size < 500):
+      shape_mismatch_msg = ("Shape mismatch: expected %s, got %s with contents "
+                            "%s.") % (a.shape, b.shape, b)
+    else:
+      shape_mismatch_msg = "Shape mismatch: expected %s, got %s." % (a.shape,
+                                                                     b.shape)
+    self.assertEqual(a.shape, b.shape, shape_mismatch_msg)
+
     if not np.allclose(a, b, rtol=rtol, atol=atol):
       # Prints more details than np.testing.assert_allclose.
       #
@@ -1654,7 +1662,7 @@ class TensorFlowTestCase(googletest.TestCase):
         if any of the elements do not fall in the specified range.
     """
     target = self._GetNdArray(target)
-    if not (np.issubdtype(target.dtype, np.float) or
+    if not (np.issubdtype(target.dtype, np.floating) or
             np.issubdtype(target.dtype, np.integer)):
       raise AssertionError(
           "The value of %s does not have an ordered numeric type, instead it "
@@ -1834,91 +1842,69 @@ class TensorFlowTestCase(googletest.TestCase):
           with sess.graph.device("/cpu:0"):
             yield sess
 
-  def _create_session(self, graph, config, use_gpu, force_gpu):
+  def _create_session(self, graph, config, force_gpu):
     """See session() for details."""
-    if context.executing_eagerly():
-      return None
-    else:
+    def prepare_config(config):
+      """Returns a config for sessions.
 
-      def prepare_config(config):
-        """Returns a config for sessions.
+      Args:
+        config: An optional config_pb2.ConfigProto to use to configure the
+          session.
 
-        Args:
-          config: An optional config_pb2.ConfigProto to use to configure the
-            session.
-        Returns:
-          A config_pb2.ConfigProto object.
-        """
-        if config is None:
-          config = config_pb2.ConfigProto()
-          config.allow_soft_placement = not force_gpu
-          config.gpu_options.per_process_gpu_memory_fraction = 0.3
-        elif force_gpu and config.allow_soft_placement:
-          config = config_pb2.ConfigProto().CopyFrom(config)
-          config.allow_soft_placement = False
-        # Don't perform optimizations for tests so we don't inadvertently run
-        # gpu ops on cpu
-        config.graph_options.optimizer_options.opt_level = -1
-        config.graph_options.rewrite_options.constant_folding = (
-            rewriter_config_pb2.RewriterConfig.OFF)
-        config.graph_options.rewrite_options.arithmetic_optimization = (
-            rewriter_config_pb2.RewriterConfig.OFF)
-        return config
+      Returns:
+        A config_pb2.ConfigProto object.
+      """
+      if config is None:
+        config = config_pb2.ConfigProto()
+        config.allow_soft_placement = not force_gpu
+        config.gpu_options.per_process_gpu_memory_fraction = 0.3
+      elif force_gpu and config.allow_soft_placement:
+        config = config_pb2.ConfigProto().CopyFrom(config)
+        config.allow_soft_placement = False
+      # Don't perform optimizations for tests so we don't inadvertently run
+      # gpu ops on cpu
+      config.graph_options.optimizer_options.opt_level = -1
+      config.graph_options.rewrite_options.constant_folding = (
+          rewriter_config_pb2.RewriterConfig.OFF)
+      config.graph_options.rewrite_options.arithmetic_optimization = (
+          rewriter_config_pb2.RewriterConfig.OFF)
+      return config
 
-      return ErrorLoggingSession(graph=graph, config=prepare_config(config))
+    return ErrorLoggingSession(graph=graph, config=prepare_config(config))
 
-  @contextlib.contextmanager
   def _get_cached_session(self,
                           graph=None,
                           config=None,
-                          use_gpu=False,
                           force_gpu=False,
                           crash_if_inconsistent_args=True):
     """See cached_session() for documentation."""
-    if context.executing_eagerly():
-      yield None
+    if self._cached_session is None:
+      sess = self._create_session(
+          graph=graph, config=config, force_gpu=force_gpu)
+      self._cached_session = sess
+      self._cached_graph = graph
+      self._cached_config = config
+      self._cached_force_gpu = force_gpu
+      return sess
     else:
-      if self._cached_session is None:
-        sess = self._create_session(
-            graph=graph, config=config, use_gpu=use_gpu, force_gpu=force_gpu)
-        self._cached_session = sess
-        self._cached_graph = graph
-        self._cached_config = config
-        self._cached_use_gpu = use_gpu
-        self._cached_force_gpu = force_gpu
-        with self._constrain_devices_and_set_default(
-            sess, use_gpu, force_gpu) as constrained_sess:
-          yield constrained_sess
-      else:
-        if crash_if_inconsistent_args and self._cached_graph is not graph:
-          raise ValueError("The graph used to get the cached session is "
-                           "different than the one that was used to create the "
-                           "session. Maybe create a new session with "
-                           "self.session()")
-        if crash_if_inconsistent_args and self._cached_config is not config:
-          raise ValueError("The config used to get the cached session is "
-                           "different than the one that was used to create the "
-                           "session. Maybe create a new session with "
-                           "self.session()")
-        if crash_if_inconsistent_args and self._cached_use_gpu is not use_gpu:
-          raise ValueError(
-              "The use_gpu value used to get the cached session is "
-              "different than the one that was used to create the "
-              "session. Maybe create a new session with "
-              "self.session()")
-        if crash_if_inconsistent_args and (self._cached_force_gpu is
-                                           not force_gpu):
-          raise ValueError(
-              "The force_gpu value used to get the cached session is "
-              "different than the one that was used to create the "
-              "session. Maybe create a new session with "
-              "self.session()")
-        # If you modify this logic, make sure to modify it in _create_session
-        # as well.
-        sess = self._cached_session
-        with self._constrain_devices_and_set_default(
-            sess, use_gpu, force_gpu) as constrained_sess:
-          yield constrained_sess
+      if crash_if_inconsistent_args and self._cached_graph is not graph:
+        raise ValueError("The graph used to get the cached session is "
+                         "different than the one that was used to create the "
+                         "session. Maybe create a new session with "
+                         "self.session()")
+      if crash_if_inconsistent_args and self._cached_config is not config:
+        raise ValueError("The config used to get the cached session is "
+                         "different than the one that was used to create the "
+                         "session. Maybe create a new session with "
+                         "self.session()")
+      if crash_if_inconsistent_args and (self._cached_force_gpu is
+                                         not force_gpu):
+        raise ValueError(
+            "The force_gpu value used to get the cached session is "
+            "different than the one that was used to create the "
+            "session. Maybe create a new session with "
+            "self.session()")
+      return self._cached_session
 
 
 @tf_export("test.create_local_cluster")
@@ -2023,3 +2009,42 @@ def set_producer_version(graph, producer_version):
   with graph.as_default():
     importer.import_graph_def(graph_def)
   assert graph.graph_def_versions.producer, producer_version
+
+
+def dismantle_func_graph(func_graph):
+  """Removes reference cycles in `func_graph` FuncGraph.
+
+  Helpful for making sure the garbage collector doesn't need to run when
+  the FuncGraph goes out of scope, e.g. in tests using defun with
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True).
+
+  Args:
+    func_graph: A `FuncGraph` object to destroy. `func_graph` is unusable
+      after this function.
+  """
+  # TODO(b/115366440): Delete this method when a custom OrderedDict is added.
+  # Clearing captures using clear() leaves some cycles around.
+  while func_graph.captures:
+    func_graph.captures.popitem()
+  memory.dismantle_ordered_dict(func_graph.captures)
+  ops.dismantle_graph(func_graph)
+
+
+def dismantle_polymorphic_function(func):
+  """Removes reference cycles in PolymorphicFunction `func`.
+
+  Helpful for making sure the garbage collector doesn't need to run when
+  PolymorphicFunction goes out of scope, e.g. in tests using defun with
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True).
+
+  Args:
+    func: A `PolymorphicFunction` object to destroy. `func` is unusable
+      after this function.
+  """
+  # TODO(b/115366440): Delete this method when a custom OrderedDict is added
+  cache = func._function_cache  # pylint: disable=protected-access
+  for concrete_func in cache.values():
+    dismantle_func_graph(concrete_func.graph)
+  while cache:
+    cache.popitem()
+  memory.dismantle_ordered_dict(cache)

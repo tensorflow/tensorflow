@@ -75,7 +75,7 @@ CpuExecutable::CpuExecutable(
 
 StatusOr<std::pair<std::vector<se::DeviceMemoryBase>,
                    std::vector<OwningDeviceMemory>>>
-CpuExecutable::CreateTempArray(
+CpuExecutable::CreateBufferTable(
     DeviceMemoryAllocator* memory_allocator, int device_ordinal,
     absl::Span<const ShapedBuffer* const> arguments) {
   std::vector<se::DeviceMemoryBase> unowning_buffers(
@@ -141,14 +141,14 @@ Status CpuExecutable::ExecuteComputeFunction(
   // The calling convention for JITed functions is:
   //
   //  void function(void* result, const void* run_options, void** args_array,
-  //                void** temps_array)
+  //                void** buffer_table)
   //
   // result: Points at the result.
   // run_options: the ExecutableRunOptions object.
   // args_array: null
-  // temps_array: An array of pointers, containing pointers to temporary buffers
-  //              required by the executable adn pointers to entry computation
-  //              parameters.
+  // buffer_table: An array of pointers, containing pointers to temporary
+  //   buffers required by the executable adn pointers to entry computation
+  //   parameters.
   //
 
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
@@ -172,7 +172,7 @@ Status CpuExecutable::ExecuteComputeFunction(
   if (VLOG_IS_ON(3)) {
     VLOG(3) << "Executing compute function:";
     VLOG(3) << absl::StrFormat(
-        "  func(void* result, void* params[null], void* temps[%u], "
+        "  func(void* result, void* params[null], void* buffer_table[%u], "
         "uint64 profile_counters[%u])",
         buffer_pointers.size(), profile_counters_size);
     VLOG(3) << absl::StrFormat("    result = %p", result_buffer);
@@ -181,7 +181,8 @@ Status CpuExecutable::ExecuteComputeFunction(
     };
     VLOG(3) << "    params = nullptr";
     VLOG(3) << absl::StrFormat(
-        "    temps = [%s]", absl::StrJoin(buffer_pointers, ", ", ptr_printer));
+        "    buffer_table = [%s]",
+        absl::StrJoin(buffer_pointers, ", ", ptr_printer));
     VLOG(3) << absl::StrFormat("    profile_counters = %p", profile_counters);
   }
 
@@ -281,8 +282,8 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStreamImpl(
   std::vector<se::DeviceMemoryBase> unowning_buffers;
   TF_ASSIGN_OR_RETURN(
       std::tie(unowning_buffers, owning_buffers),
-      CreateTempArray(memory_allocator, stream->parent()->device_ordinal(),
-                      arguments));
+      CreateBufferTable(memory_allocator, stream->parent()->device_ordinal(),
+                        arguments));
 
   TF_ASSIGN_OR_RETURN(
       ScopedShapedBuffer result,

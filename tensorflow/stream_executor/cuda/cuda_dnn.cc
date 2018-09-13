@@ -3275,6 +3275,26 @@ port::Status CudnnSupport::DoConvolveBackwardFilterImpl(
         "This configuration potentially produces incorrect results.");
   }());
 
+  // Zero out the result buffer for strided conv backward filter for NHWC
+  // layouts. cuDNN 7.1.4 and 7.2 has non-determinisic bug if the buffer is not
+  // zeroed.
+  //
+  // This wrong result caused by the bug is very flaky. It needs to be run for
+  // up to 20 times to produce a mismatch.
+  //
+  // TODO(timshen): add a nvbugs link.
+  if (CUDNN_VERSION >= 7100 &&
+      algorithm_config.algorithm().algo_id() ==
+          CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1 &&
+      cudnn_type == CUDNN_DATA_HALF &&
+      input_descriptor.layout() == dnn::DataLayout::kBatchYXDepth &&
+      filter_descriptor.layout() == dnn::FilterLayout::kOutputYXInput &&
+      output_descriptor.layout() == dnn::DataLayout::kBatchYXDepth &&
+      (convolution_descriptor.vertical_filter_stride() > 1 ||
+       convolution_descriptor.horizontal_filter_stride() > 1)) {
+    stream->ThenMemZero(backward_filter_data, backward_filter_data->size());
+  }
+
   RETURN_IF_CUDNN_ERROR(cudnnConvolutionBackwardFilter(
       cudnn.handle(),
       /*alpha=*/alpha,

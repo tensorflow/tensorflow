@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/prefetch_autotuner.h"
 
 namespace tensorflow {
+namespace data {
 
 PrefetchAutotuner::PrefetchAutotuner(int64 initial_buffer_size)
     : buffer_limit_(initial_buffer_size) {
@@ -43,4 +44,5 @@ void PrefetchAutotuner::RecordConsumption(size_t current_buffer_size) {
   }
 }
 
+}  // namespace data
 }  // namespace tensorflow

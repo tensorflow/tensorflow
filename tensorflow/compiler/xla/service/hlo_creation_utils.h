@@ -48,8 +48,9 @@ StatusOr<HloInstruction*> MakeSliceHlo(HloInstruction* operand,
 // Creates a convolution HLO instruction and adds it to the computation
 // containing `lhs` and `rhs` (`lhs` and `rhs` must be in the same computation).
 StatusOr<HloInstruction*> MakeConvolveHlo(
-    HloInstruction* lhs, HloInstruction* rhs, const Window& window,
-    const ConvolutionDimensionNumbers& dimension_numbers);
+    HloInstruction* lhs, HloInstruction* rhs, int64 feature_group_count,
+    const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
+    const PrecisionConfig& precision_config);
 
 // Creates a transpose HLO instruction and adds it to the computation containing
 // `operand`.
@@ -98,7 +99,8 @@ StatusOr<HloInstruction*> MakeConcatHlo(
 // Creates a Dot HLO instruction and adds it to the computation containing `lhs`
 // and `rhs` (both must be in the same computation).
 StatusOr<HloInstruction*> MakeDotHlo(HloInstruction* lhs, HloInstruction* rhs,
-                                     const DotDimensionNumbers& dim_numbers);
+                                     const DotDimensionNumbers& dim_numbers,
+                                     const PrecisionConfig& precision_config);
 
 // Creates a Map HLO instruction and adds it to the computation containing the
 // operands. All operands must be in the same computation.

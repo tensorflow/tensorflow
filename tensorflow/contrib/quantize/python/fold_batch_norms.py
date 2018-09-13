@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import re
-from tensorflow.contrib import graph_editor
 from tensorflow.contrib.quantize.python import common
 from tensorflow.contrib.quantize.python import graph_matcher
 from tensorflow.contrib.quantize.python import input_to_ops
@@ -134,8 +133,8 @@ def _FoldFusedBatchNorms(graph, is_training, freeze_batch_norm_delay):
       bias_add_tensor = math_ops.add(
           new_layer_tensor, bias_tensor, name='add_fold')
 
-      nodes_modified_count = graph_editor.reroute_ts(bias_add_tensor,
-                                                     match.output_tensor)
+      nodes_modified_count = common.RerouteTensor(bias_add_tensor,
+                                                  match.output_tensor)
       if nodes_modified_count == 0:
         raise ValueError('Folding batch norms failed, %s had no outputs.' %
                          match.output_tensor.name)
@@ -370,8 +369,9 @@ def _ComputeBatchNormCorrections(context, match, freeze_batch_norm_delay,
         lambda: match.bn_decay_mean_tensor,
         name='freeze_moving_mean')
 
-    graph_editor.reroute_ts(
-        [bn_decay_mean_out], [match.bn_decay_mean_tensor],
+    common.RerouteTensor(
+        bn_decay_mean_out,
+        match.bn_decay_mean_tensor,
         can_modify=bn_decay_mean_consumers)
 
     bn_decay_var_consumers = list(match.bn_decay_var_tensor.consumers())
@@ -380,8 +380,9 @@ def _ComputeBatchNormCorrections(context, match, freeze_batch_norm_delay,
         lambda: bn_decay_zero,
         lambda: match.bn_decay_var_tensor,
         name='freeze_moving_var')
-    graph_editor.reroute_ts(
-        [bn_decay_var_out], [match.bn_decay_var_tensor],
+    common.RerouteTensor(
+        bn_decay_var_out,
+        match.bn_decay_var_tensor,
         can_modify=bn_decay_var_consumers)
 
     correction_recip = utils.smart_cond(
@@ -486,9 +487,8 @@ def _FoldUnfusedBatchNorms(graph, is_training, freeze_batch_norm_delay):
 
     activation = common.GetEndpointActivationOp(graph, bn)
     if activation:
-      nodes_modified_count = graph_editor.reroute_ts([folded_op.outputs[0]],
-                                                     [original_op.outputs[0]],
-                                                     can_modify=[activation])
+      nodes_modified_count = common.RerouteTensor(
+          folded_op.outputs[0], original_op.outputs[0], can_modify=[activation])
       if nodes_modified_count != 1:
         raise ValueError('Unexpected inputs to op: %s' % activation.name)
       continue
@@ -497,9 +497,8 @@ def _FoldUnfusedBatchNorms(graph, is_training, freeze_batch_norm_delay):
     # operations instead of Relu* above.
     add_bypass_ctx = re.search(r'^(.*)/([^/]+)', bn).group(1)
     add_bypass = graph.get_operation_by_name(add_bypass_ctx + '/Add')
-    nodes_modified_count = graph_editor.reroute_ts([folded_op.outputs[0]],
-                                                   [original_op.outputs[0]],
-                                                   can_modify=[add_bypass])
+    nodes_modified_count = common.RerouteTensor(
+        folded_op.outputs[0], original_op.outputs[0], can_modify=[add_bypass])
     if nodes_modified_count != 1:
       raise ValueError('Unexpected inputs to op: %s' % add_bypass.name)
 

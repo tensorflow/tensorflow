@@ -40,7 +40,6 @@ using mkldnn::memory;
 #include "mkl_dnn.h"
 #include "mkl_dnn_types.h"
 #endif
-#include "tensorflow/core/platform/default/logging.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {

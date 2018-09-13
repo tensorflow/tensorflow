@@ -40,7 +40,7 @@ class OptimizeStatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     get_next = iterator.get_next()
     summary_t = stats_aggregator.get_summary()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       self.assertEqual(1 * 1, sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):

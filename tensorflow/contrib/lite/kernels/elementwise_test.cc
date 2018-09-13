@@ -92,6 +92,15 @@ TEST(ElementWise, Rsqrt) {
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
+TEST(ElementWise, Square) {
+  ElementWiseOpFloatModel m(BuiltinOperator_SQUARE, {1, 1, 4, 1});
+  m.PopulateTensor<float>(m.input(), {1, 2, 0.5, -3.0});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray(ArrayFloatNear({1, 4.0, 0.25, 9.0})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
 TEST(ElementWise, LogicalNot) {
   ElementWiseOpBoolModel m(BuiltinOperator_LOGICAL_NOT, {1, 1, 4, 1});
   m.PopulateTensor<bool>(m.input(), {true, false, true, false});

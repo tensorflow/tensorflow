@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 
 #include "absl/strings/match.h"
@@ -48,7 +49,7 @@ Status AddGraphDefToFunctionLibrary(const GraphDefBuilder& graphdef_builder,
   FunctionDef* fdef = library->add_function();
   TF_RETURN_IF_ERROR(GraphToFunctionDef(
       *graph,
-      strings::StrCat("_outside_compilation_shape_inference_", name_suffix),
+      absl::StrCat("_outside_compilation_shape_inference_", name_suffix),
       fdef));
   return Status::OK();
 }
@@ -65,18 +66,18 @@ bool EqualProtoMap(const ::tensorflow::protobuf::Map<Tkey, Tvalue>& a,
     const auto iter = b.find(elt_a.first);
     if (iter == b.end()) {
       if (diff) {
-        *diff = strings::StrCat(
-            map_name, " expected: contains element with key '",
-            key_to_string(elt_a.first), "' got: map has no such element");
+        *diff = absl::StrCat(map_name, " expected: contains element with key '",
+                             key_to_string(elt_a.first),
+                             "' got: map has no such element");
       }
       return false;
     }
     if (!compare(elt_a.first, elt_a.second, iter->second)) {
       if (diff) {
-        *diff = strings::StrCat(map_name, " expected: element with key '",
-                                key_to_string(elt_a.first), "' has value '",
-                                value_to_string(elt_a.second), "' got: '",
-                                value_to_string(iter->second), "'");
+        *diff = absl::StrCat(map_name, " expected: element with key '",
+                             key_to_string(elt_a.first), "' has value '",
+                             value_to_string(elt_a.second), "' got: '",
+                             value_to_string(iter->second), "'");
       }
       return false;
     }
@@ -85,9 +86,9 @@ bool EqualProtoMap(const ::tensorflow::protobuf::Map<Tkey, Tvalue>& a,
     const auto iter = a.find(elt_b.first);
     if (iter == a.end()) {
       if (diff) {
-        *diff = strings::StrCat(map_name, " got: contains element with key '",
-                                key_to_string(elt_b.first),
-                                "' expected: map has no such element");
+        *diff = absl::StrCat(map_name, " got: contains element with key '",
+                             key_to_string(elt_b.first),
+                             "' expected: map has no such element");
       }
       return false;
     }
@@ -99,25 +100,25 @@ bool EqualFunctionNodeDef(const NodeDef& a, const NodeDef& b,
                           const string& diff_preamble, string* diff) {
   if (a.op() != b.op()) {
     if (diff) {
-      *diff = strings::StrCat(diff_preamble, " mismatch for node ", a.name(),
-                              ", expected op '", a.op(), "' got '", b.op());
+      *diff = absl::StrCat(diff_preamble, " mismatch for node ", a.name(),
+                           ", expected op '", a.op(), "' got '", b.op());
     }
     return false;
   }
   if (a.device() != b.device()) {
     if (diff) {
-      *diff = strings::StrCat(diff_preamble, " mismatch for node ", a.name(),
-                              ", expected device '", a.device(), "' got '",
-                              b.device());
+      *diff = absl::StrCat(diff_preamble, " mismatch for node ", a.name(),
+                           ", expected device '", a.device(), "' got '",
+                           b.device());
     }
     return false;
   }
   if (a.input_size() != b.input_size()) {
     if (diff) {
-      *diff = strings::StrCat(diff_preamble, " mismatch for node ", a.name(),
-                              ", expected ", a.input_size(), " inputs got ",
-                              b.input_size(), " expected:\n", a.DebugString(),
-                              "\ngot:\n", b.DebugString());
+      *diff = absl::StrCat(diff_preamble, " mismatch for node ", a.name(),
+                           ", expected ", a.input_size(), " inputs got ",
+                           b.input_size(), " expected:\n", a.DebugString(),
+                           "\ngot:\n", b.DebugString());
     }
     return false;
   }
@@ -127,10 +128,10 @@ bool EqualFunctionNodeDef(const NodeDef& a, const NodeDef& b,
     if (absl::StartsWith(a.input(i), "^")) {
       if (!absl::StartsWith(b.input(i), "^")) {
         if (diff) {
-          *diff = strings::StrCat(
-              diff_preamble, " mismatch for node ", a.name(), " input ", i,
-              ", expected control input ", a.input(i), " got ", b.input(i),
-              " expected:\n", a.DebugString(), "\ngot:\n", b.DebugString());
+          *diff = absl::StrCat(diff_preamble, " mismatch for node ", a.name(),
+                               " input ", i, ", expected control input ",
+                               a.input(i), " got ", b.input(i), " expected:\n",
+                               a.DebugString(), "\ngot:\n", b.DebugString());
         }
         return false;
       }
@@ -138,19 +139,19 @@ bool EqualFunctionNodeDef(const NodeDef& a, const NodeDef& b,
       control_input_b.insert(b.input(i));
     } else if (a.input(i) != b.input(i)) {
       if (diff) {
-        *diff = strings::StrCat(diff_preamble, " mismatch for node ", a.name(),
-                                " input ", i, ", expected ", a.input(i),
-                                " got ", b.input(i), " expected:\n",
-                                a.DebugString(), "\ngot:\n", b.DebugString());
+        *diff = absl::StrCat(diff_preamble, " mismatch for node ", a.name(),
+                             " input ", i, ", expected ", a.input(i), " got ",
+                             b.input(i), " expected:\n", a.DebugString(),
+                             "\ngot:\n", b.DebugString());
       }
       return false;
     }
   }
   if (control_input_a != control_input_b) {
     if (diff) {
-      *diff = strings::StrCat(diff_preamble, " mismatch for node ", a.name(),
-                              " control inputs differ expected:\n",
-                              a.DebugString(), "\ngot:\n", b.DebugString());
+      *diff = absl::StrCat(diff_preamble, " mismatch for node ", a.name(),
+                           " control inputs differ expected:\n",
+                           a.DebugString(), "\ngot:\n", b.DebugString());
     }
     return false;
   }
@@ -170,18 +171,17 @@ bool EqualFunctionNodeDef(const NodeDef& a, const NodeDef& b,
           return av.DebugString() == bv.DebugString();
         }
       },
-      strings::StrCat(diff_preamble, " attr mismatch for node ", a.name()),
-      diff);
+      absl::StrCat(diff_preamble, " attr mismatch for node ", a.name()), diff);
 }
 
 bool EqualFunctionDef(const FunctionDef& a, const FunctionDef& b,
                       string* diff) {
   if (a.signature().DebugString() != b.signature().DebugString()) {
     if (diff) {
-      *diff = strings::StrCat("Signature mismatch for function ",
-                              a.signature().name(), ", expected:\n",
-                              a.signature().DebugString(), "\ngot:\n",
-                              b.signature().DebugString());
+      *diff =
+          absl::StrCat("Signature mismatch for function ", a.signature().name(),
+                       ", expected:\n", a.signature().DebugString(), "\ngot:\n",
+                       b.signature().DebugString());
     }
     return false;
   }
@@ -191,7 +191,7 @@ bool EqualFunctionDef(const FunctionDef& a, const FunctionDef& b,
           [](const string& key, const AttrValue& av, const AttrValue& bv) {
             return av.DebugString() == bv.DebugString();
           },
-          strings::StrCat("attr mismatch for function ", a.signature().name()),
+          absl::StrCat("attr mismatch for function ", a.signature().name()),
           diff)) {
     return false;
   }
@@ -201,7 +201,7 @@ bool EqualFunctionDef(const FunctionDef& a, const FunctionDef& b,
           [](const string& key, const string& av, const string& bv) {
             return av == bv;
           },
-          strings::StrCat("ret mismatch for function ", a.signature().name()),
+          absl::StrCat("ret mismatch for function ", a.signature().name()),
           diff)) {
     return false;
   }
@@ -211,7 +211,7 @@ bool EqualFunctionDef(const FunctionDef& a, const FunctionDef& b,
       if (a.node_def(i).name() == b.node_def(j).name()) {
         if (!EqualFunctionNodeDef(
                 a.node_def(i), b.node_def(j),
-                strings::StrCat("Function ", a.signature().name()), diff)) {
+                absl::StrCat("Function ", a.signature().name()), diff)) {
           return false;
         }
         found = true;
@@ -220,9 +220,9 @@ bool EqualFunctionDef(const FunctionDef& a, const FunctionDef& b,
     }
     if (!found) {
       if (diff) {
-        *diff = strings::StrCat("Function ", a.signature().name(),
-                                ", expected: has node '", a.node_def(i).name(),
-                                "' got: no node of that name");
+        *diff = absl::StrCat("Function ", a.signature().name(),
+                             ", expected: has node '", a.node_def(i).name(),
+                             "' got: no node of that name");
       }
       return false;
     }
@@ -237,9 +237,9 @@ bool EqualFunctionDef(const FunctionDef& a, const FunctionDef& b,
     }
     if (!found) {
       if (diff) {
-        *diff = strings::StrCat("Function ", a.signature().name(),
-                                ", got: has node '", b.node_def(i).name(),
-                                "' expected: no node of that name");
+        *diff = absl::StrCat("Function ", a.signature().name(),
+                             ", got: has node '", b.node_def(i).name(),
+                             "' expected: no node of that name");
       }
       return false;
     }
@@ -258,8 +258,8 @@ bool EqualFunctionDefLibrary(const FunctionDefLibrary& expected,
     auto it = actual_index.find(expected_function.signature().name());
     if (it == actual_index.end()) {
       if (diff) {
-        *diff = strings::StrCat("Did not find expected function '",
-                                expected_function.signature().name(), "'");
+        *diff = absl::StrCat("Did not find expected function '",
+                             expected_function.signature().name(), "'");
       }
       return false;
     }
@@ -269,9 +269,9 @@ bool EqualFunctionDefLibrary(const FunctionDefLibrary& expected,
 
   if (!actual_index.empty()) {
     if (diff != nullptr) {
-      *diff = strings::StrCat("Found unexpected function '",
-                              actual_index.begin()->second->signature().name(),
-                              "'");
+      *diff =
+          absl::StrCat("Found unexpected function '",
+                       actual_index.begin()->second->signature().name(), "'");
     }
     return false;
   }
@@ -420,10 +420,9 @@ Node* RecvAtHost(ops::NodeOut key_input, const string& cluster,
                  const string& oc_cluster, absl::Span<const DataType> dtypes,
                  const GraphDefBuilder::Options& opts) {
   if (opts.HaveError()) return nullptr;
-  string key =
-      strings::StrCat("host_compute_channel_", cluster, "_", oc_cluster);
-  string name = strings::StrCat("outside_compilation_", cluster, "_",
-                                oc_cluster, "_recv");
+  string key = absl::StrCat("host_compute_channel_", cluster, "_", oc_cluster);
+  string name =
+      absl::StrCat("outside_compilation_", cluster, "_", oc_cluster, "_recv");
   NodeBuilder node_builder(opts.WithName(name).GetNameForOp("_XlaRecvAtHost"),
                            "_XlaRecvAtHost", opts.op_registry());
   node_builder.Input(std::move(key_input));
@@ -440,10 +439,9 @@ Node* SendFromHost(ops::NodeOut key_input, const string& cluster,
                    const std::vector<ops::NodeOut>& inputs,
                    const GraphDefBuilder::Options& opts) {
   if (opts.HaveError()) return nullptr;
-  string key =
-      strings::StrCat("host_compute_channel_", cluster, "_", oc_cluster);
-  string name = strings::StrCat("outside_compilation_", cluster, "_",
-                                oc_cluster, "_send");
+  string key = absl::StrCat("host_compute_channel_", cluster, "_", oc_cluster);
+  string name =
+      absl::StrCat("outside_compilation_", cluster, "_", oc_cluster, "_send");
   NodeBuilder node_builder(opts.WithName(name).GetNameForOp("_XlaSendFromHost"),
                            "_XlaSendFromHost", opts.op_registry());
   node_builder.Input(inputs);
@@ -682,8 +680,8 @@ std::vector<std::pair<string, string>> GraphEdges(const Graph& graph) {
   for (const Edge* edge : graph.edges()) {
     if (edge->src()->IsSource() || edge->dst()->IsSink()) continue;
     edges.emplace_back(
-        strings::StrCat(edge->src()->name(), ":", edge->src_output()),
-        strings::StrCat(edge->dst()->name(), ":", edge->dst_input()));
+        absl::StrCat(edge->src()->name(), ":", edge->src_output()),
+        absl::StrCat(edge->dst()->name(), ":", edge->dst_input()));
   }
   std::sort(edges.begin(), edges.end());
   return edges;

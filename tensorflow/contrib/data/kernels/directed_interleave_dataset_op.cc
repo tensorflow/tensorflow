@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -276,5 +276,5 @@ REGISTER_KERNEL_BUILDER(Name("DirectedInterleaveDataset").Device(DEVICE_CPU),
                         DirectedInterleaveDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

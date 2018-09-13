@@ -49,12 +49,21 @@ namespace {
 
 details::OperatorKey GetOperatorKey(
     const ::toco::Operator& op,
-    const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
+    const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
+    bool allow_eager_ops) {
   string custom_code;
   if (op.type == OperatorType::kUnsupported) {
     const TensorFlowUnsupportedOperator& unsupported_op =
         static_cast<const TensorFlowUnsupportedOperator&>(op);
-    custom_code = unsupported_op.tensorflow_op;
+
+    // TODO(b/113715895): When `allow_eager_ops` is on, for now there's no way
+    // to populate a regular custom op. We need to find a way to fix this.
+    if (allow_eager_ops) {
+      custom_code = string(::tflite::kEagerCustomCodePrefix) +
+                    unsupported_op.tensorflow_op;
+    } else {
+      custom_code = unsupported_op.tensorflow_op;
+    }
   }
   int version = 1;
   if (ops_by_type.count(op.type) != 0) {
@@ -91,11 +100,12 @@ void LoadTensorsMap(const Model& model, TensorsMap* tensors_map) {
 
 void LoadOperatorsMap(
     const Model& model, OperatorsMap* operators_map,
-    const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
+    const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
+    bool allow_eager_ops) {
   // First find a list of unique operator types.
   std::set<OperatorKey> keys;
   for (const auto& op : model.operators) {
-    keys.insert(GetOperatorKey(*op, ops_by_type));
+    keys.insert(GetOperatorKey(*op, ops_by_type, allow_eager_ops));
   }
   // Now assign indices to them and fill in the map.
   int index = 0;
@@ -189,7 +199,7 @@ Offset<Vector<Offset<OperatorCode>>> ExportOperatorCodes(
     const Model& model,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
     const details::OperatorsMap& operators_map, FlatBufferBuilder* builder,
-    std::set<string>* error_summary) {
+    std::set<string>* error_summary, const ExportParams& params) {
   // Map from operator name to TF Lite enum value, for all builtins.
   std::map<string, BuiltinOperator> builtin_ops;
   for (int i = BuiltinOperator_MIN; i <= BuiltinOperator_MAX; ++i) {
@@ -205,7 +215,8 @@ Offset<Vector<Offset<OperatorCode>>> ExportOperatorCodes(
   std::map<int, Offset<OperatorCode>> ordered_opcodes;
 
   for (const auto& op : model.operators) {
-    const details::OperatorKey operator_key = GetOperatorKey(*op, ops_by_type);
+    const details::OperatorKey operator_key =
+        GetOperatorKey(*op, ops_by_type, params.allow_eager_ops);
     int op_index = operators_map.at(operator_key);
     int op_version = operator_key.version;
 
@@ -252,7 +263,7 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
     const details::OperatorsMap& operators_map,
     const details::TensorsMap& tensors_map, FlatBufferBuilder* builder,
-    std::set<int32_t>* variable_tensor_indices) {
+    std::set<int32_t>* variable_tensor_indices, const ExportParams& params) {
   variable_tensor_indices->clear();
 
   // The operators are in execution order, so we just follow tf.mini order.
@@ -269,7 +280,8 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
       outputs.push_back(tensors_map.at(output));
     }
 
-    int op_index = operators_map.at(GetOperatorKey(*op, ops_by_type));
+    int op_index = operators_map.at(
+        GetOperatorKey(*op, ops_by_type, params.allow_eager_ops));
 
     auto tflite_op_it = ops_by_type.find(op->type);
     BaseOperator* tflite_op = tflite_op_it == ops_by_type.end()
@@ -320,16 +332,15 @@ Offset<Vector<Offset<Buffer>>> ExportBuffers(
   return builder->CreateVector(buffer_vector);
 }
 
-void Export(const Model& model, bool allow_custom_ops, bool quantize_weights,
-            string* output_file_contents) {
-  const auto ops_by_type = BuildOperatorByTypeMap();
-  Export(model, allow_custom_ops, quantize_weights, output_file_contents,
-         ops_by_type);
+void Export(const Model& model, string* output_file_contents,
+            const ExportParams& params) {
+  const auto ops_by_type = BuildOperatorByTypeMap(params.allow_eager_ops);
+  Export(model, output_file_contents, params, ops_by_type);
 }
 
 void Export(
-    const Model& model, bool allow_custom_ops, bool quantize_weights,
-    string* output_file_contents,
+    const Model& model, string* output_file_contents,
+    const ExportParams& params,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
   flatbuffers::FlatBufferBuilder builder(/*initial_size=*/10240);
 
@@ -337,7 +348,8 @@ void Export(
   details::LoadTensorsMap(model, &tensors_map);
 
   details::OperatorsMap operators_map;
-  details::LoadOperatorsMap(model, &operators_map, ops_by_type);
+  details::LoadOperatorsMap(model, &operators_map, ops_by_type,
+                            params.allow_eager_ops);
 
   std::vector<const Array*> buffers_to_write;
   Array empty_array;
@@ -345,7 +357,7 @@ void Export(
 
   std::set<string> error_summary;
   auto op_codes = ExportOperatorCodes(model, ops_by_type, operators_map,
-                                      &builder, &error_summary);
+                                      &builder, &error_summary, params);
 
   for (const auto& op : model.operators) {
     if (op->type == OperatorType::kFakeQuant) {
@@ -355,7 +367,7 @@ void Export(
                       "for --std_values and --mean_values.";
     }
   }
-  if (!allow_custom_ops && !error_summary.empty()) {
+  if (!params.allow_custom_ops && !error_summary.empty()) {
     // Remove ExpandDims and ReorderAxes from unimplemented list unless they
     // compose the list. Both ops are removed during graph transformations.
     // However, if an op is unimplemented earlier in the model, the graph
@@ -376,14 +388,14 @@ void Export(
            "the standard TensorFlow Lite runtime. If you have a custom "
            "implementation for them you can disable this error with "
            "--allow_custom_ops, or by setting allow_custom_ops=True "
-           "when calling tf.contrib.lite.toco_convert(). Here is a list "
+           "when calling tf.contrib.lite.TocoConverter(). Here is a list "
            "of operators for which  you will need custom implementations: "
         << absl::StrJoin(error_summary_final, ", ") << ".";
   }
 
   std::set<int32_t> variable_tensor_indices;
   auto ops = ExportOperators(model, ops_by_type, operators_map, tensors_map,
-                             &builder, &variable_tensor_indices);
+                             &builder, &variable_tensor_indices, params);
 
   auto tensors = ExportTensors(model, tensors_map, &builder, &buffers_to_write,
                                variable_tensor_indices);
@@ -402,7 +414,7 @@ void Export(
                   builder.CreateVector(subgraphs), description, buffers);
   ::tflite::FinishModelBuffer(builder, new_model_location);
 
-  if (quantize_weights) {
+  if (params.quantize_weights) {
     // Call the quantize_weights tool.
     LOG(INFO) << "Quantizing TFLite model after conversion to flatbuffer. "
                  "dump_graphviz will only output the model before this "

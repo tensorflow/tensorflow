@@ -83,7 +83,7 @@ lhs_dilation: dilation to apply between input elements
 rhs_dilation: dilation to apply between kernel elements
 feature_group_count: number of feature groups for grouped convolution.
 dimension_numbers: a serialized xla::ConvolutionDimensionNumbers proto.
-precision_config: a serialized xla::PrecisionConfigProto proto.
+precision_config: a serialized xla::PrecisionConfig proto.
 )doc");
 
 REGISTER_OP("XlaDot")
@@ -102,7 +102,36 @@ Wraps the XLA ConvGeneralDilated operator, documented at
 lhs: the LHS tensor
 rhs: the RHS tensor
 dimension_numbers: a serialized xla::DotDimensionNumbers proto.
-precision_config: a serialized xla::PrecisionConfigProto proto.
+precision_config: a serialized xla::PrecisionConfig proto.
+)doc");
+
+REGISTER_OP("XlaDynamicSlice")
+    .Input("input: T")
+    .Input("start_indices: Tindices")
+    .Input("size_indices: Tindices")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Wraps the XLA DynamicSlice operator, documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#dynamicslice
+.
+
+DynamicSlice extracts a sub-array from the input array at dynamic
+start_indices. The size of the slice in each dimension is passed in
+size_indices, which specify the end point of exclusive slice intervals in each
+dimension -- [start, start + size). The shape of start_indices must be rank ==
+1, with dimension size equal to the rank of operand.
+
+input: A `Tensor` of type T.
+
+start_indices: Rank 1 tensor of N integers containing the starting indices of
+  the slice for each dimension. Value must be greater than or equal to zero.
+
+start_indices: List of N integers containing the slice size for each
+  dimension. Each value must be strictly greater than zero, and start + size
+  must be less
 )doc");
 
 REGISTER_OP("XlaDynamicUpdateSlice")

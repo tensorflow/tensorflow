@@ -331,6 +331,7 @@ cc_library(
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
     ] + select({
         # Placeholder for internal darwin rule.
@@ -372,6 +373,7 @@ cc_library(
         ":toco_graphviz_dump_options",
         ":toco_port",
         ":types_proto_cc",
+        "//tensorflow/contrib/lite/kernels/internal:types",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",

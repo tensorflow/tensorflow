@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -245,7 +245,7 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
      private:
       Status BuildCurrentElementIteratorLocked(IteratorContext* ctx)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        return dataset::MakeIteratorFromInputElement(
+        return MakeIteratorFromInputElement(
             ctx, captured_func_inputs_, element_index_++,
             dataset()->captured_func_.get(), prefix(),
             &current_element_iterator_);
@@ -285,5 +285,5 @@ REGISTER_KERNEL_BUILDER(Name("FlatMapDataset").Device(DEVICE_CPU),
                         FlatMapDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

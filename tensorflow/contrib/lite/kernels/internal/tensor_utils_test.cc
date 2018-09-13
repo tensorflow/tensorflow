@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/lite/kernels/internal/tensor_utils.h"
 #include <gmock/gmock.h>
-#include "tensorflow/contrib/lite/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
 #include "tensorflow/contrib/lite/kernels/test_util.h"
 
 namespace tflite {
@@ -496,6 +496,16 @@ TEST(uKernels, VectorVectorCwiseProductAccumulateTest) {
                   {1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4, 1.45})));
 }
 
+TEST(uKernels, VectorBatchVectorAddTest) {
+  constexpr int kVectorSize = 3;
+  constexpr int kBatchSize = 2;
+  static float input[kVectorSize] = {0.0, -0.5, 1.0};
+  std::vector<float> output = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
+  VectorBatchVectorAdd(input, kVectorSize, kBatchSize, output.data());
+  EXPECT_THAT(output,
+              testing::ElementsAreArray({1.0, 1.5, 4.0, 4.0, 4.5, 7.0}));
+}
+
 TEST(uKernels, VectorBatchVectorAssignTest) {
   constexpr int kVectorSize = 5;
   constexpr int kBatchSize = 3;
@@ -710,6 +720,86 @@ TEST(uKernels, ReductionSumVectorTest) {
   ReductionSumVector(input, result2.data(), kOutputVectorSize2,
                      kReductionSize2);
   EXPECT_THAT(result2, ElementsAreArray(ArrayFloatNear({1.0, 3.5})));
+}
+
+TEST(uKernels, MeanStddevNormalizationNoneZeroInput) {
+  constexpr int kVectorSize = 4;
+  constexpr int kBatchSize = 2;
+  constexpr float kNormalizationEpsilon = 1e-8;
+
+  // None-zero input.
+  static float input[kVectorSize * kBatchSize] = {
+      0.1, 0.2, 0.3, 0.4,  // batch 0
+      0.9, 1.0, 1.1, 1.2,  // batch 1
+  };
+  std::vector<float> output(kVectorSize * kBatchSize);
+  MeanStddevNormalization(input, output.data(), kVectorSize, kBatchSize,
+                          kNormalizationEpsilon);
+  const std::vector<float> expected_output = {
+      -1.34164071, -0.447213531, 0.44721365,  1.34164071,  // batch 0
+      -1.34163153, -0.447210163, 0.447211236, 1.3416326,   // batch 1
+  };
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+TEST(uKernels, MeanStddevNormalizationAllZeroInput) {
+  constexpr int kVectorSize = 4;
+  constexpr int kBatchSize = 2;
+  constexpr float kNormalizationEpsilon = 1e-8;
+
+  // Zero input.
+  static float input[kVectorSize * kBatchSize] = {
+      0.0, 0.0, 0.0, 0.0,  // batch 0
+      0.0, 0.0, 0.0, 0.0,  // batch 1
+  };
+  std::vector<float> output(kVectorSize * kBatchSize);
+  MeanStddevNormalization(input, output.data(), kVectorSize, kBatchSize,
+                          kNormalizationEpsilon);
+  const std::vector<float> expected_output = {
+      0.0, 0.0, 0.0, 0.0,  // batch 0
+      0.0, 0.0, 0.0, 0.0,  // batch 1
+  };
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+TEST(uKernels, MeanStddevNormalizationMixed) {
+  constexpr int kVectorSize = 4;
+  constexpr int kBatchSize = 2;
+  constexpr float kNormalizationEpsilon = 1e-8;
+
+  // Mix of zero and non-zero input.
+  static float input[kVectorSize * kBatchSize] = {
+      0.0, 0.0, 0.0, 0.0,  // batch 0
+      0.1, 0.2, 0.3, 0.4,  // batch 1
+  };
+  std::vector<float> output(kVectorSize * kBatchSize);
+  MeanStddevNormalization(input, output.data(), kVectorSize, kBatchSize,
+                          kNormalizationEpsilon);
+  const std::vector<float> expected_output = {
+      0.0,         0.0,          0.0,        0.0,         // batch 0
+      -1.34164071, -0.447213531, 0.44721365, 1.34164071,  // batch 1
+  };
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+TEST(uKernels, MeanStddevNormalizationSmallValue) {
+  constexpr int kVectorSize = 4;
+  constexpr int kBatchSize = 2;
+  constexpr float kNormalizationEpsilon = 1e-8;
+
+  // Mix of zero and non-zero input.
+  static float input[kVectorSize * kBatchSize] = {
+      3e-5, -7e-6, -9e-5, 1e-6,  // batch 0
+      4e-5, 9e-6,  2e-4,  0.0,   // batch 1
+  };
+  std::vector<float> output(kVectorSize * kBatchSize);
+  MeanStddevNormalization(input, output.data(), kVectorSize, kBatchSize,
+                          kNormalizationEpsilon);
+  const std::vector<float> expected_output = {
+      1.04231524,   0.212946132,  -1.64753067, 0.392269224,   // batch 0
+      -0.275023013, -0.658201098, 1.70267045,  -0.769446373,  // batch 1
+  };
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
 }
 
 }  // namespace tensor_utils

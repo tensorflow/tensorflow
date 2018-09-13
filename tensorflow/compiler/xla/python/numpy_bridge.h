@@ -82,7 +82,7 @@ PyObject* PyObjectFromXlaLiteral(const LiteralSlice& literal);
 // To avoid transferring ownership of the data buffers that underlie
 // PyArrays and XLA literals, this function makes deep copies of all
 // array data.
-StatusOr<std::unique_ptr<Literal> > XlaLiteralFromPyObject(PyObject* o);
+StatusOr<Literal> XlaLiteralFromPyObject(PyObject* o);
 
 // The following functions copy array data from the buffers underlying Numpy
 // ndarrays into those underlying XLA literals, and vice versa.

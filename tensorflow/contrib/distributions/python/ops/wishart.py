@@ -21,7 +21,6 @@ from __future__ import print_function
 import math
 import numpy as np
 
-from tensorflow.contrib import linalg
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
@@ -36,6 +35,7 @@ from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.util import deprecation
 
 __all__ = [

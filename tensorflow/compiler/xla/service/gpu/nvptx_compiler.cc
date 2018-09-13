@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
-#include "tensorflow/compiler/xla/service/convolution_feature_group_converter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
@@ -208,13 +207,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     HloPassPipeline pipeline("conv_canonicalization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
-    // TODO(b/31709653): Directly use the grouped convolution support of Cudnn.
-    pipeline.AddPass<ConvolutionFeatureGroupConverter>();
     pipeline.AddPass<CudnnConvolutionRewriter>();
-    // CudnnConvolutionRewriter may add instructions of the form
-    // reverse(constant), which it expects will be simplified by constant
-    // folding.
-    pipeline.AddPass<HloConstantFolding>();
     pipeline.AddPass<PadInsertion>();
     if (IsVoltaOrLater(*stream_exec)) {
       pipeline.AddPass<PadForTensorCores>();
@@ -222,6 +215,9 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       // pairs that TupleSimplifier fixes.
       pipeline.AddPass<TupleSimplifier>();
     }
+    // CudnnConvolutionRewriter, PadInsertion and PadForTensorCores may add
+    // instructions which can be simplified by constant folding.
+    pipeline.AddPass<HloConstantFolding>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 

@@ -63,6 +63,19 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, "tf.math.rsqrt(tf.math.log(3.8))\n")
 
+  def testLearningRateDecay(self):
+    for decay in ["tf.train.exponential_decay", "tf.train.piecewise_constant",
+                  "tf.train.polynomial_decay", "tf.train.natural_exp_decay",
+                  "tf.train.inverse_time_decay", "tf.train.cosine_decay",
+                  "tf.train.cosine_decay_restarts",
+                  "tf.train.linear_cosine_decay",
+                  "tf.train.noisy_linear_cosine_decay"]:
+
+      text = "%s(a, b)\n" % decay
+      _, unused_report, errors, new_text = self._upgrade(text)
+      self.assertEqual(text, new_text)
+      self.assertEqual(errors, ["test.py:1: %s requires manual check." % decay])
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 

@@ -1552,8 +1552,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferConvolveShape(
-    const Shape& lhs, const Shape& rhs, const Window& window,
-    const ConvolutionDimensionNumbers& dnums, int64 feature_group_count) {
+    const Shape& lhs, const Shape& rhs, int64 feature_group_count,
+    const Window& window, const ConvolutionDimensionNumbers& dnums) {
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of convolution"));
   TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of convolution"));
 
@@ -1669,6 +1669,16 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         "got <conv>(%s, %s)\n"
         "Dimension numbers: {%s}.",
         input_features, kernel_input_features * feature_group_count,
+        ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
+        dnums.DebugString());
+  }
+  if (kernel_output_features % feature_group_count > 0) {
+    return InvalidArgument(
+        "Expected output feature dimension (value %d) to be divisible by "
+        "feature_group_count (value %d); "
+        "got <conv>(%s, %s)\n"
+        "Dimension numbers: {%s}.",
+        kernel_output_features, feature_group_count,
         ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
         dnums.DebugString());
   }

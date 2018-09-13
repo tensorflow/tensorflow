@@ -37,28 +37,23 @@ class FunctionalizeCondTest : public ::testing::Test {
                                                         flib_def_.get()));
   }
 
-  CondStateMap::CondId GetUniqueId(
-      const CondStateMap::CondStateMap::CondState& state) {
-    return fc_->cond_state_map_.GetUniqueId(state);
+  StateMap::CondId GetUniqueId(const StateMap::StateMap::CondState& state) {
+    return fc_->state_map_.GetCondId(state);
   }
 
-  xla::StatusOr<CondStateMap::CondId> JoinCondStatesNonMerge(
-      CondStateMap::CondId src, CondStateMap::CondId dst) {
+  string GetString(const StateMap::StateMap::CondId id) {
+    return fc_->state_map_.CondStateToString(id);
+  }
+
+  xla::StatusOr<StateMap::CondId> JoinCondStatesNonMerge(StateMap::CondId src,
+                                                         StateMap::CondId dst) {
     return fc_->JoinCondStatesNonMerge(src, dst);
   }
 
-  xla::StatusOr<CondStateMap::CondId> JoinCondStatesMerge(
-      CondStateMap::CondId src, CondStateMap::CondId dst) {
-    return fc_->JoinCondStatesMerge(src, dst);
-  }
-
-  bool ScopeIn(CondStateMap::CondId ff, CondStateMap::CondId* scope) {
-    return fc_->cond_state_map_.ScopeIn(ff, scope);
-  }
-
-  CondStateMap::ContainsResult LhsHoldsWhereverRhsHolds(
-      CondStateMap::CondId lhs, CondStateMap::CondId rhs) {
-    return fc_->cond_state_map_.LhsHoldsWhereverRhsHolds(lhs, rhs);
+  xla::StatusOr<StateMap::CondId> JoinCondStatesMerge(Node* n,
+                                                      StateMap::CondId src,
+                                                      StateMap::CondId dst) {
+    return fc_->JoinCondStatesMerge(n, src, dst);
   }
 
   FunctionDefLibrary fdef_lib_;
@@ -69,50 +64,6 @@ class FunctionalizeCondTest : public ::testing::Test {
 
 namespace {
 
-TEST_F(FunctionalizeCondTest, ScopeIn) {
-  Tensor pred_tensor(DT_BOOL, TensorShape());
-  pred_tensor.flat<bool>().setZero();
-  Node* pred = test::graph::Constant(graph_.get(), pred_tensor, "pred");
-  Tensor val_tensor(DT_INT32, TensorShape());
-  val_tensor.flat<int>().setZero();
-  Node* val = test::graph::Constant(graph_.get(), val_tensor, "val");
-  Node* s = test::graph::Switch(graph_.get(), val, pred);
-
-  {
-    CondStateMap::CondStateMap::CondState ss;
-    ss.emplace_back(CondStateMap::CondNode(
-        CondStateMap::CondNode::Type::kSwitch, s, BranchType::kThenBranch));
-    CondStateMap::CondId id = GetUniqueId(ss);
-    CondStateMap::CondId scope;
-    ASSERT_TRUE(ScopeIn(id, &scope));
-    ASSERT_TRUE(id == scope);
-  }
-
-  CondStateMap::CondState empty;
-  {
-    CondStateMap::CondState ss;
-    ss.emplace_back(CondStateMap::CondNode(
-        CondStateMap::CondNode::Type::kSwitch, s, BranchType::kBoth));
-    ss.emplace_back(
-        CondStateMap::CondNode(CondStateMap::CondNode::Type::kMerge));
-    CondStateMap::CondId id = GetUniqueId(ss);
-    CondStateMap::CondId scope_1;
-    ASSERT_TRUE(ScopeIn(id, &scope_1));
-    ASSERT_TRUE(scope_1 == GetUniqueId(empty));
-    ASSERT_TRUE(id != scope_1);
-
-    ss.clear();
-    ss.emplace_back(CondStateMap::CondNode(
-        CondStateMap::CondNode::Type::kSwitch, s, BranchType::kBoth));
-    id = GetUniqueId(ss);
-    CondStateMap::CondId scope_2;
-    ASSERT_TRUE(ScopeIn(id, &scope_2));
-
-    ASSERT_TRUE(LhsHoldsWhereverRhsHolds(scope_1, scope_2) ==
-                CondStateMap::ContainsResult::kLhsContainsRhs);
-  }
-}
-
 TEST_F(FunctionalizeCondTest, JoinCondStates) {
   Tensor pred_tensor(DT_BOOL, TensorShape());
   pred_tensor.flat<bool>().setZero();
@@ -120,22 +71,18 @@ TEST_F(FunctionalizeCondTest, JoinCondStates) {
   Tensor val_tensor(DT_INT32, TensorShape());
   val_tensor.flat<int>().setZero();
   Node* val = test::graph::Constant(graph_.get(), val_tensor, "val");
-  Node* s = test::graph::Switch(graph_.get(), val, pred);
+  Node* m = test::graph::Merge(graph_.get(), val, val);
 
-  CondStateMap::CondId empty = GetUniqueId({});
-
-  CondStateMap::CondId then_branch;
+  StateMap::CondId then_branch;
   {
-    CondStateMap::CondState ss;
-    ss.emplace_back(CondStateMap::CondNode(
-        CondStateMap::CondNode::Type::kSwitch, s, BranchType::kThenBranch));
+    StateMap::CondState ss;
+    ss.insert(std::make_pair(OutputTensor(pred, 0), BranchType::kThenBranch));
     then_branch = GetUniqueId(ss);
   }
-  CondStateMap::CondId else_branch;
+  StateMap::CondId else_branch;
   {
-    CondStateMap::CondState ss;
-    ss.emplace_back(CondStateMap::CondNode(
-        CondStateMap::CondNode::Type::kSwitch, s, BranchType::kElseBranch));
+    StateMap::CondState ss;
+    ss.insert(std::make_pair(OutputTensor(pred, 0), BranchType::kElseBranch));
     else_branch = GetUniqueId(ss);
   }
 
@@ -144,39 +91,14 @@ TEST_F(FunctionalizeCondTest, JoinCondStates) {
   EXPECT_TRUE(errors::IsInvalidArgument(status));
 
   // Merge between then and else branch.
-  auto joined_or = JoinCondStatesMerge(then_branch, else_branch);
+  auto joined_or = JoinCondStatesMerge(m, then_branch, else_branch);
   TF_EXPECT_OK(joined_or.status());
-  CondStateMap::CondId joined = joined_or.ValueOrDie();
+  StateMap::CondId joined = joined_or.ValueOrDie();
 
   // Merge between then branch and both branch.
   auto t = JoinCondStatesNonMerge(then_branch, joined);
   // Note: this is OK in terms of constraint predication, but
   TF_EXPECT_OK(t.status());
-
-  // Post merge the propagated forward flow state has an additional merge.
-  CondStateMap::CondId post_merge;
-  {
-    CondStateMap::CondState ss;
-    ss = *joined;
-    ss.emplace_back(
-        CondStateMap::CondNode(CondStateMap::CondNode::Type::kMerge));
-    post_merge = GetUniqueId(ss);
-  }
-
-  t = JoinCondStatesNonMerge(post_merge, joined);
-  TF_EXPECT_OK(t.status());
-  EXPECT_TRUE(joined == t.ValueOrDie());
-
-  // No predicate that results in two paths predicated on different conditions
-  // merge.
-  t = JoinCondStatesMerge(post_merge, joined);
-  EXPECT_FALSE(t.ok());
-
-  // Post the merge we are effectively in the root scope and merging should
-  // result in the more restrictive post merge state.
-  t = JoinCondStatesNonMerge(post_merge, empty);
-  TF_EXPECT_OK(t.status());
-  EXPECT_TRUE(post_merge == t.ValueOrDie());
 }
 
 }  // namespace

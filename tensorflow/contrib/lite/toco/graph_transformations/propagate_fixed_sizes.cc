@@ -561,26 +561,38 @@ void ProcessTensorFlowReductionOperator(Model* model, Operator* op) {
   const bool keep_dims = KeepDims(*op);
   if (op->inputs.size() == 2) {
     // There is a reduction_indices input.
-    const auto& reduction_array = model->GetArray(op->inputs[1]);
-    if (!reduction_array.buffer) {
+    const auto& reduction_indices_array = model->GetArray(op->inputs[1]);
+    if (!reduction_indices_array.buffer) {
       return;
     }
-    CHECK(reduction_array.buffer->type == ArrayDataType::kInt32);
-    const auto& reduction_array_vals =
-        reduction_array.GetBuffer<ArrayDataType::kInt32>().data;
-    auto& output_dims = *output_array.mutable_shape()->mutable_dims();
-    output_dims.clear();
-    for (int i = 0; i < input_shape.dimensions_count(); i++) {
-      bool is_reduction_dim = false;
-      for (int r : reduction_array_vals) {
-        if (i == r) {
-          is_reduction_dim = true;
-        }
+    CHECK(reduction_indices_array.buffer->type == ArrayDataType::kInt32);
+
+    int input_rank = input_shape.dimensions_count();
+    std::set<int32> true_indices;
+    const auto& reduction_indices =
+        reduction_indices_array.GetBuffer<ArrayDataType::kInt32>().data;
+    for (int i = 0; i < reduction_indices.size(); ++i) {
+      const int32 reduction_index = reduction_indices[i];
+      if (reduction_index < -input_rank || reduction_index >= input_rank) {
+        CHECK(false) << "Invalid reduction dimension " << reduction_index
+                     << " for input with " << input_rank << " dimensions";
       }
-      if (!is_reduction_dim) {
-        output_dims.push_back(input_shape.dims(i));
-      } else if (keep_dims) {
-        output_dims.push_back(1);
+      int32 wrapped_index = reduction_index;
+      if (wrapped_index < 0) {
+        wrapped_index += input_rank;
+      }
+      true_indices.insert(wrapped_index);
+    }
+
+    auto* mutable_dims = output_array.mutable_shape()->mutable_dims();
+    mutable_dims->clear();
+    for (int i = 0; i < input_rank; ++i) {
+      if (true_indices.count(i) > 0) {
+        if (keep_dims) {
+          mutable_dims->emplace_back(1);
+        }
+      } else {
+        mutable_dims->emplace_back(input_shape.dims(i));
       }
     }
   } else {
@@ -1302,12 +1314,16 @@ void ProcessStridedSliceOperator(Model* model, StridedSliceOperator* op) {
 
   // Compute output shape
   for (int axis = 0; axis < num_input_axes; ++axis) {
+    const auto strided_slice_params =
+        tflite::strided_slice::BuildStridedSliceParams(
+            op->begin_mask, op->end_mask, op->shrink_axis_mask,
+            op->start_indices, op->stop_indices, op->strides);
     int start_index = tflite::strided_slice::StartForAxis(
-        op->begin_mask, op->start_indices, op->strides,
-        input_array.shape().dims().data(), axis);
+        strided_slice_params, ToRuntimeShape(input_array.shape()), axis);
     int stop_index = tflite::strided_slice::StopForAxis(
-        op->end_mask, op->shrink_axis_mask, op->stop_indices, op->strides,
-        input_array.shape().dims().data(), axis, start_index);
+        strided_slice_params, ToRuntimeShape(input_array.shape()), axis,
+        start_index);
+
     int dim_size =
         ceil(static_cast<float>(stop_index - start_index) / op->strides[axis]);
 

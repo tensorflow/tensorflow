@@ -156,7 +156,7 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(MakeUnique<ScopedAllocatorOptimizer>(
         cfg_.scoped_allocator_optimization(), cfg_.scoped_allocator_opts()));
   }
-  return Status::OK();
+  return InitializeCustomGraphOptimizers(optimizers);
 }
 
 Status MetaOptimizer::InitializeOptimizersByName(
@@ -180,6 +180,11 @@ Status MetaOptimizer::InitializeOptimizersByName(
       VLOG(2) << "Can't register an optimizer by name: " << optimizer_name;
     }
   }
+  return InitializeCustomGraphOptimizers(optimizers);
+}
+
+Status MetaOptimizer::InitializeCustomGraphOptimizers(
+    std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
   for (const auto& optimizer_config : cfg_.custom_optimizers()) {
     auto custom_optimizer = CustomGraphOptimizerRegistry::CreateByNameOrNull(
         optimizer_config.name());
@@ -208,7 +213,7 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   }
 
   std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
-  if (cfg_.optimizers().empty() && cfg_.custom_optimizers().empty()) {
+  if (cfg_.optimizers().empty()) {
     TF_RETURN_IF_ERROR(InitializeOptimizers(&optimizers));
   } else {
     TF_RETURN_IF_ERROR(InitializeOptimizersByName(&optimizers));
@@ -326,10 +331,12 @@ Status MetaOptimizer::RunOptimizer(
 
 Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                GraphDef* optimized_graph) {
+  LOG(INFO) << "Starting optimization for grappler item: " << item.id;
   optimization_results_.clear();
 
   // 1. Optimize main graph
   TF_RETURN_IF_ERROR(OptimizeGraph(cluster, item, optimized_graph));
+  VLOG(1) << "Optimized main graph.";
 
   // 2. Optimize function library
   FunctionLibraryDefinition flib(OpRegistry::Global(),
@@ -393,7 +400,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
   }
 
-  VLOG(3) << "Optimized " << optimized_funcs.size()
+  VLOG(1) << "Optimized " << optimized_funcs.size()
           << " functions: " << str_util::Join(optimized_funcs, ", ");
 
   return Status::OK();

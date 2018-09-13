@@ -44,7 +44,7 @@ class ListFilesDatasetOpTest(test.TestCase):
 
   def testEmptyDirectory(self):
     dataset = dataset_ops.Dataset.list_files(path.join(self.tmp_dir, '*'))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       itr = dataset.make_one_shot_iterator()
       next_element = itr.get_next()
       with self.assertRaises(errors.OutOfRangeError):
@@ -55,7 +55,7 @@ class ListFilesDatasetOpTest(test.TestCase):
     self._touchTempFiles(filenames)
 
     dataset = dataset_ops.Dataset.list_files(path.join(self.tmp_dir, '*'))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       itr = dataset.make_one_shot_iterator()
       next_element = itr.get_next()
 
@@ -75,7 +75,7 @@ class ListFilesDatasetOpTest(test.TestCase):
 
     dataset = dataset_ops.Dataset.list_files(
         path.join(self.tmp_dir, '*'), shuffle=False)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       itr = dataset.make_one_shot_iterator()
       next_element = itr.get_next()
 
@@ -91,7 +91,7 @@ class ListFilesDatasetOpTest(test.TestCase):
 
     dataset = dataset_ops.Dataset.list_files(
         path.join(self.tmp_dir, '*'), shuffle=True, seed=37)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       itr = dataset.make_initializable_iterator()
       next_element = itr.get_next()
 
@@ -121,7 +121,7 @@ class ListFilesDatasetOpTest(test.TestCase):
     filename_placeholder = array_ops.placeholder(dtypes.string, shape=[])
     dataset = dataset_ops.Dataset.list_files(filename_placeholder)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       itr = dataset.make_initializable_iterator()
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError, 'No files matched pattern: '):
@@ -136,7 +136,7 @@ class ListFilesDatasetOpTest(test.TestCase):
     filename_placeholder = array_ops.placeholder(dtypes.string, shape=[])
     dataset = dataset_ops.Dataset.list_files(filename_placeholder)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       itr = dataset.make_initializable_iterator()
       next_element = itr.get_next()
       sess.run(
@@ -162,7 +162,7 @@ class ListFilesDatasetOpTest(test.TestCase):
     filename_placeholder = array_ops.placeholder(dtypes.string, shape=[])
     dataset = dataset_ops.Dataset.list_files(filename_placeholder)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       itr = dataset.make_initializable_iterator()
       next_element = itr.get_next()
       sess.run(
@@ -187,7 +187,7 @@ class ListFilesDatasetOpTest(test.TestCase):
     filename_placeholder = array_ops.placeholder(dtypes.string, shape=[])
     dataset = dataset_ops.Dataset.list_files(filename_placeholder)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       itr = dataset.make_initializable_iterator()
       next_element = itr.get_next()
       sess.run(
@@ -221,7 +221,7 @@ class ListFilesDatasetOpTest(test.TestCase):
     # more meaningful.
     dataset = dataset_ops.Dataset.list_files(
         path.join(self.tmp_dir, '*'), shuffle=False).repeat(2)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       itr = dataset.make_one_shot_iterator()
       next_element = itr.get_next()
 

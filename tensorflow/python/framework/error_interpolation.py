@@ -15,7 +15,7 @@
 """Function for interpolating formatted errors from the TensorFlow runtime.
 
 Exposes the function `interpolate` to interpolate messages with tags of the form
-^^type:name:format^^.
+{{type name}}.
 """
 
 from __future__ import absolute_import
@@ -26,21 +26,17 @@ import collections
 import itertools
 import os
 import re
-import string
 
 import six
 
 from tensorflow.python.util import tf_stack
 
-
 _NAME_REGEX = r"[A-Za-z0-9.][A-Za-z0-9_.\-/]*?"
-_FORMAT_REGEX = r"[A-Za-z0-9_.\-/${}:]+"
-_TAG_REGEX = r"\^\^({name}):({name}):({fmt})\^\^".format(
-    name=_NAME_REGEX, fmt=_FORMAT_REGEX)
+_TAG_REGEX = r"{{{{({name}) ({name})}}}}".format(name=_NAME_REGEX)
 _INTERPOLATION_REGEX = r"^(.*?)({tag})".format(tag=_TAG_REGEX)
-_INTERPOLATION_PATTERN = re.compile(_INTERPOLATION_REGEX)
+_INTERPOLATION_PATTERN = re.compile(_INTERPOLATION_REGEX, re.DOTALL)
 
-_ParseTag = collections.namedtuple("_ParseTag", ["type", "name", "format"])
+_ParseTag = collections.namedtuple("_ParseTag", ["type", "name"])
 
 _BAD_FILE_SUBSTRINGS = [
     os.path.join("tensorflow", "python"),
@@ -52,16 +48,9 @@ def _parse_message(message):
   """Parses the message.
 
   Splits the message into separators and tags. Tags are named tuples
-  representing the string ^^type:name:format^^ and they are separated by
-  separators. For example, in
-  "123^^node:Foo:${file}^^456^^node:Bar:${line}^^789", there are two tags and
-  three separators. The separators are the numeric characters.
-
-  Supported tags after node:<node_name>
-    file: Replaced with the filename in which the node was defined.
-    line: Replaced by the line number at which the node was defined.
-    colocations: Replaced by a multi-line message describing the file and
-        line numbers at which this node was colocated with other nodes.
+  representing the string {{type name}} and they are separated by
+  separators. For example, in "123{{node Foo}}456{{node Bar}}789", there are
+  two tags and three separators. The separators are the numeric characters.
 
   Args:
     message: String to parse
@@ -69,8 +58,8 @@ def _parse_message(message):
   Returns:
     (list of separator strings, list of _ParseTags).
 
-    For example, if message is "123^^node:Foo:${file}^^456" then this function
-    returns (["123", "456"], [_ParseTag("node", "Foo", "${file}")])
+    For example, if message is "123{{node Foo}}456" then this function
+    returns (["123", "456"], [_ParseTag("node", "Foo")])
   """
   seps = []
   tags = []
@@ -79,7 +68,7 @@ def _parse_message(message):
     match = re.match(_INTERPOLATION_PATTERN, message[pos:])
     if match:
       seps.append(match.group(1))
-      tags.append(_ParseTag(match.group(3), match.group(4), match.group(5)))
+      tags.append(_ParseTag(match.group(3), match.group(4)))
       pos += match.end()
     else:
       break
@@ -111,12 +100,12 @@ def _compute_device_summary_from_list(name, device_assignment_list, prefix=""):
     return prefix + message
 
   str_list = []
-  str_list.append("%sDevice assignments active during op '%s' creation:"
-                  % (prefix, name))
+  str_list.append(
+      "%sDevice assignments active during op '%s' creation:" % (prefix, name))
 
   for traceable_obj in device_assignment_list:
-    location_summary = "<{file}:{line}>".format(file=traceable_obj.filename,
-                                                line=traceable_obj.lineno)
+    location_summary = "<{file}:{line}>".format(
+        file=traceable_obj.filename, line=traceable_obj.lineno)
     subs = {
         "prefix": prefix,
         "indent": "  ",
@@ -160,12 +149,12 @@ def _compute_colocation_summary_from_dict(name, colocation_dict, prefix=""):
     return prefix + message
 
   str_list = []
-  str_list.append("%sNode-device colocations active during op '%s' creation:"
-                  % (prefix, name))
+  str_list.append("%sNode-device colocations active during op '%s' creation:" %
+                  (prefix, name))
 
   for coloc_name, location in colocation_dict.items():
-    location_summary = "<{file}:{line}>".format(file=location.filename,
-                                                line=location.lineno)
+    location_summary = "<{file}:{line}>".format(
+        file=location.filename, line=location.lineno)
     subs = {
         "prefix": prefix,
         "indent": "  ",
@@ -180,8 +169,10 @@ def _compute_colocation_summary_from_dict(name, colocation_dict, prefix=""):
 
 def _compute_colocation_summary_from_op(op, prefix=""):
   """Fetch colocation file, line, and nesting and return a summary string."""
-  return _compute_colocation_summary_from_dict(
-      op.name, op._colocation_dict, prefix)  # pylint: disable=protected-access
+  # pylint: disable=protected-access
+  return _compute_colocation_summary_from_dict(op.name, op._colocation_dict,
+                                               prefix)
+  # pylint: enable=protected-access
 
 
 def _find_index_of_defining_frame_for_op(op):
@@ -276,7 +267,7 @@ def compute_field_dict(op):
 def interpolate(error_message, graph):
   """Interpolates an error message.
 
-  The error message can contain tags of the form ^^type:name:format^^ which will
+  The error message can contain tags of the form ^^type:name^^ which will
   be replaced.
 
   Args:
@@ -285,29 +276,29 @@ def interpolate(error_message, graph):
         message.
 
   Returns:
-    The string with tags of the form ^^type:name:format^^ interpolated.
+    The string with tags of the form {{type name}} interpolated.
   """
   seps, tags = _parse_message(error_message)
+  subs = []
+  end_msg = ""
 
-  node_name_to_substitution_dict = {}
-  for name in [t.name for t in tags]:
-    if name in node_name_to_substitution_dict:
-      continue
+  for t in tags:
     try:
-      op = graph.get_operation_by_name(name)
+      op = graph.get_operation_by_name(t.name)
     except KeyError:
       op = None
 
+    msg = "{{%s %s}}" % (t.type, t.name)
     if op is not None:
       field_dict = compute_field_dict(op)
-    else:
-      msg = "<NA>"
-      field_dict = collections.defaultdict(lambda s=msg: s)
-    node_name_to_substitution_dict[name] = field_dict
+      if t.type == "node":
+        msg = "node %s%s " % (t.name, field_dict["defined_at"])
+      elif t.type == "colocation_node":
+        msg = "node %s%s having device %s " % (t.name, field_dict["defined_at"],
+                                               field_dict["devices"])
+        end_msg += "\n\n" + field_dict["devs_and_colocs"]
+    subs.append(msg)
+  subs.append(end_msg)
 
-  subs = [
-      string.Template(tag.format).safe_substitute(
-          node_name_to_substitution_dict[tag.name]) for tag in tags
-  ]
   return "".join(
       itertools.chain(*six.moves.zip_longest(seps, subs, fillvalue="")))

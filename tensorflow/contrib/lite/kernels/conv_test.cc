@@ -177,6 +177,93 @@ TEST_P(ConvolutionOpTest, SimpleTestFloat32WithChannels) {
                              }));
 }
 
+TEST_P(ConvolutionOpTest, InputAndFilterSameWidthHeight) {
+  ConvolutionOpModel m(GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 1}},
+                       {TensorType_FLOAT32, {1, 2, 4, 1}},
+                       {TensorType_FLOAT32, {}});
+
+  m.SetInput({
+      // First batch
+      1, 1, 1, 1,  // row = 1
+      2, 2, 2, 2,  // row = 2
+      // Second batch
+      1, 2, 3, 4,  // row = 1
+      1, 2, 3, 4,  // row = 2
+  });
+  m.SetFilter({
+      1, 2, 3, 4,    // row = 1
+      -1, -1, 1, 1,  // row = 2
+  });
+  m.SetBias({0});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({10, 34}));
+}
+
+TEST_P(ConvolutionOpTest, PointwiseFloat32) {
+  ConvolutionOpModel m(GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 2}},
+                       {TensorType_FLOAT32, {1, 1, 1, 2}},
+                       {TensorType_FLOAT32, {}}, 1, 1);
+
+  m.SetInput({
+      // First batch
+      0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5,  // row = 1
+      1, 1, 1, 1, 1, 1, 1, 1,                  // row = 2
+      // Second batch
+      0.5, 0.5, 1, 1, 1.5, 1.5, 2, 2,  // row = 1
+      0.5, 0.5, 1, 1, 1.5, 1.5, 2, 2   // row = 2
+  });
+
+  m.SetFilter({
+      1, 2,  // first filter
+  });
+  m.SetBias({0});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 // First batch
+                                 1.5, 1.5, 1.5, 1.5,  // row = 1
+                                 3., 3., 3., 3.,      // row = 2
+                                 // Second batch
+                                 1.5, 3., 4.5, 6.,  // row = 1
+                                 1.5, 3., 4.5, 6.,  // row = 2
+                             }));
+}
+
+// TODO(alanchiao): this passes locally, but fails on continuous build system.
+// Re-enable when root cause found.
+TEST_P(ConvolutionOpTest, DISABLED_PointwiseMultifilterFloat32) {
+  ConvolutionOpModel m(GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 2}},
+                       {TensorType_FLOAT32, {2, 1, 1, 2}},
+                       {TensorType_FLOAT32, {}}, 1, 1);
+
+  m.SetInput({
+      // First batch
+      0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5,  // row = 1
+      1, 1, 1, 1, 1, 1, 1, 1,                  // row = 2
+      // Second batch
+      0.5, 0.5, 1, 1, 1.5, 1.5, 2, 2,  // row = 1
+      0.5, 0.5, 1, 1, 1.5, 1.5, 2, 2   // row = 2
+  });
+
+  m.SetFilter({
+      1, 2,  // first filter
+      2, 3,  // second filter
+  });
+  m.SetBias({0});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({
+                  1.5, 2.5, 1.5, 2.5, 1.5, 2.5, 1.5, 2.5, 3., 5.,  3.,
+                  5.,  3.,  5.,  3.,  5.,  1.5, 2.5, 3.,  5., 4.5, 7.5,
+                  6.,  10., 1.5, 2.5, 3.,  5.,  4.5, 7.5, 6., 10.,
+              }));
+}
+
 TEST_P(ConvolutionOpTest, SimpleTestFloat32WithAnisotropicStrides) {
   ConvolutionOpModel m(GetRegistration(), {TensorType_FLOAT32, {1, 3, 6, 1}},
                        {TensorType_FLOAT32, {1, 2, 2, 1}},
@@ -767,6 +854,82 @@ TEST_P(ConvolutionOpTest, SimpleTestHybridWithChannels) {
                                      37, 4, 3,  // second batch, right
                                  },
                                  0.16)));
+}
+
+TEST_P(ConvolutionOpTest, PointwiseHybrid) {
+  HybridConvolutionOpModel m(
+      GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 2}},
+      {TensorType_UINT8, {1, 1, 1, 2}}, {TensorType_FLOAT32, {}}, 1, 1);
+
+  m.SetInput({
+      // First batch
+      0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5,  // row = 1
+      1, 1, 1, 1, 1, 1, 1, 1,                  // row = 2
+      // Second batch
+      0.5, 0.5, 1, 1, 1.5, 1.5, 2, 2,  // row = 1
+      0.5, 0.5, 1, 1, 1.5, 1.5, 2, 2   // row = 2
+  });
+
+  m.SetFilter({
+      1, 2,  // first filter
+  });
+  m.SetBias({0});
+
+  m.Invoke();
+
+  // Example: we get 3.03156 instead of 3.
+  //
+  // Second batch:
+  // 0.5 0.5 1 1 1.5 1.5 2 2  -> 32 32 64 64 95 95 127 127 with scale factor
+  // 127/2. We care about the two 64's.
+  //
+  // Filter:
+  // 64 127 with scale factor of 127/2.
+  //
+  // (64 * 64 + 64 * 127) * (2/127)^2 gives us the expected result.
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      1.5, 1.5, 1.5, 1.5,  // first batch, row = 1
+                      3., 3., 3., 3.,      // first batch, row = 2
+                      1.5, 3., 4.5, 6.,    // second batch, row = 1
+                      1.5, 3., 4.5, 6.,    // second batch, row = 2
+                  },
+                  0.0316)));
+}
+
+// TODO(alanchiao): this passes locally, but fails on continuous build system.
+// Re-enable when root cause found.
+TEST_P(ConvolutionOpTest, DISABLED_PointwiseMultifilterHybrid) {
+  HybridConvolutionOpModel m(
+      GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 2}},
+      {TensorType_UINT8, {2, 1, 1, 2}}, {TensorType_FLOAT32, {}}, 1, 1);
+
+  m.SetInput({
+      // First batch
+      0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5,  // row = 1
+      1, 1, 1, 1, 1, 1, 1, 1,                  // row = 2
+      // Second batch
+      0.5, 0.5, 1, 1, 1.5, 1.5, 2, 2,  // row = 1
+      0.5, 0.5, 1, 1, 1.5, 1.5, 2, 2   // row = 2
+  });
+
+  m.SetFilter({
+      1, 2,  // first filter
+      2, 3,  // second filter
+  });
+  m.SetBias({0});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      1.5, 2.5, 1.5, 2.5, 1.5, 2.5, 1.5, 2.5, 3., 5.,  3.,
+                      5.,  3.,  5.,  3.,  5.,  1.5, 2.5, 3.,  5., 4.5, 7.5,
+                      6.,  10., 1.5, 2.5, 3.,  5.,  4.5, 7.5, 6., 10.,
+                  },
+                  0.0474)));
 }
 
 INSTANTIATE_TEST_CASE_P(

@@ -58,6 +58,7 @@ using tensorflow::DT_STRING;
 using tensorflow::DT_UINT8;
 using tensorflow::GraphDef;
 using tensorflow::NodeDef;
+using tensorflow::OpRegistry;
 using tensorflow::TensorProto;
 using tensorflow::TensorShapeProto;
 
@@ -1079,6 +1080,23 @@ tensorflow::Status ConvertUnsupportedOperator(
   } else if (HasAttr(node, "Tout")) {
     const auto& output_type = GetDataTypeAttr(node, "Tout");
     op->output_data_types.push_back(ConvertDataType(output_type));
+  } else {
+    const tensorflow::OpDef* op_def = nullptr;
+    if (OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok()) {
+      for (const auto& output_arg : op_def->output_arg()) {
+        if (HasAttr(node, output_arg.type_attr())) {
+          op->output_data_types.push_back(
+              ConvertDataType(GetDataTypeAttr(node, output_arg.type_attr())));
+        } else {
+          LOG(INFO) << "Op node missing output type attribute: " << node.name();
+        }
+      }
+    }
+    if (op->output_data_types.empty()) {
+      // TODO(b/113613439): Figure out how to propagate types for custom ops
+      // that have no OpDef.
+      LOG(INFO) << "Unable to determine output type for op: " << node.op();
+    }
   }
   if (HasAttr(node, kAttrOutputShapes)) {
     const auto& output_shapes = GetListAttr(node, kAttrOutputShapes);
@@ -2061,8 +2079,14 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
   }
 
   Model* model = new Model;
-  const internal::ConverterMapType& converter_map =
-      internal::GetTensorFlowNodeConverterMap();
+  internal::ConverterMapType converter_map;
+
+  // This is used for the TFLite "Full Eager Mode" conversion. All the ops are
+  // imported as `TensorFlowUnsupportedOperator`, and later all these ops are
+  // converted to TFLite Eager ops.
+  if (!tf_import_flags.import_all_ops_as_unsupported) {
+    converter_map = internal::GetTensorFlowNodeConverterMap();
+  }
 
   for (auto node : inlined_graph.node()) {
     StripZeroOutputIndexFromInputs(&node);
