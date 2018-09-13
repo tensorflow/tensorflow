@@ -115,6 +115,10 @@ def argmin(input,
 def abs(x, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the absolute value of a tensor.
 
+  Given a tensor of integer or floating-point values, this operation returns a 
+  tensor of the same type, where each element contains the absolute value of the 
+  corresponding element in the input.
+
   Given a tensor `x` of complex numbers, this operation returns a tensor of type
   `float32` or `float64` that is the absolute value of each element in `x`. All
   elements in `x` must be complex numbers of the form \\(a + bj\\). The
@@ -130,8 +134,8 @@ def abs(x, name=None):  # pylint: disable=redefined-builtin
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
-      values.
+    A `Tensor` or `SparseTensor` the same size, type, and sparsity as `x` with 
+      absolute values. 
     Note, for `complex64` or `complex128` input, the returned `Tensor` will be
       of type `float32` or `float64`, respectively.
   """
@@ -2170,13 +2174,10 @@ def add_n(inputs, name=None):
 def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   """Returns the element-wise sum of a list of tensors.
 
-  Optionally, pass `shape` and `tensor_dtype` for shape and type checking,
-  otherwise, these are inferred.
-
   `tf.accumulate_n` performs the same operation as `tf.add_n`, but does not
   wait for all of its inputs to be ready before beginning to sum. This can
   save memory if inputs are ready at different times, since minimum temporary
-  storage is proportional to the output size rather than the inputs size.
+  storage is proportional to the output size rather than the inputs' size.
 
   `accumulate_n` is differentiable (but wasn't previous to TensorFlow 1.7).
 
@@ -2192,11 +2193,12 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
                                                                  # [[7,  4],
                                                                  #  [6, 14]]
   ```
-
   Args:
     inputs: A list of `Tensor` objects, each with same shape and type.
-    shape: Shape of elements of `inputs`.
-    tensor_dtype: The type of `inputs`.
+    shape: Expected shape of elements of `inputs`.
+      A value of `None` means "infer the input shape from the shapes in `inputs`".
+    tensor_dtype: Expected data type of `inputs`. 
+      A value of `None` means "infer the input type from `inputs[0]`".
     name: A name for the operation (optional).
 
   Returns:
