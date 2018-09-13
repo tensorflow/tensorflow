@@ -699,6 +699,13 @@ class StreamExecutor {
   // The set of TraceListeners registered for this StreamExecutor.
   std::set<TraceListener*> listeners_ GUARDED_BY(mu_);
 
+  // Allocated memory in bytes.
+  int64 mem_alloc_bytes_;
+
+  // Memory limit in bytes. Value less or equal to 0 indicates there is no
+  // limit.
+  int64 memory_limit_bytes_;
+
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutor);
 };
 

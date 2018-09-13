@@ -581,6 +581,7 @@ tf_xla_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

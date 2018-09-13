@@ -252,7 +252,7 @@ class ParallelDynamicStitchTest(DynamicStitchTestBase, test.TestCase):
 
   # GPU version unit tests
   def testScalarGPU(self):
-    with self.test_session():
+    with self.cached_session():
       indices = [constant_op.constant(0), constant_op.constant(1)]
       data = [constant_op.constant(40.0), constant_op.constant(60.0)]
       for step in -1, 1:
@@ -263,7 +263,7 @@ class ParallelDynamicStitchTest(DynamicStitchTestBase, test.TestCase):
         self.assertEqual([2], stitched_t.get_shape().as_list())
 
   def testHigherRankGPU(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       indices = [
           constant_op.constant(6),
           constant_op.constant([4, 1]),

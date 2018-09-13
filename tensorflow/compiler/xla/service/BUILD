@@ -551,6 +551,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -1267,6 +1268,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1400,6 +1402,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
@@ -1786,6 +1789,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/memory",
@@ -1962,6 +1966,7 @@ tf_cc_test(
     deps = [
         ":hlo",
         ":hlo_matchers",
+        ":hlo_memory_scheduler",
         ":hlo_parser",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -2623,6 +2628,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],

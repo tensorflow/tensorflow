@@ -90,11 +90,6 @@ def regex_replace(source, pattern, rewrite, replace_global=True):
   Returns:
     string `Tensor` of the same shape as `source` with specified replacements.
   """
-  # TODO(b/112455102): Remove compat.forward_compatible once past the horizon.
-  if not compat.forward_compatible(2018, 10, 10):
-    return gen_string_ops.regex_replace(
-        input=source, pattern=pattern,
-        rewrite=rewrite, replace_global=replace_global)
   if (isinstance(pattern, util_compat.bytes_or_text_types) and
       isinstance(rewrite, util_compat.bytes_or_text_types)):
     # When `pattern` and `rewrite` are static through the life of the op we can

@@ -505,6 +505,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->SetAndSanitizeName(proto.name());
   instruction->metadata_ = proto.metadata();
   instruction->backend_config_ = proto.backend_config();
+  instruction->unique_id_ = proto.id();
 
   if (proto.has_sharding()) {
     TF_ASSIGN_OR_RETURN(const auto& sharding,

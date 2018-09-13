@@ -69,6 +69,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
+from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.protobuf import compare
@@ -778,7 +779,7 @@ def run_in_graph_and_eager_modes(func=None,
 
       def run_eagerly(self, **kwargs):
         if not use_gpu:
-          with ops.device("/cpu:0"):
+          with ops.device("/device:CPU:0"):
             f(self, **kwargs)
         else:
           f(self, **kwargs)
@@ -1838,7 +1839,7 @@ class TensorFlowTestCase(googletest.TestCase):
         elif use_gpu:
           yield sess
         else:
-          with sess.graph.device("/cpu:0"):
+          with sess.graph.device("/device:CPU:0"):
             yield sess
 
   def _create_session(self, graph, config, force_gpu):
@@ -1853,12 +1854,18 @@ class TensorFlowTestCase(googletest.TestCase):
       Returns:
         A config_pb2.ConfigProto object.
       """
+      # TODO(b/114333779): Enforce allow_soft_placement=False when
+      # use_gpu=False. Currently many tests rely on the fact that any device
+      # will be used even when a specific device is supposed to be used.
+      allow_soft_placement = not force_gpu
       if config is None:
         config = config_pb2.ConfigProto()
-        config.allow_soft_placement = not force_gpu
+        config.allow_soft_placement = allow_soft_placement
         config.gpu_options.per_process_gpu_memory_fraction = 0.3
-      elif force_gpu and config.allow_soft_placement:
-        config = config_pb2.ConfigProto().CopyFrom(config)
+      elif not allow_soft_placement and config.allow_soft_placement:
+        config_copy = config_pb2.ConfigProto()
+        config_copy.CopyFrom(config)
+        config = config_copy
         config.allow_soft_placement = False
       # Don't perform optimizations for tests so we don't inadvertently run
       # gpu ops on cpu
@@ -2008,3 +2015,42 @@ def set_producer_version(graph, producer_version):
   with graph.as_default():
     importer.import_graph_def(graph_def)
   assert graph.graph_def_versions.producer, producer_version
+
+
+def dismantle_func_graph(func_graph):
+  """Removes reference cycles in `func_graph` FuncGraph.
+
+  Helpful for making sure the garbage collector doesn't need to run when
+  the FuncGraph goes out of scope, e.g. in tests using defun with
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True).
+
+  Args:
+    func_graph: A `FuncGraph` object to destroy. `func_graph` is unusable
+      after this function.
+  """
+  # TODO(b/115366440): Delete this method when a custom OrderedDict is added.
+  # Clearing captures using clear() leaves some cycles around.
+  while func_graph.captures:
+    func_graph.captures.popitem()
+  memory.dismantle_ordered_dict(func_graph.captures)
+  ops.dismantle_graph(func_graph)
+
+
+def dismantle_polymorphic_function(func):
+  """Removes reference cycles in PolymorphicFunction `func`.
+
+  Helpful for making sure the garbage collector doesn't need to run when
+  PolymorphicFunction goes out of scope, e.g. in tests using defun with
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True).
+
+  Args:
+    func: A `PolymorphicFunction` object to destroy. `func` is unusable
+      after this function.
+  """
+  # TODO(b/115366440): Delete this method when a custom OrderedDict is added
+  cache = func._function_cache  # pylint: disable=protected-access
+  for concrete_func in cache.values():
+    dismantle_func_graph(concrete_func.graph)
+  while cache:
+    cache.popitem()
+  memory.dismantle_ordered_dict(cache)

@@ -210,7 +210,7 @@ class PartitionedCallOp : public AsyncOpKernel {
         TF_RETURN_IF_ERROR(node->attrs().Find("T", &attr_value));
         DataType dtype = attr_value->type();
         if (dtype == DT_RESOURCE) {
-          ResourceHandle handle = args[index].flat<ResourceHandle>()(0);
+          const ResourceHandle& handle = args[index].flat<ResourceHandle>()(0);
           node->set_assigned_device_name(handle.device());
         }
       }

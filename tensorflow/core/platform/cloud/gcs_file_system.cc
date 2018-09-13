@@ -371,7 +371,7 @@ class GcsWritableFile : public WritableFile {
 
   ~GcsWritableFile() override { Close().IgnoreError(); }
 
-  Status Append(const StringPiece& data) override {
+  Status Append(StringPiece data) override {
     TF_RETURN_IF_ERROR(CheckWritable());
     sync_needed_ = true;
     outfile_ << data;

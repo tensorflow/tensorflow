@@ -247,6 +247,13 @@ void BenchmarkTfLiteModel::PrepareInputsAndOutputs() {
           interpreter->typed_tensor<float>(i),
           std::vector<int>(sizes.begin() + 1, sizes.end()),
           []() { return static_cast<float>(rand()) / RAND_MAX - 0.5f; });
+    } else if (t->type == kTfLiteInt32) {
+      // TODO(yunluli): This is currently only used for handling embedding input
+      // for speech models. Generalize if necessary.
+      FillRandomValue<int32_t>(
+          interpreter->typed_tensor<int32_t>(i),
+          std::vector<int32_t>(sizes.begin() + 1, sizes.end()),
+          []() { return static_cast<int32_t>(rand()) % 100; });
     } else if (t->type == kTfLiteUInt8) {
       FillRandomValue<uint8_t>(
           interpreter->typed_tensor<uint8_t>(i),

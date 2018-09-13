@@ -45,6 +45,7 @@ from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import functional_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
@@ -1002,6 +1003,26 @@ class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
         [[1., 2.], [5, 6], [10., 12.]])
     result = gradients_impl._AggregateIndexedSlicesGradients([t0, t1])
     self._assert_indexed_slices_equal(total, result)
+
+
+class TensorListGradientsTest(test_util.TensorFlowTestCase):
+
+  def testDefaultGradYs(self):
+    with ops.Graph().as_default():
+      tl = list_ops.empty_tensor_list(
+          element_dtype=dtypes.float32,
+          element_shape=ops.convert_to_tensor([], dtype=dtypes.int32))
+      a = constant(1.0)
+      tl = list_ops.tensor_list_push_back(tl, a)
+
+      grad_tl = list_ops.empty_tensor_list(
+          element_dtype=dtypes.float32,
+          element_shape=ops.convert_to_tensor([], dtype=dtypes.int32))
+      grad_tl = list_ops.tensor_list_push_back(tl, constant(5.0))
+
+      grad = gradients.gradients(tl, a, grad_ys=grad_tl)[0]
+      with self.cached_session() as sess:
+        self.assertEquals(sess.run(grad), 5.)
 
 
 if __name__ == "__main__":

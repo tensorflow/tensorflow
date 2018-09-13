@@ -40,7 +40,7 @@ def _AddTest(test, op_name, testcase_name, fn):
 class ShapeTest(test_lib.TestCase):
 
   def testBatchGradientUnknownSize(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = constant_op.constant(3)
       matrix_size = constant_op.constant(4)
       batch_identity = array_ops.tile(

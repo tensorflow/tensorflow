@@ -33,6 +33,10 @@ struct CuboidConvolution;
 template <typename Device, typename T>
 struct CuboidConvolutionBackwardInput;
 
+// Backward filter pass for the cuboid convolution.
+template <typename Device, typename T>
+struct CuboidConvolutionBackwardFilter;
+
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 template <typename T>
@@ -60,6 +64,23 @@ struct CuboidConvolutionBackwardInput<CPUDevice, T> {
         input_backward.dimension(3),  // input_planes
         input_backward.dimension(2),  // input_rows
         input_backward.dimension(1),  // input_cols
+        stride_cols, stride_rows, stride_planes);
+  }
+};
+
+template <typename T>
+struct CuboidConvolutionBackwardFilter<CPUDevice, T> {
+  void operator()(const CPUDevice& d,
+                  typename TTypes<T, 5>::Tensor filter_backward,
+                  typename TTypes<T, 5>::ConstTensor input,
+                  typename TTypes<T, 5>::ConstTensor output_backward,
+                  int stride_planes, int stride_rows, int stride_cols) {
+    // Need to swap the order of plane/row/col strides when calling Eigen.
+    filter_backward.device(d) = Eigen::CuboidConvolutionBackwardKernel(
+        input, output_backward,
+        filter_backward.dimension(2),  // kernel_planes
+        filter_backward.dimension(1),  // kernel_rows
+        filter_backward.dimension(0),  // kernel_cols
         stride_cols, stride_rows, stride_planes);
   }
 };
