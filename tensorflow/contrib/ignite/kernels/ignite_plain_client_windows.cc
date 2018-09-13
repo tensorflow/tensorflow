@@ -24,6 +24,7 @@ limitations under the License.
 #pragma comment(lib, "Mswsock.lib")
 #pragma comment(lib, "AdvApi32.lib")
 
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -58,7 +59,7 @@ Status PlainClient::Connect() {
                     &result);
   if (res != 0) return errors::Internal("Getaddrinfo failed with error: ", res);
 
-  auto clean = gtl::MakeCleanup([result] { reeaddrinfo(result); });
+  auto clean = gtl::MakeCleanup([result] { freeaddrinfo(result); });
 
   for (ptr = result; ptr != NULL; ptr = ptr->ai_next) {
     sock_ = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
