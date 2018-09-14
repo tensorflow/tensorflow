@@ -567,6 +567,13 @@ void TFE_OpSetAttrFunction(TFE_Op* op, const char* attr_name,
   op->operation.MutableAttrs()->Set(attr_name, attr_value);
 }
 
+void TFE_OpSetAttrTensor(TFE_Op* op, const char* attr_name, TF_Tensor* tensor,
+                         TF_Status* status) {
+  tensorflow::Tensor t;
+  status->status = TF_TensorToTensor(tensor, &t);
+  if (status->status.ok()) op->operation.MutableAttrs()->Set(attr_name, t);
+}
+
 void TFE_OpSetAttrStringList(TFE_Op* op, const char* attr_name,
                              const void* const* values, const size_t* lengths,
                              int num_values) {
