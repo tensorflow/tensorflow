@@ -1572,6 +1572,9 @@ def main():
   if is_windows():
     set_windows_build_flags(environ_cp)
 
+  # Add a config option to build TensorFlow 2.0 API.
+  write_to_bazelrc('build:v2 --define=tf_api_version=2')
+
   if get_var(
       environ_cp, 'TF_SET_ANDROID_WORKSPACE', 'android workspace',
       False,
