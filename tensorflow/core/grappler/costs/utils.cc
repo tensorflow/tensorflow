@@ -127,7 +127,7 @@ static void ExtractExtraProperties(
 
       // For filename input, the file size can also be useful.
       if (op_def && i < op_def->input_arg_size() &&
-          op_def->input_arg(i).name().find("filename") != std::string::npos) {
+          op_def->input_arg(i).name().find("filename") != string::npos) {
         Tensor tensor;
         if (!tensor.FromProto(t)) {
           continue;
@@ -153,7 +153,7 @@ static void ExtractExtraProperties(
     // When the input is a handle (e.g. look up table handle), the information
     // in the op itself is not sufficient to predict the op memory.
     if (op_def && i < op_def->input_arg_size() &&
-        op_def->input_arg(i).name().find("handle") != std::string::npos) {
+        op_def->input_arg(i).name().find("handle") != string::npos) {
       string new_key = strings::StrCat("parent_", i, "_op");
       AttrValue attr;
       attr.set_s(input_node->op());
@@ -320,8 +320,8 @@ void TensorSizeHistogram::Merge(const TensorSizeHistogram& src) {
                  buckets_.begin(), std::plus<uint64>());
 }
 
-std::string TensorSizeHistogram::ToString() const {
-  std::string r;
+string TensorSizeHistogram::ToString() const {
+  string r;
   char buf[200];
   snprintf(buf, sizeof(buf), "Count: %lld, Average: ", num_elem_);
   r.append(buf);
