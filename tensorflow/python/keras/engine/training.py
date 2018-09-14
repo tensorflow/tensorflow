@@ -205,8 +205,27 @@ class Model(Network):
     for metric in metrics:
       metric_fn = training_utils.get_metric_function(
           metric, output_shape=output_shape, loss_fn=loss_fn)
-      metric_name = self._get_metric_name(
-          metric, output_index, weighted=weights is not None)
+
+      if (context.executing_eagerly() and y_true is not None and
+          y_pred is not None):
+        # In eager mode, when executing metric_fn during training, we do not
+        # need to generate unique metric name and add it to the model
+        # as we have done that during compile already.
+        prefix = 'weighted_' if weights is not None else ''
+        suffix = metric_fn.name if hasattr(metric_fn,
+                                           'name') else metric_fn.__name__
+        metric_name = prefix + suffix
+      else:
+        # Get metric name that is to be added to the model.
+        metric_name = self._get_metric_name(
+            metric, output_index, weighted=weights is not None)
+        # Keep track of metric name.
+        self.metrics_names.append(metric_name)
+
+        # Keep track of stateful metric attributes (name and metric function).
+        if isinstance(metric_fn, base_layer.Layer) and metric_fn.stateful:
+          self.stateful_metric_names.append(metric_name)
+          self.stateful_metric_functions.append(metric_fn)
 
       with K.name_scope(metric_name):
         # If both outputs and targets are available, call the metric function.
@@ -246,16 +265,10 @@ class Model(Network):
             self.metrics_tensors.append(metric_result)
           metric_results.append(metric_result)
 
-      # Keep track of metric name.
-      self.metrics_names.append(metric_name)
-
-      # Keep track of stateful metric attributes (name and metric function).
-      if isinstance(metric_fn, base_layer.Layer) and metric_fn.stateful:
-        self.stateful_metric_names.append(metric_name)
-        self.stateful_metric_functions.append(metric_fn)
-        if not context.executing_eagerly():
-          # Keep track of updates created by stateful metrics.
-          self.metrics_updates += metric_fn.updates
+      if (isinstance(metric_fn, base_layer.Layer) and metric_fn.stateful and
+          not context.executing_eagerly()):
+        # Keep track of updates created by stateful metrics.
+        self.metrics_updates += metric_fn.updates
     return metric_results
 
   def _handle_metrics(self,
