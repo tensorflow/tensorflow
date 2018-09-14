@@ -137,7 +137,7 @@ def conv_input_length(output_length, filter_size, padding, stride):
   return (output_length - 1) * stride - 2 * pad + filter_size
 
 
-def deconv_output_length(input_length, filter_size, padding, stride):
+def deconv_output_length(input_length, filter_size, padding, stride, dilation=1):
   """Determines output length of a transposed convolution given input length.
 
   Arguments:
@@ -145,12 +145,15 @@ def deconv_output_length(input_length, filter_size, padding, stride):
       filter_size: integer.
       padding: one of "same", "valid", "full".
       stride: integer.
+      dilation: dilation rate, integer.
 
   Returns:
       The output length (integer).
   """
   if input_length is None:
     return None
+  # Get the dilated filter size
+  filter_size += (filter_size - 1) * (dilation - 1)
   input_length *= stride
   if padding == 'valid':
     input_length += max(filter_size - stride, 0)

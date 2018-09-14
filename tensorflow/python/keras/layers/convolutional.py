@@ -701,6 +701,7 @@ class Conv2DTranspose(Conv2D):
                strides=(1, 1),
                padding='valid',
                data_format=None,
+               dilation_rate=(1, 1),
                activation=None,
                use_bias=True,
                kernel_initializer='glorot_uniform',
@@ -717,6 +718,7 @@ class Conv2DTranspose(Conv2D):
         strides=strides,
         padding=padding,
         data_format=data_format,
+        dilation_rate=dilation_rate,
         activation=activations.get(activation),
         use_bias=use_bias,
         kernel_initializer=initializers.get(kernel_initializer),
@@ -781,11 +783,13 @@ class Conv2DTranspose(Conv2D):
     out_height = conv_utils.deconv_output_length(height,
                                                  kernel_h,
                                                  self.padding,
-                                                 stride_h)
+                                                 stride_h,
+                                                 self.dilation_rate[0])
     out_width = conv_utils.deconv_output_length(width,
                                                 kernel_w,
                                                 self.padding,
-                                                stride_w)
+                                                stride_w,
+                                                self.dilation_rate[1])
     if self.data_format == 'channels_first':
       output_shape = (batch_size, self.filters, out_height, out_width)
       strides = (1, 1, stride_h, stride_w)
@@ -793,14 +797,31 @@ class Conv2DTranspose(Conv2D):
       output_shape = (batch_size, out_height, out_width, self.filters)
       strides = (1, stride_h, stride_w, 1)
 
-    output_shape_tensor = array_ops.stack(output_shape)
-    outputs = nn.conv2d_transpose(
-        inputs,
-        self.kernel,
-        output_shape_tensor,
-        strides,
-        padding=self.padding.upper(),
-        data_format=conv_utils.convert_data_format(self.data_format, ndim=4))
+    if self.dilation_rate == (1, 1):
+      output_shape_tensor = array_ops.stack(output_shape)
+      outputs = nn.conv2d_transpose(
+          inputs,
+          self.kernel,
+          output_shape_tensor,
+          strides,
+          padding=self.padding.upper(),
+          data_format=conv_utils.convert_data_format(self.data_format, ndim=4))
+    else:
+      # tf.nn.atrous_conv2d_transpose input only supports NHWC format
+      if self.data_format == 'channels_first':
+        inputs = array_ops.transpose(inputs, (0, 2, 3, 1))
+        output_shape = (batch_size, out_height, out_width, self.filters)
+      output_shape_tensor = array_ops.stack(output_shape)
+      assert self.dilation_rate[0] == self.dilation_rate[1]
+      outputs = nn.atrous_conv2d_transpose(
+          inputs,
+          self.kernel,
+          output_shape_tensor,
+          self.dilation_rate[0],
+          padding=self.padding.upper())
+
+      if self.data_format == 'channels_first':
+        outputs = array_ops.transpose(outputs, (0, 3, 1, 2))
 
     if not context.executing_eagerly():
       # Infer the static output shape:
@@ -809,11 +830,13 @@ class Conv2DTranspose(Conv2D):
       out_shape[h_axis] = conv_utils.deconv_output_length(out_shape[h_axis],
                                                           kernel_h,
                                                           self.padding,
-                                                          stride_h)
+                                                          stride_h,
+                                                          self.dilation_rate[0])
       out_shape[w_axis] = conv_utils.deconv_output_length(out_shape[w_axis],
                                                           kernel_w,
                                                           self.padding,
-                                                          stride_w)
+                                                          stride_w,
+                                                          self.dilation_rate[1])
       outputs.set_shape(out_shape)
 
     if self.use_bias:
