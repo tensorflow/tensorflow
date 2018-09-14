@@ -283,6 +283,12 @@ inline tflite::Dims<4> ToRuntimeDims(const tflite::RuntimeShape& array_shape) {
   return result;
 }
 
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+inline RuntimeShape DimsToShape(const tflite::Dims<4>& dims) {
+  return RuntimeShape(
+      {dims.sizes[3], dims.sizes[2], dims.sizes[1], dims.sizes[0]});
+}
+
 // Gets next index to iterate through a multidimensional array.
 inline bool NextIndex(const int num_dims, const int* dims, int* current) {
   if (num_dims == 0) {
@@ -764,7 +770,8 @@ struct DepthToSpaceParams {
 struct DepthwiseParams {
   PaddingType padding_type;
   PaddingValues padding_values;
-  int16 stride;
+  int16 stride_width;
+  int16 stride_height;
   int16 depth_multiplier;
   // uint8 inference params.
   // TODO(b/65838351): Use smaller types if appropriate.
