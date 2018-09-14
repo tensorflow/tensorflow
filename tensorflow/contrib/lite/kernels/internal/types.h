@@ -885,8 +885,8 @@ struct SoftmaxParams {
   // for LogSoftmax.
   double beta;
   // uint8 inference params.  Used even when beta defaults to 1.0.
-  int32 input_beta_multiplier;
-  int32 input_beta_left_shift;
+  int32 input_multiplier;
+  int32 input_left_shift;
   // Reverse scaling is only used by LogSoftmax.
   int32 reverse_scaling_divisor;
   int32 reverse_scaling_right_shift;

@@ -4431,9 +4431,9 @@ inline void LocalResponseNormalization(
   }
 }
 
-inline void Softmax(const float* input_data, const RuntimeShape& input_shape,
-                    float beta, float* output_data,
-                    const RuntimeShape& output_shape) {
+inline void Softmax(const SoftmaxParams& params,
+                    const RuntimeShape& input_shape, const float* input_data,
+                    const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Softmax");
   MatchingFlatSize(input_shape, output_shape);
 
@@ -4441,7 +4441,8 @@ inline void Softmax(const float* input_data, const RuntimeShape& input_shape,
   auto out_mat = MapAsMatrixWithLastDimAsRows(output_data, output_shape);
   // Compute the exponential first, removing the max coefficient for numerical
   // stability.
-  out_mat = (in_mat.rowwise() - in_mat.colwise().maxCoeff()).array() * beta;
+  out_mat =
+      (in_mat.rowwise() - in_mat.colwise().maxCoeff()).array() * params.beta;
   // We are separating out the exp function so that exp can be vectorized.
   out_mat = out_mat.array().exp();
   // Normalize to get the activations.
@@ -4450,10 +4451,22 @@ inline void Softmax(const float* input_data, const RuntimeShape& input_shape,
   out_mat.array().rowwise() *= scale;
 }
 
-inline void Softmax(const uint8* input_data, const RuntimeShape& input_shape,
-                    int32 input_beta_multiplier, int32 input_beta_left_shift,
-                    int diff_min, uint8* output_data,
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void Softmax(const float* input_data, const RuntimeShape& input_shape,
+                    float beta, float* output_data,
                     const RuntimeShape& output_shape) {
+  SoftmaxParams params;
+  params.beta = beta;
+  Softmax(params, input_shape, input_data, output_shape, output_data);
+}
+
+inline void Softmax(const SoftmaxParams& params,
+                    const RuntimeShape& input_shape, const uint8* input_data,
+                    const RuntimeShape& output_shape, uint8* output_data) {
+  const int32 input_beta_multiplier = params.input_multiplier;
+  const int32 input_beta_left_shift = params.input_left_shift;
+  const int diff_min = params.diff_min;
   // The representation chosen for the input to the exp() function is Q5.26.
   // We need to leave extra space since values that we skip might be as large as
   // -32 before multiplying by input_beta_multiplier, and therefore as large as
@@ -4659,10 +4672,24 @@ inline void Softmax(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void Softmax(const uint8* input_data, const RuntimeShape& input_shape,
+                    int32 input_beta_multiplier, int32 input_beta_left_shift,
+                    int diff_min, uint8* output_data,
+                    const RuntimeShape& output_shape) {
+  SoftmaxParams params;
+  params.input_multiplier = input_beta_multiplier;
+  params.input_left_shift = input_beta_left_shift;
+  params.diff_min = diff_min;
+  Softmax(params, input_shape, input_data, output_shape, output_data);
+}
+
 // TODO(myenik): This is the same as the reference implementation, not actually
 // optimized yet.
-inline void LogSoftmax(const float* input_data, const RuntimeShape& input_shape,
-                       float* output_data, const RuntimeShape& output_shape) {
+inline void LogSoftmax(const SoftmaxParams& params,
+                       const RuntimeShape& input_shape, const float* input_data,
+                       const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("LogSoftmax");
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
@@ -4693,6 +4720,15 @@ inline void LogSoftmax(const float* input_data, const RuntimeShape& input_shape,
       block_output_data[c] = block_input_data[c] - max - log_sum;
     }
   }
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy
+inline void LogSoftmax(const float* input_data, const RuntimeShape& input_shape,
+                       float* output_data, const RuntimeShape& output_shape) {
+  SoftmaxParams params;
+  // No params currently used for float LogSoftmax.
+  LogSoftmax(params, input_shape, input_data, output_shape, output_data);
 }
 
 template <int OutputIntegerBits, int InputIntegerBits>
@@ -4809,12 +4845,15 @@ log_x_for_x_greater_than_or_equal_to_1(
 }
 
 // Currently just a copy of the reference code.
-inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
-                       int32 input_multiplier, int32 input_left_shift,
-                       int32 reverse_scaling_divisor,
-                       int32 reverse_scaling_right_shift, int diff_min,
-                       uint8* output_data, const RuntimeShape& output_shape) {
+inline void LogSoftmax(const SoftmaxParams& params,
+                       const RuntimeShape& input_shape, const uint8* input_data,
+                       const RuntimeShape& output_shape, uint8* output_data) {
   gemmlowp::ScopedProfilingLabel label("LogSoftmax/Uint8");
+  const int32 input_multiplier = params.input_multiplier;
+  const int32 input_left_shift = params.input_left_shift;
+  const int32 reverse_scaling_divisor = params.reverse_scaling_divisor;
+  const int32 reverse_scaling_right_shift = params.reverse_scaling_right_shift;
+  const int diff_min = params.diff_min;
   // The representation chosen for the input to the exp() function is Q5.26.
   // We need to leave extra space since values that we skip might be as large as
   // -32 before multiplying by input_beta_multiplier, and therefore as large as
@@ -4896,7 +4935,24 @@ inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
+                       int32 input_multiplier, int32 input_left_shift,
+                       int32 reverse_scaling_divisor,
+                       int32 reverse_scaling_right_shift, int diff_min,
+                       uint8* output_data, const RuntimeShape& output_shape) {
+  SoftmaxParams params;
+  params.input_multiplier = input_multiplier;
+  params.input_left_shift = input_left_shift;
+  params.reverse_scaling_divisor = reverse_scaling_divisor;
+  params.reverse_scaling_right_shift = reverse_scaling_right_shift;
+  params.diff_min = diff_min;
+  LogSoftmax(params, input_shape, input_data, output_shape, output_data);
+}
+
+inline void Logistic(const LogisticParams& params,
+                     const RuntimeShape& input_shape, const float* input_data,
                      const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Logistic");
   auto input_map = MapAsVector(input_data, input_shape);
@@ -4905,11 +4961,23 @@ inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
       input_map.array().unaryExpr(Eigen::internal::scalar_sigmoid_op<float>());
 }
 
-inline void Logistic(const uint8* input_data, const RuntimeShape& input_shape,
-                     int32 input_zero_point, int32 input_range_radius,
-                     int32 input_multiplier, int input_left_shift,
-                     uint8* output_data, const RuntimeShape& output_shape) {
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
+                     const RuntimeShape& output_shape, float* output_data) {
+  LogisticParams params;
+  // No params currently needed by float Logistic.
+  Logistic(params, input_shape, input_data, output_shape, output_data);
+}
+
+inline void Logistic(const LogisticParams& params,
+                     const RuntimeShape& input_shape, const uint8* input_data,
+                     const RuntimeShape& output_shape, uint8* output_data) {
   gemmlowp::ScopedProfilingLabel label("Logistic/Uint8");
+  const int32 input_zero_point = params.input_zero_point;
+  const int32 input_range_radius = params.input_range_radius;
+  const int32 input_multiplier = params.input_multiplier;
+  const int input_left_shift = params.input_left_shift;
   const int size = MatchingFlatSize(input_shape, output_shape);
 
   int c = 0;
@@ -5042,7 +5110,22 @@ inline void Logistic(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Logistic(const RuntimeShape& input_shape, const int16* input_data,
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void Logistic(const uint8* input_data, const RuntimeShape& input_shape,
+                     int32 input_zero_point, int32 input_range_radius,
+                     int32 input_multiplier, int input_left_shift,
+                     uint8* output_data, const RuntimeShape& output_shape) {
+  LogisticParams params;
+  params.input_zero_point = input_zero_point;
+  params.input_range_radius = input_range_radius;
+  params.input_multiplier = input_multiplier;
+  params.input_left_shift = input_left_shift;
+  Logistic(params, input_shape, input_data, output_shape, output_data);
+}
+
+inline void Logistic(const LogisticParams& params,
+                     const RuntimeShape& input_shape, const int16* input_data,
                      const RuntimeShape& output_shape, int16* output_data) {
   gemmlowp::ScopedProfilingLabel label("Logistic/Int16");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
@@ -5102,26 +5185,51 @@ inline void Logistic(const RuntimeShape& input_shape, const int16* input_data,
   }
 }
 
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy version.
+inline void Logistic(const RuntimeShape& input_shape, const int16* input_data,
+                     const RuntimeShape& output_shape, int16* output_data) {
+  LogisticParams params;
+  // No params currently needed by int16 Logistic.
+  Logistic(params, input_shape, input_data, output_shape, output_data);
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
 // Legacy version.
 inline void Logistic(const int16* input_data, const RuntimeShape& input_shape,
                      int16* output_data, const RuntimeShape& output_shape) {
-  Logistic(input_shape, input_data, output_shape, output_data);
+  LogisticParams params;
+  // No params currently needed by int16 Logistic.
+  Logistic(params, input_shape, input_data, output_shape, output_data);
 }
 
-inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
-                 const RuntimeShape& output_shape, float* output_data) {
+inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
+                 const float* input_data, const RuntimeShape& output_shape,
+                 float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Tanh");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
   output_map.array() = input_map.array().tanh();
 }
 
-inline void Tanh(const uint8* input_data, const RuntimeShape& input_shape,
-                 int32 input_zero_point, int32 input_range_radius,
-                 int32 input_multiplier, int input_left_shift,
-                 uint8* output_data, const RuntimeShape& output_shape) {
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
+  TanhParams params;
+  // Currently no params needed for float Tanh.
+  Tanh(params, input_shape, input_data, output_shape, output_data);
+}
+
+inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
+                 const uint8* input_data, const RuntimeShape& output_shape,
+                 uint8* output_data) {
   // Note that this is almost the exact same code as in Logistic().
   gemmlowp::ScopedProfilingLabel label("Tanh");
+  const int32 input_zero_point = params.input_zero_point;
+  const int32 input_range_radius = params.input_range_radius;
+  const int32 input_multiplier = params.input_multiplier;
+  const int input_left_shift = params.input_left_shift;
   const int size = MatchingFlatSize(input_shape, output_shape);
 
   int c = 0;
@@ -5263,10 +5371,25 @@ inline void Tanh(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Tanh(const int16* input_data, const RuntimeShape& input_shape,
-                 int input_left_shift, int16* output_data,
-                 const RuntimeShape& output_shape) {
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void Tanh(const uint8* input_data, const RuntimeShape& input_shape,
+                 int32 input_zero_point, int32 input_range_radius,
+                 int32 input_multiplier, int input_left_shift,
+                 uint8* output_data, const RuntimeShape& output_shape) {
+  TanhParams params;
+  params.input_zero_point = input_zero_point;
+  params.input_range_radius = input_range_radius;
+  params.input_multiplier = input_multiplier;
+  params.input_left_shift = input_left_shift;
+  Tanh(params, input_shape, input_data, output_shape, output_data);
+}
+
+inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
+                 const int16* input_data, const RuntimeShape& output_shape,
+                 int16* output_data) {
   gemmlowp::ScopedProfilingLabel label("Tanh/Int16");
+  const int input_left_shift = params.input_left_shift;
   // Support for shifts is limited until we have a parameterized version of
   // SaturatingRoundingMultiplyByPOT().
   TFLITE_DCHECK_GE(input_left_shift, 0);
@@ -5361,6 +5484,16 @@ inline void Tanh(const int16* input_data, const RuntimeShape& input_shape,
       }
     }
   }
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void Tanh(const int16* input_data, const RuntimeShape& input_shape,
+                 int input_left_shift, int16* output_data,
+                 const RuntimeShape& output_shape) {
+  TanhParams params;
+  params.input_left_shift = input_left_shift;
+  Tanh(params, input_shape, input_data, output_shape, output_data);
 }
 
 template <typename SrcT, typename DstT>
