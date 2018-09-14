@@ -62,7 +62,7 @@ class LRDecayTest(test_util.TensorFlowTestCase):
       self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
   def testVariables(self):
-    with self.test_session():
+    with self.cached_session():
       step = variables.Variable(1)
       assign_1 = step.assign(1)
       assign_2 = step.assign(2)

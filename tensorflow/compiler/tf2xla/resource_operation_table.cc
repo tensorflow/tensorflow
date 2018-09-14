@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "absl/algorithm/container.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace tensorflow {
@@ -31,10 +30,11 @@ namespace tensorflow {
   }
 }
 
-static gtl::FlatMap<StringPiece, XlaResourceOpInfo>* CreateResourceOpInfoMap() {
-  auto* result = new gtl::FlatMap<StringPiece, XlaResourceOpInfo>;
+static gtl::FlatMap<absl::string_view, XlaResourceOpInfo>*
+CreateResourceOpInfoMap() {
+  auto* result = new gtl::FlatMap<absl::string_view, XlaResourceOpInfo>;
 
-  auto add = [&](StringPiece op, XlaResourceOpKind op_kind,
+  auto add = [&](absl::string_view op, XlaResourceOpKind op_kind,
                  XlaResourceKind resource_kind) {
     auto insert_result =
         result->insert({op, XlaResourceOpInfo(op_kind, resource_kind)});
@@ -103,17 +103,17 @@ static gtl::FlatMap<StringPiece, XlaResourceOpInfo>* CreateResourceOpInfoMap() {
   return result;
 }
 
-static const gtl::FlatMap<StringPiece, XlaResourceOpInfo>&
+static const gtl::FlatMap<absl::string_view, XlaResourceOpInfo>&
 GetStaticResourceOpInfoMap() {
-  static gtl::FlatMap<StringPiece, XlaResourceOpInfo>* op_info_map =
+  static gtl::FlatMap<absl::string_view, XlaResourceOpInfo>* op_info_map =
       CreateResourceOpInfoMap();
   return *op_info_map;
 }
 
 const XlaResourceOpInfo* GetResourceOpInfoForOp(absl::string_view op) {
-  const gtl::FlatMap<StringPiece, XlaResourceOpInfo>& op_infos =
+  const gtl::FlatMap<absl::string_view, XlaResourceOpInfo>& op_infos =
       GetStaticResourceOpInfoMap();
-  auto it = op_infos.find(StringPiece(op.data(), op.length()));
+  auto it = op_infos.find(op);
   return it == op_infos.end() ? nullptr : &it->second;
 }
 
@@ -121,7 +121,7 @@ namespace resource_op_table_internal {
 std::vector<absl::string_view> GetKnownResourceOps() {
   std::vector<absl::string_view> result;
   for (const auto& p : GetStaticResourceOpInfoMap()) {
-    result.push_back(absl::string_view(p.first));
+    result.push_back(p.first);
   }
   absl::c_sort(result);
   return result;

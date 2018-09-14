@@ -184,8 +184,13 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
     interpolated_string = error_interpolation.interpolate(
         two_tags_with_seps, self.graph)
     expected_regex = (
-        r"^;;;.*constant_op.py:[0-9]+\) ,,,.*constant_op.py:[0-9]*\) ;;;$")
+        r"^;;;.*constant_op.py:[0-9]+\) ,,,.*constant_op.py:[0-9]+\) ;;;$")
     self.assertRegexpMatches(interpolated_string, expected_regex)
+
+  def testNewLine(self):
+    newline = "\n\n{{node One}}"
+    interpolated_string = error_interpolation.interpolate(newline, self.graph)
+    self.assertRegexpMatches(interpolated_string, "constant_op.py:[0-9]+.*")
 
 
 class InterpolateDeviceSummaryTest(test.TestCase):

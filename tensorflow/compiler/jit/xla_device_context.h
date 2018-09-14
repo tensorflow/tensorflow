@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
 
@@ -111,12 +110,9 @@ class XlaDeviceContext : public DeviceContext {
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor,
                              StatusCallback done) const override;
-  // TODO(rlahaye): Replace StringPiece with absl::string_view when the
-  // StringPiece->absl::string_view change is rolled forward.
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                             StringPiece tensor_name,  // non-ABSL OK
-                             Device* device, Tensor* cpu_tensor,
-                             StatusCallback done) override;
+                             absl::string_view tensor_name, Device* device,
+                             Tensor* cpu_tensor, StatusCallback done) override;
   void CopyDeviceTensorToDevice(const Tensor& src_tensor, Tensor* dst_tensor,
                                 const StatusCallback& done);
 

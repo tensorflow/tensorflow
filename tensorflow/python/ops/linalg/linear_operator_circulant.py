@@ -160,20 +160,20 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
     `block_depth = 1` means `A` is symmetric circulant.  For example,
 
     ```
-    A = |x y z y|
-        |y x y z|
-        |z y x y|
-        |y z y x|
+    A = |w z y x|
+        |x w z y|
+        |y x w z|
+        |z y x w|
     ```
 
     `block_depth = 2` means `A` is block symmetric circulant with symemtric
-    circulant blocks.  For example, with `X`, `Y`, `Z` symmetric circulant,
+    circulant blocks.  For example, with `W`, `X`, `Y`, `Z` symmetric circulant,
 
     ```
-    A = |X Y Z Y|
-        |Y X Y Z|
-        |Z Y X Y|
-        |Y Z Y X|
+    A = |W Z Y X|
+        |X W Z Y|
+        |Y X W Z|
+        |Z Y X W|
     ```
 
     `block_depth = 3` means `A` is block symmetric circulant with block

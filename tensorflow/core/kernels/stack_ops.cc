@@ -131,10 +131,8 @@ class Stack : public ResourceBase {
 };
 
 Status GetStack(OpKernelContext* ctx, Stack** stack) {
-  string key;
   if (ctx->input_dtype(0) == DT_RESOURCE) {
-    auto resource = ctx->input(0).flat<ResourceHandle>()(0);
-    key = resource.name();
+    return LookupResource(ctx, HandleFromInput(ctx, 0), stack);
   } else {
     Tensor Tstack_handle = ctx->mutable_input(0, false);
     if (Tstack_handle.NumElements() != 2) {
@@ -144,18 +142,18 @@ Status GetStack(OpKernelContext* ctx, Stack** stack) {
     }
     const string& container = Tstack_handle.flat<string>()(0);
     const string& stack_name = Tstack_handle.flat<string>()(1);
-    key = strings::StrCat(container, stack_name);
+    string key = strings::StrCat(container, stack_name);
+    ResourceMgr* rm = ctx->resource_manager();
+    if (rm == nullptr) {
+      return errors::Internal("No resource manager.");
+    }
+    auto* step_container = ctx->step_container();
+    if (step_container == nullptr) {
+      return errors::Internal("No step container.");
+    }
+    TF_RETURN_IF_ERROR(rm->Lookup(step_container->name(), key, stack));
+    return Status::OK();
   }
-  ResourceMgr* rm = ctx->resource_manager();
-  if (rm == nullptr) {
-    return errors::Internal("No resource manager.");
-  }
-  auto* step_container = ctx->step_container();
-  if (step_container == nullptr) {
-    return errors::Internal("No step container.");
-  }
-  TF_RETURN_IF_ERROR(rm->Lookup(step_container->name(), key, stack));
-  return Status::OK();
 }
 
 std::atomic<int64> Stack::stack_counter{0};

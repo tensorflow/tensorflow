@@ -1145,7 +1145,7 @@ class SummarySaverHookTest(test.TestCase):
         summary_writer=self.summary_writer,
         summary_op=self.summary_op)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       hook.begin()
       sess.run(variables_lib.global_variables_initializer())
       mon_sess = monitored_session._HookedSession(sess, [hook])
@@ -1177,7 +1177,7 @@ class SummarySaverHookTest(test.TestCase):
         summary_writer=self.summary_writer,
         summary_op=[self.summary_op, self.summary_op2])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       hook.begin()
       sess.run(variables_lib.global_variables_initializer())
       mon_sess = monitored_session._HookedSession(sess, [hook])
@@ -1205,7 +1205,7 @@ class SummarySaverHookTest(test.TestCase):
         summary_writer=self.summary_writer,
         summary_op=self.summary_op)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       hook.begin()
       sess.run(variables_lib.global_variables_initializer())
       mon_sess = monitored_session._HookedSession(sess, [hook])
@@ -1240,7 +1240,7 @@ class SummarySaverHookTest(test.TestCase):
         summary_writer=self.summary_writer,
         summary_op=self.summary_op)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       hook.begin()
       sess.run(variables_lib.global_variables_initializer())
       mon_sess = monitored_session._HookedSession(sess, [hook])
@@ -1388,7 +1388,7 @@ class ResourceSummarySaverHookTest(test.TestCase):
         summary_writer=self.summary_writer,
         summary_op=self.summary_op)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       hook.begin()
       sess.run(variables_lib.global_variables_initializer())
       mon_sess = monitored_session._HookedSession(sess, [hook])

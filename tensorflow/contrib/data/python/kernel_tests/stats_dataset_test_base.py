@@ -34,6 +34,16 @@ class StatsDatasetTestBase(test.TestCase):
         return
     self.fail("Expected tag %r not found in summary %r" % (tag, summary_proto))
 
+  def _assertSummaryHasRange(self, summary_str, tag, min_value, max_value):
+    summary_proto = summary_pb2.Summary()
+    summary_proto.ParseFromString(summary_str)
+    for value in summary_proto.value:
+      if tag == value.tag:
+        self.assertLessEqual(min_value, value.histo.min)
+        self.assertGreaterEqual(max_value, value.histo.max)
+        return
+    self.fail("Expected tag %r not found in summary %r" % (tag, summary_proto))
+
   def _assertSummaryHasSum(self, summary_str, tag, expected_value):
     summary_proto = summary_pb2.Summary()
     summary_proto.ParseFromString(summary_str)

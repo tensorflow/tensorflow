@@ -5,7 +5,8 @@ landing_page:
   rows:
   - heading: TensorFlow Lite is a lightweight solution for mobile and embedded devices.
     items:
-    - description: >
+    - classname: devsite-landing-row-50
+      description: >
         TensorFlow Lite is TensorFlow’s lightweight solution for mobile and
         embedded devices. It enables on-device machine learning inference with
         low latency and a small binary size. TensorFlow Lite also supports
@@ -33,7 +34,7 @@ landing_page:
           icon_name: chevron_right
           foreground: theme
           background: grey
-    - code_block: |
+      code_block: |
         <pre class = "prettyprint">
         $ toco --input_file=$(pwd)/mobilenet_v1_1.0_224/frozen_graph.pb \
                --input_format=TENSORFLOW_GRAPHDEF \

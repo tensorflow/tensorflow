@@ -336,7 +336,7 @@ class WALSMatrixFactorizationTest(test.TestCase):
     loss = self._model.evaluate(
         input_fn=eval_input_fn_row, steps=self._num_rows)['loss']
 
-    with self.test_session():
+    with self.cached_session():
       true_loss = self.calculate_loss()
 
     self.assertNear(
@@ -354,7 +354,7 @@ class WALSMatrixFactorizationTest(test.TestCase):
     loss = self._model.evaluate(
         input_fn=eval_input_fn_col, steps=self._num_cols)['loss']
 
-    with self.test_session():
+    with self.cached_session():
       true_loss = self.calculate_loss()
 
     self.assertNear(
@@ -440,7 +440,7 @@ class SweepHookTest(test.TestCase):
                          math_ops.logical_not(is_row_sweep_var)))
     mark_sweep_done = state_ops.assign(is_sweep_done_var, True)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sweep_hook = wals_lib._SweepHook(
           is_row_sweep_var,
           is_sweep_done_var,
@@ -491,7 +491,7 @@ class StopAtSweepHookTest(test.TestCase):
     train_op = state_ops.assign_add(completed_sweeps, 1)
     hook.begin()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run([variables.global_variables_initializer()])
       mon_sess = monitored_session._HookedSession(sess, [hook])
       mon_sess.run(train_op)

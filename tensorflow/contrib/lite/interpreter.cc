@@ -123,6 +123,7 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   context_.AddTensors = AddTensors;
   context_.tensors = nullptr;
   context_.tensors_size = 0;
+  context_.allow_fp32_relax_to_fp16 = false;
   context_.recommended_num_threads = -1;
   context_.GetExternalContext = GetExternalContext;
   context_.SetExternalContext = SetExternalContext;

@@ -83,25 +83,25 @@ TEST_P(FloatReverseTest, Reverses) {
       ShapeUtil::ElementsIn(ShapeUtil::MakeShape(F32, spec.input_dims)));
   std::iota(input_vector.begin(), input_vector.end(), 0.0);
   auto r1_literal = LiteralUtil::CreateR1<float>(input_vector);
-  auto input_literal = r1_literal->Reshape(spec.input_dims).ConsumeValueOrDie();
+  auto input_literal = r1_literal.Reshape(spec.input_dims).ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());
-  auto a = AddParam(*input_literal, &builder);
+  auto a = AddParam(input_literal, &builder);
   Rev(a, spec.reversal);
 
-  std::unique_ptr<Literal> expected = input_literal->CloneToUnique();
+  Literal expected = input_literal.Clone();
   std::vector<int64> output_indices(spec.input_dims.size());
-  expected->EachCell<float>([&](absl::Span<const int64> indices, float) {
+  expected.EachCell<float>([&](absl::Span<const int64> indices, float) {
     for (int64 i = 0; i < indices.size(); ++i) {
       output_indices[i] = indices[i];
     }
-    float value = input_literal->Get<float>(indices);
+    float value = input_literal.Get<float>(indices);
     for (int64 dim : spec.reversal) {
       output_indices[dim] = (spec.input_dims[dim] - 1) - indices[dim];
     }
-    expected->Set<float>(output_indices, value);
+    expected.Set<float>(output_indices, value);
   });
-  ComputeAndCompareLiteral(&builder, *expected, {});
+  ComputeAndCompareLiteral(&builder, expected, {});
 }
 
 INSTANTIATE_TEST_CASE_P(FloatReverseInstance, FloatReverseTest,

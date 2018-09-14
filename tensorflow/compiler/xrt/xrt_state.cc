@@ -174,7 +174,7 @@ XRTTupleAllocation::~XRTTupleAllocation() {
 }
 
 Status XRTTupleAllocation::ToLiteral(xla::Backend* backend, int device_ordinal,
-                                     std::unique_ptr<xla::Literal>* literal) {
+                                     xla::Literal* literal) {
   auto transfer_manager = backend->transfer_manager();
   TF_ASSIGN_OR_RETURN(auto stream, backend->BorrowStream(device_ordinal));
   TF_ASSIGN_OR_RETURN(*literal, transfer_manager->TransferLiteralFromDevice(

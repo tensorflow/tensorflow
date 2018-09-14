@@ -580,13 +580,13 @@ class HloSliceInstruction : public HloInstruction {
 
 class HloConstantInstruction : public HloInstruction {
  public:
-  explicit HloConstantInstruction(std::unique_ptr<Literal> literal);
+  explicit HloConstantInstruction(Literal literal);
   // Used when the literal is too large and dropped.
   explicit HloConstantInstruction(const Shape& shape);
   // Returns the literal associated with this instruction.
   const Literal& literal() const { return *literal_; }
   // Returns whether there is literal associated with this instruction.
-  bool HasLiteral() const { return literal_ != nullptr; }
+  bool HasLiteral() const { return literal_.has_value(); }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -610,15 +610,14 @@ class HloConstantInstruction : public HloInstruction {
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
-  // TODO(b/36360764): Remove unique_ptr wrapping.
-  std::unique_ptr<Literal> literal_;
+  absl::optional<Literal> literal_;
 };
 
 class HloTraceInstruction : public HloInstruction {
  public:
   explicit HloTraceInstruction(const string& tag, HloInstruction* operand);
   // Returns a tag to be used in tracing.
-  string TracingTag() const { return literal_->GetR1U8AsString(); }
+  string TracingTag() const { return literal_.GetR1U8AsString(); }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -631,8 +630,7 @@ class HloTraceInstruction : public HloInstruction {
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
-  // TODO(b/36360764): Remove unique_ptr wrapping.
-  std::unique_ptr<Literal> literal_;
+  Literal literal_;
 };
 
 class HloFusionInstruction : public HloInstruction {

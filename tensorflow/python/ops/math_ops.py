@@ -1088,9 +1088,6 @@ def floordiv(x, y, name=None):
   `x // y` floor division in Python 3 and in Python 2.7 with
   `from __future__ import division`.
 
-  Note that for efficiency, `floordiv` uses C semantics for negative numbers
-  (unlike Python and Numpy).
-
   `x` and `y` must have the same type, and the result will have the same type
   as well.
 
@@ -1100,7 +1097,7 @@ def floordiv(x, y, name=None):
     name: A name for the operation (optional).
 
   Returns:
-    `x / y` rounded down (except possibly towards zero for negative integers).
+    `x / y` rounded down.
 
   Raises:
     TypeError: If the inputs are complex.
@@ -2906,22 +2903,24 @@ def tensordot(a, b, axes, name=None):
         free_dims_static = None
       shape_a = array_ops.shape(a)
       rank_a = array_ops.rank(a)
-      axes = ops.convert_to_tensor(axes, dtype=dtypes.int32, name="axes")
-      axes = cast(axes >= 0, dtypes.int32) * axes + cast(
-          axes < 0, dtypes.int32) * (
-              axes + rank_a)
-      free, _ = array_ops.setdiff1d(range(rank_a), axes)
-      free_dims = array_ops.gather(shape_a, free)
-      axes_dims = array_ops.gather(shape_a, axes)
-      prod_free_dims = reduce_prod(free_dims)
-      prod_axes_dims = reduce_prod(axes_dims)
-      perm = array_ops.concat([axes_dims, free_dims], 0)
-      if flipped:
-        perm = array_ops.concat([axes, free], 0)
-        new_shape = array_ops.stack([prod_axes_dims, prod_free_dims])
-      else:
-        perm = array_ops.concat([free, axes], 0)
-        new_shape = array_ops.stack([prod_free_dims, prod_axes_dims])
+      # TODO(b/115583659): Automate this.
+      with ops.device("/cpu:0"):
+        axes = ops.convert_to_tensor(axes, dtype=dtypes.int32, name="axes")
+        axes = cast(axes >= 0, dtypes.int32) * axes + cast(
+            axes < 0, dtypes.int32) * (
+                axes + rank_a)
+        free, _ = array_ops.setdiff1d(range(rank_a), axes)
+        free_dims = array_ops.gather(shape_a, free)
+        axes_dims = array_ops.gather(shape_a, axes)
+        prod_free_dims = reduce_prod(free_dims)
+        prod_axes_dims = reduce_prod(axes_dims)
+        perm = array_ops.concat([axes_dims, free_dims], 0)
+        if flipped:
+          perm = array_ops.concat([axes, free], 0)
+          new_shape = array_ops.stack([prod_axes_dims, prod_free_dims])
+        else:
+          perm = array_ops.concat([free, axes], 0)
+          new_shape = array_ops.stack([prod_free_dims, prod_axes_dims])
       reshaped_a = array_ops.reshape(array_ops.transpose(a, perm), new_shape)
       return reshaped_a, free_dims, free_dims_static
 

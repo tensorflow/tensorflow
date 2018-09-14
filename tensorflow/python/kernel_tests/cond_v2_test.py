@@ -107,7 +107,7 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [y])
 
   def testNoInputs(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       pred = array_ops.placeholder(dtypes.bool, name="pred")
 
       def true_fn():
@@ -527,7 +527,7 @@ class CondV2Test(test.TestCase):
             }), [5., 0.])
 
   def testSecondDerivative(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       pred = array_ops.placeholder(dtypes.bool, name="pred")
       x = constant_op.constant(3.0, name="x")
 
@@ -801,7 +801,6 @@ class CondV2ContainerTest(test.TestCase):
 class CondV2ColocationGroupAndDeviceTest(test.TestCase):
 
   def testColocateWithBeforeCond(self):
-    self.skipTest("b/112414483")
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g):
 
@@ -826,7 +825,6 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
             self.assertEquals(cond_v2.cond_v2(True, fn2, fn2)[0].eval(), 3)
 
   def testColocateWithInAndOutOfCond(self):
-    self.skipTest("b/112414483")
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g):
 
@@ -874,7 +872,6 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
         self.assertTrue(len(run_metadata.partition_graphs) >= 2)
 
   def testDeviceBeforeCond(self):
-    self.skipTest("b/112166045")
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g):
         def fn():
@@ -895,11 +892,13 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
 
   def testDeviceInAndOutOfCond(self):
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g):
+      with self.test_session(
+          graph=g, config=config_pb2.ConfigProto(device_count={"CPU": 2})):
+
         def fn2():
-          with ops.device("/device:GPU:0"):
+          with ops.device("/device:CPU:1"):
             c = constant_op.constant(3.0)
-            self.assertEqual("/device:GPU:0", c.op.device)
+            self.assertEqual("/device:CPU:1", c.op.device)
             return c
 
         with ops.device("/device:CPU:0"):

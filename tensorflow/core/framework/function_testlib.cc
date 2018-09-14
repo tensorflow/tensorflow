@@ -110,6 +110,22 @@ FunctionDef XTimesTwo() {
       });
 }
 
+FunctionDef XAddX() {
+  return FDH::Define(
+      // Name
+      "XAddX",
+      // Args
+      {"x: T"},
+      // Return values
+      {"y: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"y"}, "Add", {"x", "x"}, {{"T", "$T"}}},
+      });
+}
+
 FunctionDef XTimesTwoInt32() {
   const Tensor kTwo = test::AsScalar<int64>(2);
   return FDH::Define(

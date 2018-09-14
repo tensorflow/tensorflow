@@ -768,7 +768,7 @@ class TensorUtilTest(test.TestCase):
       def __array__(self, dtype=None):
         return np.asarray(self.array, dtype)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       ma = MockArray(np.array([10, 20, 30]))
       t = ops.convert_to_tensor(ma)
       a = sess.run(t)

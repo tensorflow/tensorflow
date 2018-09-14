@@ -127,12 +127,12 @@ class PartitionedCallOp : public AsyncOpKernel {
         optimization_options.graph = &graph;
         optimization_options.flib_def = overlay_lib;
         optimization_options.device_set = &device_set;
-        Placer placer(graph.get(), &device_set);
         OP_REQUIRES_OK_ASYNC(
             ctx,
             OptimizationPassRegistry::Global()->RunGrouping(
                 OptimizationPassRegistry::PRE_PLACEMENT, optimization_options),
             done);
+        Placer placer(graph.get(), &device_set);
         OP_REQUIRES_OK_ASYNC(ctx, placer.Run(), done);
         OP_REQUIRES_OK_ASYNC(
             ctx,
@@ -210,7 +210,7 @@ class PartitionedCallOp : public AsyncOpKernel {
         TF_RETURN_IF_ERROR(node->attrs().Find("T", &attr_value));
         DataType dtype = attr_value->type();
         if (dtype == DT_RESOURCE) {
-          ResourceHandle handle = args[index].flat<ResourceHandle>()(0);
+          const ResourceHandle& handle = args[index].flat<ResourceHandle>()(0);
           node->set_assigned_device_name(handle.device());
         }
       }

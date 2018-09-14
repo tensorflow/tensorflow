@@ -63,7 +63,6 @@ def get_input_datasets():
   # eval dataset
   eval_ds = tf.data.Dataset.from_tensor_slices((x_test, y_test))
   eval_ds = eval_ds.repeat()
-  eval_ds = eval_ds.shuffle(100)
   eval_ds = eval_ds.batch(64, drop_remainder=True)
 
   return train_ds, eval_ds, input_shape

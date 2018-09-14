@@ -104,7 +104,8 @@ class CapturedFunction {
   // in order to be able to deallocate them as early as possible.
   void RunAsync(IteratorContext* ctx, std::vector<Tensor>&& args,
                 std::vector<Tensor>* rets,
-                FunctionLibraryRuntime::DoneCallback done);
+                FunctionLibraryRuntime::DoneCallback done,
+                const string& prefix);
 
   // Returns the named list of function arguments.
   const NameAttrList& func() { return func_; }

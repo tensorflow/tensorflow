@@ -27,7 +27,7 @@ class DatasetOpsTest(test.TestCase):
 
   def testAsSerializedGraph(self):
     dataset = dataset_ops.Dataset.range(10)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       graph = graph_pb2.GraphDef().FromString(
           sess.run(dataset._as_serialized_graph()))
       self.assertTrue(any([node.op != "RangeDataset" for node in graph.node]))
