@@ -1272,16 +1272,14 @@ class MklRelu6Op : public MklReluOpBase<Device, T, eltwise_bounded_relu> {
     GetMklShape(context, src_index, &dnn_shape_src);
 
     Tensor* dst_tensor = nullptr;
-    void* user_i =
-        static_cast<void*>(const_cast<T*>(src_tensor.flat<T>().data()));
+    T* user_i = const_cast<T*>(src_tensor.flat<T>().data());
     MklDnnShape dnn_shape_dst;
     dnn_shape_dst.SetMklTensor(false);
     AllocateOutputSetMklShape(context, dst_index, &dst_tensor,
                               src_tensor.shape(), dnn_shape_dst);
-    void* out_o = static_cast<void*>(dst_tensor->flat<T>().data());
-    (static_cast<T*>(out_o))[0] =
-        std::min(std::max((static_cast<T*>(user_i))[0], static_cast<T>(0)),
-                 static_cast<T>(RELU6_UPPER_BOUND));
+    T* out_o = dst_tensor->flat<T>().data();
+    out_o[0] = std::min(std::max(user_i[0], static_cast<T>(0)),
+                        static_cast<T>(RELU6_UPPER_BOUND));
     return;
   }
 };
@@ -1311,15 +1309,11 @@ class MklRelu6GradOp
     dnn_shape_diff_src.SetMklTensor(false);
     AllocateOutputSetMklShape(context, diff_src_index, &diff_src_tensor,
                               diff_dst_tensor.shape(), dnn_shape_diff_src);
-    void* out_o = static_cast<void*>(diff_src_tensor->flat<T>().data());
-    void* user_i =
-        static_cast<void*>(const_cast<T*>(src_tensor.flat<T>().data()));
-    void* user_g =
-        static_cast<void*>(const_cast<T*>(diff_dst_tensor.flat<T>().data()));
-    (static_cast<T*>(out_o))[0] =
-        (static_cast<T*>(user_g))[0] *
-        ((static_cast<T*>(user_i))[0] > 0 &&
-         (static_cast<T*>(user_i))[0] < static_cast<T>(RELU6_UPPER_BOUND));
+    T* out_o = diff_src_tensor->flat<T>().data();
+    T* user_i = const_cast<T*>(src_tensor.flat<T>().data());
+    T* user_g = const_cast<T*>(diff_dst_tensor.flat<T>().data());
+    out_o[0] = user_g[0] * user_i[0] > 0 &&
+               (user_i[0] < static_cast<T>(RELU6_UPPER_BOUND));
     return;
   }
 };
