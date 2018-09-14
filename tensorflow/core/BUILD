@@ -1921,6 +1921,13 @@ tf_pyclif_proto_library(
 )
 
 tf_pyclif_proto_library(
+    name = "protobuf/config_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "protobuf/config.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
     name = "protobuf/device_properties_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "protobuf/device_properties.proto",

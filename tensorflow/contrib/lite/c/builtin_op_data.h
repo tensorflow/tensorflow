@@ -25,6 +25,9 @@ extern "C" {
 
 // TODO(aselle): Consider using "if this then that" for testing.
 
+// IMPORTANT: All new members of structs must be added at the end to ensure
+// backwards compatibility.
+
 // Possible padding types (for convolutions)
 typedef enum {
   kTfLitePaddingUnknown = 0,
@@ -71,11 +74,15 @@ typedef struct {
 } TfLitePoolParams;
 
 typedef struct {
+  // Parameters for DepthwiseConv version 1 or above.
   TfLitePadding padding;
   int stride_width;
   int stride_height;
   int depth_multiplier;
   TfLiteFusedActivation activation;
+  // Parameters for DepthwiseConv version 2 or above.
+  int dilation_width_factor;
+  int dilation_height_factor;
 } TfLiteDepthwiseConvParams;
 
 typedef struct {

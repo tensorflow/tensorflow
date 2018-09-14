@@ -1434,6 +1434,7 @@ def make_depthwiseconv_tests(zip_path):
           "input_shape": [[1, 3, 4, 3], [1, 10, 10, 3]],
           "filter_size": [[1, 1], [1, 2], [3, 3]],
           "strides": [[1, 1, 1, 1], [1, 3, 3, 1]],
+          "dilations": [[1, 1, 1, 1], [1, 3, 2, 1], [1, 2, 2, 1]],
           "channel_multiplier": [1, 2],
           "rate": [[1, 1]],
           "padding": ["SAME", "VALID"],
@@ -1444,6 +1445,7 @@ def make_depthwiseconv_tests(zip_path):
           "input_shape": [[1, 3, 4, 3]],
           "filter_size": [[1, 1]],
           "strides": [[1, 1, 2, 1]],  # TF needs [1, x, x, 1]
+          "dilations": [[1, 1, 1, 1], [1, 2, 2, 1]],
           "channel_multiplier": [2],
           "rate": [[2, 2]],  #  Only [1, 1] is supported
           "padding": ["SAME"],
