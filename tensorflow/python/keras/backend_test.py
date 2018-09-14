@@ -522,9 +522,8 @@ class BackendLinearAlgebraTest(test.TestCase):
       relu_op = keras.backend.relu(x)
       self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 7]])
 
-      # alpha (leaky relu used)
+      # alpha
       relu_op = keras.backend.relu(x, alpha=0.5)
-      self.assertTrue('LeakyRelu' in relu_op.name)
       self.assertAllClose(keras.backend.eval(relu_op), [[-2, 0], [2, 7]])
 
       # max_value < some elements

@@ -268,7 +268,7 @@ class Softmax(Layer):
     self.axis = axis
 
   def call(self, inputs):
-    return K.softmax(inputs, axis=self.axis)
+    return activations.softmax(inputs, axis=self.axis)
 
   def get_config(self):
     config = {'axis': self.axis}
@@ -322,10 +322,11 @@ class ReLU(Layer):
   def call(self, inputs):
     # alpha is used for leaky relu slope in activations instead of
     # negative_slope.
-    return K.relu(inputs,
-                  alpha=self.negative_slope,
-                  max_value=self.max_value,
-                  threshold=self.threshold)
+    return activations.relu(
+        inputs,
+        alpha=self.negative_slope,
+        max_value=self.max_value,
+        threshold=self.threshold)
 
   def get_config(self):
     config = {
