@@ -361,6 +361,10 @@ inline int Offset(const Dims<4>& dims, int* index) {
   return Offset(dims, index[0], index[1], index[2], index[3]);
 }
 
+inline int Offset(const RuntimeShape& shape, int* index) {
+  return Offset(shape, index[0], index[1], index[2], index[3]);
+}
+
 // Get array size, DCHECKing that the dim index is in range.
 //
 // Note that this will be phased out with Dims<4>, since RuntimeShape::Dims()
@@ -934,6 +938,11 @@ struct TanhParams {
   int32 input_range_radius;
   int32 input_multiplier;
   int input_left_shift;
+};
+
+struct TransposeParams {
+  int8 perm_count;
+  int32 perm[4];
 };
 
 template <typename P>
