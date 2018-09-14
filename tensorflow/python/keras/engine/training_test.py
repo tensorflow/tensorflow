@@ -2147,7 +2147,26 @@ class TestTrainingWithMetrics(test.TestCase):
         'dense_binary_accuracy', 'dropout_mean_squared_error',
         'dropout_binary_accuracy'
     ]
+    reference_stateful_metric_names = [
+        'dense_binary_accuracy', 'dropout_binary_accuracy'
+    ]
     self.assertEqual(reference_metric_names, model.metrics_names)
+    self.assertEqual(reference_stateful_metric_names,
+                     model.stateful_metric_names)
+
+    # Verify that model metric names are not altered during training.
+    input_a_np = np.random.random((10, 3))
+    input_b_np = np.random.random((10, 3))
+
+    output_d_np = np.random.random((10, 4))
+    output_e_np = np.random.random((10, 4))
+
+    model.fit([input_a_np, input_b_np], [output_d_np, output_e_np],
+              epochs=1,
+              batch_size=5)
+    self.assertEqual(reference_metric_names, model.metrics_names)
+    self.assertEqual(reference_stateful_metric_names,
+                     model.stateful_metric_names)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_metrics_correctness(self):
