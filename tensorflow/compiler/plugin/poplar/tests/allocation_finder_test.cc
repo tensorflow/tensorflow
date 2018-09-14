@@ -80,10 +80,10 @@ TEST_F(AllocationFinderTest, FindBasicTensorAllocations) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
   Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
 
-  Shape conv_shape =
-      ShapeInference::InferConvolveShape(input_shape, weight_shape,
-                                         GetConv1Window(), GetConvDimensions())
-          .ConsumeValueOrDie();
+  Shape conv_shape = ShapeInference::InferConvolveShape(
+                         input_shape, weight_shape, /*feature_group_count=*/1,
+                         GetConv1Window(), GetConvDimensions())
+                         .ConsumeValueOrDie();
 
   auto builder = HloComputation::Builder(TestName());
   auto op0 = builder.AddInstruction(
@@ -97,7 +97,8 @@ TEST_F(AllocationFinderTest, FindBasicTensorAllocations) {
       HloInstruction::CreateBinary(input_shape, HloOpcode::kAdd, op0, op1));
 
   auto conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      conv_shape, op1, op2, GetConv1Window(), GetConvDimensions()));
+      conv_shape, op1, op2, /*feature_group_count=*/1, GetConv1Window(),
+      GetConvDimensions(), DefaultPrecisionConfig(2)));
 
   builder.AddInstruction(HloInstruction::CreateTuple({add, conv}));
 
@@ -131,10 +132,10 @@ TEST_F(AllocationFinderTest, FindSubCompTensorAllocations) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
   Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
 
-  Shape conv_shape =
-      ShapeInference::InferConvolveShape(input_shape, weight_shape,
-                                         GetConv1Window(), GetConvDimensions())
-          .ConsumeValueOrDie();
+  Shape conv_shape = ShapeInference::InferConvolveShape(
+                         input_shape, weight_shape, /*feature_group_count=*/1,
+                         GetConv1Window(), GetConvDimensions())
+                         .ConsumeValueOrDie();
 
   /* Create convolution sub-computation */
   auto builder_sub = HloComputation::Builder(TestName());
@@ -144,7 +145,8 @@ TEST_F(AllocationFinderTest, FindSubCompTensorAllocations) {
       HloInstruction::CreateParameter(1, weight_shape, "weights"));
 
   auto conv = builder_sub.AddInstruction(HloInstruction::CreateConvolve(
-      conv_shape, op0_sub, op1_sub, GetConv1Window(), GetConvDimensions()));
+      conv_shape, op0_sub, op1_sub, /*feature_group_count=*/1, GetConv1Window(),
+      GetConvDimensions(), DefaultPrecisionConfig(2)));
 
   auto computation_sub = builder_sub.Build();
 
@@ -205,15 +207,15 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
   Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
 
-  Shape conv1_shape =
-      ShapeInference::InferConvolveShape(input_shape, weight_shape,
-                                         GetConv1Window(), GetConvDimensions())
-          .ConsumeValueOrDie();
+  Shape conv1_shape = ShapeInference::InferConvolveShape(
+                          input_shape, weight_shape, /*feature_group_count=*/1,
+                          GetConv1Window(), GetConvDimensions())
+                          .ConsumeValueOrDie();
 
-  Shape conv2_shape =
-      ShapeInference::InferConvolveShape(input_shape, weight_shape,
-                                         GetConv2Window(), GetConvDimensions())
-          .ConsumeValueOrDie();
+  Shape conv2_shape = ShapeInference::InferConvolveShape(
+                          input_shape, weight_shape, /*feature_group_count=*/1,
+                          GetConv2Window(), GetConvDimensions())
+                          .ConsumeValueOrDie();
 
   /* Create convolution sub-computation 1 */
   auto builder_sub1 = HloComputation::Builder(TestName());
@@ -223,7 +225,8 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
       HloInstruction::CreateParameter(1, weight_shape, "weights"));
 
   auto conv1 = builder_sub1.AddInstruction(HloInstruction::CreateConvolve(
-      conv1_shape, op0_sub1, op1_sub1, GetConv1Window(), GetConvDimensions()));
+      conv1_shape, op0_sub1, op1_sub1, /*feature_group_count=*/1,
+      GetConv1Window(), GetConvDimensions(), DefaultPrecisionConfig(2)));
 
   auto computation_sub1 = builder_sub1.Build();
 
@@ -235,7 +238,8 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
       HloInstruction::CreateParameter(1, weight_shape, "weights"));
 
   auto conv2 = builder_sub2.AddInstruction(HloInstruction::CreateConvolve(
-      conv2_shape, op0_sub2, op1_sub2, GetConv1Window(), GetConvDimensions()));
+      conv2_shape, op0_sub2, op1_sub2, /*feature_group_count=*/1,
+      GetConv1Window(), GetConvDimensions(), DefaultPrecisionConfig(2)));
 
   auto computation_sub2 = builder_sub2.Build();
 
@@ -314,15 +318,15 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
   Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
 
-  Shape conv1_shape =
-      ShapeInference::InferConvolveShape(input_shape, weight_shape,
-                                         GetConv1Window(), GetConvDimensions())
-          .ConsumeValueOrDie();
+  Shape conv1_shape = ShapeInference::InferConvolveShape(
+                          input_shape, weight_shape, /*feature_group_count=*/1,
+                          GetConv1Window(), GetConvDimensions())
+                          .ConsumeValueOrDie();
 
-  Shape conv2_shape =
-      ShapeInference::InferConvolveShape(input_shape, weight_shape,
-                                         GetConv2Window(), GetConvDimensions())
-          .ConsumeValueOrDie();
+  Shape conv2_shape = ShapeInference::InferConvolveShape(
+                          input_shape, weight_shape, /*feature_group_count=*/1,
+                          GetConv2Window(), GetConvDimensions())
+                          .ConsumeValueOrDie();
 
   /* Create convolution sub-computation 1 */
   auto builder_sub1 = HloComputation::Builder(TestName());
@@ -332,7 +336,8 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
       HloInstruction::CreateParameter(1, weight_shape, "weights"));
 
   auto conv1 = builder_sub1.AddInstruction(HloInstruction::CreateConvolve(
-      conv1_shape, op0_sub1, op1_sub1, GetConv1Window(), GetConvDimensions()));
+      conv1_shape, op0_sub1, op1_sub1, /*feature_group_count=*/1,
+      GetConv1Window(), GetConvDimensions(), DefaultPrecisionConfig(2)));
 
   auto computation_sub1 = builder_sub1.Build();
 
@@ -344,7 +349,8 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
       HloInstruction::CreateParameter(1, weight_shape, "weights"));
 
   auto conv2 = builder_sub2.AddInstruction(HloInstruction::CreateConvolve(
-      conv2_shape, op0_sub2, op1_sub2, GetConv1Window(), GetConvDimensions()));
+      conv2_shape, op0_sub2, op1_sub2, /*feature_group_count=*/1,
+      GetConv1Window(), GetConvDimensions(), DefaultPrecisionConfig(2)));
 
   auto computation_sub2 = builder_sub2.Build();
 
@@ -424,12 +430,10 @@ TEST_F(AllocationFinderTest, FindConstantTensorAllocations) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
   Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
 
-  Shape conv_shape =
-      ShapeInference::InferConvolveShape(input_shape, weight_shape,
-                                         GetConv1Window(), GetConvDimensions())
-          .ConsumeValueOrDie();
-
-  std::unique_ptr<Literal> literal = Literal::CreateFromShape(weight_shape);
+  Shape conv_shape = ShapeInference::InferConvolveShape(
+                         input_shape, weight_shape, /*feature_group_count=*/1,
+                         GetConv1Window(), GetConvDimensions())
+                         .ConsumeValueOrDie();
 
   auto builder = HloComputation::Builder(TestName());
   auto op0 = builder.AddInstruction(
@@ -437,13 +441,14 @@ TEST_F(AllocationFinderTest, FindConstantTensorAllocations) {
   auto op1 = builder.AddInstruction(
       HloInstruction::CreateParameter(1, input_shape, "op1"));
   auto op2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(std::move(literal)));
+      HloInstruction::CreateConstant(Literal::CreateFromShape(weight_shape)));
 
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(input_shape, HloOpcode::kAdd, op0, op1));
 
   auto conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      conv_shape, op1, op2, GetConv1Window(), GetConvDimensions()));
+      conv_shape, op1, op2, /*feature_group_count=*/1, GetConv1Window(),
+      GetConvDimensions(), DefaultPrecisionConfig(2)));
 
   builder.AddInstruction(HloInstruction::CreateTuple({add, conv}));
 
@@ -496,8 +501,8 @@ TEST_F(AllocationFinderTest, CanTraverseTuples) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto dot_inst = b.AddInstruction(
-      HloInstruction::CreateDot(lhs_shape, in1, w1, dot_dnums));
+  auto dot_inst = b.AddInstruction(HloInstruction::CreateDot(
+      lhs_shape, in1, w1, dot_dnums, DefaultPrecisionConfig(2)));
 
   hlo_module->AddEntryComputation(b.Build());
 
@@ -541,8 +546,8 @@ TEST_F(AllocationFinderTest, CanStartOnTuples) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto dot_inst = b.AddInstruction(
-      HloInstruction::CreateDot(lhs_shape, in1, w1, dot_dnums));
+  auto dot_inst = b.AddInstruction(HloInstruction::CreateDot(
+      lhs_shape, in1, w1, dot_dnums, DefaultPrecisionConfig(2)));
 
   hlo_module->AddEntryComputation(b.Build());
 
@@ -615,8 +620,8 @@ TEST_F(AllocationFinderTest, FindWhileTensorAllocations) {
     DotDimensionNumbers dot_dnums;
     dot_dnums.add_lhs_contracting_dimensions(1);
     dot_dnums.add_rhs_contracting_dimensions(0);
-    auto new_in = builder_body.AddInstruction(
-        HloInstruction::CreateDot(input_shape, in, w, dot_dnums));
+    auto new_in = builder_body.AddInstruction(HloInstruction::CreateDot(
+        input_shape, in, w, dot_dnums, DefaultPrecisionConfig(2)));
 
     dot_inst = new_in;
     body_param = tuple;
@@ -681,10 +686,10 @@ TEST_F(AllocationFinderTest, TraverseDimShuffleAndReshapeAllocations) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
   Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
 
-  Shape conv_shape =
-      ShapeInference::InferConvolveShape(input_shape, weight_shape,
-                                         GetConv1Window(), GetConvDimensions())
-          .ConsumeValueOrDie();
+  Shape conv_shape = ShapeInference::InferConvolveShape(
+                         input_shape, weight_shape, /*feature_group_count=*/1,
+                         GetConv1Window(), GetConvDimensions())
+                         .ConsumeValueOrDie();
 
   auto builder = HloComputation::Builder(TestName());
   auto op0 = builder.AddInstruction(
@@ -697,7 +702,8 @@ TEST_F(AllocationFinderTest, TraverseDimShuffleAndReshapeAllocations) {
       HloInstruction::CreateParameter(1, weight_shape, "op1"));
 
   auto conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      conv_shape, ds0, op1, GetConv1Window(), GetConvDimensions()));
+      conv_shape, ds0, op1, /*feature_group_count=*/1, GetConv1Window(),
+      GetConvDimensions(), DefaultPrecisionConfig(2)));
 
   builder.AddInstruction(HloInstruction::CreateTuple({conv}));
 
@@ -732,18 +738,17 @@ TEST_F(AllocationFinderTest, FindDoesntTraceThroughInvalidCalls) {
   Shape half_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 1});
   Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
 
-  Shape conv_shape =
-      ShapeInference::InferConvolveShape(input_shape, weight_shape,
-                                         GetConv1Window(), GetConvDimensions())
-          .ConsumeValueOrDie();
+  Shape conv_shape = ShapeInference::InferConvolveShape(
+                         input_shape, weight_shape, /*feature_group_count=*/1,
+                         GetConv1Window(), GetConvDimensions())
+                         .ConsumeValueOrDie();
 
   /* Create sub-computation which contains an unacceptable op */
-  std::unique_ptr<Literal> literal = Literal::CreateFromShape(half_shape);
   auto builder_sub = HloComputation::Builder(TestName());
   HloInstruction* op0_sub = builder_sub.AddInstruction(
       HloInstruction::CreateParameter(0, input_shape, "input"));
   HloInstruction* op1_sub = builder_sub.AddInstruction(
-      HloInstruction::CreateConstant(std::move(literal)));
+      HloInstruction::CreateConstant(Literal::CreateFromShape(half_shape)));
   HloInstruction* op2_sub = builder_sub.AddInstruction(
       HloInstruction::CreateConcatenate(input_shape, {op0_sub, op1_sub}, 3));
   auto computation_sub = builder_sub.Build();
@@ -758,7 +763,8 @@ TEST_F(AllocationFinderTest, FindDoesntTraceThroughInvalidCalls) {
       HloInstruction::CreateCall(input_shape, {op0}, computation_sub.get()));
   HloInstruction* conv =
       builder_main.AddInstruction(HloInstruction::CreateConvolve(
-          conv_shape, call, op1, GetConv1Window(), GetConvDimensions()));
+          conv_shape, call, op1, /*feature_group_count=*/1, GetConv1Window(),
+          GetConvDimensions(), DefaultPrecisionConfig(2)));
 
   builder_main.AddInstruction(HloInstruction::CreateTuple({conv}));
 
