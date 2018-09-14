@@ -362,6 +362,7 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
   ScratchAllocator scratch_allocator(device_ordinal, allocator);
   se::dnn::ProfileResult profile_result;
   VLOG(3) << "Auto-tuning for " << instr->ToString();
+  LOG(INFO) << "Auto-tuning for " << instr->ToString();
 
   params.algorithm = AlgorithmConfig();
   bool launch_ok = RunCudnnConvolution(params, &scratch_allocator, &stream,
