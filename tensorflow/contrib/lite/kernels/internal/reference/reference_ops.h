@@ -4487,32 +4487,68 @@ void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
 }
 
 template <typename T>
-void Transpose(const T* input, const Dims<4>& input_dims, T* output,
-               const Dims<4>& output_dims, const int* permuted_axes) {
+void Transpose(const TransposeParams& params,
+               const RuntimeShape& unextended_input_shape, const T* input_data,
+               const RuntimeShape& unextended_output_shape, T* output_data) {
+  const int unextended_output_size = unextended_output_shape.DimensionsCount();
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_size, 4);
+  TFLITE_DCHECK_EQ(unextended_output_size, params.perm_count);
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+  const int input_ext_size = 4 - unextended_input_shape.DimensionsCount();
+  const int output_ext_size = 4 - unextended_output_size;
+
+  // The perm data is extended to match the output, each index incremented by
+  // the amount of front padding of the input shape.
+  int extended_perm[4];
+  for (int i = 0; i < output_ext_size; ++i) {
+    extended_perm[i] = i;
+  }
+  for (int i = 0; i < unextended_output_size; ++i) {
+    extended_perm[i + output_ext_size] = params.perm[i] + input_ext_size;
+  }
+
   int out_sizes[4];
   // Compute the inverse permutation array so we can do an output centered
   // transpose. Also, check to make sure output_dims is matching input_dims.
   for (int k = 0; k < 4; k++) {
-    out_sizes[k] =
-        MatchingArraySize(input_dims, permuted_axes[k], output_dims, k);
+    out_sizes[k] = MatchingDim(input_shape, extended_perm[k], output_shape, k);
   }
 
   // Naive transpose loop (iterate on output index and compute input index).
   int o[4];  // loop index (on output).
   int i[4];
   for (o[3] = 0; o[3] < out_sizes[3]; o[3]++) {
-    i[permuted_axes[3]] = o[3];
+    i[extended_perm[3]] = o[3];
     for (o[2] = 0; o[2] < out_sizes[2]; o[2]++) {
-      i[permuted_axes[2]] = o[2];
+      i[extended_perm[2]] = o[2];
       for (o[1] = 0; o[1] < out_sizes[1]; o[1]++) {
-        i[permuted_axes[1]] = o[1];
+        i[extended_perm[1]] = o[1];
         for (o[0] = 0; o[0] < out_sizes[0]; o[0]++) {
-          i[permuted_axes[0]] = o[0];
-          output[Offset(output_dims, o)] = input[Offset(input_dims, i)];
+          i[extended_perm[0]] = o[0];
+          output_data[Offset(output_shape, o)] =
+              input_data[Offset(input_shape, i)];
         }
       }
     }
   }
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+template <typename T>
+void Transpose(const T* input, const Dims<4>& input_dims, T* output,
+               const Dims<4>& output_dims, const int* permuted_axes) {
+  TransposeParams params;
+  params.perm_count = 4;
+  for (int i = 0; i < 4; ++i) {
+    params.perm[i] = 3 - permuted_axes[3 - i];
+  }
+  Transpose(params, DimsToShape(input_dims), input, DimsToShape(output_dims),
+            output);
 }
 
 inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
@@ -4928,47 +4964,81 @@ TFLITE_COMPARISON_OP(LessEqual);
 #undef TFLITE_COMPARISON_OP
 
 template <typename D, typename T>
-inline void Select(const D* input_condition_data,
-                   const Dims<4>& input_condition_dims, const T* input_x_data,
-                   const Dims<4>& input_x_dims, const T* input_y_data,
-                   const Dims<4>& input_y_dims, T* output_data,
-                   const Dims<4>& output_dims) {
-  const int64_t flatsize =
-      MatchingFlatSize(input_x_dims, input_y_dims, output_dims);
+void Select(const RuntimeShape& input_condition_shape,
+            const D* input_condition_data, const RuntimeShape& input_x_shape,
+            const T* input_x_data, const RuntimeShape& input_y_shape,
+            const T* input_y_data, const RuntimeShape& output_shape,
+            T* output_data) {
+  const int64_t flatsize = MatchingFlatSize(
+      input_condition_shape, input_x_shape, input_y_shape, output_shape);
   for (int64_t i = 0; i < flatsize; ++i) {
     output_data[i] =
         input_condition_data[i] ? input_x_data[i] : input_y_data[i];
   }
 }
 
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
 template <typename D, typename T>
-inline void RankOneSelect(const D* input_condition_data,
-                          const Dims<4>& input_condition_dims,
-                          const T* input_x_data, const Dims<4>& input_x_dims,
-                          const T* input_y_data, const Dims<4>& input_y_dims,
-                          T* output_data, const Dims<4>& output_dims) {
-  const int64_t rank = MatchingArraySize(input_condition_dims, 0, input_x_dims,
-                                         3, input_y_dims, 3, output_dims, 3);
+inline void Select(const D* input_condition_data,
+                   const Dims<4>& input_condition_dims, const T* input_x_data,
+                   const Dims<4>& input_x_dims, const T* input_y_data,
+                   const Dims<4>& input_y_dims, T* output_data,
+                   const Dims<4>& output_dims) {
+  Select(DimsToShape(input_condition_dims), input_condition_data,
+         DimsToShape(input_x_dims), input_x_data, DimsToShape(input_y_dims),
+         input_y_data, DimsToShape(output_dims), output_data);
+}
+
+template <typename D, typename T>
+void RankOneSelect(const RuntimeShape& input_condition_shape,
+                   const D* input_condition_data,
+                   const RuntimeShape& input_x_shape, const T* input_x_data,
+                   const RuntimeShape& input_y_shape, const T* input_y_data,
+                   const RuntimeShape& output_shape, T* output_data) {
+  const int64_t outer_size = input_condition_shape.FlatSize();
+  TFLITE_DCHECK_EQ(
+      MatchingDim(input_x_shape, 0, input_y_shape, 0, output_shape, 0),
+      outer_size);
   const int64_t inner_size =
-      MatchingFlatSizeSkipDim(input_x_dims, 3, input_y_dims, output_dims);
+      MatchingFlatSizeSkipDim(input_x_shape, 0, input_y_shape, output_shape);
 
   int64_t offset = 0;
-  for (int64_t i = 0; i < rank; i++) {
+  for (int64_t i = 0; i < outer_size; i++) {
     const T* input_data = input_condition_data[i] ? input_x_data : input_y_data;
     memcpy(output_data + offset, input_data + offset, inner_size * sizeof(T));
     offset += inner_size;
   }
 }
 
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+template <typename D, typename T>
+inline void RankOneSelect(const D* input_condition_data,
+                          const Dims<4>& input_condition_dims,
+                          const T* input_x_data, const Dims<4>& input_x_dims,
+                          const T* input_y_data, const Dims<4>& input_y_dims,
+                          T* output_data, const Dims<4>& output_dims) {
+  RankOneSelect(DimsToShape(input_condition_dims), input_condition_data,
+                DimsToShape(input_x_dims), input_x_data,
+                DimsToShape(input_y_dims), input_y_data,
+                DimsToShape(output_dims), output_data);
+}
+
 // For easy implementation, the indices is always a vector of size-4 vectors.
 template <typename T, typename TI>
 inline void SparseToDense(const std::vector<std::vector<TI>>& indices,
-                          const T* values, T default_value, T* output_data,
-                          const Dims<4>& output_dims, bool value_is_scalar) {
+                          const T* values, T default_value,
+                          bool value_is_scalar,
+                          const RuntimeShape& unextended_output_shape,
+                          T* output_data) {
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
   const int value_count = indices.size();
 
   // First fill the output_data with default value.
-  const int num_elements = FlatSize(output_dims);
+  const int num_elements = output_shape.FlatSize();
   for (int i = 0; i < num_elements; ++i) {
     output_data[i] = default_value;
   }
@@ -4980,8 +5050,8 @@ inline void SparseToDense(const std::vector<std::vector<TI>>& indices,
       const std::vector<TI>& index = indices[i];
       TFLITE_DCHECK_EQ(index.size(), 4);
       const T value = *values;  // just use the first value.
-      output_data[Offset(output_dims, index[3], index[2], index[1], index[0])] =
-          value;
+      output_data[Offset(output_shape, index[0], index[1], index[2],
+                         index[3])] = value;
     }
     return;
   }
@@ -4991,9 +5061,19 @@ inline void SparseToDense(const std::vector<std::vector<TI>>& indices,
     const std::vector<TI>& index = indices[i];
     TFLITE_DCHECK_EQ(index.size(), 4);
     const T value = values[i];
-    output_data[Offset(output_dims, index[3], index[2], index[1], index[0])] =
+    output_data[Offset(output_shape, index[0], index[1], index[2], index[3])] =
         value;
   }
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+template <typename T, typename TI>
+inline void SparseToDense(const std::vector<std::vector<TI>>& indices,
+                          const T* values, T default_value, T* output_data,
+                          const Dims<4>& output_dims, bool value_is_scalar) {
+  SparseToDense(indices, values, default_value, value_is_scalar,
+                DimsToShape(output_dims), output_data);
 }
 
 template <typename T>
