@@ -949,8 +949,16 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     self._create_fake_checkpoint_with_tree_ensemble_proto(
         est, tree_ensemble_text)
 
-    with self.assertRaisesRegexp(AssertionError, 'non-negative'):
-      est.experimental_feature_importances(normalize=False)
+    # Github #21509 (nataliaponomareva):
+    # The gains stored in the splits can be negative
+    # if people are using complexity regularization.
+    feature_names_expected = ['f_2_bucketized',
+                              'f_0_bucketized',
+                              'f_1_bucketized']
+    feature_names, importances = est.experimental_feature_importances(
+        normalize=False)
+    self.assertAllEqual(feature_names_expected, feature_names)
+    self.assertAllClose([0.0, 0.0, -5.0], importances)
 
     with self.assertRaisesRegexp(AssertionError, 'non-negative'):
       est.experimental_feature_importances(normalize=True)
