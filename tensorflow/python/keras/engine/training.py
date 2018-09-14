@@ -145,32 +145,34 @@ class Model(Network):
         if i not in skip_target_weighing_indices
     ]
 
-  def _get_metric_name(self, metric, output_index, weighted=False):
-    """Returns the metric name corresponding to the given metric input.
+  def _cache_output_metric_attributes(self, metrics, weighted_metrics):
+    """Caches metric name and function attributes for every model output."""
+    output_shapes = [
+        None if output is None else output.get_shape().as_list()
+        for output in self.outputs
+    ]
+    self._per_output_metrics = training_utils.collect_per_output_metric_info(
+        metrics, self.output_names, output_shapes, self.loss_functions)
+    self._per_output_weighted_metrics = \
+        training_utils.collect_per_output_metric_info(
+            weighted_metrics, self.output_names, output_shapes,
+            self.loss_functions, self.sample_weights)
+
+  def _add_unique_metric_name(self, metric_name, output_index):
+    """Makes the metric name unique and adds it to the model's metric name list.
+
+      If there are multiple outputs for which the metrics are calculated, the
+      metric names have to be made unique by appending an integer.
 
     Arguments:
-        metric: Metric function name or reference.
-      output_index: Index of the current output.
-        weighted: Boolean indicating if the given metric is weighted.
+      metric_name: Metric name that corresponds to the metric specified by the
+          user. For example: 'acc'.
+      output_index: The index of the model output for which the metric name is
+        being added.
 
     Returns:
-        A metric name.
+      string, name of the model's unique metric name
     """
-    metric_name_prefix = 'weighted_' if weighted else ''
-    if metric in ('accuracy', 'acc', 'crossentropy', 'ce'):
-      if metric in ('accuracy', 'acc'):
-        suffix = 'acc'
-      elif metric in ('crossentropy', 'ce'):
-        suffix = 'ce'
-    else:
-      metric_fn = metrics_module.get(metric)
-      # Get metric name as string
-      if hasattr(metric_fn, 'name'):
-        suffix = metric_fn.name
-      else:
-        suffix = metric_fn.__name__
-    metric_name = metric_name_prefix + suffix
-
     if len(self.output_names) > 1:
       metric_name = '%s_%s' % (self.output_names[output_index], metric_name)
     j = 1
@@ -181,24 +183,54 @@ class Model(Network):
 
     return metric_name
 
-  def _handle_per_output_metrics(self,
-                                 metrics,
-                                 y_true,
-                                 y_pred,
-                                 output_index,
-                                 output_shape,
-                                 loss_fn,
-                                 mask,
-                                 weights=None):
-    """Calls metric functions and sets metric attributes for a single output.
+  def _init_metric_attributes(self):
+    """Initialized model metric attributes."""
+    self.metrics_names = ['loss']
+    self.metrics_tensors = []
+    self.metrics_updates = []
+    self.stateful_metric_names = []
+    self.stateful_metric_functions = []
+
+  def _set_per_output_metric_attributes(self, metrics_dict, output_index):
+    """Sets the metric attributes on the model for the given output.
 
     Arguments:
-      metrics: List of metrics.
+      metrics_dict: A dict with metric names as keys and metric fns as values.
+      output_index: The index of the model output for which the metric
+        attributes are added.
+    """
+    for metric_name, metric_fn in metrics_dict.items():
+      metric_name = self._add_unique_metric_name(metric_name, output_index)
+      # Keep track of metric name.
+      self.metrics_names.append(metric_name)
+
+      # Keep track of stateful metric attributes (name and metric function).
+      if isinstance(metric_fn, base_layer.Layer) and metric_fn.stateful:
+        self.stateful_metric_names.append(metric_name)
+        self.stateful_metric_functions.append(metric_fn)
+
+  def _set_metric_attributes(self, outputs, skip_target_indices=None):
+    """Sets the metric attributes on the model for all the model outputs."""
+    skip_target_indices = skip_target_indices or []
+    for i in range(len(outputs)):
+      if i in skip_target_indices:
+        continue
+      self._set_per_output_metric_attributes(self._per_output_metrics[i], i)
+      self._set_per_output_metric_attributes(
+          self._per_output_weighted_metrics[i], i)
+
+  def _handle_per_output_metrics(self,
+                                 metrics_dict,
+                                 y_true,
+                                 y_pred,
+                                 mask,
+                                 weights=None):
+    """Calls metric functions for a single output.
+
+    Arguments:
+      metrics_dict: A dict with metric names as keys and metric fns as values.
       y_true: Target output.
       y_pred: Predicted output.
-      output_index: Index of the current output.
-      output_shape: Shape of the current output.
-      loss_fn: Loss function corresponding to the current output.
       mask: Computed mask value for the current output.
       weights: Weights to be applied on the current output.
 
@@ -206,71 +238,45 @@ class Model(Network):
       A list of metric result tensors.
     """
     metric_results = []
-    for metric in metrics:
-      metric_fn = training_utils.get_metric_function(
-          metric, output_shape=output_shape, loss_fn=loss_fn)
-
-      if (context.executing_eagerly() and y_true is not None and
-          y_pred is not None):
-        # In eager mode, when executing metric_fn during training, we do not
-        # need to generate unique metric name and add it to the model
-        # as we have done that during compile already.
-        prefix = 'weighted_' if weights is not None else ''
-        suffix = metric_fn.name if hasattr(metric_fn,
-                                           'name') else metric_fn.__name__
-        metric_name = prefix + suffix
-      else:
-        # Get metric name that is to be added to the model.
-        metric_name = self._get_metric_name(
-            metric, output_index, weighted=weights is not None)
-        # Keep track of metric name.
-        self.metrics_names.append(metric_name)
-
-        # Keep track of stateful metric attributes (name and metric function).
-        if isinstance(metric_fn, base_layer.Layer) and metric_fn.stateful:
-          self.stateful_metric_names.append(metric_name)
-          self.stateful_metric_functions.append(metric_fn)
-
+    for metric_name, metric_fn in metrics_dict.items():
       with K.name_scope(metric_name):
-        # If both outputs and targets are available, call the metric function.
-        if y_true is not None and y_pred is not None:
-          if isinstance(metric_fn, metrics_module.Metric):
-            # Call the stateful metric function.
-            if mask is not None:
-              mask = math_ops.cast(mask, y_pred.dtype)
-              # Update weights with mask.
-              if weights is None:
-                weights = mask
-              else:
-                # Update shape of weights if possible before adding mask.
-                # Update dimensions of weights to match with mask if possible.
-                mask, _, weights = metrics_module.squeeze_or_expand_dimensions(
-                    mask, None, weights)
-                try:
-                  # Broadcast weights if possible.
-                  weights = weights_broadcast_ops.broadcast_weights(
-                      weights, mask)
-                except ValueError:
-                  pass
-                  # TODO(psv): Handle case when mask and weight shapes are not
-                  # compatible.
-                weights *= mask
+        if isinstance(metric_fn, metrics_module.Metric):
+          # Call the stateful metric function.
+          if mask is not None:
+            mask = math_ops.cast(mask, y_pred.dtype)
+            # Update weights with mask.
+            if weights is None:
+              weights = mask
+            else:
+              # Update shape of weights if possible before adding mask.
+              # Update dimensions of weights to match with mask if possible.
+              mask, _, weights = metrics_module.squeeze_or_expand_dimensions(
+                  mask, None, weights)
+              try:
+                # Broadcast weights if possible.
+                weights = weights_broadcast_ops.broadcast_weights(weights, mask)
+              except ValueError:
+                pass
+                # TODO(psv): Handle case when mask and weight shapes are not
+                # compatible.
+              weights *= mask
 
-            metric_result = metric_fn(y_true, y_pred, weights)
-          else:
-            # Call the stateless metric function.
-            weighted_metric_fn = training_utils.weighted_masked_objective(
-                metric_fn)
-            metric_result = weighted_metric_fn(
-                y_true, y_pred, weights=weights, mask=mask)
+          metric_result = metric_fn(y_true, y_pred, weights)
+        else:
+          # Call the stateless metric function.
+          weighted_metric_fn = training_utils.weighted_masked_objective(
+              metric_fn)
+          metric_result = weighted_metric_fn(
+              y_true, y_pred, weights=weights, mask=mask)
 
-          if not context.executing_eagerly():
-            # Keep track of metric result tensor.
-            self.metrics_tensors.append(metric_result)
-          metric_results.append(metric_result)
+        if not context.executing_eagerly():
+          # Keep track of metric result tensor.
+          self.metrics_tensors.append(metric_result)
 
-      if (isinstance(metric_fn, base_layer.Layer) and metric_fn.stateful and
-          not context.executing_eagerly()):
+      metric_results.append(metric_result)
+      is_stateful = isinstance(metric_fn,
+                               base_layer.Layer) and metric_fn.stateful
+      if is_stateful and not context.executing_eagerly():
         # Keep track of updates created by stateful metrics.
         self.metrics_updates += metric_fn.updates
     return metric_results
@@ -281,7 +287,7 @@ class Model(Network):
                       targets=None,
                       sample_weights=None,
                       masks=None):
-    """Handles calling metric functions and setting model metric attributes.
+    """Handles calling metric functions.
 
     Arguments:
       outputs: List of outputs (predictions).
@@ -301,20 +307,15 @@ class Model(Network):
           continue
         output = outputs[i] if outputs else None
         target = targets[i] if targets else None
-        output_shape = None if output is None else output.get_shape().as_list()
         output_mask = masks[i] if masks else None
         metric_results.extend(
-            self._handle_per_output_metrics(
-                self.nested_metrics[i], target, output, i, output_shape,
-                self.loss_functions[i], output_mask))
+            self._handle_per_output_metrics(self._per_output_metrics[i], target,
+                                            output, output_mask))
         metric_results.extend(
             self._handle_per_output_metrics(
-                self.nested_weighted_metrics[i],
+                self._per_output_weighted_metrics[i],
                 target,
                 output,
-                i,
-                output_shape,
-                self.loss_functions[i],
                 output_mask,
                 weights=sample_weights[i]))
     return metric_results
@@ -506,24 +507,15 @@ class Model(Network):
     self.loss_weights_list = loss_weights_list
 
     # Initialize model metric attributes.
-    self.metrics_names = ['loss']
-    self.metrics_tensors = []
-    self.metrics_updates = []
-    self.stateful_metric_names = []
-    self.stateful_metric_functions = []
-
-    # Nested metrics is a list of list of metrics.
-    # One list per output of the model.
-    self.nested_metrics = training_utils.collect_metrics(
-        metrics, self.output_names)
-    self.nested_weighted_metrics = training_utils.collect_metrics(
-        weighted_metrics, self.output_names)
+    self._init_metric_attributes()
 
     # Initialization for Eager mode execution.
     if context.executing_eagerly():
       # Prepare sample weights.
       self._set_sample_weight_attributes(sample_weight_mode,
                                          skip_target_weighing_indices)
+      # Save all metric attributes per output of the model.
+      self._cache_output_metric_attributes(metrics, weighted_metrics)
 
       if target_tensors is not None:
         raise ValueError('target_tensors are not currently supported in Eager '
@@ -534,10 +526,10 @@ class Model(Network):
           self.metrics_names.append(self.output_names[i] + '_loss')
 
       # Set metric attributes on model.
-      self._handle_metrics(
+      self._set_metric_attributes(
           self.outputs,
           skip_target_indices=skip_target_indices,
-          sample_weights=self.sample_weights)
+      )
 
       self.targets = []
       for i in range(len(self.outputs)):
@@ -600,6 +592,8 @@ class Model(Network):
     # Prepare sample weights.
     self._set_sample_weight_attributes(sample_weight_mode,
                                        skip_target_weighing_indices)
+    # Save all metric attributes per output of the model.
+    self._cache_output_metric_attributes(metrics, weighted_metrics)
 
     # Compute total loss.
     total_loss = None
@@ -634,6 +628,11 @@ class Model(Network):
       for loss_tensor in self.losses:
         total_loss += loss_tensor
 
+    # Set metric attributes on model.
+    self._set_metric_attributes(
+        self.outputs,
+        skip_target_indices=skip_target_indices,
+    )
     # Invoke metric functions for all the outputs.
     self._handle_metrics(
         self.outputs,
