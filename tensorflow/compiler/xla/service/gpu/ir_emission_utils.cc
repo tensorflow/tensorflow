@@ -282,13 +282,14 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
   int bit_width = value->getType()->getPrimitiveSizeInBits();
   llvm::Value* all_warps_mask = builder->getInt32(-1);
 
-  // Special case for efficiency
-  if (value->getType()->isFloatTy() && bit_width == 32) {
-    return EmitDeviceFunctionCall(
-        "amdgcn.shfl.down.f32",
-        {value, offset, builder->getInt32(kWarpSize - 1)},
-        {F32, S32, S32}, F32, {}, builder, module);
-  }
+  // XXX
+  //// Special case for efficiency
+  //if (value->getType()->isFloatTy() && bit_width == 32) {
+  //  return EmitDeviceFunctionCall(
+  //      "amdgcn.shfl.down.f32",
+  //      {value, offset, builder->getInt32(kWarpSize - 1)},
+  //      {F32, S32, S32}, F32, {}, builder, module);
+  //}
 
   // We must split values wider than 32 bits as the "shfl" instruction operates
   // on 32-bit values.
@@ -298,15 +299,16 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
           builder->CreateBitCast(value, builder->getIntNTy(bit_width)),
           builder->getIntNTy(32 * num_segments)),
       llvm::VectorType::get(builder->getInt32Ty(), num_segments));
-  for (int i = 0; i < num_segments; ++i) {
-    x = builder->CreateInsertElement(
-        x,
-        EmitDeviceFunctionCall("amdgcn.shfl.down.f32",
-                               {builder->CreateExtractElement(x, i),
-                                offset, builder->getInt32(kWarpSize - 1)},
-                               {F32, S32, S32}, F32, {}, builder, module),
-        i);
-  }
+  // XXX
+  //for (int i = 0; i < num_segments; ++i) {
+  //  x = builder->CreateInsertElement(
+  //      x,
+  //      EmitDeviceFunctionCall("amdgcn.shfl.down.f32",
+  //                             {builder->CreateExtractElement(x, i),
+  //                              offset, builder->getInt32(kWarpSize - 1)},
+  //                             {F32, S32, S32}, F32, {}, builder, module),
+  //      i);
+  //}
   return builder->CreateBitCast(
       builder->CreateTrunc(
           builder->CreateBitCast(x, builder->getIntNTy(32 * num_segments)),
