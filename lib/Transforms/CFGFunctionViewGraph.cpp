@@ -101,8 +101,9 @@ namespace {
 struct PrintCFGPass : public CFGFunctionPass {
   PrintCFGPass(llvm::raw_ostream &os, bool shortNames, const llvm::Twine &title)
       : os(os), shortNames(shortNames), title(title) {}
-  void runOnCFGFunction(CFGFunction *function) override {
+  PassResult runOnCFGFunction(CFGFunction *function) override {
     mlir::writeGraph(os, function, shortNames, title);
+    return success();
   }
 
 private:

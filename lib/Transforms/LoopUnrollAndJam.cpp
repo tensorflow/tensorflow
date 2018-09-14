@@ -72,7 +72,7 @@ struct LoopUnrollAndJam : public MLFunctionPass {
   explicit LoopUnrollAndJam(Optional<unsigned> unrollJamFactor)
       : unrollJamFactor(unrollJamFactor) {}
 
-  void runOnMLFunction(MLFunction *f) override;
+  PassResult runOnMLFunction(MLFunction *f) override;
   bool runOnForStmt(ForStmt *forStmt);
   bool loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor);
 };
@@ -83,15 +83,16 @@ MLFunctionPass *mlir::createLoopUnrollAndJamPass(int unrollJamFactor) {
       unrollJamFactor == -1 ? None : Optional<unsigned>(unrollJamFactor));
 }
 
-void LoopUnrollAndJam::runOnMLFunction(MLFunction *f) {
+PassResult LoopUnrollAndJam::runOnMLFunction(MLFunction *f) {
   // Currently, just the outermost loop from the first loop nest is
   // unroll-and-jammed by this pass. However, runOnForStmt can be called on any
   // for Stmt.
   if (!isa<ForStmt>(f->begin()))
-    return;
+    return success();
 
   auto *forStmt = cast<ForStmt>(f->begin());
   runOnForStmt(forStmt);
+  return success();
 }
 
 /// Unroll and jam a 'for' stmt. Default unroll jam factor is

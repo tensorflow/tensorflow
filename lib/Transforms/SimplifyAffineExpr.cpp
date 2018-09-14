@@ -39,10 +39,10 @@ namespace {
 struct SimplifyAffineExpr : public FunctionPass {
   explicit SimplifyAffineExpr() {}
 
-  void runOnMLFunction(MLFunction *f);
+  PassResult runOnMLFunction(MLFunction *f);
   // Does nothing on CFG functions for now. No reusable walkers/visitors exist
   // for this yet? TODO(someone).
-  void runOnCFGFunction(CFGFunction *f) {}
+  PassResult runOnCFGFunction(CFGFunction *f) { return success(); }
 };
 
 } // end anonymous namespace
@@ -55,7 +55,7 @@ AffineMap *MutableAffineMap::getAffineMap() {
   return AffineMap::get(numDims, numSymbols, results, rangeSizes, context);
 }
 
-void SimplifyAffineExpr::runOnMLFunction(MLFunction *f) {
+PassResult SimplifyAffineExpr::runOnMLFunction(MLFunction *f) {
   struct MapSimplifier : public StmtWalker<MapSimplifier> {
     MLIRContext *context;
     MapSimplifier(MLIRContext *context) : context(context) {}
@@ -74,4 +74,5 @@ void SimplifyAffineExpr::runOnMLFunction(MLFunction *f) {
 
   MapSimplifier v(f->getContext());
   v.walkPostOrder(f);
+  return success();
 }

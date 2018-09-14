@@ -27,12 +27,15 @@
 using namespace mlir;
 
 /// Function passes walk a module and look at each function with their
-/// corresponding hooks.
-void FunctionPass::runOnModule(Module *m) {
+/// corresponding hooks and terminates upon error encountered.
+PassResult FunctionPass::runOnModule(Module *m) {
   for (auto &fn : *m) {
     if (auto *mlFunc = dyn_cast<MLFunction>(&fn))
-      runOnMLFunction(mlFunc);
+      if (runOnMLFunction(mlFunc))
+        return failure();
     if (auto *cfgFunc = dyn_cast<CFGFunction>(&fn))
-      runOnCFGFunction(cfgFunc);
+      if (runOnCFGFunction(cfgFunc))
+        return failure();
   }
+  return success();
 }

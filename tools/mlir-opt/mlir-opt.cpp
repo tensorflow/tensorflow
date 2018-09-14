@@ -186,8 +186,10 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
       break;
     }
 
-    pass->runOnModule(module.get());
+    PassResult result = pass->runOnModule(module.get());
     delete pass;
+    if (result)
+      return OptFailure;
 
     // Verify that the result of the pass is still valid.
     module->verify();

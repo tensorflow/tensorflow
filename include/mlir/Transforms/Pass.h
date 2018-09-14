@@ -18,39 +18,61 @@
 #ifndef MLIR_PASS_H
 #define MLIR_PASS_H
 
+#include "llvm/Support/Compiler.h"
+
 namespace mlir {
 class CFGFunction;
 class MLFunction;
 class Module;
 
+// Values that can be used by to signal success/failure. This can be implicitly
+// converted to/from boolean values, with false representing success and true
+// failure.
+struct LLVM_NODISCARD PassResult {
+  enum ResultEnum { Success, Failure } value;
+  PassResult(ResultEnum v) : value(v) {}
+  operator bool() const { return value == Failure; }
+};
+
+static PassResult success() { return PassResult::Success; }
+static PassResult failure() { return PassResult::Failure; }
+
 class Pass {
 public:
   virtual ~Pass() = default;
-  virtual void runOnModule(Module *m) = 0;
+  virtual PassResult runOnModule(Module *m) = 0;
 };
 
 class ModulePass : public Pass {
 public:
-  virtual void runOnModule(Module *m) override = 0;
+  virtual PassResult runOnModule(Module *m) override = 0;
 };
 
 class FunctionPass : public Pass {
 public:
-  virtual void runOnCFGFunction(CFGFunction *f) = 0;
-  virtual void runOnMLFunction(MLFunction *f) = 0;
-  virtual void runOnModule(Module *m) override;
+  virtual PassResult runOnCFGFunction(CFGFunction *f) = 0;
+  virtual PassResult runOnMLFunction(MLFunction *f) = 0;
+
+  // Iterates over all functions in a module, halting upon failure.
+  virtual PassResult runOnModule(Module *m) override;
 };
 
 class CFGFunctionPass : public FunctionPass {
 public:
-  virtual void runOnMLFunction(MLFunction *f) override {}
-  virtual void runOnCFGFunction(CFGFunction *f) override = 0;
+  virtual PassResult runOnMLFunction(MLFunction *f) override {
+    // Skip over MLFunction.
+    return success();
+  }
+  virtual PassResult runOnCFGFunction(CFGFunction *f) override = 0;
 };
 
 class MLFunctionPass : public FunctionPass {
 public:
-  virtual void runOnCFGFunction(CFGFunction *f) override {}
-  virtual void runOnMLFunction(MLFunction *f) override = 0;
+  virtual PassResult runOnCFGFunction(CFGFunction *f) override {
+    // Skip over CFGFunction.
+    return success();
+  }
+  virtual PassResult runOnMLFunction(MLFunction *f) override = 0;
 };
 
 } // end namespace mlir

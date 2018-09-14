@@ -68,7 +68,7 @@ class ModuleConverter : public ModulePass {
 public:
   explicit ModuleConverter() {}
 
-  void runOnModule(Module *m) override;
+  PassResult runOnModule(Module *m) override;
 
 private:
   // Generates CFG functions for all ML functions in the module.
@@ -93,10 +93,11 @@ private:
 // Iterates over all functions in the module generating CFG functions
 // equivalent to ML functions and replacing references to ML functions
 // with references to the generated ML functions.
-void ModuleConverter::runOnModule(Module *m) {
+PassResult ModuleConverter::runOnModule(Module *m) {
   module = m;
   convertMLFunctions();
   replaceReferences();
+  return success();
 }
 
 void ModuleConverter::convertMLFunctions() {

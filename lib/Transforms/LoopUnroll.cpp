@@ -59,7 +59,7 @@ struct LoopUnroll : public MLFunctionPass {
                       Optional<bool> unrollFull)
       : unrollFactor(unrollFactor), unrollFull(unrollFull) {}
 
-  void runOnMLFunction(MLFunction *f) override;
+  PassResult runOnMLFunction(MLFunction *f) override;
   /// Unroll this for stmt. Returns false if nothing was done.
   bool runOnForStmt(ForStmt *forStmt);
   bool loopUnrollFull(ForStmt *forStmt);
@@ -73,7 +73,7 @@ MLFunctionPass *mlir::createLoopUnrollPass(int unrollFactor, int unrollFull) {
                         unrollFull == -1 ? None : Optional<bool>(unrollFull));
 }
 
-void LoopUnroll::runOnMLFunction(MLFunction *f) {
+PassResult LoopUnroll::runOnMLFunction(MLFunction *f) {
   // Gathers all innermost loops through a post order pruned walk.
   class InnermostLoopGatherer : public StmtWalker<InnermostLoopGatherer, bool> {
   public:
@@ -141,7 +141,7 @@ void LoopUnroll::runOnMLFunction(MLFunction *f) {
     auto &loops = slg.loops;
     for (auto *forStmt : loops)
       loopUnrollFull(forStmt);
-    return;
+    return success();
   }
 
   InnermostLoopGatherer ilg;
@@ -149,6 +149,7 @@ void LoopUnroll::runOnMLFunction(MLFunction *f) {
   auto &loops = ilg.loops;
   for (auto *forStmt : loops)
     runOnForStmt(forStmt);
+  return success();
 }
 
 /// Unroll a for stmt. Default unroll factor is 4.
