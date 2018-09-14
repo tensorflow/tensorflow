@@ -81,6 +81,7 @@ using reference_ops::Select;
 using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
 using reference_ops::StridedSlice;
+using reference_ops::TensorFlowSplit;
 using reference_ops::Transpose;
 
 // TODO(b/80247582) Remove this constant.
@@ -180,6 +181,15 @@ ArrayMap<Scalar> MapAsArrayWithFirstDimAsRows(Scalar* data,
   for (int d = 1; d < N; d++) {
     cols *= dims.sizes[d];
   }
+  return ArrayMap<Scalar>(data, rows, cols);
+}
+
+template <typename Scalar>
+ArrayMap<Scalar> MapAsArrayWithLastDimAsRows(Scalar* data,
+                                             const RuntimeShape& shape) {
+  const int dims_count = shape.DimensionsCount();
+  const int rows = shape.Dims(dims_count - 1);
+  const int cols = FlatSizeSkipDim(shape, dims_count - 1);
   return ArrayMap<Scalar>(data, rows, cols);
 }
 
@@ -3628,62 +3638,96 @@ void Sub(const ArithmeticParams& params, const RuntimeShape& input1_shape,
   }
 }
 
-inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
-                     const float* prev_activ_data,
-                     const Dims<4>& prev_activ_dims, const float* weights_data,
-                     const Dims<4>& weights_dims, const float* bias_data,
-                     const Dims<4>& bias_dims, const float* prev_state_data,
-                     const Dims<4>& prev_state_dims, float* output_state_data,
-                     const Dims<4>& output_state_dims, float* output_activ_data,
-                     const Dims<4>& output_activ_dims, float* concat_temp_data,
-                     const Dims<4>& concat_temp_dims, float* activ_temp_data,
-                     const Dims<4>& activ_temp_dims) {
+inline void LstmCell(
+    const LstmCellParams& params, const RuntimeShape& unextended_input_shape,
+    const float* input_data, const RuntimeShape& unextended_prev_activ_shape,
+    const float* prev_activ_data, const RuntimeShape& weights_shape,
+    const float* weights_data, const RuntimeShape& unextended_bias_shape,
+    const float* bias_data, const RuntimeShape& unextended_prev_state_shape,
+    const float* prev_state_data,
+    const RuntimeShape& unextended_output_state_shape, float* output_state_data,
+    const RuntimeShape& unextended_output_activ_shape, float* output_activ_data,
+    const RuntimeShape& unextended_concat_temp_shape, float* concat_temp_data,
+    const RuntimeShape& unextended_activ_temp_shape, float* activ_temp_data) {
   gemmlowp::ScopedProfilingLabel label("LstmCell");
-  MatchingArraySize(  // batches
-      input_dims, 3, prev_activ_dims, 3, prev_state_dims, 3, output_state_dims,
-      3, output_activ_dims, 3);
-  MatchingArraySize(  // height
-      input_dims, 2, prev_activ_dims, 2, prev_state_dims, 2, output_state_dims,
-      2, output_activ_dims, 2);
-  MatchingArraySize(  // width
-      input_dims, 1, prev_activ_dims, 1, prev_state_dims, 1, output_state_dims,
-      1, output_activ_dims, 1);
-  TFLITE_CHECK_EQ(ArraySize(weights_dims, 2), 1);
-  TFLITE_CHECK_EQ(ArraySize(weights_dims, 3), 1);
-  const int input_depth = ArraySize(input_dims, 0);
-  const int prev_activ_depth = ArraySize(prev_activ_dims, 0);
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_prev_activ_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_bias_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_prev_state_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_state_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_activ_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_concat_temp_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_activ_temp_shape.DimensionsCount(), 4);
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  const RuntimeShape prev_activ_shape =
+      RuntimeShape::ExtendedShape(4, unextended_prev_activ_shape);
+  const RuntimeShape bias_shape =
+      RuntimeShape::ExtendedShape(4, unextended_bias_shape);
+  const RuntimeShape prev_state_shape =
+      RuntimeShape::ExtendedShape(4, unextended_prev_state_shape);
+  const RuntimeShape output_state_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_state_shape);
+  const RuntimeShape output_activ_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_activ_shape);
+  const RuntimeShape concat_temp_shape =
+      RuntimeShape::ExtendedShape(4, unextended_concat_temp_shape);
+  const RuntimeShape activ_temp_shape =
+      RuntimeShape::ExtendedShape(4, unextended_activ_temp_shape);
+  TFLITE_DCHECK_GE(weights_shape.DimensionsCount(), 2);
+
+  const int weights_dim_count = weights_shape.DimensionsCount();
+  MatchingDim(  // batches
+      input_shape, 0, prev_activ_shape, 0, prev_state_shape, 0,
+      output_state_shape, 0, output_activ_shape, 0);
+  MatchingDim(  // height
+      input_shape, 1, prev_activ_shape, 1, prev_state_shape, 1,
+      output_state_shape, 1, output_activ_shape, 1);
+  MatchingDim(  // width
+      input_shape, 2, prev_activ_shape, 2, prev_state_shape, 2,
+      output_state_shape, 2, output_activ_shape, 2);
+  const int input_depth = input_shape.Dims(3);
+  const int prev_activ_depth = prev_activ_shape.Dims(3);
   const int total_input_depth = prev_activ_depth + input_depth;
-  TFLITE_CHECK_EQ(ArraySize(weights_dims, 0), total_input_depth);
-  TFLITE_CHECK_EQ(MatchingArraySize(bias_dims, 1, bias_dims, 2, bias_dims, 3),
-                  1);
+  TFLITE_DCHECK_EQ(weights_shape.Dims(weights_dim_count - 1),
+                   total_input_depth);
+  TFLITE_DCHECK_EQ(FlatSizeSkipDim(bias_shape, 3), 1);
   const int intern_activ_depth =
-      MatchingArraySize(weights_dims, 1, bias_dims, 0);
-  TFLITE_CHECK_EQ(intern_activ_depth % 4, 0);
+      MatchingDim(weights_shape, weights_dim_count - 2, bias_shape, 3);
+  TFLITE_DCHECK_EQ(weights_shape.FlatSize(),
+                   intern_activ_depth * total_input_depth);
+  TFLITE_DCHECK_EQ(intern_activ_depth % 4, 0);
   const int output_depth =
-      MatchingArraySize(prev_state_dims, 0, prev_activ_dims, 0,
-                        output_state_dims, 0, output_activ_dims, 0);
-  TFLITE_CHECK_EQ(output_depth, intern_activ_depth / 4);
+      MatchingDim(prev_state_shape, 3, prev_activ_shape, 3, output_state_shape,
+                  3, output_activ_shape, 3);
+  TFLITE_DCHECK_EQ(output_depth, intern_activ_depth / 4);
 
   // Concatenate prev_activ and input data together
   std::vector<float const*> concat_input_arrays_data;
-  std::vector<Dims<4> const*> concat_input_arrays_dims;
+  std::vector<RuntimeShape const*> concat_input_arrays_shapes;
   concat_input_arrays_data.push_back(input_data);
   concat_input_arrays_data.push_back(prev_activ_data);
-  concat_input_arrays_dims.push_back(&input_dims);
-  concat_input_arrays_dims.push_back(&prev_activ_dims);
-  Concatenation<FusedActivationFunctionType::kNone, float>(
-      0, &(concat_input_arrays_data[0]), &(concat_input_arrays_dims[0]),
-      concat_input_arrays_data.size(), concat_temp_data, concat_temp_dims);
+  concat_input_arrays_shapes.push_back(&input_shape);
+  concat_input_arrays_shapes.push_back(&prev_activ_shape);
+  tflite::ConcatenationParams concat_params;
+  concat_params.axis = 3;
+  concat_params.inputs_count = concat_input_arrays_data.size();
+  Concatenation(concat_params, &(concat_input_arrays_shapes[0]),
+                &(concat_input_arrays_data[0]), concat_temp_shape,
+                concat_temp_data);
 
   // Fully connected
-  FullyConnected<FusedActivationFunctionType::kNone>(
-      concat_temp_data, concat_temp_dims, weights_data, weights_dims, bias_data,
-      bias_dims, activ_temp_data, activ_temp_dims);
+  tflite::FullyConnectedParams fc_params;
+  fc_params.float_activation_min = std::numeric_limits<float>::lowest();
+  fc_params.float_activation_max = std::numeric_limits<float>::max();
+  FullyConnected(fc_params, concat_temp_shape, concat_temp_data, weights_shape,
+                 weights_data, bias_shape, bias_data, activ_temp_shape,
+                 activ_temp_data);
 
   // Map raw arrays to Eigen arrays so we can use Eigen's optimized array
   // operations.
   ArrayMap<float> activ_temp_map =
-      MapAsArrayWithFirstDimAsRows(activ_temp_data, activ_temp_dims);
+      MapAsArrayWithLastDimAsRows(activ_temp_data, activ_temp_shape);
   auto input_gate_sm = activ_temp_map.block(0 * output_depth, 0, output_depth,
                                             activ_temp_map.cols());
   auto new_input_sm = activ_temp_map.block(1 * output_depth, 0, output_depth,
@@ -3693,11 +3737,11 @@ inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
   auto output_gate_sm = activ_temp_map.block(3 * output_depth, 0, output_depth,
                                              activ_temp_map.cols());
   ArrayMap<const float> prev_state_map =
-      MapAsArrayWithFirstDimAsRows(prev_state_data, prev_state_dims);
+      MapAsArrayWithLastDimAsRows(prev_state_data, prev_state_shape);
   ArrayMap<float> output_state_map =
-      MapAsArrayWithFirstDimAsRows(output_state_data, output_state_dims);
+      MapAsArrayWithLastDimAsRows(output_state_data, output_state_shape);
   ArrayMap<float> output_activ_map =
-      MapAsArrayWithFirstDimAsRows(output_activ_data, output_activ_dims);
+      MapAsArrayWithLastDimAsRows(output_activ_data, output_activ_shape);
 
   // Combined memory state and final output calculation
   gemmlowp::ScopedProfilingLabel label2("MemoryStateAndFinalOutput");
@@ -3711,56 +3755,120 @@ inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
       output_state_map.tanh();
 }
 
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
+                     const float* prev_activ_data,
+                     const Dims<4>& prev_activ_dims, const float* weights_data,
+                     const Dims<4>& weights_dims, const float* bias_data,
+                     const Dims<4>& bias_dims, const float* prev_state_data,
+                     const Dims<4>& prev_state_dims, float* output_state_data,
+                     const Dims<4>& output_state_dims, float* output_activ_data,
+                     const Dims<4>& output_activ_dims, float* concat_temp_data,
+                     const Dims<4>& concat_temp_dims, float* activ_temp_data,
+                     const Dims<4>& activ_temp_dims) {
+  tflite::LstmCellParams op_params;
+  // Float LSTM cell does not need parameters to be set: leave untouched.
+
+  LstmCell(op_params, DimsToShape(input_dims), input_data,
+           DimsToShape(prev_activ_dims), prev_activ_data,
+           DimsToShape(weights_dims), weights_data, DimsToShape(bias_dims),
+           bias_data, DimsToShape(prev_state_dims), prev_state_data,
+           DimsToShape(output_state_dims), output_state_data,
+           DimsToShape(output_activ_dims), output_activ_data,
+           DimsToShape(concat_temp_dims), concat_temp_data,
+           DimsToShape(activ_temp_dims), activ_temp_data);
+}
+
 // Quantized LSTM cell. Currently just a copy of the reference impl in
 // reference_ops.h. See the big function comment there, not replicating it
 // here.
 template <int StateIntegerBits>
-void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
-              const uint8* prev_activ_data_uint8,
-              const Dims<4>& prev_activ_dims, const uint8* weights_data_uint8,
-              const Dims<4>& weights_dims, const int32* bias_data_int32,
-              const Dims<4>& bias_dims, const int16* prev_state_data_int16,
-              const Dims<4>& prev_state_dims, int16* output_state_data_int16,
-              const Dims<4>& output_state_dims, uint8* output_activ_data_uint8,
-              const Dims<4>& output_activ_dims, uint8* concat_temp_data_uint8,
-              const Dims<4>& concat_temp_dims, int16* activ_temp_data_int16,
-              const Dims<4>& activ_temp_dims, int32 weights_zero_point,
-              int32 accum_multiplier, int accum_shift,
-              gemmlowp::GemmContext* gemm_context) {
+inline void LstmCell(
+    const LstmCellParams& params, const RuntimeShape& unextended_input_shape,
+    const uint8* input_data_uint8,
+    const RuntimeShape& unextended_prev_activ_shape,
+    const uint8* prev_activ_data_uint8, const RuntimeShape& weights_shape,
+    const uint8* weights_data_uint8, const RuntimeShape& unextended_bias_shape,
+    const int32* bias_data_int32,
+    const RuntimeShape& unextended_prev_state_shape,
+    const int16* prev_state_data_int16,
+    const RuntimeShape& unextended_output_state_shape,
+    int16* output_state_data_int16,
+    const RuntimeShape& unextended_output_activ_shape,
+    uint8* output_activ_data_uint8,
+    const RuntimeShape& unextended_concat_temp_shape,
+    uint8* concat_temp_data_uint8,
+    const RuntimeShape& unextended_activ_temp_shape,
+    int16* activ_temp_data_int16, gemmlowp::GemmContext* gemm_context) {
+  int32 weights_zero_point = params.weights_zero_point;
+  int32 accum_multiplier = params.accum_multiplier;
+  int accum_shift = params.accum_shift;
   gemmlowp::ScopedProfilingLabel label(
       "LstmCell/quantized (8bit external, 16bit internal)");
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_prev_activ_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_bias_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_prev_state_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_state_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_activ_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_concat_temp_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_activ_temp_shape.DimensionsCount(), 4);
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  const RuntimeShape prev_activ_shape =
+      RuntimeShape::ExtendedShape(4, unextended_prev_activ_shape);
+  const RuntimeShape bias_shape =
+      RuntimeShape::ExtendedShape(4, unextended_bias_shape);
+  const RuntimeShape prev_state_shape =
+      RuntimeShape::ExtendedShape(4, unextended_prev_state_shape);
+  const RuntimeShape output_state_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_state_shape);
+  const RuntimeShape output_activ_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_activ_shape);
+  const RuntimeShape concat_temp_shape =
+      RuntimeShape::ExtendedShape(4, unextended_concat_temp_shape);
+  const RuntimeShape activ_temp_shape =
+      RuntimeShape::ExtendedShape(4, unextended_activ_temp_shape);
+  TFLITE_DCHECK_GE(weights_shape.DimensionsCount(), 2);
+
   // Gather dimensions information, and perform consistency checks.
-  const int outer_size =
-      MatchingFlatSizeSkipDim(input_dims, 0, prev_activ_dims, prev_state_dims,
-                              output_state_dims, output_activ_dims);
-  TFLITE_CHECK_EQ(ArraySize(weights_dims, 2), 1);
-  TFLITE_CHECK_EQ(ArraySize(weights_dims, 3), 1);
-  const int input_depth = ArraySize(input_dims, 0);
-  const int prev_activ_depth = ArraySize(prev_activ_dims, 0);
+  const int weights_dim_count = weights_shape.DimensionsCount();
+  const int outer_size = MatchingFlatSizeSkipDim(
+      input_shape, 3, prev_activ_shape, prev_state_shape, output_state_shape,
+      output_activ_shape);
+  const int input_depth = input_shape.Dims(3);
+  const int prev_activ_depth = prev_activ_shape.Dims(3);
   const int total_input_depth = prev_activ_depth + input_depth;
-  TFLITE_CHECK_EQ(ArraySize(weights_dims, 0), total_input_depth);
-  TFLITE_CHECK_EQ(MatchingArraySize(bias_dims, 1, bias_dims, 2, bias_dims, 3),
-                  1);
+  TFLITE_DCHECK_EQ(weights_shape.Dims(weights_dim_count - 1),
+                   total_input_depth);
   const int intern_activ_depth =
-      MatchingArraySize(weights_dims, 1, bias_dims, 0);
-  TFLITE_CHECK_EQ(intern_activ_depth % 4, 0);
+      MatchingDim(weights_shape, weights_dim_count - 2, bias_shape, 3);
+  TFLITE_DCHECK_EQ(weights_shape.FlatSize(),
+                   intern_activ_depth * total_input_depth);
+  TFLITE_DCHECK_EQ(FlatSizeSkipDim(bias_shape, 3), 1);
+  TFLITE_DCHECK_EQ(intern_activ_depth % 4, 0);
   const int output_depth =
-      MatchingArraySize(prev_state_dims, 0, prev_activ_dims, 0,
-                        output_state_dims, 0, output_activ_dims, 0);
-  TFLITE_CHECK_EQ(output_depth, intern_activ_depth / 4);
-  const int fc_batches = FlatSizeSkipDim(activ_temp_dims, 0);
+      MatchingDim(prev_state_shape, 3, prev_activ_shape, 3, output_state_shape,
+                  3, output_activ_shape, 3);
+  TFLITE_DCHECK_EQ(output_depth, intern_activ_depth / 4);
+  const int fc_batches = FlatSizeSkipDim(activ_temp_shape, 3);
   const int fc_output_depth =
-      MatchingArraySize(weights_dims, 1, activ_temp_dims, 0);
-  const int fc_accum_depth = ArraySize(weights_dims, 0);
-  TFLITE_CHECK_EQ(fc_output_depth, 4 * output_depth);
+      MatchingDim(weights_shape, weights_dim_count - 2, activ_temp_shape, 3);
+  const int fc_accum_depth = total_input_depth;
+  TFLITE_DCHECK_EQ(fc_output_depth, 4 * output_depth);
 
   // Depth-concatenate prev_activ and input data together.
   uint8 const* concat_input_arrays_data[2] = {input_data_uint8,
                                               prev_activ_data_uint8};
-  Dims<4> const* concat_input_arrays_dims[2] = {&input_dims, &prev_activ_dims};
-  Concatenation<FusedActivationFunctionType::kNone, uint8>(
-      0, concat_input_arrays_data, concat_input_arrays_dims, 2,
-      concat_temp_data_uint8, concat_temp_dims);
+  const RuntimeShape* concat_input_arrays_shapes[2] = {&input_shape,
+                                                       &prev_activ_shape};
+  tflite::ConcatenationParams concat_params;
+  concat_params.axis = 3;
+  concat_params.inputs_count = 2;
+  Concatenation(concat_params, concat_input_arrays_shapes,
+                concat_input_arrays_data, concat_temp_shape,
+                concat_temp_data_uint8);
 
   // Implementation of the fully connected node inside the LSTM cell.
   // The operands are 8-bit integers, the accumulators are internally 32bit
@@ -3770,11 +3878,10 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
   bool gemm_already_performed = false;
 #ifdef GEMMLOWP_NEON
   if (fc_batches == 1 && !(fc_output_depth % 4) && !(fc_accum_depth % 8)) {
-    GEMVForLstmCell(DimsToShape(concat_temp_dims), concat_temp_data_uint8,
-                    DimsToShape(weights_dims), weights_data_uint8,
-                    weights_zero_point, DimsToShape(bias_dims), bias_data_int32,
-                    accum_multiplier, accum_shift, DimsToShape(activ_temp_dims),
-                    activ_temp_data_int16);
+    GEMVForLstmCell(concat_temp_shape, concat_temp_data_uint8, weights_shape,
+                    weights_data_uint8, weights_zero_point, bias_shape,
+                    bias_data_int32, accum_multiplier, accum_shift,
+                    activ_temp_shape, activ_temp_data_int16);
     gemm_already_performed = true;
   }
 #endif
@@ -3963,28 +4070,35 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
   }
 }
 
-template <FusedActivationFunctionType Ac, typename Scalar>
-void TensorFlowSplit(const Scalar* input_data, const Dims<4>& input_dims,
-                     int outputs_count, Scalar* const* output_data,
-                     const Dims<4>* const* output_dims) {
-  gemmlowp::ScopedProfilingLabel label("TensorFlowSplit");
-  TFLITE_DCHECK_GE(outputs_count, 1);
-  for (int i = 0; i < outputs_count; i++) {
-    MatchingFlatSizeSkipDim(*output_dims[i], 0, input_dims);
-  }
-  const int outer_size = FlatSizeSkipDim(input_dims, 0);
-  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
-  // For now we don't have a model with a TensorFlowSplit
-  // with fused activation function.
-  TFLITE_DCHECK(Ac == FusedActivationFunctionType::kNone);
-  const Scalar* input_ptr = input_data;
-  for (int k = 0; k < outer_size; k++) {
-    for (int i = 0; i < outputs_count; ++i) {
-      memcpy(output_data[i] + k * output_dims[i]->sizes[0], input_ptr,
-             output_dims[i]->sizes[0] * sizeof(Scalar));
-      input_ptr += output_dims[i]->sizes[0];
-    }
-  }
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+template <int StateIntegerBits>
+void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
+              const uint8* prev_activ_data_uint8,
+              const Dims<4>& prev_activ_dims, const uint8* weights_data_uint8,
+              const Dims<4>& weights_dims, const int32* bias_data_int32,
+              const Dims<4>& bias_dims, const int16* prev_state_data_int16,
+              const Dims<4>& prev_state_dims, int16* output_state_data_int16,
+              const Dims<4>& output_state_dims, uint8* output_activ_data_uint8,
+              const Dims<4>& output_activ_dims, uint8* concat_temp_data_uint8,
+              const Dims<4>& concat_temp_dims, int16* activ_temp_data_int16,
+              const Dims<4>& activ_temp_dims, int32 weights_zero_point,
+              int32 accum_multiplier, int accum_shift,
+              gemmlowp::GemmContext* gemm_context) {
+  tflite::LstmCellParams op_params;
+  op_params.weights_zero_point = weights_zero_point;
+  op_params.accum_multiplier = accum_multiplier;
+  op_params.accum_shift = accum_shift;
+
+  LstmCell<StateIntegerBits>(
+      op_params, DimsToShape(input_dims), input_data_uint8,
+      DimsToShape(prev_activ_dims), prev_activ_data_uint8,
+      DimsToShape(weights_dims), weights_data_uint8, DimsToShape(bias_dims),
+      bias_data_int32, DimsToShape(prev_state_dims), prev_state_data_int16,
+      DimsToShape(output_state_dims), output_state_data_int16,
+      DimsToShape(output_activ_dims), output_activ_data_uint8,
+      DimsToShape(concat_temp_dims), concat_temp_data_uint8,
+      DimsToShape(activ_temp_dims), activ_temp_data_int16, gemm_context);
 }
 
 inline int NodeOffset(int b, int h, int w, int height, int width) {
