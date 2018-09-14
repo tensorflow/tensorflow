@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -543,7 +544,13 @@ TEST(TFCompileTest, HloProfiling) {
   string hlo_profile_as_string =
       xla::PrintHloProfile(fn.hlo_profile_printer_data(), fn.profile_counters(),
                            /*clock_rate_ghz=*/1.0);
-  VLOG(1) << "HLO profile string:\n" << hlo_profile_as_string;
+  VLOG(1) << "Original HLO profile string:\n" << hlo_profile_as_string;
+
+  // Strip away identifier details from the profile string to avoid this test
+  // being a change detector for xla internals. Identifiers such as '%dot.0.7'
+  // just become '%dot'.
+  RE2::GlobalReplace(&hlo_profile_as_string, "(%[a-zA-Z0-9]*)[.0-9]*", "\\1");
+  VLOG(1) << "Stripped HLO profile string:\n" << hlo_profile_as_string;
 
   std::vector<string> hlo_profile_lines =
       absl::StrSplit(hlo_profile_as_string, '\n');
@@ -551,16 +558,14 @@ TEST(TFCompileTest, HloProfiling) {
   auto header = HasSubstr("Execution profile for");
   auto total_cycles_profile_line = HasSubstr("[total]");
   auto dot_profile_line = HasSubstr(
-      "%dot.0.4 = f32[2,2]{1,0} dot(f32[2,2]{1,0} %arg0.0.0, f32[2,2]{1,0} "
-      "%arg1.0.1)");
+      "%dot = f32[2,2]{1,0} dot(f32[2,2]{1,0} %arg0, f32[2,2]{1,0} %arg1)");
   auto add_profile_line = HasSubstr(
-      "%add.0.6 = f32[2,2]{1,0} add(f32[2,2]{1,0} %arg0.0.0, f32[2,2]{1,0} "
-      "%arg1.0.1)");
+      "%add = f32[2,2]{1,0} add(f32[2,2]{1,0} %arg0, f32[2,2]{1,0} %arg1)");
   auto tuple_profile_line = HasSubstr(
-      "%tuple.0.8 = (f32[2,2]{1,0}, f32[2,2]{1,0}) tuple(f32[2,2]{1,0} "
-      "%dot.0.4, f32[2,2]{1,0} %add.0.6)");
-  auto arg0_profile_line = HasSubstr("%arg0.0.0 = f32[2,2]{1,0} parameter(0)");
-  auto arg1_profile_line = HasSubstr("%arg1.0.1 = f32[2,2]{1,0} parameter(1)");
+      "%tuple = (f32[2,2]{1,0}, f32[2,2]{1,0}) tuple(f32[2,2]{1,0} %dot, "
+      "f32[2,2]{1,0} %add)");
+  auto arg0_profile_line = HasSubstr("%arg0 = f32[2,2]{1,0} parameter(0)");
+  auto arg1_profile_line = HasSubstr("%arg1 = f32[2,2]{1,0} parameter(1)");
 
   EXPECT_THAT(hlo_profile_lines,
               IsSupersetOf({header, total_cycles_profile_line, dot_profile_line,

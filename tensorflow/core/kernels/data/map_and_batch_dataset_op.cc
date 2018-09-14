@@ -204,6 +204,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       }
 
       Status Initialize(IteratorContext* ctx) override {
+        SetMetadata(ctx, "batch_size", dataset()->batch_size_);
+        SetMetadata(ctx, "parallelism", dataset()->num_parallel_calls_);
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
         return dataset()->captured_func_->Instantiate(ctx);
@@ -218,7 +220,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           EnsureRunnerThreadStarted(ctx);
           while (batch_results_.empty() ||
                  batch_results_.front()->num_calls > 0) {
+            StopWork(ctx);
             cond_var_.wait(l);
+            StartWork(ctx);
           }
           std::swap(result, batch_results_.front());
           batch_results_.pop_front();
@@ -365,7 +369,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                   ctx.get(), std::move(input_element), return_values.get(),
                   [this, ctx, result, return_values, offset](Status status) {
                     Callback(ctx, result, return_values, offset, status);
-                  });
+                  },
+                  prefix());
             },
             ctx, std::move(input_element)));
       }
@@ -476,6 +481,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           LOCKS_EXCLUDED(mu_) {
         std::vector<std::pair<std::shared_ptr<BatchResult>, int64>> new_calls;
         new_calls.reserve(dataset()->num_parallel_calls_);
+        StartWork(ctx.get());
+        auto stop_cleanup =
+            gtl::MakeCleanup([this, &ctx]() { StopWork(ctx.get()); });
         while (true) {
           {
             mutex_lock l(mu_);
@@ -484,7 +492,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                     batch_results_.size() > MaxBatchResults() ||
                     (batch_results_.size() == MaxBatchResults() &&
                      call_counter_ % dataset()->batch_size_ == 0))) {
+              StopWork(ctx.get());
               cond_var_.wait(l);
+              StartWork(ctx.get());
             }
 
             if (cancelled_) {

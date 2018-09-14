@@ -27,7 +27,7 @@ class StringLengthOpTest(test.TestCase):
   def testStringLength(self):
     strings = [[["1", "12"], ["123", "1234"], ["12345", "123456"]]]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       lengths = string_ops.string_length(strings)
       values = sess.run(lengths)
       self.assertAllEqual(values, [[[1, 2], [3, 4], [5, 6]]])

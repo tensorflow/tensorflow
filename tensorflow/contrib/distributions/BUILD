@@ -166,6 +166,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["notap"],
 )
 
 cuda_py_test(

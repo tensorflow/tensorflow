@@ -99,7 +99,6 @@ def _yield_value(iterable):
 # See the swig file (../../util/util.i) for documentation.
 is_sequence = _pywrap_tensorflow.IsSequenceForData
 
-
 # See the swig file (../../util/util.i) for documentation.
 flatten = _pywrap_tensorflow.FlattenForData
 

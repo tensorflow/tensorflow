@@ -45,7 +45,7 @@ class ZipDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       equal_length_components = [
           np.tile(np.array([[1], [2], [3], [4]]), 20),
           np.tile(np.array([[12], [13], [14], [15]]), 22),
@@ -93,7 +93,7 @@ class ZipDatasetTest(test.TestCase):
     self.assertEqual([22], get_next[1][0].shape)
     self.assertEqual([], get_next[1][1].shape)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       equal_length_components = [
           np.tile(np.array([[1], [2], [3], [4]]), 20),
           np.tile(np.array([[12], [13], [14], [15]]), 22),

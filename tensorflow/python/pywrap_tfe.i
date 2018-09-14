@@ -188,7 +188,10 @@ limitations under the License.
                         "outputs of the operation)");
   }
   $1 = &temp;
-  $1->resize(PyInt_AsLong($input), nullptr);
+  long sz = PyInt_AsLong($input);
+  if (sz > 0) {
+    $1->resize(PyInt_AsLong($input), nullptr);
+  }
 }
 
 // Create new Status object.

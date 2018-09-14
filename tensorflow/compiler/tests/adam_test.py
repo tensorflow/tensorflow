@@ -56,7 +56,7 @@ class AdamOptimizerTest(xla_test.XLATestCase):
       # TODO: test fails for float16 due to excessive precision requirements.
       if dtype in [np.float16, dtypes.bfloat16.as_numpy_dtype]:
         continue
-      with self.test_session(), self.test_scope():
+      with self.cached_session(), self.test_scope():
         variable_scope.get_variable_scope().set_use_resource(True)
 
         # Initialize variables for numpy implementation.
@@ -98,7 +98,7 @@ class AdamOptimizerTest(xla_test.XLATestCase):
       # TODO: test fails for float16 due to excessive precision requirements.
       if dtype in [np.float16, dtypes.bfloat16.as_numpy_dtype]:
         continue
-      with self.test_session(), self.test_scope():
+      with self.cached_session(), self.test_scope():
         variable_scope.get_variable_scope().set_use_resource(True)
 
         # Initialize variables for numpy implementation.
@@ -140,7 +140,7 @@ class AdamOptimizerTest(xla_test.XLATestCase):
       # TODO: test fails for float16 due to excessive precision requirements.
       if dtype in [np.float16, dtypes.bfloat16.as_numpy_dtype]:
         continue
-      with self.test_session(), self.test_scope():
+      with self.cached_session(), self.test_scope():
         variable_scope.get_variable_scope().set_use_resource(True)
 
         # Initialize variables for numpy implementation.

@@ -279,7 +279,7 @@ class BackendUtilsTest(test.TestCase):
           keras.backend.get_session().run(fetches=[x, y]), [30., 40.])
 
   def test_function_tf_run_options_with_run_metadata(self):
-    with self.test_session():
+    with self.cached_session():
       x_placeholder = keras.backend.placeholder(shape=())
       y_placeholder = keras.backend.placeholder(shape=())
 

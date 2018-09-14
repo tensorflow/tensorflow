@@ -56,6 +56,7 @@ EagerContext::EagerContext(const SessionOptions& opts,
       log_device_placement_(opts.config.log_device_placement()),
       num_active_steps_(0),
       async_default_(async),
+      log_memory_(LogMemory::IsEnabled()),
       env_(opts.env),
       use_send_tensor_rpc_(false) {
   if (device_mgr_owned) {
@@ -65,13 +66,9 @@ EagerContext::EagerContext(const SessionOptions& opts,
     local_unowned_device_manager_ = device_mgr;
   }
   InitDeviceMapAndAsync();
-  if (opts.config.inter_op_parallelism_threads() > 0) {
-    runner_ = [this](std::function<void()> closure) {
-      this->thread_pool_->Schedule(closure);
-    };
-  } else {
-    runner_ = [](std::function<void()> closure) { closure(); };
-  }
+  runner_ = [this](std::function<void()> closure) {
+    this->thread_pool_->Schedule(closure);
+  };
 }
 
 void EagerContext::InitDeviceMapAndAsync() {

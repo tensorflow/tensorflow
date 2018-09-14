@@ -97,7 +97,7 @@ CompileOnlyService::CompileAheadOfTime(
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModule> hlo_module,
         HloModule::CreateFromProto(instance.computation, *module_config));
-    TF_RETURN_IF_ERROR(MaybeDumpHloModule(*hlo_module));
+    TF_RETURN_IF_ERROR(MaybeDumpUnoptimizedHloModule(*hlo_module));
     hlo_modules.push_back(std::move(hlo_module));
   }
 

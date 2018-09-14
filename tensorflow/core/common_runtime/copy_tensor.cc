@@ -358,7 +358,7 @@ static Status WrappedTensorDeviceCopy(
 
 #define REGISTER_WRAPPED_TENSOR_COPY(DIRECTION)         \
   INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION( \
-      Tensor, DIRECTION, "tensorflow::Tensor", WrappedTensorDeviceCopy)
+      Tensor, DIRECTION, WrappedTensorDeviceCopy)
 
 REGISTER_WRAPPED_TENSOR_COPY(VariantDeviceCopyDirection::HOST_TO_DEVICE);
 REGISTER_WRAPPED_TENSOR_COPY(VariantDeviceCopyDirection::DEVICE_TO_HOST);

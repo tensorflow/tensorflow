@@ -216,9 +216,9 @@ tensorflow::ImportNumpy();
 }
 
 
-%typemap(out) StatusOr< std::unique_ptr<Literal> > {
+%typemap(out) StatusOr<Literal> {
   if ($1.ok()) {
-    std::unique_ptr<Literal> value = $1.ConsumeValueOrDie();
+    Literal value = $1.ConsumeValueOrDie();
     $result = numpy::PyObjectFromXlaLiteral(*value);
   } else {
     PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
@@ -346,25 +346,25 @@ tensorflow::ImportNumpy();
 
 // Literal
 
-%typemap(in) const Literal& (StatusOr< std::unique_ptr<Literal> > literal_status) {
+%typemap(in) const Literal& (StatusOr<Literal> literal_status) {
   literal_status = numpy::XlaLiteralFromPyObject($input);
   if (!literal_status.ok()) {
     PyErr_SetString(PyExc_RuntimeError, literal_status.status().ToString().c_str());
     SWIG_fail;
   }
-  $1 = literal_status.ValueOrDie().get();
+  $1 = &literal_status.ValueOrDie();
 }
 
-%typemap(out) std::unique_ptr<Literal> {
+%typemap(out) Literal {
   $result = numpy::PyObjectFromXlaLiteral(*$1);
 }
 
-%typemap(out) StatusOr< std::unique_ptr<Literal> > {
+%typemap(out) StatusOr<Literal> {
   if (!$1.ok()) {
     PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
     SWIG_fail;
   }
-  $result = numpy::PyObjectFromXlaLiteral(*$1.ValueOrDie());
+  $result = numpy::PyObjectFromXlaLiteral($1.ValueOrDie());
 }
 
 %typemap(in) const std::vector<Literal>& (std::vector<Literal> temps) {
@@ -375,13 +375,13 @@ tensorflow::ImportNumpy();
   const int size = PySequence_Size($input);
   for (int i = 0; i < size; ++i) {
     PyObject* o = PySequence_GetItem($input, i);
-    StatusOr< std::unique_ptr<Literal> > literal_status = numpy::XlaLiteralFromPyObject(o);
+    StatusOr<Literal> literal_status = numpy::XlaLiteralFromPyObject(o);
     if (!literal_status.ok()) {
       PyErr_SetString(PyExc_RuntimeError, literal_status.status().ToString().c_str());
       Py_DECREF(o);
       SWIG_fail;
     }
-    temps.push_back(std::move(*literal_status.ConsumeValueOrDie()));
+    temps.push_back(literal_status.ConsumeValueOrDie());
     Py_DECREF(o);
   }
   $1 = &temps;

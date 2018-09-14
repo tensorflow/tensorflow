@@ -92,7 +92,7 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
     dataset = self._structuredDataset(structure, shape, dtype).apply(
         grouping.window_dataset(5)).flat_map(fn)
     get_next = dataset.make_one_shot_iterator().get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       expected = sess.run(self._structuredElement(structure, shape, dtype))
       actual = sess.run(get_next)
       self._assertEqual(expected, actual)
@@ -128,7 +128,7 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
     dataset = self._structuredDataset(structure, shape, dtype).repeat(5).apply(
         grouping.window_dataset(5)).apply(grouping._map_x_dataset(fn))
     get_next = dataset.make_one_shot_iterator().get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       expected = sess.run(
           self._structuredElement(structure, np.concatenate(
               ([5], shape), axis=0), dtype))
@@ -155,7 +155,7 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, {shape_t: shape})
       expected = sess.run(
           self._structuredElement(None, np.concatenate(([5], shape), axis=0),
@@ -235,7 +235,7 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
         structure, shape, dtype).repeat(5).apply(
             grouping.window_dataset(5)).apply(grouping._map_x_dataset(fn))
     get_next = dataset.make_one_shot_iterator().get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       expected = sess.run(
           self._structuredSparseElement(structure,
                                         np.concatenate(([5], shape), axis=0),
@@ -263,7 +263,7 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, {shape_t: shape})
       expected = sess.run(
           self._structuredSparseElement(None,
@@ -321,7 +321,7 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
         grouping.window_dataset(len(shapes))).apply(
             grouping._map_x_dataset(fn))
     get_next = dataset.make_one_shot_iterator().get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       expected_shape = np.maximum(np.amax(shapes, axis=0), padded_shape)
       expected = sess.run(
           self._structuredElement(
@@ -352,7 +352,7 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, {shapes_t: shapes})
       expected_shape = np.maximum(np.amax(shapes, axis=0), padded_shape)
       expected = sess.run(
@@ -380,7 +380,7 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
                 grouping._map_x_dataset(
                     lambda x: batching.padded_batch_window(x, padded_shape)))
     get_next = dataset.make_one_shot_iterator().get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(get_next)
 
@@ -458,7 +458,7 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
         structure, shapes, dtype).apply(grouping.window_dataset(
             len(shapes))).apply(grouping._map_x_dataset(fn))
     get_next = dataset.make_one_shot_iterator().get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       expected = sess.run(
           self._structuredRaggedSparseElement(structure, shapes, dtype,
                                               padded_shape))
@@ -489,7 +489,7 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, {shapes_t: shapes})
       expected = sess.run(
           self._structuredRaggedSparseElement(None, shapes, dtypes.int32,
@@ -516,7 +516,7 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
             grouping._map_x_dataset(
                 lambda x: batching.padded_batch_window(x, padded_shape)))
     get_next = dataset.make_one_shot_iterator().get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(get_next)
 

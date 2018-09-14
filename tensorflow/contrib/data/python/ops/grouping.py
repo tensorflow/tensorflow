@@ -124,7 +124,8 @@ def bucket_by_sequence_length(element_length_func,
                               bucket_batch_sizes,
                               padded_shapes=None,
                               padding_values=None,
-                              pad_to_bucket_boundary=False):
+                              pad_to_bucket_boundary=False,
+                              no_padding=False):
   """A transformation that buckets elements in a `Dataset` by length.
 
   Elements of the `Dataset` are grouped together by length and then are padded
@@ -152,6 +153,8 @@ def bucket_by_sequence_length(element_length_func,
       unknown size to bucket boundary minus 1 (i.e., the maximum length in each
       bucket), and caller must ensure that the source `Dataset` does not contain
       any elements with length longer than `max(bucket_boundaries)`.
+    no_padding: `bool`, indicates whether to pad the batch features (features
+      need to be either of type `tf.SparseTensor` or of same shape).
 
   Returns:
     A `Dataset` transformation function, which can be passed to
@@ -199,7 +202,9 @@ def bucket_by_sequence_length(element_length_func,
 
     def batching_fn(bucket_id, grouped_dataset):
       """Batch elements in dataset."""
-      batch_size = batch_sizes[bucket_id]
+      batch_size = window_size_fn(bucket_id)
+      if no_padding:
+        return grouped_dataset.batch(batch_size)
       none_filler = None
       if pad_to_bucket_boundary:
         err_msg = ("When pad_to_bucket_boundary=True, elements must have "

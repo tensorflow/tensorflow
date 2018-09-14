@@ -39,7 +39,7 @@ class ClipTest(test.TestCase):
     min_val = constant_op.constant([0.5, 0.5, 0.5, 0.5], dtype=dtypes.float32)
     max_val = constant_op.constant([3.5, 3.5, 3.5, 3.5], dtype=dtypes.float32)
     outputs_2 = clip_ops.clip_by_value(inputs, min_val, max_val)
-    with self.test_session():
+    with self.cached_session():
       error_1 = gradient_checker.compute_gradient_error(inputs, [4], outputs_1,
                                                         [4])
       self.assertLess(error_1, 1e-4)
@@ -139,7 +139,7 @@ class ClipTest(test.TestCase):
 
   def testClipByValueNonFinite(self):
     # TODO(b/78016351): Enable test on GPU once the bug is fixed.
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant([float('NaN'), float('Inf'), -float('Inf')])
       np_ans = [float('NaN'), 4.0, -4.0]
       clip_value = 4.0
