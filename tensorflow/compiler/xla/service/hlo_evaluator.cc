@@ -1031,10 +1031,9 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
   }
 
   HloEvaluator embedded_evaluator;
-
-  Literal result;
-  TF_ASSIGN_OR_RETURN(result, embedded_evaluator.Evaluate<const Literal*>(
-                                  *computation, arg_literals));
+  TF_ASSIGN_OR_RETURN(
+      Literal result,
+      embedded_evaluator.Evaluate<const Literal*>(*computation, arg_literals));
 
   evaluated_[call] = std::move(result);
   return Status::OK();
@@ -1064,10 +1063,9 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
   }
 
   HloEvaluator embedded_evaluator;
-  Literal result =
-      embedded_evaluator
-          .Evaluate<const Literal*>(*readded_computation, arg_literals)
-          .ConsumeValueOrDie();
+  TF_ASSIGN_OR_RETURN(Literal result,
+                      embedded_evaluator.Evaluate<const Literal*>(
+                          *readded_computation, arg_literals));
 
   evaluated_[fusion] = std::move(result);
   return Status::OK();
@@ -1086,15 +1084,13 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
   HloEvaluator embedded_evaluator;
   Literal result;
   if (pred.Get<bool>({})) {
-    result = embedded_evaluator
-                 .Evaluate<const Literal*>(*true_computation,
-                                           {&true_computation_arg})
-                 .ConsumeValueOrDie();
+    TF_ASSIGN_OR_RETURN(result,
+                        embedded_evaluator.Evaluate<const Literal*>(
+                            *true_computation, {&true_computation_arg}));
   } else {
-    result = embedded_evaluator
-                 .Evaluate<const Literal*>(*false_computation,
-                                           {&false_computation_arg})
-                 .ConsumeValueOrDie();
+    TF_ASSIGN_OR_RETURN(result,
+                        embedded_evaluator.Evaluate<const Literal*>(
+                            *false_computation, {&false_computation_arg}));
   }
 
   evaluated_[conditional] = std::move(result);
