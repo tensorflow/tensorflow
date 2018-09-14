@@ -287,7 +287,11 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
   se::dnn::ProfileResult best_result;
   int64 best_result_bytes_used = 0;
 
-#if 0
+  optional<F16BufferComparator> comparator;
+  // Use the first algorithm that's supported as reference. There isn't a
+  // particular reason to use it, as any algorithm sufficies. It doesn't make
+  // this algorithm considered correct, though.
+  optional<AlgorithmDesc> first_algorithm;
   for (const AlgorithmDesc& alg :
        GetAlgorithms(params.kind, use_winograd_nonfused, stream_exec_)) {
     ScratchAllocator scratch_allocator(device_ordinal, allocator);
@@ -353,31 +357,6 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
       VLOG(3) << "Run of algorithm " << AlgorithmToString(alg) << " failed.";
     }
   }
-#endif
-  ScratchAllocator scratch_allocator(device_ordinal, allocator);
-  se::dnn::ProfileResult profile_result;
-  VLOG(3) << "Auto-tuning for " << instr->ToString();
-
-  bool launch_ok = RunCudnnConvolution(
-                       kind, input_shape, filter_shape, output_shape, input_buf,
-                       filter_buf, output_buf, &scratch_allocator, window,
-                       dnums, AlgorithmConfig(), &stream, &profile_result)
-                       .ok();
-
-  if (launch_ok && profile_result.is_valid()) {
-    int64 scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
-    VLOG(3) << "Auto-tuning succeeded, taking "
-            << profile_result.elapsed_time_in_ms() << "ms and using "
-            << NumBytesToString(scratch_bytes_used)
-            << " of scratch (Best result: " << best_result.elapsed_time_in_ms()
-            << "ms, " << NumBytesToString(best_result_bytes_used)
-            << " of scratch)";
-    best_result = profile_result;
-    best_result_bytes_used = scratch_bytes_used;
-  } else {
-    VLOG(3) << "Auto-tuning failed.";
-  }
-
   if (best_result.is_valid()) {
     VLOG(2) << "Best algorithm for " << instr->ToString() << ": "
             << AlgorithmToString(best_result.algorithm()) << ", takes "

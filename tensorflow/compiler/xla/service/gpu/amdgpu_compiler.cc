@@ -76,7 +76,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
-#include "tensorflow/compiler/xla/service/while_loop_invariant_code_motion.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -136,7 +135,8 @@ string GetROCDLDir(const HloModuleConfig& config) {
 // Runs optimization passes on the given HLO module.
 tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
                                      se::StreamExecutor* stream_exec,
-                                     DeviceMemoryAllocator* device_allocator) {
+                                     DeviceMemoryAllocator* device_allocator,
+                                     Compiler* compiler) {
   {
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
@@ -247,8 +247,8 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     // the gte(customcall, 0) would probably already be into a fusion node.  We
     // can't simplify across HloComputation boundaries, so in this case we
     // wouldn't be able to simplify away the new_tuple bits.
-    pipeline.AddPass<CudnnConvolutionAlgorithmPicker>(stream_exec,
-                                                      device_allocator);
+    pipeline.AddPass<CudnnConvolutionAlgorithmPicker>(
+        stream_exec, device_allocator, compiler);
     // Clean up new_tuple described above.
     pipeline.AddPass<TupleSimplifier>();
 
@@ -266,10 +266,11 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     fusion.AddPass<GpuMultiOutputFusion>();
     fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                            /*only_fusion_computations=*/true);
+    fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
 
     HloPassPipeline reduce_pipeline("reduce-precision");
-    reduce_pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
+    reduce_pipeline.AddInvariantChecker<HloVerifier>(/*is_layout_sensitive=*/true,
                                                      /*allow_mixed_precision=*/false);
     ReducePrecisionInsertion::AddPasses(
         &reduce_pipeline, hlo_module->config().debug_options(),
@@ -284,14 +285,6 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     }
   }
 
-  {
-    // Do an aggressive LICM pass over while loops.  In particular, this hoists
-    // constants that were sunk by WhileLoopConstantSinking.  Leaving them in
-    // the while loop may result in unnecessary copies.
-    HloPassPipeline pipeline("while-loop-licm");
-    pipeline.AddPass<WhileLoopInvariantCodeMotion>(true);
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
   return tensorflow::Status::OK();
 }
 
@@ -331,7 +324,7 @@ StatusOr<std::unique_ptr<HloModule>> AMDGPUCompiler::RunHloPasses(
   tracing::ScopedActivity activity("HLO Transforms", module->name(),
                               /*is_expensive=*/true);
   TF_RETURN_IF_ERROR(
-      OptimizeHloModule(module.get(), stream_exec, device_allocator));
+      OptimizeHloModule(module.get(), stream_exec, device_allocator, this));
   return std::move(module);
 }
 
