@@ -615,6 +615,7 @@ def categorical_accuracy(y_true, y_pred):
       K.floatx())
 
 
+@tf_export('keras.metrics.sparse_categorical_accuracy')
 def sparse_categorical_accuracy(y_true, y_pred):
   y_true = math_ops.reduce_max(y_true, axis=-1)
   y_pred = math_ops.argmax(y_pred, axis=-1)
