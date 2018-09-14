@@ -90,11 +90,6 @@ using reference_ops::Transpose;
 // Used mainly to convert from old-style shifts (right) to new-style (left).
 static constexpr int kReverseShift = -1;
 
-inline RuntimeShape DimsToShape(const tflite::Dims<4>& dims) {
-  return RuntimeShape(
-      {dims.sizes[3], dims.sizes[2], dims.sizes[1], dims.sizes[0]});
-}
-
 // Make a local VectorMap typedef allowing to map a float array
 // as a Eigen vector expression. The std::conditional here is to
 // construct the suitable Eigen type for the constness of the
