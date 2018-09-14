@@ -1685,6 +1685,43 @@ class FunctionTest(test.TestCase):
         # pylint: disable=protected-access
         self.assertEqual(len(graph._functions), 1)
 
+  def testCallingFunctionWithDifferentVariables(self):
+
+    @function.defun
+    def foo(v):
+      v.assign_add(1.0)
+      return v.read_value()
+
+    v = resource_variable_ops.ResourceVariable(0.0)
+    graph_function = foo.get_concrete_function(v)
+    self.assertEqual(len(graph_function.inputs), 1)
+    self.assertEqual(len(graph_function.captured_inputs), 0)
+
+    self.assertEqual(float(graph_function(v)), 1.0)
+    self.assertEqual(float(graph_function(v)), 2.0)
+
+    w = resource_variable_ops.ResourceVariable(0.0)
+
+    @function.defun
+    def bar(v):
+      del v
+      return constant_op.constant(1.0)
+
+    graph_function = bar.get_concrete_function(v)
+    self.assertEqual(float(graph_function(v)), 1.0)
+    self.assertEqual(float(graph_function(w)), 1.0)
+
+  def testCallingFunctionWithNonTensorsFails(self):
+
+    @function.defun
+    def foo(x):
+      return x
+
+    graph_function = foo.get_concrete_function(constant_op.constant(1.0))
+    with self.assertRaisesRegexp(ValueError, 'All inputs to `Function`s must '
+                                 'be Tensors;.*'):
+      graph_function('Not a Tensor.')
+
 
 @test_util.with_c_shapes
 class AutomaticControlDependenciesTest(test.TestCase):
