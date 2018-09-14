@@ -13,46 +13,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_FUNCTION_OPS_H_
-#define TENSORFLOW_CORE_KERNELS_FUNCTION_OPS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_FUNCTIONAL_OPS_H_
+#define TENSORFLOW_CORE_KERNELS_FUNCTIONAL_OPS_H_
 
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 
-static const char* const kArgOp = FunctionLibraryDefinition::kArgOp;
-static const char* const kRetOp = FunctionLibraryDefinition::kRetOp;
-
-class ArgOp : public OpKernel {
+class RemoteCallOp : public AsyncOpKernel {
  public:
-  explicit ArgOp(OpKernelConstruction* ctx);
+  explicit RemoteCallOp(OpKernelConstruction* ctx);
 
-  void Compute(OpKernelContext* ctx) override;
+  ~RemoteCallOp() override {}
 
-  bool IsExpensive() override { return false; }
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
 
  private:
-  int index_;
-  DataType dtype_;
+  NameAttrList func_;
+  DataTypeVector input_dtypes_;
+  DataTypeVector output_dtypes_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ArgOp);
-};
+  mutex mu_;
+  typedef std::pair<string, FunctionLibraryRuntime*> FunctionTarget;
+  std::map<FunctionTarget, FunctionLibraryRuntime::Handle> handle_cache_
+      GUARDED_BY(mu_);
 
-class RetvalOp : public OpKernel {
- public:
-  explicit RetvalOp(OpKernelConstruction* ctx);
-
-  void Compute(OpKernelContext* ctx) override;
-
-  bool IsExpensive() override { return false; }
-
- private:
-  int index_;
-  DataType dtype_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(RetvalOp);
+  TF_DISALLOW_COPY_AND_ASSIGN(RemoteCallOp);
 };
 
 }  // namespace tensorflow
-#endif  // TENSORFLOW_CORE_KERNELS_FUNCTION_OPS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_FUNCTIONAL_OPS_H_

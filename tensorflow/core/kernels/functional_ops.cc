@@ -15,15 +15,18 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/device.h"
+#if GOOGLE_CUDA
 #include "tensorflow/core/framework/device_base.h"
 #endif
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/kernels/functional_ops.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
@@ -31,7 +34,109 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef FunctionLibraryRuntime::Handle FHandle;
 typedef std::vector<Tensor> TensorVec;
 
+RemoteCallOp::RemoteCallOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
+  OP_REQUIRES_OK(ctx,
+                 ctx->GetAttr(FunctionLibraryDefinition::kFuncAttr, &func_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("Tin", &input_dtypes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("Tout", &output_dtypes_));
+}
+
+void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
+  FunctionLibraryRuntime* lib = ctx->function_library();
+  OP_REQUIRES_ASYNC(ctx, lib != nullptr,
+                    errors::Internal("No function library is provided."), done);
+
+  const string& source_device = lib->device()->name();
+  const Tensor* target;
+  OP_REQUIRES_OK_ASYNC(ctx, ctx->input("target", &target), done);
+  string target_device;
+  OP_REQUIRES_OK_ASYNC(
+      ctx,
+      DeviceNameUtils::CanonicalizeDeviceName(target->scalar<string>()(),
+                                              source_device, &target_device),
+      done);
+
+  AttrValueMap attr_values = func_.attr();
+  FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+  instantiate_opts.target = target_device;
+
+  FunctionTarget function_target = {target_device, lib};
+
+  FunctionLibraryRuntime::Handle handle;
+  {
+    mutex_lock l(mu_);
+    auto cached_entry = handle_cache_.find(function_target);
+    if (cached_entry != handle_cache_.end()) {
+      handle = cached_entry->second;
+    } else {
+      VLOG(1) << "Instantiating " << func_.name() << " on " << target_device;
+      tracing::ScopedActivity activity(strings::StrCat(
+          "RemoteCall: Instantiate: ", func_.name(), " on ", target_device));
+      OP_REQUIRES_OK_ASYNC(
+          ctx,
+          lib->Instantiate(func_.name(), AttrSlice(&attr_values),
+                           instantiate_opts, &handle),
+          done);
+      auto insert_result = handle_cache_.insert({function_target, handle});
+      CHECK(insert_result.second) << "Insert unsuccessful.";
+      VLOG(1) << "Instantiated " << func_.name() << " on " << target_device
+              << ", resulting in handle: " << handle << " flr: " << lib;
+    }
+  }
+
+  OpInputList arguments;
+  OP_REQUIRES_OK_ASYNC(ctx, ctx->input_list("args", &arguments), done);
+
+  FunctionLibraryRuntime::Options opts;
+  opts.step_id = ctx->step_id();
+  opts.runner = ctx->runner();
+  opts.source_device = source_device;
+  if (opts.source_device != target_device) {
+    opts.remote_execution = true;
+  }
+  opts.create_rendezvous = true;
+  std::vector<Tensor> args;
+  args.reserve(arguments.size());
+  for (const Tensor& argument : arguments) {
+    args.push_back(argument);
+  }
+  for (const auto& dtype : input_dtypes_) {
+    AllocatorAttributes arg_alloc_attrs;
+    if (DataTypeAlwaysOnHost(dtype)) {
+      arg_alloc_attrs.set_on_host(true);
+    }
+    opts.args_alloc_attrs.push_back(arg_alloc_attrs);
+  }
+  for (const auto& dtype : output_dtypes_) {
+    AllocatorAttributes ret_alloc_attrs;
+    if (DataTypeAlwaysOnHost(dtype)) {
+      ret_alloc_attrs.set_on_host(true);
+    }
+    opts.rets_alloc_attrs.push_back(ret_alloc_attrs);
+  }
+  auto* rets = new std::vector<Tensor>;
+  auto* activity = new tracing::ScopedActivity(strings::StrCat(
+      "RemoteCall: Run: ", func_.name(), " on ", target_device));
+  VLOG(1) << "Running " << func_.name() << " on " << target_device
+          << " with handle: " << handle;
+  lib->Run(opts, handle, args, rets,
+           [rets, activity, done, ctx](const Status& status) {
+             if (!status.ok()) {
+               ctx->SetStatus(status);
+             } else {
+               for (size_t i = 0; i < rets->size(); ++i) {
+                 ctx->set_output(i, (*rets)[i]);
+               }
+             }
+             delete rets;
+             delete activity;
+             done();
+           });
+}
+
 namespace {
+
+static const char* const kGradientOp = FunctionLibraryDefinition::kGradientOp;
 
 // Helper to instantiate function "func" in the library "lib".
 Status Instantiate(FunctionLibraryRuntime* lib, const NameAttrList& func,
@@ -121,6 +226,77 @@ void SetRunOptions(OpKernelContext* ctx, FunctionLibraryRuntime::Options* opts,
   }
   opts->runner = ctx->runner();
 }
+
+class SymbolicGradientOp : public AsyncOpKernel {
+ public:
+  explicit SymbolicGradientOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {}
+
+  ~SymbolicGradientOp() override {}
+
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
+    FunctionLibraryRuntime* lib = ctx->function_library();
+    OP_REQUIRES_ASYNC(ctx, lib != nullptr,
+                      errors::Internal("No function library is provided."),
+                      done);
+
+    FunctionLibraryRuntime::Handle handle;
+    OP_REQUIRES_OK_ASYNC(
+        ctx, lib->Instantiate(kGradientOp, AttrSlice(def()), &handle), done);
+
+    FunctionLibraryRuntime::Options opts;
+    opts.step_id = ctx->step_id();
+    opts.rendezvous = ctx->rendezvous();
+    opts.cancellation_manager = ctx->cancellation_manager();
+    opts.runner = ctx->runner();
+    opts.stats_collector = ctx->stats_collector();
+    opts.step_container = ctx->step_container();
+    opts.collective_executor = ctx->collective_executor();
+    std::vector<Tensor> args;
+    args.reserve(ctx->num_inputs());
+    for (int i = 0; i < ctx->num_inputs(); ++i) {
+      args.push_back(ctx->input(i));
+    }
+    std::vector<Tensor>* rets = new std::vector<Tensor>;
+    lib->Run(opts, handle, args, rets, [ctx, done, rets](const Status& status) {
+      if (!status.ok()) {
+        ctx->SetStatus(status);
+      } else if (rets->size() != ctx->num_outputs()) {
+        ctx->SetStatus(errors::InvalidArgument(
+            "SymGrad expects to return ", ctx->num_outputs(),
+            " tensor(s), but get ", rets->size(), " tensor(s) instead."));
+      } else {
+        for (size_t i = 0; i < rets->size(); ++i) {
+          ctx->set_output(i, (*rets)[i]);
+        }
+      }
+      delete rets;
+      done();
+    });
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientOp);
+};
+
+REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_CPU),
+                        SymbolicGradientOp);
+REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_GPU),
+                        SymbolicGradientOp);
+#if TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_SYCL),
+                        SymbolicGradientOp);
+
+#endif  // TENSORFLOW_USE_SYCL
+
+REGISTER_KERNEL_BUILDER(
+    Name("RemoteCall").Device(DEVICE_CPU).HostMemory("target"), RemoteCallOp);
+REGISTER_KERNEL_BUILDER(
+    Name("RemoteCall").Device(DEVICE_GPU).HostMemory("target"), RemoteCallOp);
+#if TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("RemoteCall").Device(DEVICE_SYCL).HostMemory("target"), RemoteCallOp);
+
+#endif  // TENSORFLOW_USE_SYCL
 
 class IfOp : public AsyncOpKernel {
  public:
