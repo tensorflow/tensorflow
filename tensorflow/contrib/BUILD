@@ -166,7 +166,9 @@ cc_library(
             "//tensorflow/contrib/kinesis:dataset_kernels",
         ],
         "//conditions:default": [],
-    }),
+    }) + if_not_windows([
+        "//tensorflow/contrib/tensorrt:trt_engine_op_kernel",
+    ]),
 )
 
 cc_library(
@@ -203,5 +205,7 @@ cc_library(
             "//tensorflow/contrib/kinesis:dataset_ops_op_lib",
         ],
         "//conditions:default": [],
-    }),
+    }) + if_not_windows([
+        "//tensorflow/contrib/tensorrt:trt_engine_op_op_lib",
+    ]),
 )

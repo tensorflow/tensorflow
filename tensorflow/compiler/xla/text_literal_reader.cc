@@ -39,8 +39,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadPath(
-    absl::string_view path) {
+StatusOr<Literal> TextLiteralReader::ReadPath(absl::string_view path) {
   CHECK(!absl::EndsWith(path, ".gz"))
       << "TextLiteralReader no longer supports reading .gz files";
   std::unique_ptr<tensorflow::RandomAccessFile> file;
@@ -57,7 +56,7 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadPath(
 TextLiteralReader::TextLiteralReader(tensorflow::RandomAccessFile* file)
     : file_(file) {}
 
-StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
+StatusOr<Literal> TextLiteralReader::ReadAllLines() {
   tensorflow::io::RandomAccessInputStream stream(file_.get());
   tensorflow::io::BufferedInputStream buf(&stream, 65536);
   string shape_string;
@@ -74,9 +73,9 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
         ShapeUtil::HumanString(shape));
   }
 
-  auto result = absl::make_unique<Literal>(shape);
+  Literal result(shape);
   const float fill = std::numeric_limits<float>::quiet_NaN();
-  result->PopulateWithValue<float>(fill);
+  result.PopulateWithValue<float>(fill);
   std::vector<absl::string_view> pieces;
   std::vector<absl::string_view> coordinates;
   std::vector<int64> coordinate_values;
@@ -116,7 +115,7 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
           "\"%s\"",
           shape.dimensions_size(), coordinate_values.size(), line);
     }
-    result->Set<float>(coordinate_values, value);
+    result.Set<float>(coordinate_values, value);
   }
   return std::move(result);
 }

@@ -451,13 +451,13 @@ class TransposeTest(test.TestCase):
         array_ops.transpose(array_ops.placeholder(dtypes.int32)).get_shape())
 
   def testNullTensor(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant([], dtype=dtypes.float32, shape=[1, 4, 0])
       xt = array_ops.transpose(x, [0, 2, 1]).eval()
       self.assertAllEqual(xt.shape, (1, 0, 4))
 
   def _testError(self, x, p, err):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError(err):
         array_ops.transpose(x, p).eval()
 

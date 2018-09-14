@@ -18,7 +18,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_CLUSTER_UTIL_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_CLUSTER_UTIL_H_
 
-#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/core/graph/algorithm.h"

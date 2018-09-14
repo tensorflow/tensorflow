@@ -337,11 +337,6 @@ py_test(
     size = "large",
     srcs = ["layers/convolutional_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "manual",
-        "noasan",  # times out b/63678675
-        "notsan",
-    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

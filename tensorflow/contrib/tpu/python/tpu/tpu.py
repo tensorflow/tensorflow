@@ -654,13 +654,16 @@ def split_compile_and_replicate(computation,
       # variables.
       # Partitioned variables is not supported (b/112311320).
       def custom_getter(getter, name, *args, **kwargs):
+        """Variables on TPU have a few restrictions."""
         partitioner = kwargs["partitioner"]
-        if partitioner is None:
-          return getter(name, *args, **kwargs)
-        else:
-          raise ValueError(
+        if partitioner is not None:
+          kwargs["partitioner"] = None
+          logging.warning(
               "Partitioned variables are not supported on TPU. Got "
-              "`partitioner` that is {}.".format(partitioner))
+              "`partitioner` that is {} for variable {}. "
+              "Setting `partitioner` to `None`."
+              .format(partitioner, name))
+        return getter(name, *args, **kwargs)
 
       vscope = variable_scope.get_variable_scope()
 

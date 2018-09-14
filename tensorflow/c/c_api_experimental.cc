@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"

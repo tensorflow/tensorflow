@@ -26,8 +26,8 @@ enum class FusedActivationFunctionType : uint8 { kNone, kRelu6, kRelu1, kRelu };
 enum class PaddingType : uint8 { kNone, kSame, kValid };
 
 struct PaddingValues {
-  int8 width;
-  int8 height;
+  int16 width;
+  int16 height;
 };
 
 // This enumeration allows for non-default formats for the weights array
@@ -734,10 +734,10 @@ struct ConvParams {
   PaddingType padding_type;
   PaddingValues padding_values;
   // TODO(starka): This was just "stride", so check that width+height is OK.
-  int8 stride_width;
-  int8 stride_height;
-  int8 dilation_width_factor;
-  int8 dilation_height_factor;
+  int16 stride_width;
+  int16 stride_height;
+  int16 dilation_width_factor;
+  int16 dilation_height_factor;
   // uint8 inference params.
   // TODO(b/65838351): Use smaller types if appropriate.
   int32 input_offset;
@@ -745,8 +745,12 @@ struct ConvParams {
   int32 output_offset;
   int32 output_multiplier;
   int output_shift;
-  int32 output_activation_min;
-  int32 output_activation_max;
+  // uint8, etc, activation params.
+  int32 quantized_activation_min;
+  int32 quantized_activation_max;
+  // float activation params.
+  float float_activation_min;
+  float float_activation_max;
 };
 
 struct DepthToSpaceParams {
@@ -756,8 +760,8 @@ struct DepthToSpaceParams {
 struct DepthwiseParams {
   PaddingType padding_type;
   PaddingValues padding_values;
-  int8 stride;
-  int8 depth_multiplier;
+  int16 stride;
+  int16 depth_multiplier;
   // uint8 inference params.
   // TODO(b/65838351): Use smaller types if appropriate.
   int32 input_offset;
@@ -765,8 +769,12 @@ struct DepthwiseParams {
   int32 output_offset;
   int32 output_multiplier;
   int output_shift;
-  int32 output_activation_min;
-  int32 output_activation_max;
+  // uint8, etc, activation params.
+  int32 quantized_activation_min;
+  int32 quantized_activation_max;
+  // float activation params.
+  float float_activation_min;
+  float float_activation_max;
 };
 
 struct DequantizationParams {
@@ -787,13 +795,17 @@ struct FullyConnectedParams {
   int32 output_offset;
   int32 output_multiplier;
   int output_shift;
-  int32 output_activation_min;
-  int32 output_activation_max;
+  // uint8, etc, activation params.
+  int32 quantized_activation_min;
+  int32 quantized_activation_max;
+  // float activation params.
+  float float_activation_min;
+  float float_activation_max;
   FullyConnectedWeightsFormat weights_format;
 };
 
 struct GatherParams {
-  int8 input_rank;
+  int16 input_rank;
   int16 axis;
 };
 

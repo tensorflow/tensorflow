@@ -69,7 +69,7 @@ class OverrideThreadpoolDatasetTest(test.TestCase, parameterized.TestCase):
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       thread_ids = []
       try:

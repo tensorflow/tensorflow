@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
@@ -93,8 +92,9 @@ Status Main(const MainFlags& flags) {
   // Write output files.
   Env* env = Env::Default();
   const std::vector<char>& obj = compile_result.aot->object_file_data();
-  TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_function_object,
-                                       StringPiece(obj.data(), obj.size())));
+  TF_RETURN_IF_ERROR(
+      WriteStringToFile(env, flags.out_function_object,
+                        absl::string_view(obj.data(), obj.size())));
   CodegenOpts codegen_opts;
   codegen_opts.gen_name_to_index = flags.gen_name_to_index;
   codegen_opts.gen_program_shape = flags.gen_program_shape;

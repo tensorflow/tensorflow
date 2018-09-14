@@ -443,7 +443,7 @@ Status FindCompilationCandidates(
         !registration->requires_compilation) {
       const OpDef* op_def;
       TF_RETURN_IF_ERROR(
-          OpRegistry::Global()->LookUpOpDef(node->type_string(), &op_def));
+          graph.op_registry()->LookUpOpDef(node->type_string(), &op_def));
       if (op_def->is_stateful()) {
         // We need to be able to constant fold the nodes in
         // compile_time_const_nodes given constant inputs (required by XLA) and

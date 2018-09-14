@@ -343,7 +343,7 @@ class UniformUnitScalingInitializationTest(test.TestCase):
 
   def testZeroSize(self):
     shape = [0, 2]
-    with self.test_session():
+    with self.cached_session():
       x = variable_scope.get_variable(
           "x",
           shape=shape,

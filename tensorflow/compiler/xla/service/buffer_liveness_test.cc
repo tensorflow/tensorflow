@@ -440,15 +440,15 @@ TEST_F(BufferLivenessTest, TupleConstantLiveOut) {
   // computation. The buffer containing {0, 1} is copied by GetTupleElement, and
   // the buffers containing {3} and 3 are dead.
   auto builder = HloComputation::Builder(TestName());
-  auto inner_tuple0 =
-      LiteralUtil::MakeTuple({LiteralUtil::CreateR0<int64>(0).get(),
-                              LiteralUtil::CreateR0<int64>(1).get()});
-  auto inner_tuple1 =
-      LiteralUtil::MakeTuple({LiteralUtil::CreateR0<int64>(3).get()});
+  Literal elements0[] = {LiteralUtil::CreateR0<int64>(0),
+                         LiteralUtil::CreateR0<int64>(1)};
+  auto inner_tuple0 = LiteralUtil::MakeTuple({&elements0[0], &elements0[1]});
+  Literal element1 = LiteralUtil::CreateR0<int64>(3);
+  auto inner_tuple1 = LiteralUtil::MakeTuple({&element1});
   auto tuple_constant = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::MakeTuple({inner_tuple0.get(), inner_tuple1.get()})));
+      LiteralUtil::MakeTuple({&inner_tuple0, &inner_tuple1})));
   builder.AddInstruction(HloInstruction::CreateGetTupleElement(
-      inner_tuple0->shape(), tuple_constant, 0));
+      inner_tuple0.shape(), tuple_constant, 0));
 
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());

@@ -127,17 +127,19 @@ NO_DOCKER_OPT_FLAG="--genrule_strategy=standalone"
 
 DO_DOCKER=1
 
-BAZEL_CMD="bazel test"
-BAZEL_BUILD_ONLY_CMD="bazel build"
-BAZEL_CLEAN_CMD="bazel clean"
 
-# Default flags:
+# Helpful flags:
 # --test_summary=detailed: Tell us more about which targets are being built
 # --keep_going: Don't stop at the first failure; tell us all the failures
 # --build_tests_only: Don't build targets depended on by tests if the test is
 #                     disabled. Also saves some compilation time. Otherwise,
 #                     tries to build everything.
-DEFAULT_BAZEL_CONFIGS="--test_summary=detailed --build_tests_only --keep_going"
+BAZEL_TEST_FLAGS="--test_summary=detailed --build_tests_only --keep_going"
+BAZEL_BUILD_FLAGS="--keep_going"
+
+BAZEL_CMD="bazel test ${BAZEL_TEST_FLAGS}"
+BAZEL_BUILD_ONLY_CMD="bazel build ${BAZEL_BUILD_FLAGS}"
+BAZEL_CLEAN_CMD="bazel clean"
 
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
 PIP_TEST_TUTORIALS_FLAG="--test_tutorials"
@@ -393,7 +395,7 @@ fi
 EXTRA_ARGS="${EXTRA_ARGS} --distinct_host_configuration=false"
 
 if [[ ! -z "${TF_BAZEL_BUILD_ONLY}" ]] &&
-   [[ "${TF_BAZEL_BUILD_ONLY}" != "0" ]];then 
+   [[ "${TF_BAZEL_BUILD_ONLY}" != "0" ]];then
   BAZEL_CMD=${BAZEL_BUILD_ONLY_CMD}
 fi
 

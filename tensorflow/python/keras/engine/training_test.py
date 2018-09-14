@@ -366,7 +366,7 @@ class TrainingTest(test.TestCase):
     if scipy_sparse is None:
       return
 
-    with self.test_session():
+    with self.cached_session():
       test_inputs = [
           scipy_sparse.random(6, 3, density=0.25).tocsr() for _ in range(2)
       ]
@@ -389,7 +389,7 @@ class TrainingTest(test.TestCase):
       model.evaluate(test_inputs, test_outputs, batch_size=2)
 
   def test_compile_with_sparse_placeholders(self):
-    with self.test_session():
+    with self.cached_session():
       input_layer = keras.layers.Input(shape=(10,), sparse=True)
       weights = variables_lib.Variable(
           np.ones((10, 1)).astype(np.float32), name='weights')
@@ -405,7 +405,7 @@ class TrainingTest(test.TestCase):
     val_a = np.random.random((10, 4))
     val_out = np.random.random((10, 4))
 
-    with self.test_session():
+    with self.cached_session():
       a = keras.layers.Input(shape=(4,))
       layer = keras.layers.BatchNormalization(input_shape=(4,))
       b = layer(a)
@@ -441,7 +441,7 @@ class TrainingTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_compile_warning_for_loss_missing_output(self):
-    with self.test_session():
+    with self.cached_session():
       inp = keras.layers.Input(shape=(16,), name='input_a')
       out_1 = keras.layers.Dense(8, name='dense_1')(inp)
       out_2 = keras.layers.Dense(3, activation='softmax', name='dense_2')(out_1)
@@ -654,7 +654,7 @@ class LossWeightingTest(test.TestCase):
     timesteps = 3
     learning_rate = 0.001
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(
           keras.layers.TimeDistributed(
@@ -741,7 +741,7 @@ class LossWeightingTest(test.TestCase):
     timesteps = 3
     learning_rate = 0.001
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(
           keras.layers.TimeDistributed(
@@ -810,7 +810,7 @@ class LossWeightingTest(test.TestCase):
     timesteps = 3
     learning_rate = 0.001
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(
           keras.layers.TimeDistributed(
@@ -854,7 +854,7 @@ class LossMaskingTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_masking_graph_sequential(self):
-    with self.test_session():
+    with self.cached_session():
       x = np.array([[[1], [1]], [[0], [0]]])
       model = keras.models.Sequential()
       model.add(keras.layers.Masking(mask_value=0, input_shape=(2, 1)))
@@ -868,7 +868,7 @@ class LossMaskingTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_masking_deferred_sequential(self):
-    with self.test_session():
+    with self.cached_session():
       x = np.array([[[1], [1]], [[0], [0]]])
       model = keras.models.Sequential()
       model.add(keras.layers.Masking(mask_value=0))
@@ -882,7 +882,7 @@ class LossMaskingTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_masking_functional(self):
-    with self.test_session():
+    with self.cached_session():
       x = np.array([[[1], [1]], [[0], [0]]])
       inputs = keras.layers.Input((2, 1))
       outputs = keras.layers.Masking(mask_value=0)(inputs)
@@ -912,7 +912,7 @@ class LossMaskingTest(test.TestCase):
       def compute_output_shape(self, input_shape):
         return input_shape
 
-    with self.test_session():
+    with self.cached_session():
       x = np.random.random((5, 3))
       inputs = keras.layers.Input((3,))
       masked = keras.layers.Masking(mask_value=0)(inputs)
@@ -924,7 +924,7 @@ class LossMaskingTest(test.TestCase):
       model.train_on_batch(x, y)
 
   def test_loss_masking(self):
-    with self.test_session():
+    with self.cached_session():
       weighted_loss = weighted_masked_objective(keras.losses.get('mae'))
       shape = (3, 4, 2)
       x = np.arange(24).reshape(shape)
@@ -945,12 +945,12 @@ class LossMaskingTest(test.TestCase):
 class LearningPhaseTest(test.TestCase):
 
   def test_empty_model_no_learning_phase(self):
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       self.assertFalse(model.uses_learning_phase)
 
   def test_dropout_has_learning_phase(self):
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_dim=3))
       model.add(keras.layers.Dropout(0.5))
@@ -961,7 +961,7 @@ class LearningPhaseTest(test.TestCase):
 class TestDynamicTrainability(test.TestCase):
 
   def test_trainable_warning(self):
-    with self.test_session():
+    with self.cached_session():
       x = np.random.random((5, 3))
       y = np.random.random((5, 2))
 
@@ -974,7 +974,7 @@ class TestDynamicTrainability(test.TestCase):
       self.assertRaises(Warning)
 
   def test_trainable_argument(self):
-    with self.test_session():
+    with self.cached_session():
       x = np.random.random((5, 3))
       y = np.random.random((5, 2))
 
@@ -997,7 +997,7 @@ class TestDynamicTrainability(test.TestCase):
       self.assertAllClose(out, out_2)
 
   def test_layer_trainability_switch(self):
-    with self.test_session():
+    with self.cached_session():
       # with constructor argument, in Sequential
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, trainable=False, input_dim=1))
@@ -1027,7 +1027,7 @@ class TestDynamicTrainability(test.TestCase):
       self.assertListEqual(model.trainable_weights, [])
 
   def test_model_trainability_switch(self):
-    with self.test_session():
+    with self.cached_session():
       # a non-trainable model has no trainable weights
       x = keras.layers.Input(shape=(1,))
       y = keras.layers.Dense(2)(x)
@@ -1042,7 +1042,7 @@ class TestDynamicTrainability(test.TestCase):
       self.assertListEqual(model.trainable_weights, [])
 
   def test_nested_model_trainability(self):
-    with self.test_session():
+    with self.cached_session():
       # a Sequential inside a Model
       inner_model = keras.models.Sequential()
       inner_model.add(keras.layers.Dense(2, input_dim=1))
@@ -1121,7 +1121,7 @@ class TestGeneratorMethods(test.TestCase):
         y = arr_labels[start: end]
         yield x, y
 
-    with self.test_session():
+    with self.cached_session():
       x = keras.Input((2,))
       y = keras.layers.Dense(1)(x)
       fn_model = keras.models.Model(x, y)
@@ -1207,7 +1207,7 @@ class TestGeneratorMethods(test.TestCase):
         w = arr_sample_weights[start: end]
         yield x, y, w
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(1, input_shape=(2,)))
       model.compile(
@@ -1244,7 +1244,7 @@ class TestGeneratorMethods(test.TestCase):
       while 1:
         yield 0
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(1, input_shape=(2,)))
       model.compile(loss='mse', optimizer='sgd')
@@ -1302,7 +1302,7 @@ class TestGeneratorMethods(test.TestCase):
         w = arr_sample_weights[start: end]
         yield x, y, w
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(1, input_shape=(2,)))
       model.compile(loss='mse', optimizer='sgd')
@@ -1321,6 +1321,57 @@ class TestGeneratorMethods(test.TestCase):
                         max_queue_size=10,
                         workers=0,
                         use_multiprocessing=False)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_generator_input_to_fit_eval_predict(self):
+    val_data = np.ones([10, 10], np.float32), np.ones([10, 1], np.float32)
+
+    def custom_generator():
+      while True:
+        yield np.ones([10, 10], np.float32), np.ones([10, 1], np.float32)
+
+    inputs = keras.layers.Input(shape=(10,))
+    x = keras.layers.Dense(10, activation='relu')(inputs)
+    outputs = keras.layers.Dense(1, activation='sigmoid')(x)
+    model = keras.Model(inputs, outputs)
+
+    model.compile(RMSPropOptimizer(0.001), 'binary_crossentropy')
+    model.fit(
+        custom_generator(),
+        steps_per_epoch=2,
+        validation_data=val_data,
+        epochs=2)
+    model.evaluate(custom_generator(), steps=2)
+    model.predict(custom_generator(), steps=2)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_sequence_input_to_fit_eval_predict(self):
+    val_data = np.ones([10, 10], np.float32), np.ones([10, 1], np.float32)
+
+    class CustomSequence(keras.utils.Sequence):
+
+      def __getitem__(self, idx):
+        return np.ones([10, 10], np.float32), np.ones([10, 1], np.float32)
+
+      def __len__(self):
+        return 2
+
+    inputs = keras.layers.Input(shape=(10,))
+    x = keras.layers.Dense(10, activation='relu')(inputs)
+    outputs = keras.layers.Dense(1, activation='sigmoid')(x)
+    model = keras.Model(inputs, outputs)
+
+    model.compile(RMSPropOptimizer(0.001), 'binary_crossentropy')
+    model.fit(CustomSequence(), validation_data=val_data, epochs=2)
+    model.evaluate(CustomSequence())
+    model.predict(CustomSequence())
+
+    with self.assertRaisesRegexp(ValueError, '`y` argument is not supported'):
+      model.fit(CustomSequence(), y=np.ones([10, 1]))
+
+    with self.assertRaisesRegexp(ValueError,
+                                 '`sample_weight` argument is not supported'):
+      model.fit(CustomSequence(), sample_weight=np.ones([10, 1]))
 
 
 class TestTrainingUtils(test.TestCase):
@@ -1360,7 +1411,7 @@ class TestTrainingUtils(test.TestCase):
 class TestTrainingWithDataTensors(test.TestCase):
 
   def test_training_and_eval_methods_on_symbolic_tensors_single_io(self):
-    with self.test_session():
+    with self.cached_session():
       x = keras.layers.Input(shape=(3,), name='input')
       y = keras.layers.Dense(4, name='dense')(x)
       model = keras.Model(x, y)
@@ -1400,7 +1451,7 @@ class TestTrainingWithDataTensors(test.TestCase):
                 validation_data=(inputs, targets), validation_steps=2)
 
   def test_training_and_eval_methods_on_symbolic_tensors_multi_io(self):
-    with self.test_session():
+    with self.cached_session():
       a = keras.layers.Input(shape=(3,), name='input_a')
       b = keras.layers.Input(shape=(3,), name='input_b')
 
@@ -1501,7 +1552,7 @@ class TestTrainingWithDataTensors(test.TestCase):
     by only passing them data for the placeholder inputs
     in the model.
     """
-    with self.test_session():
+    with self.cached_session():
       input_a_np = np.random.random((10, 3))
       input_b_np = np.random.random((10, 3))
 
@@ -1632,7 +1683,7 @@ class TestTrainingWithDataTensors(test.TestCase):
       self.assertEqual(out.shape, (10 * 3, 4))
 
   def test_model_with_partial_loss(self):
-    with self.test_session():
+    with self.cached_session():
       a = keras.Input(shape=(3,), name='input_a')
       a_2 = keras.layers.Dense(4, name='dense_1')(a)
       dp = keras.layers.Dropout(0.5, name='dropout')
@@ -1673,7 +1724,7 @@ class TestTrainingWithDataTensors(test.TestCase):
       _ = model.evaluate(input_a_np, [output_a_np])
 
   def test_model_with_external_loss(self):
-    with self.test_session():
+    with self.cached_session():
       # None loss, only regularization loss.
       a = keras.Input(shape=(3,), name='input_a')
       a_2 = keras.layers.Dense(4, name='dense_1',
@@ -1803,7 +1854,7 @@ class TestTrainingWithDataTensors(test.TestCase):
       self.assertEqual(out[1].shape, (10 * 3, 4))
 
   def test_target_tensors(self):
-    with self.test_session():
+    with self.cached_session():
       # single-output, as list
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(4, input_shape=(4,), name='dense'))
@@ -1864,7 +1915,7 @@ class TestTrainingWithDataTensors(test.TestCase):
                            sample_weight={'dense_a': np.random.random((10,))})
 
   def test_model_custom_target_tensors(self):
-    with self.test_session():
+    with self.cached_session():
       a = keras.Input(shape=(3,), name='input_a')
       b = keras.Input(shape=(3,), name='input_b')
 
@@ -2154,7 +2205,7 @@ class TestTrainingWithDataset(test.TestCase):
     model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
 
   def test_dataset_input_shape_validation(self):
-    with self.test_session():
+    with self.cached_session():
       model = testing_utils.get_small_functional_mlp(1, 4, input_dim=3)
       model.compile(optimizer=RMSPropOptimizer(learning_rate=0.001), loss='mse')
 
@@ -2205,7 +2256,26 @@ class TestTrainingWithMetrics(test.TestCase):
         'dense_binary_accuracy', 'dropout_mean_squared_error',
         'dropout_binary_accuracy'
     ]
+    reference_stateful_metric_names = [
+        'dense_binary_accuracy', 'dropout_binary_accuracy'
+    ]
     self.assertEqual(reference_metric_names, model.metrics_names)
+    self.assertEqual(reference_stateful_metric_names,
+                     model.stateful_metric_names)
+
+    # Verify that model metric names are not altered during training.
+    input_a_np = np.random.random((10, 3))
+    input_b_np = np.random.random((10, 3))
+
+    output_d_np = np.random.random((10, 4))
+    output_e_np = np.random.random((10, 4))
+
+    model.fit([input_a_np, input_b_np], [output_d_np, output_e_np],
+              epochs=1,
+              batch_size=5)
+    self.assertEqual(reference_metric_names, model.metrics_names)
+    self.assertEqual(reference_stateful_metric_names,
+                     model.stateful_metric_names)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_metrics_correctness(self):
@@ -2333,7 +2403,7 @@ class TestTrainingWithMetrics(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_metrics_masking(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       model = keras.models.Sequential()
       model.add(keras.layers.Masking(mask_value=0, input_shape=(2, 1)))

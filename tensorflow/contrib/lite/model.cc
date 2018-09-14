@@ -177,6 +177,11 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
 namespace {
 template <class T>
 std::vector<int> FlatBufferIntArrayToVector(T* flat_array) {
+  // Initialize shape of tensors with null shape. Empty vectors are converted
+  // to nullptr for models that are constructed via flatbuffers::Pack.
+  if (flat_array == nullptr) {
+    return {};
+  }
   std::vector<int> ret(flat_array->Length());
   for (int i = 0; i < flat_array->Length(); i++) {
     ret[i] = flat_array->Get(i);

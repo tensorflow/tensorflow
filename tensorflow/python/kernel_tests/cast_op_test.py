@@ -174,7 +174,7 @@ class CastOpTest(test.TestCase):
     self.assertAllEqual(np.isnan(self._cast(np.nan, np.float64, True)), True)
 
   def _OpError(self, x, dtype, err):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError(err):
         math_ops.cast(x, dtype).eval()
 
@@ -182,7 +182,7 @@ class CastOpTest(test.TestCase):
     self._OpError(np.arange(0, 10), dtypes.string, "Cast.*int64.*string.*")
 
   def testCastToTypeOfVariable(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = variables.Variable(5, dtype=dtypes.float32)
       y = variables.Variable(True, dtype=dtypes.bool)
       cast = math_ops.cast(y, x.dtype)
@@ -193,7 +193,7 @@ class CastOpTest(test.TestCase):
     t = [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
     for src_t in t:
       for dst_t in t:
-        with self.test_session():
+        with self.cached_session():
           x = constant_op.constant(1.0, src_t)
           z = array_ops.identity(x)
           y = math_ops.cast(z, dst_t)
@@ -209,7 +209,7 @@ class SparseTensorCastTest(test.TestCase):
     shape = constant_op.constant([3], dtypes.int64)
     st = sparse_tensor.SparseTensor(indices, values, shape)
     st_cast = math_ops.cast(st, dtypes.float32)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(st_cast.indices.eval(), [[0], [1], [2]])
       self.assertAllEqual(st_cast.values.eval(),
                           np.array([1, 2, 3], np.float32))
@@ -221,7 +221,7 @@ class SaturateCastTest(test.TestCase):
   def testSaturate(self):
     in_types = dtypes.float32,
     out_types = dtypes.int8, dtypes.uint8, dtypes.int16, dtypes.float32
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for in_type in in_types:
         for out_type in out_types:
           lo, hi = in_type.min, in_type.max

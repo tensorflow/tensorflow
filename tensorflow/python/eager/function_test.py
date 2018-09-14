@@ -22,7 +22,10 @@ import functools
 from multiprocessing.pool import ThreadPool
 import sys
 
+import numpy
+
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import keras
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -36,6 +39,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -53,6 +57,21 @@ from tensorflow.python.training import momentum
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+
+
+class MiniModel(keras_training.Model):
+  """Minimal model for mnist.
+
+  Useful for testing and debugging on slow TPU simulators.
+  """
+
+  def __init__(self):
+    super(MiniModel, self).__init__(name='')
+    self.fc = keras.layers.Dense(1, name='fc', kernel_initializer='ones',
+                                 bias_initializer='ones')
+
+  def call(self, inputs, training=True):
+    return self.fc(inputs)
 
 
 @test_util.with_c_shapes
@@ -104,7 +123,7 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(step(), 2.0)
 
   def testGraphGradientVariable(self):
-    with ops.Graph().as_default(), self.test_session():
+    with ops.Graph().as_default(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
 
       @function.defun
@@ -211,7 +230,7 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(f(), x)
 
   def testSymGradGatherNd(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
 
       @function.defun
       def f(x):
@@ -314,6 +333,7 @@ class FunctionTest(test.TestCase):
   def testDefunNumpyArraysConvertedToTensors(self):
 
     def f(x):
+      self.assertIsInstance(x, ops.Tensor)
       return x
 
     x = random_ops.random_uniform([2, 2]).numpy()
@@ -326,6 +346,12 @@ class FunctionTest(test.TestCase):
     # A NumPy array with different values but the same shape and dtype
     # shouldn't trigger another function definition.
     self.assertEqual(len(defined._function_cache), 1)
+
+    # Test that the numpy array is properly an argument to the graph function.
+    self.assertEqual(1., defined(numpy.ones([])).numpy())
+    self.assertEqual(0., defined(numpy.zeros([])).numpy())
+    self.assertEqual(1., defined(array_ops.ones([])).numpy())
+    self.assertEqual(0., defined(array_ops.zeros([])).numpy())
 
   def testDefunCapturedInt32(self):
     x = constant_op.constant(1, dtype=dtypes.int32)
@@ -481,7 +507,7 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(backprop.implicit_grad(f)()[0][0], 2.0)
 
   def testGraphModeCaptureVariable(self):
-    with context.graph_mode(), self.test_session() as sess:
+    with context.graph_mode(), self.cached_session() as sess:
 
       class HasAVar(object):
 
@@ -509,12 +535,12 @@ class FunctionTest(test.TestCase):
       x = constant_op.constant(1.0)
       l = f(x, v)
       _, dv = gradients_impl.gradients(l, [x, v])
-      with self.test_session():
+      with self.cached_session():
         v.initializer.run()
         self.assertAllEqual(dv.eval(), 0.0)
 
   def testGraphModeManyFunctions(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
 
       @function.defun
       def f(x):
@@ -934,7 +960,7 @@ class FunctionTest(test.TestCase):
     self.assertEqual(1, int(read()))
 
   def testReturnCapturedGraphTensor(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       t = constant_op.constant(1)
 
       @function.defun
@@ -996,6 +1022,7 @@ class FunctionTest(test.TestCase):
       with ops.get_default_graph().as_default():
         create_variable()
 
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testLayerInDefun(self):
     conv = convolutional.Conv2D(
         filters=1,
@@ -1009,7 +1036,34 @@ class FunctionTest(test.TestCase):
 
     x = array_ops.ones([1, 2, 2, 1])
     y = model(x)
-    self.assertAllEqual([[[[4.0]]]], y.numpy())
+
+    if not context.executing_eagerly():
+      self.evaluate(variables.global_variables_initializer())
+
+    self.assertAllEqual([[[[4.0]]]], self.evaluate(y))
+
+    # Remove reference cycles in model
+    test_util.dismantle_polymorphic_function(model)
+
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  def testDefunKerasModelCall(self):
+    model = MiniModel()
+    model.call = function.defun(model.call)
+
+    x = array_ops.ones([1, 2])
+    y = model(x)
+
+    if not context.executing_eagerly():
+      self.evaluate(variables.global_variables_initializer())
+
+    self.assertAllEqual([[3.0]], self.evaluate(y))
+
+    # Remove reference cycles in defun.
+    test_util.dismantle_polymorphic_function(model.call)
+    # Break the reference cycle between the MiniModel and the defun:
+    # MiniModel --(through its `call` method)--> PolymorphicFunction
+    # PolymorphicFunction --(instancemethod on MiniModel)--> MiniModel
+    del model.call
 
   # Note: The ConfigProto below unfortunately only configures graph
   # construction. Eager's configuration is controlled in `__main__`.
@@ -1492,12 +1546,151 @@ class FunctionTest(test.TestCase):
     side_effecting_function.python_function()
     self.assertAllEqual(state, [0, 0])
 
+  def testFunctionWithExtraAttributes(self):
+    @function.defun_with_attributes(attributes={'experimental_1': 'value1',
+                                                'experimental_2': 2})
+    def matmul(x, y):
+      return math_ops.matmul(x, y)
+
+    def add(x, y):
+      return math_ops.add(x, y)
+    defun_add = function.defun_with_attributes(
+        add, attributes={'experimental_3': True, 'experimental_4': 1.0})
+
+    with context.graph_mode(), self.test_session():
+      with ops.get_default_graph().as_default():
+        t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+        sq = matmul(t, t)
+        double = defun_add(t, t)
+        self.assertAllEqual(sq.eval().reshape(-1), [7, 10, 15, 22])
+        self.assertAllEqual(double.eval().reshape(-1), [2, 4, 6, 8])
+
+        graph = ops.get_default_graph()
+        # pylint: disable=protected-access
+        self.assertEqual(len(graph._functions), 2)
+        functions = list(graph._functions.values())
+        self.assertRegexpMatches(
+            functions[0].definition.signature.name, '.*matmul.*')
+        attrs = functions[0].definition.attr
+        self.assertEqual(len(attrs), 2)
+        self.assertEqual(attrs['experimental_1'].s, b'value1')
+        self.assertEqual(attrs['experimental_2'].i, 2)
+
+        self.assertRegexpMatches(
+            functions[1].definition.signature.name, '.*add.*')
+        attrs = functions[1].definition.attr
+        self.assertEqual(len(attrs), 2)
+        self.assertEqual(attrs['experimental_3'].b, True)
+        self.assertEqual(attrs['experimental_4'].f, 1.0)
+        # pylint: enable=protected-access
+
+  def testFunctionWithInvalidAttribute(self):
+    @function.defun_with_attributes(attributes={'attr1': 'value1'})
+    def matmul(x, y):
+      return math_ops.matmul(x, y)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 '.*Attribute name is not whitelisted.*'):
+      with context.graph_mode(), self.test_session():
+        with ops.get_default_graph().as_default():
+          t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+          matmul(t, t)
+
+    @function.defun_with_attributes(attributes={'experimental_1': ['value1']})
+    def add(x, y):
+      return math_ops.add(x, y)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 '.*Unsupported attribute type.*'):
+      with context.graph_mode(), self.test_session():
+        with ops.get_default_graph().as_default():
+          t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+          add(t, t)
+
+  def testRegisterFunction(self):
+    @function.defun
+    def add(x, y):
+      return math_ops.add(x, y)
+
+    def matmul(x, y):
+      return math_ops.matmul(x, y)
+    defun_matmul = function.defun(matmul)
+
+    with context.graph_mode(), self.cached_session():
+      with ops.get_default_graph().as_default():
+        t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+        function.register(defun_matmul, t, t)
+        function.register(add, t, t)
+
+        graph = ops.get_default_graph()
+        # pylint: disable=protected-access
+        self.assertEqual(len(graph._functions), 2)
+        functions = list(graph._functions.values())
+        pre_register_matmul_func_name = functions[0].definition.signature.name
+        self.assertRegexpMatches(pre_register_matmul_func_name, '.*matmul.*')
+        pre_register_add_func_name = functions[1].definition.signature.name
+        self.assertRegexpMatches(pre_register_add_func_name, '.*add.*')
+
+        sq = defun_matmul(t, t)
+        double = add(t, t)
+        self.assertAllEqual(sq.eval().reshape(-1), [7, 10, 15, 22])
+        self.assertAllEqual(double.eval().reshape(-1), [2, 4, 6, 8])
+        # Make sure the pre registered function is used, and no other function
+        # is added.
+        self.assertEqual(len(graph._functions), 2)
+        functions = list(graph._functions.values())
+        called_func_name = functions[0].definition.signature.name
+        self.assertEqual(pre_register_matmul_func_name, called_func_name)
+        called_func_name = functions[1].definition.signature.name
+        self.assertEqual(pre_register_add_func_name, called_func_name)
+
+  def testRegisterFunctionWithInputSignature(self):
+    def matmul(x, y):
+      return math_ops.matmul(x, y)
+    defun_matmul = function.defun(
+        matmul,
+        input_signature=[
+            tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32),
+            tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32)
+        ])
+    with context.graph_mode(), self.cached_session():
+      with ops.get_default_graph().as_default():
+        t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+        function.register(defun_matmul, t, t)
+
+        graph = ops.get_default_graph()
+        # pylint: disable=protected-access
+        self.assertEqual(len(graph._functions), 1)
+
+        # Test input param shape mismatch
+        t2 = constant_op.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+        with self.assertRaisesRegexp(
+            ValueError, 'Python inputs incompatible with input_signature'):
+          function.register(defun_matmul, t2, t2)
+
+  def testRegisterFunctionWithCache(self):
+    def matmul(x, y):
+      return math_ops.matmul(x, y)
+    defun_matmul = function.defun(matmul)
+
+    with context.graph_mode(), self.cached_session():
+      with ops.get_default_graph().as_default():
+        t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+        t2 = constant_op.constant([[2.0, 3.0], [4.0, 5.0]])
+        function.register(defun_matmul, t, t)
+        function.register(defun_matmul, t2, t2)
+
+        graph = ops.get_default_graph()
+        # Only one function is registered since the input param are in same type
+        # pylint: disable=protected-access
+        self.assertEqual(len(graph._functions), 1)
+
 
 @test_util.with_c_shapes
 class AutomaticControlDependenciesTest(test.TestCase):
 
   def testBasic(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
       variables.global_variables_initializer().run()
       with function.AutomaticControlDependencies() as c:
@@ -1508,7 +1701,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(), 4.0)
 
   def testCondMustRun(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
       variables.global_variables_initializer().run()
       p = array_ops.placeholder(dtype=dtypes.bool)
@@ -1529,7 +1722,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(feed_dict={p: True}), 6.0)
 
   def testCondMustRunSeparateRead(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
       variables.global_variables_initializer().run()
       p = array_ops.placeholder(dtype=dtypes.bool)
@@ -1552,7 +1745,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(v.read_value().eval(), 6.0)
 
   def testCondNested(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
       variables.global_variables_initializer().run()
       p = array_ops.placeholder(dtype=dtypes.bool)
@@ -1586,7 +1779,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(feed_dict={p: True, q: False}), 8.0)
 
   def testCondOneBranch(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
       variables.global_variables_initializer().run()
       p = array_ops.placeholder(dtype=dtypes.bool)
@@ -1606,7 +1799,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(feed_dict={p: True}), 5.0)
 
   def testCondOneBranchUpdateBefore(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
       variables.global_variables_initializer().run()
       p = array_ops.placeholder(dtype=dtypes.bool)
@@ -1627,7 +1820,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(feed_dict={p: True}), 12.0)
 
   def testCondOneBranchUpdateAfter(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
       variables.global_variables_initializer().run()
       p = array_ops.placeholder(dtype=dtypes.bool)
@@ -1663,7 +1856,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
     self.assertAllEqual(out, [3, 4, 5])
 
   def testDecorator(self):
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
       variables.global_variables_initializer().run()
 

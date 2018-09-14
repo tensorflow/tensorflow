@@ -562,9 +562,11 @@ HloComputation::CreateFromProto(
               return to_proto_id[a.get()] < to_proto_id[b.get()];
             });
 
-  return absl::WrapUnique(new HloComputation(proto.name(), parameter_count,
-                                             &instructions, root,
-                                             /*fusion_instruction=*/nullptr));
+  auto computation = absl::WrapUnique(
+      new HloComputation(proto.name(), parameter_count, &instructions, root,
+                         /*fusion_instruction=*/nullptr));
+  computation->unique_id_ = proto.id();
+  return std::move(computation);
 }
 
 void HloComputation::FuseInstructionsInto(

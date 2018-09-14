@@ -23,7 +23,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-
 // We want the input/output feature counts of an f16 conv to be factors of 8,
 // because without this cudnn can't use tensor cores on the conv.
 static constexpr int64 kDesiredNumFeaturesFactor = 8;
@@ -63,8 +62,8 @@ static HloInstruction* PadInstruction(HloInstruction* instr,
   HloComputation* comp = instr->parent();
 
   const Shape& shape = instr->shape();
-  auto* zero = comp->AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::Zero(shape.element_type()).CloneToUnique()));
+  auto* zero = comp->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(shape.element_type())));
 
   PaddingConfig pad_config = MakeNoPaddingConfig(ShapeUtil::Rank(shape));
 

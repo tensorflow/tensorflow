@@ -30,7 +30,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testCachedPredictionOnEmptyEnsemble(self):
     """Tests that prediction on a dummy ensemble does not fail."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create a dummy ensemble.
       tree_ensemble = boosted_trees_ops.TreeEnsemble(
           'ensemble', serialized_proto='')
@@ -63,7 +63,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testNoCachedPredictionButTreeExists(self):
     """Tests that predictions are updated once trees are added."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge("""
         trees {
@@ -129,7 +129,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testCachedPredictionIsCurrent(self):
     """Tests that prediction based on previous node in the tree works."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge("""
         trees {
@@ -201,7 +201,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testCachedPredictionFromTheSameTree(self):
     """Tests that prediction based on previous node in the tree works."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge("""
         trees {
@@ -315,7 +315,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testCachedPredictionFromPreviousTree(self):
     """Tests the predictions work when we have cache from previous trees."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge("""
         trees {
@@ -447,7 +447,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testCachedPredictionFromTheSameTreeWithPostPrunedNodes(self):
     """Tests that prediction based on previous node in the tree works."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge("""
         trees {
@@ -577,7 +577,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testCachedPredictionFromThePreviousTreeWithPostPrunedNodes(self):
     """Tests that prediction based on previous node in the tree works."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge("""
         trees {
@@ -722,7 +722,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testCachedPredictionTheWholeTreeWasPruned(self):
     """Tests that prediction based on previous node in the tree works."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge("""
         trees {
@@ -794,7 +794,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testPredictionOnEmptyEnsemble(self):
     """Tests that prediction on a empty ensemble does not fail."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create an empty ensemble.
       tree_ensemble = boosted_trees_ops.TreeEnsemble(
           'ensemble', serialized_proto='')
@@ -816,7 +816,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testPredictionMultipleTree(self):
     """Tests the predictions work when we have multiple trees."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge("""
         trees {
@@ -930,7 +930,7 @@ class FeatureContribsOpsTest(test_util.TensorFlowTestCase):
 
   def testContribsMultipleTree(self):
     """Tests that the contribs work when we have multiple trees."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge(
           """

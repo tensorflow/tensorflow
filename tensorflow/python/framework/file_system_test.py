@@ -37,7 +37,7 @@ class FileSystemTest(test.TestCase):
     load_library.load_file_system_library(file_system_library)
 
   def testBasic(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = io_ops.WholeFileReader("test_reader")
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       queue.enqueue_many([["test://foo"]]).run()

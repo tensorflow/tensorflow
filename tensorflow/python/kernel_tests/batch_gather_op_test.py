@@ -86,7 +86,7 @@ class GatherTest(test.TestCase):
 
   def testString(self):
     params = np.array([[b"asdf", b"zxcv"], [b"qwer", b"uiop"]])
-    with self.test_session():
+    with self.cached_session():
       indices_tf = constant_op.constant([1])
       self.assertAllEqual([[b"qwer", b"uiop"]],
                           array_ops.batch_gather(params, indices_tf).eval())

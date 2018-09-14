@@ -82,6 +82,7 @@ class HloPrintOptions {
         print_operand_shape_(true),
         print_program_shape_(true),
         print_percent_(true),
+        print_control_dependencies_(true),
         canonicalize_instruction_names_(false),
         indent_amount_(0),
         is_in_nested_computation_(false) {}
@@ -94,7 +95,8 @@ class HloPrintOptions {
         .set_print_backend_config(false)
         .set_print_operand_shape(false)
         .set_print_program_shape(false)
-        .set_print_percent(false);
+        .set_print_percent(false)
+        .set_print_control_dependencies(false);
   }
 
   // Options to produce the canonical string representing an isomorphic
@@ -108,6 +110,7 @@ class HloPrintOptions {
         .set_print_operand_shape(true)
         .set_print_program_shape(false)
         .set_print_percent(false)
+        .set_print_control_dependencies(false)
         .set_canonicalize_instruction_names(true);
   }
 
@@ -153,6 +156,12 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If true, control dependencies will be printed.
+  HloPrintOptions& set_print_control_dependencies(bool value) {
+    print_control_dependencies_ = value;
+    return *this;
+  }
+
   // If true, only a part of operands will be printed out, and their names will
   // be omitted (note that in this case the text will not be parsable).
   HloPrintOptions& set_compact_operands(bool value) {
@@ -190,6 +199,9 @@ class HloPrintOptions {
   bool print_operand_shape() const { return print_operand_shape_; }
   bool print_program_shape() const { return print_program_shape_; }
   bool print_percent() const { return print_percent_; }
+  bool print_control_dependencies() const {
+    return print_control_dependencies_;
+  }
   bool canonicalize_instruction_names() const {
     return canonicalize_instruction_names_;
   }
@@ -205,6 +217,7 @@ class HloPrintOptions {
   bool print_operand_shape_;
   bool print_program_shape_;
   bool print_percent_;
+  bool print_control_dependencies_;
   bool canonicalize_instruction_names_;
   int indent_amount_;
   bool is_in_nested_computation_;
@@ -346,8 +359,7 @@ class HloInstruction {
                                                          const string& name);
 
   // Creates a literal constant instruction.
-  static std::unique_ptr<HloInstruction> CreateConstant(
-      std::unique_ptr<Literal> literal);
+  static std::unique_ptr<HloInstruction> CreateConstant(Literal literal);
 
   // Creates an Iota instruction.
   static std::unique_ptr<HloInstruction> CreateIota(const Shape& shape,

@@ -541,7 +541,7 @@ class UnaryOpTest(test.TestCase):
       return x
 
     for op, real_range in op_range:
-      with self.test_session():
+      with self.cached_session():
         for dtype, tol in dtype_tols:
           x = constant_op.constant(rand(dtype))
           y = constant_op.constant(rand(dtype))
@@ -604,7 +604,7 @@ class BinaryOpTest(test.TestCase):
                         numeric_gradient_type=None):
     z = np_func(x, y)
     zs = list(z.shape)
-    with self.test_session():
+    with self.cached_session():
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       if x.dtype in (np.float32, np.float64):
@@ -634,7 +634,7 @@ class BinaryOpTest(test.TestCase):
                         numeric_gradient_type=None):
     z = np_func(x, y)
     zs = list(z.shape)
-    with self.test_session():
+    with self.cached_session():
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       if x.dtype in (np.float32, np.float64):
@@ -720,7 +720,7 @@ class BinaryOpTest(test.TestCase):
   def testFloatDifferentShapes(self):
     x = np.array([1, 2, 3, 4]).reshape(2, 2).astype(np.float32)
     y = np.array([1, 2]).reshape(2, 1).astype(np.float32)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       s = math_ops.reduce_sum(inx * iny)
@@ -736,7 +736,7 @@ class BinaryOpTest(test.TestCase):
     y = np.array([1, 2]).reshape(2, 1).astype(np.int32)
     var_x = variables.Variable(x)
     var_y = variables.Variable(y)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run([var_x.initializer, var_y.initializer])
       left_result = (var_x * y).eval()
       right_result = (x * var_y).eval()
@@ -1168,7 +1168,7 @@ class BinaryOpTest(test.TestCase):
             ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
   def testZeroPowGrad(self):
-    with self.test_session():
+    with self.cached_session():
       for dtype in (np.float16, np.float32, np.float64, np.complex64,
                     np.complex128):
         x = constant_op.constant(0.0, dtype=dtype)
@@ -1178,7 +1178,7 @@ class BinaryOpTest(test.TestCase):
         self.assertEqual(error, 0)
 
   def testComplexPowGrad(self):
-    with self.test_session():
+    with self.cached_session():
       for dtype in np.complex64, np.complex128:
         for base in 2.0, -2.0:
           x = constant_op.constant(base, dtype=dtype)
@@ -1470,7 +1470,7 @@ class SelectOpTest(test.TestCase):
     self.assertShapeEqual(np_ans, out)
 
   def _compareGradientX(self, c, x, y, numeric_gradient_type=None):
-    with self.test_session():
+    with self.cached_session():
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = array_ops.where(c, inx, iny)
@@ -1494,7 +1494,7 @@ class SelectOpTest(test.TestCase):
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
 
   def _compareGradientY(self, c, x, y, numeric_gradient_type=None):
-    with self.test_session():
+    with self.cached_session():
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = array_ops.where(c, inx, iny)
@@ -1582,7 +1582,7 @@ class SelectOpTest(test.TestCase):
     x = np.random.rand(1, 3, 0) * 100
     y = np.random.rand(1, 3, 0) * 100
     z_expected = np.zeros((1, 3, 0), dtype=np.float32)
-    with self.test_session():
+    with self.cached_session():
       xt = x.astype(np.float32)
       yt = y.astype(np.float32)
       z = array_ops.where(c, xt, yt).eval()
@@ -1590,7 +1590,7 @@ class SelectOpTest(test.TestCase):
 
   def testNan(self):
     """Verify that nans don't propagate where they shouldn't."""
-    with self.test_session():
+    with self.cached_session():
       for c in False, True:
         for a in 7.0, np.nan:
           for b in 5.0, np.nan:
@@ -1614,7 +1614,7 @@ class BatchSelectOpTest(test.TestCase):
     self.assertShapeEqual(np_ans, out)
 
   def _compareGradientX(self, c, x, y, numeric_gradient_type=None):
-    with self.test_session():
+    with self.cached_session():
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = array_ops.where(c, inx, iny)
@@ -1638,7 +1638,7 @@ class BatchSelectOpTest(test.TestCase):
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
 
   def _compareGradientY(self, c, x, y, numeric_gradient_type=None):
-    with self.test_session():
+    with self.cached_session():
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = array_ops.where(c, inx, iny)
@@ -1745,7 +1745,7 @@ class MinMaxOpTest(test.TestCase):
       self._compare(x.astype(t), t(y), use_gpu=True)
 
   def _compareGradientX(self, func, x, y):
-    with self.test_session():
+    with self.cached_session():
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = func(inx, iny)
@@ -1760,7 +1760,7 @@ class MinMaxOpTest(test.TestCase):
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
 
   def _compareGradientY(self, func, x, y):
-    with self.test_session():
+    with self.cached_session():
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = func(inx, iny)
@@ -1932,7 +1932,7 @@ class RoundingTest(test.TestCase):
 
   def _compare_values(self, x, y=None):
     y = np.rint(x) if y is None else np.asarray(y)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tf_rint = math_ops.rint(x)
       np_rint = sess.run(tf_rint)
     self.assertAllEqual(y, np_rint)
@@ -1940,7 +1940,7 @@ class RoundingTest(test.TestCase):
 
   def _compare(self, x):
     np_floor, np_ceil = np.floor(x), np.ceil(x)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inx = ops.convert_to_tensor(x)
       ofloor, oceil = math_ops.floor(inx), math_ops.ceil(inx)
       tf_floor, tf_ceil = sess.run([ofloor, oceil])
@@ -2099,7 +2099,7 @@ class ComplexMakeRealImagTest(test.TestCase):
     # computes the squared sum. This is obviously the same as sum(real
     # * real) + sum(imag * imag). We just want to make sure the
     # gradient function is checked.
-    with self.test_session():
+    with self.cached_session():
       inx = ops.convert_to_tensor(x)
       real, imag = array_ops.split(value=inx, num_or_size_splits=2, axis=1)
       real, imag = array_ops.reshape(real, [-1]), array_ops.reshape(imag, [-1])
@@ -2116,7 +2116,7 @@ class ComplexMakeRealImagTest(test.TestCase):
   def _compareBroadcastGradient(self, x):
     x_ = ops.convert_to_tensor(x)
     epsilon = 1e-3
-    with self.test_session():
+    with self.cached_session():
       for args in [(x_, 0.), (0., x_)]:
         z = math_ops.reduce_sum(math_ops.abs(math_ops.complex(*args)))
         jacob_t, jacob_n = gradient_checker.compute_gradient(
@@ -2136,7 +2136,7 @@ class ComplexMakeRealImagTest(test.TestCase):
     # data is a float matrix of shape [n, 4].  data[:, 0], data[:, 1],
     # data[:, 2], data[:, 3] are real parts of x, imaginary parts of
     # x, real parts of y and imaginary parts of y.
-    with self.test_session():
+    with self.cached_session():
       inp = ops.convert_to_tensor(data)
       xr, xi, yr, yi = array_ops.split(value=inp, num_or_size_splits=4, axis=1)
 
@@ -2166,7 +2166,7 @@ class ComplexMakeRealImagTest(test.TestCase):
 class AccumulateTest(test.TestCase):
 
   def testSimple(self):
-    with self.test_session():
+    with self.cached_session():
       random_arrays = [
           np.random.rand(16, 16, 16, 16).astype(np.float32) for _ in range(20)
       ]
@@ -2181,20 +2181,20 @@ class AccumulateTest(test.TestCase):
       self.assertAllClose(np_val, tf_val.eval())
 
   def testZeroArgs(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         tf_val = math_ops.accumulate_n([])
         tf_val.eval()
 
   def testWrongShape(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         a = variables.Variable(0.2)
         b = variables.Variable(0.1)
         math_ops.accumulate_n([a, b], shape=[2, 2])  # Should be shape=[]
 
   def testWrongType(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(TypeError):
         a = variables.Variable(0.2, dtype=np.float32)
         b = variables.Variable(0.1, dtype=np.float32)
@@ -2202,7 +2202,7 @@ class AccumulateTest(test.TestCase):
 
   def testWrongTypeOneInput(self):
     # Scenario that used to trigger a bug, even when testWrongType() worked
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(TypeError):
         a = variables.Variable(0.2, dtype=np.float32)
         math_ops.accumulate_n([a], tensor_dtype=np.int32)
@@ -2214,7 +2214,7 @@ class PolyvalTest(test.TestCase):
     x = np.random.rand(2, 2).astype(dtype)
     coeffs = [np.random.rand(2, 2).astype(dtype) for _ in range(degree + 1)]
     np_val = np.polyval(coeffs, x)
-    with self.test_session():
+    with self.cached_session():
       tf_val = math_ops.polyval(coeffs, x)
       self.assertAllClose(np_val, tf_val.eval())
 
@@ -2237,7 +2237,7 @@ class PolyvalTest(test.TestCase):
             for _ in range(degree + 1)
         ]
         np_val = np.polyval(coeffs, x)
-        with self.test_session():
+        with self.cached_session():
           tf_val = math_ops.polyval(coeffs, x)
           self.assertAllClose(np_val, tf_val.eval())
 
@@ -2245,7 +2245,7 @@ class PolyvalTest(test.TestCase):
     x = np.random.rand(2, 2).astype(np.float32)
     coeffs = []
     np_val = np.polyval(coeffs, x)
-    with self.test_session():
+    with self.cached_session():
       tf_val = math_ops.polyval(coeffs, x)
       self.assertAllClose(np_val, tf_val.eval())
 

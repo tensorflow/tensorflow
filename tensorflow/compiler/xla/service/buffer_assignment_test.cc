@@ -30,11 +30,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
-#include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -1245,9 +1245,10 @@ TEST_F(BufferAssignmentTest, TupleConstantAsOutput) {
   // Test that a tuple constant which is forwarded to the computation output
   // is properly handled.
   auto builder = HloComputation::Builder(TestName());
+  Literal elements[] = {LiteralUtil::CreateR0<int64>(0),
+                        LiteralUtil::CreateR0<int64>(1)};
   builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::MakeTuple({LiteralUtil::CreateR0<int64>(0).get(),
-                              LiteralUtil::CreateR0<int64>(1).get()})));
+      LiteralUtil::MakeTuple({&elements[0], &elements[1]})));
 
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());

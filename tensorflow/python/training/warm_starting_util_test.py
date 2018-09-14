@@ -1133,7 +1133,7 @@ class WarmStartingUtilTest(test.TestCase):
 
     # Unused variable names raises ValueError.
     with ops.Graph().as_default():
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         x = variable_scope.get_variable(
             "x",
             shape=[4, 1],

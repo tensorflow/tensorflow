@@ -647,6 +647,7 @@ xla_test(
     ],
     shard_count = 48,
     tags = [
+        "broken",
         "manual",
         "notap",
     ],
