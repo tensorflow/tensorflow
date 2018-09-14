@@ -444,7 +444,6 @@ cuda_py_test(
 cuda_py_tests(
     name = "tf_trt_integration_test",
     srcs = [
-        "test/base_test.py",
         "test/batch_matmul_test.py",
         "test/biasadd_matmul_test.py",
         "test/binary_tensor_weight_broadcast_test.py",
@@ -468,6 +467,26 @@ cuda_py_tests(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+    ],
+)
+
+cuda_py_tests(
+    name = "base_test",
+    srcs = [
+        "test/base_test.py",
+    ],
+    additional_deps = [
+        ":tf_trt_integration_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+    tags = [
+        "manual",
+        "no_cuda_on_cpu_tap",
+        "no_gpu",
+        "no_windows",
+        "nomac",
+        "notap",
     ],
 )
 
