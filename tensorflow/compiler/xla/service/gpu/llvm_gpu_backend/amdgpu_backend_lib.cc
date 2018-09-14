@@ -414,11 +414,9 @@ StatusOr<std::vector<uint8>> CompileModuleToHsaco(llvm::Module* module,
 
   // Figure out the exact name of the processor as known to the AMDGPU backend
   // from the gpu_architecture flag.
-  std::unique_ptr<llvm::TargetMachine> target_machine;
-  // TODO(ROCM) figure out why GetTargtetMahine is not in scope
-   // = GetTargetMachine(
-    //  target_triple, absl::StrCat("gfx", amdgpu_version),
-     // hlo_module_config);
+  std::unique_ptr<llvm::TargetMachine> target_machine = GetTargetMachine(
+      target_triple, absl::StrCat("gfx", amdgpu_version), hlo_module_config);
+
   module_passes.add(llvm::createTargetTransformInfoWrapperPass(
       target_machine->getTargetIRAnalysis()));
 
