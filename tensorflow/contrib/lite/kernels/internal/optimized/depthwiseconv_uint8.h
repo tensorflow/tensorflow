@@ -1964,6 +1964,30 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
   }
 }
 
+inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
+                          int32 input_offset, const uint8* filter_data,
+                          const Dims<4>& filter_dims, int32 filter_offset,
+                          const int32* bias_data, const Dims<4>& bias_dims,
+                          int stride_width, int stride_height,
+                          int dilation_width_factor, int dilation_height_factor,
+                          int pad_width, int pad_height, int depth_multiplier,
+                          int32 output_offset, int32 output_multiplier,
+                          int output_shift, int32 output_activation_min,
+                          int32 output_activation_max, uint8* output_data,
+                          const Dims<4>& output_dims) {
+  // TODO(suharshs): Optimized implementation of dilation depthwise is not
+  // supported yet.
+  TFLITE_DCHECK(dilation_width_factor == 1);
+  TFLITE_DCHECK(dilation_height_factor == 1);
+
+  DepthwiseConv(input_data, input_dims, input_offset, filter_data, filter_dims,
+                filter_offset, bias_data, bias_dims, stride_width,
+                stride_height, pad_width, pad_height, depth_multiplier,
+                output_offset, output_multiplier, output_shift,
+                output_activation_min, output_activation_max, output_data,
+                output_dims);
+}
+
 // Legacy, for compatibility with old checked-in code.
 template <FusedActivationFunctionType Ac>
 void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,

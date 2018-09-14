@@ -80,6 +80,7 @@ py_library(
         ":batching",
         ":gen_dataset_ops",
         ":interleave_ops",
+        ":optimization",
         ":parsing_ops",
         ":shuffle_ops",
         "//tensorflow/python:constant_op",

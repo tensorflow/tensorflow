@@ -1089,6 +1089,8 @@ tensorflow::Status ConvertUnsupportedOperator(
               ConvertDataType(GetDataTypeAttr(node, output_arg.type_attr())));
         } else {
           LOG(INFO) << "Op node missing output type attribute: " << node.name();
+          op->output_data_types.clear();
+          break;
         }
       }
     }
