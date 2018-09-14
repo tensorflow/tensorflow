@@ -2902,9 +2902,9 @@ inline void LocalResponseNormalization(
   }
 }
 
-inline void Softmax(const float* input_data, const RuntimeShape& input_shape,
-                    float beta, float* output_data,
-                    const RuntimeShape& output_shape) {
+inline void Softmax(const SoftmaxParams& params,
+                    const RuntimeShape& input_shape, const float* input_data,
+                    const RuntimeShape& output_shape, float* output_data) {
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
@@ -2923,21 +2923,33 @@ inline void Softmax(const float* input_data, const RuntimeShape& input_shape,
     // Compute sum.
     float sum = 0.f;
     for (int c = 0; c < depth; ++c) {
-      sum += std::exp((input_data[i * depth + c] - max) * beta);
+      sum += std::exp((input_data[i * depth + c] - max) * params.beta);
     }
 
     // Compute result.
     for (int c = 0; c < depth; ++c) {
       output_data[i * depth + c] =
-          std::exp((input_data[i * depth + c] - max) * beta) / sum;
+          std::exp((input_data[i * depth + c] - max) * params.beta) / sum;
     }
   }
 }
 
-inline void Softmax(const uint8* input_data, const RuntimeShape& input_shape,
-                    int32 input_beta_multiplier, int32 input_beta_left_shift,
-                    int diff_min, uint8* output_data,
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void Softmax(const float* input_data, const RuntimeShape& input_shape,
+                    float beta, float* output_data,
                     const RuntimeShape& output_shape) {
+  SoftmaxParams params;
+  params.beta = beta;
+  Softmax(params, input_shape, input_data, output_shape, output_data);
+}
+
+inline void Softmax(const SoftmaxParams& params,
+                    const RuntimeShape& input_shape, const uint8* input_data,
+                    const RuntimeShape& output_shape, uint8* output_data) {
+  const int32 input_beta_multiplier = params.input_multiplier;
+  const int32 input_beta_left_shift = params.input_left_shift;
+  const int diff_min = params.diff_min;
   // The representation chosen for the input to the exp() function is Q5.26.
   // We need to leave extra space since values that we skip might be as large as
   // -32 before multiplying by input_beta_multiplier, and therefore as large as
@@ -3015,8 +3027,22 @@ inline void Softmax(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void LogSoftmax(const float* input_data, const RuntimeShape& input_shape,
-                       float* output_data, const RuntimeShape& output_shape) {
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy
+inline void Softmax(const uint8* input_data, const RuntimeShape& input_shape,
+                    int32 input_beta_multiplier, int32 input_beta_left_shift,
+                    int diff_min, uint8* output_data,
+                    const RuntimeShape& output_shape) {
+  SoftmaxParams params;
+  params.input_multiplier = input_beta_multiplier;
+  params.input_left_shift = input_beta_left_shift;
+  params.diff_min = diff_min;
+  Softmax(params, input_shape, input_data, output_shape, output_data);
+}
+
+inline void LogSoftmax(const SoftmaxParams& params,
+                       const RuntimeShape& input_shape, const float* input_data,
+                       const RuntimeShape& output_shape, float* output_data) {
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
@@ -3044,6 +3070,15 @@ inline void LogSoftmax(const float* input_data, const RuntimeShape& input_shape,
       output_data[i * depth + c] = input_data[i * depth + c] - max - log_sum;
     }
   }
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy
+inline void LogSoftmax(const float* input_data, const RuntimeShape& input_shape,
+                       float* output_data, const RuntimeShape& output_shape) {
+  SoftmaxParams params;
+  // No params currently used for float LogSoftmax.
+  LogSoftmax(params, input_shape, input_data, output_shape, output_data);
 }
 
 // Although currently the name of this function says that it cannot handle
@@ -3161,16 +3196,19 @@ log_x_for_x_greater_than_or_equal_to_1(
       input_val);
 }
 
-inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
-                       int32 input_multiplier, int32 input_left_shift,
-                       int32 reverse_scaling_divisor,
-                       int32 reverse_scaling_right_shift, int diff_min,
-                       uint8* output_data, const RuntimeShape& output_shape) {
+inline void LogSoftmax(const SoftmaxParams& params,
+                       const RuntimeShape& input_shape, const uint8* input_data,
+                       const RuntimeShape& output_shape, uint8* output_data) {
+  const int32 input_multiplier = params.input_multiplier;
+  const int32 input_left_shift = params.input_left_shift;
+  const int32 reverse_scaling_divisor = params.reverse_scaling_divisor;
+  const int32 reverse_scaling_right_shift = params.reverse_scaling_right_shift;
+  const int diff_min = params.diff_min;
   // The representation chosen for the input to the exp() function is Q5.26.
-  // We need to leave extra space since values that we skip might be as large as
-  // -32 before multiplying by input_beta_multiplier, and therefore as large as
-  // -16 afterwards.  Note that exp(-8) is definitely not insignificant to
-  // accumulation, but exp(-16) definitely is.
+  // We need to leave extra space since values that we skip might be as large
+  // as -32 before multiplying by input_beta_multiplier, and therefore as
+  // large as -16 afterwards.  Note that exp(-8) is definitely not
+  // insignificant to accumulation, but exp(-16) definitely is.
   static constexpr int kScaledDiffIntegerBits = 5;
   static constexpr int kAccumulationIntegerBits = 12;
   static constexpr int kOutputIntegerBits = 4;
@@ -3247,7 +3285,24 @@ inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
+                       int32 input_multiplier, int32 input_left_shift,
+                       int32 reverse_scaling_divisor,
+                       int32 reverse_scaling_right_shift, int diff_min,
+                       uint8* output_data, const RuntimeShape& output_shape) {
+  SoftmaxParams params;
+  params.input_multiplier = input_multiplier;
+  params.input_left_shift = input_left_shift;
+  params.reverse_scaling_divisor = reverse_scaling_divisor;
+  params.reverse_scaling_right_shift = reverse_scaling_right_shift;
+  params.diff_min = diff_min;
+  LogSoftmax(params, input_shape, input_data, output_shape, output_data);
+}
+
+inline void Logistic(const LogisticParams& params,
+                     const RuntimeShape& input_shape, const float* input_data,
                      const RuntimeShape& output_shape, float* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
@@ -3258,10 +3313,22 @@ inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
   }
 }
 
-inline void Logistic(const uint8* input_data, const RuntimeShape& input_shape,
-                     int32 input_zero_point, int32 input_range_radius,
-                     int32 input_multiplier, int input_left_shift,
-                     uint8* output_data, const RuntimeShape& output_shape) {
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
+                     const RuntimeShape& output_shape, float* output_data) {
+  LogisticParams params;
+  // No params currently needed by float Logistic.
+  Logistic(params, input_shape, input_data, output_shape, output_data);
+}
+
+inline void Logistic(const LogisticParams& params,
+                     const RuntimeShape& input_shape, const uint8* input_data,
+                     const RuntimeShape& output_shape, uint8* output_data) {
+  const int32 input_zero_point = params.input_zero_point;
+  const int32 input_range_radius = params.input_range_radius;
+  const int32 input_multiplier = params.input_multiplier;
+  const int input_left_shift = params.input_left_shift;
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
@@ -3296,7 +3363,22 @@ inline void Logistic(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Logistic(const RuntimeShape& input_shape, const int16* input_data,
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void Logistic(const uint8* input_data, const RuntimeShape& input_shape,
+                     int32 input_zero_point, int32 input_range_radius,
+                     int32 input_multiplier, int input_left_shift,
+                     uint8* output_data, const RuntimeShape& output_shape) {
+  LogisticParams params;
+  params.input_zero_point = input_zero_point;
+  params.input_range_radius = input_range_radius;
+  params.input_multiplier = input_multiplier;
+  params.input_left_shift = input_left_shift;
+  Logistic(params, input_shape, input_data, output_shape, output_data);
+}
+
+inline void Logistic(const LogisticParams& params,
+                     const RuntimeShape& input_shape, const int16* input_data,
                      const RuntimeShape& output_shape, int16* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
@@ -3314,8 +3396,18 @@ inline void Logistic(const RuntimeShape& input_shape, const int16* input_data,
   }
 }
 
-inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
-                 const RuntimeShape& output_shape, float* output_data) {
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void Logistic(const RuntimeShape& input_shape, const int16* input_data,
+                     const RuntimeShape& output_shape, int16* output_data) {
+  LogisticParams params;
+  // No params currently needed by int16 Logistic.
+  Logistic(params, input_shape, input_data, output_shape, output_data);
+}
+
+inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
+                 const float* input_data, const RuntimeShape& output_shape,
+                 float* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
@@ -3325,10 +3417,22 @@ inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
   }
 }
 
-inline void Tanh(const uint8* input_data, const RuntimeShape& input_shape,
-                 int32 input_zero_point, int32 input_range_radius,
-                 int32 input_multiplier, int input_left_shift,
-                 uint8* output_data, const RuntimeShape& output_shape) {
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
+  TanhParams params;
+  // Currently no params needed for float Tanh.
+  Tanh(params, input_shape, input_data, output_shape, output_data);
+}
+
+inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
+                 const uint8* input_data, const RuntimeShape& output_shape,
+                 uint8* output_data) {
+  const int32 input_zero_point = params.input_zero_point;
+  const int32 input_range_radius = params.input_range_radius;
+  const int32 input_multiplier = params.input_multiplier;
+  const int input_left_shift = params.input_left_shift;
   const int32 output_zero_point = 128;
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
@@ -3365,9 +3469,24 @@ inline void Tanh(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Tanh(const int16* input_data, const RuntimeShape& input_shape,
-                 int input_left_shift, int16* output_data,
-                 const RuntimeShape& output_shape) {
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void Tanh(const uint8* input_data, const RuntimeShape& input_shape,
+                 int32 input_zero_point, int32 input_range_radius,
+                 int32 input_multiplier, int input_left_shift,
+                 uint8* output_data, const RuntimeShape& output_shape) {
+  TanhParams params;
+  params.input_zero_point = input_zero_point;
+  params.input_range_radius = input_range_radius;
+  params.input_multiplier = input_multiplier;
+  params.input_left_shift = input_left_shift;
+  Tanh(params, input_shape, input_data, output_shape, output_data);
+}
+
+inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
+                 const int16* input_data, const RuntimeShape& output_shape,
+                 int16* output_data) {
+  const int input_left_shift = params.input_left_shift;
   // Support for shifts is limited until we have a parameterized version of
   // SaturatingRoundingMultiplyByPOT().
   TFLITE_DCHECK_GE(input_left_shift, 0);
@@ -3396,6 +3515,16 @@ inline void Tanh(const int16* input_data, const RuntimeShape& input_shape,
       output_data[i] = output.raw();
     }
   }
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+inline void Tanh(const int16* input_data, const RuntimeShape& input_shape,
+                 int input_left_shift, int16* output_data,
+                 const RuntimeShape& output_shape) {
+  TanhParams params;
+  params.input_left_shift = input_left_shift;
+  Tanh(params, input_shape, input_data, output_shape, output_data);
 }
 
 inline void Dequantize(const tflite::DequantizationParams& op_params,
