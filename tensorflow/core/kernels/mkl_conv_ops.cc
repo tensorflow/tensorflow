@@ -900,7 +900,10 @@ class MklConvOp : public OpKernel {
 
       bool isConv2D = (strides_.size() == 4);
       // TODO(Intel-tf) Add check to make sure padEnabled is true only for 2D
-
+      if(!isConv2D){
+        OP_REQUIRES(context, padEnabled,
+                errors::InvalidArgument("Pad+Conv fusion only works for 2D"));
+      }
       // Create memory for user data.
       // Describe how the inputs and outputs of Convolution look like. Also
       // specify buffers containing actual input and output data.
