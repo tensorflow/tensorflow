@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_EXTRACT_VOLUME_PATCHES_OP_H_
 #define TENSORFLOW_KERNELS_EXTRACT_VOLUME_PATCHES_OP_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/eigen_volume_patch.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace functor {
@@ -27,7 +27,7 @@ namespace functor {
 template <typename Device, typename T>
 struct ExtractVolumePatchesForward {
   void operator()(const Device& d, typename TTypes<T, 5>::ConstTensor input,
-                  int patch_planes, int patch_rows, int patch_cols, 
+                  int patch_planes, int patch_rows, int patch_cols,
                   int stride_planes, int stride_rows, int stride_cols,
                   /* int rate_planes, int rate_rows, int rate_cols, */
                   const Eigen::PaddingType& padding,
@@ -38,15 +38,15 @@ struct ExtractVolumePatchesForward {
       output_32bit.device(d) =
           To32Bit(input)
               .extract_volume_patches(patch_cols, patch_rows, patch_planes,
-                                     stride_cols, stride_rows, stride_planes,
-                                     padding)
+                                      stride_cols, stride_rows, stride_planes,
+                                      padding)
               .reshape(output_32bit.dimensions());
     } else {
       output.device(d) =
           input
               .extract_volume_patches(patch_cols, patch_rows, patch_planes,
-                                     stride_cols, stride_rows, stride_planes,
-                                     padding)
+                                      stride_cols, stride_rows, stride_planes,
+                                      padding)
               .reshape(output.dimensions());
     }
   }
