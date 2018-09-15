@@ -676,6 +676,11 @@ bool LoadOp::verify() const {
 // ReturnOp
 //===----------------------------------------------------------------------===//
 
+void ReturnOp::build(Builder *builder, OperationState *result,
+                     ArrayRef<SSAValue *> results) {
+  result->addOperands(results);
+}
+
 bool ReturnOp::parse(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> opInfo;
   SmallVector<Type *, 2> types;

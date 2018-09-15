@@ -276,7 +276,8 @@ private:
 
 /// This class helps build an MLFunction.  Statements that are created are
 /// automatically inserted at an insertion point or added to the current
-/// statement block.
+/// statement block. The builder has only two member variables and can be passed
+/// around by value.
 class MLFuncBuilder : public Builder {
 public:
   /// Create ML function builder and set insertion point to the given statement,
@@ -326,8 +327,16 @@ public:
     setInsertionPoint(block, block->end());
   }
 
+  /// Returns a builder for the body of a for Stmt.
+  static MLFuncBuilder getForStmtBodyBuilder(ForStmt *forStmt) {
+    return MLFuncBuilder(forStmt, forStmt->end());
+  }
+
   /// Get the current insertion point of the builder.
   StmtBlock::iterator getInsertionPoint() const { return insertPoint; }
+
+  /// Get the current block of the builder.
+  StmtBlock *getBlock() const { return block; }
 
   /// Create an operation given the fields represented as an OperationState.
   OperationStmt *createOperation(const OperationState &state);

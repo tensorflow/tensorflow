@@ -427,9 +427,8 @@ class ReturnOp
 public:
   static StringRef getOperationName() { return "return"; }
 
-  // TODO When there is a client.
-  // static void build(Builder *builder, OperationState *result,
-  //                  ArrayRef<SSAValue *> results);
+  static void build(Builder *builder, OperationState *result,
+                    ArrayRef<SSAValue *> results);
 
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);

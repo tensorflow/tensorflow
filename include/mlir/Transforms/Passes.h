@@ -23,6 +23,8 @@
 #ifndef MLIR_TRANSFORMS_PASSES_H
 #define MLIR_TRANSFORMS_PASSES_H
 
+#include "mlir/Support/LLVM.h"
+
 namespace mlir {
 
 class ForStmt;
@@ -36,10 +38,18 @@ class ModulePass;
 MLFunctionPass *createLoopUnrollPass(int unrollFactor = -1,
                                      int unrollFull = -1);
 
+/// Unrolls this loop completely.
+bool loopUnrollFull(ForStmt *forStmt);
+/// Unrolls this loop by the specified unroll factor.
+bool loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor);
+
 /// Creates a loop unroll jam pass to unroll jam by the specified factor. A
 /// factor of -1 lets the pass use the default factor or the one on the command
 /// line if provided.
 MLFunctionPass *createLoopUnrollAndJamPass(int unrollJamFactor = -1);
+
+/// Unrolls and jams this loop by the specified factor.
+bool loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor);
 
 /// Creates an affine expression simplification pass.
 FunctionPass *createSimplifyAffineExprPass();

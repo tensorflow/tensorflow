@@ -74,7 +74,6 @@ struct LoopUnrollAndJam : public MLFunctionPass {
 
   PassResult runOnMLFunction(MLFunction *f) override;
   bool runOnForStmt(ForStmt *forStmt);
-  bool loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor);
 };
 } // end anonymous namespace
 
@@ -110,8 +109,7 @@ bool LoopUnrollAndJam::runOnForStmt(ForStmt *forStmt) {
 }
 
 /// Unrolls and jams this loop by the specified factor.
-bool LoopUnrollAndJam::loopUnrollJamByFactor(ForStmt *forStmt,
-                                             uint64_t unrollJamFactor) {
+bool mlir::loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor) {
   // Gathers all maximal sub-blocks of statements that do not themselves include
   // a for stmt (a statement could have a descendant for stmt though in its
   // tree).

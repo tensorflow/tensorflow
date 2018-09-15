@@ -62,8 +62,6 @@ struct LoopUnroll : public MLFunctionPass {
   PassResult runOnMLFunction(MLFunction *f) override;
   /// Unroll this for stmt. Returns false if nothing was done.
   bool runOnForStmt(ForStmt *forStmt);
-  bool loopUnrollFull(ForStmt *forStmt);
-  bool loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor);
 };
 } // end anonymous namespace
 
@@ -169,9 +167,8 @@ bool LoopUnroll::runOnForStmt(ForStmt *forStmt) {
   return loopUnrollByFactor(forStmt, 4);
 }
 
-// Unrolls this loop completely. Fails assertion if loop bounds are
-// non-constant.
-bool LoopUnroll::loopUnrollFull(ForStmt *forStmt) {
+/// Unrolls this loop completely.
+bool mlir::loopUnrollFull(ForStmt *forStmt) {
   Optional<uint64_t> tripCount = getConstantTripCount(*forStmt);
   if (tripCount.hasValue())
     return loopUnrollByFactor(forStmt, tripCount.getValue());
@@ -210,7 +207,7 @@ static AffineMap *getCleanupLoopLowerBound(AffineMap *lbMap, uint64_t tripCount,
 }
 
 /// Unrolls this loop by the specified unroll factor.
-bool LoopUnroll::loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor) {
+bool mlir::loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor) {
   assert(unrollFactor >= 1 && "unroll factor shoud be >= 1");
 
   if (unrollFactor == 1 || forStmt->getStatements().empty())
