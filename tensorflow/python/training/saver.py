@@ -1054,8 +1054,8 @@ class Saver(object):
     Raises:
       TypeError: If `var_list` is invalid.
       ValueError: If any of the keys or values in `var_list` are not unique.
-      RuntimeError: If eager execution is enabled and`var_list` does not specify
-        a list of varialbes to save.
+      RuntimeError: If eager execution is enabled and `var_list` does not specify
+        a list of variables to save.
 
     @compatibility(eager)
     When eager execution is enabled, `var_list` must specify a `list` or `dict`
