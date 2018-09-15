@@ -25,8 +25,8 @@ const float TensorForestTreeResource::get_prediction(
 };
 
 const int32 TensorForestTreeResource::TraverseTree(
-    const TTypes<float>::ConstMatrix* dense_data,
-    const int32 example_id) const {
+    const int32 example_id,
+    const TTypes<float>::ConstMatrix* dense_data) const {
   using boosted_trees::Node;
   using boosted_trees::Tree;
   int32 current_id = 0;
@@ -35,7 +35,8 @@ const int32 TensorForestTreeResource::TraverseTree(
     if (current.has_leaf()) {
       return current_id;
     };
-    DCHECK_EQ(current.node_case(), Node::kDenseSplit);
+    DCHECK_EQ(current.node_case(), Node::kDenseSplit)
+        << "Only DenseSplit supported";
     const auto& split = current.dense_split();
 
     if ((*dense_data)(example_id, split.feature_id()) <= split.threshold()) {
@@ -68,61 +69,96 @@ void TensorForestFertileStatsResource::Reset() {
 }
 
 const bool TensorForestFertileStatsResource::IsSlotInitialized(
-    const int32 node_id) const {
-  auto slot = fertile_stats_.find(node_id);
-  return slot != fertile_stats_.end();
+    const int32 node_id, const int32 splits_to_consider) const {
+  if (fertile_stats_->node_to_slot().count(node_id) > 0) {
+    auto slot = fertile_stats_->node_to_slot().at(node_id);
+    return slot.post_init_leaf_stats().weight_sum() > splits_to_consider;
+  } else {
+    return false;
+  }
 }
 
 const bool TensorForestFertileStatsResource::IsSlotFinished(
-    const int32 node_id) const {
-  if (IsSlotInitialized(node_id)) {
-    auto slot = fertile_stats_.find(node_id);
-    return slot.post_init_leaf_stats().weight_sum() >
-           split_nodes_after_samples_;
+    const int32 node_id, const int32 split_nodes_after_samples,
+    const int32 splits_to_consider) const {
+  if (IsSlotInitialized(node_id, splits_to_consider)) {
+    auto slot = fertile_stats_->node_to_slot().at(node_id);
+    return slot.post_init_leaf_stats().weight_sum() > split_nodes_after_samples;
   }
   return false;
 }
 
 void TensorForestFertileStatsResource::UpdateSlotStats(
-    const int32 node_id, const int32 example_id,
-    const TTypes<float>::ConstMatrix* dense_data,
-    const TTypes<float>::ConstMatrix* label) {
-  auto slot = fertile_stats_.get(node_id);
-  for (auto l : (*label)(example_id)) {
+    const bool is_regression, const int32 node_id, const int32 example_id,
+    const TTypes<float>::ConstMatrix* dense_feature,
+    const TTypes<float>::ConstMatrix* labels, const int32 num_labels = 1) {
+  auto slot = fertile_stats_->node_to_slot().at(node_id);
+  slot.mutable_leaf_stats()->set_weight_sum(slot.leaf_stats().weight_sum() + 1);
+  slot.mutable_post_init_leaf_stats()->set_weight_sum(
+      slot.post_init_leaf_stats().weight_sum() + 1);
+
+  for (int i = 0; i < num_labels; i++) {
+    auto label = (*labels)(example_id, i);
+    /*if (is_regression) {
+    slot.mutable_leaf_stats()->mutable_couts_or_sums().set_value(
+        i, slot.leaf_stats()->counts_or_sums().value(i) + label);
+    }else{}
+    */
+    slot.mutable_leaf_stats()->mutable_counts_or_sums()->set_value(
+        label, slot.leaf_stats().counts_or_sums().value(label) + 1);
+
     for (auto candidate : slot.candidates()) {
-      if (candidate.split.threshold >=
-          (*dense_data)(example_id, candidate.split.feature_id)) {
-        candidate.left_split_stats.sum.value(l) += 1;
+      /* if (is_regression) {
+        if (candidate.split().threshold() >=
+            (*dense_feature)(example_id, candidate.split().feature_id())) {
+          candidate.mutable_left_split_stats()->mutable_sum()->set_value(
+              i, candidate.left_split_stats().sum().value(i) + label);
+        };
+        slot.mutable_post_init_leaf_stats()->set_weight_sum(
+            slot.post_init_leaf_stats().weight_sum() + 1);
+      } else {
+
       }
-      candidate.post_init_leaf_stats.sum.value(l) += 1;
-      candidate.left_split_stats.sum.value(l) += 1;
+      */
+      if (candidate.split().threshold() >=
+          (*dense_feature)(example_id, candidate.split().feature_id())) {
+        candidate.mutable_left_split_stats()->mutable_sum()->set_value(
+            label, candidate.left_split_stats().sum().value(label) + 1);
+
+        float weight =
+            candidate.left_leaf_stats().counts_or_sums().value(label);
+        float new_weight = weight + 1;
+        candidate.mutable_left_leaf_stats()
+            ->mutable_counts_or_sums()
+            ->set_value(label, weight + 1);
+
+        candidate.mutable_left_split_stats()
+            ->mutable_sum_of_square()
+            ->set_value(0,
+                        candidate.left_split_stats().sum_of_square().value(0) -
+                            weight * weight + new_weight * new_weight);
+      } else {
+        float weight =
+            slot.post_init_leaf_stats().counts_or_sums().value(label) -
+            candidate.left_leaf_stats().counts_or_sums().value(label);
+        float new_weight = weight + 1;
+        candidate.mutable_right_split_stats()
+            ->mutable_sum_of_square()
+            ->set_value(0,
+                        candidate.left_split_stats().sum_of_square().value(0) -
+                            weight * weight + new_weight * new_weight);
+      };
     }
-    slot.leaf_stats.weight_sum += 1;
   }
 };
 
-const bool TensorForestFertileStatsResource::AddPotentialSplitToSlot(
-    const int32 node_id, const int32 example_id, const bool is_regression,
-    const TTypes<float>::ConstMatrix* dense_data,
-    const TTypes<float>::ConstMatrix* label) {
-  auto slot = fertile_stats_.get(node_id);
-  candidate = new tensor_forest::SplitCandidate();
-  auto split = candidate.mutatable_split();
-  split.feature_id = rng_.ranomd();
-  split.thredhold = (*dense_data)(example_id, featrue_id);
+const bool TensorForestFertileStatsResource::AddSplitToSlot(
+    const int32 node_id, const int32 feature_id, const float threshold) {
+  auto slot = fertile_stats_->node_to_slot().at(node_id);
+  auto candidate = slot.add_candidates();
+  auto split = candidate->mutable_split();
+  split->set_threshold(threshold);
+  split->set_feature_id(feature_id);
+};
 
-  for (auto l : (*label)(example_id)) {
-    candidate.left_split_stats.sum.value(l) += 1;
-  }
-}
-void TensorForestFertileStatsResource::AddExample(
-    const int32 example_id, const int32 leaf_id,
-    const TTypes<float>::ConstMatrix* dense_data,
-    const TTypes<float>::ConstMatrix* label, bool* is_finished) {
-  if (IsSlotInitialized(leaf_id)) {
-    UpdateSlotStats(leaf_id, example_id, dense_data, label);
-  } else {
-    AddPotentialSplitToSlot(node_id, example_id, dense_data, label);
-  }
-}
 }  // namespace tensorflow

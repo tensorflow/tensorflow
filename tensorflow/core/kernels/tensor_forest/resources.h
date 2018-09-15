@@ -54,7 +54,7 @@ class TensorForestTreeResource : public ResourceBase {
   const int32 TraverseTree(const int32 example_id,
                            const TTypes<float>::ConstMatrix* dense_data) const;
 
-  void SplitNode(node, best, new_children);
+  // void SplitNode(node, best, new_children);
 
   const bool node_has_leaf(const int32 node_id);
 
@@ -68,14 +68,11 @@ class TensorForestFertileStatsResource : public ResourceBase {
  public:
   TensorForestFertileStatsResource()
       : fertile_stats_(
-            protobuf::Arena::CreateMessage<tensor_forest::FertilStats>(
+            protobuf::Arena::CreateMessage<tensor_forest::FertileStats>(
                 &arena_)){};
 
   string DebugString() override { return "TensorForestFertilStats"; }
 
-  const tensor_forest::FertilStats& fertile_stats() const {
-    return *fertile_stats_;
-  }
   mutex* get_mutex() { return &mu_; }
 
   bool InitFromSerialized(const string& serialized);
@@ -84,33 +81,35 @@ class TensorForestFertileStatsResource : public ResourceBase {
   // Caller needs to hold the mutex lock while calling this.
   void Reset();
 
-  void AddExample(const int32 example_id, const int32 leaf_id,
-                  const TTypes<float>::ConstMatrix* dense_data,
-                  const TTypes<float>::ConstMatrix* label, bool* is_finished);
+  const tensor_forest::FertileStats& fertile_stats() const {
+    return *fertile_stats_;
+  }
 
-  const void UpdateSlotStats(const int32 node_id, const int32 example_id,
-                             const TTypes<float>::ConstMatrix* dense_data);
+  const bool IsSlotFinished(const int32 node_id,
+                            const int32 split_nodes_after_samples,
+                            const int32 splits_to_consider) const;
 
-  const bool AddPotentialSplitToSlot(
-      const int32 node_id, const int32 example_id, const bool is_regression,
-      const TTypes<float>::ConstMatrix* dense_data,
-      const TTypes<float>::ConstMatrix* label);
+  const bool IsSlotInitialized(const int32 node_id,
+                               const int32 splits_to_consider) const;
 
-  const bool IsSlotFinished(const int32 node_id);
+  void UpdateSlotStats(const bool is_regression, const int32 node_id,
+                       const int32 example_id,
+                       const TTypes<float>::ConstMatrix* dense_feature,
+                       const TTypes<float>::ConstMatrix* labels,
+                       const int32 num_labels);
 
-  const bool IsSlotInitialized(const int32 node_id);
+  const bool AddSplitToSlot(const int32 node_id, const int32 feature_id,
+                            const float threshold);
 
   const bool BestSplitFromSlot(const int32 node_id,
                                tensor_forest::SplitCandidate& best);
 
-  void SetRandomSeed(const int32 random_seed) { random_seed_ = random_seed; };
-
  protected:
+  // Mutex for using random number generator.
   mutex mu_;
   protobuf::Arena arena_;
   tensor_forest::FertileStats* fertile_stats_;
-  int32 random_seed_;
-}
+};
 
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_KERNELS_TENSOR_FOREST_RESOURCES_H_

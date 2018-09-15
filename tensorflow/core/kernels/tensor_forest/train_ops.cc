@@ -14,74 +14,65 @@ limitations under the License.
 ==============================================================================*/
 #include <queue>
 
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/boosted_trees/boosted_trees.pb.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/tensor_forest/resources.h"
+#include "tensorflow/core/lib/random/philox_random.h"
+#include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 
-// Try to update a leaf's stats by acquiring its lock.  If it can't be
-// acquired, put it in a waiting queue to come back to later and try the next
-// one.  Once all leaf_ids have been visited, cycle through the waiting ids
-// until they're gone.
-void UpdateStats(FertileStatsResource* fertile_stats_resource,
-                 const std::unique_ptr<TensorDataSet>& data,
-                 const TensorInputTarget& target, int num_targets,
-                 const Tensor& leaf_ids_tensor,
-                 std::unordered_map<int32, std::unique_ptr<mutex>>* locks,
-                 mutex* set_lock, int32 start, int32 end,
-                 std::unordered_set<int32>* ready_to_split) {
-  const auto leaf_ids = leaf_ids_tensor.unaligned_flat<int32>();
+// Op for traversing the tree with each example, accumulating statistics, and
+// outputting node ids that are ready to split.
+class TensorForestTraverseTreeOp : public OpKernel {
+ public:
+  explicit TensorForestTraverseTreeOp(OpKernelConstruction* context)
+      : OpKernel(context) {}
 
-  // Stores leaf_id, example_id for examples that are waiting
-  // on another to finish.
-  std::queue<std::tuple<int32, int32>> waiting;
+  void Compute(OpKernelContext* context) override {
+    TensorForestTreeResource* decision_tree_resource;
+    OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
+                                           &decision_tree_resource));
+    mutex_lock l(*decision_tree_resource->get_mutex());
+    core::ScopedUnref unref_me(decision_tree_resource);
 
-  int32 i = start;
-  while (i < end) {
-    int32 leaf_id;
-    int32 example_id;
-    leaf_id = leaf_ids(i);
-    example_id = i;
-    if (leaf_lock->try_lock()) {
-      fertile_stats_resource->AddExample(data, &target, example_id, leaf_id);
-      leaf_lock->unlock();
-    } else {
-      waiting.emplace(leaf_id, example_id);
-      continue;
-    }
-    ++i;
+    const Tensor* dense_features = nullptr;
+    OP_REQUIRES_OK(context, context->input("dense_features", &dense_features));
 
-    if (fertile_stats_resource->IsNodeFinished(leaf_id)) {
-      ready_to_split->insert(leaf_id);
-    }
-  };
+    auto data_set = dense_features->matrix<float>();
+    const int32 batch_size = dense_features->dim_size(0);
 
-  while (!waiting.empty()) {
-    int32 leaf_id;
-    int32 example_id;
+    Tensor* output_predictions = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(0, {batch_size},
+                                                     &output_predictions));
+    auto out = output_predictions->matrix<int32>();
 
-    std::tie(leaf_id, example_id) = waiting.front();
-    waiting.pop();
-
-    if (leaf_lock->try_lock()) {
-      fertile_stats_resource->AddExample(data, &target, example_id, leaf_id);
-      leaf_lock->unlock();
-    } else {
-      waiting.emplace(leaf_id, example_id);
-      continue;
+    if (decision_tree_resource->get_size() <= 0) {
+      out.setZero();
+      return;
     }
 
-    if (fertile_stats_resource->IsNodeFinished(leaf_id)) {
-      set_lock->lock();
-      ready_to_split->insert(leaf_id);
-      set_lock->unlock();
-    }
+    auto* worker_threads = context->device()->tensorflow_cpu_worker_threads();
+    const int32 num_threads = worker_threads->num_threads;
+    const int64 cost_per_traverse = 500;
+    auto traverse = [&out, &data_set, decision_tree_resource](int64 start,
+                                                              int64 end) {
+      for (int example_id = start; example_id < end; ++example_id) {
+        out(example_id) =
+            decision_tree_resource->TraverseTree(example_id, &data_set);
+      };
+    };
+    Shard(num_threads, worker_threads->workers, batch_size, cost_per_traverse,
+          traverse);
   }
-}
+};
 
 // Op for traversing the tree with each example, accumulating statistics, and
 // outputting node ids that are ready to split.
@@ -90,75 +81,107 @@ class TensorForestProcessInputOp : public OpKernel {
   explicit TensorForestProcessInputOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("random_seed", &random_seed_));
+    OP_REQUIRES_OK(context, context->GetAttr("is_regression", &is_regression_));
+    OP_REQUIRES_OK(context, context->GetAttr("split_node_after_sample",
+                                             &split_node_after_sample_));
+    OP_REQUIRES_OK(
+        context, context->GetAttr("splits_to_consider", &splits_to_consider_));
+    // Set up the random number generator.
+    if (random_seed_ == 0) {
+      single_rand_ = std::unique_ptr<random::PhiloxRandom>(
+          new random::PhiloxRandom(random::New64()));
+    } else {
+      single_rand_ = std::unique_ptr<random::PhiloxRandom>(
+          new random::PhiloxRandom(random_seed_));
+    }
+
+    rng_ = std::unique_ptr<random::SimplePhilox>(
+        new random::SimplePhilox(single_rand_.get()));
   }
 
   void Compute(OpKernelContext* context) override {
-    using gtl::FindOrNull;
+    const Tensor* dense_features_ = nullptr;
+    OP_REQUIRES_OK(context, context->input("dense_features", &dense_features_));
+    const Tensor* labels_ = nullptr;
+    OP_REQUIRES_OK(context, context->input("labels", &labels_));
+    const Tensor* leaf_ids_ = nullptr;
+    OP_REQUIRES_OK(context, context->input("leaf_ids", &leaf_ids_));
 
-    const Tensor& input_data = context->input(0);
-    const Tensor& input_labels = context->input(1);
-    const Tensor& leaf_ids_tensor = context->input(2);
-
-    FertileStatsResource* fertile_stats_resource;
-    OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 1),
-                                           &fertile_stats_resource));
-    DecisionTreeResource* tree_resource;
+    TensorForestFertileStatsResource* fertile_stats_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
-                                           &tree_resource));
-    mutex_lock l1(*fertile_stats_resource->get_mutex());
-    mutex_lock l2(*tree_resource->get_mutex());
+                                           &fertile_stats_resource));
 
-    core::ScopedUnref unref_stats(fertile_stats_resource);
-    core::ScopedUnref unref_tree(tree_resource);
+    mutex_lock l(*fertile_stats_resource->get_mutex());
+    core::ScopedUnref unref_me(fertile_stats_resource);
 
-    fertile_stats_resource->SetRandomSeed(random_seed_);
-
-    const int32 num_data = data_set->NumItems();
-
-    auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
-    int num_threads = worker_threads->num_threads;
-
-    const auto leaf_ids = leaf_ids_tensor.unaligned_flat<int32>();
+    const auto data_set = dense_features_->matrix<float>();
+    const auto labels = labels_->matrix<float>();
+    const auto leaf_ids = leaf_ids_->matrix<float>();
+    const int32 batch_size = dense_features_->dim_size(0);
+    number_of_total_feature_ = dense_features_->dim_size(1);
 
     // Create one mutex per leaf. We need to protect access to leaf pointers,
     // so instead of grouping examples by leaf, we spread examples out among
     // threads to provide uniform work for each of them and protect access
     // with mutexes.
     std::unordered_map<int, std::unique_ptr<mutex>> locks;
-    for (int i = 0; i < num_data; ++i) {
-      const int32 id = leaf_ids(i);
-      if (FindOrNull(locks, id) == nullptr) {
+    for (int i = 0; i < batch_size; ++i) {
+      const int32 leaf_id = leaf_ids(i);
+      if (locks.find(leaf_id) == locks.end()) {
         // TODO(gilberth): Consider using a memory pool for these.
-        locks[id] = std::unique_ptr<mutex>(new mutex);
+        locks[leaf_id] = std::unique_ptr<mutex>(new mutex);
       }
     }
 
     const int32 label_dim =
-        input_labels.shape().dims() <= 1
+        labels_->shape().dims() <= 1
             ? 0
-            : static_cast<int>(input_labels.shape().dim_size(1));
-    const int32 num_targets =
-        param_proto_.is_regression() ? (std::max(1, label_dim)) : 1;
+            : static_cast<int>(labels_->shape().dim_size(1));
+    const int32 num_targets = is_regression_ ? (std::max(1, label_dim)) : 1;
 
     // Ids of leaves that can split.
     std::unordered_set<int32> ready_to_split;
     mutex set_lock;
 
+    auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
+    int num_threads = worker_threads->num_threads;
+
     // TODO(gilberth): This is a rough approximation based on measurements
     // from a digits run on local desktop.  Heuristics might be necessary
     // if it really matters that much.
     const int64 costPerUpdate = 1000;
-    auto update = [this, &target, &leaf_ids_tensor, &num_targets, &data_set,
-                   fertile_stats_resource, &locks, &set_lock, &ready_to_split,
-                   num_data](int64 start, int64 end) {
-      CHECK(start <= end);
-      CHECK(end <= num_data);
-      UpdateStats(fertile_stats_resource, data_set, target, num_targets,
-                  leaf_ids_tensor, &locks, &set_lock, static_cast<int32>(start),
-                  static_cast<int32>(end), &ready_to_split);
+    auto update = [this, &labels, &leaf_ids, &num_targets, &data_set,
+                   fertile_stats_resource, &locks, &set_lock,
+                   &ready_to_split](int64 start, int64 end) {
+      // Stores leaf_id, example_id for examples that are waiting
+      // on another to finish.
+      std::queue<std::tuple<int32, int32>> waiting;
+      for (int example_id = start; example_id < end; example_id++) {
+        const int32 leaf_id = leaf_ids(example_id);
+        AddExample(is_regression_, num_targets, &locks, leaf_id, example_id,
+                   &data_set, &labels, waiting, fertile_stats_resource);
+      }
+
+      while (!waiting.empty()) {
+        int32 leaf_id, example_id;
+        std::tie(leaf_id, example_id) = waiting.front();
+        waiting.pop();
+        AddExample(is_regression_, num_targets, &locks, leaf_id, example_id,
+                   &data_set, &labels, waiting, fertile_stats_resource);
+      }
+
+      for (int example_id = start; example_id < end; example_id++) {
+        const int32 leaf_id = leaf_ids(example_id);
+        if (fertile_stats_resource->IsSlotFinished(
+                leaf_id, split_node_after_sample_, splits_to_consider_)) {
+          set_lock.lock();
+          ready_to_split.insert(leaf_id);
+          set_lock.unlock();
+        }
+      }
     };
 
-    Shard(num_threads, worker_threads->workers, num_data, costPerUpdate,
+    Shard(num_threads, worker_threads->workers, batch_size, costPerUpdate,
           update);
 
     Tensor* output_finished_t = nullptr;
@@ -168,16 +191,59 @@ class TensorForestProcessInputOp : public OpKernel {
         context, context->allocate_output(0, output_shape, &output_finished_t));
     auto output = output_finished_t->unaligned_flat<int32>();
     std::copy(ready_to_split.begin(), ready_to_split.end(), output.data());
-  }
+  };
+
+  void AddExample(const bool is_regression, const int32 num_targets,
+                  std::unordered_map<int, std::unique_ptr<mutex>>* locks,
+                  const int32 leaf_id, const int32 example_id,
+                  const TTypes<float>::ConstMatrix* dense_data,
+                  const TTypes<float>::ConstMatrix* labels,
+                  std::queue<std::tuple<int32, int32>> waiting,
+                  TensorForestFertileStatsResource* fertile_stats_resource) {
+    // Try to update a leaf's stats by acquiring its lock.  If it can't be
+    // acquired, put it in a waiting queue to come back to later and try the
+    // next one.  Once all leaf_ids have been visited, cycle through the waiting
+    // ids until they're gone.
+    const std::unique_ptr<mutex>& leaf_lock = (*locks)[leaf_id];
+    if (leaf_lock->try_lock()) {
+      if (fertile_stats_resource->IsSlotInitialized(leaf_id,
+                                                    splits_to_consider_)) {
+        fertile_stats_resource->UpdateSlotStats(is_regression, leaf_id,
+                                                example_id, dense_data, labels,
+                                                num_targets);
+      } else {
+        int32 feature_id;
+        {
+          mutex_lock lock(mu_);
+          feature_id = rng_->Uniform(number_of_total_feature_);
+        }
+        auto bias = (*dense_data)(example_id, feature_id);
+
+        fertile_stats_resource->AddSplitToSlot(leaf_id, feature_id, bias);
+      }
+      leaf_lock->unlock();
+    } else {
+      waiting.emplace(leaf_id, example_id);
+    }
+  };
 
  private:
-  const int32 random_seed_;
+  int32 random_seed_;
+  int32 number_of_total_feature_;
+  int32 splits_to_consider_;
+  int32 split_node_after_sample_;
+  bool is_regression_;
+  // Mutex for using random number generator.
+  mutable mutex mu_;
+  std::unique_ptr<random::PhiloxRandom> single_rand_;
+  std::unique_ptr<random::SimplePhilox> rng_;
 };
-
+/*
 // Op for growing finished nodes.
-class GrowTreeOp : public OpKernel {
+class TensorForestGrowTreeOp : public OpKernel {
  public:
-  explicit GrowTreeOp(OpKernelConstruction* context) : OpKernel(context) {
+  explicit TensorForestGrowTreeOp(OpKernelConstruction* context)
+      : OpKernel(context) {
     string serialized_params;
     OP_REQUIRES_OK(context, context->GetAttr("params", &serialized_params));
     ParseProtoUnlimited(&param_proto_, serialized_params);
@@ -229,9 +295,9 @@ class GrowTreeOp : public OpKernel {
   }
 
  private:
-  tensorforest::TensorForestDataSpec input_spec_;
   TensorForestParams param_proto_;
 };
+*/
 
 REGISTER_KERNEL_BUILDER(Name("TensorForestProcessInput").Device(DEVICE_CPU),
                         TensorForestProcessInputOp);

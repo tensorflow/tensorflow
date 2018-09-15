@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package tensorflow.tensorforest;
+package tensorflow.tensor_forest;
 option cc_enable_arenas = true;
 option java_outer_classname = "TensorForestProtos";
 option java_multiple_files = true;
@@ -11,7 +11,7 @@ import "tensorflow/core/kernels/boosted_trees/boosted_trees.proto";
 message FertileStats {
   // Tracks stats for each node.  node_to_slot[i] is the FertileSlot for node i.
   // This grow dynamically as needed.
-  map<int, FertileSlot> node_to_slot = 1;
+  map<int32, FertileSlot> node_to_slot = 1;
 }
 
 message SplitStats {
@@ -24,7 +24,7 @@ message SplitStats {
   // X_i\weight = LeafStat->counts_or_sums(label) using as counts
   // new_weight = weight + incoming_weight
   // sum -> sum + incoming_weight
-  // sum_of_square -> sum - (weight ^ 2) + (new_weight ^ 2)
+  // sum_of_square -> sum_of_square - (weight ^ 2) + (new_weight ^ 2)
   // since classification only need 1 d of statics, we use the first dimension
   // of the vector
 

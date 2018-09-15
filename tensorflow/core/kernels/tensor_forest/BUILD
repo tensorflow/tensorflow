@@ -21,6 +21,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
+        "//tensorflow/core/kernels/tensor_forest:tensor_forest_proto_cc",
     ],
 )
 
@@ -28,6 +29,9 @@ tf_proto_library(
     name = "tensor_forest_proto",
     srcs = ["tensor_forest.proto"],
     cc_api_version = 2,
+    protodeps = [
+        "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto",
+	],
     visibility = ["//visibility:public"],
 )
 
@@ -73,5 +77,6 @@ tf_kernel_library(
     deps = [
         ":prediction_ops",
         ":resource_ops",
+        ":train_ops",
     ],
 )
