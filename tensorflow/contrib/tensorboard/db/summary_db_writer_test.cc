@@ -189,7 +189,7 @@ TEST_F(SummaryDbWriterTest, TensorsWritten_RowsGetInitialized) {
   ASSERT_EQ(1LL, QueryInt("SELECT COUNT(*) FROM Experiments"));
   ASSERT_EQ(1LL, QueryInt("SELECT COUNT(*) FROM Runs"));
   ASSERT_EQ(1LL, QueryInt("SELECT COUNT(*) FROM Tags"));
-  ASSERT_EQ(10000LL, QueryInt("SELECT COUNT(*) FROM Tensors"));
+  ASSERT_EQ(1000LL, QueryInt("SELECT COUNT(*) FROM Tensors"));
 
   int64 user_id = QueryInt("SELECT user_id FROM Users");
   int64 experiment_id = QueryInt("SELECT experiment_id FROM Experiments");
@@ -238,7 +238,7 @@ TEST_F(SummaryDbWriterTest, EmptyParentNames_NoParentsCreated) {
   ASSERT_EQ(0LL, QueryInt("SELECT COUNT(*) FROM Experiments"));
   ASSERT_EQ(0LL, QueryInt("SELECT COUNT(*) FROM Runs"));
   ASSERT_EQ(1LL, QueryInt("SELECT COUNT(*) FROM Tags"));
-  ASSERT_EQ(10000LL, QueryInt("SELECT COUNT(*) FROM Tensors"));
+  ASSERT_EQ(1000LL, QueryInt("SELECT COUNT(*) FROM Tensors"));
 }
 
 TEST_F(SummaryDbWriterTest, WriteEvent_Scalar) {
@@ -255,7 +255,7 @@ TEST_F(SummaryDbWriterTest, WriteEvent_Scalar) {
   TF_ASSERT_OK(writer_->WriteEvent(std::move(e)));
   TF_ASSERT_OK(writer_->Flush());
   ASSERT_EQ(2LL, QueryInt("SELECT COUNT(*) FROM Tags"));
-  ASSERT_EQ(20000LL, QueryInt("SELECT COUNT(*) FROM Tensors"));
+  ASSERT_EQ(2000LL, QueryInt("SELECT COUNT(*) FROM Tensors"));
   int64 tag1_id = QueryInt("SELECT tag_id FROM Tags WHERE tag_name = 'π'");
   int64 tag2_id = QueryInt("SELECT tag_id FROM Tags WHERE tag_name = 'φ'");
   EXPECT_GT(tag1_id, 0LL);

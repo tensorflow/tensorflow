@@ -21,11 +21,21 @@ from __future__ import print_function
 
 import os
 
+from tensorflow.python.tools import component_api_helper
+component_api_helper.package_hook(
+    parent_package_str=(
+        "tensorflow.contrib"),
+    child_package_str=(
+        "tensorflow_estimator.contrib.estimator"))
+del component_api_helper
+
 # Add projects here, they will show up under tf.contrib.
+from tensorflow.contrib import autograph
 from tensorflow.contrib import batching
 from tensorflow.contrib import bayesflow
 from tensorflow.contrib import checkpoint
-from tensorflow.contrib import cloud
+if os.name != "nt":
+  from tensorflow.contrib import cloud
 from tensorflow.contrib import cluster_resolver
 from tensorflow.contrib import coder
 from tensorflow.contrib import compiler
@@ -49,7 +59,6 @@ from tensorflow.contrib import input_pipeline
 from tensorflow.contrib import integrate
 from tensorflow.contrib import keras
 from tensorflow.contrib import kernel_methods
-from tensorflow.contrib import kfac
 from tensorflow.contrib import labeled_tensor
 from tensorflow.contrib import layers
 from tensorflow.contrib import learn
@@ -60,6 +69,7 @@ from tensorflow.contrib import lookup
 from tensorflow.contrib import losses
 from tensorflow.contrib import memory_stats
 from tensorflow.contrib import metrics
+from tensorflow.contrib import mixed_precision
 from tensorflow.contrib import model_pruning
 from tensorflow.contrib import nccl
 from tensorflow.contrib import nn
@@ -91,8 +101,7 @@ from tensorflow.contrib import tpu
 from tensorflow.contrib import training
 from tensorflow.contrib import util
 from tensorflow.contrib.eager.python import tfe as eager
-if os.name != "nt":
-  from tensorflow.contrib.lite.python import lite
+from tensorflow.contrib.lite.python import lite
 from tensorflow.contrib.optimizer_v2 import optimizer_v2_symbols as optimizer_v2
 from tensorflow.contrib.receptive_field import receptive_field_api as receptive_field
 from tensorflow.contrib.recurrent.python import recurrent_api as recurrent

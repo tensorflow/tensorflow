@@ -19,7 +19,9 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -27,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
@@ -257,13 +260,13 @@ typename DisjointSet<Handle>::Rep* DisjointSet<Handle>::Find(Handle value) {
 }
 
 bool IsEnqueue(const NodeDef& n) {
-  return (n.op().find("Enqueue") != std::string::npos &&
-          n.op().find("EnqueueMany") == std::string::npos);
+  return (n.op().find("Enqueue") != string::npos &&
+          n.op().find("EnqueueMany") == string::npos);
 }
 
 bool IsDequeue(const NodeDef& n) {
-  return (n.op().find("Dequeue") != std::string::npos &&
-          n.op().find("DequeueMany") == std::string::npos);
+  return (n.op().find("Dequeue") != string::npos &&
+          n.op().find("DequeueMany") == string::npos);
 }
 
 bool HasAnyUnknownDimensions(const TensorShapeProto& proto) {
@@ -342,6 +345,56 @@ void VerboseLogUnknownDimensionSources(
   }
 }
 
+bool IsShapeFullyDefinedIntegerVectorOrScalar(
+    InferenceContext* ic, const ShapeHandle& shape,
+    const ShapeHandle& tensor_as_shape, const DataType& dtype) {
+  if (!ic->FullyDefined(shape) || ic->Rank(shape) > 1 ||
+      !ic->FullyDefined(tensor_as_shape) ||
+      (dtype != DT_INT32 && dtype != DT_INT64)) {
+    return false;
+  }
+  return true;
+}
+
+// Returned tensor's shape is like `shape`, and its values and dtype are from
+// `tensor_as_shape` and `dtype`.
+TensorProto MakeTensorProtoFromShape(InferenceContext* ic,
+                                     const ShapeHandle& shape,
+                                     const ShapeHandle& tensor_as_shape,
+                                     const DataType& dtype) {
+  TensorProto tensor_proto;
+  tensor_proto.set_dtype(dtype);
+  auto* shape_proto = tensor_proto.mutable_tensor_shape();
+  if (ic->Rank(shape) == 1) {
+    shape_proto->add_dim()->set_size(ic->Rank(tensor_as_shape));
+  }
+  // For a scalar tensor, tensor_shape field will be left empty; no dim.
+  for (int i = 0; i < ic->Rank(tensor_as_shape); i++) {
+    int64 value = ic->Value(ic->Dim(tensor_as_shape, i));
+    if (dtype == DT_INT32) {
+      tensor_proto.add_int_val(value);
+    } else {
+      tensor_proto.add_int64_val(value);
+    }
+  }
+  return tensor_proto;
+}
+
+// Returns a Const NodeDef with shape = `shape`, values = `tensor_as_shape`,
+// and dtype = `dtype`.
+NodeDef MakeConstNodeDefFromShape(InferenceContext* ic,
+                                  const ShapeHandle& shape,
+                                  const ShapeHandle& tensor_as_shape,
+                                  const DataType& dtype) {
+  NodeDef const_node;
+  const_node.set_name("const_from_shape");
+  const_node.set_op("Const");
+  auto* attr = const_node.mutable_attr();
+  (*attr)["dtype"].set_type(dtype);
+  auto* tensor = (*attr)["value"].mutable_tensor();
+  *tensor = MakeTensorProtoFromShape(ic, shape, tensor_as_shape, dtype);
+  return const_node;
+}
 }  // namespace
 
 // Queue of nodes to process. Nodes can be enqueued in any order, but will be
@@ -352,12 +405,12 @@ void VerboseLogUnknownDimensionSources(
 class TopoQueue {
  public:
   explicit TopoQueue(const std::unordered_map<const NodeDef*, int>& topo_order)
-      : queue_(CompareNodes(topo_order)) {}
-  void push(const NodeDef* n) { queue_.insert(n); }
+      : topo_order_(topo_order) {}
+  void push(const NodeDef* n) { queue_.emplace(n, topo_order_.at(n)); }
   const NodeDef* pop() {
     CHECK(!empty());
     auto it = queue_.begin();
-    const NodeDef* n = *it;
+    const NodeDef* n = it->first;
     queue_.erase(it);
     return n;
   }
@@ -366,20 +419,16 @@ class TopoQueue {
   std::size_t size() const { return queue_.size(); }
 
  private:
+  using NodeAndId = std::pair<const NodeDef*, int>;
   // Graph nodes are created in (roughly) topological order. Therefore we can
   // use their id to ensure they're sorted topologically.
-  struct CompareNodes {
-    explicit CompareNodes(
-        const std::unordered_map<const NodeDef*, int>& topo_ordering)
-        : topo_order(topo_ordering) {}
-    bool operator()(const NodeDef* lhs, const NodeDef* rhs) const {
-      return topo_order.at(lhs) < topo_order.at(rhs);
+  struct OrderByIdAscending {
+    bool operator()(const NodeAndId& lhs, const NodeAndId& rhs) const {
+      return lhs.second < rhs.second;
     }
-
-   private:
-    const std::unordered_map<const NodeDef*, int>& topo_order;
   };
-  std::set<const NodeDef*, CompareNodes> queue_;
+  const std::unordered_map<const NodeDef*, int>& topo_order_;
+  std::set<NodeAndId, OrderByIdAscending> queue_;
 };
 
 // Processes symbolic shapes.
@@ -425,6 +474,152 @@ class SymbolicShapeRefiner {
     return it->second.inference_context.get();
   }
 
+  // Forward the shapes from the function input nodes to
+  // the argument nodes (which are Placeholder nodes), then
+  // perform shape inference on the function body.
+  //
+  // Propagate shape information of final function body node
+  // to function node `function_node`.
+  //
+  // In the event of an error, UpdateNode will simply set `function_node`'s
+  // output shape to be Unknown.
+  Status UpdateFunction(const NodeDef* function_node) {
+    auto it = fun_to_grappler_function_item_.find(function_node->op());
+    if (it == fun_to_grappler_function_item_.end()) {
+      return errors::InvalidArgument(
+          function_node->op(),
+          " was not previously added to SymbolicShapeRefiner.");
+    }
+
+    // Copy (not reference) so that changes we make here (e.g., replacing
+    // Placeholder with Const) don't affect one in
+    // fun_to_grappler_function_item_.
+    GrapplerFunctionItem grappler_function_item = it->second;
+    GraphView gv(&grappler_function_item.graph);
+
+    // Forward shapes from function input nodes to argument nodes.
+    for (int i = 0; i < grappler_function_item.inputs().size(); ++i) {
+      auto& fun_input = grappler_function_item.input(i);
+      if (fun_input.placeholders.size() > 1) {
+        // TODO(jmdecker): Handle case with multiple input placeholders
+        return errors::Unimplemented(
+            "Input arguments with multiple placeholders are not yet "
+            "supported.");
+      }
+      NodeDef* fun_node = gv.GetNode(fun_input.input_name);
+      const string& input = function_node->input(i);
+      const string& node_name = NodeName(input);
+
+      if (IsControlInput(input)) {
+        return errors::FailedPrecondition(
+            "Function inputs should not contain control nodes.");
+      }
+
+      NodeDef* input_node = graph_.GetNode(node_name);
+      if (input_node == nullptr) {
+        return errors::FailedPrecondition(node_name,
+                                          " was not found in the graph.");
+      }
+
+      InferenceContext* input_inference_context = GetContext(input_node);
+      if (input_inference_context == nullptr) {
+        return errors::FailedPrecondition(
+            "Inference context has not been created for ", node_name);
+      }
+
+      int output_port_num = NodePosition(input);
+      AttrValue attr_output_shape;
+      TensorShapeProto proto;
+      const auto& handle = input_inference_context->output(output_port_num);
+      input_inference_context->ShapeHandleToProto(handle, &proto);
+      // There may be dim.size < -1 in SymbolicShapeRefiner. Change those to -1.
+      for (int i = 0; i < proto.dim_size(); i++) {
+        if (proto.dim(i).size() < -1) {
+          proto.mutable_dim(i)->set_size(-1);
+        }
+      }
+      *attr_output_shape.mutable_shape() = proto;
+      (*fun_node->mutable_attr())["shape"] = attr_output_shape;
+    }
+
+    // Replace input Placeholders with Consts, if values are known. Note that
+    // we don't check exceptions here as it's done in the above loop.
+    auto* ctx = GetNodeContext(function_node);
+    auto* ic = ctx->inference_context.get();
+    for (int i = grappler_function_item.inputs().size() - 1; i >= 0; --i) {
+      const string& input = function_node->input(i);
+      const string& node_name = NodeName(input);
+      NodeDef* input_node = graph_.GetNode(node_name);
+      if (IsConstant(*input_node)) {
+        TF_CHECK_OK(
+            ReplaceInputWithConst(*input_node, i, &grappler_function_item));
+      } else if (ic->input_tensors_as_shapes().size() > i &&
+                 IsShapeFullyDefinedIntegerVectorOrScalar(
+                     ic, ic->input(i), ic->input_tensors_as_shapes()[i],
+                     ctx->input_types[i])) {
+        // We have fully defined input_tensors_as_shapes for this input; use it
+        // as a const input to the function node.
+        NodeDef const_input_node = MakeConstNodeDefFromShape(
+            ic, ic->input(i), ic->input_tensors_as_shapes()[i],
+            ctx->input_types[i]);
+        TF_CHECK_OK(ReplaceInputWithConst(const_input_node, i,
+                                          &grappler_function_item));
+      }
+    }
+
+    // Perform inference on function body.
+    GraphProperties gp(grappler_function_item);
+    TF_RETURN_IF_ERROR(gp.InferStatically(true));
+
+    // Add return nodes for output shapes.
+    int output = 0;
+    ctx->output_tensors_as_shapes.resize(grappler_function_item.output_size());
+    for (auto const& out_arg : grappler_function_item.outputs()) {
+      if (out_arg.output_tensors.size() > 1) {
+        // TODO(jmdecker): Handle case of multiple output tensors
+        return errors::Unimplemented(
+            "Output arguments with multiple output tensors are not yet "
+            "supported.");
+      }
+
+      // It is guaranteed that output_tensors does not contain any control
+      // inputs, so port_id >= 0.
+      string out_tensor = out_arg.output_tensors[0];
+      int port_id;
+      string node_name = ParseNodeName(out_tensor, &port_id);
+
+      const NodeDef* retnode = gv.GetNode(node_name);
+      if (retnode == nullptr) {
+        return errors::FailedPrecondition(
+            "Unable to find return function_node ", node_name, " for ",
+            function_node->name());
+      }
+
+      auto output_properties = gp.GetOutputProperties(retnode->name());
+      if (port_id >= output_properties.size()) {
+        return errors::InvalidArgument(
+            out_tensor, " has invalid position ", port_id,
+            " (output_properties.size() = ", output_properties.size(), ").");
+      }
+      auto const& outprop = output_properties[port_id];
+      const TensorShapeProto& shape = outprop.shape();
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(ic->MakeShapeFromShapeProto(shape, &out));
+      ic->set_output(output, out);
+      if (outprop.has_value()) {
+        // Forward tensor value to output_tensors_as_shape.
+        Tensor tensor;
+        if (tensor.FromProto(outprop.value())) {
+          MaybeSetTensorValueToShape(ic, tensor,
+                                     &ctx->output_tensors_as_shapes[output]);
+        }
+      }
+      output++;
+    }
+
+    return Status::OK();
+  }
+
   Status UpdateNode(const NodeDef* node, bool* refined) {
     NodeContext* node_context = GetNodeContext(node);
     if (node_context == nullptr) {
@@ -432,6 +627,7 @@ class SymbolicShapeRefiner {
       node_context = CHECK_NOTNULL(GetNodeContext(node));
       *refined = true;
     }
+
     // Check if the shapes of the nodes in the fan-in of this node have changed,
     // and if they have, update the node input shapes.
     InferenceContext* inference_context = node_context->inference_context.get();
@@ -451,7 +647,8 @@ class SymbolicShapeRefiner {
         if (c == nullptr) {
           return errors::FailedPrecondition(
               "Input ", dst_input, " ('", input->name(), "') for '",
-              node->name(), "' was not previously added to ShapeRefiner.");
+              node->name(),
+              "' was not previously added to SymbolicShapeRefiner.");
         }
 
         if (IsConstant(*input)) {
@@ -459,21 +656,9 @@ class SymbolicShapeRefiner {
           if (const_values[dst_input].FromProto(
                   input->attr().at("value").tensor())) {
             input_tensors[dst_input] = &const_values[dst_input];
-            // Integer tensors of rank one can also be interpreted as a shape
-            // provided all their values are >= -1.
-            if (const_values[dst_input].dims() == 1 &&
-                (const_values[dst_input].dtype() == DT_INT32 ||
-                 const_values[dst_input].dtype() == DT_INT64)) {
-              ShapeHandle tensor_shape = inference_context->Vector(
-                  const_values[dst_input].NumElements());
-              ShapeHandle shp;
-              if (inference_context
-                      ->MakeShapeFromTensor(input_tensors[dst_input],
-                                            tensor_shape, &shp)
-                      .ok()) {
-                input_tensors_as_shapes[dst_input] = shp;
-              }
-            }
+            MaybeSetTensorValueToShape(inference_context,
+                                       const_values[dst_input],
+                                       &input_tensors_as_shapes[dst_input]);
           }
         } else if (IsRank(*input)) {
           if (c->inference_context->RankKnown(c->inference_context->input(0))) {
@@ -560,6 +745,23 @@ class SymbolicShapeRefiner {
     node_context->inference_context->set_input_tensors(input_tensors);
     node_context->inference_context->set_input_tensors_as_shapes(
         input_tensors_as_shapes);
+
+    // Properly handle function nodes.
+    if (node_context->op_data && node_context->op_data->is_function_op) {
+      // TODO(jmdecker): Detect if the input shapes have changed for this
+      // function. Note that when we hit a function call node, refined will be
+      // true, as the updates to the call node will have changed, even if it's
+      // the same function being called twice with the same input shapes.
+      // Example: simple_function.pbtxt
+      auto s = UpdateFunction(node);
+      if (s.ok()) {
+        return Status::OK();
+      } else {
+        VLOG(1) << "UpdateFunction failed for " << node->op()
+                << ". Defaulting to ShapeUnknown.\n"
+                << s.ToString();
+      }
+    }
 
     // Update the shapes of the outputs.
     return InferShapes(*node, node_context);
@@ -677,9 +879,48 @@ class SymbolicShapeRefiner {
     return true;
   }
 
+  Status AddFunction(const NodeDef* function_node) {
+    auto it = fun_to_grappler_function_item_.find(function_node->op());
+    if (it != fun_to_grappler_function_item_.end()) {
+      return Status::OK();
+    }
+
+    const FunctionDef* function_def =
+        CHECK_NOTNULL(function_library_.Find(function_node->op()));
+
+    GrapplerFunctionItem grappler_function_item;
+    TF_RETURN_IF_ERROR(
+        MakeGrapplerFunctionItem(*function_def, function_library_,
+                                 graph_def_version_, &grappler_function_item));
+
+    if (grappler_function_item.inputs().size() > function_node->input_size()) {
+      return errors::FailedPrecondition(
+          "Function input size should be smaller than node input size.");
+    }
+
+    for (int i = grappler_function_item.inputs().size();
+         i < function_node->input_size(); ++i) {
+      const string& input = function_node->input(i);
+      if (!IsControlInput(input)) {
+        return errors::FailedPrecondition(
+            "Found regular input (", input,
+            ") instead of control nodes for node ", function_node->name());
+      }
+    }
+
+    fun_to_grappler_function_item_[function_def->signature().name()] =
+        grappler_function_item;
+
+    return Status::OK();
+  }
+
   Status AddNode(const NodeDef* node) {
     NodeContext& node_ctx = node_to_context_[node];
     TF_RETURN_IF_ERROR(function_library_.LookUp(node->op(), &node_ctx.op_data));
+
+    if (node_ctx.op_data->is_function_op) {
+      TF_RETURN_IF_ERROR(AddFunction(node));
+    }
 
     TF_RETURN_IF_ERROR(InOutTypesForNode(*node, node_ctx.op_data->op_def,
                                          &node_ctx.input_types,
@@ -785,13 +1026,25 @@ class SymbolicShapeRefiner {
                                                 : t->scalar<int64>()();
             dims.push_back(size < 0 ? ic->UnknownDim() : ic->MakeDim(size));
           } else {
-            dims.push_back(ic->UnknownDim());
+            // Don't have tensor value, but use input_tensors_as_shapes, if
+            // possible.
+            const ShapeHandle& shape_handle = ic->input_tensors_as_shapes()[i];
+            if (ic->RankKnown(shape_handle) && ic->Rank(shape_handle) >= 1 &&
+                ic->ValueKnown(ic->Dim(shape_handle, 0))) {
+              dims.push_back(ic->Dim(shape_handle, 0));
+            } else {
+              dims.push_back(ic->UnknownDim());
+            }
           }
         }
         if (valid) {
           c->output_tensors_as_shapes.resize(1);
           c->output_tensors_as_shapes[0] = ic->MakeShape(dims);
         }
+      } else if (IsIdentity(node)) {
+        // Pass input_tensors_as_shapes to output_tensors_as_shapes.
+        c->output_tensors_as_shapes.resize(1);
+        c->output_tensors_as_shapes[0] = ic->input_tensors_as_shapes()[0];
       } else if (IsSlice(node)) {
         ShapeHandle input = ic->input_tensors_as_shapes()[0];
         bool valid = ic->RankKnown(input);
@@ -813,6 +1066,60 @@ class SymbolicShapeRefiner {
             int64 end = start + size;
             TF_RETURN_IF_ERROR(ic->Subshape(input, start, end, &result));
           }
+          c->output_tensors_as_shapes.resize(1);
+          c->output_tensors_as_shapes[0] = result;
+        }
+      } else if (IsStridedSlice(node)) {
+        ShapeHandle input = ic->input_tensors_as_shapes()[0];
+        bool valid = ic->RankKnown(input);
+        const Tensor* slice_begin = ic->input_tensor(1);
+        valid &= slice_begin != nullptr && slice_begin->NumElements() == 1;
+        const Tensor* slice_end = ic->input_tensor(2);
+        valid &= slice_end != nullptr && slice_end->NumElements() == 1;
+        const Tensor* slice_stride = ic->input_tensor(3);
+        valid &= slice_stride != nullptr && slice_stride->NumElements() == 1;
+
+        if (node.attr().count("ellipsis_mask") > 0 &&
+            node.attr().at("ellipsis_mask").i() != 0) {
+          valid = false;
+        }
+        if (node.attr().count("new_axis_mask") > 0 &&
+            node.attr().at("new_axis_mask").i() != 0) {
+          valid = false;
+        }
+        if (node.attr().count("shrink_axis_mask") > 0 &&
+            node.attr().at("shrink_axis_mask").i() != 0) {
+          valid = false;
+        }
+        int begin_mask = 0;
+        if (node.attr().count("begin_mask") > 0) {
+          begin_mask = node.attr().at("begin_mask").i();
+        }
+        int end_mask = 0;
+        if (node.attr().count("end_mask") > 0) {
+          end_mask = node.attr().at("end_mask").i();
+        }
+        if (begin_mask < 0 || begin_mask > 1 || end_mask < 0 || end_mask > 1) {
+          valid = false;
+        }
+        if (valid) {
+          int64 begin = 0;
+          if (begin_mask == 0) {
+            begin = slice_begin->dtype() == DT_INT32
+                        ? slice_begin->flat<int32>()(0)
+                        : slice_begin->flat<int64>()(0);
+          }
+          int64 end = std::numeric_limits<int64>::max();
+          if (end_mask == 0) {
+            end =
+                (slice_end->dtype() == DT_INT32 ? slice_end->flat<int32>()(0)
+                                                : slice_end->flat<int64>()(0));
+          }
+          int64 stride = slice_stride->dtype() == DT_INT32
+                             ? slice_stride->flat<int32>()(0)
+                             : slice_stride->flat<int64>()(0);
+          ShapeHandle result;
+          TF_RETURN_IF_ERROR(ic->Subshape(input, begin, end, stride, &result));
           c->output_tensors_as_shapes.resize(1);
           c->output_tensors_as_shapes[0] = result;
         }
@@ -842,11 +1149,53 @@ class SymbolicShapeRefiner {
   }
 
  private:
+  bool IsIntegerVector(const Tensor& tensor) {
+    if (tensor.dims() == 1 &&
+        (tensor.dtype() == DT_INT32 || tensor.dtype() == DT_INT64)) {
+      return true;
+    }
+    return false;
+  }
+
+  bool IsIntegerScalar(const Tensor& tensor) {
+    if (tensor.dims() == 0 &&
+        (tensor.dtype() == DT_INT32 || tensor.dtype() == DT_INT64) &&
+        tensor.NumElements() == 1) {
+      return true;
+    }
+    return false;
+  }
+
+  void MaybeSetTensorValueToShape(InferenceContext* ic, const Tensor& tensor,
+                                  ShapeHandle* tensors_as_shapes) {
+    // Integer tensors of rank one can also be interpreted as a shape
+    // provided all their values are >= -1.
+    if (IsIntegerVector(tensor)) {
+      ShapeHandle tensor_shape = ic->Vector(tensor.NumElements());
+      ShapeHandle shp;
+      // Note that MakeShapeFromTensor filters out invalid values (e.g., < -1).
+      if (ic->MakeShapeFromTensor(&tensor, tensor_shape, &shp).ok()) {
+        *tensors_as_shapes = shp;
+      }
+    } else if (IsIntegerScalar(tensor)) {
+      // Scalar constant.
+      int64 value = tensor.dtype() == DT_INT32 ? tensor.flat<int32>()(0)
+                                               : tensor.flat<int64>()(0);
+      // Ideally, values can be < -1, but MakeDim() fails with a value < -1.
+      // It's a limitation as we use ShapeHandle as a means to pass values.
+      if (value >= -1) {
+        *tensors_as_shapes = ic->MakeShape({ic->MakeDim(value)});
+      }
+    }
+  }
+
   const GraphView& graph_;
   int graph_def_version_;
   std::unordered_map<const NodeDef*, NodeContext> node_to_context_;
   std::unordered_map<ShapeId, ShapeHandle, HashShapeId> unknown_shapes_;
   std::unordered_map<DimId, DimensionHandle, HashDimId> unknown_dims_;
+  std::unordered_map<string, GrapplerFunctionItem>
+      fun_to_grappler_function_item_;
   FunctionLibraryDefinition function_library_;
   const std::unordered_map<string, std::unordered_set<int>>& fed_ports_;
 };
@@ -1014,8 +1363,12 @@ Status GraphProperties::UpdateShapes(
     // itself.
     TF_RETURN_IF_ERROR(
         UpdateEnqueue(n, resource_handles, shape_refiner, new_shapes));
+  } else if (IsQueue(*n)) {
+    // Set shapes and types of Queue ops, if needed.
+    TF_RETURN_IF_ERROR(UpdateQueue(n, shape_refiner, new_shapes));
   } else {
     // Rely on regular TF shape refinement for all the other nodes.
+    // UpdateNode calls UpdateFunction if a function node is detected.
     TF_RETURN_IF_ERROR(shape_refiner->UpdateNode(n, new_shapes));
   }
   return Status::OK();
@@ -1072,6 +1425,53 @@ Status GraphProperties::PropagateShapes(
   }
 
   return Status::OK();
+}
+
+Status GraphProperties::UpdateQueue(const NodeDef* queue_node,
+                                    SymbolicShapeRefiner* shape_refiner,
+                                    bool* new_shapes) {
+  auto ctx = shape_refiner->GetNodeContext(queue_node);
+  if (!ctx) {
+    TF_RETURN_IF_ERROR(shape_refiner->AddNode(queue_node));
+    ctx = CHECK_NOTNULL(shape_refiner->GetNodeContext(queue_node));
+  }
+  auto* ic = ctx->inference_context.get();
+
+  auto* outputs = ic->output_handle_shapes_and_types(0);
+  if (outputs) {
+    // Shapes and types are already set, presumably by Enqueue ops.
+    return shape_refiner->UpdateNode(queue_node, new_shapes);
+  }
+
+  if (queue_node->attr().count("shapes") <= 0 ||
+      queue_node->attr().count("component_types") <= 0 ||
+      queue_node->attr().at("shapes").list().shape_size() !=
+          queue_node->attr().at("component_types").list().type_size()) {
+    // Errors in shapes and component_types attr.
+    return shape_refiner->UpdateNode(queue_node, new_shapes);
+  }
+
+  // Extract types and shapes from Queue attr.
+  const auto& shapes = queue_node->attr().at("shapes").list().shape();
+  const auto& types = queue_node->attr().at("component_types").list().type();
+  std::vector<ShapeAndType> shapes_and_types;
+  for (int i = 0; i < types.size(); i++) {
+    const auto& shape = shapes[i];
+    ShapeHandle shape_handle;
+    TF_RETURN_IF_ERROR(
+        ic->MakeShapeFromPartialTensorShape(shape, &shape_handle));
+    DataType data_type =
+        queue_node->attr().at("component_types").list().type(i);
+    ShapeAndType shape_and_type(shape_handle, data_type);
+    shapes_and_types.push_back(shape_and_type);
+  }
+  ic->set_output_handle_shapes_and_types(0, shapes_and_types);
+
+  // Queue node is updated with output_handle_shapes_and_types, so set
+  // new_shapes and ignore it from UpdateNoe().
+  *new_shapes = true;
+  bool dummy_new_shapes = false;
+  return shape_refiner->UpdateNode(queue_node, &dummy_new_shapes);
 }
 
 Status GraphProperties::UpdateEnqueue(
@@ -1264,6 +1664,8 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
       continue;
     }
 
+    auto* ic = ctx->inference_context.get();
+
     // Fill input properties.
     {
       auto& input_properties = input_properties_[node.name()];
@@ -1271,19 +1673,26 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
       // Should always be empty, node names in graph are supposed to be unique.
       CHECK_EQ(input_properties.size(), 0);
 
-      input_properties.resize(ctx->inference_context->num_inputs());
+      input_properties.resize(ic->num_inputs());
       GraphView::InputPort input(&node, -1);
-      for (int i = 0; i < ctx->inference_context->num_inputs(); ++i) {
-        shape_manager.AsTensorProperties(ctx->inference_context->input(i),
-                                         ctx->input_types[i],
+      for (int i = 0; i < ic->num_inputs(); ++i) {
+        shape_manager.AsTensorProperties(ic->input(i), ctx->input_types[i],
                                          &input_properties[i]);
         input.port_id = i;
         GraphView::OutputPort fanin = graph_view.GetRegularFanin(input);
-        if (!IsConstant(*fanin.node)) {
-          continue;
+        // Export tensor value (either const tensor or input_tensors_as_shapes)
+        // to input_properties.value.
+        if (IsConstant(*fanin.node)) {
+          const TensorProto& raw_val = fanin.node->attr().at("value").tensor();
+          *input_properties[i].mutable_value() = raw_val;
+        } else if (ic->input_tensors_as_shapes().size() > i &&
+                   IsShapeFullyDefinedIntegerVectorOrScalar(
+                       ic, ic->input(i), ic->input_tensors_as_shapes()[i],
+                       ctx->input_types[i])) {
+          *input_properties[i].mutable_value() = MakeTensorProtoFromShape(
+              ic, ic->input(i), ic->input_tensors_as_shapes()[i],
+              ctx->input_types[i]);
         }
-        const TensorProto& raw_val = fanin.node->attr().at("value").tensor();
-        *input_properties[i].mutable_value() = raw_val;
       }
     }
 
@@ -1294,11 +1703,23 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
       // Should always be empty, node names in graph are supposed to be unique.
       CHECK_EQ(output_properties.size(), 0);
 
-      output_properties.resize(ctx->inference_context->num_outputs());
-      for (int i = 0; i < ctx->inference_context->num_outputs(); ++i) {
-        shape_manager.AsTensorProperties(ctx->inference_context->output(i),
-                                         ctx->output_types[i],
+      output_properties.resize(ic->num_outputs());
+      for (int i = 0; i < ic->num_outputs(); ++i) {
+        shape_manager.AsTensorProperties(ic->output(i), ctx->output_types[i],
                                          &output_properties[i]);
+        // Export tensor value (either const tensor or input_tensors_as_shapes)
+        // to output_properties.value.
+        if (IsConstant(node)) {
+          const TensorProto& raw_val = node.attr().at("value").tensor();
+          *output_properties[i].mutable_value() = raw_val;
+        } else if (ctx->output_tensors_as_shapes.size() > i &&
+                   IsShapeFullyDefinedIntegerVectorOrScalar(
+                       ic, ic->output(i), ctx->output_tensors_as_shapes[i],
+                       ctx->output_types[i])) {
+          *output_properties[i].mutable_value() = MakeTensorProtoFromShape(
+              ic, ic->output(i), ctx->output_tensors_as_shapes[i],
+              ctx->output_types[i]);
+        }
       }
     }
   }

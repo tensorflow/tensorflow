@@ -21,7 +21,6 @@ import itertools
 
 import numpy as np
 
-from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import scan_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
@@ -51,7 +50,7 @@ class ScanDatasetTest(test.TestCase):
         start, make_scan_fn(step)).take(take).make_initializable_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
       for start_val, step_val, take_val in [(0, 1, 10), (0, 1, 0), (10, 1, 10),
                                             (10, 2, 10), (10, -1, 10),
@@ -64,7 +63,7 @@ class ScanDatasetTest(test.TestCase):
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(next_element)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testFibonacci(self):
     iterator = dataset_ops.Dataset.from_tensors(1).repeat(None).apply(
         scan_ops.scan([0, 1], lambda a, _: ([a[1], a[0] + a[1]], a[1]))
@@ -101,7 +100,7 @@ class ScanDatasetTest(test.TestCase):
         make_scan_fn(step)).take(take).make_initializable_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
       for start_val, step_val, take_val in [(0, 1, 10), (0, 1, 0), (10, 1, 10),
                                             (10, 2, 10), (10, -1, 10),
@@ -134,7 +133,7 @@ class ScanDatasetTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for i in range(5):
         (longer_vector_val, larger_rank_val), _ = sess.run(next_element)
         self.assertAllEqual([0] * (2**i), longer_vector_val)
@@ -166,19 +165,6 @@ class ScanDatasetTest(test.TestCase):
         "output value."):
       dataset.apply(
           scan_ops.scan(constant_op.constant(1, dtype=dtypes.int32), _scan_fn))
-
-
-class ScanDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
-
-  def _build_dataset(self, num_elements):
-    return dataset_ops.Dataset.from_tensors(1).repeat(num_elements).apply(
-        scan_ops.scan([0, 1], lambda a, _: ([a[1], a[0] + a[1]], a[1])))
-
-  def testScanCore(self):
-    num_output = 5
-    self.run_core_tests(lambda: self._build_dataset(num_output),
-                        lambda: self._build_dataset(2), num_output)
 
 
 if __name__ == "__main__":

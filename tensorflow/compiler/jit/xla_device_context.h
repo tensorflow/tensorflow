@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/jit/xla_tensor.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -45,31 +46,52 @@ class XlaDeviceAllocator : public Allocator {
 // Helper class for managing data transfers between host and XLA devices.
 class XlaTransferManager {
  public:
-  explicit XlaTransferManager(se::Stream* stream, xla::LocalClient* client,
-                              bool transfer_as_literal);
+  explicit XlaTransferManager(
+      std::shared_ptr<se::Stream> compute_stream,
+      std::shared_ptr<se::Stream> host_to_device_stream,
+      std::shared_ptr<se::Stream> device_to_host_stream,
+      xla::LocalClient* client, bool transfer_as_literal,
+      XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+      thread::ThreadPool* thread_pool);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor, StatusCallback done) const;
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                             StringPiece tensor_name, Device* device,
+                             absl::string_view tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done);
-  se::Stream* stream() const { return stream_; }
+
+  void CopyDeviceTensorToDevice(const Tensor& src_tensor, Tensor* dst_tensor,
+                                const StatusCallback& done);
+
+  se::Stream* stream() const { return stream_.get(); }
 
  private:
   Status TransferLiteralToDevice(const Tensor& host_tensor,
                                  Tensor* device_tensor) const;
-  Status TransferLiteralFromDevice(Tensor* host_tensor,
-                                   const Tensor& device_tensor) const;
+  void TransferLiteralFromDevice(Tensor* host_tensor,
+                                 const Tensor& device_tensor,
+                                 const StatusCallback& done) const;
+  bool UseMultipleStreams() const { return stream_ != host_to_device_stream_; }
 
-  // Stream obtained from a Device, used to transfer tensors between
-  // CPU and device.
-  se::Stream* stream_;
+  // The main compute stream of the device, used to synchronize the transfer
+  // streams if they are set.
+  std::shared_ptr<se::Stream> stream_;
+  // The stream to use for transferring data from host to device. Can be
+  // idential to stream_, but must not be nullptr.
+  std::shared_ptr<se::Stream> host_to_device_stream_;
+  // The stream to use for transferring data from device to host. Can be
+  // idential to stream_, but must not be nullptr.
+  std::shared_ptr<se::Stream> device_to_host_stream_;
   // For the underlying memory allocator and XLA's TransferManager.
   xla::LocalClient* client_;
   // Transfer manager, for marshalling data to and from the device.
   xla::TransferManager* transfer_manager_;
   // True if we must use XLA's TransferManager for correct device transfers.
-  bool transfer_as_literal_;
+  const bool transfer_as_literal_;
+  XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
+
+  // Thread pool used for running closures
+  thread::ThreadPool* thread_pool_;
 };
 
 // DeviceContext for operators assigned to XlaDevice devices. The
@@ -77,15 +99,23 @@ class XlaTransferManager {
 // wraps the methods in XlaTransferManager.
 class XlaDeviceContext : public DeviceContext {
  public:
-  explicit XlaDeviceContext(se::Stream* stream, xla::LocalClient* client,
-                            bool transfer_as_literal);
+  explicit XlaDeviceContext(
+      std::shared_ptr<se::Stream> compute_stream,
+      std::shared_ptr<se::Stream> host_to_device_stream,
+      std::shared_ptr<se::Stream> device_to_host_stream,
+      xla::LocalClient* client, bool transfer_as_literal,
+      XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+      thread::ThreadPool* thread_pool);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor,
                              StatusCallback done) const override;
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                             StringPiece tensor_name, Device* device,
+                             absl::string_view tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override;
+  void CopyDeviceTensorToDevice(const Tensor& src_tensor, Tensor* dst_tensor,
+                                const StatusCallback& done);
+
   se::Stream* stream() const override { return manager_.stream(); }
 
  private:

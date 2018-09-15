@@ -136,12 +136,14 @@ class GrapplerFunctionItemInstantiation {
 class GrapplerFunctionItem : public GrapplerItem {
  public:
   GrapplerFunctionItem() = default;
-  GrapplerFunctionItem(
-      const string& func_name, const AttrValueMap& func_attr,
-      const std::vector<InputArgExpansion>& input_arg_expansions,
-      const std::vector<OutputArgExpansion>& output_arg_expansions,
-      const std::vector<string>& keep_nodes, bool is_stateful,
-      GraphDef&& function_body);
+  GrapplerFunctionItem(string func_name, string description,
+                       AttrValueMap func_attr,
+                       std::vector<InputArgExpansion> input_arg_expansions,
+                       std::vector<OutputArgExpansion> output_arg_expansions,
+                       std::vector<string> keep_nodes, int graph_def_version,
+                       bool is_stateful, GraphDef&& function_body);
+
+  const string& description() const;
 
   bool IsInputPlaceholder(const string& node_name) const;
 
@@ -165,6 +167,7 @@ class GrapplerFunctionItem : public GrapplerItem {
   friend Status ReplaceInputWithConst(const NodeDef&, int,
                                       GrapplerFunctionItem*);
 
+  string description_;
   AttrValueMap func_attr_;  // Attributes specific to function definition that
                             // produced this item (FuncDef.attr field).
 
@@ -175,9 +178,6 @@ class GrapplerFunctionItem : public GrapplerItem {
 
   bool is_stateful_;
 };
-
-// Return all output tensors referenced by item output args.
-std::vector<string> OutputTensors(const GrapplerFunctionItem& item);
 
 // Check if function input/output types are fully defined only at instantiation
 // time (parametrized by it's instantiation node).
@@ -190,6 +190,19 @@ bool HasParametrizedBody(const FunctionDef& func);
 
 // Check if function has parametrized type or body.
 bool IsParametrized(const FunctionDef& func);
+
+// Resolve function instantiation type parameters from the attributes of the
+// caller node. Return error if type can't be resolved.
+Status InstantiationTypeParameters(
+    const FunctionDef& func, const AttrValueMap& func_instantiation_attr,
+    std::unordered_map<string, DataType>* type_parameters);
+
+// Resolve function instantiation body parameters (values for the function body
+// attr placeholders) from the attributes of the caller node. Return error if
+// type can't be resolved.
+Status InstantiationBodyParameters(
+    const FunctionDef& func, const AttrValueMap& func_instantiation_attr,
+    std::unordered_map<string, AttrValue>* body_parameters);
 
 // Register GrapplerFunctionItem input arg expansion and function body outputs
 // in the GrapplerFunctionConnectivity. Use function library definition to
@@ -205,10 +218,11 @@ Status ReplaceInputWithConst(const NodeDef& input_const, int input_position,
 // Make a GrapplerFunctionItem from the function definition and function
 // instantiation attributes (caller node attributes). Returns error if the given
 // function def cannot be converted (e.g. not all attributes are defined).
-Status MakeGrapplerFunctionItem(
-    const FunctionDef& func,
-    const std::unordered_map<string, AttrValue>& func_instantiation_attr,
-    const FunctionLibraryDefinition& flib, GrapplerFunctionItem* item);
+Status MakeGrapplerFunctionItem(const FunctionDef& func,
+                                const AttrValueMap& func_instantiation_attr,
+                                const FunctionLibraryDefinition& flib,
+                                const int graph_def_version,
+                                GrapplerFunctionItem* item);
 
 // Make a GrapplerFunction item from the function definition. Function must be
 // fully defined (no type or body parametrization).
@@ -217,6 +231,7 @@ Status MakeGrapplerFunctionItem(
 // without specializing it to it's instantiation attributes (at least types)?
 Status MakeGrapplerFunctionItem(const FunctionDef& func,
                                 const FunctionLibraryDefinition& flib,
+                                const int graph_def_version,
                                 GrapplerFunctionItem* item);
 
 // Make a FunctionDef from the GrapplerFunctionItem. Use function library

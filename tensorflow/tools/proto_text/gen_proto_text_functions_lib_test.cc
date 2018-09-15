@@ -455,7 +455,10 @@ TEST(CreateProtoDebugStringLibTest, Enums) {
        "repeated_nested_enum: 1"));
 
   EXPECT_PARSE_SUCCESS("", "optional_nested_enum: -0");
-  EXPECT_PARSE_FAILURE("optional_nested_enum: 6");
+  // TODO(amauryfa): restore the line below when protobuf::TextFormat also
+  // supports unknonwn enum values.
+  // EXPECT_PARSE_SUCCESS("optional_nested_enum: 6", "optional_nested_enum: 6");
+  EXPECT_PARSE_FAILURE("optional_nested_enum: 2147483648");  // > INT32_MAX
   EXPECT_PARSE_FAILURE("optional_nested_enum: BARNONE");
   EXPECT_PARSE_FAILURE("optional_nested_enum: 'BAR'");
   EXPECT_PARSE_FAILURE("optional_nested_enum: \"BAR\" ");

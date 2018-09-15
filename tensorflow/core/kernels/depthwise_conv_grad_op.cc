@@ -564,7 +564,7 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
 
     // For in_depth == 1 and grouped convolutions.
-    use_cudnn_ = CanUseCudnn();
+    use_cudnn_ = CanUseCudnn() && std::is_same<Device, GPUDevice>::value;
     cudnn_use_autotune_ = CudnnUseAutotune();
     use_cudnn_grouped_conv_ = false;
     dtype_ = DataTypeToEnum<T>::value;
@@ -1037,7 +1037,7 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
 
     // For in_depth == 1 and grouped convolutions.
-    use_cudnn_ = CanUseCudnn();
+    use_cudnn_ = CanUseCudnn() && std::is_same<Device, GPUDevice>::value;
     cudnn_use_autotune_ = CudnnUseAutotune();
     use_cudnn_grouped_conv_ = false;
 
@@ -1076,7 +1076,7 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
                                 {1}, 0, filter_shape, &filter_backprop));
 
     // If there is nothing to compute, return.
-    if (filter_shape.num_elements() == 0) {
+    if (out_backprop.shape().num_elements() == 0) {
       return;
     }
 

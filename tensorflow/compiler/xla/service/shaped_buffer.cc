@@ -15,22 +15,21 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 
-#include <set>
 #include <string>
 #include <utility>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
-
-using ::tensorflow::strings::Appendf;
 
 ShapedBuffer::ShapedBuffer(const Shape& on_host_shape,
                            const Shape& on_device_shape,
@@ -76,7 +75,7 @@ void ShapedBuffer::clear() {
 }
 
 string ShapedBuffer::ToString() const {
-  string s = tensorflow::strings::StrCat(
+  string s = absl::StrCat(
       "ShapedBuffer(", platform_->Name(), ":", device_ordinal(),
       "), on-host shape=" + ShapeUtil::HumanStringWithLayout(on_host_shape()),
       ", on-device shape=" +
@@ -92,9 +91,9 @@ string ShapedBuffer::ToString() const {
           shape_str = ShapeUtil::HumanStringWithLayout(subshape);
         }
         const se::DeviceMemoryBase& memory = buffer(index);
-        Appendf(&s, "  %s%p (%lld bytes) : %s\n",
-                string(index.size() * 2, ' ').c_str(), memory.opaque(),
-                memory.size(), shape_str.c_str());
+        absl::StrAppendFormat(&s, "  %s%p (%d bytes) : %s\n",
+                              string(index.size() * 2, ' '), memory.opaque(),
+                              memory.size(), shape_str);
       });
   return s;
 }
@@ -123,6 +122,8 @@ ScopedShapedBuffer::ScopedShapedBuffer(ScopedShapedBuffer&& s)
 }
 
 ScopedShapedBuffer& ScopedShapedBuffer::operator=(ScopedShapedBuffer&& s) {
+  Deallocate();
+
   *static_cast<ShapedBuffer*>(this) = std::move(static_cast<ShapedBuffer&>(s));
   allocator_ = s.allocator_;
   // Null out s.allocator_ so it doesn't try to free anything in its destructor.
@@ -130,7 +131,15 @@ ScopedShapedBuffer& ScopedShapedBuffer::operator=(ScopedShapedBuffer&& s) {
   return *this;
 }
 
-ScopedShapedBuffer::~ScopedShapedBuffer() {
+ScopedShapedBuffer::~ScopedShapedBuffer() { Deallocate(); }
+
+ShapedBuffer ScopedShapedBuffer::release() {
+  ShapedBuffer shaped_buffer(static_cast<ShapedBuffer&&>(*this));
+  buffers_ = ShapeTree<se::DeviceMemoryBase>();
+  return shaped_buffer;
+}
+
+void ScopedShapedBuffer::Deallocate() {
   // allocator_ will be null if we were moved-from.
   if (allocator_ == nullptr) {
     return;
@@ -138,22 +147,14 @@ ScopedShapedBuffer::~ScopedShapedBuffer() {
   // Deallocate all non-null buffers. A buffer may appear in more than one spot
   // in the shape (eg, a tuple with a repeated element) so keep track of what
   // has been deallocated.
-  std::set<void*> deallocated_opaques;
+  tensorflow::gtl::FlatSet<void*> deallocated_ptrs;
   for (auto& pair : buffers_) {
     se::DeviceMemoryBase& memory_base = pair.second;
     if (!memory_base.is_null() &&
-        deallocated_opaques.count(memory_base.opaque()) == 0) {
-      deallocated_opaques.insert(memory_base.opaque());
-      TF_CHECK_OK(
-          this->allocator_->Deallocate(this->device_ordinal(), &memory_base));
+        deallocated_ptrs.insert(memory_base.opaque()).second) {
+      TF_CHECK_OK(allocator_->Deallocate(device_ordinal(), memory_base));
     }
   }
-}
-
-ShapedBuffer ScopedShapedBuffer::release() {
-  ShapedBuffer shaped_buffer(static_cast<ShapedBuffer&&>(*this));
-  buffers_ = ShapeTree<se::DeviceMemoryBase>();
-  return shaped_buffer;
 }
 
 }  // namespace xla

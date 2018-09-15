@@ -24,6 +24,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -112,6 +113,14 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc=None,
                covariance_matrix=None,
@@ -155,7 +164,7 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
     Raises:
       ValueError: if neither `loc` nor `covariance_matrix` are specified.
     """
-    parameters = locals()
+    parameters = dict(locals())
 
     # Convert the covariance_matrix up to a scale_tril and call MVNTriL.
     with ops.name_scope(name) as name:

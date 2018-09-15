@@ -51,6 +51,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
+#include "tensorflow/core/kernels/resource_variable_ops.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -72,40 +73,33 @@ namespace tensorflow {
 
 REGISTER_RESOURCE_HANDLE_KERNEL(Var);
 
-class ReadVariableOp : public OpKernel {
- public:
-  explicit ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
-  }
+ReadVariableOp::ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {
+  OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
+}
 
-  void Compute(OpKernelContext* ctx) override {
-    Var* variable = nullptr;
-    ResourceHandle handle = HandleFromInput(ctx, 0);
-    const auto status = LookupResource(ctx, handle, &variable);
-    OP_REQUIRES(ctx, status.ok(),
-                errors::FailedPrecondition(
-                    "Error while reading resource variable ", handle.name(),
-                    " from Container: ", handle.container(),
-                    ". This could mean that the variable was uninitialized. ",
-                    status.ToString()));
+void ReadVariableOp::Compute(OpKernelContext* ctx) {
+  Var* variable = nullptr;
+  const ResourceHandle& handle = HandleFromInput(ctx, 0);
+  const auto status = LookupResource(ctx, handle, &variable);
+  OP_REQUIRES(ctx, status.ok(),
+              errors::FailedPrecondition(
+                  "Error while reading resource variable ", handle.name(),
+                  " from Container: ", handle.container(),
+                  ". This could mean that the variable was uninitialized. ",
+                  status.ToString()));
 
-    core::ScopedUnref s(variable);
-    // We're acquiring a reference to the underlying buffer while
-    // holding a shared lock to guarantee ordering of reads and
-    // writes.
-    tf_shared_lock ml(*variable->mu());
-    const Tensor& t = *variable->tensor();
-    OP_REQUIRES(
-        ctx, dtype_ == t.dtype(),
-        errors::InvalidArgument(
-            "Trying to read variable with wrong dtype. Expected ",
-            DataTypeString(dtype_), " got ", DataTypeString(t.dtype())));
-    ctx->set_output(0, t);
-  }
-
- private:
-  DataType dtype_;
-};
+  core::ScopedUnref s(variable);
+  // We're acquiring a reference to the underlying buffer while
+  // holding a shared lock to guarantee ordering of reads and
+  // writes.
+  tf_shared_lock ml(*variable->mu());
+  const Tensor& t = *variable->tensor();
+  OP_REQUIRES(ctx, dtype_ == t.dtype(),
+              errors::InvalidArgument(
+                  "Trying to read variable with wrong dtype. Expected ",
+                  DataTypeString(dtype_), " got ", DataTypeString(t.dtype())));
+  ctx->set_output(0, t);
+}
 
 REGISTER_KERNEL_BUILDER(Name("ReadVariableOp").Device(DEVICE_CPU),
                         ReadVariableOp);
@@ -180,25 +174,20 @@ REGISTER_KERNEL_BUILDER(Name("VariableShape")
 
 #endif  // GOOGLE_CUDA
 
-class DestroyResourceOp : public OpKernel {
- public:
-  explicit DestroyResourceOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("ignore_lookup_error", &ignore_lookup_error_));
-  }
+DestroyResourceOp::DestroyResourceOp(OpKernelConstruction* ctx)
+    : OpKernel(ctx) {
+  OP_REQUIRES_OK(ctx,
+                 ctx->GetAttr("ignore_lookup_error", &ignore_lookup_error_));
+}
 
-  void Compute(OpKernelContext* ctx) override {
-    const ResourceHandle& p = HandleFromInput(ctx, 0);
-    Status status = DeleteResource(ctx, p);
-    if (ignore_lookup_error_ && errors::IsNotFound(status)) {
-      return;
-    }
-    OP_REQUIRES_OK(ctx, status);
+void DestroyResourceOp::Compute(OpKernelContext* ctx) {
+  const ResourceHandle& p = HandleFromInput(ctx, 0);
+  Status status = DeleteResource(ctx, p);
+  if (ignore_lookup_error_ && errors::IsNotFound(status)) {
+    return;
   }
-
- private:
-  bool ignore_lookup_error_;
-};
+  OP_REQUIRES_OK(ctx, status);
+}
 
 REGISTER_KERNEL_BUILDER(Name("DestroyResourceOp").Device(DEVICE_CPU),
                         DestroyResourceOp);
@@ -222,66 +211,35 @@ class AssignVariableOp : public OpKernel {
     OP_REQUIRES(context, dtype_ == context->input(1).dtype(),
                 errors::InvalidArgument(
                     "Variable and value dtypes don't match; respectively, ",
-                    dtype_, " and ", context->input(1).dtype()));
+                    DataTypeString(dtype_), " and ",
+                    DataTypeString(context->input(1).dtype())));
     Var* variable = nullptr;
-    OP_REQUIRES_OK(
-        context,
-        LookupOrCreateResource<Var>(
-            context, HandleFromInput(context, 0), &variable,
-            [this, context](Var** ptr) {
-              *ptr = new Var(dtype_);
-              PersistentTensor unused;
-              Tensor* tmp;
-              AllocatorAttributes attr;
-              if (!relax_constraints_) {
-                attr.set_gpu_compatible(true);
-                attr.set_nic_compatible(true);
-              }
-              TF_RETURN_IF_ERROR(context->allocate_persistent(
-                  dtype_, context->input(1).shape(), &unused, &tmp, attr));
-              *(*ptr)->tensor() = *tmp;
-              return Status::OK();
-            }));
+    const Tensor& value = context->input(1);
+    // Note: every resource-variable-manipulating op assumes copy-on-write
+    // semantics, and creates a copy of the variable's Tensor if its refcount is
+    // bigger than 1 when we try to modify it. This means we never need to copy
+    // the original tensor for AssignVariableOp; even if there are other live
+    // users of it we know none can modify it so this is always safe (even in
+    // esoteric cases where the same tensor is used to initialize multiple
+    // variables or the tensor is a constant this is safe, as future writes will
+    // trigger copies).
+    OP_REQUIRES_OK(context, LookupOrCreateResource<Var>(
+                                context, HandleFromInput(context, 0), &variable,
+                                [this, &value](Var** ptr) {
+                                  *ptr = new Var(dtype_);
+                                  *(*ptr)->tensor() = value;
+                                  (*ptr)->is_initialized = true;
+                                  return Status::OK();
+                                }));
     core::ScopedUnref s(variable);
-
+    mutex_lock ml(*variable->mu());
     OP_REQUIRES(context, variable->tensor()->dtype() == dtype_,
                 errors::InvalidArgument(
                     "Trying to assign variable with wrong dtype. Expected ",
                     DataTypeString(variable->tensor()->dtype()), " got ",
                     DataTypeString(dtype_)));
-
-    const Tensor& value = context->input(1);
-    AllocatorAttributes attr;
-    if (!relax_constraints_) {
-      attr.set_gpu_compatible(true);
-      attr.set_nic_compatible(true);
-    }
-
-    // Copying is unnecessary if we are the last user of the value
-    // tensor, we can just adopt the input tensor's buffer instead.
-    std::unique_ptr<Tensor> input_alias = context->forward_input(
-        1, OpKernelContext::Params::kNoReservation /*output_index*/, dtype_,
-        value.shape(), DEVICE_MEMORY, attr);
-    mutex_lock ml(*variable->mu());
     variable->is_initialized = true;
-    if (input_alias) {
-      *variable->tensor() = *input_alias;
-      return;
-    }
-
-    // Need to copy, but maybe we can re-use variable's buffer?
-    if (!variable->tensor()->RefCountIsOne() ||
-        !variable->tensor()->shape().IsSameSize(value.shape())) {
-      // Copy to new buffer
-      PersistentTensor unused;
-      Tensor* tmp;
-      OP_REQUIRES_OK(context, context->allocate_persistent(
-                                  dtype_, value.shape(), &unused, &tmp, attr));
-      *variable->tensor() = *tmp;
-    }
-    functor::DenseUpdate<Device, T, ASSIGN> copy_functor;
-    copy_functor(context->eigen_device<Device>(), variable->tensor()->flat<T>(),
-                 value.flat<T>());
+    *variable->tensor() = value;
   }
 
  private:
@@ -310,11 +268,6 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
                                   return Status::OK();
                                 }));
     core::ScopedUnref s(variable);
-    OP_REQUIRES(context, variable->tensor()->dtype() == DT_VARIANT,
-                errors::InvalidArgument(
-                    "Trying to assign variable with wrong dtype. Expected ",
-                    DataTypeString(variable->tensor()->dtype()), " got ",
-                    DataTypeString(DT_VARIANT)));
 
     // For purposes of forwarding DT_VARIANT, we want the least
     // restrictive attr; we already know the input is on host.
@@ -335,6 +288,11 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
         attr);
 
     mutex_lock ml(*variable->mu());
+    OP_REQUIRES(context, variable->tensor()->dtype() == DT_VARIANT,
+                errors::InvalidArgument(
+                    "Trying to assign variable with wrong dtype. Expected ",
+                    DataTypeString(variable->tensor()->dtype()), " got ",
+                    DataTypeString(DT_VARIANT)));
     variable->is_initialized = true;
     *variable->tensor() = Tensor(DT_VARIANT, value.shape());
 
@@ -703,6 +661,8 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_MINMAX_CPU);
 
 REGISTER_SCATTER_KERNEL(string, CPU, "ResourceScatterUpdate",
                         scatter_op::UpdateOp::ASSIGN);
+REGISTER_SCATTER_KERNEL(bool, CPU, "ResourceScatterUpdate",
+                        scatter_op::UpdateOp::ASSIGN);
 REGISTER_SCATTER_KERNEL(Variant, CPU, "ResourceScatterUpdate",
                         scatter_op::UpdateOp::ASSIGN);
 
@@ -724,6 +684,13 @@ REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .TypeConstraint<Variant>("dtype")
                             .TypeConstraint<int32>("Tindices"),
                         ResourceScatterUpdateOp<GPUDevice, Variant, int32,
+                                                scatter_op::UpdateOp::ASSIGN>)
+REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("resource")
+                            .TypeConstraint<bool>("dtype")
+                            .TypeConstraint<int32>("Tindices"),
+                        ResourceScatterUpdateOp<GPUDevice, bool, int32,
                                                 scatter_op::UpdateOp::ASSIGN>)
 REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .Device(DEVICE_GPU)

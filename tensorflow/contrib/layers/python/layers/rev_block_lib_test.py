@@ -21,9 +21,11 @@ from __future__ import print_function
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.layers.python.layers import rev_block_lib
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.layers import convolutional
 from tensorflow.python.layers import core as core_layers
+from tensorflow.python.layers import normalization as normalization_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
@@ -56,7 +58,7 @@ class RevBlockTest(test.TestCase):
     y1, y2 = block.forward(x1, x2)
     x1_inv, x2_inv = block.backward(y1, y2)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       x1, x2, x1_inv, x2_inv = sess.run([x1, x2, x1_inv, x2_inv])
 
@@ -79,7 +81,7 @@ class RevBlockTest(test.TestCase):
     x1, x2 = block.backward(y1, y2)
     y1_inv, y2_inv = block.forward(x1, x2)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       y1, y2, y1_inv, y2_inv = sess.run([y1, y2, y1_inv, y2_inv])
 
@@ -149,7 +151,7 @@ class RevBlockTest(test.TestCase):
     grads_rev = gradients_impl.gradients(loss_rev, wrt)
     grads = gradients_impl.gradients(loss, wrt)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       y_val, yd_val, gd_val, g_val = sess.run([y, y_rev, grads_rev, grads])
       self.assertAllClose(y_val, yd_val)
@@ -284,7 +286,7 @@ class RecomputeTest(test.TestCase):
     for out, scope_vars in outputs_and_vars:
       all_grads.append(gradients_impl.gradients(out, scope_vars))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       outputs = list(zip(*outputs_and_vars))[0]
       outs, all_grads_val = sess.run([outputs, all_grads])
@@ -341,6 +343,64 @@ class RecomputeTest(test.TestCase):
     grads = gradients_impl.gradients(out, [inputs] + tvars)
     for grad in grads:
       self.assertTrue(grad is not None)
+
+  def testWithIsRecomputeKwarg(self):
+
+    kwarg_values = []
+
+    @rev_block_lib.recompute_grad
+    def layer_with_recompute(inputs, is_recomputing=False):
+      kwarg_values.append(is_recomputing)
+      out = core_layers.dense(inputs, 2)
+      out = normalization_layers.batch_normalization(out, training=True)
+      if is_recomputing:
+        # Ensure that the updates are not duplicated by popping off the latest
+        # 2 additions.
+        update_ops = ops.get_collection_ref(ops.GraphKeys.UPDATE_OPS)
+        update_ops.pop()
+        update_ops.pop()
+      return out
+
+    x = array_ops.ones((2, 4), dtypes.float32)
+    with variable_scope.variable_scope("layer1", use_resource=True):
+      y = layer_with_recompute(x)
+    loss = math_ops.reduce_sum(y)
+    tvars = variables.trainable_variables()
+    gradients_impl.gradients(loss, [x] + tvars)
+
+    update_ops = ops.get_collection(ops.GraphKeys.UPDATE_OPS)
+    self.assertEqual(2, len(update_ops))
+    self.assertEqual([False, True], kwarg_values)
+
+  def testWithoutVariables(self):
+
+    def concat_n(layer_list, num_inputs):
+      return math_ops.reduce_sum(
+          array_ops.concat([x for x in layer_list[-num_inputs:]], axis=-1),
+          axis=1, keepdims=True)
+
+    @rev_block_lib.recompute_grad
+    def concat_n_wrap(*args):
+      return concat_n(args, 3)
+
+    # DenseNet-style layers
+    layer_list = [random_ops.random_uniform((4, 8))]
+    for _ in range(5):
+      layer_list.append(math_ops.sqrt(concat_n_wrap(*layer_list)))
+
+    grads = gradients_impl.gradients(layer_list[-1], layer_list[0])
+    with self.cached_session() as sess:
+      sess.run(grads)
+
+  def testErrorOnClosedOverTensor(self):
+    x = random_ops.random_uniform((4, 8))
+    y = random_ops.random_uniform((4, 8))
+    z = x * y
+
+    with self.assertRaisesWithPredicateMatch(ValueError, "closes over"):
+      @rev_block_lib.recompute_grad
+      def fn_with_capture(a):  # pylint: disable=unused-variable
+        return a * z
 
 
 if __name__ == "__main__":

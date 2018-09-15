@@ -138,8 +138,8 @@ port::Status CUDAFftPlan::Initialize(
                                   CUDAFftType(type), 1 /* = batch */);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to create cuFFT 1d plan:" << ret;
-            return port::Status{port::error::INTERNAL,
-                                "Failed to create cuFFT 1d plan."};
+            return port::Status(port::error::INTERNAL,
+                                "Failed to create cuFFT 1d plan.");
           }
           return port::Status::OK();
         case 2:
@@ -148,8 +148,8 @@ port::Status CUDAFftPlan::Initialize(
                                   elem_count_[1], CUDAFftType(type));
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to create cuFFT 2d plan:" << ret;
-            return port::Status{port::error::INTERNAL,
-                                "Failed to create cuFFT 2d plan."};
+            return port::Status(port::error::INTERNAL,
+                                "Failed to create cuFFT 2d plan.");
           }
           return port::Status::OK();
         case 3:
@@ -159,29 +159,29 @@ port::Status CUDAFftPlan::Initialize(
                                 elem_count_[2], CUDAFftType(type));
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to create cuFFT 3d plan:" << ret;
-            return port::Status{port::error::INTERNAL,
-                                "Failed to create cuFFT 3d plan."};
+            return port::Status(port::error::INTERNAL,
+                                "Failed to create cuFFT 3d plan.");
           }
           return port::Status::OK();
         default:
           LOG(ERROR) << "Invalid rank value for cufftPlan. "
                         "Requested 1, 2, or 3, given: "
                      << rank;
-          return port::Status{port::error::INVALID_ARGUMENT,
-                              "cufftPlan only takes rank 1, 2, or 3."};
+          return port::Status(port::error::INVALID_ARGUMENT,
+                              "cufftPlan only takes rank 1, 2, or 3.");
       }
     } else {
       ret = wrap::cufftCreate(parent, &plan_);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to create cuFFT plan:" << ret;
-        return port::Status{port::error::INTERNAL,
-                            "Failed to create cuFFT plan."};
+        return port::Status(port::error::INTERNAL,
+                            "Failed to create cuFFT plan.");
       }
       ret = wrap::cufftSetAutoAllocation(parent, plan_, 0);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to set auto allocation for cuFFT plan:" << ret;
-        return port::Status{port::error::INTERNAL,
-                            "Failed to set auto allocation for cuFFT plan."};
+        return port::Status(port::error::INTERNAL,
+                            "Failed to set auto allocation for cuFFT plan.");
       }
       switch (rank) {
         case 1:
@@ -190,8 +190,8 @@ port::Status CUDAFftPlan::Initialize(
                                       &scratch_size_bytes_);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to make cuFFT 1d plan:" << ret;
-            return port::Status{port::error::INTERNAL,
-                                "Failed to make cuFFT 1d plan."};
+            return port::Status(port::error::INTERNAL,
+                                "Failed to make cuFFT 1d plan.");
           }
           break;
         case 2:
@@ -200,8 +200,8 @@ port::Status CUDAFftPlan::Initialize(
                                       &scratch_size_bytes_);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to make cuFFT 2d plan:" << ret;
-            return port::Status{port::error::INTERNAL,
-                                "Failed to make cuFFT 2d plan."};
+            return port::Status(port::error::INTERNAL,
+                                "Failed to make cuFFT 2d plan.");
           }
           break;
         case 3:
@@ -210,16 +210,16 @@ port::Status CUDAFftPlan::Initialize(
                                       CUDAFftType(type), &scratch_size_bytes_);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to make cuFFT 3d plan:" << ret;
-            return port::Status{port::error::INTERNAL,
-                                "Failed to make cuFFT 3d plan."};
+            return port::Status(port::error::INTERNAL,
+                                "Failed to make cuFFT 3d plan.");
           }
           break;
         default:
           LOG(ERROR) << "Invalid rank value for cufftPlan. "
                         "Requested 1, 2, or 3, given: "
                      << rank;
-          return port::Status{port::error::INVALID_ARGUMENT,
-                              "cufftPlan only takes rank 1, 2, or 3."};
+          return port::Status(port::error::INVALID_ARGUMENT,
+                              "cufftPlan only takes rank 1, 2, or 3.");
       }
       return UpdateScratchAllocator(stream, scratch_allocator);
     }
@@ -233,23 +233,23 @@ port::Status CUDAFftPlan::Initialize(
           output_distance, CUDAFftType(type), batch_count);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to create cuFFT batched plan:" << ret;
-        return port::Status{port::error::INTERNAL,
-                            "Failed to create cuFFT batched plan."};
+        return port::Status(port::error::INTERNAL,
+                            "Failed to create cuFFT batched plan.");
       }
     } else {
       auto ret = wrap::cufftCreate(parent, &plan_);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to create cuFFT batched plan:" << ret;
-        return port::Status{port::error::INTERNAL,
-                            "Failed to create cuFFT batched plan."};
+        return port::Status(port::error::INTERNAL,
+                            "Failed to create cuFFT batched plan.");
       }
       ret = wrap::cufftSetAutoAllocation(parent, plan_, 0);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to set auto allocation for cuFFT batched plan:"
                    << ret;
-        return port::Status{
+        return port::Status(
             port::error::INTERNAL,
-            "Failed to set auto allocation for cuFFT batched plan."};
+            "Failed to set auto allocation for cuFFT batched plan.");
       }
       ret = wrap::cufftMakePlanMany(
           parent, plan_, rank, elem_count_,
@@ -259,8 +259,8 @@ port::Status CUDAFftPlan::Initialize(
           &scratch_size_bytes_);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to make cuFFT batched plan:" << ret;
-        return port::Status{port::error::INTERNAL,
-                            "Failed to make cuFFT batched plan."};
+        return port::Status(port::error::INTERNAL,
+                            "Failed to make cuFFT batched plan.");
       }
       return UpdateScratchAllocator(stream, scratch_allocator);
     }
@@ -293,8 +293,8 @@ port::Status CUDAFftPlan::UpdateScratchAllocator(
   cufftResult_t ret = wrap::cufftSetWorkArea(parent_, plan_, scratch_.opaque());
   if (ret != CUFFT_SUCCESS) {
     LOG(ERROR) << "failed to set work area for cuFFT plan:" << ret;
-    return port::Status{port::error::INTERNAL,
-                        "Failed to set work area for cuFFT plan."};
+    return port::Status(port::error::INTERNAL,
+                        "Failed to set work area for cuFFT plan.");
   }
   return port::Status::OK();
 }

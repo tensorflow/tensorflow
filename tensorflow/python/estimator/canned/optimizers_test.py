@@ -28,6 +28,13 @@ from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import rmsprop
 
 
+class _TestOptimizer(optimizer_lib.Optimizer):
+
+  def __init__(self):
+    super(_TestOptimizer, self).__init__(
+        use_locking=False, name='TestOptimizer')
+
+
 class GetOptimizerInstance(test.TestCase):
 
   def test_unsupported_name(self):
@@ -66,12 +73,6 @@ class GetOptimizerInstance(test.TestCase):
     self.assertAlmostEqual(0.1, opt._learning_rate)
 
   def test_object(self):
-    class _TestOptimizer(optimizer_lib.Optimizer):
-
-      def __init__(self):
-        super(_TestOptimizer, self).__init__(
-            use_locking=False, name='TestOptimizer')
-
     opt = optimizers.get_optimizer_instance(_TestOptimizer())
     self.assertIsInstance(opt, _TestOptimizer)
 
@@ -79,6 +80,23 @@ class GetOptimizerInstance(test.TestCase):
     with self.assertRaisesRegexp(
         ValueError, 'The given object is not an Optimizer instance'):
       optimizers.get_optimizer_instance((1, 2, 3))
+
+  def test_callable(self):
+    def _optimizer_fn():
+      return _TestOptimizer()
+    opt = optimizers.get_optimizer_instance(_optimizer_fn)
+    self.assertIsInstance(opt, _TestOptimizer)
+
+  def test_lambda(self):
+    opt = optimizers.get_optimizer_instance(lambda: _TestOptimizer())  # pylint: disable=unnecessary-lambda
+    self.assertIsInstance(opt, _TestOptimizer)
+
+  def test_callable_returns_invalid(self):
+    def _optimizer_fn():
+      return (1, 2, 3)
+    with self.assertRaisesRegexp(
+        ValueError, 'The given object is not an Optimizer instance'):
+      optimizers.get_optimizer_instance(_optimizer_fn)
 
 
 if __name__ == '__main__':

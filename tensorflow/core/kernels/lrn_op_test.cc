@@ -71,7 +71,7 @@ class LRNFloatTest : public OpsTestBase {
       Eigen::Tensor<float, 1, Eigen::RowMajor> out_col(depth);
       for (int64 d = 0; d < depth; ++d) {
         float denom = 0.0f;
-        for (int64 r = std::max(0ll, d - depth_radius);
+        for (int64 r = std::max(int64{0}, d - depth_radius);
              r < std::min(depth, d + depth_radius + 1); ++r) {
           denom += in(i, r) * in(i, r);
         }

@@ -45,7 +45,8 @@ class Bfloat16Test : public ::testing::Test,
                      public ::testing::WithParamInterface<Bfloat16TestParam> {};
 
 TEST_P(Bfloat16Test, TruncateTest) {
-  bfloat16 truncated(GetParam().input);
+  bfloat16 truncated = bfloat16::truncate_to_bfloat16((GetParam().input));
+
   if (std::isnan(GetParam().input)) {
     EXPECT_TRUE(std::isnan(float(truncated)) || std::isinf(float(truncated)));
     return;

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
@@ -40,7 +40,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   TF_LITE_ENSURE(context, NumDimensions(input) <= 4);
@@ -64,14 +64,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   if (output->type == kTfLiteFloat32) {
-#define TF_LITE_L2NORM(type)                                 \
-  type::L2Normalization<FusedActivationFunctionType::kNone>( \
-      GetTensorData<float>(input), GetTensorDims(input),     \
-      GetTensorData<float>(output), GetTensorDims(output))
+#define TF_LITE_L2NORM(type)                                                 \
+  tflite::L2NormalizationParams op_params;                                   \
+  op_params.input_zero_point = 0;                                            \
+  type::L2Normalization(op_params, GetTensorShape(input),                    \
+                        GetTensorData<float>(input), GetTensorShape(output), \
+                        GetTensorData<float>(output))
 
     if (kernel_type == kReference) {
       TF_LITE_L2NORM(reference_ops);
@@ -81,10 +83,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
 #undef TF_LITE_L2NORM
   } else if (output->type == kTfLiteUInt8) {
-#define TF_LITE_L2NORM(type)                                               \
-  type::L2Normalization(GetTensorData<uint8>(input), GetTensorDims(input), \
-                        input->params.zero_point,                          \
-                        GetTensorData<uint8>(output), GetTensorDims(output))
+#define TF_LITE_L2NORM(type)                                                 \
+  tflite::L2NormalizationParams op_params;                                   \
+  op_params.input_zero_point = input->params.zero_point;                     \
+  type::L2Normalization(op_params, GetTensorShape(input),                    \
+                        GetTensorData<uint8>(input), GetTensorShape(output), \
+                        GetTensorData<uint8>(output))
 
     if (kernel_type == kReference) {
       TF_LITE_L2NORM(reference_ops);
@@ -94,7 +98,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
 #undef TF_LITE_L2NORM
   } else {
-    context->ReportError(context, "Inputs and outputs not all float types.");
+    context->ReportError(context, "Output type is %d, requires float.",
+                         output->type);
     return kTfLiteError;
   }
 

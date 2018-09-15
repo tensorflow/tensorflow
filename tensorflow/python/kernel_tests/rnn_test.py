@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import time
 import timeit
 
@@ -26,6 +27,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -33,6 +35,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
@@ -42,10 +45,13 @@ from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_lib
 import tensorflow.python.ops.data_flow_grad  # pylint: disable=unused-import
+from tensorflow.python.ops.losses import losses
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 import tensorflow.python.ops.sparse_grad  # pylint: disable=unused-import
 import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
+from tensorflow.python.training import saver
+from tensorflow.python.training import training
 
 
 class Plus1RNNCell(rnn_cell_impl.RNNCell):
@@ -81,6 +87,25 @@ class ScalarStateRNNCell(rnn_cell_impl.RNNCell):
     return (input_, state + 1)
 
 
+class UnbalancedOutputRNNCell(rnn_cell_impl.RNNCell):
+  """RNN Cell generating (output, new_state) = (input + 1, state + 1)."""
+
+  @property
+  def output_size(self):
+    return  tensor_shape.TensorShape(1), tensor_shape.TensorShape((2))
+
+  @property
+  def state_size(self):
+    return tensor_shape.TensorShape([])
+
+  def zero_state(self, batch_size, dtype):
+    return array_ops.zeros([], dtype=dtypes.int32)
+
+  def call(self, input_, state, scope=None):
+    concatenated = array_ops.concat((input_, input_), axis=-1)
+    return (input_, concatenated), state + 1
+
+
 class TensorArrayStateRNNCell(rnn_cell_impl.RNNCell):
   """RNN Cell its state as a TensorArray."""
 
@@ -108,7 +133,7 @@ class RNNTest(test.TestCase):
     self._seed = 23489
     np.random.seed(self._seed)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testInvalidSequenceLengthShape(self):
     cell = Plus1RNNCell()
     if context.executing_eagerly():
@@ -122,7 +147,7 @@ class RNNTest(test.TestCase):
           dtype=dtypes.float32,
           sequence_length=[[4]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testBatchSizeFromInput(self):
     cell = Plus1RNNCell()
     in_eager_mode = context.executing_eagerly()
@@ -162,7 +187,7 @@ class RNNTest(test.TestCase):
       self.assertEqual(None, outputs.shape[0].value)
       self.assertEqual(None, state.shape[0].value)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScalarStateIsAccepted(self):
     cell = ScalarStateRNNCell()
     in_eager_mode = context.executing_eagerly()
@@ -172,7 +197,7 @@ class RNNTest(test.TestCase):
     else:
       inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
 
-    with self.test_session() as sess:
+    with self.cached_session(use_gpu=True) as sess:
       outputs, state = rnn.dynamic_rnn(
           cell, inputs, dtype=dtypes.float32, sequence_length=[4])
       if not in_eager_mode:
@@ -182,7 +207,36 @@ class RNNTest(test.TestCase):
     self.assertAllEqual([[[1], [2], [3], [4]]], outputs)
     self.assertAllEqual(4, state)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
+  def testUnbalancedOutputIsAccepted(self):
+    cell = UnbalancedOutputRNNCell()
+    in_eager_mode = context.executing_eagerly()
+
+    if in_eager_mode:
+      inputs = np.array([[[1], [2], [3], [4]]], dtype=np.float32)
+    else:
+      inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
+
+    with self.cached_session(use_gpu=True) as sess:
+      outputs, state = rnn.dynamic_rnn(
+          cell, inputs, dtype=dtypes.float32, sequence_length=[4])
+      if not in_eager_mode:
+        outputs, state = sess.run(
+            [outputs, state], feed_dict={inputs: [[[1], [2], [3], [4]]]})
+
+    self.assertIsInstance(outputs, tuple)
+    self.assertAllEqual([[[1], [2], [3], [4]]], outputs[0])
+    self.assertAllEqual([[[1, 1], [2, 2], [3, 3], [4, 4]]], outputs[1])
+    self.assertAllEqual(4, state)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testEagerMemory(self):
+    with context.eager_mode():
+      cell = TensorArrayStateRNNCell()
+      inputs = np.array([[[1], [2], [3], [4]]], dtype=np.float32)
+      rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32, sequence_length=[4])
+
+  @test_util.run_in_graph_and_eager_modes
   def testTensorArrayStateIsAccepted(self):
     cell = TensorArrayStateRNNCell()
     in_eager_mode = context.executing_eagerly()
@@ -192,7 +246,7 @@ class RNNTest(test.TestCase):
     else:
       inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
 
-    with self.test_session() as sess:
+    with self.cached_session(use_gpu=True) as sess:
       outputs, state = rnn.dynamic_rnn(
           cell, inputs, dtype=dtypes.float32, sequence_length=[4])
       state = (state[0], state[1].stack())
@@ -206,16 +260,48 @@ class RNNTest(test.TestCase):
     self.assertAllEqual(4, state[0])
     self.assertAllEqual([[[1]], [[2]], [[3]], [[4]]], state[1])
 
+  def testCellGetInitialState(self):
+    cell = rnn_cell_impl.BasicRNNCell(5)
+    with self.assertRaisesRegexp(
+        ValueError, "batch_size and dtype cannot be None"):
+      cell.get_initial_state(None, None, None)
+
+    inputs = array_ops.placeholder(dtypes.float32, shape=(None, 4, 1))
+    with self.assertRaisesRegexp(
+        ValueError, "batch size from input tensor is different from"):
+      cell.get_initial_state(inputs=inputs, batch_size=50, dtype=None)
+
+    with self.assertRaisesRegexp(
+        ValueError, "batch size from input tensor is different from"):
+      cell.get_initial_state(
+          inputs=inputs, batch_size=constant_op.constant(50), dtype=None)
+
+    with self.assertRaisesRegexp(
+        ValueError, "dtype from input tensor is different from"):
+      cell.get_initial_state(inputs=inputs, batch_size=None, dtype=dtypes.int16)
+
+    initial_state = cell.get_initial_state(
+        inputs=inputs, batch_size=None, dtype=None)
+    self.assertEqual(initial_state.shape.as_list(), [None, 5])
+    self.assertEqual(initial_state.dtype, inputs.dtype)
+
+    batch = array_ops.shape(inputs)[0]
+    dtype = inputs.dtype
+    initial_state = cell.get_initial_state(None, batch, dtype)
+    self.assertEqual(initial_state.shape.as_list(), [None, 5])
+    self.assertEqual(initial_state.dtype, inputs.dtype)
+
   def _assert_cell_builds(self, cell_class, dtype, batch_size, in_size,
                           out_size):
     cell = cell_class(out_size, dtype=dtype)
     in_shape = tensor_shape.TensorShape((batch_size, in_size))
     cell.build(in_shape)
-    state_output = cell.zero_state(batch_size, dtype)
+    state_output = cell.get_initial_state(
+        inputs=None, batch_size=batch_size, dtype=dtype)
     cell_output, _ = cell(array_ops.zeros(in_shape, dtype), state_output)
     self.assertAllEqual([batch_size, out_size], cell_output.shape.as_list())
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testCellsBuild(self):
     f32 = dtypes.float32
     f64 = dtypes.float64
@@ -227,7 +313,288 @@ class RNNTest(test.TestCase):
     self._assert_cell_builds(rnn_cell_impl.GRUCell, f64, 5, 7, 3)
     self._assert_cell_builds(rnn_cell_impl.LSTMCell, f32, 5, 7, 3)
     self._assert_cell_builds(rnn_cell_impl.LSTMCell, f64, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn.IndRNNCell, f32, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn.IndRNNCell, f64, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn.IndyGRUCell, f32, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn.IndyGRUCell, f64, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn.IndyLSTMCell, f32, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn.IndyLSTMCell, f64, 5, 7, 3)
 
+  def testRNNWithKerasSimpleRNNCell(self):
+    with self.cached_session() as sess:
+      input_shape = 10
+      output_shape = 5
+      timestep = 4
+      batch = 100
+      (x_train, y_train), _ = testing_utils.get_test_data(
+          train_samples=batch,
+          test_samples=0,
+          input_shape=(timestep, input_shape),
+          num_classes=output_shape)
+      y_train = keras.utils.to_categorical(y_train)
+      cell = keras.layers.SimpleRNNCell(output_shape)
+
+      inputs = array_ops.placeholder(
+          dtypes.float32, shape=(None, timestep, input_shape))
+      predict = array_ops.placeholder(
+          dtypes.float32, shape=(None, output_shape))
+
+      outputs, state = rnn.dynamic_rnn(
+          cell, inputs, dtype=dtypes.float32)
+      self.assertEqual(outputs.shape.as_list(), [None, timestep, output_shape])
+      self.assertEqual(state.shape.as_list(), [None, output_shape])
+      loss = losses.softmax_cross_entropy(predict, state)
+      train_op = training.GradientDescentOptimizer(0.001).minimize(loss)
+
+      sess.run([variables_lib.global_variables_initializer()])
+      _, outputs, state = sess.run(
+          [train_op, outputs, state], {inputs: x_train, predict: y_train})
+
+      self.assertEqual(len(outputs), batch)
+      self.assertEqual(len(state), batch)
+
+  def testRNNWithKerasGRUCell(self):
+    with self.cached_session() as sess:
+      input_shape = 10
+      output_shape = 5
+      timestep = 4
+      batch = 100
+      (x_train, y_train), _ = testing_utils.get_test_data(
+          train_samples=batch,
+          test_samples=0,
+          input_shape=(timestep, input_shape),
+          num_classes=output_shape)
+      y_train = keras.utils.to_categorical(y_train)
+      cell = keras.layers.GRUCell(output_shape)
+
+      inputs = array_ops.placeholder(
+          dtypes.float32, shape=(None, timestep, input_shape))
+      predict = array_ops.placeholder(
+          dtypes.float32, shape=(None, output_shape))
+
+      outputs, state = rnn.dynamic_rnn(
+          cell, inputs, dtype=dtypes.float32)
+      self.assertEqual(outputs.shape.as_list(), [None, timestep, output_shape])
+      self.assertEqual(state.shape.as_list(), [None, output_shape])
+      loss = losses.softmax_cross_entropy(predict, state)
+      train_op = training.GradientDescentOptimizer(0.001).minimize(loss)
+
+      sess.run([variables_lib.global_variables_initializer()])
+      _, outputs, state = sess.run(
+          [train_op, outputs, state], {inputs: x_train, predict: y_train})
+
+      self.assertEqual(len(outputs), batch)
+      self.assertEqual(len(state), batch)
+
+  def testRNNWithKerasLSTMCell(self):
+    with self.cached_session() as sess:
+      input_shape = 10
+      output_shape = 5
+      timestep = 4
+      batch = 100
+      (x_train, y_train), _ = testing_utils.get_test_data(
+          train_samples=batch,
+          test_samples=0,
+          input_shape=(timestep, input_shape),
+          num_classes=output_shape)
+      y_train = keras.utils.to_categorical(y_train)
+      cell = keras.layers.LSTMCell(output_shape)
+
+      inputs = array_ops.placeholder(
+          dtypes.float32, shape=(None, timestep, input_shape))
+      predict = array_ops.placeholder(
+          dtypes.float32, shape=(None, output_shape))
+
+      outputs, state = rnn.dynamic_rnn(
+          cell, inputs, dtype=dtypes.float32)
+      self.assertEqual(outputs.shape.as_list(), [None, timestep, output_shape])
+      self.assertEqual(len(state), 2)
+      self.assertEqual(state[0].shape.as_list(), [None, output_shape])
+      self.assertEqual(state[1].shape.as_list(), [None, output_shape])
+      loss = losses.softmax_cross_entropy(predict, state[0])
+      train_op = training.GradientDescentOptimizer(0.001).minimize(loss)
+
+      sess.run([variables_lib.global_variables_initializer()])
+      _, outputs, state = sess.run(
+          [train_op, outputs, state], {inputs: x_train, predict: y_train})
+
+      self.assertEqual(len(outputs), batch)
+      self.assertEqual(len(state), 2)
+      self.assertEqual(len(state[0]), batch)
+      self.assertEqual(len(state[1]), batch)
+
+  def testRNNWithStackKerasCell(self):
+    with self.cached_session() as sess:
+      input_shape = 10
+      output_shape = 5
+      timestep = 4
+      batch = 100
+      (x_train, y_train), _ = testing_utils.get_test_data(
+          train_samples=batch,
+          test_samples=0,
+          input_shape=(timestep, input_shape),
+          num_classes=output_shape)
+      y_train = keras.utils.to_categorical(y_train)
+      cell = keras.layers.StackedRNNCells(
+          [keras.layers.LSTMCell(2 * output_shape),
+           keras.layers.LSTMCell(output_shape)])
+
+      inputs = array_ops.placeholder(
+          dtypes.float32, shape=(None, timestep, input_shape))
+      predict = array_ops.placeholder(
+          dtypes.float32, shape=(None, output_shape))
+
+      outputs, state = rnn.dynamic_rnn(
+          cell, inputs, dtype=dtypes.float32)
+      self.assertEqual(outputs.shape.as_list(), [None, timestep, output_shape])
+      self.assertEqual(len(state), 4)
+      self.assertEqual(state[0].shape.as_list(), [None, 2 * output_shape])
+      self.assertEqual(state[1].shape.as_list(), [None, 2 * output_shape])
+      self.assertEqual(state[2].shape.as_list(), [None, output_shape])
+      self.assertEqual(state[3].shape.as_list(), [None, output_shape])
+      loss = losses.softmax_cross_entropy(predict, state[2])
+      train_op = training.GradientDescentOptimizer(0.001).minimize(loss)
+
+      sess.run([variables_lib.global_variables_initializer()])
+      _, outputs, state = sess.run(
+          [train_op, outputs, state], {inputs: x_train, predict: y_train})
+
+      self.assertEqual(len(outputs), batch)
+      self.assertEqual(len(state), 4)
+      for s in state:
+        self.assertEqual(len(s), batch)
+
+  def testStaticRNNWithKerasSimpleRNNCell(self):
+    with self.cached_session() as sess:
+      input_shape = 10
+      output_shape = 5
+      timestep = 4
+      batch = 100
+      (x_train, y_train), _ = testing_utils.get_test_data(
+          train_samples=batch,
+          test_samples=0,
+          input_shape=(timestep, input_shape),
+          num_classes=output_shape)
+      x_train = np.transpose(x_train, (1, 0, 2))
+      y_train = keras.utils.to_categorical(y_train)
+      cell = keras.layers.SimpleRNNCell(output_shape)
+
+      inputs = [array_ops.placeholder(
+          dtypes.float32, shape=(None, input_shape))] * timestep
+      predict = array_ops.placeholder(
+          dtypes.float32, shape=(None, output_shape))
+
+      outputs, state = rnn.static_rnn(
+          cell, inputs, dtype=dtypes.float32)
+      self.assertEqual(len(outputs), timestep)
+      self.assertEqual(outputs[0].shape.as_list(), [None, output_shape])
+      self.assertEqual(state.shape.as_list(), [None, output_shape])
+      loss = losses.softmax_cross_entropy(predict, state)
+      train_op = training.GradientDescentOptimizer(0.001).minimize(loss)
+
+      sess.run([variables_lib.global_variables_initializer()])
+      feed_dict = {i: d for i, d in zip(inputs, x_train)}
+      feed_dict[predict] = y_train
+      _, outputs, state = sess.run(
+          [train_op, outputs, state], feed_dict)
+
+      self.assertEqual(len(outputs), timestep)
+      self.assertEqual(len(outputs[0]), batch)
+      self.assertEqual(len(state), batch)
+
+  def testKerasAndTFRNNLayerOutputComparison(self):
+    input_shape = 10
+    output_shape = 5
+    timestep = 4
+    batch = 20
+    (x_train, _), _ = testing_utils.get_test_data(
+        train_samples=batch,
+        test_samples=0,
+        input_shape=(timestep, input_shape),
+        num_classes=output_shape)
+    fix_weights_generator = keras.layers.SimpleRNNCell(output_shape)
+    fix_weights_generator.build((None, input_shape))
+    weights = fix_weights_generator.get_weights()
+
+    with self.test_session(graph=ops_lib.Graph()) as sess:
+      inputs = array_ops.placeholder(
+          dtypes.float32, shape=(None, timestep, input_shape))
+      cell = keras.layers.SimpleRNNCell(output_shape)
+      tf_out, tf_state = rnn.dynamic_rnn(
+          cell, inputs, dtype=dtypes.float32)
+      cell.set_weights(weights)
+      [tf_out, tf_state] = sess.run([tf_out, tf_state], {inputs: x_train})
+    with self.test_session(graph=ops_lib.Graph()) as sess:
+      k_input = keras.Input(shape=(timestep, input_shape),
+                            dtype=dtypes.float32)
+      cell = keras.layers.SimpleRNNCell(output_shape)
+      layer = keras.layers.RNN(cell, return_sequences=True, return_state=True)
+      keras_out = layer(k_input)
+      cell.set_weights(weights)
+      k_out, k_state = sess.run(keras_out, {k_input: x_train})
+    self.assertAllClose(tf_out, k_out)
+    self.assertAllClose(tf_state, k_state)
+
+  def testBasicLSTMCellInterchangeWithLSTMCell(self):
+    with self.test_session(graph=ops_lib.Graph()) as sess:
+      basic_cell = rnn_cell_impl.BasicLSTMCell(1)
+      basic_cell(array_ops.ones([1, 1]),
+                 state=basic_cell.get_initial_state(inputs=None,
+                                                    batch_size=1,
+                                                    dtype=dtypes.float32))
+      self.evaluate([v.initializer for v in basic_cell.variables])
+      self.evaluate(basic_cell._bias.assign([10.] * 4))
+      save = saver.Saver()
+      prefix = os.path.join(self.get_temp_dir(), "ckpt")
+      save_path = save.save(sess, prefix)
+
+    with self.test_session(graph=ops_lib.Graph()) as sess:
+      lstm_cell = rnn_cell_impl.LSTMCell(1, name="basic_lstm_cell")
+      lstm_cell(array_ops.ones([1, 1]),
+                state=lstm_cell.get_initial_state(inputs=None,
+                                                  batch_size=1,
+                                                  dtype=dtypes.float32))
+      self.evaluate([v.initializer for v in lstm_cell.variables])
+      save = saver.Saver()
+      save.restore(sess, save_path)
+      self.assertAllEqual([10.] * 4, self.evaluate(lstm_cell._bias))
+
+  def testRNNCellSerialization(self):
+    for cell in [
+        rnn_cell_impl.LSTMCell(32, use_peepholes=True, cell_clip=True),
+        rnn_cell_impl.BasicLSTMCell(32, dtype=dtypes.float32),
+        rnn_cell_impl.BasicRNNCell(32, activation="relu", dtype=dtypes.float32),
+        rnn_cell_impl.GRUCell(
+            32, kernel_initializer="ones", dtype=dtypes.float32)
+    ]:
+      with self.cached_session():
+        x = keras.Input((None, 5))
+        layer = keras.layers.RNN(cell)
+        y = layer(x)
+        model = keras.models.Model(x, y)
+        model.compile(optimizer="rmsprop", loss="mse")
+
+        # Test basic case serialization.
+        x_np = np.random.random((6, 5, 5))
+        y_np = model.predict(x_np)
+        weights = model.get_weights()
+        config = layer.get_config()
+        # The custom_objects is important here since rnn_cell_impl is
+        # not visible as a Keras layer, and also has a name conflict with
+        # keras.LSTMCell and GRUCell.
+        layer = keras.layers.RNN.from_config(
+            config,
+            custom_objects={
+                "BasicRNNCell": rnn_cell_impl.BasicRNNCell,
+                "GRUCell": rnn_cell_impl.GRUCell,
+                "LSTMCell": rnn_cell_impl.LSTMCell,
+                "BasicLSTMCell": rnn_cell_impl.BasicLSTMCell
+            })
+        y = layer(x)
+        model = keras.models.Model(x, y)
+        model.set_weights(weights)
+        y_np_2 = model.predict(x_np)
+        self.assertAllClose(y_np, y_np_2, atol=1e-4)
 
 ######### Benchmarking RNN code
 

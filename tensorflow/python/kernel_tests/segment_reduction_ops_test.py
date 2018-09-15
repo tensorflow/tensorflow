@@ -91,16 +91,18 @@ class SegmentReductionOpTest(SegmentReductionHelper):
     ]
 
     # Each item is np_op1, np_op2, tf_op
-    ops_list = [(np.add, None, math_ops.segment_sum), (self._mean_cum_op,
-                                                       self._mean_reduce_op,
-                                                       math_ops.segment_mean),
+    ops_list = [(np.add, None, math_ops.segment_sum),
+                (self._mean_cum_op, self._mean_reduce_op,
+                 math_ops.segment_mean),
                 (np.ndarray.__mul__, None, math_ops.segment_prod),
                 (np.minimum, None, math_ops.segment_min),
                 (np.maximum, None, math_ops.segment_max)]
 
     # A subset of ops has been enabled for complex numbers
     complex_ops_list = [(np.add, None, math_ops.segment_sum),
-                        (np.ndarray.__mul__, None, math_ops.segment_prod)]
+                        (np.ndarray.__mul__, None, math_ops.segment_prod),
+                        (self._mean_cum_op, self._mean_reduce_op,
+                         math_ops.segment_mean)]
 
     n = 10
     shape = [n, 2]
@@ -175,7 +177,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
 
   def testSegmentIdsInvalid1(self):
     shape = [4, 4]
-    with self.test_session():
+    with self.cached_session():
       tf_x, _ = self._input(shape)
       indices = [-1, -1, 0, 0]
       s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
@@ -186,7 +188,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
 
   def testSegmentIdsInvalid2(self):
     shape = [4, 4]
-    with self.test_session():
+    with self.cached_session():
       tf_x, _ = self._input(shape)
       indices = [0, 1, 0, 1]
       s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
@@ -195,7 +197,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
 
   def testSegmentIdsInvalid3(self):
     shape = [4, 4]
-    with self.test_session():
+    with self.cached_session():
       tf_x, _ = self._input(shape)
       indices = [0, 1, 2, 0]
       s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
@@ -231,7 +233,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
         math_ops.segment_sum, math_ops.segment_mean, math_ops.segment_min,
         math_ops.segment_max
     ]:
-      with self.test_session():
+      with self.cached_session():
         tf_x, np_x = self._input(shape, dtype=dtypes_lib.float64)
         s = tf_op(data=tf_x, segment_ids=indices)
         jacob_t, jacob_n = gradient_checker.compute_gradient(
@@ -262,7 +264,9 @@ class UnsortedSegmentTest(SegmentReductionHelper):
 
     # A subset of ops has been enabled for complex numbers
     self.complex_ops_list = [(np.add, None,
-                              math_ops.unsorted_segment_sum, lambda t: 0)]
+                              math_ops.unsorted_segment_sum, lambda t: 0),
+                             (np.ndarray.__mul__, None,
+                              math_ops.unsorted_segment_prod, lambda t: 1)]
     self.differentiable_dtypes = [dtypes_lib.float16, dtypes_lib.float32,
                                   dtypes_lib.float64]
     self.all_dtypes = (self.differentiable_dtypes +
@@ -732,7 +736,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     segment_indices = [0, 1, 2, 2]
     num_indices = len(segment_indices)
     for tf_op in [math_ops.sparse_segment_sum, math_ops.sparse_segment_mean]:
-      with self.test_session():
+      with self.cached_session():
         tf_indices, _, tf_x, np_x = self._sparse_input(
             shape, num_indices, dtype=dtypes_lib.float64)
         s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
@@ -754,7 +758,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         math_ops.sparse_segment_sum_with_num_segments,
         math_ops.sparse_segment_mean_with_num_segments,
     ]:
-      with self.test_session():
+      with self.cached_session():
         tf_indices, _, tf_x, np_x = self._sparse_input(
             shape, num_indices, dtype=dtypes_lib.float64)
         s = tf_op(

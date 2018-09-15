@@ -195,12 +195,12 @@ class ResNet50(tf.keras.Model):
 
   def __init__(self,
                data_format,
-               name=None,
+               name='',
                trainable=True,
                include_top=True,
                pooling=None,
                classes=1000):
-    super(ResNet50, self).__init__(name='')
+    super(ResNet50, self).__init__(name=name)
 
     valid_channel_values = ('channels_first', 'channels_last')
     if data_format not in valid_channel_values:
@@ -272,8 +272,8 @@ class ResNet50(tf.keras.Model):
       else:
         self.global_pooling = None
 
-  def call(self, input_tensor, training):
-    x = self.conv1(input_tensor)
+  def call(self, inputs, training=True):
+    x = self.conv1(inputs)
     x = self.bn_conv1(x, training=training)
     x = tf.nn.relu(x)
     x = self.max_pool(x)

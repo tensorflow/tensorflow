@@ -41,6 +41,10 @@ MAIN_OP_KEY = "saved_model_main_op"
 tf_export("saved_model.constants.MAIN_OP_KEY").export_constant(
     __name__, "MAIN_OP_KEY")
 
+# CollectionDef key for the SavedModel train op.
+# Not exported while export_all_saved_models is in contrib.
+TRAIN_OP_KEY = "saved_model_train_op"
+
 # Schema version for SavedModel.
 SAVED_MODEL_SCHEMA_VERSION = 1
 tf_export("saved_model.constants.SAVED_MODEL_SCHEMA_VERSION").export_constant(
@@ -55,6 +59,10 @@ tf_export("saved_model.constants.SAVED_MODEL_FILENAME_PB").export_constant(
 SAVED_MODEL_FILENAME_PBTXT = "saved_model.pbtxt"
 tf_export("saved_model.constants.SAVED_MODEL_FILENAME_PBTXT").export_constant(
     __name__, "SAVED_MODEL_FILENAME_PBTXT")
+
+# File name for json format of SavedModel.
+# Not exported while keras_saved_model is in contrib.
+SAVED_MODEL_FILENAME_JSON = "saved_model.json"
 
 # Subdirectory name containing the variables/checkpoint files.
 VARIABLES_DIRECTORY = "variables"

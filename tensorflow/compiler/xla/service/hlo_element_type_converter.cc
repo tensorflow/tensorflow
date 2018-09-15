@@ -21,7 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
@@ -119,6 +119,7 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
     return false;
   }
 
+  HloCloneContext context(module);
   bool changed = false;
   for (auto* computation : module->computations()) {
     for (auto* hlo : computation->MakeInstructionPostOrder()) {
@@ -140,15 +141,21 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
       // These are ops with embedded computations where it suffices to convert
       // the embedded computations instead of converting the ops themselves.
       if (opcode == HloOpcode::kWhile || opcode == HloOpcode::kCall ||
+          opcode == HloOpcode::kCrossReplicaSum ||
           opcode == HloOpcode::kFusion || opcode == HloOpcode::kMap ||
           opcode == HloOpcode::kReduce || opcode == HloOpcode::kReduceWindow ||
+          opcode == HloOpcode::kScatter ||
           opcode == HloOpcode::kSelectAndScatter ||
           opcode == HloOpcode::kConditional) {
         continue;
       }
       TF_RET_CHECK(hlo->called_computations().empty()) << hlo->ToString();
 
-      if (!HasOperandType(hlo, eliminate_type_)) {
+      bool nullary = hlo->operands().empty();
+      bool wrong_element_type = hlo->shape().element_type() == eliminate_type_;
+      bool should_eliminate_type = (nullary && wrong_element_type) ||
+                                   HasOperandType(hlo, eliminate_type_);
+      if (!should_eliminate_type) {
         // If this CHECK fires, then this was an instruction that does not take
         // the elimination type as an operand but it does return it. This pass
         // does not have a feature to change the output type in that case, so
@@ -180,7 +187,7 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
             ShapeUtil::ChangeElementType(hlo->shape(), replace_with_type_);
 
         new_hlo = computation->AddInstruction(
-            hlo->CloneWithNewOperands(shape, new_operands, hlo->GetModule()));
+            hlo->CloneWithNewOperands(shape, new_operands, &context));
         TF_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
 
         new_hlo = ToElementType(new_hlo, eliminate_type_);
@@ -189,16 +196,16 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
         Shape new_shape = GetConvertedTupleShape(hlo->shape(), eliminate_type_,
                                                  replace_with_type_);
 
-        new_hlo = computation->AddInstruction(hlo->CloneWithNewOperands(
-            new_shape, new_operands, hlo->GetModule()));
+        new_hlo = computation->AddInstruction(
+            hlo->CloneWithNewOperands(new_shape, new_operands, &context));
         TF_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
 
         // Convert the elements of the result of `new_hlo` to produce a new
         // tuple with shape `old_shape`.
         new_hlo = ConvertTupleElements(new_hlo, old_shape);
       } else {
-        new_hlo = computation->AddInstruction(hlo->CloneWithNewOperands(
-            hlo->shape(), new_operands, hlo->GetModule()));
+        new_hlo = computation->AddInstruction(
+            hlo->CloneWithNewOperands(hlo->shape(), new_operands, &context));
         TF_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
       }
 

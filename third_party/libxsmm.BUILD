@@ -3,7 +3,7 @@
 
 licenses(["notice"])  # BSD 3-clause
 
-exports_files(["LICENSE"])
+exports_files(["LICENSE.md"])
 
 # Arguments to ./scripts/libxsmm_interface.py, see that file for detailed description.
 #  precision: SP & DP
@@ -38,8 +38,8 @@ genrule(
         ":libxsmm_interface",
     ],
     visibility = [
-        "//tensorflow/core/kernels:__pkg__",
         "//third_party/eigen3:__pkg__",
+        "//tensorflow/core/kernels:__pkg__",
     ],
 )
 

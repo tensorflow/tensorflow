@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_MEM_H_
-#define TENSORFLOW_PLATFORM_MEM_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_MEM_H_
+#define TENSORFLOW_CORE_PLATFORM_MEM_H_
 
 // TODO(cwhipkey): remove this when callers use annotations directly.
 #include "tensorflow/core/platform/dynamic_annotations.h"
@@ -65,4 +65,4 @@ int64 AvailableRam();
 }  // namespace port
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_MEM_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_MEM_H_

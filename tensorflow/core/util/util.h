@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_UTIL_H_
-#define TENSORFLOW_UTIL_UTIL_H_
+#ifndef TENSORFLOW_CORE_UTIL_UTIL_H_
+#define TENSORFLOW_CORE_UTIL_UTIL_H_
 
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -58,4 +58,4 @@ string SliceDebugString(const TensorShape& shape, const int64 flat);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_UTIL_H_
+#endif  // TENSORFLOW_CORE_UTIL_UTIL_H_

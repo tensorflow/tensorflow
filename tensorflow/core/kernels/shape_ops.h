@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_SHAPE_OPS_H_
-#define TENSORFLOW_KERNELS_SHAPE_OPS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SHAPE_OPS_H_
+#define TENSORFLOW_CORE_KERNELS_SHAPE_OPS_H_
 
 #include <limits>
 #include <unordered_set>
@@ -154,6 +154,9 @@ class ExpandDimsOp : public OpKernel {
     OP_REQUIRES(ctx, ctx->input(0).dtype() != DT_VARIANT,
                 errors::InvalidArgument("ExpandDims on Variant not supported"));
 
+    OP_REQUIRES(
+        ctx, (ctx->input(1).NumElements() == 1),
+        errors::InvalidArgument("'dim' must be a tensor with a single value"));
     Tdim dim = ctx->input(1).flat<Tdim>()(0);
     OP_REQUIRES(
         ctx, (dim >= -1 - ctx->input(0).dims() && dim <= ctx->input(0).dims()),
@@ -236,9 +239,8 @@ class SqueezeOp : public OpKernel {
         if (wrapped_squeeze_dims.count(i) > 0) {
           OP_REQUIRES(ctx, existing_dim == 1,
                       errors::InvalidArgument(
-                          "Tried to explicitly squeeze "
-                          "dimension ",
-                          i, " but dimension was not 1: ", existing_dim));
+                          "Can not squeeze dim[", i,
+                          "], expected a dimension of 1, got ", existing_dim));
         } else {
           // This dimension is not being squeezed.
           new_shape.push_back(existing_dim);
@@ -272,4 +274,4 @@ class SqueezeOp : public OpKernel {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_SHAPE_OPS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SHAPE_OPS_H_

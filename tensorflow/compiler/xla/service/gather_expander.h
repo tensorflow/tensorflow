@@ -25,7 +25,7 @@ namespace xla {
 // nevertheless have a minimum level of support.
 class GatherExpander : public HloPassInterface {
  public:
-  tensorflow::StringPiece name() const override { return "gather_expander"; }
+  absl::string_view name() const override { return "gather_expander"; }
   StatusOr<bool> Run(HloModule* module) override;
 
  private:

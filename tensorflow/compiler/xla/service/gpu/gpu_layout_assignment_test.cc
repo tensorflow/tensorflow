@@ -15,13 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -30,6 +33,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+namespace op = xla::testing::opcode_matchers;
 
 using LayoutAssignmentTest = HloTestBase;
 
@@ -69,7 +74,8 @@ TEST_F(LayoutAssignmentTest, Elementwise) {
         *computation_layout.mutable_result_layout() =
             ShapeLayout(result_shape_with_layout);
 
-        GpuLayoutAssignment layout_assignment(computation_layout);
+        GpuLayoutAssignment layout_assignment(
+            &computation_layout, backend().default_stream_executor());
         EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
         for (const HloInstruction* operand : add->operands()) {
@@ -114,7 +120,7 @@ TEST_F(LayoutAssignmentTest, BatchNormInference) {
 
   for (const Shape& input_shape : AllLayoutsOf(shape)) {
     for (const Shape& result_shape : AllLayoutsOf(shape)) {
-      SCOPED_TRACE(tensorflow::strings::StrCat(
+      SCOPED_TRACE(absl::StrCat(
           "input_shape=", ShapeUtil::HumanStringWithLayout(input_shape),
           ", result_shape=", ShapeUtil::HumanStringWithLayout(result_shape)));
 
@@ -131,10 +137,10 @@ TEST_F(LayoutAssignmentTest, BatchNormInference) {
           HloInstruction::CreateParameter(4, aux_shape, "variance"));
 
       auto* epsilon = builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<float>(1)));
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
       auto* feature_index =
           builder.AddInstruction(HloInstruction::CreateConstant(
-              Literal::CreateR0<int64>(kFeatureIndex)));
+              LiteralUtil::CreateR0<int64>(kFeatureIndex)));
 
       auto* batchnorm = builder.AddInstruction(HloInstruction::CreateCustomCall(
           shape,
@@ -156,7 +162,8 @@ TEST_F(LayoutAssignmentTest, BatchNormInference) {
         *computation_layout.mutable_result_layout() = ShapeLayout(result_shape);
       }
 
-      GpuLayoutAssignment layout_assignment(computation_layout);
+      GpuLayoutAssignment layout_assignment(
+          &computation_layout, backend().default_stream_executor());
       EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
       // The first operand to batchnorm should have the same layout as the
@@ -186,7 +193,7 @@ TEST_F(LayoutAssignmentTest, BatchNormTraining) {
   // Enumerate all combinations of shapes.
   for (const Shape& input_shape : AllLayoutsOf(shape)) {
     for (const Shape& result_shape : AllLayoutsOf(shape)) {
-      SCOPED_TRACE(tensorflow::strings::StrCat(
+      SCOPED_TRACE(absl::StrCat(
           "input_shape=", ShapeUtil::HumanStringWithLayout(input_shape),
           ", result_shape=", ShapeUtil::HumanStringWithLayout(result_shape)));
 
@@ -199,10 +206,10 @@ TEST_F(LayoutAssignmentTest, BatchNormTraining) {
           HloInstruction::CreateParameter(2, offset_scale_shape, "offset"));
 
       auto* epsilon = builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<float>(1)));
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
       auto* feature_index =
           builder.AddInstruction(HloInstruction::CreateConstant(
-              Literal::CreateR0<int64>(kFeatureIndex)));
+              LiteralUtil::CreateR0<int64>(kFeatureIndex)));
 
       auto* batchnorm = builder.AddInstruction(HloInstruction::CreateCustomCall(
           batchnorm_shape, {operand, scale, offset, epsilon, feature_index},
@@ -225,7 +232,8 @@ TEST_F(LayoutAssignmentTest, BatchNormTraining) {
                 {result_shape, offset_scale_shape, offset_scale_shape}));
       }
 
-      GpuLayoutAssignment layout_assignment(computation_layout);
+      GpuLayoutAssignment layout_assignment(
+          &computation_layout, backend().default_stream_executor());
       EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
       // The first operand to batchnorm should have the same layout as the
@@ -258,7 +266,7 @@ TEST_F(LayoutAssignmentTest, BatchNormGrad) {
   for (const Shape& input_shape : AllLayoutsOf(shape)) {
     for (const Shape& result_shape : AllLayoutsOf(shape)) {
       for (int constrained_param_no : {0, 4}) {
-        SCOPED_TRACE(tensorflow::strings::StrCat(
+        SCOPED_TRACE(absl::StrCat(
             "input_shape=", ShapeUtil::HumanStringWithLayout(input_shape),
             ", result_shape=", ShapeUtil::HumanStringWithLayout(result_shape)));
 
@@ -275,10 +283,10 @@ TEST_F(LayoutAssignmentTest, BatchNormGrad) {
             HloInstruction::CreateParameter(4, shape, "var"));
 
         auto* epsilon = builder.AddInstruction(
-            HloInstruction::CreateConstant(Literal::CreateR0<float>(1)));
+            HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
         auto* feature_index =
             builder.AddInstruction(HloInstruction::CreateConstant(
-                Literal::CreateR0<int64>(kFeatureIndex)));
+                LiteralUtil::CreateR0<int64>(kFeatureIndex)));
 
         auto* batchnorm =
             builder.AddInstruction(HloInstruction::CreateCustomCall(
@@ -305,7 +313,8 @@ TEST_F(LayoutAssignmentTest, BatchNormGrad) {
                   {result_shape, scale_shape, scale_shape}));
         }
 
-        GpuLayoutAssignment layout_assignment(computation_layout);
+        GpuLayoutAssignment layout_assignment(
+            &computation_layout, backend().default_stream_executor());
         EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
         // The first and fourth operands to the batchnorm call should have the
@@ -321,6 +330,33 @@ TEST_F(LayoutAssignmentTest, BatchNormGrad) {
       }
     }
   }
+}
+
+TEST_F(LayoutAssignmentTest, DotLayout) {
+  const char* hlo_text = R"(
+  HloModule DotLayout
+  ENTRY dot {
+    p0 = f32[8,8,256,64]{3,1,2,0} parameter(0)
+    p1 = f32[8,8,256,64]{3,1,2,0} parameter(1)
+    ROOT dot.1330.10585 = f32[8,8,256,256]{3,2,1,0} dot(p0, p1),
+      lhs_batch_dims={0,1}, lhs_contracting_dims={3},
+      rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_text));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape());
+  GpuLayoutAssignment layout_assignment(&computation_layout,
+                                        backend().default_stream_executor());
+  EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
+
+  Shape expected_shape =
+      ShapeUtil::MakeShapeWithLayout(F32, {8, 8, 256, 64}, {3, 2, 1, 0});
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Dot(op::ShapeWithLayout(expected_shape),
+                      op::ShapeWithLayout(expected_shape)));
 }
 
 }  // namespace

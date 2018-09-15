@@ -89,13 +89,33 @@ TEST(GrpcChannelTest, HostPorts) {
     EXPECT_NE(d_4_1.get(), e_5_2.get());
   }
 
-  std::vector<string> workers;
-  cc->ListWorkers(&workers);
-  EXPECT_EQ(std::vector<string>(
-                {"/job:mnist/replica:0/task:0", "/job:mnist/replica:0/task:1",
-                 "/job:mnist/replica:0/task:2", "/job:mnist/replica:0/task:3",
-                 "/job:mnist/replica:0/task:4", "/job:mnist/replica:0/task:5"}),
-            workers);
+  {
+    std::vector<string> workers;
+    cc->ListWorkers(&workers);
+    EXPECT_EQ(
+        std::vector<string>(
+            {"/job:mnist/replica:0/task:0", "/job:mnist/replica:0/task:1",
+             "/job:mnist/replica:0/task:2", "/job:mnist/replica:0/task:3",
+             "/job:mnist/replica:0/task:4", "/job:mnist/replica:0/task:5"}),
+        workers);
+  }
+
+  {
+    std::vector<string> workers;
+    cc->ListWorkersInJob("mnist", &workers);
+    EXPECT_EQ(
+        std::vector<string>(
+            {"/job:mnist/replica:0/task:0", "/job:mnist/replica:0/task:1",
+             "/job:mnist/replica:0/task:2", "/job:mnist/replica:0/task:3",
+             "/job:mnist/replica:0/task:4", "/job:mnist/replica:0/task:5"}),
+        workers);
+  }
+
+  {
+    std::vector<string> workers;
+    cc->ListWorkersInJob("other", &workers);
+    EXPECT_TRUE(workers.empty());
+  }
 }
 
 TEST(GrpcChannelTest, SparseHostPorts) {
@@ -135,13 +155,30 @@ TEST(GrpcChannelTest, SparseHostPorts) {
     EXPECT_NE(d_4_1.get(), e_5_2.get());
   }
 
-  std::vector<string> workers;
-  cc->ListWorkers(&workers);
-  std::sort(workers.begin(), workers.end());
-  EXPECT_EQ(std::vector<string>({"/job:mnist/replica:0/task:0",
-                                 "/job:mnist/replica:0/task:3",
-                                 "/job:mnist/replica:0/task:4"}),
-            workers);
+  {
+    std::vector<string> workers;
+    cc->ListWorkers(&workers);
+    std::sort(workers.begin(), workers.end());
+    EXPECT_EQ(std::vector<string>({"/job:mnist/replica:0/task:0",
+                                   "/job:mnist/replica:0/task:3",
+                                   "/job:mnist/replica:0/task:4"}),
+              workers);
+  }
+
+  {
+    std::vector<string> workers;
+    cc->ListWorkersInJob("mnist", &workers);
+    EXPECT_EQ(std::vector<string>({"/job:mnist/replica:0/task:0",
+                                   "/job:mnist/replica:0/task:3",
+                                   "/job:mnist/replica:0/task:4"}),
+              workers);
+  }
+
+  {
+    std::vector<string> workers;
+    cc->ListWorkersInJob("other", &workers);
+    EXPECT_TRUE(workers.empty());
+  }
 }
 
 TEST(GrpcChannelTest, NewHostPortGrpcChannelValidation) {
@@ -150,10 +187,15 @@ TEST(GrpcChannelTest, NewHostPortGrpcChannelValidation) {
   EXPECT_TRUE(NewHostPortGrpcChannel("127.0.0.1:2222", &mock_ptr).ok());
   EXPECT_TRUE(NewHostPortGrpcChannel("example.com:2222", &mock_ptr).ok());
   EXPECT_TRUE(NewHostPortGrpcChannel("fqdn.example.com.:2222", &mock_ptr).ok());
+  EXPECT_TRUE(NewHostPortGrpcChannel("[2002:a9c:258e::]:2222", &mock_ptr).ok());
+  EXPECT_TRUE(NewHostPortGrpcChannel("[::]:2222", &mock_ptr).ok());
 
   EXPECT_FALSE(NewHostPortGrpcChannel("example.com/abc:2222", &mock_ptr).ok());
   EXPECT_FALSE(NewHostPortGrpcChannel("127.0.0.1:2222/", &mock_ptr).ok());
   EXPECT_FALSE(NewHostPortGrpcChannel("example.com/abc:", &mock_ptr).ok());
+  EXPECT_FALSE(NewHostPortGrpcChannel("[::]/:2222", &mock_ptr).ok());
+  EXPECT_FALSE(NewHostPortGrpcChannel("[::]:2222/", &mock_ptr).ok());
+  EXPECT_FALSE(NewHostPortGrpcChannel("[::]:", &mock_ptr).ok());
 }
 
 }  // namespace tensorflow

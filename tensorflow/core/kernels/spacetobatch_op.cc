@@ -42,29 +42,29 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 
 template <typename Device, typename T>
-void SpaceToBatchOpCompute(OpKernelContext* context,
-                           const Tensor& orig_input_tensor,
-                           const Tensor& orig_block_shape,
-                           const Tensor& orig_paddings) {
+Status SpaceToBatchOpCompute(OpKernelContext* context,
+                             const Tensor& orig_input_tensor,
+                             const Tensor& orig_block_shape,
+                             const Tensor& orig_paddings) {
   const int input_dims = orig_input_tensor.dims();
-  OP_REQUIRES(
-      context, TensorShapeUtils::IsVector(orig_block_shape.shape()),
-      errors::InvalidArgument("block_shape rank should be 1 instead of ",
-                              orig_block_shape.dims()));
+  if (!TensorShapeUtils::IsVector(orig_block_shape.shape())) {
+    return errors::InvalidArgument("block_shape rank should be 1 instead of ",
+                                   orig_block_shape.dims());
+  }
 
   const int block_dims = orig_block_shape.dim_size(0);
-  OP_REQUIRES(
-      context, orig_input_tensor.dims() >= 1 + block_dims,
-      errors::InvalidArgument("input rank should be >= ", 1 + block_dims,
-                              " instead of ", orig_input_tensor.dims()));
+  if (orig_input_tensor.dims() < 1 + block_dims) {
+    return errors::InvalidArgument("input rank should be >= ", 1 + block_dims,
+                                   " instead of ", orig_input_tensor.dims());
+  }
 
-  OP_REQUIRES(context,
-              TensorShapeUtils::IsMatrix(orig_paddings.shape()) &&
-                  block_dims == orig_paddings.dim_size(0) &&
-                  2 == orig_paddings.dim_size(1),
-              errors::InvalidArgument("paddings should have shape [",
-                                      block_dims, ", 2] instead of ",
-                                      orig_paddings.shape().DebugString()));
+  if (!(TensorShapeUtils::IsMatrix(orig_paddings.shape()) &&
+        block_dims == orig_paddings.dim_size(0) &&
+        2 == orig_paddings.dim_size(1))) {
+    return errors::InvalidArgument("paddings should have shape [", block_dims,
+                                   ", 2] instead of ",
+                                   orig_paddings.shape().DebugString());
+  }
 
   // To avoid out-of-bounds access in the case that the block_shape and/or
   // paddings tensors are concurrently modified, we must copy the values.
@@ -101,22 +101,23 @@ void SpaceToBatchOpCompute(OpKernelContext* context,
   for (int block_dim = 0; block_dim < block_dims; ++block_dim) {
     block_shape_product *= block_shape[block_dim];
   }
-  OP_REQUIRES(
-      context, block_shape_product > 0,
-      errors::InvalidArgument("Product of block sizes must be positive, got ",
-                              block_shape_product));
+  if (block_shape_product <= 0) {
+    return errors::InvalidArgument(
+        "Product of block sizes must be positive, got ", block_shape_product);
+  }
 
   const int internal_block_dims =
       block_dims - removed_prefix_block_dims - removed_suffix_block_dims;
-  OP_REQUIRES(context, internal_block_dims <= kMaxSpaceToBatchBlockDims,
-              errors::InvalidArgument(
-                  "Maximum number of non-combined block dimensions is ",
-                  internal_block_dims, " but must not exceed ",
-                  kMaxSpaceToBatchBlockDims));
+  if (internal_block_dims > kMaxSpaceToBatchBlockDims) {
+    return errors::InvalidArgument(
+        "Maximum number of non-combined block dimensions is ",
+        internal_block_dims, " but must not exceed ",
+        kMaxSpaceToBatchBlockDims);
+  }
 
   if (internal_block_dims == 0) {
     context->set_output(0, orig_input_tensor);
-    return;
+    return Status::OK();
   }
 
   // For the purpose of computing the result, the input will be treated as
@@ -146,16 +147,18 @@ void SpaceToBatchOpCompute(OpKernelContext* context,
        block_dim < block_dims - removed_suffix_block_dims; ++block_dim) {
     const int64 pad_start = paddings[2 * block_dim],
                 pad_end = paddings[2 * block_dim + 1];
-    OP_REQUIRES(context, pad_start >= 0 && pad_end >= 0,
-                errors::InvalidArgument("Paddings must be non-negative"));
+    if (pad_start < 0 || pad_end < 0) {
+      return errors::InvalidArgument("Paddings must be non-negative");
+    }
     const int64 input_size = orig_input_tensor.dim_size(block_dim + 1);
     const int64 block_shape_value = block_shape[block_dim];
     const int64 padded_size = input_size + pad_start + pad_end;
-    OP_REQUIRES(
-        context, padded_size % block_shape_value == 0,
-        errors::InvalidArgument("padded_shape[", block_dim, "]=", padded_size,
-                                " is not divisible by block_shape[", block_dim,
-                                "]=", block_shape_value));
+    if (padded_size % block_shape_value != 0) {
+      return errors::InvalidArgument("padded_shape[", block_dim,
+                                     "]=", padded_size,
+                                     " is not divisible by block_shape[",
+                                     block_dim, "]=", block_shape_value);
+    }
     internal_input_shape.AddDim(input_size);
     const int64 output_size = padded_size / block_shape_value;
     internal_output_shape.AddDim(output_size);
@@ -174,29 +177,29 @@ void SpaceToBatchOpCompute(OpKernelContext* context,
 
   // Allocate output tensor.
   Tensor* output_tensor = nullptr;
-  OP_REQUIRES_OK(context, context->allocate_output(0, external_output_shape,
-                                                   &output_tensor));
+  TF_RETURN_IF_ERROR(
+      context->allocate_output(0, external_output_shape, &output_tensor));
 
   const int64* internal_paddings = &paddings[2 * removed_prefix_block_dims];
   const int64* internal_block_shape = &block_shape[removed_prefix_block_dims];
 
   switch (internal_block_dims) {
-#define TF_SPACETOBATCH_BLOCK_DIMS_CASE(NUM_BLOCK_DIMS)                    \
-  case NUM_BLOCK_DIMS: {                                                   \
-    OP_REQUIRES_OK(                                                        \
-        context,                                                           \
-        (functor::SpaceToBatchFunctor<Device, T, NUM_BLOCK_DIMS, false>()( \
-            context->eigen_device<Device>(),                               \
-            orig_input_tensor.shaped<T, NUM_BLOCK_DIMS + 2>(               \
-                internal_input_shape.dim_sizes()),                         \
-            internal_block_shape, internal_paddings,                       \
-            output_tensor->shaped<T, NUM_BLOCK_DIMS + 2>(                  \
-                internal_output_shape.dim_sizes()))));                     \
-  } break;                                                                 \
+#define TF_SPACETOBATCH_BLOCK_DIMS_CASE(NUM_BLOCK_DIMS)                   \
+  case NUM_BLOCK_DIMS: {                                                  \
+    TF_RETURN_IF_ERROR(                                                   \
+        functor::SpaceToBatchFunctor<Device, T, NUM_BLOCK_DIMS, false>()( \
+            context->eigen_device<Device>(),                              \
+            orig_input_tensor.shaped<T, NUM_BLOCK_DIMS + 2>(              \
+                internal_input_shape.dim_sizes()),                        \
+            internal_block_shape, internal_paddings,                      \
+            output_tensor->shaped<T, NUM_BLOCK_DIMS + 2>(                 \
+                internal_output_shape.dim_sizes())));                     \
+  } break;                                                                \
     /**/
     TF_SPACETOBATCH_FOR_EACH_NUM_BLOCK_DIMS(TF_SPACETOBATCH_BLOCK_DIMS_CASE)
 #undef TF_SPACETOBATCH_BLOCK_DIMS_CASE
   }
+  return Status::OK();
 }
 
 }  // namespace
@@ -211,8 +214,9 @@ class SpaceToBatchNDOp : public OpKernel {
     const Tensor& orig_input_tensor = context->input(0);
     const Tensor& orig_block_shape = context->input(1);
     const Tensor& orig_paddings = context->input(2);
-    SpaceToBatchOpCompute<Device, T>(context, orig_input_tensor,
-                                     orig_block_shape, orig_paddings);
+    OP_REQUIRES_OK(context, SpaceToBatchOpCompute<Device, T>(
+                                context, orig_input_tensor, orig_block_shape,
+                                orig_paddings));
   }
 };
 
@@ -241,7 +245,8 @@ class SpaceToBatchOp : public OpKernel {
     OP_REQUIRES(context, kRequiredDims == dims,
                 errors::InvalidArgument("Input rank should be: ", kRequiredDims,
                                         "instead of: ", dims));
-    SpaceToBatchOpCompute<Device, T>(context, in0, block_shape_, in1);
+    OP_REQUIRES_OK(context, SpaceToBatchOpCompute<Device, T>(
+                                context, in0, block_shape_, in1));
   }
 
  private:

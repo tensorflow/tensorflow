@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 
+#include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -22,12 +24,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 namespace {
 
-using ::tensorflow::strings::StrCat;
+using absl::StrCat;
 using ::testing::HasSubstr;
 
 string TestName() {
@@ -120,8 +121,8 @@ TEST(HloGraphDumperTest, NestedFusion) {
 TEST(HloGraphDumperTest, Constant) {
   HloComputation::Builder b("b");
   auto instruction = b.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(-42)));
-  instruction->set_name("i_am_a_constant_root_instruction");
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(-42)));
+  instruction->SetAndSanitizeName("i_am_a_constant_root_instruction");
   HloModuleConfig config;
   HloModule m(TestName(), config);
   HloComputation* root_computation = m.AddEntryComputation(b.Build());

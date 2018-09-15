@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
@@ -72,7 +73,8 @@ void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
     s = session->graph_mgr->Register(
         request->session_handle(), request->graph_def(),
         request->graph_options(), request->debug_options(),
-        session->cluster_flr.get(), response->mutable_graph_handle());
+        request->collective_graph_key(), session->cluster_flr.get(),
+        response->mutable_graph_handle());
   }
   done(s);
 }
@@ -315,6 +317,12 @@ void Worker::CleanupGraphAsync(const CleanupGraphRequest* request,
   if (env_->collective_executor_mgr) {
     env_->collective_executor_mgr->Cleanup(step_id);
   }
+  for (Device* d : env_->local_devices) {
+    ScopedAllocatorMgr* sam = d->GetScopedAllocatorMgr();
+    if (sam) {
+      sam->Cleanup(step_id);
+    }
+  }
   done(Status::OK());
 }
 
@@ -335,6 +343,15 @@ void Worker::LoggingAsync(const LoggingRequest* request,
 void Worker::TracingAsync(const TracingRequest* request,
                           TracingResponse* response, StatusCallback done) {
   done(errors::Unimplemented("Tracing"));
+}
+
+void Worker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
+                          RecvBufResponse* response, StatusCallback done) {
+  // The base Worker class does not implement RecvBufAsync because
+  // it is not currently used for worker-to-worker communication. Use a
+  // transport-specific implementation (such as `GrpcWorker::RecvBufAsync()`)
+  // instead.
+  done(errors::Unimplemented("Worker::RecvBufAsync()"));
 }
 
 void Worker::CompleteGroupAsync(CallOptions* opts,

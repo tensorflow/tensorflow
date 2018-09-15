@@ -26,14 +26,16 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
 #if TOCO_SUPPORT_PORTABLE_PROTOS
-#include "third_party/protobuf/src/google/protobuf/text_format.h"
+#include "third_party/protobuf/include/google/protobuf/text_format.h"
 #endif  // TOCO_SUPPORT_PORTABLE_PROTOS
+#include "tensorflow/contrib/lite/kernels/internal/types.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/runtime/types.h"
 #include "tensorflow/contrib/lite/toco/toco_flags.pb.h"
-#include "tensorflow/contrib/lite/toco/toco_port.h"
 #include "tensorflow/contrib/lite/toco/types.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 
 // TODO(aselle): Replace with using a container specific hash override instead.
 namespace std {
@@ -100,6 +102,8 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOp(Model& model,
 const char* OperatorTypeName(OperatorType type);
 string HelpfulOperatorTypeName(const Operator& op);
 
+// Whether the operator can be fused with an activation function. Note that this
+// will return false by default for new operators; fusing support is opt-in.
 bool OperatorSupportsFusedActivation(OperatorType type);
 
 void DumpGraphvizVideoFrame(const Model& model);
@@ -112,8 +116,9 @@ void ExtendShape(Shape* shape, int new_shape_size);
 // TODO(b/36075966): Clean up when dims superseded by array shape.
 void UnextendShape(Shape* shape, int new_shape_size);
 
-// Checks (using CHECK) that all dimensions of 'shape' are at least 1.
-void CheckShapeDimensions(const Shape& shape);
+// Checks that all dimensions of 'shape' are at least 1. Note that scalars,
+// lacking dimensions, satisfy this condition and are considered non-empty.
+bool IsNonEmpty(const Shape& shape);
 
 // Given two shapes with potentially different dimensionality and dimension
 // arrays d0 and d1. Without loss of generality, assume that shape0 may have
@@ -134,6 +139,10 @@ bool ShapesAgreeUpToBroadcasting(const Shape& shape0, const Shape& shape1);
 //   d0[i0] == d1[i1] for each dimension until i1 == 0 (inclusive).
 // - For the remaining indices [0..i0), d0[i0] == 1.
 bool ShapesAgreeUpToExtending(const Shape& shape0, const Shape& shape1);
+
+inline ::tflite::RuntimeShape ToRuntimeShape(const Shape& shape) {
+  return ::tflite::RuntimeShape(shape.dimensions_count(), shape.dims().data());
+}
 
 bool IsArrayFullyConnectedWeights(const Model& model, const string& name);
 
@@ -315,7 +324,7 @@ void UseArraysExtraInfo(Model* model, bool quantize_output);
 // doesn't have enough range to represent the sum of elements, an error is
 // returned.
 template <typename T, typename U>
-port::Status NumElements(const std::vector<T>& shape, U* num_elements) {
+tensorflow::Status NumElements(const std::vector<T>& shape, U* num_elements) {
   static_assert(
       std::numeric_limits<T>::max() <= std::numeric_limits<uint64_t>::max(),
       "vector type exceed capabilities of NumElements");
@@ -326,18 +335,26 @@ port::Status NumElements(const std::vector<T>& shape, U* num_elements) {
       // TensorFlow's shapes sometimes include -1 to represent an "unknown"
       // size but TOCO isn't able to create arrays of unknown sizes and will
       // crash in RequiredBufferSizeForShape().
-      return port::Status(false,
-                          "Tensor shape should not include negative values");
+      return tensorflow::errors::InvalidArgument(
+          "Tensor shape should not include negative values");
     }
     if (static_cast<uint64_t>(dim) >
         std::numeric_limits<U>::max() / *num_elements) {
       *num_elements = 0;
-      return port::Status(false, "Tensor shape is too large");
+      return tensorflow::errors::InvalidArgument("Tensor shape is too large");
     }
     *num_elements *= dim;
   }
-  return port::Status::OK();
+  return tensorflow::Status::OK();
 }
+
+// A model file may have shuffled FC weights.
+// When that happens, we want to de-shuffle them immediately on import,
+// so that the rest of toco doesn't need to know about shuffled weights.
+void UndoWeightsShuffling(Model* model);
+
+// Copies minmax, quantization_params, and narrow_range.
+void CopyMinMaxAndQuantizationRelatedFields(const Array& src, Array* dst);
 
 }  // namespace toco
 

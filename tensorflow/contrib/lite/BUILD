@@ -6,8 +6,6 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts", "gen_selected_ops")
 
-exports_files(["LICENSE"])
-
 exports_files(glob([
     "testdata/*.bin",
     "testdata/*.pb",
@@ -38,10 +36,10 @@ cc_library(
     srcs = ["arena_planner.cc"],
     hdrs = ["arena_planner.h"],
     deps = [
-        ":context",
         ":graph_info",
         ":memory_planner",
         ":simple_memory_arena",
+        "//tensorflow/contrib/lite/c:c_api_internal",
     ],
 )
 
@@ -49,9 +47,14 @@ cc_test(
     name = "arena_planner_test",
     size = "small",
     srcs = ["arena_planner_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable",
+    ],
     deps = [
         ":arena_planner",
         "//tensorflow/contrib/lite/testing:util",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_googletest//:gtest",
     ],
@@ -61,27 +64,27 @@ cc_test(
 # TODO(aselle): Resolve problems preventing C99 usage.
 cc_library(
     name = "context",
-    srcs = ["context.c"],
     hdrs = ["context.h"],
+    deps = ["//tensorflow/contrib/lite/c:c_api_internal"],
 )
 
 cc_library(
     name = "graph_info",
     hdrs = ["graph_info.h"],
-    deps = [":context"],
+    deps = ["//tensorflow/contrib/lite/c:c_api_internal"],
 )
 
 cc_library(
     name = "memory_planner",
     hdrs = ["memory_planner.h"],
-    deps = [":context"],
+    deps = ["//tensorflow/contrib/lite/c:c_api_internal"],
 )
 
 cc_library(
     name = "simple_memory_arena",
     srcs = ["simple_memory_arena.cc"],
     hdrs = ["simple_memory_arena.h"],
-    deps = [":context"],
+    deps = ["//tensorflow/contrib/lite/c:c_api_internal"],
 )
 
 cc_library(
@@ -89,7 +92,17 @@ cc_library(
     hdrs = [
         "builtin_op_data.h",
     ],
-    deps = [":context"],
+    deps = ["//tensorflow/contrib/lite/c:c_api_internal"],
+)
+
+cc_library(
+    name = "kernel_api",
+    hdrs = [
+        "builtin_op_data.h",
+        "builtin_ops.h",
+        "context.h",
+        "context_util.h",
+    ],
 )
 
 exports_files(["builtin_ops.h"])
@@ -109,33 +122,59 @@ cc_library(
     name = "framework",
     srcs = [
         "allocation.cc",
-        "error_reporter.cc",
         "graph_info.cc",
         "interpreter.cc",
         "model.cc",
-        "nnapi_delegate.cc",
+        "mutable_op_resolver.cc",
         "optional_debug_tools.cc",
-    ],
+        "stderr_reporter.cc",
+    ] + select({
+        "//tensorflow:android": [
+            "nnapi_delegate.cc",
+            "mmap_allocation.cc",
+        ],
+        "//tensorflow:windows": [
+            "nnapi_delegate_disabled.cc",
+            "mmap_allocation_disabled.cc",
+        ],
+        "//conditions:default": [
+            "nnapi_delegate_disabled.cc",
+            "mmap_allocation.cc",
+        ],
+    }),
     hdrs = [
         "allocation.h",
         "context.h",
+        "context_util.h",
         "error_reporter.h",
         "graph_info.h",
         "interpreter.h",
         "model.h",
+        "mutable_op_resolver.h",
         "nnapi_delegate.h",
+        "op_resolver.h",
         "optional_debug_tools.h",
+        "stderr_reporter.h",
     ],
     copts = tflite_copts(),
+    linkopts = [
+    ] + select({
+        "//tensorflow:android": [
+            "-llog",
+        ],
+        "//conditions:default": [
+        ],
+    }),
     deps = [
         ":arena_planner",
-        ":builtin_op_data",
-        ":context",
         ":graph_info",
         ":memory_planner",
         ":schema_fbs_version",
         ":simple_memory_arena",
+        ":string",
         ":util",
+        "//tensorflow/contrib/lite/c:c_api_internal",
+        "//tensorflow/contrib/lite/core/api",
         "//tensorflow/contrib/lite/kernels:eigen_support",
         "//tensorflow/contrib/lite/kernels:gemm_support",
         "//tensorflow/contrib/lite/nnapi:nnapi_lib",
@@ -174,6 +213,9 @@ cc_test(
     deps = [
         ":framework",
         ":string_util",
+        "//tensorflow/contrib/lite/c:c_api_internal",
+        "//tensorflow/contrib/lite/core/api",
+        "//tensorflow/contrib/lite/kernels:builtin_ops",
         "//tensorflow/contrib/lite/kernels:kernel_util",
         "//tensorflow/contrib/lite/kernels/internal:tensor_utils",
         "//tensorflow/contrib/lite/schema:schema_fbs",
@@ -187,6 +229,7 @@ cc_test(
     name = "graph_info_test",
     size = "small",
     srcs = ["graph_info_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":framework",
         ":string_util",
@@ -221,16 +264,19 @@ cc_test(
     ],
     deps = [
         ":framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
+        "//tensorflow/contrib/lite/core/api",
         "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
 )
 
-# Test the C extension API code.
+# Test OpResolver.
 cc_test(
-    name = "context_test",
+    name = "mutable_op_resolver_test",
     size = "small",
-    srcs = ["context_test.cc"],
+    srcs = ["mutable_op_resolver_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":framework",
         "//tensorflow/contrib/lite/testing:util",
@@ -243,7 +289,7 @@ cc_library(
     srcs = ["util.cc"],
     hdrs = ["util.h"],
     deps = [
-        ":context",
+        "//tensorflow/contrib/lite/c:c_api_internal",
     ],
 )
 
@@ -251,8 +297,8 @@ cc_test(
     name = "util_test",
     size = "small",
     srcs = ["util_test.cc"],
+    tags = ["no_oss"],
     deps = [
-        ":context",
         ":util",
         "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",

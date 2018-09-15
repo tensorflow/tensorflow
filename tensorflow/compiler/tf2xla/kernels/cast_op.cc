@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
@@ -40,14 +41,14 @@ class CastOp : public XlaOpKernel {
     if (src_dtype_ == dst_dtype_) {
       output = input;
     } else if (dst_dtype_ == DT_BOOL) {
-      output = builder->Ne(input, XlaHelpers::Zero(builder, src_dtype_));
+      output = xla::Ne(input, XlaHelpers::Zero(builder, src_dtype_));
     } else if (xla::primitive_util::IsComplexType(src_type_) &&
                !xla::primitive_util::IsComplexType(dst_type_)) {
       // As in cast_op.h, we replicate the numpy behavior of truncating the
       // imaginary part.
-      output = builder->ConvertElementType(builder->Real(input), dst_type_);
+      output = xla::ConvertElementType(xla::Real(input), dst_type_);
     } else {
-      output = builder->ConvertElementType(input, dst_type_);
+      output = xla::ConvertElementType(input, dst_type_);
     }
 
     ctx->SetOutput(0, output);
@@ -72,7 +73,6 @@ class BitcastOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* builder = ctx->builder();
     xla::XlaOp input = ctx->Input(0);
     xla::XlaOp output;
 
@@ -92,7 +92,7 @@ class BitcastOp : public XlaOpKernel {
                       xla::primitive_util::BitWidth(dst_type_),
                   errors::Unimplemented(
                       "Only bitcasts between equally sized types supported."));
-      output = builder->BitcastConvertType(input, dst_type_);
+      output = xla::BitcastConvertType(input, dst_type_);
     }
 
     ctx->SetOutput(0, output);

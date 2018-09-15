@@ -1,0 +1,629 @@
+# Pre-computed receptive field parameters
+
+## Table with results
+
+The table below presents the receptive field parameters for several popular
+convolutional neural networks. These are computed using the models from the
+[TF-Slim
+repository](https://github.com/tensorflow/models/tree/master/research/slim),
+by using the [rf_benchmark
+script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/receptive_field/python/util/examples/rf_benchmark.py).
+
+Questions? See the [FAQ](#faq).
+
+CNN                            | resolution | end-point            | RF   | effective stride | effective padding
+:----------------------------: | :--------: | :------------------: | :--: | :--------------: | :---------------:
+alexnet_v2                     | None       | alexnet_v2/conv1     | 11   | 4                | 0
+alexnet_v2                     | None       | alexnet_v2/pool1     | 19   | 8                | 0
+alexnet_v2                     | None       | alexnet_v2/conv2     | 51   | 8                | 16
+alexnet_v2                     | None       | alexnet_v2/conv3     | 99   | 16               | 32
+alexnet_v2                     | None       | alexnet_v2/conv4     | 131  | 16               | 48
+alexnet_v2                     | None       | alexnet_v2/conv5     | 163  | 16               | 64
+alexnet_v2                     | None       | alexnet_v2/pool5     | 195  | 32               | 64
+alexnet_v2                     | 224        | alexnet_v2/conv1     | 11   | 4                | 0
+alexnet_v2                     | 224        | alexnet_v2/pool1     | 19   | 8                | 0
+alexnet_v2                     | 224        | alexnet_v2/conv2     | 51   | 8                | 16
+alexnet_v2                     | 224        | alexnet_v2/conv3     | 99   | 16               | 32
+alexnet_v2                     | 224        | alexnet_v2/conv4     | 131  | 16               | 48
+alexnet_v2                     | 224        | alexnet_v2/conv5     | 163  | 16               | 64
+alexnet_v2                     | 224        | alexnet_v2/pool5     | 195  | 32               | 64
+alexnet_v2                     | 321        | alexnet_v2/conv1     | 11   | 4                | 0
+alexnet_v2                     | 321        | alexnet_v2/pool1     | 19   | 8                | 0
+alexnet_v2                     | 321        | alexnet_v2/conv2     | 51   | 8                | 16
+alexnet_v2                     | 321        | alexnet_v2/conv3     | 99   | 16               | 32
+alexnet_v2                     | 321        | alexnet_v2/conv4     | 131  | 16               | 48
+alexnet_v2                     | 321        | alexnet_v2/conv5     | 163  | 16               | 64
+alexnet_v2                     | 321        | alexnet_v2/pool5     | 195  | 32               | 64
+vgg_a                          | None       | vgg_a/conv1/conv1_1  | 3    | 1                | 1
+vgg_a                          | None       | vgg_a/pool1          | 4    | 2                | 1
+vgg_a                          | None       | vgg_a/conv2/conv2_1  | 8    | 2                | 3
+vgg_a                          | None       | vgg_a/pool2          | 10   | 4                | 3
+vgg_a                          | None       | vgg_a/conv3/conv3_1  | 18   | 4                | 7
+vgg_a                          | None       | vgg_a/conv3/conv3_2  | 26   | 4                | 11
+vgg_a                          | None       | vgg_a/pool3          | 30   | 8                | 11
+vgg_a                          | None       | vgg_a/conv4/conv4_1  | 46   | 8                | 19
+vgg_a                          | None       | vgg_a/conv4/conv4_2  | 62   | 8                | 27
+vgg_a                          | None       | vgg_a/pool4          | 70   | 16               | 27
+vgg_a                          | None       | vgg_a/conv5/conv5_1  | 102  | 16               | 43
+vgg_a                          | None       | vgg_a/conv5/conv5_2  | 134  | 16               | 59
+vgg_a                          | None       | vgg_a/pool5          | 150  | 32               | 59
+vgg_a                          | 224        | vgg_a/conv1/conv1_1  | 3    | 1                | 1
+vgg_a                          | 224        | vgg_a/pool1          | 4    | 2                | 1
+vgg_a                          | 224        | vgg_a/conv2/conv2_1  | 8    | 2                | 3
+vgg_a                          | 224        | vgg_a/pool2          | 10   | 4                | 3
+vgg_a                          | 224        | vgg_a/conv3/conv3_1  | 18   | 4                | 7
+vgg_a                          | 224        | vgg_a/conv3/conv3_2  | 26   | 4                | 11
+vgg_a                          | 224        | vgg_a/pool3          | 30   | 8                | 11
+vgg_a                          | 224        | vgg_a/conv4/conv4_1  | 46   | 8                | 19
+vgg_a                          | 224        | vgg_a/conv4/conv4_2  | 62   | 8                | 27
+vgg_a                          | 224        | vgg_a/pool4          | 70   | 16               | 27
+vgg_a                          | 224        | vgg_a/conv5/conv5_1  | 102  | 16               | 43
+vgg_a                          | 224        | vgg_a/conv5/conv5_2  | 134  | 16               | 59
+vgg_a                          | 224        | vgg_a/pool5          | 150  | 32               | 59
+vgg_a                          | 321        | vgg_a/conv1/conv1_1  | 3    | 1                | 1
+vgg_a                          | 321        | vgg_a/pool1          | 4    | 2                | 1
+vgg_a                          | 321        | vgg_a/conv2/conv2_1  | 8    | 2                | 3
+vgg_a                          | 321        | vgg_a/pool2          | 10   | 4                | 3
+vgg_a                          | 321        | vgg_a/conv3/conv3_1  | 18   | 4                | 7
+vgg_a                          | 321        | vgg_a/conv3/conv3_2  | 26   | 4                | 11
+vgg_a                          | 321        | vgg_a/pool3          | 30   | 8                | 11
+vgg_a                          | 321        | vgg_a/conv4/conv4_1  | 46   | 8                | 19
+vgg_a                          | 321        | vgg_a/conv4/conv4_2  | 62   | 8                | 27
+vgg_a                          | 321        | vgg_a/pool4          | 70   | 16               | 27
+vgg_a                          | 321        | vgg_a/conv5/conv5_1  | 102  | 16               | 43
+vgg_a                          | 321        | vgg_a/conv5/conv5_2  | 134  | 16               | 59
+vgg_a                          | 321        | vgg_a/pool5          | 150  | 32               | 59
+vgg_16                         | None       | vgg_16/conv1/conv1_1 | 3    | 1                | 1
+vgg_16                         | None       | vgg_16/pool1         | 6    | 2                | 2
+vgg_16                         | None       | vgg_16/conv2/conv2_1 | 10   | 2                | 4
+vgg_16                         | None       | vgg_16/pool2         | 16   | 4                | 6
+vgg_16                         | None       | vgg_16/conv3/conv3_1 | 24   | 4                | 10
+vgg_16                         | None       | vgg_16/conv3/conv3_2 | 32   | 4                | 14
+vgg_16                         | None       | vgg_16/pool3         | 44   | 8                | 18
+vgg_16                         | None       | vgg_16/conv4/conv4_1 | 60   | 8                | 26
+vgg_16                         | None       | vgg_16/conv4/conv4_2 | 76   | 8                | 34
+vgg_16                         | None       | vgg_16/pool4         | 100  | 16               | 42
+vgg_16                         | None       | vgg_16/conv5/conv5_1 | 132  | 16               | 58
+vgg_16                         | None       | vgg_16/conv5/conv5_2 | 164  | 16               | 74
+vgg_16                         | None       | vgg_16/pool5         | 212  | 32               | 90
+vgg_16                         | 224        | vgg_16/conv1/conv1_1 | 3    | 1                | 1
+vgg_16                         | 224        | vgg_16/pool1         | 6    | 2                | 2
+vgg_16                         | 224        | vgg_16/conv2/conv2_1 | 10   | 2                | 4
+vgg_16                         | 224        | vgg_16/pool2         | 16   | 4                | 6
+vgg_16                         | 224        | vgg_16/conv3/conv3_1 | 24   | 4                | 10
+vgg_16                         | 224        | vgg_16/conv3/conv3_2 | 32   | 4                | 14
+vgg_16                         | 224        | vgg_16/pool3         | 44   | 8                | 18
+vgg_16                         | 224        | vgg_16/conv4/conv4_1 | 60   | 8                | 26
+vgg_16                         | 224        | vgg_16/conv4/conv4_2 | 76   | 8                | 34
+vgg_16                         | 224        | vgg_16/pool4         | 100  | 16               | 42
+vgg_16                         | 224        | vgg_16/conv5/conv5_1 | 132  | 16               | 58
+vgg_16                         | 224        | vgg_16/conv5/conv5_2 | 164  | 16               | 74
+vgg_16                         | 224        | vgg_16/pool5         | 212  | 32               | 90
+vgg_16                         | 321        | vgg_16/conv1/conv1_1 | 3    | 1                | 1
+vgg_16                         | 321        | vgg_16/pool1         | 6    | 2                | 2
+vgg_16                         | 321        | vgg_16/conv2/conv2_1 | 10   | 2                | 4
+vgg_16                         | 321        | vgg_16/pool2         | 16   | 4                | 6
+vgg_16                         | 321        | vgg_16/conv3/conv3_1 | 24   | 4                | 10
+vgg_16                         | 321        | vgg_16/conv3/conv3_2 | 32   | 4                | 14
+vgg_16                         | 321        | vgg_16/pool3         | 44   | 8                | 18
+vgg_16                         | 321        | vgg_16/conv4/conv4_1 | 60   | 8                | 26
+vgg_16                         | 321        | vgg_16/conv4/conv4_2 | 76   | 8                | 34
+vgg_16                         | 321        | vgg_16/pool4         | 100  | 16               | 42
+vgg_16                         | 321        | vgg_16/conv5/conv5_1 | 132  | 16               | 58
+vgg_16                         | 321        | vgg_16/conv5/conv5_2 | 164  | 16               | 74
+vgg_16                         | 321        | vgg_16/pool5         | 212  | 32               | 90
+inception_v2                   | None       | Conv2d_1a_7x7        | 7    | 2                | None
+inception_v2                   | None       | MaxPool_2a_3x3       | 11   | 4                | None
+inception_v2                   | None       | Conv2d_2b_1x1        | 11   | 4                | None
+inception_v2                   | None       | Conv2d_2c_3x3        | 19   | 4                | None
+inception_v2                   | None       | MaxPool_3a_3x3       | 27   | 8                | None
+inception_v2                   | None       | Mixed_3b             | 59   | 8                | None
+inception_v2                   | None       | Mixed_3c             | 91   | 8                | None
+inception_v2                   | None       | Mixed_4a             | 123  | 16               | None
+inception_v2                   | None       | Mixed_4b             | 187  | 16               | None
+inception_v2                   | None       | Mixed_4c             | 251  | 16               | None
+inception_v2                   | None       | Mixed_4d             | 315  | 16               | None
+inception_v2                   | None       | Mixed_4e             | 379  | 16               | None
+inception_v2                   | None       | Mixed_5a             | 443  | 32               | None
+inception_v2                   | None       | Mixed_5b             | 571  | 32               | None
+inception_v2                   | None       | Mixed_5c             | 699  | 32               | None
+inception_v2                   | 224        | Conv2d_1a_7x7        | 7    | 2                | 2
+inception_v2                   | 224        | MaxPool_2a_3x3       | 11   | 4                | 2
+inception_v2                   | 224        | Conv2d_2b_1x1        | 11   | 4                | 2
+inception_v2                   | 224        | Conv2d_2c_3x3        | 19   | 4                | 6
+inception_v2                   | 224        | MaxPool_3a_3x3       | 27   | 8                | 6
+inception_v2                   | 224        | Mixed_3b             | 59   | 8                | 22
+inception_v2                   | 224        | Mixed_3c             | 91   | 8                | 38
+inception_v2                   | 224        | Mixed_4a             | 123  | 16               | 46
+inception_v2                   | 224        | Mixed_4b             | 187  | 16               | 78
+inception_v2                   | 224        | Mixed_4c             | 251  | 16               | 110
+inception_v2                   | 224        | Mixed_4d             | 315  | 16               | 142
+inception_v2                   | 224        | Mixed_4e             | 379  | 16               | 174
+inception_v2                   | 224        | Mixed_5a             | 443  | 32               | 190
+inception_v2                   | 224        | Mixed_5b             | 571  | 32               | 254
+inception_v2                   | 224        | Mixed_5c             | 699  | 32               | 318
+inception_v2                   | 321        | Conv2d_1a_7x7        | 7    | 2                | 3
+inception_v2                   | 321        | MaxPool_2a_3x3       | 11   | 4                | 5
+inception_v2                   | 321        | Conv2d_2b_1x1        | 11   | 4                | 5
+inception_v2                   | 321        | Conv2d_2c_3x3        | 19   | 4                | 9
+inception_v2                   | 321        | MaxPool_3a_3x3       | 27   | 8                | 13
+inception_v2                   | 321        | Mixed_3b             | 59   | 8                | 29
+inception_v2                   | 321        | Mixed_3c             | 91   | 8                | 45
+inception_v2                   | 321        | Mixed_4a             | 123  | 16               | 61
+inception_v2                   | 321        | Mixed_4b             | 187  | 16               | 93
+inception_v2                   | 321        | Mixed_4c             | 251  | 16               | 125
+inception_v2                   | 321        | Mixed_4d             | 315  | 16               | 157
+inception_v2                   | 321        | Mixed_4e             | 379  | 16               | 189
+inception_v2                   | 321        | Mixed_5a             | 443  | 32               | 221
+inception_v2                   | 321        | Mixed_5b             | 571  | 32               | 285
+inception_v2                   | 321        | Mixed_5c             | 699  | 32               | 349
+inception_v2-no-separable-conv | None       | Conv2d_1a_7x7        | 7    | 2                | None
+inception_v2-no-separable-conv | None       | MaxPool_2a_3x3       | 11   | 4                | None
+inception_v2-no-separable-conv | None       | Conv2d_2b_1x1        | 11   | 4                | None
+inception_v2-no-separable-conv | None       | Conv2d_2c_3x3        | 19   | 4                | None
+inception_v2-no-separable-conv | None       | MaxPool_3a_3x3       | 27   | 8                | None
+inception_v2-no-separable-conv | None       | Mixed_3b             | 59   | 8                | None
+inception_v2-no-separable-conv | None       | Mixed_3c             | 91   | 8                | None
+inception_v2-no-separable-conv | None       | Mixed_4a             | 123  | 16               | None
+inception_v2-no-separable-conv | None       | Mixed_4b             | 187  | 16               | None
+inception_v2-no-separable-conv | None       | Mixed_4c             | 251  | 16               | None
+inception_v2-no-separable-conv | None       | Mixed_4d             | 315  | 16               | None
+inception_v2-no-separable-conv | None       | Mixed_4e             | 379  | 16               | None
+inception_v2-no-separable-conv | None       | Mixed_5a             | 443  | 32               | None
+inception_v2-no-separable-conv | None       | Mixed_5b             | 571  | 32               | None
+inception_v2-no-separable-conv | None       | Mixed_5c             | 699  | 32               | None
+inception_v2-no-separable-conv | 224        | Conv2d_1a_7x7        | 7    | 2                | 2
+inception_v2-no-separable-conv | 224        | MaxPool_2a_3x3       | 11   | 4                | 2
+inception_v2-no-separable-conv | 224        | Conv2d_2b_1x1        | 11   | 4                | 2
+inception_v2-no-separable-conv | 224        | Conv2d_2c_3x3        | 19   | 4                | 6
+inception_v2-no-separable-conv | 224        | MaxPool_3a_3x3       | 27   | 8                | 6
+inception_v2-no-separable-conv | 224        | Mixed_3b             | 59   | 8                | 22
+inception_v2-no-separable-conv | 224        | Mixed_3c             | 91   | 8                | 38
+inception_v2-no-separable-conv | 224        | Mixed_4a             | 123  | 16               | 46
+inception_v2-no-separable-conv | 224        | Mixed_4b             | 187  | 16               | 78
+inception_v2-no-separable-conv | 224        | Mixed_4c             | 251  | 16               | 110
+inception_v2-no-separable-conv | 224        | Mixed_4d             | 315  | 16               | 142
+inception_v2-no-separable-conv | 224        | Mixed_4e             | 379  | 16               | 174
+inception_v2-no-separable-conv | 224        | Mixed_5a             | 443  | 32               | 190
+inception_v2-no-separable-conv | 224        | Mixed_5b             | 571  | 32               | 254
+inception_v2-no-separable-conv | 224        | Mixed_5c             | 699  | 32               | 318
+inception_v2-no-separable-conv | 321        | Conv2d_1a_7x7        | 7    | 2                | 3
+inception_v2-no-separable-conv | 321        | MaxPool_2a_3x3       | 11   | 4                | 5
+inception_v2-no-separable-conv | 321        | Conv2d_2b_1x1        | 11   | 4                | 5
+inception_v2-no-separable-conv | 321        | Conv2d_2c_3x3        | 19   | 4                | 9
+inception_v2-no-separable-conv | 321        | MaxPool_3a_3x3       | 27   | 8                | 13
+inception_v2-no-separable-conv | 321        | Mixed_3b             | 59   | 8                | 29
+inception_v2-no-separable-conv | 321        | Mixed_3c             | 91   | 8                | 45
+inception_v2-no-separable-conv | 321        | Mixed_4a             | 123  | 16               | 61
+inception_v2-no-separable-conv | 321        | Mixed_4b             | 187  | 16               | 93
+inception_v2-no-separable-conv | 321        | Mixed_4c             | 251  | 16               | 125
+inception_v2-no-separable-conv | 321        | Mixed_4d             | 315  | 16               | 157
+inception_v2-no-separable-conv | 321        | Mixed_4e             | 379  | 16               | 189
+inception_v2-no-separable-conv | 321        | Mixed_5a             | 443  | 32               | 221
+inception_v2-no-separable-conv | 321        | Mixed_5b             | 571  | 32               | 285
+inception_v2-no-separable-conv | 321        | Mixed_5c             | 699  | 32               | 349
+inception_v3                   | None       | Conv2d_1a_3x3        | 3    | 2                | 0
+inception_v3                   | None       | Conv2d_2a_3x3        | 7    | 2                | 0
+inception_v3                   | None       | Conv2d_2b_3x3        | 11   | 2                | 2
+inception_v3                   | None       | MaxPool_3a_3x3       | 15   | 4                | 2
+inception_v3                   | None       | Conv2d_3b_1x1        | 15   | 4                | 2
+inception_v3                   | None       | Conv2d_4a_3x3        | 23   | 4                | 2
+inception_v3                   | None       | MaxPool_5a_3x3       | 31   | 8                | 2
+inception_v3                   | None       | Mixed_5b             | 63   | 8                | 18
+inception_v3                   | None       | Mixed_5c             | 95   | 8                | 34
+inception_v3                   | None       | Mixed_5d             | 127  | 8                | 50
+inception_v3                   | None       | Mixed_6a             | 159  | 16               | 58
+inception_v3                   | None       | Mixed_6b             | 351  | 16               | 154
+inception_v3                   | None       | Mixed_6c             | 543  | 16               | 250
+inception_v3                   | None       | Mixed_6d             | 735  | 16               | 346
+inception_v3                   | None       | Mixed_6e             | 927  | 16               | 442
+inception_v3                   | None       | Mixed_7a             | 1055 | 32               | 490
+inception_v3                   | None       | Mixed_7b             | 1183 | 32               | 554
+inception_v3                   | None       | Mixed_7c             | 1311 | 32               | 618
+inception_v3                   | 224        | Conv2d_1a_3x3        | 3    | 2                | 0
+inception_v3                   | 224        | Conv2d_2a_3x3        | 7    | 2                | 0
+inception_v3                   | 224        | Conv2d_2b_3x3        | 11   | 2                | 2
+inception_v3                   | 224        | MaxPool_3a_3x3       | 15   | 4                | 2
+inception_v3                   | 224        | Conv2d_3b_1x1        | 15   | 4                | 2
+inception_v3                   | 224        | Conv2d_4a_3x3        | 23   | 4                | 2
+inception_v3                   | 224        | MaxPool_5a_3x3       | 31   | 8                | 2
+inception_v3                   | 224        | Mixed_5b             | 63   | 8                | 18
+inception_v3                   | 224        | Mixed_5c             | 95   | 8                | 34
+inception_v3                   | 224        | Mixed_5d             | 127  | 8                | 50
+inception_v3                   | 224        | Mixed_6a             | 159  | 16               | 58
+inception_v3                   | 224        | Mixed_6b             | 351  | 16               | 154
+inception_v3                   | 224        | Mixed_6c             | 543  | 16               | 250
+inception_v3                   | 224        | Mixed_6d             | 735  | 16               | 346
+inception_v3                   | 224        | Mixed_6e             | 927  | 16               | 442
+inception_v3                   | 224        | Mixed_7a             | 1055 | 32               | 490
+inception_v3                   | 224        | Mixed_7b             | 1183 | 32               | 554
+inception_v3                   | 224        | Mixed_7c             | 1311 | 32               | 618
+inception_v3                   | 321        | Conv2d_1a_3x3        | 3    | 2                | 0
+inception_v3                   | 321        | Conv2d_2a_3x3        | 7    | 2                | 0
+inception_v3                   | 321        | Conv2d_2b_3x3        | 11   | 2                | 2
+inception_v3                   | 321        | MaxPool_3a_3x3       | 15   | 4                | 2
+inception_v3                   | 321        | Conv2d_3b_1x1        | 15   | 4                | 2
+inception_v3                   | 321        | Conv2d_4a_3x3        | 23   | 4                | 2
+inception_v3                   | 321        | MaxPool_5a_3x3       | 31   | 8                | 2
+inception_v3                   | 321        | Mixed_5b             | 63   | 8                | 18
+inception_v3                   | 321        | Mixed_5c             | 95   | 8                | 34
+inception_v3                   | 321        | Mixed_5d             | 127  | 8                | 50
+inception_v3                   | 321        | Mixed_6a             | 159  | 16               | 58
+inception_v3                   | 321        | Mixed_6b             | 351  | 16               | 154
+inception_v3                   | 321        | Mixed_6c             | 543  | 16               | 250
+inception_v3                   | 321        | Mixed_6d             | 735  | 16               | 346
+inception_v3                   | 321        | Mixed_6e             | 927  | 16               | 442
+inception_v3                   | 321        | Mixed_7a             | 1055 | 32               | 490
+inception_v3                   | 321        | Mixed_7b             | 1183 | 32               | 554
+inception_v3                   | 321        | Mixed_7c             | 1311 | 32               | 618
+inception_v4                   | None       | Conv2d_1a_3x3        | 3    | 2                | 0
+inception_v4                   | None       | Conv2d_2a_3x3        | 7    | 2                | 0
+inception_v4                   | None       | Conv2d_2b_3x3        | 11   | 2                | 2
+inception_v4                   | None       | Mixed_3a             | 15   | 4                | 2
+inception_v4                   | None       | Mixed_4a             | 47   | 4                | 14
+inception_v4                   | None       | Mixed_5a             | 55   | 8                | 14
+inception_v4                   | None       | Mixed_5b             | 87   | 8                | 30
+inception_v4                   | None       | Mixed_5c             | 119  | 8                | 46
+inception_v4                   | None       | Mixed_5d             | 151  | 8                | 62
+inception_v4                   | None       | Mixed_5e             | 183  | 8                | 78
+inception_v4                   | None       | Mixed_6a             | 215  | 16               | 86
+inception_v4                   | None       | Mixed_6b             | 407  | 16               | 182
+inception_v4                   | None       | Mixed_6c             | 599  | 16               | 278
+inception_v4                   | None       | Mixed_6d             | 791  | 16               | 374
+inception_v4                   | None       | Mixed_6e             | 983  | 16               | 470
+inception_v4                   | None       | Mixed_6f             | 1175 | 16               | 566
+inception_v4                   | None       | Mixed_6g             | 1367 | 16               | 662
+inception_v4                   | None       | Mixed_6h             | 1559 | 16               | 758
+inception_v4                   | None       | Mixed_7a             | 1687 | 32               | 806
+inception_v4                   | None       | Mixed_7b             | 1815 | 32               | 870
+inception_v4                   | None       | Mixed_7c             | 1943 | 32               | 934
+inception_v4                   | None       | Mixed_7d             | 2071 | 32               | 998
+inception_v4                   | 224        | Conv2d_1a_3x3        | 3    | 2                | 0
+inception_v4                   | 224        | Conv2d_2a_3x3        | 7    | 2                | 0
+inception_v4                   | 224        | Conv2d_2b_3x3        | 11   | 2                | 2
+inception_v4                   | 224        | Mixed_3a             | 15   | 4                | 2
+inception_v4                   | 224        | Mixed_4a             | 47   | 4                | 14
+inception_v4                   | 224        | Mixed_5a             | 55   | 8                | 14
+inception_v4                   | 224        | Mixed_5b             | 87   | 8                | 30
+inception_v4                   | 224        | Mixed_5c             | 119  | 8                | 46
+inception_v4                   | 224        | Mixed_5d             | 151  | 8                | 62
+inception_v4                   | 224        | Mixed_5e             | 183  | 8                | 78
+inception_v4                   | 224        | Mixed_6a             | 215  | 16               | 86
+inception_v4                   | 224        | Mixed_6b             | 407  | 16               | 182
+inception_v4                   | 224        | Mixed_6c             | 599  | 16               | 278
+inception_v4                   | 224        | Mixed_6d             | 791  | 16               | 374
+inception_v4                   | 224        | Mixed_6e             | 983  | 16               | 470
+inception_v4                   | 224        | Mixed_6f             | 1175 | 16               | 566
+inception_v4                   | 224        | Mixed_6g             | 1367 | 16               | 662
+inception_v4                   | 224        | Mixed_6h             | 1559 | 16               | 758
+inception_v4                   | 224        | Mixed_7a             | 1687 | 32               | 806
+inception_v4                   | 224        | Mixed_7b             | 1815 | 32               | 870
+inception_v4                   | 224        | Mixed_7c             | 1943 | 32               | 934
+inception_v4                   | 224        | Mixed_7d             | 2071 | 32               | 998
+inception_v4                   | 321        | Conv2d_1a_3x3        | 3    | 2                | 0
+inception_v4                   | 321        | Conv2d_2a_3x3        | 7    | 2                | 0
+inception_v4                   | 321        | Conv2d_2b_3x3        | 11   | 2                | 2
+inception_v4                   | 321        | Mixed_3a             | 15   | 4                | 2
+inception_v4                   | 321        | Mixed_4a             | 47   | 4                | 14
+inception_v4                   | 321        | Mixed_5a             | 55   | 8                | 14
+inception_v4                   | 321        | Mixed_5b             | 87   | 8                | 30
+inception_v4                   | 321        | Mixed_5c             | 119  | 8                | 46
+inception_v4                   | 321        | Mixed_5d             | 151  | 8                | 62
+inception_v4                   | 321        | Mixed_5e             | 183  | 8                | 78
+inception_v4                   | 321        | Mixed_6a             | 215  | 16               | 86
+inception_v4                   | 321        | Mixed_6b             | 407  | 16               | 182
+inception_v4                   | 321        | Mixed_6c             | 599  | 16               | 278
+inception_v4                   | 321        | Mixed_6d             | 791  | 16               | 374
+inception_v4                   | 321        | Mixed_6e             | 983  | 16               | 470
+inception_v4                   | 321        | Mixed_6f             | 1175 | 16               | 566
+inception_v4                   | 321        | Mixed_6g             | 1367 | 16               | 662
+inception_v4                   | 321        | Mixed_6h             | 1559 | 16               | 758
+inception_v4                   | 321        | Mixed_7a             | 1687 | 32               | 806
+inception_v4                   | 321        | Mixed_7b             | 1815 | 32               | 870
+inception_v4                   | 321        | Mixed_7c             | 1943 | 32               | 934
+inception_v4                   | 321        | Mixed_7d             | 2071 | 32               | 998
+inception_resnet_v2            | None       | Conv2d_1a_3x3        | 3    | 2                | 0
+inception_resnet_v2            | None       | Conv2d_2a_3x3        | 7    | 2                | 0
+inception_resnet_v2            | None       | Conv2d_2b_3x3        | 11   | 2                | 2
+inception_resnet_v2            | None       | MaxPool_3a_3x3       | 15   | 4                | 2
+inception_resnet_v2            | None       | Conv2d_3b_1x1        | 15   | 4                | 2
+inception_resnet_v2            | None       | Conv2d_4a_3x3        | 23   | 4                | 2
+inception_resnet_v2            | None       | MaxPool_5a_3x3       | 31   | 8                | 2
+inception_resnet_v2            | None       | Mixed_5b             | 63   | 8                | 18
+inception_resnet_v2            | None       | Mixed_6a             | 415  | 16               | 186
+inception_resnet_v2            | None       | PreAuxLogits         | 2335 | 16               | 1146
+inception_resnet_v2            | None       | Mixed_7a             | 2399 | 32               | 1162
+inception_resnet_v2            | None       | Conv2d_7b_1x1        | 3039 | 32               | 1482
+inception_resnet_v2            | 224        | Conv2d_1a_3x3        | 3    | 2                | 0
+inception_resnet_v2            | 224        | Conv2d_2a_3x3        | 7    | 2                | 0
+inception_resnet_v2            | 224        | Conv2d_2b_3x3        | 11   | 2                | 2
+inception_resnet_v2            | 224        | MaxPool_3a_3x3       | 15   | 4                | 2
+inception_resnet_v2            | 224        | Conv2d_3b_1x1        | 15   | 4                | 2
+inception_resnet_v2            | 224        | Conv2d_4a_3x3        | 23   | 4                | 2
+inception_resnet_v2            | 224        | MaxPool_5a_3x3       | 31   | 8                | 2
+inception_resnet_v2            | 224        | Mixed_5b             | 63   | 8                | 18
+inception_resnet_v2            | 224        | Mixed_6a             | 415  | 16               | 186
+inception_resnet_v2            | 224        | PreAuxLogits         | 2335 | 16               | 1146
+inception_resnet_v2            | 224        | Mixed_7a             | 2399 | 32               | 1162
+inception_resnet_v2            | 224        | Conv2d_7b_1x1        | 3039 | 32               | 1482
+inception_resnet_v2            | 321        | Conv2d_1a_3x3        | 3    | 2                | 0
+inception_resnet_v2            | 321        | Conv2d_2a_3x3        | 7    | 2                | 0
+inception_resnet_v2            | 321        | Conv2d_2b_3x3        | 11   | 2                | 2
+inception_resnet_v2            | 321        | MaxPool_3a_3x3       | 15   | 4                | 2
+inception_resnet_v2            | 321        | Conv2d_3b_1x1        | 15   | 4                | 2
+inception_resnet_v2            | 321        | Conv2d_4a_3x3        | 23   | 4                | 2
+inception_resnet_v2            | 321        | MaxPool_5a_3x3       | 31   | 8                | 2
+inception_resnet_v2            | 321        | Mixed_5b             | 63   | 8                | 18
+inception_resnet_v2            | 321        | Mixed_6a             | 415  | 16               | 186
+inception_resnet_v2            | 321        | PreAuxLogits         | 2335 | 16               | 1146
+inception_resnet_v2            | 321        | Mixed_7a             | 2399 | 32               | 1162
+inception_resnet_v2            | 321        | Conv2d_7b_1x1        | 3039 | 32               | 1482
+inception_resnet_v2-same       | None       | Conv2d_1a_3x3        | 3    | 2                | None
+inception_resnet_v2-same       | None       | Conv2d_2a_3x3        | 7    | 2                | None
+inception_resnet_v2-same       | None       | Conv2d_2b_3x3        | 11   | 2                | None
+inception_resnet_v2-same       | None       | MaxPool_3a_3x3       | 15   | 4                | None
+inception_resnet_v2-same       | None       | Conv2d_3b_1x1        | 15   | 4                | None
+inception_resnet_v2-same       | None       | Conv2d_4a_3x3        | 23   | 4                | None
+inception_resnet_v2-same       | None       | MaxPool_5a_3x3       | 31   | 8                | None
+inception_resnet_v2-same       | None       | Mixed_5b             | 63   | 8                | None
+inception_resnet_v2-same       | None       | Mixed_6a             | 415  | 16               | None
+inception_resnet_v2-same       | None       | PreAuxLogits         | 2335 | 16               | None
+inception_resnet_v2-same       | None       | Mixed_7a             | 2399 | 32               | None
+inception_resnet_v2-same       | None       | Conv2d_7b_1x1        | 3039 | 32               | None
+inception_resnet_v2-same       | 224        | Conv2d_1a_3x3        | 3    | 2                | 0
+inception_resnet_v2-same       | 224        | Conv2d_2a_3x3        | 7    | 2                | 2
+inception_resnet_v2-same       | 224        | Conv2d_2b_3x3        | 11   | 2                | 4
+inception_resnet_v2-same       | 224        | MaxPool_3a_3x3       | 15   | 4                | 4
+inception_resnet_v2-same       | 224        | Conv2d_3b_1x1        | 15   | 4                | 4
+inception_resnet_v2-same       | 224        | Conv2d_4a_3x3        | 23   | 4                | 8
+inception_resnet_v2-same       | 224        | MaxPool_5a_3x3       | 31   | 8                | 8
+inception_resnet_v2-same       | 224        | Mixed_5b             | 63   | 8                | 24
+inception_resnet_v2-same       | 224        | Mixed_6a             | 415  | 16               | 192
+inception_resnet_v2-same       | 224        | PreAuxLogits         | 2335 | 16               | 1152
+inception_resnet_v2-same       | 224        | Mixed_7a             | 2399 | 32               | 1168
+inception_resnet_v2-same       | 224        | Conv2d_7b_1x1        | 3039 | 32               | 1488
+inception_resnet_v2-same       | 321        | Conv2d_1a_3x3        | 3    | 2                | 1
+inception_resnet_v2-same       | 321        | Conv2d_2a_3x3        | 7    | 2                | 3
+inception_resnet_v2-same       | 321        | Conv2d_2b_3x3        | 11   | 2                | 5
+inception_resnet_v2-same       | 321        | MaxPool_3a_3x3       | 15   | 4                | 7
+inception_resnet_v2-same       | 321        | Conv2d_3b_1x1        | 15   | 4                | 7
+inception_resnet_v2-same       | 321        | Conv2d_4a_3x3        | 23   | 4                | 11
+inception_resnet_v2-same       | 321        | MaxPool_5a_3x3       | 31   | 8                | 15
+inception_resnet_v2-same       | 321        | Mixed_5b             | 63   | 8                | 31
+inception_resnet_v2-same       | 321        | Mixed_6a             | 415  | 16               | 207
+inception_resnet_v2-same       | 321        | PreAuxLogits         | 2335 | 16               | 1167
+inception_resnet_v2-same       | 321        | Mixed_7a             | 2399 | 32               | 1199
+inception_resnet_v2-same       | 321        | Conv2d_7b_1x1        | 3039 | 32               | 1519
+mobilenet_v1                   | None       | Conv2d_0             | 3    | 2                | None
+mobilenet_v1                   | None       | Conv2d_1_pointwise   | 7    | 2                | None
+mobilenet_v1                   | None       | Conv2d_2_pointwise   | 11   | 4                | None
+mobilenet_v1                   | None       | Conv2d_3_pointwise   | 19   | 4                | None
+mobilenet_v1                   | None       | Conv2d_4_pointwise   | 27   | 8                | None
+mobilenet_v1                   | None       | Conv2d_5_pointwise   | 43   | 8                | None
+mobilenet_v1                   | None       | Conv2d_6_pointwise   | 59   | 16               | None
+mobilenet_v1                   | None       | Conv2d_7_pointwise   | 91   | 16               | None
+mobilenet_v1                   | None       | Conv2d_8_pointwise   | 123  | 16               | None
+mobilenet_v1                   | None       | Conv2d_9_pointwise   | 155  | 16               | None
+mobilenet_v1                   | None       | Conv2d_10_pointwise  | 187  | 16               | None
+mobilenet_v1                   | None       | Conv2d_11_pointwise  | 219  | 16               | None
+mobilenet_v1                   | None       | Conv2d_12_pointwise  | 251  | 32               | None
+mobilenet_v1                   | None       | Conv2d_13_pointwise  | 315  | 32               | None
+mobilenet_v1                   | 224        | Conv2d_0             | 3    | 2                | 0
+mobilenet_v1                   | 224        | Conv2d_1_pointwise   | 7    | 2                | 2
+mobilenet_v1                   | 224        | Conv2d_2_pointwise   | 11   | 4                | 2
+mobilenet_v1                   | 224        | Conv2d_3_pointwise   | 19   | 4                | 6
+mobilenet_v1                   | 224        | Conv2d_4_pointwise   | 27   | 8                | 6
+mobilenet_v1                   | 224        | Conv2d_5_pointwise   | 43   | 8                | 14
+mobilenet_v1                   | 224        | Conv2d_6_pointwise   | 59   | 16               | 14
+mobilenet_v1                   | 224        | Conv2d_7_pointwise   | 91   | 16               | 30
+mobilenet_v1                   | 224        | Conv2d_8_pointwise   | 123  | 16               | 46
+mobilenet_v1                   | 224        | Conv2d_9_pointwise   | 155  | 16               | 62
+mobilenet_v1                   | 224        | Conv2d_10_pointwise  | 187  | 16               | 78
+mobilenet_v1                   | 224        | Conv2d_11_pointwise  | 219  | 16               | 94
+mobilenet_v1                   | 224        | Conv2d_12_pointwise  | 251  | 32               | 94
+mobilenet_v1                   | 224        | Conv2d_13_pointwise  | 315  | 32               | 126
+mobilenet_v1                   | 321        | Conv2d_0             | 3    | 2                | 1
+mobilenet_v1                   | 321        | Conv2d_1_pointwise   | 7    | 2                | 3
+mobilenet_v1                   | 321        | Conv2d_2_pointwise   | 11   | 4                | 5
+mobilenet_v1                   | 321        | Conv2d_3_pointwise   | 19   | 4                | 9
+mobilenet_v1                   | 321        | Conv2d_4_pointwise   | 27   | 8                | 13
+mobilenet_v1                   | 321        | Conv2d_5_pointwise   | 43   | 8                | 21
+mobilenet_v1                   | 321        | Conv2d_6_pointwise   | 59   | 16               | 29
+mobilenet_v1                   | 321        | Conv2d_7_pointwise   | 91   | 16               | 45
+mobilenet_v1                   | 321        | Conv2d_8_pointwise   | 123  | 16               | 61
+mobilenet_v1                   | 321        | Conv2d_9_pointwise   | 155  | 16               | 77
+mobilenet_v1                   | 321        | Conv2d_10_pointwise  | 187  | 16               | 93
+mobilenet_v1                   | 321        | Conv2d_11_pointwise  | 219  | 16               | 109
+mobilenet_v1                   | 321        | Conv2d_12_pointwise  | 251  | 32               | 125
+mobilenet_v1                   | 321        | Conv2d_13_pointwise  | 315  | 32               | 157
+mobilenet_v1_075               | None       | Conv2d_0             | 3    | 2                | None
+mobilenet_v1_075               | None       | Conv2d_1_pointwise   | 7    | 2                | None
+mobilenet_v1_075               | None       | Conv2d_2_pointwise   | 11   | 4                | None
+mobilenet_v1_075               | None       | Conv2d_3_pointwise   | 19   | 4                | None
+mobilenet_v1_075               | None       | Conv2d_4_pointwise   | 27   | 8                | None
+mobilenet_v1_075               | None       | Conv2d_5_pointwise   | 43   | 8                | None
+mobilenet_v1_075               | None       | Conv2d_6_pointwise   | 59   | 16               | None
+mobilenet_v1_075               | None       | Conv2d_7_pointwise   | 91   | 16               | None
+mobilenet_v1_075               | None       | Conv2d_8_pointwise   | 123  | 16               | None
+mobilenet_v1_075               | None       | Conv2d_9_pointwise   | 155  | 16               | None
+mobilenet_v1_075               | None       | Conv2d_10_pointwise  | 187  | 16               | None
+mobilenet_v1_075               | None       | Conv2d_11_pointwise  | 219  | 16               | None
+mobilenet_v1_075               | None       | Conv2d_12_pointwise  | 251  | 32               | None
+mobilenet_v1_075               | None       | Conv2d_13_pointwise  | 315  | 32               | None
+mobilenet_v1_075               | 224        | Conv2d_0             | 3    | 2                | 0
+mobilenet_v1_075               | 224        | Conv2d_1_pointwise   | 7    | 2                | 2
+mobilenet_v1_075               | 224        | Conv2d_2_pointwise   | 11   | 4                | 2
+mobilenet_v1_075               | 224        | Conv2d_3_pointwise   | 19   | 4                | 6
+mobilenet_v1_075               | 224        | Conv2d_4_pointwise   | 27   | 8                | 6
+mobilenet_v1_075               | 224        | Conv2d_5_pointwise   | 43   | 8                | 14
+mobilenet_v1_075               | 224        | Conv2d_6_pointwise   | 59   | 16               | 14
+mobilenet_v1_075               | 224        | Conv2d_7_pointwise   | 91   | 16               | 30
+mobilenet_v1_075               | 224        | Conv2d_8_pointwise   | 123  | 16               | 46
+mobilenet_v1_075               | 224        | Conv2d_9_pointwise   | 155  | 16               | 62
+mobilenet_v1_075               | 224        | Conv2d_10_pointwise  | 187  | 16               | 78
+mobilenet_v1_075               | 224        | Conv2d_11_pointwise  | 219  | 16               | 94
+mobilenet_v1_075               | 224        | Conv2d_12_pointwise  | 251  | 32               | 94
+mobilenet_v1_075               | 224        | Conv2d_13_pointwise  | 315  | 32               | 126
+mobilenet_v1_075               | 321        | Conv2d_0             | 3    | 2                | 1
+mobilenet_v1_075               | 321        | Conv2d_1_pointwise   | 7    | 2                | 3
+mobilenet_v1_075               | 321        | Conv2d_2_pointwise   | 11   | 4                | 5
+mobilenet_v1_075               | 321        | Conv2d_3_pointwise   | 19   | 4                | 9
+mobilenet_v1_075               | 321        | Conv2d_4_pointwise   | 27   | 8                | 13
+mobilenet_v1_075               | 321        | Conv2d_5_pointwise   | 43   | 8                | 21
+mobilenet_v1_075               | 321        | Conv2d_6_pointwise   | 59   | 16               | 29
+mobilenet_v1_075               | 321        | Conv2d_7_pointwise   | 91   | 16               | 45
+mobilenet_v1_075               | 321        | Conv2d_8_pointwise   | 123  | 16               | 61
+mobilenet_v1_075               | 321        | Conv2d_9_pointwise   | 155  | 16               | 77
+mobilenet_v1_075               | 321        | Conv2d_10_pointwise  | 187  | 16               | 93
+mobilenet_v1_075               | 321        | Conv2d_11_pointwise  | 219  | 16               | 109
+mobilenet_v1_075               | 321        | Conv2d_12_pointwise  | 251  | 32               | 125
+mobilenet_v1_075               | 321        | Conv2d_13_pointwise  | 315  | 32               | 157
+resnet_v1_50                   | None       | resnet_v1_50/block1  | 35   | 8                | None
+resnet_v1_50                   | None       | resnet_v1_50/block2  | 99   | 16               | None
+resnet_v1_50                   | None       | resnet_v1_50/block3  | 291  | 32               | None
+resnet_v1_50                   | None       | resnet_v1_50/block4  | 483  | 32               | None
+resnet_v1_50                   | 224        | resnet_v1_50/block1  | 35   | 8                | 15
+resnet_v1_50                   | 224        | resnet_v1_50/block2  | 99   | 16               | 47
+resnet_v1_50                   | 224        | resnet_v1_50/block3  | 291  | 32               | 143
+resnet_v1_50                   | 224        | resnet_v1_50/block4  | 483  | 32               | 239
+resnet_v1_50                   | 321        | resnet_v1_50/block1  | 35   | 8                | 17
+resnet_v1_50                   | 321        | resnet_v1_50/block2  | 99   | 16               | 49
+resnet_v1_50                   | 321        | resnet_v1_50/block3  | 291  | 32               | 145
+resnet_v1_50                   | 321        | resnet_v1_50/block4  | 483  | 32               | 241
+resnet_v1_101                  | None       | resnet_v1_101/block1 | 35   | 8                | None
+resnet_v1_101                  | None       | resnet_v1_101/block2 | 99   | 16               | None
+resnet_v1_101                  | None       | resnet_v1_101/block3 | 835  | 32               | None
+resnet_v1_101                  | None       | resnet_v1_101/block4 | 1027 | 32               | None
+resnet_v1_101                  | 224        | resnet_v1_101/block1 | 35   | 8                | 15
+resnet_v1_101                  | 224        | resnet_v1_101/block2 | 99   | 16               | 47
+resnet_v1_101                  | 224        | resnet_v1_101/block3 | 835  | 32               | 415
+resnet_v1_101                  | 224        | resnet_v1_101/block4 | 1027 | 32               | 511
+resnet_v1_101                  | 321        | resnet_v1_101/block1 | 35   | 8                | 17
+resnet_v1_101                  | 321        | resnet_v1_101/block2 | 99   | 16               | 49
+resnet_v1_101                  | 321        | resnet_v1_101/block3 | 835  | 32               | 417
+resnet_v1_101                  | 321        | resnet_v1_101/block4 | 1027 | 32               | 513
+resnet_v1_152                  | None       | resnet_v1_152/block1 | 35   | 8                | None
+resnet_v1_152                  | None       | resnet_v1_152/block2 | 163  | 16               | None
+resnet_v1_152                  | None       | resnet_v1_152/block3 | 1315 | 32               | None
+resnet_v1_152                  | None       | resnet_v1_152/block4 | 1507 | 32               | None
+resnet_v1_152                  | 224        | resnet_v1_152/block1 | 35   | 8                | 15
+resnet_v1_152                  | 224        | resnet_v1_152/block2 | 163  | 16               | 79
+resnet_v1_152                  | 224        | resnet_v1_152/block3 | 1315 | 32               | 655
+resnet_v1_152                  | 224        | resnet_v1_152/block4 | 1507 | 32               | 751
+resnet_v1_152                  | 321        | resnet_v1_152/block1 | 35   | 8                | 17
+resnet_v1_152                  | 321        | resnet_v1_152/block2 | 163  | 16               | 81
+resnet_v1_152                  | 321        | resnet_v1_152/block3 | 1315 | 32               | 657
+resnet_v1_152                  | 321        | resnet_v1_152/block4 | 1507 | 32               | 753
+resnet_v1_200                  | None       | resnet_v1_200/block1 | 35   | 8                | None
+resnet_v1_200                  | None       | resnet_v1_200/block2 | 419  | 16               | None
+resnet_v1_200                  | None       | resnet_v1_200/block3 | 1571 | 32               | None
+resnet_v1_200                  | None       | resnet_v1_200/block4 | 1763 | 32               | None
+resnet_v1_200                  | 224        | resnet_v1_200/block1 | 35   | 8                | 15
+resnet_v1_200                  | 224        | resnet_v1_200/block2 | 419  | 16               | 207
+resnet_v1_200                  | 224        | resnet_v1_200/block3 | 1571 | 32               | 783
+resnet_v1_200                  | 224        | resnet_v1_200/block4 | 1763 | 32               | 879
+resnet_v1_200                  | 321        | resnet_v1_200/block1 | 35   | 8                | 17
+resnet_v1_200                  | 321        | resnet_v1_200/block2 | 419  | 16               | 209
+resnet_v1_200                  | 321        | resnet_v1_200/block3 | 1571 | 32               | 785
+resnet_v1_200                  | 321        | resnet_v1_200/block4 | 1763 | 32               | 881
+resnet_v2_50                   | None       | resnet_v2_50/block1  | 35   | 8                | None
+resnet_v2_50                   | None       | resnet_v2_50/block2  | 99   | 16               | None
+resnet_v2_50                   | None       | resnet_v2_50/block3  | 291  | 32               | None
+resnet_v2_50                   | None       | resnet_v2_50/block4  | 483  | 32               | None
+resnet_v2_50                   | 224        | resnet_v2_50/block1  | 35   | 8                | 15
+resnet_v2_50                   | 224        | resnet_v2_50/block2  | 99   | 16               | 47
+resnet_v2_50                   | 224        | resnet_v2_50/block3  | 291  | 32               | 143
+resnet_v2_50                   | 224        | resnet_v2_50/block4  | 483  | 32               | 239
+resnet_v2_50                   | 321        | resnet_v2_50/block1  | 35   | 8                | 17
+resnet_v2_50                   | 321        | resnet_v2_50/block2  | 99   | 16               | 49
+resnet_v2_50                   | 321        | resnet_v2_50/block3  | 291  | 32               | 145
+resnet_v2_50                   | 321        | resnet_v2_50/block4  | 483  | 32               | 241
+resnet_v2_101                  | None       | resnet_v2_101/block1 | 35   | 8                | None
+resnet_v2_101                  | None       | resnet_v2_101/block2 | 99   | 16               | None
+resnet_v2_101                  | None       | resnet_v2_101/block3 | 835  | 32               | None
+resnet_v2_101                  | None       | resnet_v2_101/block4 | 1027 | 32               | None
+resnet_v2_101                  | 224        | resnet_v2_101/block1 | 35   | 8                | 15
+resnet_v2_101                  | 224        | resnet_v2_101/block2 | 99   | 16               | 47
+resnet_v2_101                  | 224        | resnet_v2_101/block3 | 835  | 32               | 415
+resnet_v2_101                  | 224        | resnet_v2_101/block4 | 1027 | 32               | 511
+resnet_v2_101                  | 321        | resnet_v2_101/block1 | 35   | 8                | 17
+resnet_v2_101                  | 321        | resnet_v2_101/block2 | 99   | 16               | 49
+resnet_v2_101                  | 321        | resnet_v2_101/block3 | 835  | 32               | 417
+resnet_v2_101                  | 321        | resnet_v2_101/block4 | 1027 | 32               | 513
+resnet_v2_152                  | None       | resnet_v2_152/block1 | 35   | 8                | None
+resnet_v2_152                  | None       | resnet_v2_152/block2 | 163  | 16               | None
+resnet_v2_152                  | None       | resnet_v2_152/block3 | 1315 | 32               | None
+resnet_v2_152                  | None       | resnet_v2_152/block4 | 1507 | 32               | None
+resnet_v2_152                  | 224        | resnet_v2_152/block1 | 35   | 8                | 15
+resnet_v2_152                  | 224        | resnet_v2_152/block2 | 163  | 16               | 79
+resnet_v2_152                  | 224        | resnet_v2_152/block3 | 1315 | 32               | 655
+resnet_v2_152                  | 224        | resnet_v2_152/block4 | 1507 | 32               | 751
+resnet_v2_152                  | 321        | resnet_v2_152/block1 | 35   | 8                | 17
+resnet_v2_152                  | 321        | resnet_v2_152/block2 | 163  | 16               | 81
+resnet_v2_152                  | 321        | resnet_v2_152/block3 | 1315 | 32               | 657
+resnet_v2_152                  | 321        | resnet_v2_152/block4 | 1507 | 32               | 753
+resnet_v2_200                  | None       | resnet_v2_200/block1 | 35   | 8                | None
+resnet_v2_200                  | None       | resnet_v2_200/block2 | 419  | 16               | None
+resnet_v2_200                  | None       | resnet_v2_200/block3 | 1571 | 32               | None
+resnet_v2_200                  | None       | resnet_v2_200/block4 | 1763 | 32               | None
+resnet_v2_200                  | 224        | resnet_v2_200/block1 | 35   | 8                | 15
+resnet_v2_200                  | 224        | resnet_v2_200/block2 | 419  | 16               | 207
+resnet_v2_200                  | 224        | resnet_v2_200/block3 | 1571 | 32               | 783
+resnet_v2_200                  | 224        | resnet_v2_200/block4 | 1763 | 32               | 879
+resnet_v2_200                  | 321        | resnet_v2_200/block1 | 35   | 8                | 17
+resnet_v2_200                  | 321        | resnet_v2_200/block2 | 419  | 16               | 209
+resnet_v2_200                  | 321        | resnet_v2_200/block3 | 1571 | 32               | 785
+resnet_v2_200                  | 321        | resnet_v2_200/block4 | 1763 | 32               | 881
+
+## FAQ
+
+### What does a resolution of 'None' mean?
+
+In this case, the input resolution is undefined. For most models, the receptive
+field parameters can be computed even without knowing the input resolution.
+
+### For some networks, effective_padding shows as 'None' (eg, for Inception_v2 or Mobilenet_v1 when input size is not specified). Why is that?
+
+This means that the padding for these networks depends on the input size. So,
+unless we know exactly the input image dimensionality to be used, it is not
+possible to determine the padding applied at the different layers. Look at the
+other entries where the input size is fixed; for those cases, effective_padding
+is not None.
+
+This happens due to Tensorflow's implementation of the 'SAME' padding mode,
+which may depend on the input feature map size to a given layer. For background
+on this, see [these notes from the TF
+documentation](https://www.tensorflow.org/versions/master/api_guides/python/nn#Notes_on_SAME_Convolution_Padding).
+
+Also, note that in this case the program is not able to check if the network is
+aligned (ie, it could be that the different paths from input to output have
+receptive fields which are not consistently centered at the same position in the
+input image).
+
+So you should be aware that such networks might not be aligned -- the program
+has no way of checking it when the padding cannot be determined.
+
+### The receptive field parameters for network X seem different from what I expected... maybe your calculation is incorrect?
+
+First, note that the results presented here are based on the tensorflow
+implementations from the [TF-Slim model
+library](https://github.com/tensorflow/models/tree/master/research/slim).
+
+So, it is possible that due to some implementation details the RF parameters are
+different.
+
+One common case of confusion is the TF-Slim Resnet implementation, which applies
+stride in the last residual unit of each block, instead of at the input
+activations in the first residual unit of each block (which is what is described
+in the Resnet paper) -- see [this
+comment](https://github.com/tensorflow/models/blob/master/research/slim/nets/resnet_utils.py#L30).
+This makes the stride with respect to each convolution block potentially
+different. In this case, though, note that a
+[flag](https://github.com/tensorflow/models/blob/master/research/slim/nets/resnet_v1.py#L150)
+may be used to recover the original striding convention.
+
+Second, it could be that we have a bug somewhere. While we include [many
+tests](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/receptive_field/python/util/receptive_field_test.py)
+in our library, it is always possible that we missed something. If you suspect
+this is happening, please file a GitHub issue
+[here](https://github.com/tensorflow/tensorflow/issues).

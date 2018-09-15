@@ -30,10 +30,17 @@ limitations under the License.
 
 namespace xla {
 
+TupleSimplifier::TupleSimplifier(bool exclude_entry_computation) :
+    exclude_entry_computation_(exclude_entry_computation) {}
+
 StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
   // Initially add all GTE and Tuple instructions to the worklist.
   std::queue<HloInstruction*> worklist;
   for (auto* computation : module->computations()) {
+    if (exclude_entry_computation_ &&
+        computation == module->entry_computation()) {
+      continue;
+    }
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kTuple ||
           instruction->opcode() == HloOpcode::kGetTupleElement) {
@@ -78,7 +85,6 @@ StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
           can_simplify = false;
           break;
         }
-
         if (top_tuple == nullptr) {
           top_tuple = operand->mutable_operand(0);
           if (!ShapeUtil::Compatible(top_tuple->shape(),
@@ -108,10 +114,10 @@ StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
       //          |
       //         GTE
       if (instruction->operand(0)->opcode() == HloOpcode::kTuple) {
-        changed = true;
         HloInstruction* element_source =
             instruction->mutable_operand(0)->mutable_operand(
                 instruction->tuple_index());
+        changed = true;
         TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(element_source));
         for (HloInstruction* user : element_source->users()) {
           if (user->opcode() == HloOpcode::kTuple ||

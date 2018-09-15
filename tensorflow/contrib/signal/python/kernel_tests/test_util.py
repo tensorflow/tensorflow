@@ -27,18 +27,19 @@ def grappler_optimize(graph, fetches=None, rewriter_config=None):
   """Tries to optimize the provided graph using grappler.
 
   Args:
-    graph: A @{tf.Graph} instance containing the graph to optimize.
+    graph: A `tf.Graph` instance containing the graph to optimize.
     fetches: An optional list of `Tensor`s to fetch (i.e. not optimize away).
       Grappler uses the 'train_op' collection to look for fetches, so if not
       provided this collection should be non-empty.
-    rewriter_config: An optional @{tf.RewriterConfig} to use when rewriting the
+    rewriter_config: An optional `tf.RewriterConfig` to use when rewriting the
       graph.
 
   Returns:
-    A @{tf.GraphDef} containing the rewritten graph.
+    A `tf.GraphDef` containing the rewritten graph.
   """
   if rewriter_config is None:
     rewriter_config = rewriter_config_pb2.RewriterConfig()
+    rewriter_config.min_graph_nodes = -1
   if fetches is not None:
     for fetch in fetches:
       graph.add_to_collection('train_op', fetch)

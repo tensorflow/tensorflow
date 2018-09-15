@@ -17,7 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import boosted_trees_ops
 from tensorflow.python.platform import googletest
 
@@ -27,7 +30,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
   def testCalculateBestGainsWithoutRegularization(self):
     """Testing Gain calculation without any regularization."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       max_splits = 7
       node_id_range = [1, 3]  # node 1 through 2 will be processed.
       stats_summary_list = [
@@ -75,7 +78,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
   def testCalculateBestGainsWithL2(self):
     """Testing Gain calculation with L2."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       max_splits = 7
       node_id_range = [1, 3]  # node 1 through 2 will be processed.
       stats_summary_list = [
@@ -123,7 +126,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
   def testCalculateBestGainsWithL1(self):
     """Testing Gain calculation with L1."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       max_splits = 7
       node_id_range = [1, 3]  # node 1 through 2 will be processed.
       stats_summary_list = [
@@ -174,7 +177,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
   def testCalculateBestGainsWithTreeComplexity(self):
     """Testing Gain calculation with L2."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       max_splits = 7
       node_id_range = [1, 3]  # node 1 through 2 will be processed.
       stats_summary_list = [
@@ -226,7 +229,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
   def testCalculateBestGainsWithMinNodeWeight(self):
     """Testing Gain calculation without any regularization."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       max_splits = 7
       node_id_range = [1, 3]  # node 1 through 2 will be processed.
       stats_summary_list = [
@@ -273,7 +276,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
   def testCalculateBestGainsWithMinNodeWeightNoSplitOnFeturePossible(self):
     """Testing Gain calculation without any regularization."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       max_splits = 7
       node_id_range = [1, 3]  # node 1 through 2 will be processed.
       stats_summary_list = [
@@ -326,7 +329,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
   def testMakeStatsSummarySimple(self):
     """Simple test for MakeStatsSummary."""
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose([[[[1., 5.], [2., 6.]], [[3., 7.], [4., 8.]]]],
                           boosted_trees_ops.make_stats_summary(
                               node_ids=[0, 0, 1, 1],
@@ -338,7 +341,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
   def testMakeStatsSummaryAccumulate(self):
     """Tests that Summary actually accumulates."""
-    with self.test_session():
+    with self.cached_session():
       max_splits = 3
       num_buckets = 4
       node_ids = [1, 1, 2, 2, 1, 1, 2, 0]
@@ -360,7 +363,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
   def testMakeStatsSummaryMultipleFeatures(self):
     """Tests that MakeStatsSummary works for multiple features."""
-    with self.test_session():
+    with self.cached_session():
       max_splits = 3
       num_buckets = 4
       node_ids = [1, 1, 2, 2, 1, 1, 2, 0]
@@ -387,6 +390,41 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
               ],  # feature 1
           ],
           result.eval())
+
+  def _verify_precision(self, length):
+    with self.cached_session():
+      max_splits = 1
+      num_buckets = 1
+      node_ids = array_ops.fill([length], 0)
+
+      gradients = constant_op.constant(
+          2.0 / length, dtype=dtypes.float32, shape=[length, 1])
+      hessians = constant_op.constant(
+          0.2 / length, dtype=dtypes.float32, shape=[length, 1])
+
+      bucketized_features = array_ops.zeros([length], dtype=dtypes.int32)
+
+      result = boosted_trees_ops.make_stats_summary(
+          node_ids, gradients, hessians, [bucketized_features], max_splits,
+          num_buckets)  # shape=[max_splits, num_buckets, num_features, 2]
+
+      self.assertAllClose([[[[2., 0.2]]]], result.eval())
+
+  def testMakeStatsSummaryNumericalPrecisionSmallBatch(self):
+    """Tests numeric precision."""
+    self._verify_precision(length=2000)
+
+  def testMakeStatsSummaryNumericalPrecisionMediumBatch(self):
+    """Tests numeric precision."""
+    self._verify_precision(length=100000)
+
+  def testMakeStatsSummaryNumericalPrecisionLargeBatch(self):
+    """Tests numeric precision."""
+    self._verify_precision(length=1000000)
+
+  def testMakeStatsSummaryNumericalPrecisionMegaBatch(self):
+    """Tests numeric precision."""
+    self._verify_precision(length=50000000)
 
 
 if __name__ == '__main__':

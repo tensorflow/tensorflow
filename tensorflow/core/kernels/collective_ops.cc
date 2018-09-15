@@ -132,14 +132,19 @@ class CollectiveReduceOpKernel : public CollectiveOpKernel {
             "Failed to get CollectiveExecutor from OpKernelContext for Op ",
             col_params_.name),
         done);
+    // Allocate output on the first pass through this function.  This must be
+    // done immediately, while we're still in the executor thread.  Otherwise
+    // the memory is not guaranteed to be unused by any concurrently executing
+    // GPU kernel.
+    if (c->mutable_output(0) == nullptr) {
+      // Allocate the output tensor, trying to reuse the input.
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK_ASYNC(c,
+                           c->forward_input_or_allocate_output(
+                               {0}, 0, c->input(0).shape(), &output),
+                           done);
+    }
     if (!CanProceedWithCompute(c, col_exec, done)) return;
-    // Allocate the output tensor, trying to reuse the input.
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK_ASYNC(c,
-                         c->forward_input_or_allocate_output(
-                             {0}, 0, c->input(0).shape(), &output),
-                         done);
-
     auto actual_done = [c, col_exec, done](const Status& s) {
       OP_REQUIRES_OK_ASYNC(c, s, done);
       done();
@@ -183,16 +188,23 @@ class CollectiveBcastSendOpKernel : public CollectiveOpKernel {
             "Failed to get CollectiveExecutor from OpKernelContext for Op ",
             col_params_.name),
         done);
+    // Allocate output on the first pass through this function.  This must be
+    // done immediately, while we're still in the executor thread.  Otherwise
+    // the memory is not guaranteed to be unused by any concurrently executing
+    // GPU kernel.
+    if (c->mutable_output(0) == nullptr) {
+      // Allocate the output tensor, trying to reuse the input.
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK_ASYNC(
+          c, c->forward_input_or_allocate_output({0}, 0, shape_, &output),
+          done);
+    }
     if (!CanProceedWithCompute(c, col_exec, done)) return;
     OP_REQUIRES_ASYNC(
         c, shape_.IsSameSize(c->input(0).shape()),
         errors::Internal("Declared shape of op ", col_params_.name,
                          " does not match shape of input"),
         done);
-    // Allocate the output Tensor, trying to reuse the input.
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK_ASYNC(
-        c, c->forward_input_or_allocate_output({0}, 0, shape_, &output), done);
 
     auto actual_done = [c, col_exec, done](const Status& s) {
       OP_REQUIRES_OK_ASYNC(c, s, done);
@@ -239,10 +251,16 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpKernel {
             "Failed to get CollectiveExecutor from OpKernelContext for Op ",
             col_params_.name),
         done);
+    // Allocate output on the first pass through this function.  This must be
+    // done immediately, while we're still in the executor thread.  Otherwise
+    // the memory is not guaranteed to be unused by any concurrently executing
+    // GPU kernel.
+    if (c->mutable_output(0) == nullptr) {
+      // No input, so must allocate output.
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK_ASYNC(c, c->allocate_output(0, shape_, &output), done);
+    }
     if (!CanProceedWithCompute(c, col_exec, done)) return;
-    // No input, so must allocate output.
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK_ASYNC(c, c->allocate_output(0, shape_, &output), done);
 
     auto actual_done = [c, col_exec, done](const Status& s) {
       OP_REQUIRES_OK_ASYNC(c, s, done);

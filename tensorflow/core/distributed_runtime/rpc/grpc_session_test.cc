@@ -163,6 +163,39 @@ TEST(GrpcSessionTest, BasicCallable) {
   }
 }
 
+TEST(GrpcSessionTest, CallableWithOnDeviceFeedsAndFetches) {
+  // Specifying feeds/fetch devices for remote sessions is not yet defined.
+  // Ensure that the error is graceful.
+  GraphDef graph;
+  string node_names[3];
+  // c = a * b
+  CreateGraphDef(&graph, node_names);
+
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+
+  std::unique_ptr<Session> session(
+      NewRemote(Options(cluster->targets()[0], 1)));
+  ASSERT_TRUE(session != nullptr);
+
+  TF_CHECK_OK(session->Create(graph));
+
+  std::vector<DeviceAttributes> devices;
+  TF_CHECK_OK(session->ListDevices(&devices));
+  ASSERT_GT(devices.size(), 0);
+  const string device_name = devices.back().name();
+
+  CallableOptions opts;
+  const string fetch = node_names[2] + ":0";
+  opts.add_fetch(fetch);
+  opts.mutable_fetch_devices()->insert({fetch, device_name});
+
+  Session::CallableHandle handle;
+  Status status = session->MakeCallable(opts, &handle);
+  EXPECT_EQ(error::UNIMPLEMENTED, status.code());
+  TF_CHECK_OK(session->Close());
+}
+
 TEST(GrpcSessionTest, BasicNonProtoAPIConsistentOrder) {
   GraphDef graph;
   string node_names[3];

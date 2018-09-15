@@ -112,6 +112,9 @@ class WorkerInterface {
   virtual void TracingAsync(const TracingRequest* request,
                             TracingResponse* response, StatusCallback done) = 0;
 
+  virtual void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
+                            RecvBufResponse* response, StatusCallback done) = 0;
+
   virtual void CompleteGroupAsync(CallOptions* opts,
                                   const CompleteGroupRequest* request,
                                   CompleteGroupResponse* response,

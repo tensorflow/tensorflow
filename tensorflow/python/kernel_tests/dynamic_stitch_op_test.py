@@ -27,7 +27,6 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gradients_impl
 import tensorflow.python.ops.data_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
-from tensorflow.python.framework import dtypes
 
 
 class DynamicStitchTestBase(object):
@@ -97,6 +96,27 @@ class DynamicStitchTestBase(object):
           constant_op.constant([[0, 1], [40, 41], [70, 71]]),
           constant_op.constant([[10, 11], [60, 61]]),
           constant_op.constant([[20, 21], [30, 31], [50, 51]])
+      ]
+      stitched_t = self.stitch_op(indices, data)
+      stitched_val = stitched_t.eval()
+      self.assertAllEqual([[0, 1], [10, 11], [20, 21], [30, 31], [40, 41],
+                           [50, 51], [60, 61], [70, 71]], stitched_val)
+      # Dimension 0 is max(flatten(indices))+1.
+      self.assertEqual([8, 2], stitched_t.get_shape().as_list())
+
+  def testZeroSizeTensor(self):
+    with self.test_session(use_gpu=True):
+      indices = [
+          constant_op.constant([0, 4, 7]),
+          constant_op.constant([1, 6]),
+          constant_op.constant([2, 3, 5]),
+          array_ops.zeros([0], dtype=dtypes.int32)
+      ]
+      data = [
+          constant_op.constant([[0, 1], [40, 41], [70, 71]]),
+          constant_op.constant([[10, 11], [60, 61]]),
+          constant_op.constant([[20, 21], [30, 31], [50, 51]]),
+          array_ops.zeros([0, 2], dtype=dtypes.int32)
       ]
       stitched_t = self.stitch_op(indices, data)
       stitched_val = stitched_t.eval()
@@ -232,7 +252,7 @@ class ParallelDynamicStitchTest(DynamicStitchTestBase, test.TestCase):
 
   # GPU version unit tests
   def testScalarGPU(self):
-    with self.test_session():
+    with self.cached_session():
       indices = [constant_op.constant(0), constant_op.constant(1)]
       data = [constant_op.constant(40.0), constant_op.constant(60.0)]
       for step in -1, 1:
@@ -243,7 +263,7 @@ class ParallelDynamicStitchTest(DynamicStitchTestBase, test.TestCase):
         self.assertEqual([2], stitched_t.get_shape().as_list())
 
   def testHigherRankGPU(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       indices = [
           constant_op.constant(6),
           constant_op.constant([4, 1]),

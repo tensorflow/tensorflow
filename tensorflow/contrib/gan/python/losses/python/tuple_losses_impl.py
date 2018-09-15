@@ -80,6 +80,9 @@ __all__ = [
     'mutual_information_penalty',
     'combine_adversarial_loss',
     'cycle_consistency_loss',
+    'stargan_generator_loss_wrapper',
+    'stargan_discriminator_loss_wrapper',
+    'stargan_gradient_penalty_wrapper'
 ]
 
 
@@ -277,3 +280,86 @@ def cycle_consistency_loss(cyclegan_model, scope=None, add_summaries=False):
       cyclegan_model.model_x2y.generator_inputs, cyclegan_model.reconstructed_x,
       cyclegan_model.model_y2x.generator_inputs, cyclegan_model.reconstructed_y,
       scope, add_summaries)
+
+
+def stargan_generator_loss_wrapper(loss_fn):
+  """Convert a generator loss function to take a StarGANModel.
+
+  The new function has the same name as the original one.
+
+  Args:
+    loss_fn: A python function taking Discriminator's real/fake prediction for
+      generated data.
+
+  Returns:
+    A new function that takes a StarGANModel namedtuple and returns the same
+    loss.
+  """
+
+  def new_loss_fn(stargan_model, **kwargs):
+    return loss_fn(
+        stargan_model.discriminator_generated_data_source_predication, **kwargs)
+
+  new_docstring = """The stargan_model version of %s.""" % loss_fn.__name__
+  new_loss_fn.__docstring__ = new_docstring
+  new_loss_fn.__name__ = loss_fn.__name__
+  new_loss_fn.__module__ = loss_fn.__module__
+  return new_loss_fn
+
+
+def stargan_discriminator_loss_wrapper(loss_fn):
+  """Convert a discriminator loss function to take a StarGANModel.
+
+  The new function has the same name as the original one.
+
+  Args:
+    loss_fn: A python function taking Discriminator's real/fake prediction for
+      real data and generated data.
+
+  Returns:
+    A new function that takes a StarGANModel namedtuple and returns the same
+    loss.
+  """
+
+  def new_loss_fn(stargan_model, **kwargs):
+    return loss_fn(
+        stargan_model.discriminator_input_data_source_predication,
+        stargan_model.discriminator_generated_data_source_predication, **kwargs)
+
+  new_docstring = """The stargan_model version of %s.""" % loss_fn.__name__
+  new_loss_fn.__docstring__ = new_docstring
+  new_loss_fn.__name__ = loss_fn.__name__
+  new_loss_fn.__module__ = loss_fn.__module__
+  return new_loss_fn
+
+
+def stargan_gradient_penalty_wrapper(loss_fn):
+  """Convert a gradient penalty function to take a StarGANModel.
+
+  The new function has the same name as the original one.
+
+  Args:
+    loss_fn: A python function taking real_data, generated_data,
+      generator_inputs for Discriminator's condition (i.e. number of domains),
+      discriminator_fn, and discriminator_scope.
+
+  Returns:
+    A new function that takes a StarGANModel namedtuple and returns the same
+    loss.
+  """
+
+  def new_loss_fn(stargan_model, **kwargs):
+    num_domains = stargan_model.input_data_domain_label.shape.as_list()[-1]
+    return loss_fn(
+        real_data=stargan_model.input_data,
+        generated_data=stargan_model.generated_data,
+        generator_inputs=num_domains,
+        discriminator_fn=stargan_model.discriminator_fn,
+        discriminator_scope=stargan_model.discriminator_scope,
+        **kwargs)
+
+  new_docstring = """The stargan_model version of %s.""" % loss_fn.__name__
+  new_loss_fn.__docstring__ = new_docstring
+  new_loss_fn.__name__ = loss_fn.__name__
+  new_loss_fn.__module__ = loss_fn.__module__
+  return new_loss_fn

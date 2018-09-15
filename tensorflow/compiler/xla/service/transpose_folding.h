@@ -49,7 +49,7 @@ class TransposeFolding : public HloPassInterface {
   explicit TransposeFolding(
       TransposableGemmOperandsFn transposable_gemm_operands,
       TransposableConvOperandsFn transposable_conv_operands);
-  tensorflow::StringPiece name() const override { return "transpose-folding"; }
+  absl::string_view name() const override { return "transpose-folding"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 

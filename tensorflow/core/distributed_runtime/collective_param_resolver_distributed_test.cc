@@ -147,10 +147,9 @@ class DeviceResDistTest : public ::testing::Test {
     ConfigProto config;
     for (int w = 0; w < num_workers; ++w) {
       string name = strings::StrCat("/job:worker/replica:0/task:", w);
-      // TODO(tucker): When config option becomes available, set here.
-      // if (w == 0) {
-      //   config.set_collective_group_leader(name);
-      // }
+      if (w == 0) {
+        config.mutable_experimental()->set_collective_group_leader(name);
+      }
       DefineWorker(config, name, device_type, num_devices);
     }
   }

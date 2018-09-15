@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/batch_util.h"
 #include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -35,10 +35,10 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, DatasetBase* input)
-        : GraphDatasetBase(ctx), input_(input) {
+        : DatasetBase(DatasetContext(ctx)), input_(input) {
       input_->Ref();
       for (const PartialTensorShape& shape : input->output_shapes()) {
         gtl::InlinedVector<int64, 4> partial_dim_sizes;
@@ -49,7 +49,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
       }
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::Unbatch")}));
@@ -62,13 +62,14 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
       return shapes_;
     }
 
-    string DebugString() override { return "UnbatchDatasetOp::Dataset"; }
+    string DebugString() const override { return "UnbatchDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node}, output));
       return Status::OK();
     }
@@ -80,8 +81,11 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params),
             current_index_(0),
             current_batch_size_(0),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
             shapes_(params.dataset->output_shapes().size()) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
@@ -139,7 +143,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (input_impl_) {
-          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         } else {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impl_empty"), ""));
@@ -161,7 +165,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         if (!reader->Contains(full_name("input_impl_empty"))) {
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         } else {
           input_impl_.reset();
         }
@@ -200,5 +204,5 @@ REGISTER_KERNEL_BUILDER(Name("UnbatchDataset").Device(DEVICE_CPU),
                         UnbatchDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

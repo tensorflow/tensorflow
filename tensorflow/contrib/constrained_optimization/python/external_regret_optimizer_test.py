@@ -75,7 +75,7 @@ class ExternalRegretOptimizerTest(test.TestCase):
     multipliers3 = standard_ops.constant([0.4, 0.7, -0.2, 0.5, 0.1])
     expected_projected_multipliers3 = np.array([0.2, 0.5, 0.0, 0.3, 0.0])
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       projected_multipliers1 = session.run(
           external_regret_optimizer._project_multipliers_wrt_euclidean_norm(
               multipliers1, 1.0))
@@ -122,7 +122,7 @@ class ExternalRegretOptimizerTest(test.TestCase):
     ]
 
     multipliers = []
-    with self.test_session() as session:
+    with self.cached_session() as session:
       session.run(standard_ops.global_variables_initializer())
       while len(multipliers) < len(expected_multipliers):
         multipliers.append(session.run(optimizer.lagrange_multipliers))

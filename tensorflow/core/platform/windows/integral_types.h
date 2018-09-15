@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_WINDOWS_INTEGRAL_TYPES_H_
-#define TENSORFLOW_PLATFORM_WINDOWS_INTEGRAL_TYPES_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_WINDOWS_INTEGRAL_TYPES_H_
+#define TENSORFLOW_CORE_PLATFORM_WINDOWS_INTEGRAL_TYPES_H_
 
 #include "tensorflow/core/platform/default/integral_types.h"
 
@@ -22,4 +22,4 @@ limitations under the License.
 
 typedef std::ptrdiff_t ssize_t;
 
-#endif  // TENSORFLOW_PLATFORM_WINDOWS_INTEGRAL_TYPES_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_WINDOWS_INTEGRAL_TYPES_H_

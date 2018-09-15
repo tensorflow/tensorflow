@@ -61,7 +61,7 @@ bool IsValidNgram(const tflite::StringRef& strref) {
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteIntArray* outputSize1 = TfLiteIntArrayCreate(1);
   TfLiteIntArray* outputSize2 = TfLiteIntArrayCreate(1);
-  TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteTensor* input = GetInput(context, node, 0);
   int dim = input->dims->data[0];
   if (dim == 0) {
     // TFLite non-string output should have size greater than 0.
@@ -76,7 +76,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteTensor* input = GetInput(context, node, 0);
   int num_strings = tflite::GetStringCount(input);
   TfLiteTensor* label = GetOutput(context, node, 0);
   TfLiteTensor* weight = GetOutput(context, node, 1);

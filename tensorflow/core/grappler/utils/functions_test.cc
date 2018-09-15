@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -52,6 +52,44 @@ TEST_F(FunctionsTest, IsParametrized) {
   EXPECT_FALSE(HasParametrizedType(non_parametrized_func));
   EXPECT_FALSE(HasParametrizedBody(non_parametrized_func));
   EXPECT_FALSE(IsParametrized(non_parametrized_func));
+}
+
+TEST_F(FunctionsTest, InstantiationParameters) {
+  // Function definition is invalid, only type/body parameters are important.
+  FunctionDef func = FunctionDefHelper::Create(
+      "ParametrizedFunc",
+      /* inputs */
+      {"input1:A", "input2:B", "input3:float"},
+      /* outputs */
+      {"output1: A", "output2:C"},
+      /* type parameters */
+      {"A: {float, double}", "B: {float, int32}", "C: {float, double}"},
+      /* function body*/
+      {{{"output"}, "FakeOp", {"input1", "input2"}, {{"key", "$key"}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"x", "cx:output:0"}, {"y", "cy:output:0"}});
+
+  std::unordered_map<string, AttrValue> func_instantiation_attr;
+  func_instantiation_attr["key"].set_s("key-value");
+  func_instantiation_attr["A"].set_type(DT_FLOAT);
+  func_instantiation_attr["B"].set_type(DT_INT32);
+  func_instantiation_attr["C"].set_type(DT_DOUBLE);
+
+  std::unordered_map<string, DataType> type_parameters;
+  TF_EXPECT_OK(InstantiationTypeParameters(func, func_instantiation_attr,
+                                           &type_parameters));
+
+  ASSERT_EQ(3, type_parameters.size());
+  EXPECT_EQ(DT_FLOAT, type_parameters["A"]);
+  EXPECT_EQ(DT_INT32, type_parameters["B"]);
+  EXPECT_EQ(DT_DOUBLE, type_parameters["C"]);
+
+  std::unordered_map<string, AttrValue> body_parameters;
+  TF_EXPECT_OK(InstantiationBodyParameters(func, func_instantiation_attr,
+                                           &body_parameters));
+
+  ASSERT_EQ(1, body_parameters.size());
+  EXPECT_EQ("key-value", body_parameters["key"].s());
 }
 
 TEST_F(FunctionsTest, GrapplerFunctionConnectivity_ExpandFunctionDefInput) {
@@ -202,7 +240,8 @@ TEST_F(FunctionsTest, FromSimpleFunctionDef) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ("XTimesTwo", item.id);
   EXPECT_EQ(4, item.function_body().node_size());
@@ -219,7 +258,7 @@ TEST_F(FunctionsTest, FromSimpleFunctionDef) {
   for (const NodeDef &node : item.function_body().node()) {
     if (node.name() == "x" && count++) {
       EXPECT_EQ("Placeholder", node.op());
-      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
       EXPECT_EQ(0, node.input_size());
     } else if (node.name() == "two" && count++) {
       EXPECT_EQ("Const", node.op());
@@ -277,7 +316,8 @@ TEST_F(FunctionsTest, FromFunctionDefWithMultiOutputNodes) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ("SubGrad", item.id);
   EXPECT_EQ(12, item.function_body().node_size());
@@ -296,7 +336,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithMultiOutputNodes) {
     if (node.name() == "x" || node.name() == "y" || node.name() == "dz") {
       count++;
       EXPECT_EQ("Placeholder", node.op());
-      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
       EXPECT_EQ(0, node.input_size());
     } else if (node.name() == "rx" && count++) {
       EXPECT_EQ("BroadcastGradientArgs", node.op());
@@ -358,14 +398,15 @@ TEST_F(FunctionsTest, FromFunctionDefWithNestedFuncs) {
   func_attr["T"].set_type(DT_FLOAT);
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
 
   int count = 0;
   for (const NodeDef &node : item.function_body().node()) {
     if (node.name() == "x" || node.name() == "y") {
       count++;
       EXPECT_EQ("Placeholder", node.op());
-      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
       EXPECT_EQ(0, node.input_size());
     } else if (node.name() == "a0" && count++) {
       EXPECT_EQ("Swap", node.op());
@@ -419,7 +460,8 @@ TEST_F(FunctionsTest, FromFunctionDefWithOutputMappings) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ(1, item.output_size());
   EXPECT_EQ("Exp", item.output(0).output_tensors[0]);
@@ -428,7 +470,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithOutputMappings) {
   for (const NodeDef &node : item.function_body().node()) {
     if (node.name() == "in" && count++) {
       EXPECT_EQ("Placeholder", node.op());
-      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
       EXPECT_EQ(0, node.input_size());
     } else if (node.name() == "Linear_func" && count++) {
       EXPECT_EQ("Identity", node.op());
@@ -462,7 +504,8 @@ TEST_F(FunctionsTest, FromFunctionDefWithInputForwarding) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ("ForwardInputs", item.id);
   EXPECT_EQ(5, item.function_body().node_size());
@@ -480,9 +523,9 @@ TEST_F(FunctionsTest, FromFunctionDefWithInputForwarding) {
     count++;
     EXPECT_EQ("Placeholder", node.op());
     if (node.name() == "arg3") {
-      EXPECT_EQ(DT_INT32, node.attr().at("T").type());
+      EXPECT_EQ(DT_INT32, node.attr().at("dtype").type());
     } else {
-      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
     }
   }
   EXPECT_EQ(5, count);
@@ -508,7 +551,8 @@ TEST_F(FunctionsTest, FromFunctionDefWithoutInput) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ(0, item.input_size());
   EXPECT_EQ(1, item.output_size());
@@ -547,7 +591,8 @@ TEST_F(FunctionsTest, MakeFunctionDef) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
 
   FunctionDef specialized;
   TF_EXPECT_OK(MakeFunctionDef(item, flib, &specialized));
@@ -585,7 +630,8 @@ TEST_F(FunctionsTest, ReplaceInputWithConst) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ(2, item.input_size());
   EXPECT_EQ(1, item.output_size());
@@ -676,7 +722,8 @@ TEST_F(FunctionsTest, SwapFunctionBodyAndMakeFunctionDef) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), lib_def);
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
 
   // Replace function body with identity function
   item.SwapFunctionBody(std::move(id_func_body));
@@ -695,6 +742,34 @@ TEST_F(FunctionsTest, SwapFunctionBodyAndMakeFunctionDef) {
 
   // And return tensor mapping was updated with a new output name (z->output).
   EXPECT_EQ("output:output:0", (*specialized.mutable_ret())["z"]);
+}
+
+TEST_F(FunctionsTest, FunctionDefGrapplerFunctionItemRoundTrip) {
+  FunctionDef func = FunctionDefHelper::Define(
+      // Name
+      "DoNothing",
+      // Args
+      {"i: int32"},
+      // Return values
+      {"o: int32"},
+      // Attr def
+      {},
+      // Nodes
+      {{{"o"}, "Identity", {"i"}, {{"T", DT_INT32}}}});
+
+  constexpr char description[] = "This is a helpful description.";
+  func.mutable_signature()->set_description(description);
+  FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
+
+  GrapplerFunctionItem item;
+  std::unordered_map<string, AttrValue> func_attr;
+  func_attr["T"].set_type(DT_INT32);
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
+                                        TF_GRAPH_DEF_VERSION, &item));
+
+  FunctionDef func2;
+  TF_EXPECT_OK(MakeFunctionDef(item, flib, &func2));
+  EXPECT_TRUE(FunctionDefsEqual(func, func2));
 }
 
 }  // namespace

@@ -20,9 +20,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/contrib/lite/allocation.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/op_resolver.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/testing/util.h"
-#include "tensorflow/contrib/lite/tools/mutable_op_resolver.h"
 #include "tensorflow/contrib/lite/tools/verifier.h"
 #include "tensorflow/contrib/lite/version.h"
 #include "tensorflow/core/framework/numeric_types.h"
@@ -31,7 +31,6 @@ namespace tflite {
 
 using flatbuffers::FlatBufferBuilder;
 using flatbuffers::Offset;
-using flatbuffers::Vector;
 
 // Build single subgraph model.
 class TfLiteFlatbufferModelBuilder {
@@ -42,7 +41,7 @@ class TfLiteFlatbufferModelBuilder {
   }
 
   TfLiteFlatbufferModelBuilder(const std::vector<BuiltinOperator>& builtin_ops,
-                               const std::vector<string>& custom_ops) {
+                               const std::vector<std::string>& custom_ops) {
     buffers_.push_back(
         CreateBuffer(builder_, builder_.CreateVector(std::vector<uint8_t>{})));
 
@@ -195,8 +194,8 @@ TEST(VerifyModel, TensorBufferIsNotValid) {
                       /*operators=*/0, builder.CreateString("Main"))});
 
   auto buffers = builder.CreateVector(std::vector<Offset<Buffer>>{
-      CreateBuffer(builder,
-                   builder.CreateVector(std::vector<uint8>{1, 2, 3, 4, 5, 6})),
+      CreateBuffer(builder, builder.CreateVector(
+                                std::vector<uint8_t>{1, 2, 3, 4, 5, 6})),
   });
 
   auto model = CreateModel(builder, TFLITE_SCHEMA_VERSION, /*operator_codes=*/0,

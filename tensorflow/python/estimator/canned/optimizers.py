@@ -72,6 +72,8 @@ def get_optimizer_instance(opt, learning_rate=None):
     raise ValueError(
         'Unsupported optimizer name: {}. Supported names are: {}'.format(
             opt, tuple(sorted(six.iterkeys(_OPTIMIZER_CLS_NAMES)))))
+  if callable(opt):
+    opt = opt()
   if not isinstance(opt, optimizer_lib.Optimizer):
     raise ValueError(
         'The given object is not an Optimizer instance. Given: {}'.format(opt))

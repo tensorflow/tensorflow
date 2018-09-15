@@ -123,8 +123,8 @@ bool ReorderReshapeTranspose::Run(Model* model, std::size_t op_index) {
   }
 
   TensorFlowReshapeOperator* reshape_op =
-      ConvertOperator<TensorFlowReshapeOperator*>(
-          reshape_it->get(), OperatorType::kTensorFlowReshape);
+      ConvertOperator<TensorFlowReshapeOperator*>(reshape_it->get(),
+                                                  OperatorType::kReshape);
   if (reshape_op == nullptr) {
     return false;
   }

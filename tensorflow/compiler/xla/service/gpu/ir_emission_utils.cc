@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -38,55 +39,56 @@ namespace gpu {
 namespace {
 
 // Return whether the given shape is a matrix with no padding.
-bool IsRank2WithNoPadding(const Shape& shape) {
-  return ShapeUtil::Rank(shape) == 2 && !LayoutUtil::IsPadded(shape);
+bool IsRank2WithNoPadding(const Shape& shape, int64 batch_dimensions_size) {
+  return ShapeUtil::Rank(shape) == batch_dimensions_size + 2 &&
+         !LayoutUtil::IsPadded(shape);
 }
 
 // In a gemm operation where output = lhs * rhs, check whether the given shapes
 // are valid for the operation.
 bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
-                        const Shape& output_shape) {
+                        const Shape& output_shape,
+                        int64 batch_dimensions_size) {
   // The inputs and the output must
   // 1) be matrices with no padding and a non-zero number of elements,
   // 2) have an allowed element type.
   PrimitiveType output_primitive_type = output_shape.element_type();
   bool type_is_allowed =
       (output_primitive_type == F16 || output_primitive_type == F32 ||
-       output_primitive_type == F64);
-  return type_is_allowed && IsRank2WithNoPadding(lhs_shape) &&
-         IsRank2WithNoPadding(rhs_shape) &&
-         IsRank2WithNoPadding(output_shape) &&
-         !ShapeUtil::HasZeroElements(lhs_shape) &&
-         !ShapeUtil::HasZeroElements(rhs_shape);
+       output_primitive_type == F64 || output_primitive_type == C64);
+  return type_is_allowed &&
+         IsRank2WithNoPadding(lhs_shape, batch_dimensions_size) &&
+         IsRank2WithNoPadding(rhs_shape, batch_dimensions_size) &&
+         IsRank2WithNoPadding(output_shape, batch_dimensions_size) &&
+         !ShapeUtil::IsZeroElementArray(lhs_shape) &&
+         !ShapeUtil::IsZeroElementArray(rhs_shape);
+}
+
+bool DotImplementedAsGemm(const HloInstruction& dot) {
+  CHECK_EQ(dot.opcode(), HloOpcode::kDot);
+  const Shape& lhs_shape = dot.operand(0)->shape();
+  const Shape& rhs_shape = dot.operand(1)->shape();
+  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
+
+  // If gemm can accept the operand shapes, use it rather than a custom
+  // kernel.
+  if (AreValidGemmShapes(lhs_shape, rhs_shape, dot.shape(),
+                         dim_numbers.lhs_batch_dimensions_size())) {
+    // The size of the reduction dimension should match. The shape inference
+    // guarantees this invariant, so the check here is for programming
+    // errors.
+    CHECK_EQ(lhs_shape.dimensions(dim_numbers.lhs_contracting_dimensions(0)),
+             rhs_shape.dimensions(dim_numbers.rhs_contracting_dimensions(0)));
+    return true;
+  }
+  return false;
 }
 }  // namespace
 
 bool ImplementedAsGemm(const HloInstruction& hlo) {
-  // We can only do this if the HLO is unnested.
-  if (hlo.parent() != hlo.GetModule()->entry_computation()) {
-    return false;
-  }
-
   // For certain types of Dot, we can call pre-canned BLAS gemm.
   if (hlo.opcode() == HloOpcode::kDot) {
-    const Shape& lhs_shape = hlo.operand(0)->shape();
-    const Shape& rhs_shape = hlo.operand(1)->shape();
-
-    // If gemm can accept the operand shapes, use it rather than a custom
-    // kernel.
-    if (AreValidGemmShapes(lhs_shape, rhs_shape, hlo.shape())) {
-      // The size of the reduction dimension should match. The shape inference
-      // guarantees this invariant, so the check here is for programming
-      // errors.
-      CHECK_EQ(lhs_shape.dimensions(1), rhs_shape.dimensions(0));
-      return true;
-    }
-  }
-
-  if (hlo.opcode() == HloOpcode::kFusion &&
-      hlo.fusion_kind() == HloInstruction::FusionKind::kTransposeDot &&
-      hlo.fused_expression_root()->opcode() == HloOpcode::kDot) {
-    return true;
+    return DotImplementedAsGemm(hlo);
   }
 
   if (hlo.opcode() == HloOpcode::kFusion &&
@@ -98,7 +100,7 @@ bool ImplementedAsGemm(const HloInstruction& hlo) {
       dot = hlo.fused_expression_root()->operand(1);
     }
     if (dot->opcode() == HloOpcode::kDot) {
-      return ImplementedAsGemm(*dot);
+      return DotImplementedAsGemm(*dot);
     }
   }
 
@@ -143,10 +145,12 @@ bool ImplementedAsLibraryCall(const HloInstruction& hlo) {
          IsCustomCallToDnnConvolution(hlo);
 }
 
-static HloInstruction* CreateCudnnConv(
-    const char* call_target, const Shape& shape, HloInstruction* lhs,
-    HloInstruction* rhs, const Window& window,
-    const ConvolutionDimensionNumbers& dnums) {
+static HloInstruction* CreateCudnnConv(const char* call_target,
+                                       const Shape& shape, HloInstruction* lhs,
+                                       HloInstruction* rhs,
+                                       const Window& window,
+                                       const ConvolutionDimensionNumbers& dnums,
+                                       int64 feature_group_count) {
   HloComputation* computation = lhs->parent();
 
   // This call returns a tuple of (conv_result, scratch_memory), where
@@ -160,43 +164,38 @@ static HloInstruction* CreateCudnnConv(
   Shape call_shape =
       ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U8, {0})});
 
-  // Our CustomCall takes four arguments: The conv lhs and rhs, the cudnn
-  // algorithm to use, and a boolean indicating whether to use tensor cores.
-  //
-  // It's up to a later pass to choose the algorithm and decide whether to use
-  // tensor cores, so to indicate that we haven't yet made a choice, we speicfy
-  // -1 and false for those args.
-  HloInstruction* negative_one = computation->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int64>(-1)));
-  HloInstruction* false_constant = computation->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
-  HloInstruction* custom_call =
-      computation->AddInstruction(HloInstruction::CreateCustomCall(
-          call_shape, {lhs, rhs, negative_one, false_constant}, call_target));
+  HloInstruction* custom_call = computation->AddInstruction(
+      HloInstruction::CreateCustomCall(call_shape, {lhs, rhs}, call_target));
   custom_call->set_window(window);
   custom_call->set_convolution_dimension_numbers(dnums);
+  custom_call->set_feature_group_count(feature_group_count);
   return custom_call;
 }
 
-HloInstruction* CreateCudnnConvForward(
-    const Shape& shape, HloInstruction* input, HloInstruction* kernel,
-    const Window& window, const ConvolutionDimensionNumbers& dnums) {
+HloInstruction* CreateCudnnConvForward(const Shape& shape,
+                                       HloInstruction* input,
+                                       HloInstruction* kernel,
+                                       const Window& window,
+                                       const ConvolutionDimensionNumbers& dnums,
+                                       int64 feature_group_count) {
   return CreateCudnnConv(kCudnnConvForwardCallTarget, shape, input, kernel,
-                         window, dnums);
+                         window, dnums, feature_group_count);
 }
 
 HloInstruction* CreateCudnnConvBackwardInput(
     const Shape& shape, HloInstruction* output, HloInstruction* reverse_filter,
-    const Window& window, const ConvolutionDimensionNumbers& dnums) {
+    const Window& window, const ConvolutionDimensionNumbers& dnums,
+    int64 feature_group_count) {
   return CreateCudnnConv(kCudnnConvBackwardInputCallTarget, shape, output,
-                         reverse_filter, window, dnums);
+                         reverse_filter, window, dnums, feature_group_count);
 }
 
 HloInstruction* CreateCudnnConvBackwardFilter(
     const Shape& shape, HloInstruction* input, HloInstruction* output,
-    const Window& window, const ConvolutionDimensionNumbers& dnums) {
+    const Window& window, const ConvolutionDimensionNumbers& dnums,
+    int64 feature_group_count) {
   return CreateCudnnConv(kCudnnConvBackwardFilterCallTarget, shape, input,
-                         output, window, dnums);
+                         output, window, dnums, feature_group_count);
 }
 
 bool IsReductionToVector(const HloInstruction& reduce) {
@@ -225,8 +224,8 @@ bool IsReductionToVector(const HloInstruction& reduce) {
 // This emits a device-side call to
 // "i32 vprintf(i8* fmt, arguments_type* arguments)" in the driver; see
 // http://docs.nvidia.com/cuda/ptx-writers-guide-to-interoperability/index.html#system-calls
-llvm::Value* EmitPrintf(tensorflow::StringPiece fmt,
-                        tensorflow::gtl::ArraySlice<llvm::Value*> arguments,
+llvm::Value* EmitPrintf(absl::string_view fmt,
+                        absl::Span<llvm::Value* const> arguments,
                         llvm::IRBuilder<>* builder) {
   std::vector<llvm::Type*> argument_types;
   for (auto argument : arguments) {
@@ -251,15 +250,17 @@ llvm::Value* EmitPrintf(tensorflow::StringPiece fmt,
        arguments_ptr});
 }
 
-llvm::Value* EmitShuffleDown(llvm::Value* value, llvm::Value* offset,
-                             llvm::IRBuilder<>* builder) {
+llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
+                                     llvm::IRBuilder<>* builder) {
   int bit_width = value->getType()->getPrimitiveSizeInBits();
+  llvm::Value* all_warps_mask = builder->getInt32(-1);
 
   // Special case for efficiency
   if (value->getType()->isFloatTy() && bit_width == 32) {
     return llvm_ir::EmitCallToIntrinsic(
-        llvm::Intrinsic::nvvm_shfl_down_f32,
-        {value, offset, builder->getInt32(kWarpSize - 1)}, {}, builder);
+        llvm::Intrinsic::nvvm_shfl_sync_down_f32,
+        {all_warps_mask, value, offset, builder->getInt32(kWarpSize - 1)}, {},
+        builder);
   }
 
   // We must split values wider than 32 bits as the "shfl" instruction operates
@@ -273,10 +274,11 @@ llvm::Value* EmitShuffleDown(llvm::Value* value, llvm::Value* offset,
   for (int i = 0; i < num_segments; ++i) {
     x = builder->CreateInsertElement(
         x,
-        llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_shfl_down_i32,
-                                     {builder->CreateExtractElement(x, i),
-                                      offset, builder->getInt32(kWarpSize - 1)},
-                                     {}, builder),
+        llvm_ir::EmitCallToIntrinsic(
+            llvm::Intrinsic::nvvm_shfl_sync_down_i32,
+            {all_warps_mask, builder->CreateExtractElement(x, i), offset,
+             builder->getInt32(kWarpSize - 1)},
+            {}, builder),
         i);
   }
   return builder->CreateBitCast(
@@ -284,6 +286,43 @@ llvm::Value* EmitShuffleDown(llvm::Value* value, llvm::Value* offset,
           builder->CreateBitCast(x, builder->getIntNTy(32 * num_segments)),
           builder->getIntNTy(bit_width)),
       value->getType());
+}
+
+Status PopulateCudnnConvParams(const HloCustomCallInstruction* custom_call,
+                               CudnnConvParams* params) {
+  TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
+                      custom_call->backend_config<CudnnConvBackendConfig>());
+  const auto& target = custom_call->custom_call_target();
+  const auto& lhs_shape = custom_call->operand(0)->shape();
+  const auto& rhs_shape = custom_call->operand(1)->shape();
+  const auto& conv_result_shape = custom_call->shape().tuple_shapes(0);
+
+  params->window = &custom_call->window();
+  params->dnums = &custom_call->convolution_dimension_numbers();
+  params->feature_group_count = custom_call->feature_group_count();
+  params->algorithm = se::dnn::AlgorithmConfig(se::dnn::AlgorithmDesc(
+      backend_config.algorithm(), backend_config.tensor_ops_enabled()));
+
+  if (target == kCudnnConvForwardCallTarget) {
+    params->kind = CudnnConvKind::kForward;
+    params->input_shape = &lhs_shape;
+    params->filter_shape = &rhs_shape;
+    params->output_shape = &conv_result_shape;
+  } else if (target == kCudnnConvBackwardInputCallTarget) {
+    params->kind = CudnnConvKind::kBackwardInput;
+    params->input_shape = &conv_result_shape;
+    params->filter_shape = &rhs_shape;
+    params->output_shape = &lhs_shape;
+  } else if (target == kCudnnConvBackwardFilterCallTarget) {
+    params->kind = CudnnConvKind::kBackwardFilter;
+    params->input_shape = &lhs_shape;
+    params->filter_shape = &conv_result_shape;
+    params->output_shape = &rhs_shape;
+  } else {
+    LOG(FATAL) << "Unexpected custom call target: "
+               << custom_call->custom_call_target();
+  }
+  return Status::OK();
 }
 
 }  // namespace gpu
