@@ -30,14 +30,15 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.training import server_lib
 
 
-class SessionListDevicesTestMethods(object):
-  """Mixin with test methods."""
+class SessionListDevicesTest(test_util.TensorFlowTestCase):
 
   def testListDevices(self):
     with session.Session() as sess:
       devices = sess.list_devices()
       self.assertTrue('/job:localhost/replica:0/task:0/device:CPU:0' in set(
           [d.name for d in devices]), devices)
+      # All valid device incarnations must be non-zero.
+      self.assertTrue(all(d.incarnation != 0 for d in devices))
 
   def testInvalidDeviceNumber(self):
     opts = tf_session.TF_NewSessionOptions()
@@ -55,6 +56,8 @@ class SessionListDevicesTestMethods(object):
       devices = sess.list_devices()
       self.assertTrue('/job:local/replica:0/task:0/device:CPU:0' in set(
           [d.name for d in devices]), devices)
+      # All valid device incarnations must be non-zero.
+      self.assertTrue(all(d.incarnation != 0 for d in devices))
 
   def testListDevicesClusterSpecPropagation(self):
     server1 = server_lib.Server.create_local_server()
@@ -68,39 +71,13 @@ class SessionListDevicesTestMethods(object):
     config = config_pb2.ConfigProto(cluster_def=cluster_def)
     with session.Session(server1.target, config=config) as sess:
       devices = sess.list_devices()
-      device_names = set([d.name for d in devices])
+      device_names = set(d.name for d in devices)
       self.assertTrue(
           '/job:worker/replica:0/task:0/device:CPU:0' in device_names)
       self.assertTrue(
           '/job:worker/replica:0/task:1/device:CPU:0' in device_names)
-
-
-class SessionListDevicesTest(SessionListDevicesTestMethods,
-                             test_util.TensorFlowTestCase):
-  """Test case that invokes test methods with _USE_C_API=False."""
-
-  def setUp(self):
-    self.prev_use_c_api = ops._USE_C_API
-    ops._USE_C_API = False
-    super(SessionListDevicesTest, self).setUp()
-
-  def tearDown(self):
-    ops._USE_C_API = self.prev_use_c_api
-    super(SessionListDevicesTest, self).tearDown()
-
-
-class SessionListDevicesWithCApiTest(SessionListDevicesTestMethods,
-                                     test_util.TensorFlowTestCase):
-  """Test case that invokes test methods with _USE_C_API=True."""
-
-  def setUp(self):
-    self.prev_use_c_api = ops._USE_C_API
-    ops._USE_C_API = True
-    super(SessionListDevicesWithCApiTest, self).setUp()
-
-  def tearDown(self):
-    ops._USE_C_API = self.prev_use_c_api
-    super(SessionListDevicesWithCApiTest, self).tearDown()
+      # All valid device incarnations must be non-zero.
+      self.assertTrue(all(d.incarnation != 0 for d in devices))
 
 
 if __name__ == '__main__':

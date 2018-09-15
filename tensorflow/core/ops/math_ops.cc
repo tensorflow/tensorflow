@@ -114,6 +114,7 @@ REGISTER_OP("Cast")
     .Output("y: DstT")
     .Attr("SrcT: type")
     .Attr("DstT: type")
+    .Attr("Truncate: bool = false")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("_HostCast")
@@ -121,6 +122,7 @@ REGISTER_OP("_HostCast")
     .Output("y: DstT")
     .Attr("SrcT: type")
     .Attr("DstT: type")
+    .Attr("Truncate: bool = false")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Cast x of type SrcT to y of DstT.
@@ -238,6 +240,21 @@ REGISTER_OP("Asin").UNARY();
 REGISTER_OP("Acos").UNARY();
 
 REGISTER_OP("Atan").UNARY();
+
+REGISTER_OP("BesselI0e").UNARY_REAL();
+
+REGISTER_OP("BesselI1e").UNARY_REAL();
+
+REGISTER_OP("_UnaryOpsComposition")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {float, half, double}")
+    .Attr("op_names: list(string)")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to create these operators.
+)doc");
 
 #undef UNARY
 #undef UNARY_REAL
@@ -375,6 +392,13 @@ Returns x * y element-wise.
 REGISTER_OP("Div").BINARY_MORE().SetShapeFn(
     shape_inference::BroadcastBinaryOpShapeFn);
 
+REGISTER_OP("DivNoNan")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr("T: {float, double}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
+
 REGISTER_OP("FloorDiv")
     .BINARY_MORE()
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
@@ -479,6 +503,13 @@ REGISTER_OP("Igammac")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("Igamma")
+    .Input("a: T")
+    .Input("x: T")
+    .Output("z: T")
+    .Attr("T: {float, double}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
+
+REGISTER_OP("IgammaGradA")
     .Input("a: T")
     .Input("x: T")
     .Output("z: T")
@@ -592,7 +623,13 @@ REGISTER_OP("ApproximateEqual")
     .SetIsCommutative()
     .Attr("T: numbertype")
     .Attr("tolerance: float = 0.00001")
-    .SetShapeFn(shape_inference::UnchangedShape);
+    .SetShapeFn([](InferenceContext* c) {
+      // The inputs 'x' and 'y' must have the same shape.
+      ShapeHandle data_x = c->input(0);
+      ShapeHandle data_y = c->input(1);
+      TF_RETURN_IF_ERROR(c->Merge(data_x, data_y, &data_x));
+      return shape_inference::UnchangedShape(c);
+    });
 
 // --------------------------------------------------------------------------
 
@@ -1017,7 +1054,7 @@ REGISTER_OP("SegmentMean")
     .Input("data: T")
     .Input("segment_ids: Tindices")
     .Output("output: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(SegmentReductionShapeFn);
 
@@ -1080,7 +1117,7 @@ REGISTER_OP("UnsortedSegmentProd")
     .Input("segment_ids: Tindices")
     .Input("num_segments: Tnumsegments")
     .Output("output: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
     .SetShapeFn(UnsortedSegmentReductionShapeFn);
@@ -1352,10 +1389,26 @@ REGISTER_OP("HistogramFixedWidth")
     .Attr("T: {int32, int64, float32, float64}")
     .Attr("dtype: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
+      // value_range should be a vector.
+      ShapeHandle value_range_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &value_range_shape));
+      // value_range should have two elements.
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(
+          c->WithValue(c->Dim(value_range_shape, 0), 2, &unused));
+      // nbins should be a scalar.
+      ShapeHandle nbins_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &nbins_shape));
+
+      // If nbins is available, set the shape from nbins.
       const Tensor* nbins_input = c->input_tensor(2);
       if (nbins_input != nullptr) {
         int64 nbins;
         TF_RETURN_IF_ERROR(c->GetScalarFromTensor(nbins_input, &nbins));
+        // nbins has to be positive.
+        if (nbins <= 0) {
+          return errors::InvalidArgument("Requires nbins > 0: ", nbins);
+        }
         c->set_output(0, c->Vector(nbins));
       } else {
         c->set_output(0, c->UnknownShapeOfRank(1));
@@ -1460,6 +1513,13 @@ REGISTER_OP("QuantizedAdd")
     .SetIsCommutative()
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::BroadcastBinaryOpShapeFn(c));
+      // min_x, max_x, min_y, max_y should be scalar.
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
       return Status::OK();

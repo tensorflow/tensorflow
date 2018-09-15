@@ -73,6 +73,8 @@ cc_library(
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
+        ":compute_engine_metadata_client",
+        ":compute_engine_zone_provider",
         ":curl_http_request",
         ":expiring_lru_cache",
         ":file_block_cache",
@@ -144,12 +146,49 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        ":curl_http_request",
+        ":compute_engine_metadata_client",
         ":oauth_client",
         ":retrying_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@jsoncpp_git//:jsoncpp",
+    ],
+)
+
+cc_library(
+    name = "compute_engine_metadata_client",
+    srcs = [
+        "compute_engine_metadata_client.cc",
+    ],
+    hdrs = [
+        "compute_engine_metadata_client.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        ":curl_http_request",
+        ":http_request",
+        ":retrying_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
+    name = "compute_engine_zone_provider",
+    srcs = [
+        "compute_engine_zone_provider.cc",
+    ],
+    hdrs = [
+        "compute_engine_zone_provider.h",
+        "zone_provider.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        ":compute_engine_metadata_client",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -174,6 +213,7 @@ cc_library(
         "oauth_client.h",
     ],
     copts = tf_copts(),
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":curl_http_request",
         ":http_request",
@@ -336,6 +376,34 @@ tf_cc_test(
         ":google_auth_provider",
         ":http_request_fake",
         ":oauth_client",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "compute_engine_metadata_client_test",
+    size = "small",
+    srcs = ["compute_engine_metadata_client_test.cc"],
+    deps = [
+        ":compute_engine_metadata_client",
+        ":http_request_fake",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "compute_engine_zone_provider_test",
+    size = "small",
+    srcs = ["compute_engine_zone_provider_test.cc"],
+    deps = [
+        ":compute_engine_zone_provider",
+        ":http_request_fake",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",

@@ -24,5 +24,6 @@ from tensorflow.contrib.timeseries.python.timeseries import saved_model_utils
 from tensorflow.contrib.timeseries.python.timeseries.ar_model import *
 from tensorflow.contrib.timeseries.python.timeseries.estimators import *
 from tensorflow.contrib.timeseries.python.timeseries.feature_keys import *
+from tensorflow.contrib.timeseries.python.timeseries.head import *
 from tensorflow.contrib.timeseries.python.timeseries.input_pipeline import *
 # pylint: enable=wildcard-import

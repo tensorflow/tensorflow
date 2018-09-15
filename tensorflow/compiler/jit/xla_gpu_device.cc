@@ -48,7 +48,10 @@ Status XlaGpuDeviceFactory::CreateDevices(const SessionOptions& options,
   Status status =
       XlaDevice::Create("CUDA", DEVICE_XLA_GPU, 0, DEVICE_GPU_XLA_JIT, options,
                         name_prefix, registration,
-                        /*transfer_as_literal=*/false, &device);
+                        /*transfer_as_literal=*/false,
+                        /*use_multiple_streams=*/false,
+                        /*shape_representation_fn=*/{},
+                        /*padded_shape_fn=*/{}, &device);
   if (!status.ok()) {
     // Treat failures as non-fatal; there might not be a GPU in the machine.
     VLOG(1) << "Failed to create XLA_GPU device: " << status;
@@ -56,7 +59,7 @@ Status XlaGpuDeviceFactory::CreateDevices(const SessionOptions& options,
   }
 
   // TODO(b/78468222): Uncomment after fixing this bug
-  // status = device->CreateAndSetGpuDeviceInfo();
+  // status = device->UseGpuDeviceInfo();
   // if (!status.ok()) {
   //  errors::AppendToMessage(&status, "while setting up ", DEVICE_GPU_XLA_JIT,
   //                          " device");

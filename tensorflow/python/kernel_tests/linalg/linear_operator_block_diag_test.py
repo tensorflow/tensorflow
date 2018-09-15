@@ -80,7 +80,7 @@ class SquareLinearOperatorBlockDiagTest(
         build_info((2, 1, 5, 5), blocks=[(2, 1, 2, 2), (1, 3, 3)]),
     ]
 
-  def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
     shape = list(build_info.shape)
     expected_blocks = (
         build_info.__dict__["blocks"] if "blocks" in build_info.__dict__
@@ -91,26 +91,19 @@ class SquareLinearOperatorBlockDiagTest(
         for block_shape in expected_blocks
     ]
 
+    lin_op_matrices = matrices
+
     if use_placeholder:
-      matrices_ph = [
-          array_ops.placeholder(dtype=dtype) for _ in expected_blocks
-      ]
-      # Evaluate here because (i) you cannot feed a tensor, and (ii)
-      # values are random and we want the same value used for both mat and
-      # feed_dict.
-      matrices = self.evaluate(matrices)
-      operator = block_diag.LinearOperatorBlockDiag(
-          [linalg.LinearOperatorFullMatrix(
-              m_ph, is_square=True) for m_ph in matrices_ph],
-          is_square=True)
-      feed_dict = {m_ph: m for (m_ph, m) in zip(matrices_ph, matrices)}
-    else:
-      operator = block_diag.LinearOperatorBlockDiag(
-          [linalg.LinearOperatorFullMatrix(
-              m, is_square=True) for m in matrices])
-      feed_dict = None
-      # Should be auto-set.
-      self.assertTrue(operator.is_square)
+      lin_op_matrices = [
+          array_ops.placeholder_with_default(
+              matrix, shape=None) for matrix in matrices]
+
+    operator = block_diag.LinearOperatorBlockDiag(
+        [linalg.LinearOperatorFullMatrix(
+            l, is_square=True) for l in lin_op_matrices])
+
+    # Should be auto-set.
+    self.assertTrue(operator.is_square)
 
     # Broadcast the shapes.
     expected_shape = list(build_info.shape)
@@ -123,7 +116,7 @@ class SquareLinearOperatorBlockDiagTest(
       block_diag_dense.set_shape(
           expected_shape[:-2] + [expected_shape[-1], expected_shape[-1]])
 
-    return operator, block_diag_dense, feed_dict
+    return operator, block_diag_dense
 
   def test_is_x_flags(self):
     # Matrix with two positive eigenvalues, 1, and 1.

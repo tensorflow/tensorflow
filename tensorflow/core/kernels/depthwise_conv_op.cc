@@ -290,7 +290,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
 
     // For in_depth == 1 and grouped convolutions.
-    use_cudnn_ = CanUseCudnn();
+    use_cudnn_ = CanUseCudnn() && std::is_same<Device, GPUDevice>::value;
     cudnn_use_autotune_ = CudnnUseAutotune();
     use_cudnn_grouped_conv_ = false;
     dtype_ = DataTypeToEnum<T>::value;

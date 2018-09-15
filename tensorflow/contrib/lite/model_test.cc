@@ -19,12 +19,11 @@ limitations under the License.
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #include "tensorflow/contrib/lite/model.h"
 
 #include <gtest/gtest.h>
-#include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/core/api/error_reporter.h"
 #include "tensorflow/contrib/lite/testing/util.h"
 
 // Comparison for TfLiteRegistration. Since TfLiteRegistration is a C object,
@@ -55,11 +54,12 @@ class TrivialResolver : public OpResolver {
   explicit TrivialResolver(TfLiteRegistration* constant_return = nullptr)
       : constant_return_(constant_return) {}
   // Find the op registration of a custom operator by op name.
-  TfLiteRegistration* FindOp(tflite::BuiltinOperator op) const override {
+  const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
+                                   int version) const override {
     return constant_return_;
   }
   // Find the op registration of a custom operator by op name.
-  TfLiteRegistration* FindOp(const char* op) const override {
+  const TfLiteRegistration* FindOp(const char* op, int version) const override {
     return constant_return_;
   }
 
@@ -241,14 +241,6 @@ TEST(BasicFlatBufferModel, TestWithNullVerifier) {
       "tensorflow/contrib/lite/testdata/test_model.bin", nullptr));
 }
 
-struct TestErrorReporter : public ErrorReporter {
-  int Report(const char* format, va_list args) override {
-    calls++;
-    return 0;
-  }
-  int calls = 0;
-};
-
 // This makes sure the ErrorReporter is marshalled from FlatBufferModel to
 // the Interpreter.
 TEST(BasicFlatBufferModel, TestCustomErrorReporter) {
@@ -262,7 +254,7 @@ TEST(BasicFlatBufferModel, TestCustomErrorReporter) {
   TrivialResolver resolver;
   InterpreterBuilder(*model, resolver)(&interpreter);
   ASSERT_NE(interpreter->Invoke(), kTfLiteOk);
-  ASSERT_EQ(reporter.calls, 1);
+  ASSERT_EQ(reporter.num_calls(), 1);
 }
 
 // This makes sure the ErrorReporter is marshalled from FlatBufferModel to

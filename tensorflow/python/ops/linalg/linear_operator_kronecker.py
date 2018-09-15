@@ -381,10 +381,6 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
       else:
         matrix_dimensions = [self.range_dimension, column_dim]
 
-      print("x: ", x)
-      print("bathc_shape:", self.batch_shape)
-      print("self.shape:", self.shape)
-      print("output: ", output)
       output.set_shape(broadcast_batch_shape.concatenate(
           matrix_dimensions))
 

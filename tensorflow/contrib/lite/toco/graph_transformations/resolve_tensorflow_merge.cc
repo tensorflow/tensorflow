@@ -27,7 +27,7 @@ namespace toco {
 bool ResolveTensorFlowMerge::Run(Model* model, std::size_t op_index) {
   const auto merge_it = model->operators.begin() + op_index;
   const auto* merge_op = merge_it->get();
-  if (merge_op->type != OperatorType::kTensorFlowMerge) {
+  if (merge_op->type != OperatorType::kMerge) {
     return false;
   }
 

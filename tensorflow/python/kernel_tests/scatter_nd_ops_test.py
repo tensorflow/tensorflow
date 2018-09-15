@@ -23,8 +23,11 @@ import functools
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
@@ -141,7 +144,9 @@ class StatefulScatterNdTest(test.TestCase):
         self.assertAllClose(new, ref_var.eval())
 
   def _VariableRankTests(self, np_scatter, tf_scatter):
-    for vtype in (np.float32, np.float64, np.complex64, np.complex128):
+    for vtype in (np.int32,
+                  np.float32, np.float64,
+                  np.complex64, np.complex128):
       for itype in (np.int32, np.int64):
         self._VariableRankTest(np_scatter, tf_scatter, vtype, itype)
 
@@ -218,7 +223,7 @@ class StatefulScatterNdTest(test.TestCase):
   #   self._VariableRankTests(_NumpyDiv, state_ops.scatter_nd_div)
 
   def _ScatterRepeatIndicesTest(self, np_scatter, tf_scatter):
-    for vtype in (np.float32, np.float64):
+    for vtype in (np.int32, np.float32, np.float64):
       for itype in (np.int32, np.int64):
         self._VariableRankTest(
             np_scatter, tf_scatter, vtype, itype, repeat_indices=True)
@@ -263,12 +268,12 @@ class StatefulScatterNdTest(test.TestCase):
         # Test some out of range errors.
         indices = np.array([[-1], [0], [5]])
         with self.assertRaisesOpError(
-            r"Invalid indices: \[0,0\] = \[-1\] does not index into \[6\]"):
+            r"indices\[0\] = \[-1\] does not index into shape \[6\]"):
           op(ref, indices, updates).eval()
 
         indices = np.array([[2], [0], [6]])
         with self.assertRaisesOpError(
-            r"Invalid indices: \[2,0\] = \[6\] does not index into \[6\]"):
+            r"indices\[2\] = \[6\] does not index into shape \[6\]"):
           op(ref, indices, updates).eval()
 
   def testRank3ValidShape(self):
@@ -289,7 +294,7 @@ class StatefulScatterNdTest(test.TestCase):
     self.assertAllEqual(scatter_update.get_shape().as_list(), shape)
 
     expected_result = np.zeros([2, 2], dtype=np.int32)
-    with self.test_session():
+    with self.cached_session():
       ref.initializer.run()
       self.assertAllEqual(expected_result, scatter_update.eval())
 
@@ -364,6 +369,38 @@ class ScatterNdTest(test.TestCase):
     del input_  # input_ is not used in scatter_nd
     return array_ops.scatter_nd(indices, updates, shape)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testBool(self):
+    indices = constant_op.constant(
+        [[4], [3], [1], [7]], dtype=dtypes.int32)
+    updates = constant_op.constant(
+        [False, True, False, True], dtype=dtypes.bool)
+    expected = np.array(
+        [False, False, False, True, False, False, False, True])
+    scatter = self.scatter_nd(indices, updates, shape=(8,))
+    result = self.evaluate(scatter)
+    self.assertAllEqual(expected, result)
+
+    # Same indice is updated twice by same value.
+    indices = constant_op.constant(
+        [[4], [3], [3], [7]], dtype=dtypes.int32)
+    updates = constant_op.constant(
+        [False, True, True, True], dtype=dtypes.bool)
+    expected = np.array([
+        False, False, False, True, False, False, False, True])
+    scatter = self.scatter_nd(indices, updates, shape=(8,))
+    result = self.evaluate(scatter)
+    self.assertAllEqual(expected, result)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInvalidShape(self):
+    # TODO(apassos) figure out how to unify these errors
+    with self.assertRaises(errors.InvalidArgumentError
+                           if context.executing_eagerly() else ValueError):
+      array_ops.scatter_nd(indices=[0],  # this should be indices=[[0]]
+                           updates=[0.0],
+                           shape=[1])
+
   def testString(self):
     indices = constant_op.constant([[4], [3], [1], [7]],
                                    dtype=dtypes.int32)
@@ -372,7 +409,7 @@ class ScatterNdTest(test.TestCase):
     expected = np.array([b"", b"one", b"", b"three", b"four",
                          b"", b"", b"seven"])
     scatter = self.scatter_nd(indices, updates, shape=(8,))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       result = sess.run(scatter)
       self.assertAllEqual(expected, result)
 
@@ -383,7 +420,7 @@ class ScatterNdTest(test.TestCase):
                                    dtype=dtypes.string)
     expected = np.array([b"", b"", b"", b"bb", b"a", b"", b"", b"c"])
     scatter = self.scatter_nd(indices, updates, shape=(8,))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       result = sess.run(scatter)
       self.assertAllEqual(expected, result)
 
@@ -395,7 +432,7 @@ class ScatterNdTest(test.TestCase):
     expected = [np.array([b"", b"", b"", b"bc", b"a", b"", b"", b"d"]),
                 np.array([b"", b"", b"", b"cb", b"a", b"", b"", b"d"])]
     scatter = self.scatter_nd(indices, updates, shape=(8,))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       result = sess.run(scatter)
       self.assertTrue(np.array_equal(result, expected[0]) or
                       np.array_equal(result, expected[1]))
@@ -414,7 +451,7 @@ class ScatterNdTest(test.TestCase):
     scatter = self.scatter_nd(indices, updates, shape)
     self.assertAllEqual(scatter.get_shape().as_list(), shape)
     expected_result = np.zeros([2, 2], dtype=np.int32)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(expected_result, scatter.eval())
 
   def testUndefinedIndicesShape(self):
@@ -449,7 +486,7 @@ class ScatterNdTest(test.TestCase):
     updates = array_ops.placeholder(dtypes.int32, shape=None)
     shape = constant_op.constant([0, 3, 2], dtypes.int32)
 
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError(
           "Indices and updates specified for empty output"):
         self.scatter_nd(indices, updates, shape).eval(feed_dict={
@@ -463,7 +500,7 @@ class ScatterNdTest(test.TestCase):
     shape = constant_op.constant([0], dtypes.int32)
     scatter = self.scatter_nd(indices, updates, shape)
 
-    with self.test_session():
+    with self.cached_session():
       self.assertEqual(scatter.eval().size, 0)
 
   def testRank3InvalidShape1(self):
@@ -494,7 +531,7 @@ class ScatterNdTest(test.TestCase):
         [outputs], [updates, input_], [grad_vals])
     expected_updates_grad = np.array([1, 4], dtype=np.float64)
     expected_input_grad = np.array([[1, 2], [3, 4]], dtype=np.float64)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(expected_updates_grad, updates_grad.eval())
       if self.non_aliasing_add_test:
         self.assertAllEqual(expected_input_grad, input_grad.eval())
@@ -511,7 +548,7 @@ class ScatterNdTest(test.TestCase):
         [outputs], [updates, input_], [grad_vals])
     expected_updates_grad = np.array([[1, 2], [3, 4]], dtype=np.float64)
     expected_input_grad = np.array([[3, 4], [1, 2]], dtype=np.float64)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(expected_updates_grad, updates_grad.eval())
       if self.non_aliasing_add_test:
         self.assertAllEqual(expected_input_grad, input_grad.eval())
@@ -533,7 +570,7 @@ class ScatterNdTest(test.TestCase):
         [[[3, 4], [5, 6]], [[1, 2], [7, 8]]], dtype=np.float64)
     expected_input_grad = np.array(
         [[[1, 2], [3, 4]], [[5, 6], [7, 8]]], dtype=np.float64)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(expected_updates_grad, updates_grad.eval())
       if self.non_aliasing_add_test:
         self.assertAllEqual(expected_input_grad, input_grad.eval())
@@ -570,7 +607,7 @@ class ScatterNdTest(test.TestCase):
             [[[[1, 2], [3, 4]]]],
             [[[[5, 6], [7, 8]]]]
         ]]], dtype=np.float64)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(expected_updates_grad, updates_grad.eval())
       if self.non_aliasing_add_test:
         self.assertAllEqual(expected_input_grad, input_grad.eval())
@@ -579,33 +616,33 @@ class ScatterNdTest(test.TestCase):
     indices = array_ops.zeros([100000, 1], dtypes.int32)
     values = np.random.randn(100000)
     shape = [1]
-    with self.test_session():
+    with self.cached_session():
       val = self.scatter_nd(indices, values, shape).eval()
     self.assertAllClose([np.sum(values)], val)
 
   def testSmokeScatterNdBatch2DSliceDim2(self):
-    with self.test_session():
+    with self.cached_session():
       indices = array_ops.zeros([3, 5, 2], dtype=dtypes.int32)
       values = array_ops.zeros([3, 5, 7])
       shape = [4, 6, 7]
       self.scatter_nd(indices, values, shape).eval()
 
   def testSmokeScatterNdBatch1DSliceDim2(self):
-    with self.test_session():
+    with self.cached_session():
       indices = array_ops.zeros([0, 2], dtype=dtypes.int32)
       values = array_ops.zeros([0, 7])
       shape = [4, 6, 7]
       self.scatter_nd(indices, values, shape).eval()
 
   def testSmokeScatterNdBatch1DSliceDim3ShapeRank7(self):
-    with self.test_session():
+    with self.cached_session():
       indices = array_ops.zeros([1, 3], dtype=dtypes.int32)
       values = array_ops.zeros([1, 6, 7, 8, 9])
       shape = [3, 4, 5, 6, 7, 8, 9]
       self.scatter_nd(indices, values, shape).eval()
 
   def testSmokeScatterNdBatch2DSliceDim3ShapeRank7(self):
-    with self.test_session():
+    with self.cached_session():
       indices = array_ops.zeros([1, 2, 3], dtype=dtypes.int32)
       values = array_ops.zeros([1, 2, 6, 7, 8, 9])
       shape = [3, 4, 5, 6, 7, 8, 9]

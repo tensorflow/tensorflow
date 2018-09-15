@@ -31,7 +31,11 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 
 #ifdef INTEL_MKL
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 #include "tensorflow/core/common_runtime/mkl_cpu_allocator.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #endif
 
 namespace tensorflow {
@@ -43,20 +47,28 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
     : LocalDevice(options, Device::BuildDeviceAttributes(
                                name, DEVICE_CPU, memory_limit, locality)),
       allocator_(allocator),
-      scoped_allocator_mgr_(new ScopedAllocatorMgr(name)) {}
+      scoped_allocator_mgr_(new ScopedAllocatorMgr(name)) {
+#ifdef INTEL_MKL
+#ifdef _OPENMP
+  const char* user_omp_threads = getenv("OMP_NUM_THREADS");
+  if (user_omp_threads == nullptr) {
+    // OMP_NUM_THREADS controls MKL's intra-op parallelization
+    // Default to available physical cores
+    const int mkl_intra_op = port::NumSchedulableCPUs();
+    const int ht = port::NumHyperthreadsPerCore();
+    omp_set_num_threads((mkl_intra_op + ht - 1) / ht);
+  } else {
+    uint64 user_val = 0;
+    if (strings::safe_strtou64(user_omp_threads, &user_val)) {
+      // Superflous but triggers OpenMP loading
+      omp_set_num_threads(user_val);
+    }
+  }
+#endif  // _OPENMP
+#endif  // INTEL_MKL
+}
 
 ThreadPoolDevice::~ThreadPoolDevice() {}
-
-void ThreadPoolDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
-  // When Xprof/ThreadScape profiling is off (which is the default), the
-  // following code is simple enough that its overhead is negligible.
-  tracing::ScopedActivity activity(op_kernel->name(), op_kernel->type_string(),
-                                   op_kernel->IsExpensive());
-  tracing::ScopedRegion region(tracing::EventCategory::kCompute,
-                               op_kernel->name());
-
-  op_kernel->Compute(context);
-}
 
 Allocator* ThreadPoolDevice::GetAllocator(AllocatorAttributes attr) {
   return allocator_;
@@ -88,7 +100,21 @@ Status ThreadPoolDevice::MakeTensorFromProto(
 }
 
 #ifdef INTEL_MKL
-REGISTER_MEM_ALLOCATOR("MklCPUAllocator", 200, MklCPUAllocator);
+namespace {
+class MklCPUAllocatorFactory : public AllocatorFactory {
+ public:
+  bool NumaEnabled() override { return false; }
+
+  Allocator* CreateAllocator() override { return new MklCPUAllocator; }
+
+  // Note: Ignores numa_node, for now.
+  virtual SubAllocator* CreateSubAllocator(int numa_node) {
+    return new MklSubAllocator;
+  }
+};
+
+REGISTER_MEM_ALLOCATOR("MklCPUAllocator", 200, MklCPUAllocatorFactory);
+}  // namespace
 #endif
 
 }  // namespace tensorflow

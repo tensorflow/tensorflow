@@ -16,15 +16,15 @@ include (ExternalProject)
 
 set(double_conversion_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/double_conversion/src/double_conversion)
 set(double_conversion_URL https://github.com/google/double-conversion.git)
-set(double_conversion_TAG 5664746)
+set(double_conversion_TAG 3992066a95b823efc8ccc1baf82a1cfc73f6e9b8)
 set(double_conversion_BUILD ${double_conversion_INCLUDE_DIR})
 set(double_conversion_LIBRARIES ${double_conversion_BUILD}/double-conversion/libdouble-conversion.so)
 set(double_conversion_INCLUDES ${double_conversion_BUILD})
 
 if(WIN32)
-  set(double_conversion_STATIC_LIBRARIES ${double_conversion_BUILD}/double-conversion/$(Configuration)/double-conversion.lib)
+  set(double_conversion_STATIC_LIBRARIES ${double_conversion_BUILD}/$(Configuration)/double-conversion.lib)
 else()
-  set(double_conversion_STATIC_LIBRARIES ${double_conversion_BUILD}/double-conversion/libdouble-conversion.a)
+  set(double_conversion_STATIC_LIBRARIES ${double_conversion_BUILD}/libdouble-conversion.a)
 endif()
 
 set(double_conversion_HEADERS

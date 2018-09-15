@@ -196,7 +196,7 @@ class InceptionV2Test(test.TestCase):
     height, width = 224, 224
     num_classes = 1000
     input_np = np.random.uniform(0, 1, (batch_size, height, width, 3))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inputs = array_ops.placeholder(
           dtypes.float32, shape=(batch_size, None, None, 3))
       logits, end_points = inception_v2.inception_v2(inputs, num_classes)
@@ -220,7 +220,7 @@ class InceptionV2Test(test.TestCase):
     self.assertListEqual(logits.get_shape().as_list(), [None, num_classes])
     images = random_ops.random_uniform((batch_size, height, width, 3))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       output = sess.run(logits, {inputs: images.eval()})
       self.assertEquals(output.shape, (batch_size, num_classes))
@@ -235,7 +235,7 @@ class InceptionV2Test(test.TestCase):
         eval_inputs, num_classes, is_training=False)
     predictions = math_ops.argmax(logits, 1)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       output = sess.run(predictions)
       self.assertEquals(output.shape, (batch_size,))
@@ -253,7 +253,7 @@ class InceptionV2Test(test.TestCase):
     logits, _ = inception_v2.inception_v2(eval_inputs, num_classes, reuse=True)
     predictions = math_ops.argmax(logits, 1)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       output = sess.run(predictions)
       self.assertEquals(output.shape, (eval_batch_size,))
@@ -264,7 +264,7 @@ class InceptionV2Test(test.TestCase):
     logits, _ = inception_v2.inception_v2(
         images, num_classes=num_classes, spatial_squeeze=False)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       variables.global_variables_initializer().run()
       logits_out = sess.run(logits)
       self.assertListEqual(list(logits_out.shape), [1, 1, 1, num_classes])

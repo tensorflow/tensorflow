@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -79,12 +79,12 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
  private:
   const int graph_def_version_;
 
-  class FilterDatasetBase : public GraphDatasetBase {
+  class FilterDatasetBase : public DatasetBase {
    public:
     FilterDatasetBase(OpKernelContext* ctx, const DatasetBase* input,
                       const NameAttrList& func,
                       std::unique_ptr<CapturedFunction> captured_func)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           func_(func),
           captured_func_(std::move(captured_func)) {
@@ -93,7 +93,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
 
     ~FilterDatasetBase() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::Filter")}));
@@ -106,14 +106,15 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() override { return "FilterDatasetOp::Dataset"; }
+    string DebugString() const override { return "FilterDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       Node* input_graph_node;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
       DataTypeVector other_arguments_types;
       other_arguments_types.reserve(captured_func_->captured_inputs().size());
@@ -145,8 +146,13 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
     class Iterator : public DatasetIterator<FilterDatasetBase> {
      public:
       explicit Iterator(const Params& params)
-          : DatasetIterator<FilterDatasetBase>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
+          : DatasetIterator<FilterDatasetBase>(params) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        TF_RETURN_IF_ERROR(
+            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+        return dataset()->captured_func_->Instantiate(ctx);
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
@@ -187,7 +193,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (input_impl_)
-          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         else
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impls_empty"), ""));
@@ -200,7 +206,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
         if (reader->Contains(full_name("input_impls_empty")))
           input_impl_.reset();
         else
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         return Status::OK();
       }
 
@@ -274,5 +280,5 @@ REGISTER_KERNEL_BUILDER(Name("FilterDataset").Device(DEVICE_CPU),
                         FilterDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

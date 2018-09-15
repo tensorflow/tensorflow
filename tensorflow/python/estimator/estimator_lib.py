@@ -39,6 +39,7 @@ from tensorflow.python.estimator.exporter import Exporter
 from tensorflow.python.estimator.exporter import FinalExporter
 from tensorflow.python.estimator.exporter import LatestExporter
 from tensorflow.python.estimator.inputs import inputs
+from tensorflow.python.estimator.keras import model_to_estimator
 from tensorflow.python.estimator.model_fn import EstimatorSpec
 from tensorflow.python.estimator.model_fn import ModeKeys
 from tensorflow.python.estimator.run_config import RunConfig

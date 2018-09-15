@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/lite/kernels/internal/mfcc.h"
-#include "flatbuffers/flexbuffers.h"
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "flatbuffers/flexbuffers.h"  // flatbuffers
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/mfcc_dct.h"
 #include "tensorflow/contrib/lite/kernels/internal/mfcc_mel_filterbank.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
@@ -67,8 +67,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TfLiteTensor* inputWav = GetInput(context, node, kInputTensorWav);
-  TfLiteTensor* inputRate = GetInput(context, node, kInputTensorRate);
+  const TfLiteTensor* inputWav = GetInput(context, node, kInputTensorWav);
+  const TfLiteTensor* inputRate = GetInput(context, node, kInputTensorRate);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   TF_LITE_ENSURE_EQ(context, NumDimensions(inputWav), 3);
@@ -94,8 +94,8 @@ template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteMfccParams*>(node->user_data);
 
-  TfLiteTensor* inputWav = GetInput(context, node, kInputTensorWav);
-  TfLiteTensor* inputRate = GetInput(context, node, kInputTensorRate);
+  const TfLiteTensor* inputWav = GetInput(context, node, kInputTensorWav);
+  const TfLiteTensor* inputRate = GetInput(context, node, kInputTensorRate);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   const int32 sample_rate = *GetTensorData<int>(inputRate);

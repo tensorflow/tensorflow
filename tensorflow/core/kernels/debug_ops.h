@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_DEBUG_OP_H_
-#define TENSORFLOW_KERNELS_DEBUG_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_
+#define TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
@@ -177,8 +177,10 @@ class BaseDebugOp : public OpKernel {
 
   // Publish a tensor to all debug URLs of the debug op.
   // Log an error if the publishing failed.
-  void PublishTensor(const Tensor& tensor) {
-    if (!debug_urls_.empty()) {
+  Status PublishTensor(const Tensor& tensor) {
+    if (debug_urls_.empty()) {
+      return Status::OK();
+    } else {
       Status status = DebugIO::PublishDebugTensor(*debug_watch_key_, tensor,
                                                   Env::Default()->NowMicros(),
                                                   debug_urls_, gated_grpc_);
@@ -189,6 +191,7 @@ class BaseDebugOp : public OpKernel {
                    << str_util::Join(debug_urls_, ", ")
                    << ", due to: " << status.error_message();
       }
+      return status;
     }
   }
 
@@ -213,7 +216,7 @@ class DebugIdentityOp : public BaseDebugOp {
       return;
     }
 
-    PublishTensor(context->input(0));
+    OP_REQUIRES_OK(context, PublishTensor(context->input(0)));
     context->set_output(0, context->input(0));
   }
 };
@@ -252,7 +255,7 @@ class DebugNanCountOp : public BaseDebugOp {
     TensorShape shape({1});
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output_tensor));
     output_tensor->vec<int64>()(0) = nan_count;
-    PublishTensor(*output_tensor);
+    OP_REQUIRES_OK(context, PublishTensor(*output_tensor));
   }
 };
 
@@ -377,7 +380,7 @@ class DebugNumericSummaryOp : public BaseDebugOp {
     bool mute = mute_if_healthy_ && nan_count == 0 && negative_inf_count == 0 &&
                 positive_inf_count == 0;
     if (!mute) {
-      PublishTensor(*output_tensor);
+      OP_REQUIRES_OK(context, PublishTensor(*output_tensor));
     }
   }
 
@@ -389,4 +392,4 @@ class DebugNumericSummaryOp : public BaseDebugOp {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_DEBUG_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_

@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "FakeQuantWithMinMaxVars"
+  endpoint {
+    name: "quantization.fake_quant_with_min_max_vars"
+  }
+  endpoint {
+    name: "fake_quant_with_min_max_vars"
+    deprecated: true
+  }
+}

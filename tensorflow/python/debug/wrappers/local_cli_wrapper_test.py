@@ -21,7 +21,10 @@ import os
 import shutil
 import tempfile
 
+import numpy as np
+
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import debugger_cli_common
@@ -149,7 +152,13 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
         dtypes.float32, shape=([5, 5]), name="sparse_placeholder")
     self.sparse_add = sparse_ops.sparse_add(self.sparse_ph, self.sparse_ph)
 
-    self.sess = session.Session()
+    rewriter_config = rewriter_config_pb2.RewriterConfig(
+        disable_model_pruning=True,
+        arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+        dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF)
+    graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
+    config_proto = config_pb2.ConfigProto(graph_options=graph_options)
+    self.sess = session.Session(config=config_proto)
 
     # Initialize variable.
     self.sess.run(variables.global_variables_initializer())
@@ -392,6 +401,113 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     self.assertAllClose(42.0, tensor_runner(41.0, 1.0))
     self.assertEqual(1, len(wrapped_sess.observers["debug_dumps"]))
+
+  def testDebuggingMakeCallableFromOptionsWithZeroFeedWorks(self):
+    variable_1 = variables.Variable(
+        10.5, dtype=dtypes.float32, name="variable_1")
+    a = math_ops.add(variable_1, variable_1, "callable_a")
+    math_ops.add(a, a, "callable_b")
+    self.sess.run(variable_1.initializer)
+
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"]] * 3, self.sess, dump_root=self._tmp_dir)
+    callable_options = config_pb2.CallableOptions()
+    callable_options.fetch.append("callable_b")
+    sess_callable = wrapped_sess._make_callable_from_options(callable_options)
+
+    for _ in range(2):
+      callable_output = sess_callable()
+      self.assertAllClose(np.array(42.0, dtype=np.float32), callable_output[0])
+
+    debug_dumps = wrapped_sess.observers["debug_dumps"]
+    self.assertEqual(2, len(debug_dumps))
+    for debug_dump in debug_dumps:
+      node_names = [datum.node_name for datum in debug_dump.dumped_tensor_data]
+      self.assertItemsEqual(
+          ["callable_a", "callable_b", "variable_1", "variable_1/read"],
+          node_names)
+
+  def testDebuggingMakeCallableFromOptionsWithOneFeedWorks(self):
+    ph1 = array_ops.placeholder(dtypes.float32, name="callable_ph1")
+    a = math_ops.add(ph1, ph1, "callable_a")
+    math_ops.add(a, a, "callable_b")
+
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"]] * 3, self.sess, dump_root=self._tmp_dir)
+    callable_options = config_pb2.CallableOptions()
+    callable_options.feed.append("callable_ph1")
+    callable_options.fetch.append("callable_b")
+    sess_callable = wrapped_sess._make_callable_from_options(callable_options)
+
+    ph1_value = np.array([10.5, -10.5], dtype=np.float32)
+
+    for _ in range(2):
+      callable_output = sess_callable(ph1_value)
+      self.assertAllClose(
+          np.array([42.0, -42.0], dtype=np.float32), callable_output[0])
+
+    debug_dumps = wrapped_sess.observers["debug_dumps"]
+    self.assertEqual(2, len(debug_dumps))
+    for debug_dump in debug_dumps:
+      node_names = [datum.node_name for datum in debug_dump.dumped_tensor_data]
+      self.assertItemsEqual(["callable_a", "callable_b"], node_names)
+
+  def testDebuggingMakeCallableFromOptionsWithTwoFeedsWorks(self):
+    ph1 = array_ops.placeholder(dtypes.float32, name="callable_ph1")
+    ph2 = array_ops.placeholder(dtypes.float32, name="callable_ph2")
+    a = math_ops.add(ph1, ph2, "callable_a")
+    math_ops.add(a, a, "callable_b")
+
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"]] * 3, self.sess, dump_root=self._tmp_dir)
+    callable_options = config_pb2.CallableOptions()
+    callable_options.feed.append("callable_ph1")
+    callable_options.feed.append("callable_ph2")
+    callable_options.fetch.append("callable_b")
+    sess_callable = wrapped_sess._make_callable_from_options(callable_options)
+
+    ph1_value = np.array(5.0, dtype=np.float32)
+    ph2_value = np.array(16.0, dtype=np.float32)
+
+    for _ in range(2):
+      callable_output = sess_callable(ph1_value, ph2_value)
+      self.assertAllClose(np.array(42.0, dtype=np.float32), callable_output[0])
+
+    debug_dumps = wrapped_sess.observers["debug_dumps"]
+    self.assertEqual(2, len(debug_dumps))
+    for debug_dump in debug_dumps:
+      node_names = [datum.node_name for datum in debug_dump.dumped_tensor_data]
+      self.assertItemsEqual(["callable_a", "callable_b"], node_names)
+
+  def testDebugMakeCallableFromOptionsWithCustomOptionsAndMetadataWorks(self):
+    variable_1 = variables.Variable(
+        10.5, dtype=dtypes.float32, name="variable_1")
+    a = math_ops.add(variable_1, variable_1, "callable_a")
+    math_ops.add(a, a, "callable_b")
+    self.sess.run(variable_1.initializer)
+
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"], ["run"]], self.sess, dump_root=self._tmp_dir)
+    callable_options = config_pb2.CallableOptions()
+    callable_options.fetch.append("callable_b")
+    callable_options.run_options.trace_level = config_pb2.RunOptions.FULL_TRACE
+
+    sess_callable = wrapped_sess._make_callable_from_options(callable_options)
+
+    run_metadata = config_pb2.RunMetadata()
+    # Call the callable with a custom run_metadata.
+    callable_output = sess_callable(run_metadata=run_metadata)
+    # Verify that step_stats is populated in the custom run_metadata.
+    self.assertTrue(run_metadata.step_stats)
+    self.assertAllClose(np.array(42.0, dtype=np.float32), callable_output[0])
+
+    debug_dumps = wrapped_sess.observers["debug_dumps"]
+    self.assertEqual(1, len(debug_dumps))
+    debug_dump = debug_dumps[0]
+    node_names = [datum.node_name for datum in debug_dump.dumped_tensor_data]
+    self.assertItemsEqual(
+        ["callable_a", "callable_b", "variable_1", "variable_1/read"],
+        node_names)
 
   def testRuntimeErrorShouldBeCaught(self):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(

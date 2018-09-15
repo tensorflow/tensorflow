@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -31,6 +32,14 @@ __all__ = [
 class Sigmoid(bijector.Bijector):
   """Bijector which computes `Y = g(X) = 1 / (1 + exp(-X))`."""
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self, validate_args=False, name="sigmoid"):
     super(Sigmoid, self).__init__(
         forward_min_event_ndims=0,

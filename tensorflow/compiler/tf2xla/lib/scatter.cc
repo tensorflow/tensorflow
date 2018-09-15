@@ -18,15 +18,16 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
 
@@ -39,9 +40,9 @@ xla::StatusOr<xla::XlaOp> XlaScatter(
   TF_ASSIGN_OR_RETURN(xla::Shape buffer_shape, builder->GetShape(buffer));
   TF_RETURN_IF_ERROR(builder->GetShape(updates).status());
   TF_ASSIGN_OR_RETURN(xla::Shape indices_shape, builder->GetShape(indices));
-  gtl::ArraySlice<int64> indices_dims =
+  absl::Span<const int64> indices_dims =
       xla::AsInt64Slice(indices_shape.dimensions());
-  gtl::ArraySlice<int64> buffer_dims =
+  absl::Span<const int64> buffer_dims =
       xla::AsInt64Slice(buffer_shape.dimensions());
 
   // If the indices are N-dimensional, the minor dimension of indices contains
@@ -57,7 +58,7 @@ xla::StatusOr<xla::XlaOp> XlaScatter(
           ") must be <= the rank of the buffer (shape: ",
           xla::ShapeUtil::HumanString(buffer_shape), ")");
     }
-    indices_dims.pop_back();
+    indices_dims.remove_suffix(1);
   }
 
   int64 num_indices = 1;
@@ -97,8 +98,8 @@ xla::StatusOr<xla::XlaOp> XlaScatter(
                             buffer_shape_post_axes.end());
 
   // Construct the initial values of the loop-carried Tensors.
-  auto flat_indices = builder->Reshape(indices, flat_indices_shape);
-  auto flat_updates = builder->Reshape(updates, flat_updates_shape);
+  auto flat_indices = xla::Reshape(indices, flat_indices_shape);
+  auto flat_updates = xla::Reshape(updates, flat_updates_shape);
   auto init = {flat_indices, flat_updates, buffer};
 
   // Constructs the loop body. The implementation of scatter is essentially:
@@ -106,52 +107,50 @@ xla::StatusOr<xla::XlaOp> XlaScatter(
   //   index = dynamic-slice(indices, i)
   //   update = dynamic-slice(updates, i)
   //   buffer = dynamic-update-slice(buffer, update, index)
-  auto body_fn = [&](xla::XlaOp i, gtl::ArraySlice<xla::XlaOp> loop_vars,
+  auto body_fn = [&](xla::XlaOp i, absl::Span<const xla::XlaOp> loop_vars,
                      xla::XlaBuilder* body_builder) {
     auto indices = loop_vars[0];
     auto updates = loop_vars[1];
     auto buffer = loop_vars[2];
 
-    auto zero_index = body_builder->ConstantLiteral(
-        xla::Literal::Zero(indices_shape.element_type()));
+    auto zero_index = xla::ConstantLiteral(
+        body_builder, xla::LiteralUtil::Zero(indices_shape.element_type()));
 
     // Slice the i-th index from the indices array.
     xla::XlaOp index;
-    auto indices_offset = body_builder->Reshape(i, {1});
+    auto indices_offset = xla::Reshape(i, {1});
     if (indices_are_vectors) {
-      indices_offset = body_builder->Pad(indices_offset, zero_index,
-                                         xla::MakeEdgePaddingConfig({{0, 1}}));
+      indices_offset = xla::Pad(indices_offset, zero_index,
+                                xla::MakeEdgePaddingConfig({{0, 1}}));
 
-      index = body_builder->DynamicSlice(indices, indices_offset,
-                                         {1, num_index_dims});
-      index = body_builder->Collapse(index, {0, 1});
+      index = xla::DynamicSlice(indices, indices_offset, {1, num_index_dims});
+      index = xla::Collapse(index, {0, 1});
     } else {
-      index = body_builder->DynamicSlice(indices, indices_offset, {1});
+      index = xla::DynamicSlice(indices, indices_offset, {1});
     }
 
     // Discard updates with negative indices, since some users expect this.
-    auto index_in_range =
-        body_builder->ReduceAll(body_builder->Le(zero_index, index),
-                                body_builder->ConstantR0<bool>(true),
-                                xla::CreateScalarAndComputation(body_builder));
+    auto index_in_range = xla::ReduceAll(
+        xla::Le(zero_index, index), xla::ConstantR0<bool>(body_builder, true),
+        xla::CreateScalarAndComputation(xla::PRED, body_builder));
 
     // Make the index in bounds to prevent implementation defined behavior.
-    index = body_builder->Max(index, zero_index);
-    index = body_builder->Pad(
+    index = xla::Max(index, zero_index);
+    index = xla::Pad(
         index, zero_index,
         xla::MakeEdgePaddingConfig({{0, buffer_shape_post_axes.size()}}));
 
     // Slice the i-th index from the updates array.
-    auto updates_offset = body_builder->Reshape(i, {1});
-    updates_offset = body_builder->Pad(
+    auto updates_offset = xla::Reshape(i, {1});
+    updates_offset = xla::Pad(
         updates_offset, zero_index,
         xla::MakeEdgePaddingConfig({{0, buffer_shape_post_axes.size()}}));
     std::vector<int64> flat_updates_slice_shape({1});
     flat_updates_slice_shape.insert(flat_updates_slice_shape.end(),
                                     buffer_shape_post_axes.begin(),
                                     buffer_shape_post_axes.end());
-    auto update = body_builder->DynamicSlice(updates, updates_offset,
-                                             flat_updates_slice_shape);
+    auto update =
+        xla::DynamicSlice(updates, updates_offset, flat_updates_slice_shape);
 
     // Unflatten the major (iteration) dimensions of the slice to their
     // original shape.
@@ -159,20 +158,19 @@ xla::StatusOr<xla::XlaOp> XlaScatter(
     updates_slice_shape.insert(updates_slice_shape.end(),
                                buffer_shape_post_axes.begin(),
                                buffer_shape_post_axes.end());
-    update = body_builder->Reshape(update, updates_slice_shape);
+    update = xla::Reshape(update, updates_slice_shape);
 
     // Apply the update to the buffer. If there is a combiner, use it to merge
     // the current values with the update.
-    auto current_value =
-        body_builder->DynamicSlice(buffer, index, updates_slice_shape);
+    auto current_value = xla::DynamicSlice(buffer, index, updates_slice_shape);
     if (combiner) {
       update = combiner(current_value, update, body_builder);
     }
     // Use the current value instead of the update if the index is out of
     // bounds.
-    update = body_builder->Select(index_in_range, update, current_value);
+    update = xla::Select(index_in_range, update, current_value);
     // Apply the update.
-    buffer = body_builder->DynamicUpdateSlice(buffer, update, index);
+    buffer = xla::DynamicUpdateSlice(buffer, update, index);
 
     return std::vector<xla::XlaOp>{indices, updates, buffer};
   };

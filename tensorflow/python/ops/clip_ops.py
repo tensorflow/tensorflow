@@ -29,6 +29,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import numerics
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -42,6 +43,9 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   Any values less than `clip_value_min` are set to `clip_value_min`. Any values
   greater than `clip_value_max` are set to `clip_value_max`.
 
+  Note: `clip_value_min` needs to be smaller or equal to `clip_value_max` for
+  correct results.
+
   Args:
     t: A `Tensor`.
     clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
@@ -54,7 +58,7 @@ def clip_by_value(t, clip_value_min, clip_value_max,
     A clipped `Tensor`.
 
   Raises:
-    ValueError: if the clip tensors would trigger array broadcasting
+    ValueError: If the clip tensors would trigger array broadcasting
       that would make the returned tensor larger than the input.
   """
   with ops.name_scope(name, "clip_by_value",
@@ -140,7 +144,11 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     t = ops.convert_to_tensor(t, name="t")
 
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
-    l2norm = math_ops.sqrt(math_ops.reduce_sum(t * t, axes, keepdims=True))
+    l2sum = math_ops.reduce_sum(t * t, axes, keepdims=True)
+    pred = l2sum > 0
+    # Two-tap tf.where trick to bypass NaN gradients
+    l2sum_safe = array_ops.where(pred, l2sum, array_ops.ones_like(l2sum))
+    l2norm = array_ops.where(pred, math_ops.sqrt(l2sum_safe), l2sum)
     intermediate = t * clip_norm
     # Assert that the shape is compatible with the initial shape,
     # to prevent unintentional broadcasting.
@@ -243,6 +251,7 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
 
   Raises:
     TypeError: If `t_list` is not a sequence.
+    InvalidArgumentError: If global norm is not finite.
   """
   if (not isinstance(t_list, collections.Sequence)
       or isinstance(t_list, six.string_types)):
@@ -250,6 +259,8 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   t_list = list(t_list)
   if use_norm is None:
     use_norm = global_norm(t_list, name)
+  use_norm = numerics.verify_tensor_all_finite(use_norm,
+                                               "Found Inf or NaN global norm.")
 
   with ops.name_scope(name, "clip_by_global_norm",
                       t_list + [clip_norm]) as name:

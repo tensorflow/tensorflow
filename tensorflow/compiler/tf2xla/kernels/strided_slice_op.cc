@@ -14,17 +14,18 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/util/strided_slice_op.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/mem.h"
 
 namespace tensorflow {
@@ -45,9 +46,9 @@ class StridedSliceOp : public XlaOpKernel {
     const TensorShape input_shape = ctx->InputShape(0);
 
     TensorShape final_shape;
-    gtl::InlinedVector<int64, 4> begin;
-    gtl::InlinedVector<int64, 4> end;
-    gtl::InlinedVector<int64, 4> strides;
+    absl::InlinedVector<int64, 4> begin;
+    absl::InlinedVector<int64, 4> end;
+    absl::InlinedVector<int64, 4> strides;
 
     xla::Literal begin_literal, end_literal, strides_literal;
     OP_REQUIRES_OK(ctx, ctx->ConstantInput(1, &begin_literal));
@@ -71,8 +72,8 @@ class StridedSliceOp : public XlaOpKernel {
                        shrink_axis_mask_, &dummy_processing_shape, &final_shape,
                        &dummy, &dummy, &dummy, &begin, &end, &strides));
 
-    gtl::InlinedVector<int64, 4> dimensions_to_reverse;
-    gtl::InlinedVector<int64, 4> slice_begin, slice_end, slice_strides;
+    absl::InlinedVector<int64, 4> dimensions_to_reverse;
+    absl::InlinedVector<int64, 4> slice_begin, slice_end, slice_strides;
 
     for (int i = 0; i < begin.size(); ++i) {
       if (strides[i] > 0) {
@@ -92,12 +93,12 @@ class StridedSliceOp : public XlaOpKernel {
 
     xla::XlaOp slice = ctx->Input(0);
     if (!dimensions_to_reverse.empty()) {
-      slice = ctx->builder()->Rev(slice, dimensions_to_reverse);
+      slice = xla::Rev(slice, dimensions_to_reverse);
     }
 
-    slice = ctx->builder()->Slice(slice, slice_begin, slice_end, slice_strides);
+    slice = xla::Slice(slice, slice_begin, slice_end, slice_strides);
 
-    slice = ctx->builder()->Reshape(slice, final_shape.dim_sizes());
+    slice = xla::Reshape(slice, final_shape.dim_sizes());
     ctx->SetOutput(0, slice);
   }
 
@@ -126,9 +127,9 @@ class StridedSliceGradOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     TensorShape processing_shape, final_shape;
-    gtl::InlinedVector<int64, 4> begin;
-    gtl::InlinedVector<int64, 4> end;
-    gtl::InlinedVector<int64, 4> strides;
+    absl::InlinedVector<int64, 4> begin;
+    absl::InlinedVector<int64, 4> end;
+    absl::InlinedVector<int64, 4> strides;
 
     TensorShape input_shape;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &input_shape));
@@ -171,10 +172,10 @@ class StridedSliceGradOp : public XlaOpKernel {
     xla::XlaOp grad = ctx->Input(4);
 
     // Undo any new/shrink axes.
-    grad = ctx->builder()->Reshape(grad, processing_shape.dim_sizes());
+    grad = xla::Reshape(grad, processing_shape.dim_sizes());
 
     // Pad the input gradients.
-    gtl::InlinedVector<int64, 4> dimensions_to_reverse;
+    absl::InlinedVector<int64, 4> dimensions_to_reverse;
     xla::PaddingConfig padding_config;
 
     for (int i = 0; i < processing_shape.dims(); ++i) {
@@ -204,9 +205,9 @@ class StridedSliceGradOp : public XlaOpKernel {
       }
     }
     if (!dimensions_to_reverse.empty()) {
-      grad = ctx->builder()->Rev(grad, dimensions_to_reverse);
+      grad = xla::Rev(grad, dimensions_to_reverse);
     }
-    grad = ctx->builder()->Pad(grad, zero, padding_config);
+    grad = xla::Pad(grad, zero, padding_config);
     ctx->SetOutput(0, grad);
   }
 
@@ -237,9 +238,9 @@ class StridedSliceAssignOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     TensorShape final_shape;
-    gtl::InlinedVector<int64, 4> begin;
-    gtl::InlinedVector<int64, 4> end;
-    gtl::InlinedVector<int64, 4> strides;
+    absl::InlinedVector<int64, 4> begin;
+    absl::InlinedVector<int64, 4> end;
+    absl::InlinedVector<int64, 4> strides;
 
     xla::Literal begin_literal, end_literal, strides_literal;
     OP_REQUIRES_OK(ctx, ctx->ConstantInput(1, &begin_literal));
@@ -286,8 +287,8 @@ class StridedSliceAssignOp : public XlaOpKernel {
 
     xla::XlaOp rhs = ctx->Input(4);
 
-    gtl::InlinedVector<int64, 4> dimensions_to_reverse;
-    gtl::InlinedVector<int64, 4> slice_begin, slice_dims;
+    absl::InlinedVector<int64, 4> dimensions_to_reverse;
+    absl::InlinedVector<int64, 4> slice_begin, slice_dims;
     for (int i = 0; i < begin.size(); ++i) {
       // TODO(phawkins): implement strides != 1
       OP_REQUIRES(
@@ -306,17 +307,17 @@ class StridedSliceAssignOp : public XlaOpKernel {
     }
 
     if (!dimensions_to_reverse.empty()) {
-      rhs = ctx->builder()->Rev(rhs, dimensions_to_reverse);
+      rhs = xla::Rev(rhs, dimensions_to_reverse);
     }
-    rhs = ctx->builder()->Reshape(rhs, slice_dims);
+    rhs = xla::Reshape(rhs, slice_dims);
 
     if (lhs_shape.dims() == 0) {
       // TODO(b/38323843): DynamicUpdateSlice crashes on rank 0 inputs. Fix
       // and remove this workaround.
       lhs = rhs;
     } else {
-      lhs = ctx->builder()->DynamicUpdateSlice(
-          lhs, rhs, ctx->builder()->ConstantR1<int64>(slice_begin));
+      lhs = xla::DynamicUpdateSlice(
+          lhs, rhs, xla::ConstantR1<int64>(ctx->builder(), slice_begin));
     }
 
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, lhs));

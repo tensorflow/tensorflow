@@ -46,7 +46,7 @@ class OutOfMemoryTest(xla_test.XLATestCase):
     def test_loop():
       size = int(2e8)
       while True:
-        with self.test_session():
+        with self.cached_session():
           # Force the compiled code to not be constant by feeding in a
           # parameter.
           p = array_ops.placeholder(dtypes.float32, shape=[2, 1, 1])

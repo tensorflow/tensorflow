@@ -14,9 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/inputs/utils.h"
-#include "tensorflow/core/platform/env.h"
 
 #include <vector>
+
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -29,12 +30,12 @@ bool FilesExist(const std::set<string>& files) {
   return FilesExist(std::vector<string>(files.begin(), files.end()), nullptr);
 }
 
-bool FileExists(const std::string& file, Status* status) {
+bool FileExists(const string& file, Status* status) {
   *status = Env::Default()->FileExists(file);
   return status->ok();
 }
 
-Status ReadGraphDefFromFile(const std::string& graph_def_pbtxt_path,
+Status ReadGraphDefFromFile(const string& graph_def_pbtxt_path,
                             GraphDef* result) {
   Status status;
   if (FileExists(graph_def_pbtxt_path, &status)) {

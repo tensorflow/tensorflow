@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -66,7 +67,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
             std::unique_ptr<CapturedFunction> captured_key_func,
@@ -75,7 +76,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
             std::unique_ptr<CapturedFunction> captured_finalize_func,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           captured_key_func_(std::move(captured_key_func)),
           captured_init_func_(std::move(captured_init_func)),
@@ -88,7 +89,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::GroupByReducer")}));
@@ -101,17 +102,20 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "GroupByReducerDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "GroupByReducerDatasetOp::Dataset";
+    }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       TF_RETURN_IF_ERROR(b->AddFunction(ctx, key_func().name()));
       TF_RETURN_IF_ERROR(b->AddFunction(ctx, init_func().name()));
       TF_RETURN_IF_ERROR(b->AddFunction(ctx, reduce_func().name()));
       TF_RETURN_IF_ERROR(b->AddFunction(ctx, finalize_func().name()));
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
       std::vector<Node*> key_func_other_arguments_node;
       DataTypeVector key_func_other_arguments_types;
@@ -183,8 +187,18 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
     class Iterator : public DatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
+          : DatasetIterator<Dataset>(params) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        TF_RETURN_IF_ERROR(
+            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+        TF_RETURN_IF_ERROR(dataset()->captured_key_func_->Instantiate(ctx));
+        TF_RETURN_IF_ERROR(dataset()->captured_init_func_->Instantiate(ctx));
+        TF_RETURN_IF_ERROR(dataset()->captured_reduce_func_->Instantiate(ctx));
+        TF_RETURN_IF_ERROR(
+            dataset()->captured_finalize_func_->Instantiate(ctx));
+        return Status::OK();
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
@@ -249,13 +263,14 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
         TF_RETURN_IF_ERROR(
             dataset()->captured_finalize_func_->RunWithBorrowedArgs(
                 ctx, states_[keys_[keys_index_++]], out_tensors));
+        *end_of_sequence = false;
         return Status::OK();
       }
 
      protected:
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
 
         if (end_of_input_) {
           TF_RETURN_IF_ERROR(
@@ -305,7 +320,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
 
         if (reader->Contains(full_name("end_of_input"))) end_of_input_ = true;
 
@@ -419,4 +434,5 @@ REGISTER_KERNEL_BUILDER(Name("GroupByReducerDataset").Device(DEVICE_CPU),
                         GroupByReducerDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

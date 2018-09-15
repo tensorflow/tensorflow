@@ -20,8 +20,10 @@ from __future__ import print_function
 
 from tensorflow.contrib.quantize.python import common
 from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -61,6 +63,29 @@ class CommonTest(test_util.TensorFlowTestCase):
       b = a + quantization_step_tensor
       _, step_val = sess.run([b, quantization_step_tensor])
       self.assertEqual(step_val, 2)
+
+  def testRerouteTensor(self):
+    a = constant_op.constant(1, name='a')
+    b = constant_op.constant(2, name='b')
+    c = constant_op.constant(3, name='c')
+    d = constant_op.constant(4, name='d')
+
+    add_ac = math_ops.add(a, c)
+    add_ad = math_ops.add(a, d)
+
+    # Ensure that before rerouting the inputs are what we think.
+    self._CheckOpHasInputs(add_ac.op, [a, c])
+    self._CheckOpHasInputs(add_ad.op, [a, d])
+
+    # references to tensor a should be replaced with b for all ops in
+    # can_modify. This means add_ac will be changed but add_ad will not.
+    common.RerouteTensor(b, a, can_modify=[add_ac.op])
+    self._CheckOpHasInputs(add_ac.op, [b, c])
+    self._CheckOpHasInputs(add_ad.op, [a, d])
+
+  def _CheckOpHasInputs(self, op, inputs):
+    for i in inputs:
+      self.assertIn(i, op.inputs)
 
 
 if __name__ == '__main__':

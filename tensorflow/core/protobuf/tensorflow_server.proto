@@ -46,6 +46,6 @@ message ServerDef {
 
   // The protocol to be used by this server.
   //
-  // Acceptable values include: "grpc".
+  // Acceptable values include: "grpc", "grpc+verbs".
   string protocol = 5;
 }

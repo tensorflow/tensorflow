@@ -4,8 +4,8 @@ Eager execution is a feature that makes TensorFlow execute operations
 immediately: concrete values are returned, instead of creating a computational
 graph that is executed later.
 
-A user guide is available: https://www.tensorflow.org/programmers_guide/eager
-([source file](../../../../docs_src/programmers_guide/eager.md))
+A user guide is available: https://www.tensorflow.org/guide/eager
+([source file](../../../../docs_src/guide/eager.md))
 
 We welcome feedback through [GitHub issues](https://github.com/tensorflow/tensorflow/labels/comp:eager).
 

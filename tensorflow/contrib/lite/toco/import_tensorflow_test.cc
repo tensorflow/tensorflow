@@ -20,11 +20,12 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace toco {
 
-using port::Status;
 using tensorflow::AttrValue;
 using tensorflow::DT_BOOL;
 using tensorflow::DT_FLOAT;
@@ -33,13 +34,53 @@ using tensorflow::DT_INT64;
 using tensorflow::DT_QUINT8;
 using tensorflow::DT_STRING;
 using tensorflow::NodeDef;
+using tensorflow::Status;
 
 namespace internal {
+using ConverterType = tensorflow::Status (*)(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model);
+using ConverterMapType = std::unordered_map<std::string, ConverterType>;
+
+ConverterMapType GetTensorFlowNodeConverterMap();
 Status ImportTensorFlowNode(const NodeDef&, const TensorFlowImportFlags&,
-                            Model*);
+                            Model*, const ConverterMapType&);
 }  // namespace internal
 
 namespace {
+
+Status ImportNode(const NodeDef& node, Model* model) {
+  const auto converter = internal::GetTensorFlowNodeConverterMap();
+  return internal::ImportTensorFlowNode(node, TensorFlowImportFlags(), model,
+                                        converter);
+}
+
+Status ImportNode(const NodeDef& node) {
+  Model model;
+  return ImportNode(node, &model);
+}
+
+NodeDef BuildNode(
+    const std::string& op,
+    const std::vector<std::initializer_list<int>>& output_shapes) {
+  NodeDef node;
+  node.set_op(op);
+  node.set_name("Node1");
+  node.add_input();
+  node.set_input(0, "Node0");
+
+  AttrValue::ListValue* shapes =
+      (*node.mutable_attr())["_output_shapes"].mutable_list();
+  for (const auto& output_shape : output_shapes) {
+    tensorflow::TensorShapeProto* shape = shapes->add_shape();
+    for (int64_t output_shape_dim : output_shape) {
+      auto shape_dim = shape->add_dim();
+      shape_dim->set_size(output_shape_dim);
+    }
+  }
+
+  return node;
+}
 
 class ShapeImportTest : public ::testing::TestWithParam<tensorflow::DataType> {
  protected:
@@ -101,11 +142,24 @@ class ShapeImportTest : public ::testing::TestWithParam<tensorflow::DataType> {
     SetAttrValue(t, &value_attr);
     (*node->mutable_attr())["value"] = value_attr;
   }
+};
 
-  Status ImportNode(const NodeDef& node) {
-    Model model;
-    return internal::ImportTensorFlowNode(node, TensorFlowImportFlags(),
-                                          &model);
+class TypeImportTest : public ::testing::TestWithParam<
+                           std::pair<tensorflow::DataType, ArrayDataType>> {
+ protected:
+  TypeImportTest() {}
+
+  void BuildUnaryNode(const std::string& op_name, tensorflow::DataType dtype,
+                      NodeDef* node) {
+    node->set_op(op_name);
+    node->set_name("Node1");
+
+    node->add_input();
+    node->set_input(0, "Node0");
+
+    AttrValue dtype_attr;
+    SetAttrValue(dtype, &dtype_attr);
+    (*node->mutable_attr())["T"] = dtype_attr;
   }
 };
 
@@ -117,9 +171,10 @@ TEST_P(ShapeImportTest, ShapeElementIsNegative) {
   NodeDef node;
   BuildConstNode({1, -2, 10}, GetParam(), 0, &node);
   auto status = ImportNode(node);
-  EXPECT_EQ(status.error_message(),
-            "Tensor shape should not include negative values (while processing "
-            "node 'Node1')");
+  EXPECT_EQ(
+      status.error_message(),
+      "Tensor shape should not include negative values\n\t (while processing "
+      "node 'Node1')");
 }
 INSTANTIATE_TEST_CASE_P(ShapeElementIsNegative, ShapeImportTest,
                         ::testing::ValuesIn(TestTypes()));
@@ -129,7 +184,7 @@ TEST_P(ShapeImportTest, ShapeElementTooLarge) {
   BuildConstNode({3000000000}, GetParam(), 0, &node);
   auto status = ImportNode(node);
   EXPECT_EQ(status.error_message(),
-            "Shape element overflows (while processing node 'Node1')");
+            "Shape element overflows\n\t (while processing node 'Node1')");
 }
 INSTANTIATE_TEST_CASE_P(ShapeElementTooLarge, ShapeImportTest,
                         ::testing::ValuesIn(TestTypes()));
@@ -139,7 +194,7 @@ TEST_P(ShapeImportTest, ShapeTooLarge) {
   BuildConstNode({1000000, 2000000, 2000000, 2000000}, GetParam(), 0, &node);
   auto status = ImportNode(node);
   EXPECT_EQ(status.error_message(),
-            "Tensor shape is too large (while processing node 'Node1')");
+            "Tensor shape is too large\n\t (while processing node 'Node1')");
 }
 INSTANTIATE_TEST_CASE_P(ShapeTooLarge, ShapeImportTest,
                         ::testing::ValuesIn(TestTypes()));
@@ -150,11 +205,84 @@ TEST_P(ShapeImportTest, ValidShapeButZeroElements) {
   auto status = ImportNode(node);
   EXPECT_THAT(status.error_message(),
               ::testing::MatchesRegex(
-                  "Neither input_content nor .*_val have the right dimensions "
-                  "for this .* tensor .while processing node 'Node1'."));
+                  "Neither input_content .0. nor .*_val .0. have the right "
+                  "dimensions .8. for this .* tensor\n\t .while processing "
+                  "node 'Node1'."));
 }
 INSTANTIATE_TEST_CASE_P(ValidShapeButZeroElements, ShapeImportTest,
                         ::testing::ValuesIn(TestTypes()));
+
+std::vector<std::pair<tensorflow::DataType, ArrayDataType>> UnaryTestTypes() {
+  return {{DT_FLOAT, ArrayDataType::kFloat},
+          {DT_INT32, ArrayDataType::kInt32},
+          {DT_INT64, ArrayDataType::kInt64}};
+}
+
+TEST_P(TypeImportTest, BasicTypeInference) {
+  NodeDef node;
+  BuildUnaryNode("Atan", GetParam().first, &node);
+
+  Model model;
+  EXPECT_TRUE(ImportNode(node, &model).ok());
+
+  ASSERT_THAT(model.operators.size(), ::testing::Ge(1));
+  ASSERT_EQ(model.operators[0]->type, OperatorType::kUnsupported);
+  const TensorFlowUnsupportedOperator* op =
+      static_cast<const TensorFlowUnsupportedOperator*>(
+          model.operators[0].get());
+  ASSERT_THAT(op->output_data_types, ::testing::ElementsAre(GetParam().second));
+}
+INSTANTIATE_TEST_CASE_P(BasicTypeInference, TypeImportTest,
+                        ::testing::ValuesIn(UnaryTestTypes()));
+
+TEST(ImportTest, FailedTypeInference) {
+  // Create a unary op with no Type ("T") annotation.
+  NodeDef node;
+  node.set_op("Atan");
+  node.set_name("Node1");
+  node.add_input();
+  node.set_input(0, "Node0");
+
+  Model model;
+  EXPECT_TRUE(ImportNode(node, &model).ok());
+
+  ASSERT_THAT(model.operators.size(), ::testing::Ge(1));
+  ASSERT_EQ(model.operators[0]->type, OperatorType::kUnsupported);
+  const TensorFlowUnsupportedOperator* op =
+      static_cast<const TensorFlowUnsupportedOperator*>(
+          model.operators[0].get());
+  ASSERT_TRUE(op->output_data_types.empty());
+}
+
+TEST(ImportTest, UnsupportedOpWithOutputShapes) {
+  // Create an unsupported op with output shapes.
+  Model model;
+  EXPECT_TRUE(ImportNode(BuildNode("Atan", {{1, 2}, {2, 3}}), &model).ok());
+  ASSERT_THAT(model.operators.size(), ::testing::Ge(1));
+  ASSERT_EQ(model.operators[0]->type, OperatorType::kUnsupported);
+  const TensorFlowUnsupportedOperator* op =
+      static_cast<const TensorFlowUnsupportedOperator*>(
+          model.operators[0].get());
+
+  // The output shapes should be imported.
+  ASSERT_EQ(op->output_shapes.size(), 2);
+  ASSERT_THAT(op->output_shapes[0].dims(), ::testing::ElementsAre(1, 2));
+  ASSERT_THAT(op->output_shapes[1].dims(), ::testing::ElementsAre(2, 3));
+}
+
+TEST(ImportTest, UnsupportedOpWithWildcardOutputShapes) {
+  // Create an unsupported op with wildcard output shapes.
+  Model model;
+  EXPECT_TRUE(ImportNode(BuildNode("Atan", {{-1, 2}}), &model).ok());
+  ASSERT_THAT(model.operators.size(), ::testing::Ge(1));
+  ASSERT_EQ(model.operators[0]->type, OperatorType::kUnsupported);
+  const TensorFlowUnsupportedOperator* op =
+      static_cast<const TensorFlowUnsupportedOperator*>(
+          model.operators[0].get());
+
+  // Wildcard shapes aren't yet supported.
+  ASSERT_TRUE(op->output_shapes.empty());
+}
 
 }  // namespace
 }  // namespace toco

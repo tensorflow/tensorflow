@@ -20,13 +20,13 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class ExtractImagePatches(XLATestCase):
+class ExtractImagePatches(xla_test.XLATestCase):
   """Functional tests for ExtractImagePatches op."""
 
   def _VerifyValues(self, image, ksizes, strides, rates, padding, patches):
@@ -44,7 +44,7 @@ class ExtractImagePatches(XLATestCase):
     strides = [1] + strides + [1]
     rates = [1] + rates + [1]
 
-    with self.test_session():
+    with self.cached_session():
       image_placeholder = array_ops.placeholder(dtypes.float32)
       with self.test_scope():
         out_tensor = array_ops.extract_image_patches(

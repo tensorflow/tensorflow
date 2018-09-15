@@ -33,6 +33,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 __all__ = [
@@ -159,12 +160,19 @@ class Bijector(object):
 
   3. `log_det_jacobian(x)`
 
-     "The log of the determinant of the matrix of all first-order partial
-     derivatives of the inverse function."
+     "The log of the absolute value of the determinant of the matrix of all
+     first-order partial derivatives of the inverse function."
 
      Useful for inverting a transformation to compute one probability in terms
      of another. Geometrically, the Jacobian determinant is the volume of the
      transformation and is used to scale the probability.
+
+     We take the absolute value of the determinant before log to avoid NaN
+     values.  Geometrically, a negative determinant corresponds to an
+     orientation-reversing transformation.  It is ok for us to discard the sign
+     of the determinant because we only integrate everywhere-nonnegative
+     functions (probability densities) and the correct orientation is always the
+     one that produces a nonnegative integrand.
 
   By convention, transformations of random variables are named in terms of the
   forward transformation. The forward transformation creates samples, the
@@ -527,8 +535,6 @@ class Bijector(object):
       ValueError:  If a member of `graph_parents` is not a `Tensor`.
     """
     self._graph_parents = graph_parents or []
-    forward_min_event_ndims = get_static_value(forward_min_event_ndims)
-    inverse_min_event_ndims = get_static_value(inverse_min_event_ndims)
 
     if forward_min_event_ndims is None and inverse_min_event_ndims is None:
       raise ValueError("Must specify at least one of `forward_min_event_ndims` "
@@ -538,12 +544,23 @@ class Bijector(object):
     elif forward_min_event_ndims is None:
       forward_min_event_ndims = inverse_min_event_ndims
 
+    if not isinstance(forward_min_event_ndims, int):
+      raise TypeError("Expected forward_min_event_ndims to be of "
+                      "type int, got {}".format(
+                          type(forward_min_event_ndims).__name__))
+
+    if not isinstance(inverse_min_event_ndims, int):
+      raise TypeError("Expected inverse_min_event_ndims to be of "
+                      "type int, got {}".format(
+                          type(inverse_min_event_ndims).__name__))
+
     if forward_min_event_ndims < 0:
       raise ValueError("forward_min_event_ndims must be a non-negative "
                        "integer.")
     if inverse_min_event_ndims < 0:
       raise ValueError("inverse_min_event_ndims must be a non-negative "
                        "integer.")
+
     self._forward_min_event_ndims = forward_min_event_ndims
     self._inverse_min_event_ndims = inverse_min_event_ndims
     self._is_constant_jacobian = is_constant_jacobian
@@ -994,13 +1011,6 @@ class Bijector(object):
   def _reduce_jacobian_det_over_event(
       self, y, ildj, min_event_ndims, event_ndims):
     """Reduce jacobian over event_ndims - min_event_ndims."""
-    assert_static(min_event_ndims)
-
-    if not self.is_constant_jacobian:
-      return math_ops.reduce_sum(
-          ildj,
-          self._get_event_reduce_dims(min_event_ndims, event_ndims))
-
     # In this case, we need to tile the Jacobian over the event and reduce.
     y_rank = array_ops.rank(y)
     y_shape = array_ops.shape(y)[
@@ -1012,7 +1022,7 @@ class Bijector(object):
         axis=self._get_event_reduce_dims(min_event_ndims, event_ndims))
     # The multiplication by ones can change the inferred static shape so we try
     # to recover as much as possible.
-    event_ndims_ = get_static_value(event_ndims)
+    event_ndims_ = self._maybe_get_static_event_ndims(event_ndims)
     if (event_ndims_ is not None and
         y.shape.ndims is not None and
         ildj.shape.ndims is not None):
@@ -1027,8 +1037,7 @@ class Bijector(object):
 
   def _get_event_reduce_dims(self, min_event_ndims, event_ndims):
     """Compute the reduction dimensions given event_ndims."""
-    assert_static(min_event_ndims)
-    event_ndims_ = get_static_value(event_ndims, np.int32)
+    event_ndims_ = self._maybe_get_static_event_ndims(event_ndims)
 
     if event_ndims_ is not None:
       return [-index for index in range(1, event_ndims_ - min_event_ndims + 1)]
@@ -1038,10 +1047,18 @@ class Bijector(object):
 
   def _check_valid_event_ndims(self, min_event_ndims, event_ndims):
     """Check whether event_ndims is atleast min_event_ndims."""
-    assert_static(min_event_ndims)
-    event_ndims_ = get_static_value(event_ndims, np.int32)
+    event_ndims = ops.convert_to_tensor(event_ndims, name="event_ndims")
+    event_ndims_ = tensor_util.constant_value(event_ndims)
     assertions = []
+
+    if not event_ndims.dtype.is_integer:
+      raise ValueError("Expected integer dtype, got dtype {}".format(
+          event_ndims.dtype))
+
     if event_ndims_ is not None:
+      if event_ndims.shape.ndims != 0:
+        raise ValueError("Expected scalar event_ndims, got shape {}".format(
+            event_ndims.shape))
       if min_event_ndims > event_ndims_:
         raise ValueError("event_ndims ({}) must be larger than "
                          "min_event_ndims ({})".format(
@@ -1049,23 +1066,29 @@ class Bijector(object):
     elif self.validate_args:
       assertions += [
           check_ops.assert_greater_equal(event_ndims, min_event_ndims)]
+
+    if event_ndims.shape.is_fully_defined():
+      if event_ndims.shape.ndims != 0:
+        raise ValueError("Expected scalar shape, got ndims {}".format(
+            event_ndims.shape.ndims))
+
+    elif self.validate_args:
+      assertions += [
+          check_ops.assert_rank(event_ndims, 0, message="Expected scalar.")]
     return assertions
 
+  def _maybe_get_static_event_ndims(self, event_ndims):
+    """Helper which returns tries to return an integer static value."""
+    event_ndims_ = distribution_util.maybe_get_static_value(event_ndims)
 
-def get_static_value(x, dtype=None):
-  """Helper which returns static value; casting when dtype is preferred."""
-  if x is None:
-    return x
-  try:
-    x_ = tensor_util.constant_value(x)
-  except TypeError:
-    x_ = x
-  if x_ is None or dtype is None:
-    return x_
-  return np.array(x_, dtype)
+    if isinstance(event_ndims_, (np.generic, np.ndarray)):
+      if event_ndims_.dtype not in (np.int32, np.int64):
+        raise ValueError("Expected integer dtype, got dtype {}".format(
+            event_ndims_.dtype))
 
+      if isinstance(event_ndims_, np.ndarray) and len(event_ndims_.shape):
+        raise ValueError("Expected a scalar integer, got {}".format(
+            event_ndims_))
+      event_ndims_ = int(event_ndims_)
 
-def assert_static(x):
-  """Helper which asserts that input arg is known statically."""
-  if x is None or type(x) != type(get_static_value(x)):  # pylint: disable=unidiomatic-typecheck
-    raise TypeError("Input must be known statically.")
+    return event_ndims_

@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/bfloat16_conversion_folding.h"
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -182,14 +182,25 @@ Status BFloat16ConversionFoldingVisitor::DefaultAction(HloInstruction* hlo) {
 
 Status BFloat16ConversionFoldingVisitor::HandleCrossReplicaSum(
     HloInstruction* crs) {
-  if (!ShapeUtil::IsTuple(crs->shape()) ||
-      !bfloat16_support_->SupportsMixedPrecisions(*crs)) {
-    return DefaultAction(crs);
-  }
-
   // First use DefaultAction() to handle the operands. It can't handle
   // tuple-shaped output.
   TF_RETURN_IF_ERROR(DefaultAction(crs));
+
+  if (!bfloat16_support_->SupportsMixedPrecisions(*crs)) {
+    return Status::OK();
+  }
+
+  // If the output is not a tuple, we don't need special handling.
+  if (!ShapeUtil::IsTuple(crs->shape())) {
+    return Status::OK();
+  }
+
+  // If crs is the root instruction, we should keep its original output type.
+  // The root instruction implicitly has a use from being the result of the
+  // computation, and the code below does not take this use into account.
+  if (crs == computation_->root_instruction()) {
+    return Status::OK();
+  }
 
   // Then do per-tuple-element handling on the output.
   std::vector<std::vector<HloInstruction*>> per_tuple_element_gtes(

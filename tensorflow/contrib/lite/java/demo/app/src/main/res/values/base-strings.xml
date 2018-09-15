@@ -16,7 +16,7 @@
 -->
 
 <resources>
-    <string name="app_name">TfLiteCameraDemo</string>
+    <string name="app_name">TfLite Camera Demo</string>
     <string name="intro_message">
         <![CDATA[
 
@@ -27,4 +27,5 @@
 
         ]]>
     </string>
+    <string name="threads">Threads:</string>
 </resources>

@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -31,12 +31,6 @@ namespace xla {
 // data from the host to the device.
 std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
                                               Client* client);
-
-// Returns vector of GlobalData handles of fake data (created using
-// MakeFakeDataOrDie) that are correctly shaped arguments for the given
-// computation.
-std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(
-    const Computation& computation, Client* client);
 
 // Returns vector of GlobalData handles of fake data (created using
 // MakeFakeDataOrDie) that are correctly shaped arguments for the given

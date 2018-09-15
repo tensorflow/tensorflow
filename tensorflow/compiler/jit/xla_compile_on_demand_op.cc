@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 
@@ -48,13 +49,14 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
                                  const XlaCompiler::CompilationResult* result,
                                  xla::LocalExecutable* executable) {
   std::map<int, OptionalTensor> variables = GetVariables(ctx);
-  int64 num_resource_args = variables.size();
 
   xla::LocalClient* client = metadata.client();
 
   // Builds an XLA allocator for the device.
   XlaComputationLaunchContext launch_context(
-      num_resource_args, client, client->backend().memory_allocator(), true);
+      client, client->backend().memory_allocator(),
+      /*allocate_xla_tensors=*/true,
+      /*use_multiple_streams=*/metadata.UseMultipleStreams());
 
   launch_context.PopulateInputs(ctx, result, variables);
 
@@ -62,17 +64,22 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
   TF_RET_CHECK(stream);
 
-  VLOG(2) << "Executing computation.";
+  VLOG(2) << "Executing computation: " << name();
+  for (const xla::ShapedBuffer* arg : launch_context.arguments()) {
+    VLOG(2) << name() << ": " << *arg;
+  }
   xla::ExecutableRunOptions run_options;
   run_options.set_stream(stream);
   run_options.set_allocator(client->backend().memory_allocator());
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
-  run_options.set_rng_seed(ctx->step_id());
+  run_options.set_rng_seed(GetXLARandomSeed());
 
-  auto run_result = executable->Run(launch_context.arguments(), run_options);
+  xla::StatusOr<xla::ScopedShapedBuffer> run_result =
+      executable->Run(launch_context.arguments(), run_options);
   TF_RETURN_IF_ERROR(run_result.status());
 
-  launch_context.PopulateOutputs(ctx, result, run_result.ConsumeValueOrDie());
+  TF_RETURN_IF_ERROR(launch_context.PopulateOutputs(
+      ctx, result, run_result.ConsumeValueOrDie()));
   return Status::OK();
 }
 
@@ -152,16 +159,25 @@ Status XlaCompileOnDemandOp::Compile(
   core::ScopedUnref cache_ref(cache);
 
   XlaCompiler::Options options;
-  DeviceType device_type = metadata.jit_device_type();
-  options.device_type = &device_type;
+  options.device_type = metadata.jit_device_type();
   options.client = metadata.client();
   options.flib_def =
       new FunctionLibraryDefinition(OpRegistry::Global(), FunctionDefLibrary{});
+  options.shape_representation_fn = metadata.shape_representation_fn();
+
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.is_entry_computation = true;
+  // Optimization: don't resolve constants. If we resolve constants we never
+  // emit them on the device, meaning that if they are needed by a following
+  // computation the host has to transfer them.
+  compile_options.resolve_compile_time_constants = false;
+  // Optimization: where possible, have the computation return a naked array
+  // rather than a one-element tuple.
+  compile_options.always_return_tuple = false;
 
   std::map<int, OptionalTensor> variable_args = GetVariables(ctx);
   return cache->CompileSingleOp(options, constant_arguments, variable_args, ctx,
-                                result, executable,
-                                /*compile_options=*/nullptr);
+                                result, executable, compile_options);
 }
 
 void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {

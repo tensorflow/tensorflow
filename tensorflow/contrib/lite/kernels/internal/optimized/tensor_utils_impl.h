@@ -17,7 +17,11 @@ limitations under the License.
 
 // TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
-#include "tensorflow/contrib/lite/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+
+#if defined(_MSC_VER)
+#define __restrict__ __restrict
+#endif
 
 #ifndef USE_NEON
 #if defined(__ARM_NEON__) || defined(__ARM_NEON)
@@ -82,6 +86,14 @@ void NeonBatchVectorBatchVectorDotProduct(const float* vector1,
                                           int n_batch, float* result,
                                           int result_stride);
 
+// Cwise product of a vector and a batch-vector.
+void PortableVectorBatchVectorCwiseProduct(const float* vector, int v_size,
+                                           const float* batch_vector,
+                                           int n_batch, float* result);
+void NeonVectorBatchVectorCwiseProduct(const float* vector, int v_size,
+                                       const float* batch_vector, int n_batch,
+                                       float* result);
+
 // Cwise product and accumulate of a vector and a batch-vector. Since it's a MAC
 // operation, the assumption here is that result array is initialized to valid
 // values.
@@ -105,6 +117,10 @@ void PortableClipVector(const float* vector, int v_size, float abs_limit,
 void NeonClipVector(const float* vector, int v_size, float abs_limit,
                     float* result);
 
+// Add another vector for each batch in the batch vector.
+void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
+                                  float* batch_vector);
+
 // Batch vector initialization with another vector.
 void PortableVectorBatchVectorAssign(const float* vector, int v_size,
                                      int n_batch, float* batch_vector);
@@ -124,8 +140,18 @@ void PortableCopyVector(const float* vector, int v_size, float* result);
 // Fill vector with 0.f.
 void PortableZeroVector(float* vector, int v_size);
 
+// Multiply all elements of vector with a scalar.
+void PortableVectorScalarMultiply(const int8_t* vector, int v_size, float scale,
+                                  float* result);
+void NeonVectorScalarMultiply(const int8_t* vector, int v_size, float scale,
+                              float* result);
+
 // Limit a float input f between +abs_limit and -abs_limit.
 float PortableClip(float f, float abs_limit);
+
+// Check if all entries of a vector are zero.
+bool PortableIsZeroVector(const float* vector, int v_size);
+bool NeonIsZeroVector(const float* vector, int v_size);
 
 // Symmetric quantizer.
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
@@ -149,6 +175,10 @@ void PortableReductionSumVector(const float* input_vector, float* output_vector,
                                 int output_size, int reduction_size);
 void NeonReductionSumVector(const float* input_vector, float* output_vector,
                             int output_size, int reduction_size);
+
+void PortableMeanStddevNormalization(const float* input_vector,
+                                     float* output_vector, int v_size,
+                                     int n_batch, float normalization_epsilon);
 
 }  // namespace tensor_utils
 }  // namespace tflite

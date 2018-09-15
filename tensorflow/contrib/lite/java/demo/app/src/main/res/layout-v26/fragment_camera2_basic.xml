@@ -28,7 +28,7 @@
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
+        android:layout_above="@+id/bottom_info_view"
         android:layout_alignParentEnd="false"
         android:layout_alignParentStart="true"
         android:layout_alignParentTop="false"
@@ -57,32 +57,39 @@
             android:textStyle="bold" />
 
     </LinearLayout>
+    <LinearLayout
+        android:orientation="horizontal"
+        android:background="#513400"
+        android:layout_alignParentBottom="true"
 
-    <RelativeLayout
-        android:id="@+id/control2"
         android:layout_width="match_parent"
-        android:layout_height="135dp"
-        android:layout_alignParentLeft="true"
-        android:layout_alignParentStart="true"
-        android:layout_alignTop="@+id/control"
-        android:layout_marginLeft="300dp"
-        android:layout_marginStart="300dp"
-        android:background="#bb7700">
-
+        android:id="@+id/bottom_info_view"
+        android:layout_marginBottom="10dp"
+        android:layout_height="50dp">
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:textColor="@android:color/white"
+            android:textAlignment="center"
+            android:gravity="center"
+            android:text="Threads:"/>
+        <NumberPicker
+            android:id="@+id/np"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="10dp"
+            android:theme="@style/AppTheme.Picker"
+            android:visibility="visible" />
         <ToggleButton
             android:id="@+id/button"
             android:textOff="@string/tflite"
             android:textOn="@string/nnapi"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_alignParentLeft="true"
-            android:layout_alignParentStart="true" />
+            android:layout_marginLeft="10dp"
+            android:background="#0000000f"
+            android:textColor="@android:color/white" />
+    </LinearLayout>
 
-        <NumberPicker
-            android:id="@+id/np"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_below="@+id/button"
-            android:visibility="visible" />
-    </RelativeLayout>
+
 </RelativeLayout>

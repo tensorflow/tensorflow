@@ -90,7 +90,7 @@ def CheckGradConfigsToTest():
 class DepthwiseConv2DTest(test.TestCase):
 
   # This is testing that depthwise_conv2d and depthwise_conv2d_native
-  # produce the same results.  It also tests that NCHW and NWHC
+  # produce the same results.  It also tests that NCHW and NHWC
   # formats agree, by comparing the depthwise_conv2d_native with
   # 'NCHW' format (with transposition) matches the 'NHWC' format using
   # the higher level interface.
@@ -142,7 +142,7 @@ class DepthwiseConv2DTest(test.TestCase):
       native_t1 = t1
       strides = [1, stride, stride, 1]
       if data_format == "NCHW":
-        # Transpose from NWHC input to NCHW
+        # Transpose from NHWC input to NCHW
         # Ex. [4, 5, 5, 48] to [4, 48, 5, 5]
         native_t1 = array_ops.transpose(t1, [0, 3, 1, 2])
         strides = [1, 1, stride, stride]
@@ -204,6 +204,19 @@ class DepthwiseConv2DTest(test.TestCase):
             data_type,
             use_gpu=True,
             grouped_conv=True)
+
+  def testDepthwiseConv2DWithUnknownShape(self):
+    # GitHub issue 22110.
+    if not test.is_gpu_available():
+      return
+    with self.test_session(use_gpu=True):
+      x = array_ops.placeholder(dtypes.float32)
+      f = np.ones([1, 1, 1, 1], np.float32)
+      v = nn_impl.depthwise_conv2d(
+          x, f, [1, 1, 1, 1], "VALID", rate=[2, 1], data_format="NCHW")
+      self.assertAllEqual(
+          np.ones([1, 1, 1, 1], np.float32),
+          v.eval(feed_dict={x: np.ones([1, 1, 1, 1], np.float32)}))
 
   def testDepthwiseConv2DFormat(self):
     if not test.is_gpu_available():
@@ -355,8 +368,8 @@ class DepthwiseConv2DTest(test.TestCase):
     graph = ops.get_default_graph()
     with self.test_session(graph=graph, use_gpu=use_gpu) as sess:
       tolerance = {
-          dtypes.float16: 2e-0,
-          dtypes.float32: 5e-4,
+          dtypes.float16: 4e-0,
+          dtypes.float32: 8e-4,
           dtypes.float64: 1e-12,
       }[data_type]
 
@@ -368,7 +381,7 @@ class DepthwiseConv2DTest(test.TestCase):
       native_input = input_tensor
       strides = [1, stride, stride, 1]
       if data_format == "NCHW":
-        # Transpose from NWHC input to NCHW
+        # Transpose from NHWC input to NCHW
         # Ex. [4, 5, 5, 48] to [4, 48, 5, 5]
         native_input = array_ops.transpose(input_tensor, [0, 3, 1, 2])
         input_shape = [

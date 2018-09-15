@@ -42,7 +42,7 @@ class TransposeCpuOp : public TransposeOp {
                      gtl::ArraySlice<int32> perm, Tensor* out) override;
 };
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL)
 class MklTransposeCpuOp : public TransposeOp {
  public:
   explicit MklTransposeCpuOp(OpKernelConstruction* ctx) : TransposeOp(ctx) {}
@@ -85,7 +85,7 @@ class ConjugateTransposeCpuOp : public TransposeOp {
   bool IsConjugate() const override { return true; }
 };
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL)
 class MklConjugateTransposeCpuOp : public TransposeOp {
  public:
   explicit MklConjugateTransposeCpuOp(OpKernelConstruction* ctx)

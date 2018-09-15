@@ -66,11 +66,11 @@ def _global_report_benchmark(
     if not isinstance(extras, dict):
       raise TypeError("extras must be a dict")
 
-    logging.info("Benchmark [%s] iters: %d, wall_time: %g, cpu_time: %g,"
-                 "throughput: %g %s", name, iters if iters is not None else -1,
-                 wall_time if wall_time is not None else -1, cpu_time if
-                 cpu_time is not None else -1, throughput if
-                 throughput is not None else -1, str(extras) if extras else "")
+  logging.info("Benchmark [%s] iters: %d, wall_time: %g, cpu_time: %g,"
+               "throughput: %g %s", name, iters if iters is not None else -1,
+               wall_time if wall_time is not None else -1, cpu_time if
+               cpu_time is not None else -1, throughput if
+               throughput is not None else -1, str(extras) if extras else "")
 
   entries = test_log_pb2.BenchmarkEntries()
   entry = entries.entry.add()

@@ -217,7 +217,7 @@ class AdjustSaturationInYiqTest(test_util.TensorFlowTestCase):
         'gb_same',
         'rgb_same',
     ]
-    with self.test_session():
+    with self.cached_session():
       for x_shape in x_shapes:
         for test_style in test_styles:
           x_np = np.random.rand(*x_shape) * 255.

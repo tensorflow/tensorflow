@@ -68,15 +68,18 @@ class TimeSeriesRegressorTest(test.TestCase):
     eval_input_fn = input_pipeline.RandomWindowInputFn(
         input_pipeline.NumpyReader(features), shuffle_seed=3, num_threads=1,
         batch_size=16, window_size=16)
-    first_estimator.train(input_fn=train_input_fn, steps=5)
-    first_loss_before_fit = first_estimator.evaluate(
-        input_fn=eval_input_fn, steps=1)["loss"]
-    first_estimator.train(input_fn=train_input_fn, steps=50)
+    first_estimator.train(input_fn=train_input_fn, steps=1)
+    first_evaluation = first_estimator.evaluate(
+        input_fn=eval_input_fn, steps=1)
+    first_loss_before_fit = first_evaluation["loss"]
+    self.assertAllEqual(first_loss_before_fit, first_evaluation["average_loss"])
+    self.assertAllEqual([], first_loss_before_fit.shape)
+    first_estimator.train(input_fn=train_input_fn, steps=1)
     first_loss_after_fit = first_estimator.evaluate(
         input_fn=eval_input_fn, steps=1)["loss"]
-    self.assertLess(first_loss_after_fit, first_loss_before_fit)
+    self.assertAllEqual([], first_loss_after_fit.shape)
     second_estimator = estimator_fn(model_dir, exogenous_feature_columns)
-    second_estimator.train(input_fn=train_input_fn, steps=2)
+    second_estimator.train(input_fn=train_input_fn, steps=1)
     whole_dataset_input_fn = input_pipeline.WholeDatasetInputFn(
         input_pipeline.NumpyReader(features))
     whole_dataset_evaluation = second_estimator.evaluate(
@@ -213,6 +216,15 @@ class TimeSeriesRegressorTest(test.TestCase):
           exogenous_feature_columns=exogenous_feature_columns)
     self._fit_restore_fit_test_template(_estimator_fn, dtype=dtype)
 
+  def test_structural_ensemble_numpy_input(self):
+    numpy_data = {"times": numpy.arange(50),
+                  "values": numpy.random.normal(size=[50])}
+    estimators.StructuralEnsembleRegressor(
+        num_features=1, periodicities=[], model_dir=self.get_temp_dir(),
+        config=_SeedRunConfig()).train(
+            input_pipeline.WholeDatasetInputFn(
+                input_pipeline.NumpyReader(numpy_data)),
+            steps=1)
 
 if __name__ == "__main__":
   test.main()

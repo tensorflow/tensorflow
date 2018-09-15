@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_TRACING_H_
-#define TENSORFLOW_PLATFORM_TRACING_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_TRACING_H_
+#define TENSORFLOW_CORE_PLATFORM_TRACING_H_
 
 // Tracing interface
 
@@ -155,6 +155,10 @@ class TraceCollector {
       StringPiece name_part1, StringPiece name_part2,
       bool is_expensive) const = 0;
 
+  // Returns true if this activity handle tracking is enabled for an op of the
+  // given expensiveness.
+  virtual bool IsEnabled(bool is_expensive) const = 0;
+
  protected:
   static string ConcatenateNames(StringPiece first, StringPiece second);
 
@@ -238,4 +242,4 @@ const char* GetLogDir();
 #include "tensorflow/core/platform/default/tracing_impl.h"
 #endif
 
-#endif  // TENSORFLOW_PLATFORM_TRACING_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_TRACING_H_

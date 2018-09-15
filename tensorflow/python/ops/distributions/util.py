@@ -33,43 +33,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-
-
-def assert_close(
-    x, y, data=None, summarize=None, message=None, name="assert_close"):
-  """Assert that x and y are within machine epsilon of each other.
-
-  Args:
-    x: Floating-point `Tensor`
-    y: Floating-point `Tensor`
-    data: The tensors to print out if the condition is `False`. Defaults to
-      error message and first few entries of `x` and `y`.
-    summarize: Print this many entries of each tensor.
-    message: A string to prefix to the default message.
-    name: A name for this operation (optional).
-
-  Returns:
-    Op raising `InvalidArgumentError` if |x - y| > machine epsilon.
-  """
-  message = message or ""
-  x = ops.convert_to_tensor(x, name="x")
-  y = ops.convert_to_tensor(y, name="y")
-
-  if data is None:
-    data = [
-        message,
-        "Condition x ~= y did not hold element-wise: x = ", x, "y = ", y
-    ]
-
-  if x.dtype.is_integer:
-    return check_ops.assert_equal(
-        x, y, data=data, summarize=summarize, message=message, name=name)
-
-  with ops.name_scope(name, "assert_close", [x, y, data]):
-    tol = np.finfo(x.dtype.as_numpy_dtype).eps
-    condition = math_ops.reduce_all(math_ops.less_equal(math_ops.abs(x-y), tol))
-    return control_flow_ops.Assert(
-        condition, data, summarize=summarize)
+from tensorflow.python.util import tf_inspect
 
 
 def assert_integer_form(
@@ -162,6 +126,31 @@ def same_dynamic_shape(a, b):
       lambda: constant_op.constant(False))
 
 
+def maybe_get_static_value(x, dtype=None):
+  """Helper which tries to return a static value.
+
+  Given `x`, extract it's value statically, optionally casting to a specific
+  dtype. If this is not possible, None is returned.
+
+  Args:
+    x: `Tensor` for which to extract a value statically.
+    dtype: Optional dtype to cast to.
+
+  Returns:
+    Statically inferred value if possible, otherwise None.
+  """
+  if x is None:
+    return x
+  try:
+    # This returns an np.ndarray.
+    x_ = tensor_util.constant_value(x)
+  except TypeError:
+    x_ = x
+  if x_ is None or dtype is None:
+    return x_
+  return np.array(x_, dtype)
+
+
 def get_logits_and_probs(logits=None,
                          probs=None,
                          multidimensional=False,
@@ -215,8 +204,12 @@ def get_logits_and_probs(logits=None,
         dependencies = [check_ops.assert_non_negative(probs)]
         if multidimensional:
           probs = embed_check_categorical_event_shape(probs)
-          dependencies += [assert_close(math_ops.reduce_sum(probs, -1), one,
-                                        message="probs does not sum to 1.")]
+          dependencies += [
+              check_ops.assert_near(
+                  math_ops.reduce_sum(probs, -1),
+                  one,
+                  message="probs does not sum to 1.")
+          ]
         else:
           dependencies += [check_ops.assert_less_equal(
               probs, one, message="probs has components greater than 1.")]
@@ -798,8 +791,8 @@ def fill_triangular(x, upper=False, name=None):
   Triangular matrix elements are filled in a clockwise spiral. See example,
   below.
 
-  If `x.get_shape()` is `[b1, b2, ..., bK, d]` then the output shape is `[b1,
-  b2, ..., bK, n, n]` where `n` is such that `d = n(n+1)/2`, i.e.,
+  If `x.get_shape()` is `[b1, b2, ..., bB, d]` then the output shape is
+  `[b1, b2, ..., bB, n, n]` where `n` is such that `d = n(n+1)/2`, i.e.,
   `n = int(np.sqrt(0.25 + 2. * m) - 0.5)`.
 
   Example:
@@ -888,10 +881,11 @@ def fill_triangular(x, upper=False, name=None):
     #   = 2 (n**2 / 2 + n / 2) - n**2
     #   = n**2 + n - n**2
     #   = n
+    ndims = prefer_static_rank(x)
     if upper:
-      x_list = [x, array_ops.reverse(x[..., n:], axis=[-1])]
+      x_list = [x, array_ops.reverse(x[..., n:], axis=[ndims - 1])]
     else:
-      x_list = [x[..., n:], array_ops.reverse(x, axis=[-1])]
+      x_list = [x[..., n:], array_ops.reverse(x, axis=[ndims - 1])]
     new_shape = (
         static_final_shape.as_list()
         if static_final_shape.is_fully_defined()
@@ -903,6 +897,74 @@ def fill_triangular(x, upper=False, name=None):
         num_upper=(-1 if upper else 0))
     x.set_shape(static_final_shape)
     return x
+
+
+def fill_triangular_inverse(x, upper=False, name=None):
+  """Creates a vector from a (batch of) triangular matrix.
+
+  The vector is created from the lower-triangular or upper-triangular portion
+  depending on the value of the parameter `upper`.
+
+  If `x.shape` is `[b1, b2, ..., bB, n, n]` then the output shape is
+  `[b1, b2, ..., bB, d]` where `d = n (n + 1) / 2`.
+
+  Example:
+
+  ```python
+  fill_triangular_inverse(
+    [[4, 0, 0],
+     [6, 5, 0],
+     [3, 2, 1]])
+
+  # ==> [1, 2, 3, 4, 5, 6]
+
+  fill_triangular_inverse(
+    [[1, 2, 3],
+     [0, 5, 6],
+     [0, 0, 4]], upper=True)
+
+  # ==> [1, 2, 3, 4, 5, 6]
+  ```
+
+  Args:
+    x: `Tensor` representing lower (or upper) triangular elements.
+    upper: Python `bool` representing whether output matrix should be upper
+      triangular (`True`) or lower triangular (`False`, default).
+    name: Python `str`. The name to give this op.
+
+  Returns:
+    flat_tril: (Batch of) vector-shaped `Tensor` representing vectorized lower
+      (or upper) triangular elements from `x`.
+  """
+
+  with ops.name_scope(name, "fill_triangular_inverse", values=[x]):
+    x = ops.convert_to_tensor(x, name="x")
+    if x.shape.with_rank_at_least(2)[-1].value is not None:
+      n = np.int32(x.shape[-1].value)
+      m = np.int32((n * (n + 1)) // 2)
+      static_final_shape = x.shape[:-2].concatenate([m])
+    else:
+      n = array_ops.shape(x)[-1]
+      m = (n * (n + 1)) // 2
+      static_final_shape = x.shape.with_rank_at_least(2)[:-2].concatenate(
+          [None])
+    ndims = prefer_static_rank(x)
+    if upper:
+      initial_elements = x[..., 0, :]
+      triangular_portion = x[..., 1:, :]
+    else:
+      initial_elements = array_ops.reverse(x[..., -1, :], axis=[ndims - 2])
+      triangular_portion = x[..., :-1, :]
+    rotated_triangular_portion = array_ops.reverse(
+        array_ops.reverse(triangular_portion, axis=[ndims - 1]),
+        axis=[ndims - 2])
+    consolidated_matrix = triangular_portion + rotated_triangular_portion
+    end_sequence = array_ops.reshape(
+        consolidated_matrix,
+        array_ops.concat([array_ops.shape(x)[:-2], [n * (n - 1)]], axis=0))
+    y = array_ops.concat([initial_elements, end_sequence[..., :m - n]], axis=-1)
+    y.set_shape(static_final_shape)
+    return y
 
 
 def tridiag(below=None, diag=None, above=None, name=None):
@@ -1271,6 +1333,43 @@ def pad(x, axis, front=False, back=False, value=0, count=1, name=None):
     if final_shape is not None:
       x.set_shape(final_shape)
     return x
+
+
+def parent_frame_arguments():
+  """Returns parent frame arguments.
+
+  When called inside a function, returns a dictionary with the caller's function
+  arguments. These are positional arguments and keyword arguments (**kwargs),
+  while variable arguments (*varargs) are excluded.
+
+  When called at global scope, this will return an empty dictionary, since there
+  are no arguments.
+
+  WARNING: If caller function argument names are overloaded before invoking
+  this method, then values will reflect the overloaded value. For this reason,
+  we recommend calling `parent_frame_arguments` at the beginning of the
+  function.
+  """
+  # All arguments and the names used for *varargs, and **kwargs
+  arg_names, variable_arg_name, keyword_arg_name, local_vars = (
+      tf_inspect._inspect.getargvalues(  # pylint: disable=protected-access
+          # Get the first frame of the caller of this method.
+          tf_inspect._inspect.stack()[1][0]))  # pylint: disable=protected-access
+
+  # Remove the *varargs, and flatten the **kwargs. Both are
+  # nested lists.
+  local_vars.pop(variable_arg_name, {})
+  keyword_args = local_vars.pop(keyword_arg_name, {})
+
+  final_args = {}
+  # Copy over arguments and their values. In general, local_vars
+  # may contain more than just the arguments, since this method
+  # can be called anywhere in a function.
+  for arg_name in arg_names:
+    final_args[arg_name] = local_vars.pop(arg_name)
+  final_args.update(keyword_args)
+
+  return final_args
 
 
 class AppendDocstring(object):

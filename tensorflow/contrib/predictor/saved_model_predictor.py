@@ -23,7 +23,6 @@ import logging
 
 from tensorflow.contrib.predictor import predictor
 from tensorflow.contrib.saved_model.python.saved_model import reader
-from tensorflow.contrib.saved_model.python.saved_model import signature_def_utils
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.saved_model import loader
@@ -68,23 +67,19 @@ def _get_signature_def(signature_def_key, export_dir, tags):
   metagraph_def = get_meta_graph_def(export_dir, tags)
 
   try:
-    signature_def = signature_def_utils.get_signature_def_by_key(
-        metagraph_def,
+    signature_def = metagraph_def.signature_def[signature_def_key]
+  except KeyError as e:
+    formatted_key = _DEFAULT_INPUT_ALTERNATIVE_FORMAT.format(
         signature_def_key)
-  except ValueError as e:
     try:
-      formatted_key = _DEFAULT_INPUT_ALTERNATIVE_FORMAT.format(
-          signature_def_key)
-      signature_def = signature_def_utils.get_signature_def_by_key(
-          metagraph_def, formatted_key)
-
-      logging.warning('Could not find signature def "%s". '
-                      'Using "%s" instead', signature_def_key, formatted_key)
-    except ValueError:
+      signature_def = metagraph_def.signature_def[formatted_key]
+    except KeyError:
       raise ValueError(
           'Got signature_def_key "{}". Available signatures are {}. '
           'Original error:\n{}'.format(
               signature_def_key, list(metagraph_def.signature_def), e))
+    logging.warning('Could not find signature def "%s". '
+                    'Using "%s" instead', signature_def_key, formatted_key)
   return signature_def
 
 
@@ -121,7 +116,8 @@ class SavedModelPredictor(predictor.Predictor):
                input_names=None,
                output_names=None,
                tags=None,
-               graph=None):
+               graph=None,
+               config=None):
     """Initialize a `CoreEstimatorPredictor`.
 
     Args:
@@ -142,6 +138,7 @@ class SavedModelPredictor(predictor.Predictor):
         the correct `SignatureDef`. Defaults to `DEFAULT_TAGS`.
       graph: Optional. The Tensorflow `graph` in which prediction should be
         done.
+      config: `ConfigProto` proto used to configure the session.
     Raises:
       ValueError: If more than one of signature_def_key OR signature_def OR
         (input_names AND output_names) is specified.
@@ -152,7 +149,7 @@ class SavedModelPredictor(predictor.Predictor):
     self._graph = graph or ops.Graph()
 
     with self._graph.as_default():
-      self._session = session.Session()
+      self._session = session.Session(config=config)
       loader.load(self._session, tags.split(','), export_dir)
 
     if input_names is None:

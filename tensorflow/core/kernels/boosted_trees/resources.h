@@ -70,6 +70,9 @@ class BoostedTreesEnsembleResource : public StampedResource {
 
   float node_value(const int32 tree_id, const int32 node_id) const;
 
+  void set_node_value(const int32 tree_id, const int32 node_id,
+                      const float logits);
+
   int32 GetNumLayersGrown(const int32 tree_id) const;
 
   void SetNumLayersGrown(const int32 tree_id, int32 new_num_layers) const;
@@ -98,6 +101,9 @@ class BoostedTreesEnsembleResource : public StampedResource {
 
   // Add a tree to the ensemble and returns a new tree_id.
   int32 AddNewTree(const float weight);
+
+  // Adds new tree with one node to the ensemble and sets node's value to logits
+  int32 AddNewTreeWithLogits(const float weight, const float logits);
 
   // Grows the tree by adding a split and leaves.
   void AddBucketizedSplitNode(const int32 tree_id, const int32 node_id,

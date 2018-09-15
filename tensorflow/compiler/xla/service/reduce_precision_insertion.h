@@ -59,7 +59,7 @@ class ReducePrecisionInsertion : public HloPassInterface {
 
   ~ReducePrecisionInsertion() override{};
 
-  tensorflow::StringPiece name() const override {
+  absl::string_view name() const override {
     return "reduce-precision-insertion";
   }
 

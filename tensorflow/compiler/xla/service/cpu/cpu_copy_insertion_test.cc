@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_copy_insertion.h"
 
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -52,7 +52,7 @@ int64 CountCopies(const HloModule& module) {
   return count;
 }
 
-class CpuCopyInsertionTest : public HloTestBase {
+class CpuCopyInsertionTest : public HloVerifiedTestBase {
  protected:
   void InsertCopies(HloModule* module) {
     CpuCopyInsertion copy_insertion;
@@ -74,14 +74,14 @@ TEST_F(CpuCopyInsertionTest, WhileBodyWithConstantRoot) {
   body_builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape_, "param"));
   body_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(123.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(123.0)));
   HloComputation* body = module->AddEmbeddedComputation(body_builder.Build());
 
   auto cond_builder = HloComputation::Builder("condition");
   cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape_, "param"));
   cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   HloComputation* condition =
       module->AddEmbeddedComputation(cond_builder.Build());
 
@@ -90,7 +90,7 @@ TEST_F(CpuCopyInsertionTest, WhileBodyWithConstantRoot) {
 
   module->AddEntryComputation(builder.Build());
 
-  InsertCopies(module.get());
+  InsertCopies(module);
 
   EXPECT_EQ(CountCopies(*module), 3);
 
@@ -114,7 +114,7 @@ TEST_F(CpuCopyInsertionTest, TupleCall) {
   auto sub_param = sub_builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape_, "param"));
   auto constant = sub_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(123.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(123.0)));
   auto add = sub_builder.AddInstruction(HloInstruction::CreateBinary(
       scalar_shape_, HloOpcode::kAdd, sub_param, constant));
   sub_builder.AddInstruction(
@@ -127,7 +127,7 @@ TEST_F(CpuCopyInsertionTest, TupleCall) {
 
   module->AddEntryComputation(builder.Build());
 
-  InsertCopies(module.get());
+  InsertCopies(module);
 
   EXPECT_EQ(CountCopies(*subcomputation), 2);
   EXPECT_THAT(subcomputation->root_instruction(),

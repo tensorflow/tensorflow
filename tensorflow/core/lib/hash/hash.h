@@ -15,8 +15,8 @@ limitations under the License.
 
 // Simple hash functions used for internal data structures
 
-#ifndef TENSORFLOW_LIB_HASH_HASH_H_
-#define TENSORFLOW_LIB_HASH_HASH_H_
+#ifndef TENSORFLOW_CORE_LIB_HASH_HASH_H_
+#define TENSORFLOW_CORE_LIB_HASH_HASH_H_
 
 #include <stddef.h>
 #include <stdint.h>
@@ -43,6 +43,12 @@ inline uint64 Hash64(const string& str) {
 inline uint64 Hash64Combine(uint64 a, uint64 b) {
   return a ^ (b + 0x9e3779b97f4a7800ULL + (a << 10) + (a >> 4));
 }
+
+// Combine two hashes in an order-independent way. This operation should be
+// associative and compute the same hash for a collection of elements
+// independent of traversal order. Note that it is better to combine hashes
+// symmetrically with addition rather than XOR, since (x^x) == 0 but (x+x) != 0.
+inline uint64 Hash64CombineUnordered(uint64 a, uint64 b) { return a + b; }
 
 // Hash functor suitable for use with power-of-two sized hashtables.  Use
 // instead of std::hash<T>.
@@ -104,4 +110,4 @@ struct hash<std::pair<T, U>> {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_HASH_HASH_H_
+#endif  // TENSORFLOW_CORE_LIB_HASH_HASH_H_

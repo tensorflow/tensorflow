@@ -88,16 +88,19 @@ def _profiled_run(self,
       to_profiles = self.profile_context._profile_candidates()
       for to_prof in to_profiles:
         cmd, opts, _ = to_prof
+        saved_views = self.profile_context._views.setdefault(cmd, {})
         if self.profile_context._debug:
           sys.stderr.write('debug: profiling %s step: %d\n' % (cmd, step))
         if cmd == 'graph':
-          self.profile_context.profiler.profile_graph(opts)
+          saved_views[step] = self.profile_context.profiler.profile_graph(opts)
         elif cmd == 'scope':
-          self.profile_context.profiler.profile_name_scope(opts)
+          saved_views[step] = self.profile_context.profiler.profile_name_scope(
+              opts)
         elif cmd == 'op':
-          self.profile_context.profiler.profile_operations(opts)
+          saved_views[step] = self.profile_context.profiler.profile_operations(
+              opts)
         elif cmd == 'code':
-          self.profile_context.profiler.profile_python(opts)
+          saved_views[step] = self.profile_context.profiler.profile_python(opts)
         else:
           raise ValueError('Unknown cmd: %s\n' % cmd)
       return ret
@@ -185,7 +188,29 @@ class ProfileContext(object):
     self._traced_steps = 0
     self._auto_profiles = []
     self._profiler = None
+    self._views = {}
     self._lock = threading.Lock()
+
+  def get_profiles(self, cmd):
+    """Returns profiling results for each step at which `cmd` was run.
+
+    Args:
+      cmd: string, profiling command used in an `add_auto_profiling` call.
+
+    Returns:
+      dict[int: (MultiGraphNodeProto | GraphNodeProto)]. Keys are steps at which
+      the profiling command was run. Values are the outputs of profiling.
+      For "code" and "op" commands this will be a `MultiGraphNodeProto`, for
+      "scope" and "graph" commands this will be a `GraphNodeProto.
+
+    Raises:
+      ValueError: if `cmd` was never run (either because no session.run call was
+      made or because there was no `add_auto_profiling` call with the specified
+      `cmd`.
+    """
+    if cmd not in self._views:
+      raise ValueError('No autoprofiler for command: {}, was run'.format(cmd))
+    return self._views[cmd]
 
   def add_auto_profiling(self, cmd, options, profile_steps):
     """Traces and profiles at some session run steps.

@@ -41,6 +41,17 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Compute padding for the given spatial dimension.
+int ConvBackpropDimensions::SpatialPadding(const Padding& padding,
+                                           int dim) const {
+  return (padding == VALID)
+             ? 0
+             : std::max<int>(
+                   0, static_cast<int>((output_size(dim) - 1) * stride(dim) +
+                                       (filter_size(dim) - 1) * dilation(dim) +
+                                       1 - input_size(dim)));
+}
+
 // The V2 version computes windowed output size with arbitrary dilation_rate,
 // while the original version only handles the cases where dilation_rates equal
 // to 1.
@@ -63,7 +74,7 @@ Status ConvBackpropExtractAndVerifyDimensionV2(
     return errors::InvalidArgument(
         label, ": Size of out_backprop doesn't match computed: ", "actual = ",
         dim->output_size, ", computed = ", out_size,
-        "spatial_dim: ", spatial_dim, " input: ", dim->input_size,
+        " spatial_dim: ", spatial_dim, " input: ", dim->input_size,
         " filter: ", dim->filter_size, " output: ", dim->output_size,
         " stride: ", dim->stride, " dilation: ", dim->dilation);
   }

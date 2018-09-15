@@ -16,22 +16,24 @@ limitations under the License.
 #ifndef TENSORFLOW_JAVA_SRC_GEN_CC_JAVA_DEFS_H_
 #define TENSORFLOW_JAVA_SRC_GEN_CC_JAVA_DEFS_H_
 
-#include <string>
 #include <list>
 #include <map>
+#include <string>
 #include <utility>
+
+#include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
 namespace java {
 
 // An enumeration of different modifiers commonly used in Java
 enum Modifier {
-  PACKAGE   = 0,
-  PUBLIC    = (1 << 0),
+  PACKAGE = 0,
+  PUBLIC = (1 << 0),
   PROTECTED = (1 << 1),
-  PRIVATE   = (1 << 2),
-  STATIC    = (1 << 3),
-  FINAL     = (1 << 4),
+  PRIVATE = (1 << 2),
+  STATIC = (1 << 3),
+  FINAL = (1 << 4),
 };
 
 class Annotation;
@@ -75,12 +77,8 @@ class Type {
     // Reflection API does
     return Type(Type::PRIMITIVE, "void");
   }
-  static Type Generic(const string& name) {
-    return Type(Type::GENERIC, name);
-  }
-  static Type Wildcard() {
-    return Type(Type::GENERIC, "");
-  }
+  static Type Generic(const string& name) { return Type(Type::GENERIC, name); }
+  static Type Wildcard() { return Type(Type::GENERIC, ""); }
   static Type Class(const string& name, const string& package = "") {
     return Type(Type::CLASS, name, package);
   }
@@ -98,6 +96,34 @@ class Type {
   }
   static Type IterableOf(const Type& type) {
     return Interface("Iterable").add_parameter(type);
+  }
+  static Type ForDataType(DataType data_type) {
+    switch (data_type) {
+      case DataType::DT_BOOL:
+        return Class("Boolean");
+      case DataType::DT_STRING:
+        return Class("String");
+      case DataType::DT_FLOAT:
+        return Class("Float");
+      case DataType::DT_DOUBLE:
+        return Class("Double");
+      case DataType::DT_UINT8:
+        return Class("UInt8", "org.tensorflow.types");
+      case DataType::DT_INT32:
+        return Class("Integer");
+      case DataType::DT_INT64:
+        return Class("Long");
+      case DataType::DT_RESOURCE:
+        // TODO(karllessard) create a Resource utility class that could be
+        // used to store a resource and its type (passed in a second argument).
+        // For now, we need to force a wildcard and we will unfortunately lose
+        // track of the resource type.
+        // Falling through...
+      default:
+        // Any other datatypes does not have a equivalent in Java and must
+        // remain a wildcard (e.g. DT_COMPLEX64, DT_QINT8, ...)
+        return Wildcard();
+    }
   }
   const Kind& kind() const { return kind_; }
   const string& name() const { return name_; }
@@ -226,9 +252,7 @@ class Method {
 // A definition of a documentation bloc for a Java element (JavaDoc)
 class Javadoc {
  public:
-  static Javadoc Create(const string& brief = "") {
-    return Javadoc(brief);
-  }
+  static Javadoc Create(const string& brief = "") { return Javadoc(brief); }
   const string& brief() const { return brief_; }
   const string& details() const { return details_; }
   Javadoc& details(const string& details) {

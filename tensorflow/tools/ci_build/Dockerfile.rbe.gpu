@@ -19,8 +19,8 @@ RUN /install/install_golang.sh
 
 # Install clang from pre-built package
 RUN cd /tmp && \
-    wget https://storage.googleapis.com/clang-builds-stable/clang-ubuntu16_04/clang_r323528.tar.gz && \
-    echo "26752d9f5785df07193fac8316ba5d5ba3bec36d970c29a1577360848818ac74  clang_r323528.tar.gz" | sha256sum -c && \
+    wget https://storage.googleapis.com/clang-builds-stable/clang-ubuntu16_04/clang_r337145.tar.gz && \
+    echo "ab98c63eb09c04112cc992bc95ebc0dcea8c5e9d0760438789be2896cdc69ff8  clang_r337145.tar.gz" | sha256sum -c && \
     tar -C /usr/local -xf clang_r323528.tar.gz && \
-    rm clang_r323528.tar.gz
+    rm clang_r337145.tar.gz
 

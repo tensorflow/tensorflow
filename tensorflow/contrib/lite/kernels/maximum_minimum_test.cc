@@ -126,10 +126,10 @@ TEST(MaximumOpTest, FloatWithBroadcastTest) {
 TEST(MaximumOpTest, Int32WithBroadcastTest) {
   std::initializer_list<int32_t> data1 = {1, 0, -1, -2, 3, 11};
   std::initializer_list<int32_t> data2 = {2};
-  TestModel<int32>(BuiltinOperator_MAXIMUM, {TensorType_INT32, {3, 1, 2}},
+  TestModel<int32_t>(BuiltinOperator_MAXIMUM, {TensorType_INT32, {3, 1, 2}},
                    {TensorType_INT32, {1}}, {TensorType_INT32, {3, 1, 2}},
                    data1, data2, {2, 2, 2, 2, 3, 11});
-  TestModel<int32>(BuiltinOperator_MINIMUM, {TensorType_INT32, {3, 1, 2}},
+  TestModel<int32_t>(BuiltinOperator_MINIMUM, {TensorType_INT32, {3, 1, 2}},
                    {TensorType_INT32, {1}}, {TensorType_INT32, {3, 1, 2}},
                    data1, data2, {1, 0, -1, -2, 2, 2});
 }

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <utility>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -25,7 +25,7 @@ limitations under the License.
 namespace xla {
 
 AsyncExecution::AsyncExecution(Backend* backend,
-                               std::vector<Backend::StreamPtr> streams,
+                               std::vector<StreamPool::Ptr> streams,
                                const ExecutionProfile& profile,
                                GlobalDataHandle result)
     : backend_(CHECK_NOTNULL(backend)),
@@ -37,23 +37,24 @@ AsyncExecution::AsyncExecution(Backend* backend,
   }
 }
 
-tensorflow::Status AsyncExecution::BlockUntilDone() const {
+Status AsyncExecution::BlockUntilDone() const {
   for (auto& stream : streams_) {
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 ExecutionTracker::ExecutionTracker() : next_handle_(1) {}
 
-ExecutionHandle ExecutionTracker::Register(
-    Backend* backend, std::vector<Backend::StreamPtr> streams,
-    const ExecutionProfile& profile, GlobalDataHandle result) {
+ExecutionHandle ExecutionTracker::Register(Backend* backend,
+                                           std::vector<StreamPool::Ptr> streams,
+                                           const ExecutionProfile& profile,
+                                           GlobalDataHandle result) {
   tensorflow::mutex_lock lock(execution_mutex_);
   int64 handle = next_handle_++;
   auto inserted = handle_to_execution_.emplace(
-      handle,
-      MakeUnique<AsyncExecution>(backend, std::move(streams), profile, result));
+      handle, absl::make_unique<AsyncExecution>(backend, std::move(streams),
+                                                profile, result));
   CHECK(inserted.second);
 
   ExecutionHandle execution_handle;
@@ -61,15 +62,15 @@ ExecutionHandle ExecutionTracker::Register(
   return execution_handle;
 }
 
-tensorflow::Status ExecutionTracker::Unregister(const ExecutionHandle& handle) {
+Status ExecutionTracker::Unregister(const ExecutionHandle& handle) {
   tensorflow::mutex_lock lock(execution_mutex_);
   auto it = handle_to_execution_.find(handle.handle());
   if (it == handle_to_execution_.end()) {
-    return NotFound("no execution record for execution handle: %lld",
+    return NotFound("no execution record for execution handle: %d",
                     handle.handle());
   }
   handle_to_execution_.erase(handle.handle());
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 StatusOr<const AsyncExecution*> ExecutionTracker::Resolve(
@@ -77,7 +78,7 @@ StatusOr<const AsyncExecution*> ExecutionTracker::Resolve(
   tensorflow::mutex_lock lock(execution_mutex_);
   auto it = handle_to_execution_.find(handle.handle());
   if (it == handle_to_execution_.end()) {
-    return NotFound("no execution record for execution handle: %lld",
+    return NotFound("no execution record for execution handle: %d",
                     handle.handle());
   }
   return it->second.get();

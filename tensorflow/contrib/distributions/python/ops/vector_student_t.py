@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.distributions import student_t
 from tensorflow.python.ops.distributions import transformed_distribution
+from tensorflow.python.util import deprecation
 
 
 class _VectorStudentT(transformed_distribution.TransformedDistribution):
@@ -121,6 +122,14 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                df,
                loc=None,
@@ -175,7 +184,7 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
         if one or more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
+    parameters = dict(locals())
     graph_parents = [df, loc, scale_identity_multiplier, scale_diag,
                      scale_tril, scale_perturb_factor, scale_perturb_diag]
     with ops.name_scope(name) as name:

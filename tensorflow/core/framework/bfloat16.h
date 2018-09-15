@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_BFLOAT16_H_
-#define TENSORFLOW_FRAMEWORK_BFLOAT16_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_BFLOAT16_H_
+#define TENSORFLOW_CORE_FRAMEWORK_BFLOAT16_H_
 
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/platform/byte_order.h"
@@ -60,4 +60,4 @@ void BFloat16ToFloat(const bfloat16* src, float* dst, int64 size);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_BFLOAT16_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_BFLOAT16_H_
