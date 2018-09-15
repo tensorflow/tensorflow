@@ -2609,7 +2609,8 @@ REGISTER_OP("ExtractVolumePatches")
       int32 rate_rows = rates[2];
       int32 rate_cols = rates[3];
 
-      int32 ksize_planes_eff = ksize_planes + (ksize_planes - 1) * (rate_planes - 1);
+      int32 ksize_planes_eff = ksize_planes +
+                               (ksize_planes - 1) * (rate_planes - 1);
       int32 ksize_rows_eff = ksize_rows + (ksize_rows - 1) * (rate_rows - 1);
       int32 ksize_cols_eff = ksize_cols + (ksize_cols - 1) * (rate_cols - 1);
       */
@@ -2619,10 +2620,12 @@ REGISTER_OP("ExtractVolumePatches")
       DimensionHandle in_rows_dim = c->Dim(input_shape, 2);
       DimensionHandle in_cols_dim = c->Dim(input_shape, 3);
       DimensionHandle output_depth_dim;
-      TF_RETURN_IF_ERROR(c->Multiply(
-          c->Dim(input_shape, 4), ksize_planes * ksize_rows * ksize_cols, &output_depth_dim));
+      TF_RETURN_IF_ERROR(c->Multiply(c->Dim(input_shape, 4),
+                                     ksize_planes * ksize_rows * ksize_cols,
+                                     &output_depth_dim));
 
-      if (!c->ValueKnown(in_planes_dim) || !c->ValueKnown(in_rows_dim) || !c->ValueKnown(in_cols_dim)) {
+      if (!c->ValueKnown(in_planes_dim) || !c->ValueKnown(in_rows_dim) ||
+          !c->ValueKnown(in_cols_dim)) {
         ShapeHandle output_shape =
             c->MakeShape({batch_size_dim, InferenceContext::kUnknownDim,
                           InferenceContext::kUnknownDim, output_depth_dim});
@@ -2647,8 +2650,9 @@ REGISTER_OP("ExtractVolumePatches")
       TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
           in_cols, ksize_cols, stride_cols, padding, &output_cols,
           &padding_before, &padding_after));
-      ShapeHandle output_shape = c->MakeShape(
-          {batch_size_dim, output_planes, output_rows, output_cols, output_depth_dim});
+      ShapeHandle output_shape =
+          c->MakeShape({batch_size_dim, output_planes, output_rows, output_cols,
+                        output_depth_dim});
       c->set_output(0, output_shape);
       return Status::OK();
     });

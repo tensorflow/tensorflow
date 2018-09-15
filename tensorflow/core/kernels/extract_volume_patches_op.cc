@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-/* 
-See extract_image_patches_op* files and docs for extract_image_patches in 
+/*
+See extract_image_patches_op* files and docs for extract_image_patches in
 ../ops/image_ops.cc.
 
 Rates are not supported as of now, but the comments hint how to edit the code
@@ -60,7 +60,7 @@ class ExtractVolumePatchesOp : public UnaryOp<T> {
       : UnaryOp<T>(context) {
     ParseAttributeVec5(context, "ksizes", &ksizes_);
     ParseAttributeVec5(context, "strides", &strides_);
-    //ParseAttributeVec5(context, "rates", &rates_);
+    // ParseAttributeVec5(context, "rates", &rates_);
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
   }
 
@@ -88,18 +88,20 @@ class ExtractVolumePatchesOp : public UnaryOp<T> {
 
     /*
     // TODO(hsgkim): enable rates
-    // Rates are disabled as of now due to Eigen's definitions of extract_volume_patch
-    // functions; none of them accept rates as its argument and rates are fixed to
-    // (1, 1, 1, 1, 1). A workaround has to be found for this.
+    // Rates are disabled as of now due to Eigen's definitions of
+    // `extract_volume_patch` functions; none of them accept rates
+    // as its argument and rates are fixed to (1, 1, 1, 1, 1). A
+    // workaround has to be found for this.
     // In order to enable rates, uncomment the following lines and use
-    // ksize_*_eff instead of ksize_* for the second argument of GetWindowedOutputSize
-    // calls.
+    // ksize_*_eff instead of ksize_* for the second argument of
+    // GetWindowedOutputSize calls.
 
     const int rate_planes = rates_[1];
     const int rate_rows = rates_[2];
     const int rate_cols = rates_[3];
 
-    const int ksize_planes_eff = ksize_planes + (ksize_planes - 1) * (rate_planes - 1);
+    const int ksize_planes_eff = ksize_planes +
+                                 (ksize_planes - 1) * (rate_planes - 1);
     const int ksize_rows_eff = ksize_rows + (ksize_rows - 1) * (rate_rows - 1);
     const int ksize_cols_eff = ksize_cols + (ksize_cols - 1) * (rate_cols - 1);
     */
@@ -116,8 +118,9 @@ class ExtractVolumePatchesOp : public UnaryOp<T> {
                    GetWindowedOutputSize(in_cols, ksize_cols, stride_cols,
                                          padding_, &out_cols, &pad_cols));
 
-    const std::vector<int64> out_sizes = {batch, out_planes, out_rows, out_cols,
-                                          ksize_planes * ksize_rows * ksize_cols * depth};
+    const std::vector<int64> out_sizes = {
+        batch, out_planes, out_rows, out_cols,
+        ksize_planes * ksize_rows * ksize_cols * depth};
     TensorShape out_shape(out_sizes);
 
     Tensor* output = nullptr;
@@ -129,9 +132,8 @@ class ExtractVolumePatchesOp : public UnaryOp<T> {
     }
 
     functor::ExtractVolumePatchesForward<Device, T>()(
-        context->eigen_device<Device>(), input.tensor<T, 5>(), 
-        ksize_planes, ksize_rows, ksize_cols, 
-        stride_planes, stride_rows, stride_cols, 
+        context->eigen_device<Device>(), input.tensor<T, 5>(), ksize_planes,
+        ksize_rows, ksize_cols, stride_planes, stride_rows, stride_cols,
         /* rate_planes, rate_rows, rate_cols, */
         BrainPadding2EigenPadding(padding_), output->tensor<T, 5>());
   }
@@ -161,16 +163,18 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER);
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 
-#define DECLARE_GPU_SPEC(T)                                             \
-  template <>                                                           \
-  void ExtractVolumePatchesForward<GPUDevice, T>::operator()(           \
-      const GPUDevice& d, typename TTypes<T, 5>::ConstTensor input,     \
-      int patch_planes, int patch_rows, int patch_cols,                 \
-      int stride_planes, int stride_rows, int stride_cols,              \
-      /* int rate_planes, int rate_rows, int rate_cols, */              \
-      const Eigen::PaddingType& padding,                                \
-      typename TTypes<T, 5>::Tensor output);                            \
+// clang-format off
+#define DECLARE_GPU_SPEC(T)                                         \
+  template <>                                                       \
+  void ExtractVolumePatchesForward<GPUDevice, T>::operator()(       \
+      const GPUDevice& d, typename TTypes<T, 5>::ConstTensor input, \
+      int patch_planes, int patch_rows, int patch_cols,             \
+      int stride_planes, int stride_rows, int stride_cols,          \
+      /* int rate_planes, int rate_rows, int rate_cols, */          \
+      const Eigen::PaddingType& padding,                            \
+      typename TTypes<T, 5>::Tensor output);                        \
   extern template struct ExtractVolumePatchesForward<GPUDevice, T>;
+// clang-format on
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 
