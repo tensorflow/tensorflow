@@ -4192,10 +4192,23 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
 
   // 2. Get inputs from both the nodes.
 
-  // Pad must have 2 inputs: "input" and paddings.
-  CHECK_EQ(pred->in_edges().size(), 2);
-  // Conv2D must have 2 inputs: pad output and Filter
-  CHECK_EQ(succ->in_edges().size(), 2);
+  // Pad must have 2 data inputs: "input" and paddings.
+  int PadDataInputEdges = 0;
+  for (const Edge* e : pred->in_edges()) {
+    if (!e->IsControlEdge()) {
+      PadDataInputEdges++;
+    }
+  }
+  CHECK_EQ(PadDataInputEdges, 2);
+
+  // Conv2D must have 2 data inputs: pad output and Filter
+  int ConvDataInputEdges = 0;
+  for (const Edge* e : succ->in_edges()) {
+    if (!e->IsControlEdge()) {
+      ConvDataInputEdges++;
+    }
+  }
+  CHECK_EQ(ConvDataInputEdges, 2);
 
   // We will use the node name of Conv2D as the name of new node
   // Build new node. We use same name as original node, but change the op
