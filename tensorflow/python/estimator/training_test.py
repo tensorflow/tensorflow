@@ -65,6 +65,8 @@ _INVALID_INPUT_FN_MSG = '`input_fn` must be callable'
 _INVALID_HOOK_MSG = 'All hooks must be `SessionRunHook` instances'
 _INVALID_MAX_STEPS_MSG = 'Must specify max_steps > 0'
 _INVALID_STEPS_MSG = 'Must specify steps > 0'
+_INVALID_NUM_STEPS_MSG = 'Must specify num_steps > 0'
+_INVALID_MIX_STEP_MSG = 'Must specify either max_steps or num_steps'
 _INVALID_NAME_MSG = '`name` must be string'
 _INVALID_EVAL_DELAY_SECS_MSG = 'Must specify start_delay_secs >= 0'
 _INVALID_EVAL_THROTTLE_SECS_MSG = 'Must specify throttle_secs >= 0'
@@ -209,6 +211,19 @@ class TrainSpecTest(test.TestCase):
     self.assertEqual(2, spec.max_steps)
     self.assertEqual(tuple(hooks), spec.hooks)
 
+  def testAllArgumentsSetWithNumSteps(self):
+    """Tests that no errors are raised when using num_steps."""
+    hooks = [_FakeHook()]
+    spec = training.TrainSpec(input_fn=lambda: 1, num_steps=2, hooks=hooks)
+    self.assertEqual(1, spec.input_fn())
+    self.assertEqual(2, spec.num_steps)
+    self.assertEqual(tuple(hooks), spec.hooks)
+  
+  def testInvalidMixSteps(self):
+    """Tests that error is raised when using both max_steps and num_steps."""
+    with self.assertRaisesRegexp(TypeError, _INVALID_MIX_STEP_MSG):
+      training.TrainSpec(input_fn=lambda:1, num_steps=2, max_steps=2, hooks=[])
+
   def testInvalidInputFn(self):
     with self.assertRaisesRegexp(TypeError, _INVALID_INPUT_FN_MSG):
       training.TrainSpec(input_fn='invalid')
@@ -216,6 +231,10 @@ class TrainSpecTest(test.TestCase):
   def testInvalidMaxStep(self):
     with self.assertRaisesRegexp(ValueError, _INVALID_MAX_STEPS_MSG):
       training.TrainSpec(input_fn=lambda: 1, max_steps=0)
+
+  def testInvalidNumStep(self):
+    with self.assertRaisesRegexp(ValueError, _INVALID_NUM_STEPS_MSG):
+      training.TrainSpec(input_fn=lambda: 1, num_steps=0)
 
   def testInvalidHook(self):
     with self.assertRaisesRegexp(TypeError, _INVALID_HOOK_MSG):
