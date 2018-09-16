@@ -31,7 +31,7 @@ class AdagradOptimizer(optimizer_v2.OptimizerV2):
 
   See this [paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf)
   or this
-  [intro](http://cs.stanford.edu/~ppasupat/a9online/uploads/proximal_notes.pdf).
+  [intro](https://ppasupat.github.io/a9online/uploads/proximal_notes.pdf).
   """
 
   def __init__(self, learning_rate, initial_accumulator_value=0.1,
