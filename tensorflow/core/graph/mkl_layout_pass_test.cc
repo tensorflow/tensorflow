@@ -1928,6 +1928,13 @@ static void InitGraph(const string& s, Graph* graph,
 class MklLayoutPassTest : public ::testing::Test {
  public:
   MklLayoutPassTest() : graph_(OpRegistry::Global()) {}
+  // Return Node* from the Node Name
+  Node* FindNode(const string& name) {
+    for (Node* node : graph_.nodes()) {
+      if (node->name() == name) return node;
+    }
+    LOG(FATAL) << name;
+  }
 
   void InitGraph(const string& s, const string& device = kCPUDevice) {
     ::tensorflow::InitGraph(s, &graph_, device);
@@ -1997,6 +2004,9 @@ REGISTER_OP("_MklInput2")
 REGISTER_OP("Output2")
     .Input("i: float")
     .Input("i1: float")
+    .SetIsStateful();
+REGISTER_OP("Output")
+    .Input("i: float")
     .SetIsStateful();
 
 /////////////////////////////////////////////////////////////////////
@@ -2358,6 +2368,107 @@ TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Positive) {
             "A:control->DMT/_0:control;A:control->DMT/_1:control;"
             "A:control->DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;"
             "DMT/_2->E:5;E->Z;Y->Z:1");
+}
+// Test if input control edges do not duplicate after merge.
+// If both the merging ops have input control edge from a common op
+// then, the merged op will have only one control edge from that 
+// common op.
+// padding is VALID type
+// A = input(image), A1 = input, B = input(paddings), 
+// C= Pad = input of conv2D,
+// D=input(filter), E = Conv2D, Z = Zeta
+// C=Pad(A,B); E=Conv2D(C,D); Z=Zeta(E,Y)
+// C:control->A1:control
+// E:control->A1:control
+// After layout pass
+// _MklPadWithConv2D(A, D, B, DMT/_0, DMT/_1, DMT/_2)
+// A1:control->E:control
+TEST_F(MklLayoutPassTest, Output_ControlEdge_PadWithConv2D_Positive) {
+  CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  InitGraph(
+      "node { name: 'A1' op: 'Input'}"
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Int32Input'}"
+      "node { name: 'C' op: 'Pad'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'Tpaddings'        value { type: DT_INT32 } }"
+      " input: ['A', 'B']}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'Conv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NHWC' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'VALID' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " input: ['C', 'D'] }"
+      "node { name: 'Y' op: 'Input'}"
+      "node { name: 'Z' op: 'Zeta'"
+      " attr {key: 'T'                 value { type: DT_FLOAT } }"
+      " input: ['E', 'Y']}");
+  Node* a1 = FindNode("A1");
+  Node* c = FindNode("C");
+  Node* e = FindNode("E");
+  const Edge* edge = graph_.AddControlEdge(a1, c);
+  const Edge* edge_1 = graph_.AddControlEdge(a1, e);
+  ASSERT_TRUE(edge != nullptr);
+  ASSERT_TRUE(edge_1 != nullptr);
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);A1(Input);B(Int32Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
+            "DMT/_2(Const);E(_MklPadWithConv2D);Y(Input);Z(Zeta)|A->E;"
+            "A1:control->E:control;A:control->DMT/_0:control;A:control->DMT/_1:control;"
+            "A:control->DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;"
+            "DMT/_2->E:5;E->Z;Y->Z:1");
+}
+// Test if output control edges does not duplicate after merge.
+// If both the merging ops have output control edge to a common op,
+// then after merge, the merged op will have only one control edge
+// to that commom op.
+// padding is VALID type
+// A = input(image), B = input(paddings), C= Pad = input of conv2D,
+// D=input(filter), E = Conv2D, Z = Zeta
+// C=Pad(A,B); E=Conv2D(C,D); Z=Zeta(E,Y)
+// C:control->A1:control
+// E:control->A1:control
+// After layout pass
+// _MklPadWithConv2D(A, D, B, DMT/_0, DMT/_1, DMT/_2)
+// E:control->A1:control (only one control edge)
+TEST_F(MklLayoutPassTest, ControlEdge_PadWithConv2D_Positive) {
+  CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  InitGraph(
+      "node { name: 'A1' op: 'Input'}"
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Int32Input'}"
+      "node { name: 'C' op: 'Pad'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'Tpaddings'        value { type: DT_INT32 } }"
+      " input: ['A', 'B']}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'Conv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NHWC' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'VALID' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " input: ['C', 'D'] }"
+      "node { name: 'Y' op: 'Input'}"
+      "node { name: 'Z' op: 'Zeta'"
+      " attr {key: 'T'                 value { type: DT_FLOAT } }"
+      " input: ['E', 'Y']}");
+  Node* a1 = FindNode("A1");
+  Node* c = FindNode("C");
+  Node* e = FindNode("E");
+  const Edge* edge = graph_.AddControlEdge(c, a1);
+  const Edge* edge_1 = graph_.AddControlEdge(e, a1);
+  ASSERT_TRUE(edge != nullptr);
+  ASSERT_TRUE(edge_1 != nullptr);
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);A1(Input);B(Int32Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
+            "DMT/_2(Const);E(_MklPadWithConv2D);Y(Input);Z(Zeta)|A->E;"
+            "A:control->DMT/_0:control;A:control->DMT/_1:control;"
+            "A:control->DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;"
+            "DMT/_2->E:5;E->Z;E:control->A1:control;Y->Z:1");
 }
 // Pad + Conv2D fusion with padding is VALID,
 // Input node pointing to both Pad and Conv2D
