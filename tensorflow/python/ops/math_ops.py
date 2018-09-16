@@ -2903,24 +2903,22 @@ def tensordot(a, b, axes, name=None):
         free_dims_static = None
       shape_a = array_ops.shape(a)
       rank_a = array_ops.rank(a)
-      # TODO(b/115583659): Automate this.
-      with ops.device("/cpu:0"):
-        axes = ops.convert_to_tensor(axes, dtype=dtypes.int32, name="axes")
-        axes = cast(axes >= 0, dtypes.int32) * axes + cast(
-            axes < 0, dtypes.int32) * (
-                axes + rank_a)
-        free, _ = array_ops.setdiff1d(range(rank_a), axes)
-        free_dims = array_ops.gather(shape_a, free)
-        axes_dims = array_ops.gather(shape_a, axes)
-        prod_free_dims = reduce_prod(free_dims)
-        prod_axes_dims = reduce_prod(axes_dims)
-        perm = array_ops.concat([axes_dims, free_dims], 0)
-        if flipped:
-          perm = array_ops.concat([axes, free], 0)
-          new_shape = array_ops.stack([prod_axes_dims, prod_free_dims])
-        else:
-          perm = array_ops.concat([free, axes], 0)
-          new_shape = array_ops.stack([prod_free_dims, prod_axes_dims])
+      axes = ops.convert_to_tensor(axes, dtype=dtypes.int32, name="axes")
+      axes = cast(axes >= 0, dtypes.int32) * axes + cast(
+          axes < 0, dtypes.int32) * (
+              axes + rank_a)
+      free, _ = array_ops.setdiff1d(range(rank_a), axes)
+      free_dims = array_ops.gather(shape_a, free)
+      axes_dims = array_ops.gather(shape_a, axes)
+      prod_free_dims = reduce_prod(free_dims)
+      prod_axes_dims = reduce_prod(axes_dims)
+      perm = array_ops.concat([axes_dims, free_dims], 0)
+      if flipped:
+        perm = array_ops.concat([axes, free], 0)
+        new_shape = array_ops.stack([prod_axes_dims, prod_free_dims])
+      else:
+        perm = array_ops.concat([free, axes], 0)
+        new_shape = array_ops.stack([prod_free_dims, prod_axes_dims])
       reshaped_a = array_ops.reshape(array_ops.transpose(a, perm), new_shape)
       return reshaped_a, free_dims, free_dims_static
 
