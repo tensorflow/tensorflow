@@ -669,6 +669,7 @@ class GradientTape(object):
   ```python
   x = tf.constant(3.0)
   with tf.GradientTape() as g:
+    g.watch(x)
     with tf.GradientTape() as gg:
       gg.watch(x)
       y = x * x
