@@ -414,9 +414,8 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
       device_type, device_, device_->GetAllocator(AllocatorAttributes()), &ndef,
       &fbody->fdef.signature(), this, fbody->arg_types, input_memory_types,
       fbody->ret_types, output_memory_types, graph_def_version_, &s);
-  *kernel = new CallOp(handle, &construction);
-  if (!s.ok()) {
-    delete *kernel;
+  if (s.ok()) {
+    *kernel = new CallOp(handle, &construction);
   }
   return s;
 }

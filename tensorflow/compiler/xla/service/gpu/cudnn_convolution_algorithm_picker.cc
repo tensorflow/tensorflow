@@ -221,25 +221,12 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
     allocator = &*se_allocator;
   }
 
-  // Allocate space for the input, filter, and output of the convolution.  We
-  // use a ScratchAllocator for this instead of calling allocator_ directly so
-  // that our allocations don't leak.
-  ScratchAllocator input_output_allocator(device_ordinal, allocator);
-  TF_ASSIGN_OR_RETURN(params.input_buf,
-                      input_output_allocator.AllocateBytes(
-                          &stream, ShapeUtil::ByteSizeOf(input_shape)));
-  TF_ASSIGN_OR_RETURN(params.filter_buf,
-                      input_output_allocator.AllocateBytes(
-                          &stream, ShapeUtil::ByteSizeOf(filter_shape)));
-  TF_ASSIGN_OR_RETURN(params.output_buf,
-                      input_output_allocator.AllocateBytes(
-                          &stream, ShapeUtil::ByteSizeOf(output_shape)));
-
-  if (cross_check_enabled) {
-    // Broadcast a constant to the buffer, instead of zeroing the buffer. A
-    // non-zero constant is useful for the cross checking, because zero-inputs
-    // may not always reveal the bugs.
-    const auto initialize_f16 = [&stream](DeviceMemoryBase buffer) {
+  const auto initialize_buffer = [&stream, cross_check_enabled](
+                                     DeviceMemoryBase buffer) {
+    if (cross_check_enabled) {
+      // Broadcast a constant to the buffer, instead of zeroing the buffer. A
+      // non-zero constant is useful for the cross checking, because zero-inputs
+      // may not always reveal the bugs.
       CHECK_EQ(0, (uintptr_t)buffer.opaque() % 4);
       size_t left_over_bytes = buffer.size() % 4;
       CHECK_EQ(0, left_over_bytes % 2);
@@ -257,19 +244,32 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
       DeviceMemoryBase left_over(
           static_cast<char*>(buffer.opaque()) + aligned_size, left_over_bytes);
       stream.ThenMemcpy(&left_over, halfs, left_over_bytes);
-    };
-    initialize_f16(params.input_buf);
-    initialize_f16(params.filter_buf);
-    initialize_f16(params.output_buf);
-  } else {
-    // Although we don't have evidence this matters, zero out the buffers before
-    // autotuning.  It's conceivable that using uninitialized memory as the
-    // inputs might affect performance if e.g. the inputs contain denormals, and
-    // this is easy enough.
-    stream.ThenMemZero(&params.input_buf, params.input_buf.size())
-        .ThenMemZero(&params.filter_buf, params.filter_buf.size())
-        .ThenMemZero(&params.output_buf, params.output_buf.size());
-  }
+    } else {
+      // Although we don't have evidence this matters, zero out the buffers
+      // before autotuning.  It's conceivable that using uninitialized memory as
+      // the inputs might affect performance if e.g. the inputs contain
+      // denormals, and this is easy enough.
+      stream.ThenMemZero(&buffer, buffer.size());
+    }
+  };
+
+  // Allocate space for the input, filter, and output of the convolution.  We
+  // use a ScratchAllocator for this instead of calling allocator_ directly so
+  // that our allocations don't leak.
+  ScratchAllocator input_output_allocator(device_ordinal, allocator);
+  TF_ASSIGN_OR_RETURN(params.input_buf,
+                      input_output_allocator.AllocateBytes(
+                          &stream, ShapeUtil::ByteSizeOf(input_shape)));
+  TF_ASSIGN_OR_RETURN(params.filter_buf,
+                      input_output_allocator.AllocateBytes(
+                          &stream, ShapeUtil::ByteSizeOf(filter_shape)));
+  TF_ASSIGN_OR_RETURN(params.output_buf,
+                      input_output_allocator.AllocateBytes(
+                          &stream, ShapeUtil::ByteSizeOf(output_shape)));
+
+  initialize_buffer(params.input_buf);
+  initialize_buffer(params.filter_buf);
+  initialize_buffer(params.output_buf);
 
   DeviceMemoryBase* result_buf = [&] {
     switch (params.kind) {

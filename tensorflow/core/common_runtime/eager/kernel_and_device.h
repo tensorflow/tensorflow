@@ -52,9 +52,6 @@ class KernelAndDevice {
   static Status Init(const NodeDef& ndef, FunctionLibraryRuntime* flib,
                      std::function<void(std::function<void()>)>* runner,
                      KernelAndDevice* out);
-  // TODO(ashankar): Remove this
-  static Status InitOp(Device* device, const NodeDef& ndef,
-                       KernelAndDevice* out);
 
   KernelAndDevice(tensorflow::Rendezvous* rendez, bool log_memory)
       : device_(nullptr),

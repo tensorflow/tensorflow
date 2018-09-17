@@ -120,7 +120,7 @@ class ReverseSequenceTest(test.TestCase):
     batch_axis = 2
     seq_lengths = np.asarray([3, 0, 4], dtype=np.int64)
 
-    with self.test_session():
+    with self.cached_session():
       input_t = constant_op.constant(x, shape=x.shape)
       seq_lengths_t = constant_op.constant(seq_lengths, shape=seq_lengths.shape)
       reverse_sequence_out = array_ops.reverse_sequence(
@@ -171,7 +171,7 @@ class ReverseSequenceTest(test.TestCase):
           seq_axis=0,
           batch_axis=3)
 
-    with self.test_session():
+    with self.cached_session():
       inputs = array_ops.placeholder(dtypes.float32, shape=(32, 2, 3))
       seq_lengths = array_ops.placeholder(dtypes.int64, shape=(32,))
       output = array_ops.reverse_sequence(

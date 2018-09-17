@@ -1011,12 +1011,6 @@ class Bijector(object):
   def _reduce_jacobian_det_over_event(
       self, y, ildj, min_event_ndims, event_ndims):
     """Reduce jacobian over event_ndims - min_event_ndims."""
-
-    if not self.is_constant_jacobian:
-      return math_ops.reduce_sum(
-          ildj,
-          self._get_event_reduce_dims(min_event_ndims, event_ndims))
-
     # In this case, we need to tile the Jacobian over the event and reduce.
     y_rank = array_ops.rank(y)
     y_shape = array_ops.shape(y)[

@@ -364,6 +364,9 @@ typedef int (*ANeuralNetworksModel_identifyInputsAndOutputs_fn)(
     ANeuralNetworksModel* model, uint32_t inputCount, const uint32_t* inputs,
     uint32_t outputCount, const uint32_t* outputs);
 
+typedef int (*ANeuralNetworksModel_relaxComputationFloat32toFloat16_fn)(
+    ANeuralNetworksModel* model, bool allow);
+
 typedef int (*ANeuralNetworksExecution_create_fn)(
     ANeuralNetworksCompilation* compilation,
     ANeuralNetworksExecution** execution);
@@ -653,6 +656,34 @@ inline int ANeuralNetworksModel_identifyInputsAndOutputs(
     uint32_t outputCount, const uint32_t* outputs) {
   LOAD_FUNCTION(ANeuralNetworksModel_identifyInputsAndOutputs);
   EXECUTE_FUNCTION_RETURN(model, inputCount, inputs, outputCount, outputs);
+}
+
+/**
+ * Specifies whether {@link ANEURALNETWORKS_TENSOR_FLOAT32} is allowed to be
+ * calculated with range and/or precision as low as that of the IEEE 754 16-bit
+ * floating-point format. By default, {@link ANEURALNETWORKS_TENSOR_FLOAT32}
+ * must be calculated using at least the range and precision of the IEEE 754
+ * 32-bit floating-point format.
+ *
+ * @param model The model to be modified.
+ * @param allow 'true' indicates {@link ANEURALNETWORKS_TENSOR_FLOAT32} may be
+ *              calculated with range and/or precision as low as that of the
+ *              IEEE 754 16-bit floating point format. 'false' indicates
+ *              {@link ANEURALNETWORKS_TENSOR_FLOAT32} must be calculated using
+ *              at least the range and precision of the IEEE 754 32-bit floating
+ *              point format.
+ *
+ * Attempting to modify a model once {@link ANeuralNetworksModel_finish} has
+ * been called will return an error.
+ *
+ * Available since API level 28.
+ *
+ * See {@link ANeuralNetworksModel} for information on multithreaded usage.
+ */
+inline int ANeuralNetworksModel_relaxComputationFloat32toFloat16(
+    ANeuralNetworksModel* model, bool allow) {
+  LOAD_FUNCTION(ANeuralNetworksModel_relaxComputationFloat32toFloat16);
+  EXECUTE_FUNCTION_RETURN(model, allow);
 }
 
 /**

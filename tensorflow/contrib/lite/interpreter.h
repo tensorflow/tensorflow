@@ -336,6 +336,19 @@ class Interpreter {
   // Set the number of threads available to the interpreter.
   void SetNumThreads(int num_threads);
 
+  // Allow float16 precision for FP32 calculation when possible.
+  // default: not allow.
+  // WARNING: This is an experimental API and subject to change.
+  void SetAllowFp16PrecisionForFp32(bool allow) {
+    context_.allow_fp32_relax_to_fp16 = allow;
+  }
+
+  // Get the half precision flag.
+  // WARNING: This is an experimental API and subject to change.
+  bool GetAllowFp16PrecisionForFp32() const {
+    return context_.allow_fp32_relax_to_fp16;
+  }
+
   // Allow a delegate to look at the graph and modify the graph to handle
   // parts of the graph themselves. After this is called, the graph may
   // contain new nodes that replace 1 more nodes.

@@ -1474,7 +1474,7 @@ class Conv2DTest(test.TestCase):
           padding="SAME")
 
   def testOpEdgeCases(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Illegal strides.
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "strides in the batch and depth"):
@@ -1539,7 +1539,7 @@ class DepthwiseConv2DTest(test.TestCase):
     # numbers from 1.
     x1 = [f * 1.0 for f in range(1, total_size_1 + 1)]
     x2 = [f * 1.0 for f in range(1, total_size_2 + 1)]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       t1 = constant_op.constant(x1, shape=tensor_in_sizes)
       t1.set_shape(tensor_in_sizes)
       t2 = constant_op.constant(x2, shape=filter_in_sizes)

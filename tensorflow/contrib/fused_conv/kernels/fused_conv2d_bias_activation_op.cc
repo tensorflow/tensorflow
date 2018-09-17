@@ -497,7 +497,8 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
                                 FORMAT_OIHW, filter_param.shape(), FORMAT_HWIO),
                             &maybe_transformed_filter));
     functor::TransformFilter<GPUDevice, T, int, 4>()(
-        ctx->eigen_device<GPUDevice>(), To32Bit(filter_param.tensor<T, 4>()),
+        ctx->eigen_device<GPUDevice>(), FORMAT_OIHW,
+        To32Bit(filter_param.tensor<T, 4>()),
         To32Bit(maybe_transformed_filter.tensor<T, 4>()));
     filter = &maybe_transformed_filter;
   }

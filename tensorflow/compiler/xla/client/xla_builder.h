@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stacktrace.h"
@@ -955,6 +956,8 @@ class XlaBuilder {
                             HloInstructionProto* instr);
 
   StatusOr<const HloInstructionProto*> LookUpInstruction(const XlaOp& op) const;
+  StatusOr<const HloInstructionProto*> LookUpInstructionByHandle(
+      int64 handle) const;
 
   // Internal helper method that does the building for an arbitrary unary op.
   XlaOp UnaryOp(HloOpcode unop, const XlaOp& operand);
@@ -1023,6 +1026,10 @@ class XlaBuilder {
 
   // The instructions of this computation.
   std::vector<HloInstructionProto> instructions_;
+
+  // A map from XlaOp::Handle to the index in the instructions_ vector where the
+  // instruction is held.
+  tensorflow::gtl::FlatMap<int64, int64> handle_to_index_;
 
   // The embedded computations used by this computation. Each computation was
   // the entry computation of some XlaComputation, the key is the unique id of

@@ -107,7 +107,7 @@ class SliceTest(test.TestCase):
 
   def testScalarInput(self):
     input_val = 0
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test with constant input; shape inference fails.
       with self.assertRaisesWithPredicateMatch(ValueError, "out of range"):
         constant_op.constant(input_val)[:].get_shape()
@@ -121,7 +121,7 @@ class SliceTest(test.TestCase):
 
   def testInvalidIndex(self):
     input_val = [1, 2]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test with constant input; shape inference fails.
       with self.assertRaisesWithPredicateMatch(ValueError, "out of range"):
         constant_op.constant(input_val)[1:, 1:].get_shape()

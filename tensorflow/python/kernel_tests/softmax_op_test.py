@@ -210,7 +210,7 @@ class SoftmaxTest(test.TestCase):
     self.assertEqual([3, 2, 4], op.get_shape())
 
   def testEmptyInput(self):
-    with self.test_session():
+    with self.cached_session():
       x = array_ops.placeholder(dtypes.float32, shape=[0, 3])
       self.assertEqual(0, array_ops.size(x).eval())
       # reshape would raise if logits is empty
@@ -218,7 +218,7 @@ class SoftmaxTest(test.TestCase):
         nn_ops.softmax(x, axis=0).eval()
 
   def testDimTooLarge(self):
-    with self.test_session():
+    with self.cached_session():
       # Use placeholder to make sure we get runtime error instead of shape
       # inference error.
       dim = array_ops.placeholder_with_default(100, shape=[])

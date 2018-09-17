@@ -77,9 +77,9 @@ static Status TensorListDeviceCopy(
   return Status::OK();
 }
 
-#define REGISTER_LIST_COPY(DIRECTION)                   \
-  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION( \
-      TensorList, DIRECTION, TensorList::kTypeName, TensorListDeviceCopy)
+#define REGISTER_LIST_COPY(DIRECTION)                                         \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(TensorList, DIRECTION, \
+                                                       TensorListDeviceCopy)
 
 REGISTER_LIST_COPY(VariantDeviceCopyDirection::HOST_TO_DEVICE);
 REGISTER_LIST_COPY(VariantDeviceCopyDirection::DEVICE_TO_HOST);
@@ -92,8 +92,7 @@ Status TensorListShape(const TensorList& t, TensorShape* s) {
   return Status::OK();
 }
 
-REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(TensorList, TensorList::kTypeName,
-                                      TensorListShape);
+REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(TensorList, TensorListShape);
 
 bool TensorList::Decode(const VariantTensorData& data) {
   tensors = data.tensors();
@@ -625,12 +624,11 @@ REGISTER_TENSOR_LIST_FROM_TENSOR_CPU(bfloat16);
 #undef REGISTER_TENSOR_LIST_FROM_TENSOR_CPU
 
 REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(ADD_VARIANT_BINARY_OP, DEVICE_CPU,
-                                          TensorList, TensorList::kTypeName,
+                                          TensorList,
                                           TensorListBinaryAdd<CPUDevice>);
 
 REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
                                          DEVICE_CPU, TensorList,
-                                         TensorList::kTypeName,
                                          TensorListZerosLike<CPUDevice>);
 
 }  // namespace tensorflow

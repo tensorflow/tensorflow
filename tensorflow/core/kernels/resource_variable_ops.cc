@@ -79,7 +79,7 @@ ReadVariableOp::ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {
 
 void ReadVariableOp::Compute(OpKernelContext* ctx) {
   Var* variable = nullptr;
-  ResourceHandle handle = HandleFromInput(ctx, 0);
+  const ResourceHandle& handle = HandleFromInput(ctx, 0);
   const auto status = LookupResource(ctx, handle, &variable);
   OP_REQUIRES(ctx, status.ok(),
               errors::FailedPrecondition(

@@ -273,7 +273,7 @@ void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph,
   string name = string(prefix);
   int id = graph->node_size();
   while (ContainsGraphNodeWithName(name, *graph)) {
-    if (name.rfind("_generated") != std::string::npos &&
+    if (name.rfind("_generated") != string::npos &&
         (name.rfind("_generated") == (name.size() - strlen("_generated")))) {
       name.insert(name.rfind("_generated"), strings::StrCat("/_", id));
     } else {

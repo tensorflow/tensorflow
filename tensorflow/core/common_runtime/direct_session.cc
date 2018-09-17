@@ -1202,14 +1202,11 @@ Status DirectSession::CreateExecutors(
     auto opseg = device->op_segment();
     params.create_kernel = [this, lib, opseg](const NodeDef& ndef,
                                               OpKernel** kernel) {
-      // We do not share the kernel via the OpSegment if the node is
-      // stateless, or a function.
       // NOTE(mrry): We must not share function kernels (implemented
       // using `CallOp`) between subgraphs, because `CallOp::handle_`
       // is tied to a particular subgraph. Even if the function itself
       // is stateful, the `CallOp` that invokes it is not.
-      if (!lib->IsStateful(ndef.op()) ||
-          lib->GetFunctionLibraryDefinition()->Find(ndef.op()) != nullptr) {
+      if (!OpSegment::ShouldOwnKernel(lib, ndef.op())) {
         return lib->CreateKernel(ndef, kernel);
       }
       auto create_fn = [lib, &ndef](OpKernel** kernel) {
@@ -1222,13 +1219,11 @@ Status DirectSession::CreateExecutors(
                                  create_fn);
     };
     params.delete_kernel = [lib](OpKernel* kernel) {
-      // If the node is stateful, opseg owns it. Otherwise, delete it.
-      if (kernel && !lib->IsStateful(kernel->type_string())) {
+      if (kernel && !OpSegment::ShouldOwnKernel(lib, kernel->type_string()))
         delete kernel;
-      }
     };
 
-    optimizer.Optimize(lib, options_.env, device, &iter->second,
+    optimizer.Optimize(lib, options_.env, device, &partition_graph,
                        /*shape_map=*/nullptr);
 
     // TensorFlow Debugger (tfdbg) inserts debug nodes in the graph.

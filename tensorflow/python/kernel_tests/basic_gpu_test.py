@@ -174,7 +174,7 @@ class BroadcastSimpleTest(test.TestCase):
                         numeric_gradient_type=None):
     z = np_func(x, y)
     zs = list(z.shape)
-    with self.test_session():
+    with self.cached_session():
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       if x.dtype in (np.float32, np.float64):
@@ -195,7 +195,7 @@ class BroadcastSimpleTest(test.TestCase):
                         numeric_gradient_type=None):
     z = np_func(x, y)
     zs = list(z.shape)
-    with self.test_session():
+    with self.cached_session():
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       if x.dtype in (np.float32, np.float64):
