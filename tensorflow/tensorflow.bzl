@@ -1216,9 +1216,11 @@ def tf_mkl_kernel_library(
     if prefix:
         srcs = srcs + native.glob(
             [prefix + "*.cc"],
+            exclude = [prefix + "*test*"],
         )
         hdrs = hdrs + native.glob(
             [prefix + "*.h"],
+            exclude = [prefix + "*test*"],
         )
 
     # -fno-exceptions in nocopts breaks compilation if header modules are enabled.
