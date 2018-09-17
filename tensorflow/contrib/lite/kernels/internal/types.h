@@ -772,6 +772,8 @@ struct DepthwiseParams {
   PaddingValues padding_values;
   int16 stride_width;
   int16 stride_height;
+  int16 dilation_width_factor;
+  int16 dilation_height_factor;
   int16 depth_multiplier;
   // uint8 inference params.
   // TODO(b/65838351): Use smaller types if appropriate.

@@ -1669,33 +1669,50 @@ inline void DepthwiseConvInitAccBuffer(int num_output_pixels, int output_depth,
   }
 }
 
-inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
-                          int32 input_offset, const uint8* filter_data,
-                          const Dims<4>& filter_dims, int32 filter_offset,
-                          const int32* bias_data, const Dims<4>& bias_dims,
-                          int stride_width, int stride_height, int pad_width,
-                          int pad_height, int depth_multiplier,
-                          int32 output_offset, int32 output_multiplier,
-                          int output_shift, int32 output_activation_min,
-                          int32 output_activation_max, uint8* output_data,
-                          const Dims<4>& output_dims) {
+inline void DepthwiseConv(
+    const DepthwiseParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    uint8* output_data) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConv/8bit");
-  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  const int stride_width = params.stride_width;
+  const int stride_height = params.stride_height;
+  const int pad_width = params.padding_values.width;
+  const int pad_height = params.padding_values.height;
+  const int depth_multiplier = params.depth_multiplier;
+  const int32 output_activation_min = params.quantized_activation_min;
+  const int32 output_activation_max = params.quantized_activation_max;
+  const int32 input_offset = params.input_offset;
+  const int32 filter_offset = params.weights_offset;
+  const int32 output_offset = params.output_offset;
+  const int32 output_multiplier = params.output_multiplier;
+  const int output_shift = params.output_shift;
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
 
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int output_depth = MatchingArraySize(filter_dims, 0, output_dims, 0);
-  const int input_height = ArraySize(input_dims, 2);
-  const int input_width = ArraySize(input_dims, 1);
-  const int input_depth = ArraySize(input_dims, 0);
-  const int filter_height = ArraySize(filter_dims, 2);
-  const int filter_width = ArraySize(filter_dims, 1);
-  const int output_height = ArraySize(output_dims, 2);
-  const int output_width = ArraySize(output_dims, 1);
+  // TODO(suharshs): Optimized implementation of dilation depthwise conv need to
+  // be implemented.
+  TFLITE_DCHECK_EQ(params.dilation_width_factor, 1);
+  TFLITE_DCHECK_EQ(params.dilation_height_factor, 1);
+
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
+  const int output_depth = MatchingDim(filter_shape, 3, output_shape, 3);
+  const int input_height = input_shape.Dims(1);
+  const int input_width = input_shape.Dims(2);
+  const int input_depth = input_shape.Dims(3);
+  const int filter_height = filter_shape.Dims(1);
+  const int filter_width = filter_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+  const int output_width = output_shape.Dims(2);
 #ifdef USE_NEON
   const bool shift_left = (output_shift <= 0);
   const int32 multiplier_power_of_two = shift_left ? (1 << -output_shift) : 1;
 #endif
-  TFLITE_DCHECK(output_depth == input_depth * depth_multiplier);
+  TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
+  TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
 
 // Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
 // Jetson TX-2. This compiler does not support the offsetof() macro.
@@ -1703,14 +1720,11 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
   // Call kernel optimized for depthwise convolutions using 3x3 filters if
   // parameters are supported.
   if (Fast3x3FilterKernelSupported(
-          input_dims, filter_dims, stride_width, stride_height, pad_width,
-          pad_height, depth_multiplier, output_dims, output_shift)) {
-    DepthwiseConv3x3Filter(input_data, input_dims, input_offset, filter_data,
-                           filter_dims, filter_offset, bias_data, bias_dims,
-                           stride_width, stride_height, pad_width, pad_height,
-                           depth_multiplier, output_offset, output_multiplier,
-                           output_shift, output_activation_min,
-                           output_activation_max, output_data, output_dims);
+          input_shape, filter_shape, stride_width, stride_height, pad_width,
+          pad_height, depth_multiplier, output_shape, output_shift)) {
+    DepthwiseConv3x3Filter(params, input_shape, input_data, filter_shape,
+                           filter_data, bias_shape, bias_data, output_shape,
+                           output_data);
     return;
   }
 #endif
@@ -1785,6 +1799,10 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
 
 #undef TFMINI_USE_DEPTHWISECONV_KERNEL
 
+  const int input_height_stride = input_shape.Dims(3) * input_shape.Dims(2);
+  const int input_batch_stride = input_height_stride * input_shape.Dims(1);
+  const int filter_height_stride = filter_shape.Dims(3) * filter_shape.Dims(2);
+
   // Now that we have determined row_accum_func, we can start work.
   uint8* output_ptr = output_data;
   for (int b = 0; b < batches; ++b) {
@@ -1811,10 +1829,9 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
           const int in_y = in_y_origin + filter_y;
           row_accum_func(
               stride_width, input_depth, input_width,
-              input_data + in_y * input_dims.strides[2] +
-                  b * input_dims.strides[3],
+              input_data + in_y * input_height_stride + b * input_batch_stride,
               input_offset, pad_width, depth_multiplier, filter_width,
-              filter_data + filter_y * filter_dims.strides[2], filter_offset,
+              filter_data + filter_y * filter_height_stride, filter_offset,
               out_x_buffer_start, out_x_buffer_end, output_depth, acc_buffer);
         }
         // Finished accumulating int32 values. Now need to convert them to
@@ -1964,6 +1981,8 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
   }
 }
 
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
 inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
                           int32 input_offset, const uint8* filter_data,
                           const Dims<4>& filter_dims, int32 filter_offset,
@@ -1975,19 +1994,48 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
                           int output_shift, int32 output_activation_min,
                           int32 output_activation_max, uint8* output_data,
                           const Dims<4>& output_dims) {
-  // TODO(suharshs): Optimized implementation of dilation depthwise is not
-  // supported yet.
-  TFLITE_DCHECK(dilation_width_factor == 1);
-  TFLITE_DCHECK(dilation_height_factor == 1);
+  tflite::DepthwiseParams op_params;
+  // Padding type is ignored, but still set.
+  op_params.padding_type = PaddingType::kSame;
+  op_params.padding_values.width = pad_width;
+  op_params.padding_values.height = pad_height;
+  op_params.stride_width = stride_width;
+  op_params.stride_height = stride_height;
+  op_params.dilation_width_factor = dilation_width_factor;
+  op_params.dilation_height_factor = dilation_height_factor;
+  op_params.depth_multiplier = depth_multiplier;
+  op_params.quantized_activation_min = output_activation_min;
+  op_params.quantized_activation_max = output_activation_max;
+  op_params.input_offset = input_offset;
+  op_params.weights_offset = filter_offset;
+  op_params.output_offset = output_offset;
+  op_params.output_multiplier = output_multiplier;
+  op_params.output_shift = output_shift;
 
+  DepthwiseConv(op_params, DimsToShape(input_dims), input_data,
+                DimsToShape(filter_dims), filter_data, DimsToShape(bias_dims),
+                bias_data, DimsToShape(output_dims), output_data);
+}
+
+inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
+                          int32 input_offset, const uint8* filter_data,
+                          const Dims<4>& filter_dims, int32 filter_offset,
+                          const int32* bias_data, const Dims<4>& bias_dims,
+                          int stride_width, int stride_height, int pad_width,
+                          int pad_height, int depth_multiplier,
+                          int32 output_offset, int32 output_multiplier,
+                          int output_shift, int32 output_activation_min,
+                          int32 output_activation_max, uint8* output_data,
+                          const Dims<4>& output_dims) {
   DepthwiseConv(input_data, input_dims, input_offset, filter_data, filter_dims,
                 filter_offset, bias_data, bias_dims, stride_width,
-                stride_height, pad_width, pad_height, depth_multiplier,
+                stride_height, 1, 1, pad_width, pad_height, depth_multiplier,
                 output_offset, output_multiplier, output_shift,
                 output_activation_min, output_activation_max, output_data,
                 output_dims);
 }
 
+// TODO(b/80418076): Move to legacy ops file, update invocations.
 // Legacy, for compatibility with old checked-in code.
 template <FusedActivationFunctionType Ac>
 void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
@@ -2011,6 +2059,7 @@ void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
                 output_dims);
 }
 
+// TODO(b/80418076): Move to legacy ops file, update invocations.
 // Legacy, for compatibility with old checked-in code.
 template <FusedActivationFunctionType Ac>
 void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
