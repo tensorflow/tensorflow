@@ -1234,8 +1234,8 @@ class KerasCallbacksTest(test.TestCase):
         optimizer_name_scope = 'training/' + model.optimizer.__class__.__name__
         graph_def = ops.get_default_graph().as_graph_def()
         for node in graph_def.node:
-            if node.name.startswith(optimizer_name_scope):
-                return
+          if node.name.startswith(optimizer_name_scope):
+            return
         raise RuntimeError('The optimizer operations are not present in the '
                            'model graph when the Callback.set_model function '
                            'is called')
