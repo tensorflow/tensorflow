@@ -916,13 +916,14 @@ std::unique_ptr<HloComputation> HloComputation::Clone(
   return CloneWithReplacements(
       /*replacements=*/std::unordered_map<const HloInstruction*,
                                           std::unique_ptr<HloInstruction>>(),
-      context, suffix);
+      /*extras=*/{}, context, suffix);
 }
 
 std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
         replacements,
-    HloCloneContext* context, const string& suffix) {
+    absl::Span<HloInstruction*> extras, HloCloneContext* context,
+    const string& suffix) {
   std::unique_ptr<HloCloneContext> context_ptr;
   if (context == nullptr) {
     context_ptr = absl::make_unique<HloCloneContext>(parent(), suffix);
@@ -944,6 +945,9 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
 
   VLOG(1) << "Cloning " << name() << " --> " << suffix << "\n";
   std::vector<HloInstruction*> postorder;
+  for (HloInstruction* instr : extras) {
+    postorder.push_back(instr);
+  }
   for (HloInstruction* instr : MakeInstructionPostOrder()) {
     if (HloInstruction* replacement = replace(instr)) {
       postorder.push_back(replacement);
