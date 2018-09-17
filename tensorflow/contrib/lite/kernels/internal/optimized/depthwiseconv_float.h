@@ -761,7 +761,8 @@ struct FloatDepthwiseConvKernel<true, 4, 1> {
 // Accumulates the effect of one row of the filter, on a segment of one row
 // of the output, accessing the corresponding one row of the input.
 template <bool kAllowStrided, int kFixedInputDepth, int kFixedDepthMultiplier>
-void FloatDepthwiseConvAccumRow(int stride, int input_depth, int input_width,
+void FloatDepthwiseConvAccumRow(int stride, int dilation_factor,
+                                int input_depth, int input_width,
                                 const float* input_data, int pad_width,
                                 int depth_multiplier, int filter_width,
                                 const float* filter_data,
@@ -835,10 +836,10 @@ void FloatDepthwiseConvAccumRow(int stride, int input_depth, int input_width,
 
 // generic fallback of FloatDepthwiseConvAccumRow, portable, non-templatized.
 inline void FloatDepthwiseConvAccumRowGeneric(
-    int stride, int input_depth, int input_width, const float* input_data,
-    int pad_width, int depth_multiplier, int filter_width,
-    const float* filter_data, int out_x_buffer_start, int out_x_buffer_end,
-    int output_depth, float* acc_buffer) {
+    int stride, int dilation_factor, int input_depth, int input_width,
+    const float* input_data, int pad_width, int depth_multiplier,
+    int filter_width, const float* filter_data, int out_x_buffer_start,
+    int out_x_buffer_end, int output_depth, float* acc_buffer) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConvAccumRowGeneric (slow)");
 #ifdef TFLITE_PREVENT_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
 #ifndef ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
@@ -860,6 +861,7 @@ inline void FloatDepthwiseConvAccumRowGeneric(
       << "* stride = " << stride << "\n"
       << "* input_depth = " << input_depth << "\n"
       << "* depth_multiplier = " << depth_multiplier << "\n"
+      << "* dilation_factor = " << dilation_factor << "\n"
       << "*\n"
       << "* Please do not hesitate to contact benoitjacob@ with this\n"
       << "* information.\n"
@@ -869,14 +871,17 @@ inline void FloatDepthwiseConvAccumRowGeneric(
   const float* filter_base_ptr = filter_data;
   for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
     const int out_x_loop_start = std::max(
-        out_x_buffer_start, (pad_width - filter_x + stride - 1) / stride);
-    const int out_x_loop_end =
-        std::min(out_x_buffer_end,
-                 (pad_width + input_width - filter_x + stride - 1) / stride);
+        out_x_buffer_start,
+        (pad_width - dilation_factor * filter_x + stride - 1) / stride);
+    const int out_x_loop_end = std::min(
+        out_x_buffer_end,
+        (pad_width + input_width - dilation_factor * filter_x + stride - 1) /
+            stride);
 
     float* acc_buffer_ptr =
         acc_buffer + (out_x_loop_start - out_x_buffer_start) * output_depth;
-    const int in_x_origin = (out_x_loop_start * stride) - pad_width + filter_x;
+    const int in_x_origin =
+        (out_x_loop_start * stride) - pad_width + dilation_factor * filter_x;
     const float* input_ptr = input_data + in_x_origin * input_depth;
     const int input_ptr_increment = (stride - 1) * input_depth;
     for (int out_x = out_x_loop_start; out_x < out_x_loop_end; out_x++) {
@@ -921,14 +926,14 @@ inline void DepthwiseConv(
   const int depth_multiplier = params.depth_multiplier;
   const float output_activation_min = params.float_activation_min;
   const float output_activation_max = params.float_activation_max;
+  const int dilation_width_factor = params.dilation_width_factor;
+  const int dilation_height_factor = params.dilation_height_factor;
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
 
-  // TODO(suharshs): Optimized implementation of dilation depthwise conv need to
-  // be implemented.
-  TFLITE_DCHECK_EQ(params.dilation_width_factor, 1);
-  TFLITE_DCHECK_EQ(params.dilation_height_factor, 1);
+  const bool has_dilation = (params.dilation_width_factor != 1) ||
+                            (params.dilation_height_factor != 1);
 
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
   const int output_depth = MatchingDim(filter_shape, 3, output_shape, 3);
@@ -961,7 +966,7 @@ inline void DepthwiseConv(
                                         FIXED_DEPTH_MULTIPLIER)           \
   if (!row_accum_func && (stride_width == 1 || ALLOW_STRIDED) &&          \
       (input_depth == FIXED_INPUT_DEPTH || FIXED_INPUT_DEPTH == 0) &&     \
-      depth_multiplier == FIXED_DEPTH_MULTIPLIER) {                       \
+      depth_multiplier == FIXED_DEPTH_MULTIPLIER && !has_dilation) {      \
     row_accum_func =                                                      \
         FloatDepthwiseConvAccumRow<ALLOW_STRIDED, FIXED_INPUT_DEPTH,      \
                                    FIXED_DEPTH_MULTIPLIER>;               \
@@ -1014,9 +1019,13 @@ inline void DepthwiseConv(
   for (int b = 0; b < batches; ++b) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       const int in_y_origin = (out_y * stride_height) - pad_height;
-      const int filter_y_start = std::max(0, -in_y_origin);
+      const int filter_y_start =
+          std::max(0, (-in_y_origin + dilation_height_factor - 1) /
+                          dilation_height_factor);
       const int filter_y_end =
-          std::min(filter_height, input_height - in_y_origin);
+          std::min(filter_height,
+                   (input_height - in_y_origin + dilation_height_factor - 1) /
+                       dilation_height_factor);
       for (int out_x_buffer_start = 0; out_x_buffer_start < output_width;
            out_x_buffer_start += kOutputPixelsInAccBuffer) {
         const int out_x_buffer_end = std::min(
@@ -1032,9 +1041,9 @@ inline void DepthwiseConv(
         // Accumulation loop. Most of the time should be spent in here.
         for (int filter_y = filter_y_start; filter_y < filter_y_end;
              ++filter_y) {
-          const int in_y = in_y_origin + filter_y;
+          const int in_y = in_y_origin + dilation_height_factor * filter_y;
           row_accum_func(
-              stride_width, input_depth, input_width,
+              stride_width, dilation_width_factor, input_depth, input_width,
               input_data + in_y * input_height_stride + b * input_batch_stride,
               pad_width, depth_multiplier, filter_width,
               filter_data + filter_y * filter_height_stride, out_x_buffer_start,
@@ -1096,11 +1105,6 @@ inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
                           float output_activation_min,
                           float output_activation_max, float* output_data,
                           const Dims<4>& output_dims) {
-  // TODO(suharshs): Optimized implementation of dilation depthwise conv need to
-  // be implemented.
-  TFLITE_DCHECK_EQ(dilation_width_factor, 1);
-  TFLITE_DCHECK_EQ(dilation_height_factor, 1);
-
   tflite::DepthwiseParams op_params;
   // Padding type is ignored, but still set.
   op_params.padding_type = PaddingType::kSame;

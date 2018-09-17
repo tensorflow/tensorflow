@@ -1466,11 +1466,14 @@ struct QuantizedDepthwiseConvKernel<false, 12, 1> {
 // Accumulates the effect of one row of the filter, on a segment of one row
 // of the output, accessing the corresponding one row of the input.
 template <bool kAllowStrided, int kFixedInputDepth, int kFixedDepthMultiplier>
-void QuantizedDepthwiseConvAccumRow(
-    int stride, int input_depth, int input_width, const uint8* input_data,
-    int16 input_offset, int pad_width, int depth_multiplier, int filter_width,
-    const uint8* filter_data, int16 filter_offset, int out_x_buffer_start,
-    int out_x_buffer_end, int output_depth, int32* acc_buffer) {
+void QuantizedDepthwiseConvAccumRow(int stride, int dilation_factor,
+                                    int input_depth, int input_width,
+                                    const uint8* input_data, int16 input_offset,
+                                    int pad_width, int depth_multiplier,
+                                    int filter_width, const uint8* filter_data,
+                                    int16 filter_offset, int out_x_buffer_start,
+                                    int out_x_buffer_end, int output_depth,
+                                    int32* acc_buffer) {
 #ifdef GEMMLOWP_PROFILING
   gemmlowp::ScopedProfilingLabel label(__PRETTY_FUNCTION__);
 #endif
@@ -1537,10 +1540,11 @@ void QuantizedDepthwiseConvAccumRow(
 
 // generic fallback of DepthwiseConvAccumRow, portable, non-templatized.
 inline void QuantizedDepthwiseConvAccumRowGeneric(
-    int stride, int input_depth, int input_width, const uint8* input_data,
-    int16 input_offset, int pad_width, int depth_multiplier, int filter_width,
-    const uint8* filter_data, int16 filter_offset, int out_x_buffer_start,
-    int out_x_buffer_end, int output_depth, int32* acc_buffer) {
+    int stride, int dilation_factor, int input_depth, int input_width,
+    const uint8* input_data, int16 input_offset, int pad_width,
+    int depth_multiplier, int filter_width, const uint8* filter_data,
+    int16 filter_offset, int out_x_buffer_start, int out_x_buffer_end,
+    int output_depth, int32* acc_buffer) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConvAccumRowGeneric (slow)");
 #ifdef TFLITE_PREVENT_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
 #ifndef ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
@@ -1562,6 +1566,7 @@ inline void QuantizedDepthwiseConvAccumRowGeneric(
       << "* stride = " << stride << "\n"
       << "* input_depth = " << input_depth << "\n"
       << "* depth_multiplier = " << depth_multiplier << "\n"
+      << "* dilation_factor = " << dilation_factor << "\n"
       << "*\n"
       << "* Please do not hesitate to contact benoitjacob@ with this\n"
       << "* information.\n"
@@ -1571,14 +1576,17 @@ inline void QuantizedDepthwiseConvAccumRowGeneric(
   const uint8* filter_base_ptr = filter_data;
   for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
     const int out_x_loop_start = std::max(
-        out_x_buffer_start, (pad_width - filter_x + stride - 1) / stride);
-    const int out_x_loop_end =
-        std::min(out_x_buffer_end,
-                 (pad_width + input_width - filter_x + stride - 1) / stride);
+        out_x_buffer_start,
+        (pad_width - dilation_factor * filter_x + stride - 1) / stride);
+    const int out_x_loop_end = std::min(
+        out_x_buffer_end,
+        (pad_width + input_width - dilation_factor * filter_x + stride - 1) /
+            stride);
 
     int32* acc_buffer_ptr =
         acc_buffer + (out_x_loop_start - out_x_buffer_start) * output_depth;
-    const int in_x_origin = (out_x_loop_start * stride) - pad_width + filter_x;
+    const int in_x_origin =
+        (out_x_loop_start * stride) - pad_width + dilation_factor * filter_x;
     const uint8* input_ptr = input_data + in_x_origin * input_depth;
     const int input_ptr_increment = (stride - 1) * input_depth;
     for (int out_x = out_x_loop_start; out_x < out_x_loop_end; out_x++) {
@@ -1688,15 +1696,11 @@ inline void DepthwiseConv(
   const int32 output_offset = params.output_offset;
   const int32 output_multiplier = params.output_multiplier;
   const int output_shift = params.output_shift;
+  const int dilation_width_factor = params.dilation_width_factor;
+  const int dilation_height_factor = params.dilation_height_factor;
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-
-  // TODO(suharshs): Optimized implementation of dilation depthwise conv need to
-  // be implemented.
-  TFLITE_DCHECK_EQ(params.dilation_width_factor, 1);
-  TFLITE_DCHECK_EQ(params.dilation_height_factor, 1);
-
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
   const int output_depth = MatchingDim(filter_shape, 3, output_shape, 3);
@@ -1714,14 +1718,18 @@ inline void DepthwiseConv(
   TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
 
+  const bool has_dilation =
+      (dilation_width_factor != 1) || (dilation_height_factor != 1);
+
 // Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
 // Jetson TX-2. This compiler does not support the offsetof() macro.
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
   // Call kernel optimized for depthwise convolutions using 3x3 filters if
   // parameters are supported.
-  if (Fast3x3FilterKernelSupported(
-          input_shape, filter_shape, stride_width, stride_height, pad_width,
-          pad_height, depth_multiplier, output_shape, output_shift)) {
+  if (Fast3x3FilterKernelSupported(input_shape, filter_shape, stride_width,
+                                   stride_height, has_dilation, pad_width,
+                                   pad_height, depth_multiplier, output_shape,
+                                   output_shift)) {
     DepthwiseConv3x3Filter(params, input_shape, input_data, filter_shape,
                            filter_data, bias_shape, bias_data, output_shape,
                            output_data);
@@ -1748,7 +1756,7 @@ inline void DepthwiseConv(
                                         FIXED_DEPTH_MULTIPLIER)           \
   if (!row_accum_func && (stride_width == 1 || ALLOW_STRIDED) &&          \
       (input_depth == FIXED_INPUT_DEPTH || FIXED_INPUT_DEPTH == 0) &&     \
-      depth_multiplier == FIXED_DEPTH_MULTIPLIER) {                       \
+      depth_multiplier == FIXED_DEPTH_MULTIPLIER && !has_dilation) {      \
     row_accum_func =                                                      \
         QuantizedDepthwiseConvAccumRow<ALLOW_STRIDED, FIXED_INPUT_DEPTH,  \
                                        FIXED_DEPTH_MULTIPLIER>;           \
@@ -1808,9 +1816,13 @@ inline void DepthwiseConv(
   for (int b = 0; b < batches; ++b) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       const int in_y_origin = (out_y * stride_height) - pad_height;
-      const int filter_y_start = std::max(0, -in_y_origin);
+      const int filter_y_start =
+          std::max(0, (-in_y_origin + dilation_height_factor - 1) /
+                          dilation_height_factor);
       const int filter_y_end =
-          std::min(filter_height, input_height - in_y_origin);
+          std::min(filter_height,
+                   (input_height - in_y_origin + dilation_height_factor - 1) /
+                       dilation_height_factor);
       for (int out_x_buffer_start = 0; out_x_buffer_start < output_width;
            out_x_buffer_start += kOutputPixelsInAccBuffer) {
         const int out_x_buffer_end = std::min(
@@ -1826,9 +1838,9 @@ inline void DepthwiseConv(
         // Accumulation loop. Most of the time should be spent in here.
         for (int filter_y = filter_y_start; filter_y < filter_y_end;
              ++filter_y) {
-          const int in_y = in_y_origin + filter_y;
+          const int in_y = in_y_origin + dilation_height_factor * filter_y;
           row_accum_func(
-              stride_width, input_depth, input_width,
+              stride_width, dilation_width_factor, input_depth, input_width,
               input_data + in_y * input_height_stride + b * input_batch_stride,
               input_offset, pad_width, depth_multiplier, filter_width,
               filter_data + filter_y * filter_height_stride, filter_offset,
