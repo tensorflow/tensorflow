@@ -36,6 +36,8 @@ class CastsElimination : public HloMatcher {
 
  private:
   unsigned ReplaceNodes() override;
+  unsigned ReplaceReduction(const HloMatcherMatched& match,
+                            const HloOpcode reduction_type);
 };
 
 }  // namespace poplarplugin
