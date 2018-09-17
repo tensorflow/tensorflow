@@ -24,5 +24,5 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=wildcard-import
-from tensorflow.contrib.saved_model.python.saved_model import signature_def_utils
+from tensorflow.contrib.saved_model.python.saved_model import keras_saved_model
 # pylint: enable=wildcard-import

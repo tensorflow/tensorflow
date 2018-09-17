@@ -32,6 +32,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.util import deprecation
 
 __all__ = [
     "Deterministic",
@@ -43,6 +44,14 @@ __all__ = [
 class _BaseDeterministic(distribution.Distribution):
   """Base class for Deterministic distributions."""
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc,
                atol=None,
@@ -86,8 +95,8 @@ class _BaseDeterministic(distribution.Distribution):
     Raises:
       ValueError:  If `loc` is a scalar.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[loc, atol, rtol]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[loc, atol, rtol]) as name:
       loc = ops.convert_to_tensor(loc, name="loc")
       if is_vector and validate_args:
         msg = "Argument loc must be at least rank 1."
@@ -142,6 +151,9 @@ class _BaseDeterministic(distribution.Distribution):
   def rtol(self):
     """Relative tolerance for comparing points to `self.loc`."""
     return self._rtol
+
+  def _entropy(self):
+    return array_ops.zeros(self.batch_shape_tensor(), dtype=self.dtype)
 
   def _mean(self):
     return array_ops.identity(self.loc)
@@ -203,6 +215,14 @@ class Deterministic(_BaseDeterministic):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc,
                atol=None,
@@ -308,6 +328,14 @@ class VectorDeterministic(_BaseDeterministic):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc,
                atol=None,

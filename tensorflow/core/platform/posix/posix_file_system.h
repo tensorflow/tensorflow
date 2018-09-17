@@ -47,6 +47,9 @@ class PosixFileSystem : public FileSystem {
 
   Status Stat(const string& fname, FileStatistics* stats) override;
 
+  Status GetMatchingPaths(const string& pattern,
+                          std::vector<string>* results) override;
+
   Status DeleteFile(const string& fname) override;
 
   Status CreateDir(const string& name) override;
@@ -67,7 +70,7 @@ class LocalPosixFileSystem : public PosixFileSystem {
   string TranslateName(const string& name) const override {
     StringPiece scheme, host, path;
     io::ParseURI(name, &scheme, &host, &path);
-    return path.ToString();
+    return string(path);
   }
 };
 

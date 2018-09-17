@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -34,7 +35,7 @@ class CategoricalOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     // Get the logits
-    const xla::ComputationDataHandle& logits = ctx->Input(0);
+    const xla::XlaOp& logits = ctx->Input(0);
     TensorShape logits_shape = ctx->InputShape(0);
     int64 num_samples;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &num_samples));
@@ -56,7 +57,7 @@ class CategoricalOp : public XlaOpKernel {
     const int64 batch_size = logits_shape.dim_size(0);
     const int64 num_classes = logits_shape.dim_size(1);
 
-    xla::ComputationBuilder* builder = ctx->builder();
+    xla::XlaBuilder* builder = ctx->builder();
 
     std::array<int64, 3> uniform_shape_array = {
         {batch_size, num_samples, num_classes}};
@@ -65,24 +66,22 @@ class CategoricalOp : public XlaOpKernel {
                    DataTypeToPrimitiveType(input_type(0), &uniform_xla_type));
     xla::Shape uniform_shape =
         xla::ShapeUtil::MakeShape(uniform_xla_type, uniform_shape_array);
-    auto uniforms = builder->RngUniform(
-        XlaHelpers::Zero(builder, input_type(0)),
-        XlaHelpers::One(builder, input_type(0)), uniform_shape);
+    auto uniforms =
+        xla::RngUniform(XlaHelpers::Zero(builder, input_type(0)),
+                        XlaHelpers::One(builder, input_type(0)), uniform_shape);
 
     // Use Gumbel softmax trick to generate categorical samples.
     // See:
     // https://hips.seas.harvard.edu/blog/2013/04/06/the-gumbel-max-trick-for-discrete-distributions/
     // TODO(b/68769470): Switch to using a cumulative sum approach.
-    auto softmax_entries =
-        builder->Sub(logits, builder->Log(builder->Neg(builder->Log(uniforms))),
-                     /*broadcast_dimensions=*/{0, 2});
+    auto softmax_entries = xla::Sub(logits, xla::Log(-xla::Log(uniforms)),
+                                    /*broadcast_dimensions=*/{0, 2});
 
-    TensorShape softmax_shape(uniform_shape_array);
-    xla::ComputationDataHandle argmax;
-    OP_REQUIRES_OK(
-        ctx,
-        XlaHelpers::ArgMax(builder, ctx, softmax_entries, softmax_shape,
-                           input_type(0), output_type(0), /*axis=*/2, &argmax));
+    xla::PrimitiveType xla_output_type;
+    OP_REQUIRES_OK(ctx,
+                   DataTypeToPrimitiveType(output_type(0), &xla_output_type));
+    xla::XlaOp argmax =
+        XlaHelpers::ArgMax(softmax_entries, xla_output_type, /*axis=*/2);
 
     ctx->SetOutput(0, argmax);
   }

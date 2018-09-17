@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import pickle
+
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -127,6 +129,26 @@ class TensorSpecTest(test_util.TensorFlowTestCase):
     self.assertEqual(bounded_spec.dtype, spec.dtype)
     self.assertEqual(bounded_spec.name, spec.name)
 
+  def testIsDiscrete(self):
+    discrete_spec = tensor_spec.TensorSpec((1, 2), dtypes.int32)
+    continuous_spec = tensor_spec.TensorSpec((1, 2), dtypes.float32)
+    self.assertTrue(discrete_spec.is_discrete)
+    self.assertFalse(continuous_spec.is_discrete)
+
+  def testIsContinuous(self):
+    discrete_spec = tensor_spec.TensorSpec((1, 2), dtypes.int32)
+    continuous_spec = tensor_spec.TensorSpec((1, 2), dtypes.float32)
+    self.assertFalse(discrete_spec.is_continuous)
+    self.assertTrue(continuous_spec.is_continuous)
+
+  def testIsBounded(self):
+    unbounded_spec = tensor_spec.TensorSpec((1, 2), dtypes.int32)
+    self.assertFalse(unbounded_spec.is_bounded())
+
+  def testSerialization(self):
+    desc = tensor_spec.TensorSpec([1, 5], dtypes.float32, "test")
+    self.assertEqual(pickle.loads(pickle.dumps(desc)), desc)
+
 
 class BoundedTensorSpecTest(test_util.TensorFlowTestCase):
 
@@ -137,6 +159,11 @@ class BoundedTensorSpecTest(test_util.TensorFlowTestCase):
   def testInvalidMaximum(self):
     with self.assertRaisesRegexp(ValueError, "not compatible"):
       tensor_spec.BoundedTensorSpec((3, 5), dtypes.uint8, 0, (1, 1, 1))
+
+  def testIsBounded(self):
+    bounded_spec = tensor_spec.BoundedTensorSpec(
+        (1, 2), dtypes.int32, minimum=0, maximum=1)
+    self.assertTrue(bounded_spec.is_bounded())
 
   def testMinimumMaximumAttributes(self):
     spec = tensor_spec.BoundedTensorSpec(
@@ -221,6 +248,10 @@ class BoundedTensorSpecTest(test_util.TensorFlowTestCase):
     self.assertEqual(spec.dtype.min, bounded_spec.minimum)
     self.assertEqual(spec.dtype.max, bounded_spec.maximum)
     self.assertEqual(spec.name, bounded_spec.name)
+
+  def testSerialization(self):
+    desc = tensor_spec.BoundedTensorSpec([1, 5], dtypes.float32, -1, 1, "test")
+    self.assertEqual(pickle.loads(pickle.dumps(desc)), desc)
 
 
 if __name__ == "__main__":

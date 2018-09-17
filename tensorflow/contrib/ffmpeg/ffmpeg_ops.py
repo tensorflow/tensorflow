@@ -21,15 +21,16 @@ from __future__ import print_function
 from tensorflow.contrib.ffmpeg.ops import gen_decode_audio_op_py
 from tensorflow.contrib.ffmpeg.ops import gen_decode_video_op_py
 from tensorflow.contrib.ffmpeg.ops import gen_encode_audio_op_py
-from tensorflow.contrib.ffmpeg.ops import gen_decode_video_op_py
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import resource_loader
+from tensorflow.python.util.deprecation import deprecated
 
 _ffmpeg_so = loader.load_op_library(
     resource_loader.get_path_to_datafile('ffmpeg.so'))
 
 
+@deprecated('2018-09-04', 'This will be deleted and should not be used.')
 def decode_audio(contents, file_format=None, samples_per_second=None,
                  channel_count=None, stream=None):
   """Create an op that decodes the contents of an audio file.
@@ -70,6 +71,7 @@ def decode_audio(contents, file_format=None, samples_per_second=None,
 ops.NotDifferentiable('DecodeAudio')
 
 
+@deprecated('2018-09-04', 'This will be deleted and should not be used.')
 def encode_audio(audio, file_format=None, samples_per_second=None):
   """Creates an op that encodes an audio file using sampled audio from a tensor.
 
@@ -96,6 +98,7 @@ def encode_audio(audio, file_format=None, samples_per_second=None):
 ops.NotDifferentiable('EncodeAudio')
 
 
+@deprecated('2018-09-04', 'This will be deleted and should not be used.')
 def decode_video(contents):
   """Create an op that decodes the contents of a video file.
 

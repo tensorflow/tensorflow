@@ -49,6 +49,9 @@ class HadoopFileSystem : public FileSystem {
 
   Status GetChildren(const string& dir, std::vector<string>* result) override;
 
+  Status GetMatchingPaths(const string& pattern,
+                          std::vector<string>* results) override;
+
   Status DeleteFile(const string& fname) override;
 
   Status CreateDir(const string& name) override;

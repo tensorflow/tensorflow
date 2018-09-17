@@ -16,7 +16,6 @@ limitations under the License.
 package com.example.android.tflitecamerademo;
 
 import android.app.Activity;
-
 import java.io.IOException;
 
 /**

@@ -44,7 +44,7 @@ class ListFilesDatasetOpTest(test.TestCase):
 
   def testEmptyDirectory(self):
     dataset = dataset_ops.Dataset.list_files(path.join(self.tmp_dir, '*'))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       itr = dataset.make_one_shot_iterator()
       next_element = itr.get_next()
       with self.assertRaises(errors.OutOfRangeError):
@@ -55,7 +55,7 @@ class ListFilesDatasetOpTest(test.TestCase):
     self._touchTempFiles(filenames)
 
     dataset = dataset_ops.Dataset.list_files(path.join(self.tmp_dir, '*'))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       itr = dataset.make_one_shot_iterator()
       next_element = itr.get_next()
 
@@ -69,19 +69,65 @@ class ListFilesDatasetOpTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(itr.get_next())
 
+  def testSimpleDirectoryNotShuffled(self):
+    filenames = ['b', 'c', 'a']
+    self._touchTempFiles(filenames)
+
+    dataset = dataset_ops.Dataset.list_files(
+        path.join(self.tmp_dir, '*'), shuffle=False)
+    with self.cached_session() as sess:
+      itr = dataset.make_one_shot_iterator()
+      next_element = itr.get_next()
+
+      for filename in sorted(filenames):
+        self.assertEqual(compat.as_bytes(path.join(self.tmp_dir, filename)),
+                         sess.run(next_element))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(itr.get_next())
+
+  def testFixedSeedResultsInRepeatableOrder(self):
+    filenames = ['a', 'b', 'c']
+    self._touchTempFiles(filenames)
+
+    dataset = dataset_ops.Dataset.list_files(
+        path.join(self.tmp_dir, '*'), shuffle=True, seed=37)
+    with self.cached_session() as sess:
+      itr = dataset.make_initializable_iterator()
+      next_element = itr.get_next()
+
+      full_filenames = [compat.as_bytes(path.join(self.tmp_dir, filename))
+                        for filename in filenames]
+
+      all_produced_filenames = []
+      for _ in range(3):
+        produced_filenames = []
+        sess.run(itr.initializer)
+        try:
+          while True:
+            produced_filenames.append(sess.run(next_element))
+        except errors.OutOfRangeError:
+          pass
+        all_produced_filenames.append(produced_filenames)
+
+      # Each run should produce the same set of filenames, which may be
+      # different from the order of `full_filenames`.
+      self.assertItemsEqual(full_filenames, all_produced_filenames[0])
+      # However, the different runs should produce filenames in the same order
+      # as each other.
+      self.assertEqual(all_produced_filenames[0], all_produced_filenames[1])
+      self.assertEqual(all_produced_filenames[0], all_produced_filenames[2])
+
   def testEmptyDirectoryInitializer(self):
     filename_placeholder = array_ops.placeholder(dtypes.string, shape=[])
     dataset = dataset_ops.Dataset.list_files(filename_placeholder)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       itr = dataset.make_initializable_iterator()
-      next_element = itr.get_next()
-      sess.run(
-          itr.initializer,
-          feed_dict={filename_placeholder: path.join(self.tmp_dir, '*')})
-
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError, 'No files matched pattern: '):
+        sess.run(
+            itr.initializer,
+            feed_dict={filename_placeholder: path.join(self.tmp_dir, '*')})
 
   def testSimpleDirectoryInitializer(self):
     filenames = ['a', 'b', 'c']
@@ -90,7 +136,7 @@ class ListFilesDatasetOpTest(test.TestCase):
     filename_placeholder = array_ops.placeholder(dtypes.string, shape=[])
     dataset = dataset_ops.Dataset.list_files(filename_placeholder)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       itr = dataset.make_initializable_iterator()
       next_element = itr.get_next()
       sess.run(
@@ -116,7 +162,7 @@ class ListFilesDatasetOpTest(test.TestCase):
     filename_placeholder = array_ops.placeholder(dtypes.string, shape=[])
     dataset = dataset_ops.Dataset.list_files(filename_placeholder)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       itr = dataset.make_initializable_iterator()
       next_element = itr.get_next()
       sess.run(
@@ -141,7 +187,7 @@ class ListFilesDatasetOpTest(test.TestCase):
     filename_placeholder = array_ops.placeholder(dtypes.string, shape=[])
     dataset = dataset_ops.Dataset.list_files(filename_placeholder)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       itr = dataset.make_initializable_iterator()
       next_element = itr.get_next()
       sess.run(
@@ -175,7 +221,7 @@ class ListFilesDatasetOpTest(test.TestCase):
     # more meaningful.
     dataset = dataset_ops.Dataset.list_files(
         path.join(self.tmp_dir, '*'), shuffle=False).repeat(2)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       itr = dataset.make_one_shot_iterator()
       next_element = itr.get_next()
 

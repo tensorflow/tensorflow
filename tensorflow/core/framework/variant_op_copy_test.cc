@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/port.h"
 
@@ -89,15 +90,15 @@ REGISTER_UNARY_VARIANT_DECODE_FUNCTION(StoredTensorValue, "StoredTensorValue");
 
 INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(
     StoredTensorValue, VariantDeviceCopyDirection::HOST_TO_DEVICE,
-    "StoredTensorValue", StoredTensorValue::CopyCPUToGPU);
+    StoredTensorValue::CopyCPUToGPU);
 
 INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(
     StoredTensorValue, VariantDeviceCopyDirection::DEVICE_TO_HOST,
-    "StoredTensorValue", StoredTensorValue::CopyGPUToCPU);
+    StoredTensorValue::CopyGPUToCPU);
 
 INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(
     StoredTensorValue, VariantDeviceCopyDirection::DEVICE_TO_DEVICE,
-    "StoredTensorValue", StoredTensorValue::CopyGPUToGPU);
+    StoredTensorValue::CopyGPUToGPU);
 
 REGISTER_OP("CreateTestVariant")
     .Input("input: T")
@@ -259,8 +260,8 @@ TEST(VariantOpCopyTest, CreateConstOnGPUFailsGracefully) {
   ClientSession session(root);
   std::vector<Tensor> outputs;
   Status s = session.Run({create_const}, &outputs);
-  EXPECT_TRUE(StringPiece(s.error_message())
-                  .contains("GPU copy from non-DMA string tensor"))
+  EXPECT_TRUE(str_util::StrContains(s.error_message(),
+                                    "GPU copy from non-DMA string tensor"))
       << s.ToString();
 }
 
@@ -365,8 +366,9 @@ TEST(VariantOpCopyTest, CreateCopyCPUToGPUStringFailsSafely) {
   std::vector<Tensor> outputs;
   Status err = session.Run({create_op, identity}, &outputs);
   EXPECT_EQ(err.code(), errors::Code::INVALID_ARGUMENT);
-  EXPECT_TRUE(StringPiece(err.error_message())
-                  .contains("During Variant Host->Device Copy: non-DMA-copy "
+  EXPECT_TRUE(
+      str_util::StrContains(err.error_message(),
+                            "During Variant Host->Device Copy: non-DMA-copy "
                             "attempted of tensor type: string"))
       << err.error_message();
 }

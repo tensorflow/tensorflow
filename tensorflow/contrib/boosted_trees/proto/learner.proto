@@ -108,6 +108,11 @@ message LearnerConfig {
     DIAGONAL_HESSIAN = 3;
   }
 
+  enum WeakLearnerType {
+    NORMAL_DECISION_TREE = 0;
+    OBLIVIOUS_DECISION_TREE = 1;
+  }
+
   // Number of classes.
   uint32 num_classes = 1;
 
@@ -141,4 +146,7 @@ message LearnerConfig {
   // If you want to average the ensembles (for regularization), provide the
   // config below.
   AveragingConfig averaging_config = 11;
+
+  // By default we use NORMAL_DECISION_TREE as weak learner.
+  WeakLearnerType weak_learner_type = 12;
 }

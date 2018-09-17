@@ -182,6 +182,19 @@ class ParameterizedTruncatedNormalTest(test.TestCase):
   def testSmallStddev(self):
     self.validateKolmogorovSmirnov([10**5], 0.0, 0.1, 0.05, 0.10)
 
+  def testSamplingWithSmallStdDevFarFromBound(self):
+    sample_op = random_ops.parameterized_truncated_normal(
+        shape=(int(1e5),), means=0.8, stddevs=0.05, minvals=-1., maxvals=1.)
+
+    with self.test_session(use_gpu=True) as sess:
+      samples = sess.run(sample_op)
+      # 0. is more than 16 standard deviations from the mean, and
+      # should have a likelihood < 1e-57.
+      # TODO(jjhunt)  Sampler is still numerically unstable in this case,
+      # numbers less than 0 should never observed.
+      no_neg_samples = np.sum(samples < 0.)
+      self.assertLess(no_neg_samples, 2.)
+
 
 # Benchmarking code
 def parameterized_vs_naive(shape, num_iters, use_gpu=False):

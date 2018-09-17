@@ -446,6 +446,16 @@ npy_bool NPyBfloat16_NonZero(void* data, void* arr) {
   return x != static_cast<bfloat16>(0);
 }
 
+int NPyBfloat16_Fill(void* buffer_raw, npy_intp length, void* ignored) {
+  bfloat16* const buffer = reinterpret_cast<bfloat16*>(buffer_raw);
+  const float start(buffer[0]);
+  const float delta = static_cast<float>(buffer[1]) - start;
+  for (npy_intp i = 2; i < length; ++i) {
+    buffer[i] = static_cast<bfloat16>(start + i * delta);
+  }
+  return 0;
+}
+
 // NumPy casts
 
 // Performs a NumPy array cast from type 'From' to 'To'.
@@ -548,6 +558,7 @@ bool Initialize() {
   NPyBfloat16_ArrFuncs.copyswapn = NPyBfloat16_CopySwapN;
   NPyBfloat16_ArrFuncs.copyswap = NPyBfloat16_CopySwap;
   NPyBfloat16_ArrFuncs.nonzero = NPyBfloat16_NonZero;
+  NPyBfloat16_ArrFuncs.fill = NPyBfloat16_Fill;
 
   Py_TYPE(&NPyBfloat16_Descr) = &PyArrayDescr_Type;
   npy_bfloat16_ = PyArray_RegisterDataType(&NPyBfloat16_Descr);
@@ -616,8 +627,8 @@ bool Initialize() {
   };
 
   // Comparisons
-  const std::array<int, 3> compare_types = {npy_bfloat16_, npy_bfloat16_,
-                                            NPY_BOOL};
+  const std::array<int, 3> compare_types = {
+      {npy_bfloat16_, npy_bfloat16_, NPY_BOOL}};
 
   if (!register_ufunc("equal", CompareUFunc<Bfloat16EqFunctor>,
                       compare_types)) {

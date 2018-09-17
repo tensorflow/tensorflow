@@ -17,14 +17,29 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
-filegroup(
-    name = "libmklml_intel.so",
-    srcs = ["lib/libmklml_intel.so"],
+cc_library(
+    name = "mkl_libs_linux",
+    srcs = [
+        "lib/libiomp5.so",
+        "lib/libmklml_intel.so",
+    ],
     visibility = ["//visibility:public"],
 )
 
-filegroup(
-    name = "libiomp5.so",
-    srcs = ["lib/libiomp5.so"],
+cc_library(
+    name = "mkl_libs_darwin",
+    srcs = [
+        "lib/libiomp5.dylib",
+        "lib/libmklml.dylib",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "mkl_libs_windows",
+    srcs = [
+        "lib/libiomp5md.lib",
+        "lib/mklml.lib",
+    ],
     visibility = ["//visibility:public"],
 )

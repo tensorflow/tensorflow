@@ -36,6 +36,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
@@ -175,6 +176,21 @@ class MultiLabelHead(test.TestCase):
         r'loss_fn has unexpected args: \[\'name\'\]'):
       head_lib.multi_label_head(n_classes=3, loss_fn=_loss_fn)
 
+  def test_classes_for_class_based_metrics_invalid(self):
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'All classes_for_class_based_metrics must be in range \[0, 2\]\. '
+        r'Given: -1'):
+      head_lib.multi_label_head(
+          n_classes=3, classes_for_class_based_metrics=[2, -1])
+
+  def test_classes_for_class_based_metrics_string_invalid(self):
+    with self.assertRaisesRegexp(
+        ValueError, r'\'z\' is not in list'):
+      head_lib.multi_label_head(
+          n_classes=3, label_vocabulary=['a', 'b', 'c'],
+          classes_for_class_based_metrics=['c', 'z'])
+
   def test_name(self):
     head = head_lib.multi_label_head(n_classes=4, name='foo')
     self.assertEqual('foo', head.name)
@@ -199,7 +215,7 @@ class MultiLabelHead(test.TestCase):
         spec.export_outputs.keys())
 
     # Assert predictions and export_outputs.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNone(spec.scaffold.summary_op)
       predictions = sess.run(spec.predictions)
@@ -230,7 +246,7 @@ class MultiLabelHead(test.TestCase):
         mode=model_fn.ModeKeys.PREDICT,
         logits=logits)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertAllEqual(
           expected_export_classes,
@@ -255,7 +271,7 @@ class MultiLabelHead(test.TestCase):
         logits=logits)
 
     # Assert predictions and export_outputs.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNone(spec.scaffold.summary_op)
       predictions = sess.run(spec.predictions)
@@ -272,16 +288,16 @@ class MultiLabelHead(test.TestCase):
 
     logits = np.array([[-1., 1.], [-1.5, 1.]], dtype=np.float32)
     labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
-    # loss = labels * -log(sigmoid(logits)) +
-    #        (1 - labels) * -log(1 - sigmoid(logits))
-    expected_training_loss = np.sum(
+    # loss = (labels * -log(sigmoid(logits)) +
+    #         (1 - labels) * -log(1 - sigmoid(logits))) / 2
+    expected_training_loss = 0.5 * np.sum(
         _sigmoid_cross_entropy(labels=labels, logits=logits))
     actual_training_loss = head.create_loss(
         features={'x': np.array(((42,),), dtype=np.int32)},
         mode=model_fn.ModeKeys.EVAL,
         logits=logits,
         labels=labels)[0]
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
       self.assertAllClose(expected_training_loss,
                           actual_training_loss.eval())
@@ -298,14 +314,14 @@ class MultiLabelHead(test.TestCase):
     # For large logits, this is approximated as:
     # loss = labels * (logits < 0) * (-logits) +
     #        (1 - labels) * (logits > 0) * logits
-    expected_training_loss = np.sum(
+    expected_training_loss = 0.5 * np.sum(
         np.array([[(10. + 10.) / 2.], [(15. + 0.) / 2.]], dtype=np.float32))
     actual_training_loss = head.create_loss(
         features={'x': np.array(((42,),), dtype=np.int32)},
         mode=model_fn.ModeKeys.EVAL,
         logits=logits,
         labels=labels)[0]
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
       self.assertAllClose(
           expected_training_loss, actual_training_loss.eval(), atol=1e-4)
@@ -322,7 +338,7 @@ class MultiLabelHead(test.TestCase):
         mode=model_fn.ModeKeys.EVAL,
         logits=logits,
         labels=labels_placeholder)[0]
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
@@ -359,9 +375,9 @@ class MultiLabelHead(test.TestCase):
         mode=model_fn.ModeKeys.EVAL,
         logits=logits_input,
         labels=labels_input)[0]
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
-      self.assertAllClose(np.sum(loss), actual_training_loss.eval())
+      self.assertAllClose(np.sum(loss) / 2., actual_training_loss.eval())
 
   def test_eval_create_loss_loss_fn_wrong_shape(self):
     """Tests custom loss_fn that returns Tensor of unexpected shape."""
@@ -378,7 +394,7 @@ class MultiLabelHead(test.TestCase):
         mode=model_fn.ModeKeys.EVAL,
         logits=logits,
         labels=labels)[0]
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
@@ -417,7 +433,7 @@ class MultiLabelHead(test.TestCase):
 
     # Assert predictions, loss, and metrics.
     tol = 1e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNone(spec.scaffold.summary_op)
       value_ops = {k: spec.eval_metric_ops[k][0] for k in spec.eval_metric_ops}
@@ -438,12 +454,13 @@ class MultiLabelHead(test.TestCase):
     labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
     # loss = labels * -log(sigmoid(logits)) +
     #        (1 - labels) * -log(1 - sigmoid(logits))
-    # Sum over examples.
-    expected_loss = np.sum(_sigmoid_cross_entropy(labels=labels, logits=logits))
+    # Sum over examples, divide by batch_size.
+    expected_loss = 0.5 * np.sum(
+        _sigmoid_cross_entropy(labels=labels, logits=logits))
     keys = metric_keys.MetricKeys
     expected_metrics = {
         # Average loss over examples.
-        keys.LOSS_MEAN: expected_loss / 2,
+        keys.LOSS_MEAN: expected_loss,
         # auc and auc_pr cannot be reliably calculated for only 4 samples, but
         # this assert tests that the algorithm remains consistent.
         keys.AUC: 0.3333,
@@ -468,14 +485,13 @@ class MultiLabelHead(test.TestCase):
     labels_multi_hot = np.array([[1, 0], [1, 1]], dtype=np.int64)
     # loss = labels * -log(sigmoid(logits)) +
     #        (1 - labels) * -log(1 - sigmoid(logits))
-    # Sum over examples.
-    expected_loss = (
-        np.sum(_sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits))
-    )
+    # Sum over examples, divide by batch_size.
+    expected_loss = 0.5 * np.sum(
+        _sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits))
     keys = metric_keys.MetricKeys
     expected_metrics = {
         # Average loss over examples.
-        keys.LOSS_MEAN: expected_loss / 2,
+        keys.LOSS_MEAN: expected_loss,
         # auc and auc_pr cannot be reliably calculated for only 4 samples, but
         # this assert tests that the algorithm remains consistent.
         keys.AUC: 0.3333,
@@ -533,14 +549,13 @@ class MultiLabelHead(test.TestCase):
     labels_multi_hot = np.array([[1, 0], [1, 1]], dtype=np.int64)
     # loss = labels * -log(sigmoid(logits)) +
     #        (1 - labels) * -log(1 - sigmoid(logits))
-    # Sum over examples.
-    expected_loss = (
-        np.sum(_sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits))
-    )
+    # Sum over examples, divide by batch_size.
+    expected_loss = 0.5 * np.sum(
+        _sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits))
     keys = metric_keys.MetricKeys
     expected_metrics = {
         # Average loss over examples.
-        keys.LOSS_MEAN: expected_loss / 2,
+        keys.LOSS_MEAN: expected_loss,
         # auc and auc_pr cannot be reliably calculated for only 4 samples, but
         # this assert tests that the algorithm remains consistent.
         keys.AUC: 0.3333,
@@ -553,6 +568,33 @@ class MultiLabelHead(test.TestCase):
         expected_loss=expected_loss,
         expected_metrics=expected_metrics)
 
+  def test_eval_with_label_vocabulary_with_multi_hot_input(self):
+    n_classes = 2
+    head = head_lib.multi_label_head(
+        n_classes, label_vocabulary=['class0', 'class1'])
+    logits = np.array([[-1., 1.], [-1.5, 1.5]], dtype=np.float32)
+    labels_multi_hot = np.array([[1, 0], [1, 1]], dtype=np.int64)
+    # loss = labels * -log(sigmoid(logits)) +
+    #        (1 - labels) * -log(1 - sigmoid(logits))
+    # Sum over examples, divide by batch_size.
+    expected_loss = 0.5 * np.sum(
+        _sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits))
+    keys = metric_keys.MetricKeys
+    expected_metrics = {
+        # Average loss over examples.
+        keys.LOSS_MEAN: expected_loss,
+        # auc and auc_pr cannot be reliably calculated for only 4 samples, but
+        # this assert tests that the algorithm remains consistent.
+        keys.AUC: 0.3333,
+        keys.AUC_PR: 0.7639,
+    }
+    self._test_eval(
+        head=head,
+        logits=logits,
+        labels=labels_multi_hot,
+        expected_loss=expected_loss,
+        expected_metrics=expected_metrics)
+
   def test_eval_with_thresholds(self):
     n_classes = 2
     thresholds = [0.25, 0.5, 0.75]
@@ -562,15 +604,14 @@ class MultiLabelHead(test.TestCase):
     labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
     # loss = labels * -log(sigmoid(logits)) +
     #        (1 - labels) * -log(1 - sigmoid(logits))
-    # Sum over examples.
-    expected_loss = (
-        np.sum(_sigmoid_cross_entropy(labels=labels, logits=logits))
-    )
+    # Sum over examples, divide by batch_size.
+    expected_loss = 0.5 * np.sum(
+        _sigmoid_cross_entropy(labels=labels, logits=logits))
 
     keys = metric_keys.MetricKeys
     expected_metrics = {
         # Average loss over examples.
-        keys.LOSS_MEAN: expected_loss / 2,
+        keys.LOSS_MEAN: expected_loss,
         # auc and auc_pr cannot be reliably calculated for only 4 samples, but
         # this assert tests that the algorithm remains consistent.
         keys.AUC: 0.3333,
@@ -593,6 +634,83 @@ class MultiLabelHead(test.TestCase):
         expected_loss=expected_loss,
         expected_metrics=expected_metrics)
 
+  def test_eval_with_classes_for_class_based_metrics(self):
+    head = head_lib.multi_label_head(
+        n_classes=2, classes_for_class_based_metrics=[0, 1])
+
+    logits = np.array([[-1., 1.], [-1.5, 1.5]], dtype=np.float32)
+    labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
+    # loss = labels * -log(sigmoid(logits)) +
+    #        (1 - labels) * -log(1 - sigmoid(logits))
+    # Sum over examples, divide by batch_size.
+    expected_loss = 0.5 * np.sum(
+        _sigmoid_cross_entropy(labels=labels, logits=logits))
+
+    keys = metric_keys.MetricKeys
+    expected_metrics = {
+        # Average loss over examples.
+        keys.LOSS_MEAN: expected_loss,
+        # auc and auc_pr cannot be reliably calculated for only 4 samples, but
+        # this assert tests that the algorithm remains consistent.
+        keys.AUC: 0.3333,
+        keys.AUC_PR: 0.7639,
+        keys.PROBABILITY_MEAN_AT_CLASS % 0: np.sum(_sigmoid(logits[:, 0])) / 2.,
+        keys.AUC_AT_CLASS % 0: 0.,
+        keys.AUC_PR_AT_CLASS % 0: 1.,
+        keys.PROBABILITY_MEAN_AT_CLASS % 1: np.sum(_sigmoid(logits[:, 1])) / 2.,
+        keys.AUC_AT_CLASS % 1: 1.,
+        keys.AUC_PR_AT_CLASS % 1: 1.,
+    }
+
+    self._test_eval(
+        head=head,
+        logits=logits,
+        labels=labels,
+        expected_loss=expected_loss,
+        expected_metrics=expected_metrics)
+
+  def test_eval_with_classes_for_class_based_metrics_string(self):
+    head = head_lib.multi_label_head(
+        n_classes=2, label_vocabulary=['a', 'b'],
+        classes_for_class_based_metrics=['a', 'b'])
+
+    logits = np.array([[-1., 1.], [-1.5, 1.5]], dtype=np.float32)
+    labels = sparse_tensor.SparseTensor(
+        values=['a', 'a', 'b'],
+        indices=[[0, 0], [1, 0], [1, 1]],
+        dense_shape=[2, 2])
+    labels_onehot = np.array([[1, 0], [1, 1]], dtype=np.int64)
+    # loss = labels * -log(sigmoid(logits)) +
+    #        (1 - labels) * -log(1 - sigmoid(logits))
+    # Sum over examples, divide by batch_size.
+    expected_loss = 0.5 * np.sum(
+        _sigmoid_cross_entropy(labels=labels_onehot, logits=logits))
+
+    keys = metric_keys.MetricKeys
+    expected_metrics = {
+        # Average loss over examples.
+        keys.LOSS_MEAN: expected_loss,
+        # auc and auc_pr cannot be reliably calculated for only 4 samples, but
+        # this assert tests that the algorithm remains consistent.
+        keys.AUC: 0.3333,
+        keys.AUC_PR: 0.7639,
+        keys.PROBABILITY_MEAN_AT_NAME % 'a':
+            np.sum(_sigmoid(logits[:, 0])) / 2.,
+        keys.AUC_AT_NAME % 'a': 0.,
+        keys.AUC_PR_AT_NAME % 'a': 1.,
+        keys.PROBABILITY_MEAN_AT_NAME % 'b':
+            np.sum(_sigmoid(logits[:, 1])) / 2.,
+        keys.AUC_AT_NAME % 'b': 1.,
+        keys.AUC_PR_AT_NAME % 'b': 1.,
+    }
+
+    self._test_eval(
+        head=head,
+        logits=logits,
+        labels=labels,
+        expected_loss=expected_loss,
+        expected_metrics=expected_metrics)
+
   def test_eval_with_weights(self):
     n_classes = 2
     head = head_lib.multi_label_head(n_classes, weight_column='example_weights')
@@ -603,8 +721,9 @@ class MultiLabelHead(test.TestCase):
     # loss = labels * (logits < 0) * (-logits) +
     #        (1 - labels) * (logits > 0) * logits =>
     # expected_unweighted_loss = [[10., 10.], [15., 0.]]
-    # Average over classes, weighted sum over examples.
-    expected_loss = 25.
+    # Average over classes, weighted sum over examples, divide by batch_size.
+    # loss = ( 1 * (10 + 10) / 2 + 2 * (15 + 0) / 2) / 2
+    expected_loss = 12.5
 
     spec = head.create_estimator_spec(
         features={
@@ -617,8 +736,8 @@ class MultiLabelHead(test.TestCase):
 
     keys = metric_keys.MetricKeys
     expected_metrics = {
-        # Average loss over weighted examples.
-        keys.LOSS_MEAN: expected_loss / 3,
+        # Average loss over weighted examples (denominator is sum(weights)).
+        keys.LOSS_MEAN: expected_loss * (2. / 3.),
         # auc and auc_pr cannot be reliably calculated for only 4 samples, but
         # this assert tests that the algorithm remains consistent.
         keys.AUC: 0.2000,
@@ -634,7 +753,7 @@ class MultiLabelHead(test.TestCase):
 
     # Assert predictions, loss, and metrics.
     tol = 1e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNone(spec.scaffold.summary_op)
       value_ops = {k: spec.eval_metric_ops[k][0] for k in spec.eval_metric_ops}
@@ -663,7 +782,7 @@ class MultiLabelHead(test.TestCase):
     #        (1 - labels) * (logits > 0) * logits
     expected_unreduced_loss = [[(10. + 10.) / 2.], [(15. + 0.) / 2.]]
     expected_weights = [[1.], [2.]]
-    expected_training_loss = 1. * (10. + 10.) / 2. + 2. * (15. + 0.) / 2.
+    expected_training_loss = (1. * (10. + 10.) / 2. + 2. * (15. + 0.) / 2.) / 2.
     training_loss, unreduced_loss, actual_weights, _ = head.create_loss(
         features={
             'x': np.array(((42,),), dtype=np.int32),
@@ -672,7 +791,7 @@ class MultiLabelHead(test.TestCase):
         mode=model_fn.ModeKeys.TRAIN,
         logits=logits,
         labels=labels)
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
       self.assertAllClose(
           expected_training_loss, training_loss.eval(), atol=1e-4)
@@ -706,7 +825,7 @@ class MultiLabelHead(test.TestCase):
         mode=model_fn.ModeKeys.TRAIN,
         logits=logits,
         labels=labels)
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
       self.assertAllClose(
           expected_training_loss, training_loss.eval(), atol=1e-4)
@@ -745,7 +864,7 @@ class MultiLabelHead(test.TestCase):
         logits=logits,
         labels=labels,
         train_op_fn=_train_op_fn)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
@@ -771,7 +890,7 @@ class MultiLabelHead(test.TestCase):
         logits=logits,
         labels=labels,
         train_op_fn=_train_op_fn)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
@@ -800,7 +919,7 @@ class MultiLabelHead(test.TestCase):
 
     # Assert predictions, loss, train_op, and summaries.
     tol = 1e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNotNone(spec.scaffold.summary_op)
       loss, train_result, summary_str = sess.run((spec.loss, spec.train_op,
@@ -809,11 +928,8 @@ class MultiLabelHead(test.TestCase):
       self.assertEqual(
           six.b('{0:s}{1:.3f}'.format(expected_train_result, expected_loss)),
           train_result)
-      _assert_simple_summaries(self, {
-          metric_keys.MetricKeys.LOSS: expected_loss,
-          # Average loss over examples.
-          metric_keys.MetricKeys.LOSS_MEAN: expected_loss / 2,
-      }, summary_str, tol)
+      _assert_simple_summaries(
+          self, {metric_keys.MetricKeys.LOSS: expected_loss}, summary_str, tol)
 
   def test_train(self):
     head = head_lib.multi_label_head(n_classes=2)
@@ -823,8 +939,9 @@ class MultiLabelHead(test.TestCase):
     # loss = labels * (logits < 0) * (-logits) +
     #        (1 - labels) * (logits > 0) * logits =>
     # expected_unweighted_loss = [[10., 10.], [15., 0.]]
-    # Average over classes, sum over weights.
-    expected_loss = 17.5
+    # Average over classes, sum over examples, divide by batch_size.
+    # loss = ( (10 + 10) / 2 + (15 + 0) / 2 ) / 2
+    expected_loss = 8.75
     self._test_train(
         head=head, logits=logits, labels=labels, expected_loss=expected_loss)
 
@@ -840,8 +957,9 @@ class MultiLabelHead(test.TestCase):
     # loss = labels * (logits < 0) * (-logits) +
     #        (1 - labels) * (logits > 0) * logits =>
     # expected_unweighted_loss = [[10., 10.], [15., 0.]]
-    # Average over classes, sum over weights.
-    expected_loss = 17.5
+    # Average over classes, sum over examples, divide by batch_size.
+    # loss = ( (10 + 10) / 2 + (15 + 0) / 2 ) / 2
+    expected_loss = 8.75
     self._test_train(
         head=head, logits=logits, labels=labels, expected_loss=expected_loss)
 
@@ -858,10 +976,76 @@ class MultiLabelHead(test.TestCase):
     # loss = labels * (logits < 0) * (-logits) +
     #        (1 - labels) * (logits > 0) * logits =>
     # expected_unweighted_loss = [[10., 10.], [15., 0.]]
-    # Average over classes, sum over weights.
-    expected_loss = 17.5
+    # Average over classes, sum over examples, divide by batch_size.
+    # loss = ( (10 + 10) / 2 + (15 + 0) / 2 ) / 2
+    expected_loss = 8.75
     self._test_train(
         head=head, logits=logits, labels=labels, expected_loss=expected_loss)
+
+  def test_train_with_optimizer(self):
+    head = head_lib.multi_label_head(n_classes=2)
+    logits = np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)
+    labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
+    # For large logits, sigmoid cross entropy loss is approximated as:
+    # loss = labels * (logits < 0) * (-logits) +
+    #        (1 - labels) * (logits > 0) * logits =>
+    # expected_unweighted_loss = [[10., 10.], [15., 0.]]
+    # Average over classes, sum over examples, divide by batch_size.
+    # loss = ( (10 + 10) / 2 + (15 + 0) / 2 ) / 2
+    expected_loss = 8.75
+    expected_train_result = 'my_train_op'
+
+    class _Optimizer(object):
+
+      def minimize(self, loss, global_step):
+        del global_step
+        return string_ops.string_join(
+            [constant_op.constant(expected_train_result),
+             string_ops.as_string(loss, precision=3)])
+
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        optimizer=_Optimizer())
+
+    tol = 1e-3
+    with self.cached_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      loss, train_result = sess.run((spec.loss, spec.train_op))
+      self.assertAllClose(expected_loss, loss, rtol=tol, atol=tol)
+      self.assertEqual(
+          six.b('{0:s}{1:.3f}'.format(expected_train_result, expected_loss)),
+          train_result)
+
+  def test_train_with_update_ops(self):
+    head = head_lib.multi_label_head(n_classes=2)
+
+    with ops.Graph().as_default():
+      w = variables.Variable(1)
+      update_op = w.assign_add(1)
+      ops.add_to_collection(ops.GraphKeys.UPDATE_OPS, update_op)
+
+      t = variables.Variable('')
+      expected_train_result = b'my_train_op'
+      def _train_op_fn(loss):
+        del loss
+        return t.assign(expected_train_result)
+
+      spec = head.create_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.TRAIN,
+          logits=np.array([[-10., 10.], [-15., 10.]], dtype=np.float32),
+          labels=np.array([[1, 0], [1, 1]], dtype=np.int64),
+          train_op_fn=_train_op_fn)
+
+      with self.cached_session() as sess:
+        _initialize_variables(self, spec.scaffold)
+        sess.run(spec.train_op)
+        w_value, t_value = sess.run([w, t])
+        self.assertEqual(2, w_value)
+        self.assertEqual(expected_train_result, t_value)
 
   def test_train_with_regularization_losses(self):
     head = head_lib.multi_label_head(
@@ -895,7 +1079,7 @@ class MultiLabelHead(test.TestCase):
 
     # Assert predictions, loss, train_op, and summaries.
     tol = 1e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNotNone(spec.scaffold.summary_op)
       loss, train_result, summary_str = sess.run((spec.loss, spec.train_op,
@@ -916,8 +1100,9 @@ class MultiLabelHead(test.TestCase):
     # loss = labels * (logits < 0) * (-logits) +
     #        (1 - labels) * (logits > 0) * logits =>
     # expected_unweighted_loss = [[10., 10.], [15., 0.]]
-    # Average over classes, weighted sum over examples.
-    expected_loss = 25.
+    # Average over classes, weighted sum over examples, divide by batch_size.
+    # loss = ( 1 * (10 + 10) / 2 + 2 * (15 + 0) / 2 ) / 2
+    expected_loss = 12.5
     expected_train_result = 'my_train_op'
     def _train_op_fn(loss):
       return string_ops.string_join(
@@ -942,7 +1127,7 @@ class MultiLabelHead(test.TestCase):
 
     # Assert predictions, loss, train_op, and summaries.
     tol = 1e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNotNone(spec.scaffold.summary_op)
       loss, train_result, summary_str = sess.run((spec.loss, spec.train_op,
@@ -951,11 +1136,8 @@ class MultiLabelHead(test.TestCase):
       self.assertEqual(
           six.b('{0:s}{1:.3f}'.format(expected_train_result, expected_loss)),
           train_result)
-      _assert_simple_summaries(self, {
-          metric_keys.MetricKeys.LOSS: expected_loss,
-          # Average loss over weighted examples.
-          metric_keys.MetricKeys.LOSS_MEAN: expected_loss / 3,
-      }, summary_str, tol)
+      _assert_simple_summaries(
+          self, {metric_keys.MetricKeys.LOSS: expected_loss,}, summary_str, tol)
 
   def test_multi_dim_weighted_train_create_loss(self):
     """Logits and labels of shape [2, 2, 3], weights [2, 2]."""
@@ -972,15 +1154,15 @@ class MultiLabelHead(test.TestCase):
     expected_unreduced_loss = [[[20./3.], [10./3.]], [[4.], [8.]]]
     # weights are reshaped to [2, 2, 1] to match logits.
     expected_weights = [[[1.], [1.5]], [[2.], [2.5]]]
-    # weighted_sum_loss = 1*20/3 + 1.5*10/3 + 2*4 + 2.5*8 = 39.6667
-    expected_training_loss = 39.6667
+    # loss = (1*20/3 + 1.5*10/3 + 2*4 + 2.5*8) / 4 = 9.9167
+    expected_training_loss = 9.9167
     training_loss, unreduced_loss, actual_weights, _ = head.create_loss(
         features={'weights': weights},
         mode=model_fn.ModeKeys.TRAIN,
         logits=logits,
         labels=labels)
     atol = 1.e-3
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
       self.assertAllClose(
           expected_training_loss, training_loss.eval(), atol=atol)
@@ -999,8 +1181,8 @@ class MultiLabelHead(test.TestCase):
     weights = np.array([[1., 1.5], [2., 2.5]], dtype=np.float32)
     # loss = [[10 + 10 + 0, 0 + 0 + 10], [0 + 0 + 12, 12 + 12 + 0]] / 3
     #      = [[20/3, 10/3], [4, 8]]
-    # weighted_sum_loss = 1*20/3 + 1.5*10/3 + 2*4 + 2.5*8 = 39.6667
-    expected_loss = 39.6667
+    # loss = (1*20/3 + 1.5*10/3 + 2*4 + 2.5*8) / 4 = 9.9167
+    expected_loss = 9.9167
     expected_train_result = 'my_train_op'
     def _train_op_fn(loss):
       return string_ops.string_join(
@@ -1015,7 +1197,7 @@ class MultiLabelHead(test.TestCase):
         train_op_fn=_train_op_fn)
 
     atol = 1.e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, monitored_session.Scaffold())
       loss, train_result = sess.run((spec.loss, spec.train_op))
       self.assertAllClose(expected_loss, loss, atol=atol)
@@ -1042,7 +1224,7 @@ class MultiLabelHead(test.TestCase):
         logits=logits,
         labels=labels,
         train_op_fn=_train_op_fn)
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
@@ -1070,7 +1252,7 @@ class MultiLabelHead(test.TestCase):
         logits=logits,
         labels=labels,
         train_op_fn=_train_op_fn)
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
@@ -1088,11 +1270,11 @@ class MultiLabelHead(test.TestCase):
     weights = np.array([[1., 1.5], [2., 2.5]], dtype=np.float32)
     # loss = [[10 + 10 + 0, 0 + 0 + 10], [0 + 0 + 12, 12 + 12 + 0]] / 3
     #      = [[20/3, 10/3], [4, 8]]
-    # weighted_sum_loss = 1*20/3 + 1.5*10/3 + 2*4 + 2.5*8 = 39.6667
-    expected_loss = 39.6667
+    # loss = (1*20/3 + 1.5*10/3 + 2*4 + 2.5*8) / 4 = 9.9167
+    expected_loss = 9.9167
     keys = metric_keys.MetricKeys
     expected_metrics = {
-        keys.LOSS_MEAN: expected_loss / np.sum(weights),
+        keys.LOSS_MEAN: expected_loss * (4. / np.sum(weights)),
         # auc and auc_pr cannot be reliably calculated for only 4 samples, but
         # this assert tests that the algorithm remains consistent.
         keys.AUC: 0.4977,
@@ -1128,8 +1310,8 @@ class PoissonRegressionHead(test.TestCase):
     #         exp(-1) - 2 * (-1) + 2*ln(2) - 2 + 0.5*ln(2*pi*2),
     #         exp(1) - 3 * 1 + 3*ln(3) - 3 + 0.5*ln(2*pi*3)]
     #      = [1.0, 3.020, 1.482]
-    # sum_loss = 5.502
-    expected_loss = 5.502
+    # training_loss = (1.0 + 3.020 + 1.482) / 3
+    expected_loss = 1.834
     atol = 0.001
     expected_train_result = b'my_train_op'
     def _train_op_fn(loss):
@@ -1145,7 +1327,7 @@ class PoissonRegressionHead(test.TestCase):
         labels=labels,
         train_op_fn=_train_op_fn)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       loss, train_result = sess.run([spec.loss, spec.train_op])
       self.assertAlmostEqual(expected_loss, loss, delta=atol)
@@ -1170,7 +1352,126 @@ class PoissonRegressionHead(test.TestCase):
     self.assertEqual(dtypes.float32, spec.predictions[keys.LOGITS].dtype)
 
     # Assert predictions.
-    with self.test_session():
+    with self.cached_session():
+      _initialize_variables(self, spec.scaffold)
+      self.assertAllClose(
+          expected_predictions, spec.predictions[keys.PREDICTIONS].eval())
+      self.assertAllClose(logits, spec.predictions[keys.LOGITS].eval())
+
+
+class LogisticRegressionHead(test.TestCase):
+
+  def setUp(self):
+    ops.reset_default_graph()
+
+  def test_train(self):
+    head = head_lib.logistic_regression_head()
+
+    # Create estimator spec.
+    logits = np.array([[0], [-1], [1]], dtype=np.float32)
+    labels = np.array([[.4], [.6], [.8]], dtype=np.float32)
+    # Following the documentation in
+    # tf.nn.sigmoid_cross_entropy_with_logits:
+    # With x = logits, z = labels.
+    # loss  = max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    # loss = [0 - 0 * 0.4 + ln(1 + exp(-0)),
+    #         0 + 1 * 0.6 + ln(1 + exp(-1)),
+    #         1 - 1 * 0.8 + ln(1 + exp(-1))]
+    #      = [0.6931, 0.9133, 0.5133]
+    # training_loss = (0.6931 + 0.9133 + 0.5133) / 3
+    expected_loss = 0.7066
+    atol = 0.001
+    expected_train_result = b'my_train_op'
+    def _train_op_fn(loss):
+      with ops.control_dependencies((check_ops.assert_near(
+          math_ops.to_float(expected_loss), math_ops.to_float(loss),
+          atol=atol, name='assert_loss'),)):
+        return constant_op.constant(expected_train_result)
+
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42.,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn)
+
+    with self.cached_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      loss, train_result = sess.run([spec.loss, spec.train_op])
+      self.assertAlmostEqual(expected_loss, loss, delta=atol)
+      self.assertEqual(expected_train_result, train_result)
+
+  def test_train_labels_too_large(self):
+    head = head_lib.logistic_regression_head()
+
+    # Create estimator spec.
+    logits = np.array([[0], [-1], [1]], dtype=np.float32)
+    labels = np.array([[.4], [1.2], [.8]], dtype=np.float32)
+    expected_train_result = b'my_train_op'
+    def _train_op_fn(loss):
+      del loss
+      return constant_op.constant(expected_train_result)
+
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42.,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn)
+
+    with self.cached_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r'\[Labels must be in range \[0, 1\]\] .* \[\[0.4\]\[1.2\]\[0.8\]\]'):
+        _ = sess.run(spec.loss)
+
+  def test_train_labels_negative(self):
+    head = head_lib.logistic_regression_head()
+
+    # Create estimator spec.
+    logits = np.array([[0], [-1], [1]], dtype=np.float32)
+    labels = np.array([[.4], [-0.2], [.8]], dtype=np.float32)
+    expected_train_result = b'my_train_op'
+    def _train_op_fn(loss):
+      del loss
+      return constant_op.constant(expected_train_result)
+
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42.,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn)
+
+    with self.cached_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r'\[Labels must be in range \[0, 1\]\] .* \[\[0.4\]\[-0.2\]\[0.8\]\]'
+      ):
+        _ = sess.run(spec.loss)
+
+  def test_predict(self):
+    head = head_lib.logistic_regression_head()
+
+    # Create estimator spec.
+    logits = np.array([[0], [-1], [1]], dtype=np.float32)
+    expected_predictions = 1. / (1. + np.exp(-logits))
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42.,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.PREDICT,
+        logits=logits)
+
+    # Assert spec contains expected tensors.
+    keys = prediction_keys.PredictionKeys
+    self.assertItemsEqual(
+        (keys.PREDICTIONS, keys.LOGITS), spec.predictions.keys())
+    self.assertEqual(dtypes.float32, spec.predictions[keys.PREDICTIONS].dtype)
+    self.assertEqual(dtypes.float32, spec.predictions[keys.LOGITS].dtype)
+
+    # Assert predictions.
+    with self.cached_session():
       _initialize_variables(self, spec.scaffold)
       self.assertAllClose(
           expected_predictions, spec.predictions[keys.PREDICTIONS].eval())

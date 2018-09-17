@@ -154,14 +154,14 @@ class NthElementTest(test.TestCase):
 
   def testGradients(self):
     with self.test_session(use_gpu=False) as sess:
-      inputs = array_ops.placeholder(dtypes.int32, shape=[3, 5])
+      inputs = array_ops.placeholder(dtypes.float32, shape=[3, 5])
       values = nn_ops.nth_element(inputs, 3)
       grad = sess.run(
           gradients_impl.gradients(
               values, inputs, grad_ys=[[-1., 2., 5.]]),
-          feed_dict={inputs: [[2, -1, 1000, 3, 1000],
-                              [1, 5, 2, 4, 3],
-                              [2, 2, 2, 2, 2],
+          feed_dict={inputs: [[2., -1., 1000., 3., 1000.],
+                              [1., 5., 2., 4., 3.],
+                              [2., 2., 2., 2., 2.],
                              ]})
     self.assertAllClose(grad[0], [[0, 0, -0.5, 0, -0.5],
                                   [0, 0, 0, 2, 0],

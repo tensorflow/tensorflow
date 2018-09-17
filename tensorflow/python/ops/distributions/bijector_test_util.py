@@ -79,9 +79,7 @@ def assert_scalar_congruency(bijector,
   Raises:
     AssertionError:  If tests fail.
   """
-
   # Checks and defaults.
-  assert bijector.event_ndims.eval() == 0
   if sess is None:
     sess = ops.get_default_session()
 
@@ -111,7 +109,10 @@ def assert_scalar_congruency(bijector,
   # (b - a) = \int_a^b dx = \int_{y(a)}^{y(b)} |dx/dy| dy
   # "change_measure_dy_dx" below is a Monte Carlo approximation to the right
   # hand side, which should then be close to the left, which is (b - a).
-  dy_dx = math_ops.exp(bijector.inverse_log_det_jacobian(uniform_y_samps))
+  # We assume event_ndims=0 because we assume scalar -> scalar. The log_det
+  # methods will handle whether they expect event_ndims > 0.
+  dy_dx = math_ops.exp(bijector.inverse_log_det_jacobian(
+      uniform_y_samps, event_ndims=0))
   # E[|dx/dy|] under Uniform[lower_y, upper_y]
   # = \int_{y(a)}^{y(b)} |dx/dy| dP(u), where dP(u) is the uniform measure
   expectation_of_dy_dx_under_uniform = math_ops.reduce_mean(dy_dx)
@@ -121,7 +122,8 @@ def assert_scalar_congruency(bijector,
 
   # We'll also check that dy_dx = 1 / dx_dy.
   dx_dy = math_ops.exp(
-      bijector.forward_log_det_jacobian(bijector.inverse(uniform_y_samps)))
+      bijector.forward_log_det_jacobian(
+          bijector.inverse(uniform_y_samps), event_ndims=0))
 
   [
       forward_on_10_pts_v,
@@ -158,7 +160,8 @@ def assert_scalar_congruency(bijector,
       dy_dx_v, np.divide(1., dx_dy_v), atol=1e-5, rtol=1e-3)
 
 
-def assert_bijective_and_finite(bijector, x, y, atol=0, rtol=1e-5, sess=None):
+def assert_bijective_and_finite(
+    bijector, x, y, event_ndims, atol=0, rtol=1e-5, sess=None):
   """Assert that forward/inverse (along with jacobians) are inverses and finite.
 
   It is recommended to use x and y values that are very very close to the edge
@@ -168,6 +171,8 @@ def assert_bijective_and_finite(bijector, x, y, atol=0, rtol=1e-5, sess=None):
     bijector:  A Bijector instance.
     x:  np.array of values in the domain of bijector.forward.
     y:  np.array of values in the domain of bijector.inverse.
+    event_ndims: Integer describing the number of event dimensions this bijector
+      operates on.
     atol:  Absolute tolerance.
     rtol:  Relative tolerance.
     sess:  TensorFlow session.  Defaults to the default session.
@@ -197,10 +202,10 @@ def assert_bijective_and_finite(bijector, x, y, atol=0, rtol=1e-5, sess=None):
   ] = sess.run([
       bijector.inverse(f_x),
       bijector.forward(g_y),
-      bijector.inverse_log_det_jacobian(f_x),
-      bijector.forward_log_det_jacobian(x),
-      bijector.inverse_log_det_jacobian(y),
-      bijector.forward_log_det_jacobian(g_y),
+      bijector.inverse_log_det_jacobian(f_x, event_ndims=event_ndims),
+      bijector.forward_log_det_jacobian(x, event_ndims=event_ndims),
+      bijector.inverse_log_det_jacobian(y, event_ndims=event_ndims),
+      bijector.forward_log_det_jacobian(g_y, event_ndims=event_ndims),
       f_x,
       g_y,
   ])

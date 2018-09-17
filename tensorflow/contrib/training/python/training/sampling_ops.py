@@ -123,7 +123,7 @@ def rejection_sample(tensors,
         batch_size=batch_size,
         num_threads=queue_threads)
 
-    # Queues return a single tensor if the list of enqued tensors is one. Since
+    # Queues return a single tensor if the list of enqueued tensors is one. Since
     # we want the type to always be the same, always return a list.
     if isinstance(minibatch, ops.Tensor):
       minibatch = [minibatch]
@@ -312,7 +312,7 @@ def _verify_input(tensor_list, labels, probs_list):
   """Verify that batched inputs are well-formed."""
   checked_probs_list = []
   for probs in probs_list:
-    # Since number of classes shouldn't change at runtime, probalities shape
+    # Since number of classes shouldn't change at runtime, probabilities shape
     # should be fully defined.
     probs.get_shape().assert_is_fully_defined()
 
@@ -407,7 +407,7 @@ def _calculate_acceptance_probabilities(init_probs, target_probs):
   ```
 
 
-  A solution for a_i in terms of the other variabes is the following:
+  A solution for a_i in terms of the other variables is the following:
     ```a_i = (t_i / p_i) / max_i[t_i / p_i]```
   """
   # Make list of t_i / p_i.

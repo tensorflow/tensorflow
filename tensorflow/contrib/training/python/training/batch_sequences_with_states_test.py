@@ -108,7 +108,7 @@ class BatchSequencesWithStatesTest(test.TestCase):
                   expected_seq4_batch1, expected_seq4_batch2,
                   key=None, make_keys_unique=False):
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       next_batch = sqss.batch_sequences_with_states(
           input_key=key if key is not None else self.key,
           input_sequences=self.sequences,
@@ -332,7 +332,7 @@ class BatchSequencesWithStatesTest(test.TestCase):
         "seq4": self.sequences["seq4"],
     }
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    ".*should be a multiple of: 3, but saw "
                                    "value: 4. Consider setting pad=True."):
@@ -505,22 +505,10 @@ class BatchSequencesWithStatesTest(test.TestCase):
         expected_seq4_batch2=expected_seq4_batch2)
 
 
-class BatchSequencesWithStatesTestWithCApi(BatchSequencesWithStatesTest):
-
-  def setUp(self):
-    self._prev_value = ops._USE_C_API
-    ops._USE_C_API = True
-    super(BatchSequencesWithStatesTestWithCApi, self).setUp()
-
-  def tearDown(self):
-    super(BatchSequencesWithStatesTestWithCApi, self).tearDown()
-    ops._USE_C_API = self._prev_value
-
-
 class PaddingTest(test.TestCase):
 
   def testPaddingInvalidLengths(self):
-    with ops.Graph().as_default() as g, self.test_session(graph=g):
+    with ops.Graph().as_default() as g, self.session(graph=g):
       sequences = {
           "key_1": constant_op.constant([1, 2, 3]),  # length 3
           "key_2": constant_op.constant([1.5, 2.5])  # length 2
@@ -532,7 +520,7 @@ class PaddingTest(test.TestCase):
         padded_seq["key_1"].eval()
 
   def testPadding(self):
-    with ops.Graph().as_default() as g, self.test_session(graph=g):
+    with ops.Graph().as_default() as g, self.session(graph=g):
       sequences = {
           "key_1": constant_op.constant([1, 2]),
           "key_2": constant_op.constant([0.5, -1.0]),
@@ -561,7 +549,7 @@ class PaddingTest(test.TestCase):
     val2 = np.array([9, 12])
     shape2 = np.array([5])
 
-    with ops.Graph().as_default() as g, self.test_session(graph=g):
+    with ops.Graph().as_default() as g, self.session(graph=g):
       sp_tensor1 = sparse_tensor.SparseTensor(
           indices=array_ops.constant(ind1, dtypes.int64),
           values=array_ops.constant(val1, dtypes.int64),

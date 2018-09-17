@@ -161,7 +161,7 @@ static float rnn_golden_bw_output[] = {
     0,        0,          1.86126,   0,         0.728256,  0.750013,  0.011861,
     0.576383, 3.38891,    1.29273,   0};
 
-constexpr std::initializer_list<float> weights = {
+const std::initializer_list<float> weights = {
     0.461459,    0.153381,   0.529743,    -0.00371218, 0.676267,   -0.211346,
     0.317493,    0.969689,   -0.343251,   0.186423,    0.398151,   0.152399,
     0.448504,    0.317662,   0.523556,    -0.323514,   0.480877,   0.333113,
@@ -628,12 +628,12 @@ static float golden_endtoend_output[] = {
     -2.080307, 0.896140,  -3.104050, 0.983158,  -0.424898, -1.154270, -3.805728,
     1.978917,  -1.314387, 1.235096,  -3.148906, 1.113173,  0.111713,  2.055213,
     -7.565283, 2.100342};
-constexpr std::initializer_list<float> biases = {
+const std::initializer_list<float> biases = {
     0.065691948, -0.69055247, 0.1107955,  -0.97084129, -0.23957068, -0.23566568,
     -0.389184,   0.47481549,  -0.4791103, 0.29931796,  0.10463274,  0.83918178,
     0.37197268,  0.61957061,  0.3956964,  -0.37609905};
 
-constexpr std::initializer_list<float> recurrent_weights = {
+const std::initializer_list<float> recurrent_weights = {
     0.1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0.1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0.1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -664,13 +664,19 @@ class BidirectionalRNNOpModel : public SingleOpModel {
     fw_weights_ = AddInput(TensorType_FLOAT32);
     fw_recurrent_weights_ = AddInput(TensorType_FLOAT32);
     fw_bias_ = AddInput(TensorType_FLOAT32);
-    fw_hidden_state_ = AddOutput(TensorType_FLOAT32);
-    fw_output_ = AddOutput(TensorType_FLOAT32);
+    fw_hidden_state_ = AddInput(TensorType_FLOAT32, true);
     bw_weights_ = AddInput(TensorType_FLOAT32);
     bw_recurrent_weights_ = AddInput(TensorType_FLOAT32);
     bw_bias_ = AddInput(TensorType_FLOAT32);
-    bw_hidden_state_ = AddOutput(TensorType_FLOAT32);
+    bw_hidden_state_ = AddInput(TensorType_FLOAT32, true);
+
+    aux_input_ = AddNullInput();
+    aux_fw_weights_ = AddNullInput();
+    aux_bw_weights_ = AddNullInput();
+
+    fw_output_ = AddOutput(TensorType_FLOAT32);
     bw_output_ = AddOutput(TensorType_FLOAT32);
+
     SetBuiltinOp(BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN,
                  BuiltinOptions_SequenceRNNOptions,
                  CreateSequenceRNNOptions(builder_, /*time_major=*/false,
@@ -681,9 +687,14 @@ class BidirectionalRNNOpModel : public SingleOpModel {
         {fw_units_, input_size_},                // fw_weights
         {fw_units_, fw_units_},                  // fw_recurrent_weights
         {fw_units_},                             // fw_bias
+        {batches_, fw_units_},                   // fw_hidden_state
         {bw_units_, input_size_},                // bw_weights
         {bw_units_, bw_units_},                  // bw_recurrent_weights
-        {bw_units_}                              // bw_bias
+        {bw_units_},                             // bw_bias
+        {batches_, bw_units_},                   // bw_hidden_state
+        {batches_, sequence_len_, 0},            // aux_input
+        {fw_units_, 0},                          // aux_fw_weights
+        {bw_units_, 0},                          // aux_bw_weights
     });
   }
 
@@ -719,19 +730,6 @@ class BidirectionalRNNOpModel : public SingleOpModel {
     PopulateTensor(input_, offset, begin, end);
   }
 
-  void ResetHiddenStates() {
-    const int fw_zero_buffer_size = fw_units_ * batches_;
-    std::unique_ptr<float[]> fw_zero_buffer(new float[fw_zero_buffer_size]);
-    memset(fw_zero_buffer.get(), 0, fw_zero_buffer_size * sizeof(float));
-    PopulateTensor(fw_hidden_state_, 0, fw_zero_buffer.get(),
-                   fw_zero_buffer.get() + fw_zero_buffer_size);
-    const int bw_zero_buffer_size = bw_units_ * batches_;
-    std::unique_ptr<float[]> bw_zero_buffer(new float[bw_zero_buffer_size]);
-    memset(bw_zero_buffer.get(), 0, bw_zero_buffer_size * sizeof(float));
-    PopulateTensor(bw_hidden_state_, 0, bw_zero_buffer.get(),
-                   bw_zero_buffer.get() + bw_zero_buffer_size);
-  }
-
   std::vector<float> GetFwOutput() { return ExtractVector<float>(fw_output_); }
   std::vector<float> GetBwOutput() { return ExtractVector<float>(bw_output_); }
 
@@ -753,6 +751,9 @@ class BidirectionalRNNOpModel : public SingleOpModel {
   int bw_bias_;
   int bw_hidden_state_;
   int bw_output_;
+  int aux_input_;
+  int aux_fw_weights_;
+  int aux_bw_weights_;
 
   int batches_;
   int sequence_len_;
@@ -774,7 +775,6 @@ TEST(BidirectionalRNNOpTest, BlackBoxTest) {
   rnn.SetFwRecurrentWeights(recurrent_weights);
   rnn.SetBwRecurrentWeights(recurrent_weights);
 
-  rnn.ResetHiddenStates();
   const int input_sequence_size = rnn.input_size() * rnn.sequence_len();
   float* batch_start = rnn_input;
   float* batch_end = batch_start + input_sequence_size;
@@ -812,8 +812,6 @@ TEST(BidirectionalRNNOpTest, BlackBoxTestReverseInputs) {
   rnn.SetBwBias(biases);
   rnn.SetFwRecurrentWeights(recurrent_weights);
   rnn.SetBwRecurrentWeights(recurrent_weights);
-
-  rnn.ResetHiddenStates();
 
   // Reverse inputs in each batch: in_1, in_2,..., in_k is inserted in the
   // following order: [in_k,..., in_2, in_1, in_k,...,in_2, in_1].
@@ -879,8 +877,6 @@ TEST(BidirectionalRNNOpTest, EndToEndTest) {
   rnn.SetBwBias(biases);
   rnn.SetFwRecurrentWeights(recurrent_weights);
   rnn.SetBwRecurrentWeights(recurrent_weights);
-
-  rnn.ResetHiddenStates();
 
   const int input_sequence_size = rnn.input_size() * rnn.sequence_len();
   const int output_sequence_size = output_size * rnn.sequence_len();

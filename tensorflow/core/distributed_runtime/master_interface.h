@@ -89,6 +89,16 @@ class MasterInterface {
   virtual Status Reset(CallOptions* call_options, const ResetRequest* request,
                        ResetResponse* response) = 0;
 
+  virtual Status MakeCallable(CallOptions* call_options,
+                              const MakeCallableRequest* request,
+                              MakeCallableResponse* response) = 0;
+  virtual Status RunCallable(CallOptions* call_options,
+                             const RunCallableRequest* request,
+                             RunCallableResponse* response) = 0;
+  virtual Status ReleaseCallable(CallOptions* call_options,
+                                 const ReleaseCallableRequest* request,
+                                 ReleaseCallableResponse* response) = 0;
+
  protected:
   // NOTE: This should only be called by implementations of this
   // interface whose CreateRunStepResponse() method returns a

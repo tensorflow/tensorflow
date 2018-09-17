@@ -39,6 +39,7 @@ cc_binary(
         ":gen_proto_text_functions_lib",
         "@protobuf_archive//:protobuf",
         "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:lib_proto_compiler",
     ] + if_ios(["//tensorflow/core/platform/default/build_config:logging"]),
 )
 
@@ -49,7 +50,6 @@ cc_library(
     copts = if_ios(["-DGOOGLE_LOGGING"]),
     linkopts = select({
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//tensorflow:darwin": [
             "-lm",
             "-lpthread",
@@ -75,9 +75,14 @@ tf_proto_library_cc(
 )
 
 tf_generate_proto_text_sources(
-    name = "test_proto_text_srcs",
+    name = "test_proto_text",
     srcs = ["test.proto"],
     srcs_relative_dir = "tensorflow/tools/proto_text/",
+    deps = [
+        ":test_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
 )
 
 tf_cc_test(
@@ -95,19 +100,4 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
-)
-
-# -----------------------------------------------------------------------------
-# Google-internal targets.  These must be at the end for syncrepo.
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

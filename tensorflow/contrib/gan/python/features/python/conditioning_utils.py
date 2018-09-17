@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Miscellanous utilities for TFGAN code and examples."""
+"""Miscellaneous utilities for TFGAN code and examples."""
 
 from __future__ import absolute_import
 from __future__ import division

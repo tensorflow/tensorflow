@@ -18,14 +18,12 @@ limitations under the License.
 
 #include "tensorflow/core/platform/env.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 
 using tensorflow::ThreadOptions;
 
 }  // namespace port
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_THREAD_OPTIONS_H_

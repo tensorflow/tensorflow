@@ -15,70 +15,34 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TENSOR_H_
 #define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TENSOR_H_
 
+#include <complex>
 #include <vector>
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
+#include "tensorflow/contrib/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/contrib/lite/kernels/internal/types.h"
 
 namespace tflite {
 
-template <typename T>
-inline T* GetTensorData(TfLiteTensor* tensor);
-
 template <>
-inline float* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.f : nullptr;
-}
-
-template <>
-inline uint8_t* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.uint8 : nullptr;
+inline std::complex<float>* GetTensorData(TfLiteTensor* tensor) {
+  return tensor != nullptr
+             ? reinterpret_cast<std::complex<float>*>(tensor->data.c64)
+             : nullptr;
 }
 
 template <>
-inline int32_t* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.i32 : nullptr;
-}
-
-template <>
-inline int64_t* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.i64 : nullptr;
-}
-
-inline int RemapDim(int max_dimensions, int d) {
-  return max_dimensions - d - 1;
-}
-
-// TODO(ahentz): the implementations in kernels/internal/ take a Dims<4> object
-// even if the original tensors were not 4D. We should consider rewriting them
-// to take a more generic 'shape' object.
-inline Dims<4> GetTensorDims(const int data[], const int size) {
-  Dims<4> d;
-  for (int i = 0; i < 4; ++i) {
-    int src = size - i - 1;
-    if (src >= 0) {
-      d.sizes[i] = data[src];
-    } else {
-      d.sizes[i] = 1;
-    }
-  }
-  d.strides[0] = 1;
-  for (int i = 1; i < 4; i++) {
-    d.strides[i] = d.strides[i - 1] * d.sizes[i - 1];
-  }
-  return d;
+inline const std::complex<float>* GetTensorData(const TfLiteTensor* tensor) {
+  return tensor != nullptr
+             ? reinterpret_cast<const std::complex<float>*>(tensor->data.c64)
+             : nullptr;
 }
 
 inline Dims<4> GetTensorDims(std::vector<int32_t> data) {
   return GetTensorDims(data.data(), data.size());
 }
 
-inline Dims<4> GetTensorDims(const TfLiteTensor* tensor) {
-  if (tensor == nullptr) {
-    return Dims<4>();
-  }
-
-  auto* dims = tensor->dims;
-  return GetTensorDims(dims->data, dims->size);
+inline RuntimeShape GetTensorShape(std::vector<int32_t> data) {
+  return RuntimeShape(data.size(), data.data());
 }
 
 // A list of tensors in a format that can be used by kernels like split and
@@ -124,6 +88,29 @@ class VectorOfTensors {
   std::vector<T*> all_data_;
   std::vector<Dims<4>> all_dims_;
   std::vector<Dims<4>*> all_dims_ptr_;
+};
+
+// A list of quantized tensors in a format that can be used by kernels like
+// split and concatenation.
+class VectorOfQuantizedTensors : public VectorOfTensors<uint8> {
+ public:
+  // Build with the tensors in 'tensor_list'.
+  VectorOfQuantizedTensors(const TfLiteContext& context,
+                           const TfLiteIntArray& tensor_list)
+      : VectorOfTensors<uint8>(context, tensor_list) {
+    for (int i = 0; i < tensor_list.size; ++i) {
+      TfLiteTensor* t = &context.tensors[tensor_list.data[i]];
+      zero_point_.push_back(t->params.zero_point);
+      scale_.push_back(t->params.scale);
+    }
+  }
+
+  const float* scale() const { return scale_.data(); }
+  const int32* zero_point() const { return zero_point_.data(); }
+
+ private:
+  std::vector<int32> zero_point_;
+  std::vector<float> scale_;
 };
 
 }  // namespace tflite

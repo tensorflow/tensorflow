@@ -30,6 +30,13 @@ namespace tensorflow {
 // using 'options'.  Caller does not take ownership over threadpool.
 thread::ThreadPool* ComputePool(const SessionOptions& options);
 
+// Returns number of inter op threads.
+int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options);
+
+// Creates a thread pool with number of inter op threads.
+thread::ThreadPool* NewThreadPoolFromSessionOptions(
+    const SessionOptions& options);
+
 // Schedule "closure" in the default thread queue.
 void SchedClosure(std::function<void()> closure);
 

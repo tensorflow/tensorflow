@@ -17,18 +17,17 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 namespace gpu {
 
-namespace se = ::perftools::gputools;
 namespace dnn = se::dnn;
 
 static std::pair<dnn::BatchDescriptor /*input_desc*/,
@@ -100,13 +99,15 @@ CudnnBatchNormForwardInferenceThunk::CudnnBatchNormForwardInferenceThunk(
 }
 
 Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
+    const BufferAllocations& buffer_allocations, se::Stream* stream,
+    HloExecutionProfiler* profiler) {
   dnn::BatchDescriptor operand_desc;
   dnn::BatchDescriptor scale_offset_desc;
   std::tie(operand_desc, scale_offset_desc) =
       MakeDescriptors(hlo_instruction()->shape(), feature_index_);
 
   se::DeviceMemory<float> output(buffer_allocations.GetDeviceAddress(output_));
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   stream->ThenBatchNormalizationForward(
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(operand_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
@@ -124,6 +125,7 @@ Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
       /*is_training=*/false,       //
       /*var_to_inv_var=*/nullptr,  //
       /*inv_var_to_var=*/nullptr);
+
   if (!stream->ok()) {
     return InternalError("BatchNormalizationForward call failed.");
   }
@@ -159,7 +161,8 @@ CudnnBatchNormForwardTrainingThunk::CudnnBatchNormForwardTrainingThunk(
 }
 
 Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
+    const BufferAllocations& buffer_allocations, se::Stream* stream,
+    HloExecutionProfiler* profiler) {
   dnn::BatchDescriptor operand_desc;
   dnn::BatchDescriptor scale_offset_desc;
   // The BatchNormTraining HLO outputs a tuple of three elements: output data,
@@ -176,6 +179,7 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
       buffer_allocations.GetDeviceAddress(output_inv_stddev_));
 
   se::DeviceMemory<float> null_device_ptr(nullptr);
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   stream->ThenBatchNormalizationForward(
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(operand_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
@@ -241,7 +245,8 @@ CudnnBatchNormBackwardThunk::CudnnBatchNormBackwardThunk(
 }
 
 Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
+    const BufferAllocations& buffer_allocations, se::Stream* stream,
+    HloExecutionProfiler* profiler) {
   dnn::BatchDescriptor operand_desc;
   dnn::BatchDescriptor scale_offset_desc;
 
@@ -258,6 +263,7 @@ Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
   se::DeviceMemory<float> output_grad_offset(
       buffer_allocations.GetDeviceAddress(output_grad_offset_));
 
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   stream->ThenBatchNormalizationBackward(
       se::DeviceMemory<float>(
           buffer_allocations.GetDeviceAddress(grad_output_)),

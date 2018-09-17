@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.layers import utils
-from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
@@ -87,34 +86,6 @@ class ConvUtilsTest(test.TestCase):
     self.assertEqual(8, utils.deconv_output_length(4, 2, 'valid', 2))
     self.assertEqual(3, utils.deconv_output_length(4, 2, 'full', 1))
     self.assertEqual(6, utils.deconv_output_length(4, 2, 'full', 2))
-
-
-class GraphUtilsTest(test.TestCase):
-
-  def testGetReachableFromInputs(self):
-
-    with self.test_session():
-      pl_1 = array_ops.placeholder(shape=None, dtype='float32')
-      pl_2 = array_ops.placeholder(shape=None, dtype='float32')
-      pl_3 = array_ops.placeholder(shape=None, dtype='float32')
-      x_1 = pl_1 + pl_2
-      x_2 = pl_2 * 2
-      x_3 = pl_3 + 1
-      x_4 = x_1 + x_2
-      x_5 = x_3 * pl_1
-
-      self.assertEqual(
-          utils.get_reachable_from_inputs([pl_1]),
-          {pl_1, x_1, x_4, x_5})
-      self.assertEqual(
-          utils.get_reachable_from_inputs([pl_1, pl_2]),
-          {pl_1, pl_2, x_1, x_2, x_4, x_5})
-      self.assertEqual(
-          utils.get_reachable_from_inputs([pl_3]),
-          {pl_3, x_3, x_5})
-      self.assertEqual(
-          utils.get_reachable_from_inputs([x_3]),
-          {x_3, x_5})
 
 
 if __name__ == '__main__':

@@ -87,8 +87,8 @@ import json
 import os
 import shutil
 
-from google.cloud import datastore
 from six import text_type
+from google.cloud import datastore
 
 
 def is_real_file(dirpath, fname):

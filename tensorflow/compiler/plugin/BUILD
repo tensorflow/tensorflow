@@ -49,17 +49,3 @@ cc_library(
         "//tensorflow/compiler/jit:xla_device",
     ],
 )
-
-#-----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

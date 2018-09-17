@@ -145,13 +145,12 @@ REGISTER_OP("Enter")
       auto* handle_data = c->input_handle_shapes_and_types(0);
       if (handle_data != nullptr) {
         c->set_output_handle_shapes_and_types(0, *handle_data);
-      } else {
-        // Otherwise, propagate shape if output is a constant.
-        bool is_constant;
-        TF_RETURN_IF_ERROR(c->GetAttr("is_constant", &is_constant));
-        if (is_constant) {
-          c->set_output(0, c->input(0));
-        }
+      }
+      // Propagate shape if output is a constant.
+      bool is_constant;
+      TF_RETURN_IF_ERROR(c->GetAttr("is_constant", &is_constant));
+      if (is_constant) {
+        c->set_output(0, c->input(0));
       }
 
       return Status::OK();

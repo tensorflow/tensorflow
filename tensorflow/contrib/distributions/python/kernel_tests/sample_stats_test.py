@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.contrib.distributions.python.ops import sample_stats
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import spectral_ops_test_util
 from tensorflow.python.platform import test
 
@@ -46,7 +47,7 @@ class _AutoCorrelationTest(object):
         input=x_,
         shape=x_.shape if self.use_static_shape else None)
     with spectral_ops_test_util.fft_kernel_label_map():
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         # Setting normalize = True means we divide by zero.
         auto_corr = sample_stats.auto_correlation(
             x_ph, axis=1, center=False, normalize=False)
@@ -64,7 +65,7 @@ class _AutoCorrelationTest(object):
         input=x_,
         shape=x_.shape if self.use_static_shape else None)
     with spectral_ops_test_util.fft_kernel_label_map():
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         # Setting normalize = True means we divide by zero.
         auto_corr = sample_stats.auto_correlation(
             x_ph, axis=1, normalize=False, center=True)
@@ -99,7 +100,7 @@ class _AutoCorrelationTest(object):
     x_ph = array_ops.placeholder_with_default(
         x, shape=x.shape if self.use_static_shape else None)
     with spectral_ops_test_util.fft_kernel_label_map():
-      with self.test_session():
+      with self.cached_session():
         auto_corr = sample_stats.auto_correlation(
             x_ph, axis=axis, max_lags=max_lags, center=center,
             normalize=normalize)
@@ -166,7 +167,7 @@ class _AutoCorrelationTest(object):
     x_ph = array_ops.placeholder_with_default(
         x, shape=(l,) if self.use_static_shape else None)
     with spectral_ops_test_util.fft_kernel_label_map():
-      with self.test_session():
+      with self.cached_session():
         rxx = sample_stats.auto_correlation(
             x_ph, max_lags=l // 2, center=True, normalize=False)
         if self.use_static_shape:
@@ -187,7 +188,7 @@ class _AutoCorrelationTest(object):
     x_ph = array_ops.placeholder_with_default(
         x, shape=(1000 * 10,) if self.use_static_shape else None)
     with spectral_ops_test_util.fft_kernel_label_map():
-      with self.test_session():
+      with self.cached_session():
         rxx = sample_stats.auto_correlation(
             x_ph, max_lags=1000 * 10 // 2, center=True, normalize=False)
         if self.use_static_shape:
@@ -208,7 +209,7 @@ class _AutoCorrelationTest(object):
     x_ph = array_ops.placeholder_with_default(
         x, shape=(l,) if self.use_static_shape else None)
     with spectral_ops_test_util.fft_kernel_label_map():
-      with self.test_session():
+      with self.cached_session():
         rxx = sample_stats.auto_correlation(
             x_ph, max_lags=l // 2, center=True, normalize=True)
         if self.use_static_shape:
@@ -270,7 +271,7 @@ class PercentileTestWithLowerInterpolation(test.TestCase):
     for q in [0, 10, 25, 49.9, 50, 50.01, 90, 95, 100]:
       expected_percentile = np.percentile(
           x, q=q, interpolation=self._interpolation, axis=0)
-      with self.test_session():
+      with self.cached_session():
         pct = sample_stats.percentile(
             x, q=q, interpolation=self._interpolation, axis=[0])
         self.assertAllEqual((), pct.get_shape())
@@ -281,7 +282,7 @@ class PercentileTestWithLowerInterpolation(test.TestCase):
     for q in [0, 10, 25, 49.9, 50, 50.01, 90, 95, 100]:
       expected_percentile = np.percentile(
           x, q=q, interpolation=self._interpolation)
-      with self.test_session():
+      with self.cached_session():
         pct = sample_stats.percentile(x, q=q, interpolation=self._interpolation)
         self.assertAllEqual((), pct.get_shape())
         self.assertAllClose(expected_percentile, pct.eval())
@@ -291,7 +292,7 @@ class PercentileTestWithLowerInterpolation(test.TestCase):
     for q in [0, 10, 25, 49.9, 50, 50.01, 90, 95, 100]:
       expected_percentile = np.percentile(
           x, q=q, interpolation=self._interpolation, axis=0)
-      with self.test_session():
+      with self.cached_session():
         # Get dim 1 with negative and positive indices.
         pct_neg_index = sample_stats.percentile(
             x, q=q, interpolation=self._interpolation, axis=[0])
@@ -307,7 +308,7 @@ class PercentileTestWithLowerInterpolation(test.TestCase):
     for q in [0, 10, 25, 49.9, 50, 50.01, 90, 95, 100]:
       expected_percentile = np.percentile(
           x, q=q, interpolation=self._interpolation, axis=0)
-      with self.test_session():
+      with self.cached_session():
         pct = sample_stats.percentile(
             x, q=q, interpolation=self._interpolation, axis=[0])
         self.assertAllEqual((2,), pct.get_shape())
@@ -318,7 +319,7 @@ class PercentileTestWithLowerInterpolation(test.TestCase):
     for q in [0, 10, 25, 49.9, 50, 50.01, 90, 95, 100]:
       expected_percentile = np.percentile(
           x, q=q, interpolation=self._interpolation, keepdims=True, axis=0)
-      with self.test_session():
+      with self.cached_session():
         pct = sample_stats.percentile(
             x,
             q=q,
@@ -333,7 +334,7 @@ class PercentileTestWithLowerInterpolation(test.TestCase):
     for axis in [None, 0, 1, -2, (0,), (-1,), (-1, 1), (3, 1), (-3, 0)]:
       expected_percentile = np.percentile(
           x, q=0.77, interpolation=self._interpolation, axis=axis)
-      with self.test_session():
+      with self.cached_session():
         pct = sample_stats.percentile(
             x,
             q=0.77,
@@ -351,7 +352,7 @@ class PercentileTestWithLowerInterpolation(test.TestCase):
           interpolation=self._interpolation,
           axis=axis,
           keepdims=True)
-      with self.test_session():
+      with self.cached_session():
         pct = sample_stats.percentile(
             x,
             q=0.77,
@@ -367,7 +368,7 @@ class PercentileTestWithLowerInterpolation(test.TestCase):
     for axis in [None, 0, 1, -2, (0,), (-1,), (-1, 1), (3, 1), (-3, 0)]:
       expected_percentile = np.percentile(
           x, q=0.77, interpolation=self._interpolation, axis=axis)
-      with self.test_session():
+      with self.cached_session():
         pct = sample_stats.percentile(
             x_ph,
             q=0.77,
@@ -385,7 +386,7 @@ class PercentileTestWithLowerInterpolation(test.TestCase):
           interpolation=self._interpolation,
           axis=axis,
           keepdims=True)
-      with self.test_session():
+      with self.cached_session():
         pct = sample_stats.percentile(
             x_ph,
             q=0.77,
@@ -399,7 +400,7 @@ class PercentileTestWithLowerInterpolation(test.TestCase):
     for q in [0, 10, 25, 49.9, 50, 50.01, 90, 95, 100]:
       expected_percentile = np.percentile(
           x, q=q, interpolation=self._interpolation)
-      with self.test_session():
+      with self.cached_session():
         pct = sample_stats.percentile(x, q=q, interpolation=self._interpolation)
         self.assertEqual(dtypes.int32, pct.dtype)
         self.assertAllEqual((), pct.get_shape())
@@ -422,7 +423,7 @@ class PercentileTestWithNearestInterpolation(test.TestCase):
     for q in [0, 10.1, 25.1, 49.9, 50.1, 50.01, 89, 100]:
       expected_percentile = np.percentile(
           x, q=q, interpolation=self._interpolation)
-      with self.test_session():
+      with self.cached_session():
         pct = sample_stats.percentile(x, q=q, interpolation=self._interpolation)
         self.assertAllEqual((), pct.get_shape())
         self.assertAllClose(expected_percentile, pct.eval())
@@ -432,7 +433,7 @@ class PercentileTestWithNearestInterpolation(test.TestCase):
     for q in [0, 10.1, 25.1, 49.9, 50.1, 50.01, 89, 100]:
       expected_percentile = np.percentile(
           x, q=q, interpolation=self._interpolation)
-      with self.test_session():
+      with self.cached_session():
         pct = sample_stats.percentile(x, q=q, interpolation=self._interpolation)
         self.assertAllEqual((), pct.get_shape())
         self.assertAllClose(expected_percentile, pct.eval())
@@ -451,9 +452,19 @@ class PercentileTestWithNearestInterpolation(test.TestCase):
     x = [1., 5., 3., 2., 4.]
     q_ph = array_ops.placeholder(dtypes.float32)
     pct = sample_stats.percentile(x, q=q_ph, validate_args=True)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("rank"):
         pct.eval(feed_dict={q_ph: [0.5]})
+
+  def test_finds_max_of_long_array(self):
+    # d - 1 == d in float32 and d = 3e7.
+    # So this test only passes if we use double for the percentile indices.
+    # If float is used, it fails with InvalidArgumentError about an index out of
+    # bounds.
+    x = math_ops.linspace(0., 3e7, num=int(3e7))
+    with self.cached_session():
+      minval = sample_stats.percentile(x, q=0, validate_args=True)
+      self.assertAllEqual(0, minval.eval())
 
 
 if __name__ == "__main__":

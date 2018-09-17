@@ -119,11 +119,13 @@ rundown:
    `tensorflow/contrib/makefile/gen/lib` to the Library Search Paths setting.
 
  - You'll also need to add `libprotobuf.a` and `libprotobuf-lite.a` from
-   `tensorflow/contrib/makefile/gen/protobuf_ios/lib` to your _Build Stages_ and
-   _Library Search Paths_.
+   `tensorflow/contrib/makefile/gen/protobuf_ios/lib`
+   and `nsync.a` from `tensorflow/contrib/makefile/downloads/nsync/builds/lipo.ios.c++11` 
+   to your _Build Stages_ and _Library Search Paths_.
 
  - The _Header Search_ paths needs to contain:
    - the root folder of tensorflow,
+   - `tensorflow/contrib/makefile/downloads/nsync/public`
    - `tensorflow/contrib/makefile/downloads/protobuf/src`
    - `tensorflow/contrib/makefile/downloads`,
    - `tensorflow/contrib/makefile/downloads/eigen`, and
@@ -188,8 +190,5 @@ increase you see in your own app is similar, and if it's larger, look at the
 "Other Linker Flags" used in the Simple Xcode project settings to strip the
 executable.
 
-After that, you can manually look at modifying the list of kernels
-included in tensorflow/contrib/makefile/tf_op_files.txt to reduce the number of
-implementations to the ones you're actually using in your own model. We're
-hoping to automate this step in the future, but for now manually removing them
-is the best approach.
+For further optimization, please refer to the ["Optimization" section](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/makefile#optimization)
+of the makefile instructions.

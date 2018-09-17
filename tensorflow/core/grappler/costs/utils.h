@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_COSTS_UTILS_H_
-#define TENSORFLOW_GRAPPLER_COSTS_UTILS_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_UTILS_H_
+#define TENSORFLOW_CORE_GRAPPLER_COSTS_UTILS_H_
 
 #include <string>
 #include <unordered_map>
@@ -80,7 +80,7 @@ class TensorSizeHistogram {
   uint64 Max() const { return max_; }
   uint64 NumElem() const { return num_elem_; }
   uint64 SumElem() const { return sum_elem_; }
-  std::string ToString() const;
+  string ToString() const;
 
  protected:
   const int Index(const uint64 value) const;
@@ -111,4 +111,4 @@ string GetStatsStringFromRunMetadata(const RunMetadata& run_metadata,
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_COSTS_UTILS_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_COSTS_UTILS_H_

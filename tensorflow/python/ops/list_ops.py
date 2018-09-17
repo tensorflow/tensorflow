@@ -29,6 +29,10 @@ from tensorflow.python.ops.gen_list_ops import *
 # pylint: enable=wildcard-import
 
 
+ops.NotDifferentiable("TensorListConcat")
+ops.NotDifferentiable("TensorListPushBackBatch")
+
+
 @ops.RegisterGradient("TensorListPushBack")
 def _PushBackGrad(op, dresult):
   return gen_list_ops.tensor_list_pop_back(
@@ -54,8 +58,8 @@ def _TensorListStackGrad(unused_op, dtensor):
 @ops.RegisterGradient("TensorListFromTensor")
 def _TensorListFromTensorGrad(op, dlist):
   """Gradient for TensorListFromTensor."""
-  if op.inputs[0].shape[0] is not None:
-    num_elements = op.inputs[0].shape[0]
+  if op.inputs[0].shape[0].value is not None:
+    num_elements = op.inputs[0].shape[0].value
   else:
     num_elements = None
   if dlist is None:
@@ -63,9 +67,10 @@ def _TensorListFromTensorGrad(op, dlist):
         element_dtype=op.inputs[0].dtype,
         element_shape=gen_list_ops.tensor_list_element_shape(
             op.outputs[0], shape_type=dtypes.int32))
-  return gen_list_ops.tensor_list_stack(
-      dlist, element_dtype=op.inputs[0].dtype,
-      num_elements=num_elements)
+  tensor_grad = gen_list_ops.tensor_list_stack(
+      dlist, element_dtype=op.inputs[0].dtype, num_elements=num_elements)
+  shape_grad = None
+  return tensor_grad, shape_grad
 
 
 @ops.RegisterGradient("TensorListGetItem")
@@ -92,3 +97,18 @@ def _TensorListSetItemGrad(op, dlist):
   element_grad = gen_list_ops.tensor_list_get_item(
       dlist, index, element_dtype=item.dtype)
   return list_grad, index_grad, element_grad
+
+
+@ops.RegisterGradient("TensorListGather")
+def _TensorListGatherGrad(op, dtensor):
+  _, indices = op.inputs
+  return gen_list_ops.tensor_list_scatter(
+      tensor=dtensor, indices=indices,
+      element_shape=ops.convert_to_tensor(-1, dtype=dtypes.int32)), None
+
+
+@ops.RegisterGradient("TensorListScatter")
+def _TensorListScatterGrad(op, dlist):
+  t, indices, _ = op.inputs
+  return gen_list_ops.tensor_list_gather(
+      dlist, indices, element_dtype=t.dtype), None

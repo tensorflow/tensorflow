@@ -43,6 +43,47 @@ TEST(SimpleMemoryArenaTest, BasicArenaOperations) {
   EXPECT_EQ(allocs[5].offset, 1024);
 }
 
+TEST(SimpleMemoryArenaTest, BasicZeroAlloc) {
+  TfLiteContext context;
+  SimpleMemoryArena arena(64);
+  ArenaAlloc alloc;
+
+  // Zero-sized allocs should have a 0 offset and size.
+  ASSERT_EQ(arena.Allocate(&context, 32, 0, &alloc), kTfLiteOk);
+  EXPECT_EQ(alloc.offset, 0);
+  EXPECT_EQ(alloc.size, 0);
+
+  // Deallocation of zero-sized allocs should always succeed (even redundantly).
+  ASSERT_EQ(arena.Deallocate(&context, alloc), kTfLiteOk);
+  ASSERT_EQ(arena.Deallocate(&context, alloc), kTfLiteOk);
+
+  // The zero-sized alloc should resolve to null.
+  char* resolved_ptr = nullptr;
+  ASSERT_EQ(arena.Commit(&context), kTfLiteOk);
+  ASSERT_EQ(arena.ResolveAlloc(&context, alloc, &resolved_ptr), kTfLiteOk);
+  EXPECT_EQ(resolved_ptr, nullptr);
+}
+
+TEST(SimpleMemoryArenaTest, InterleavedZeroAlloc) {
+  TfLiteContext context;
+  SimpleMemoryArena arena(64);
+  ArenaAlloc allocs[4];
+
+  // Interleave some zero and non-zero-sized allocations and deallocations.
+  ASSERT_EQ(arena.Allocate(&context, 32, 2047, &allocs[0]), kTfLiteOk);
+  ASSERT_EQ(arena.Allocate(&context, 32, 0, &allocs[1]), kTfLiteOk);
+  ASSERT_EQ(arena.Allocate(&context, 32, 1023, &allocs[2]), kTfLiteOk);
+  ASSERT_EQ(arena.Deallocate(&context, allocs[1]), kTfLiteOk);
+  ASSERT_EQ(arena.Deallocate(&context, allocs[2]), kTfLiteOk);
+  ASSERT_EQ(arena.Allocate(&context, 32, 2047, &allocs[3]), kTfLiteOk);
+
+  // Deallocation of a zero-sized alloc should not impact the allocator offsets.
+  EXPECT_EQ(allocs[0].offset, 0);
+  EXPECT_EQ(allocs[1].offset, 0);
+  EXPECT_EQ(allocs[2].offset, 2048);
+  EXPECT_EQ(allocs[3].offset, 2048);
+}
+
 TEST(SimpleMemoryArenaTest, TestAfterClear) {
   TfLiteContext context;
   SimpleMemoryArena arena(64);

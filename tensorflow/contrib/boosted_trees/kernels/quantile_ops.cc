@@ -125,6 +125,8 @@ void QuantizeFeatures(
     auto flat_values = values_tensor.flat<float>();
     for (int64 instance = 0; instance < num_values; ++instance) {
       const float value = flat_values(instance);
+      CHECK(!buckets_vector.empty())
+          << "Got empty buckets for feature " << feature_index;
       auto bucket_iter =
           std::lower_bound(buckets_vector.begin(), buckets_vector.end(), value);
       if (bucket_iter == buckets_vector.end()) {
@@ -241,6 +243,11 @@ class CreateQuantileAccumulatorOp : public OpKernel {
     // other exceptions. If one already exists, it unrefs the new one.
     const Tensor* stamp_token_t;
     OP_REQUIRES_OK(context, context->input(kStampTokenName, &stamp_token_t));
+    // An epsilon value of zero could cause perfoamance issues and is therefore,
+    // disallowed.
+    OP_REQUIRES(
+        context, epsilon_ > 0,
+        errors::InvalidArgument("An epsilon value of zero is not allowed."));
     auto result = new QuantileStreamResource(epsilon_, num_quantiles_,
                                              max_elements_, generate_quantiles_,
                                              stamp_token_t->scalar<int64>()());
@@ -253,7 +260,7 @@ class CreateQuantileAccumulatorOp : public OpKernel {
  private:
   float epsilon_;
   int32 num_quantiles_;
-  // An upperbound on the number of enteries that the summaries might have
+  // An upper bound on the number of entries that the summaries might have
   // for a feature.
   int64 max_elements_;
   bool generate_quantiles_;
@@ -289,8 +296,9 @@ class QuantileAccumulatorAddSummariesOp : public OpKernel {
             int64 start, int64 end) {
           for (int resource_handle_idx = start; resource_handle_idx < end;
                ++resource_handle_idx) {
-            ResourceHandle handle = resource_handle_list[resource_handle_idx]
-                                        .flat<ResourceHandle>()(0);
+            const ResourceHandle& handle =
+                resource_handle_list[resource_handle_idx]
+                    .flat<ResourceHandle>()(0);
             QuantileStreamResource* streams_resource;
             // Create a reference to the underlying resource using the handle.
             OP_REQUIRES_OK(context,
@@ -702,8 +710,9 @@ class QuantileAccumulatorGetBucketsOp : public OpKernel {
          &buckets_list, stamp_token](int64 start, int64 end) {
           for (int resource_handle_idx = start; resource_handle_idx < end;
                ++resource_handle_idx) {
-            ResourceHandle handle = resource_handle_list[resource_handle_idx]
-                                        .flat<ResourceHandle>()(0);
+            const ResourceHandle& handle =
+                resource_handle_list[resource_handle_idx]
+                    .flat<ResourceHandle>()(0);
             QuantileStreamResource* streams_resource;
             OP_REQUIRES_OK(context,
                            LookupResource(context, handle, &streams_resource));

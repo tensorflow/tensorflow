@@ -29,6 +29,7 @@ cc_library(
         "@org_sqlite",
         "@snappy",
     ],
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -41,10 +42,4 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(["*"]),
-    visibility = ["//tensorflow:__pkg__"],
 )

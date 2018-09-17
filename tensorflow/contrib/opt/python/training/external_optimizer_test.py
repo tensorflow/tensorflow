@@ -85,7 +85,7 @@ class ExternalOptimizerInterfaceTest(TestCase):
 
     optimizer = MockOptimizerInterface(loss)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       optimizer.minimize(sess)
@@ -107,7 +107,7 @@ class ExternalOptimizerInterfaceTest(TestCase):
 
     optimizer = MockOptimizerInterface(loss)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       initial_vector_val = sess.run(vector)
@@ -164,7 +164,7 @@ class ScipyOptimizerInterfaceTest(TestCase):
     optimizer = external_optimizer.ScipyOptimizerInterface(
         self._objective(x), method=method, options=options)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       optimizer.minimize(sess)
 
@@ -176,7 +176,7 @@ class ScipyOptimizerInterfaceTest(TestCase):
     x = variables.Variable(array_ops.zeros(dimension))
     optimizer = external_optimizer.ScipyOptimizerInterface(self._objective(x))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       optimizer.minimize(sess)
 
@@ -242,7 +242,7 @@ class ScipyOptimizerInterfaceTest(TestCase):
     optimizer = external_optimizer.ScipyOptimizerInterface(
         loss, equalities=equalities, inequalities=inequalities, method='SLSQP')
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       optimizer.minimize(sess)
       self.assertAllClose(np.ones(2), sess.run(vector))
@@ -260,7 +260,7 @@ class ScipyOptimizerInterfaceTest(TestCase):
     optimizer = external_optimizer.ScipyOptimizerInterface(
         loss, var_to_bounds=var_to_bounds)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       optimizer.minimize(sess)
       self.assertAllClose(np.ones(2), sess.run(vector))
@@ -277,7 +277,7 @@ class ScipyOptimizerInterfaceTest(TestCase):
     optimizer = external_optimizer.ScipyOptimizerInterface(
         loss, var_to_bounds=var_to_bounds)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       optimizer.minimize(sess)
       self.assertAllClose([0., 2.], sess.run(vector))
@@ -293,7 +293,7 @@ class ScipyOptimizerInterfaceTest(TestCase):
     optimizer = external_optimizer.ScipyOptimizerInterface(
         loss, method='SLSQP')
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       optimizer.minimize(sess)
       method = optimizer.optimizer_kwargs.get('method')
@@ -312,7 +312,7 @@ class ScipyOptimizerInterfaceTest(TestCase):
 
     optimizer = external_optimizer.ScipyOptimizerInterface(loss, method='SLSQP')
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       initial_vector_val = sess.run(vector)

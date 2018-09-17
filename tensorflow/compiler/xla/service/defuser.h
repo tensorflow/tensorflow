@@ -29,7 +29,7 @@ class Defuser : public HloPassInterface {
  public:
   Defuser() {}
   ~Defuser() override {}
-  tensorflow::StringPiece name() const override { return "defuser"; }
+  absl::string_view name() const override { return "defuser"; }
 
   // Run defusion on the given module. Returns whether the module was
   // changed.

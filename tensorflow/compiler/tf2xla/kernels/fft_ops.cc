@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -62,9 +63,7 @@ class GenericFftOp : public XlaOpKernel {
       }
     }
 
-    xla::ComputationBuilder* b = ctx->builder();
-    xla::ComputationDataHandle fft =
-        b->Fft(ctx->Input(0), fft_type_, fft_length);
+    xla::XlaOp fft = xla::Fft(ctx->Input(0), fft_type_, fft_length);
     ctx->SetOutput(0, fft);
   }
 
@@ -82,9 +81,11 @@ class FFTOp : public GenericFftOp {
   explicit FFTOp(OpKernelConstruction* ctx)
       : GenericFftOp(ctx, /*fft_type=*/FftType::FFT, /*fft_rank=*/FFTRank) {}
 };
-REGISTER_XLA_OP(Name("FFT"), FFTOp<1>);
-REGISTER_XLA_OP(Name("FFT2D"), FFTOp<2>);
-REGISTER_XLA_OP(Name("FFT3D"), FFTOp<3>);
+REGISTER_XLA_OP(Name("FFT").TypeConstraint("Tcomplex", DT_COMPLEX64), FFTOp<1>);
+REGISTER_XLA_OP(Name("FFT2D").TypeConstraint("Tcomplex", DT_COMPLEX64),
+                FFTOp<2>);
+REGISTER_XLA_OP(Name("FFT3D").TypeConstraint("Tcomplex", DT_COMPLEX64),
+                FFTOp<3>);
 
 template <int FFTRank>
 class IFFTOp : public GenericFftOp {
@@ -92,9 +93,12 @@ class IFFTOp : public GenericFftOp {
   explicit IFFTOp(OpKernelConstruction* ctx)
       : GenericFftOp(ctx, /*fft_type=*/FftType::IFFT, /*fft_rank=*/FFTRank) {}
 };
-REGISTER_XLA_OP(Name("IFFT"), IFFTOp<1>);
-REGISTER_XLA_OP(Name("IFFT2D"), IFFTOp<2>);
-REGISTER_XLA_OP(Name("IFFT3D"), IFFTOp<3>);
+REGISTER_XLA_OP(Name("IFFT").TypeConstraint("Tcomplex", DT_COMPLEX64),
+                IFFTOp<1>);
+REGISTER_XLA_OP(Name("IFFT2D").TypeConstraint("Tcomplex", DT_COMPLEX64),
+                IFFTOp<2>);
+REGISTER_XLA_OP(Name("IFFT3D").TypeConstraint("Tcomplex", DT_COMPLEX64),
+                IFFTOp<3>);
 
 template <int FFTRank>
 class RFFTOp : public GenericFftOp {

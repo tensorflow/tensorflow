@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -144,7 +145,7 @@ bool EqualNodeDef(const NodeDef& actual, const NodeDef& expected, string* diff,
 
   int first_control_input = actual.input_size();
   for (int i = 0; i < actual.input_size(); ++i) {
-    if (StringPiece(actual.input(i)).starts_with("^")) {
+    if (str_util::StartsWith(actual.input(i), "^")) {
       first_control_input = i;
       break;
     }
@@ -240,7 +241,7 @@ uint64 NodeDefHash(const NodeDef& ndef, const EqualGraphDefOptions& options) {
   // Normal inputs. Order important.
   int first_control_input = ndef.input_size();
   for (int i = 0; i < ndef.input_size(); ++i) {
-    if (StringPiece(ndef.input(i)).starts_with("^")) {
+    if (str_util::StartsWith(ndef.input(i), "^")) {
       first_control_input = i;
       break;
     }

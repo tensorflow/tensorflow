@@ -17,7 +17,7 @@ include (ExternalProject)
 set(boringssl_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/boringssl/src/boringssl/include)
 #set(boringssl_EXTRA_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/boringssl/src)
 set(boringssl_URL https://boringssl.googlesource.com/boringssl)
-set(boringssl_TAG ee7aa02)
+set(boringssl_TAG 7f8c553d7f4db0a6ce727f2986d41bf8fe8ec4bf)
 set(boringssl_BUILD ${CMAKE_BINARY_DIR}/boringssl/src/boringssl-build)
 #set(boringssl_LIBRARIES ${boringssl_BUILD}/obj/so/libboringssl.so)
 set(boringssl_STATIC_LIBRARIES

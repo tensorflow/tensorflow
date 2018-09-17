@@ -22,7 +22,6 @@ cc_library(
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
-        "//tensorflow/contrib/lite/tools:mutable_op_resolver",
         "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
@@ -39,7 +38,6 @@ cc_library(
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
-        "//tensorflow/contrib/lite/tools:mutable_op_resolver",
         "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
     ],
@@ -49,6 +47,7 @@ cc_test(
     name = "extract_feature_op_test",
     size = "small",
     srcs = ["ops/extract_feature_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":custom_ops",
         "//tensorflow/contrib/lite:framework",
@@ -63,6 +62,7 @@ cc_test(
     name = "normalize_op_test",
     size = "small",
     srcs = ["ops/normalize_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":custom_ops",
         "//tensorflow/contrib/lite:framework",
@@ -77,6 +77,7 @@ cc_test(
     name = "predict_op_test",
     size = "small",
     srcs = ["ops/predict_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":custom_ops",
         "//tensorflow/contrib/lite:framework",
@@ -85,16 +86,4 @@ cc_test(
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

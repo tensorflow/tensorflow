@@ -54,7 +54,7 @@ def blocks_match(sess, use_peephole):
   initializer = init_ops.random_uniform_initializer(-0.01, 0.01, seed=19890212)
 
   with variable_scope.variable_scope("test", initializer=initializer):
-    # magic naming so that the cells pick up these variables and resuse them
+    # magic naming so that the cells pick up these variables and reuse them
     if use_peephole:
       wci = variable_scope.get_variable(
           "rnn/lstm_cell/w_i_diag", shape=[cell_size], dtype=dtypes.float32)

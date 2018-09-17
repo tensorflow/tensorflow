@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/platform/cuda.h"
 
-using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
+using stream_executor::cuda::ScopedActivateExecutorContext;
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -278,8 +278,7 @@ class WhereGPUOp : public AsyncOpKernel {
 
     auto num_true_t = num_true.scalar<Tindex>();
 
-    perftools::gputools::DeviceMemoryBase num_true_ptr(
-        static_cast<void*>(num_true_t.data()));
+    se::DeviceMemoryBase num_true_ptr(static_cast<void*>(num_true_t.data()));
     // Push kernel to stream to get number of true elements.
     const GPUDevice& d = context->eigen_device<GPUDevice>();
     Status s = functor::NumTrue<GPUDevice, T, Tindex>::Compute(

@@ -66,6 +66,9 @@ class AssetManagerFileSystem : public FileSystem {
   Status DeleteDir(const string& d) override;
   Status RenameFile(const string& s, const string& t) override;
 
+  Status GetMatchingPaths(const string& pattern,
+                          std::vector<string>* results) override;
+
  private:
   string RemoveAssetPrefix(const string& name);
 

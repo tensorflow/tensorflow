@@ -16,9 +16,8 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -38,8 +37,7 @@ class HalfTestBase : public ClientLibraryTestBase {
   static const int kNumElements = 4;
 };
 
-using UnaryBuildFuncTy =
-    std::function<void(ComputationBuilder*, const ComputationDataHandle& src)>;
+using UnaryBuildFuncTy = std::function<void(const xla::XlaOp& src)>;
 
 struct UnaryOpTestParam {
   std::function<half(half)> compute_func;
@@ -50,9 +48,10 @@ class UnaryOpTest : public HalfTestBase,
                     public ::testing::WithParamInterface<UnaryOpTestParam> {};
 
 XLA_TEST_P(UnaryOpTest, Ops) {
-  std::vector<half> x({half(1.4), half(-2.3), half(3.2), half(-4.1)});
-  ComputationBuilder builder(client_, TestName());
-  ComputationDataHandle x_opnd;
+  std::vector<half> x({half(1.4), half(-2.3), half(3.2), half(-4.1), half(9.0),
+                       half(42.0), half(-9.0), half(-100.0)});
+  XlaBuilder builder(TestName());
+  XlaOp x_opnd;
   auto x_data = CreateR1Parameter<half>(x, /*parameter_number=*/0, "x",
                                         &builder, &x_opnd);
 
@@ -63,7 +62,7 @@ XLA_TEST_P(UnaryOpTest, Ops) {
   }
 
   UnaryBuildFuncTy build_func = GetParam().build_func;
-  build_func(&builder, x_opnd);
+  build_func(x_opnd);
 
   ComputeAndCompareR1<half>(&builder, expected, {x_data.get()}, error_spec_);
 }
@@ -79,30 +78,20 @@ half round_imp(half value) {
 
 INSTANTIATE_TEST_CASE_P(
     half, UnaryOpTest,
-    ::testing::Values(UnaryOpTestParam{[](half x) { return abs(x); },
-                                       &ComputationBuilder::Abs},
-                      UnaryOpTestParam{[](half x) { return round_imp(x); },
-                                       &ComputationBuilder::Round},
-                      UnaryOpTestParam{[](half x) { return ceil(x); },
-                                       &ComputationBuilder::Ceil},
-                      UnaryOpTestParam{[](half x) { return cos(x); },
-                                       &ComputationBuilder::Cos},
-                      UnaryOpTestParam{[](half x) { return exp(x); },
-                                       &ComputationBuilder::Exp},
-                      UnaryOpTestParam{[](half x) { return floor(x); },
-                                       &ComputationBuilder::Floor},
-                      UnaryOpTestParam{[](half x) { return log(x); },
-                                       &ComputationBuilder::Log},
-                      UnaryOpTestParam{[](half x) { return -x; },
-                                       &ComputationBuilder::Neg},
-                      UnaryOpTestParam{[](half x) { return sign_imp(x); },
-                                       &ComputationBuilder::Sign},
-                      UnaryOpTestParam{[](half x) { return sin(x); },
-                                       &ComputationBuilder::Sin},
-                      UnaryOpTestParam{[](half x) { return tanh(x); },
-                                       &ComputationBuilder::Tanh}
+    ::testing::Values(
+        UnaryOpTestParam{[](half x) { return abs(x); }, &Abs},
+        UnaryOpTestParam{[](half x) { return round_imp(x); }, &Round},
+        UnaryOpTestParam{[](half x) { return ceil(x); }, &Ceil},
+        UnaryOpTestParam{[](half x) { return cos(x); }, &Cos},
+        UnaryOpTestParam{[](half x) { return exp(x); }, &Exp},
+        UnaryOpTestParam{[](half x) { return floor(x); }, &Floor},
+        UnaryOpTestParam{[](half x) { return log(x); }, &Log},
+        UnaryOpTestParam{[](half x) { return -x; }, &Neg},
+        UnaryOpTestParam{[](half x) { return sign_imp(x); }, &Sign},
+        UnaryOpTestParam{[](half x) { return sin(x); }, &Sin},
+        UnaryOpTestParam{[](half x) { return tanh(x); }, &Tanh}
 
-                      ));
+        ));
 
 struct UnaryPredTestParam {
   std::function<bool(half)> compute_func;
@@ -115,8 +104,8 @@ class UnaryPredTest : public HalfTestBase,
 
 XLA_TEST_P(UnaryPredTest, Ops) {
   std::vector<half> x({half(1.4), half(-2.3), half(3.2), half(-4.1)});
-  ComputationBuilder builder(client_, TestName());
-  ComputationDataHandle x_opnd;
+  XlaBuilder builder(TestName());
+  XlaOp x_opnd;
   auto x_data = CreateR1Parameter<half>(x, /*parameter_number=*/0, "x",
                                         &builder, &x_opnd);
 
@@ -128,19 +117,17 @@ XLA_TEST_P(UnaryPredTest, Ops) {
   }
 
   UnaryBuildFuncTy build_func = GetParam().build_func;
-  build_func(&builder, x_opnd);
+  build_func(x_opnd);
 
   ComputeAndCompareR1<bool>(&builder, expected, {x_data.get()});
 }
 
 INSTANTIATE_TEST_CASE_P(half, UnaryPredTest,
                         ::testing::Values(UnaryPredTestParam{
-                            [](half x) { return isfinite(x); },
-                            &ComputationBuilder::IsFinite}));
+                            [](half x) { return isfinite(x); }, &IsFinite}));
 
 using BinaryBuildFuncTy = std::function<void(
-    ComputationBuilder*, const ComputationDataHandle& x,
-    const ComputationDataHandle& y, tensorflow::gtl::ArraySlice<int64>)>;
+    const xla::XlaOp& x, const xla::XlaOp& y, absl::Span<const int64>)>;
 
 struct BinaryOpTestParam {
   std::function<half(half, half)> compute_func;
@@ -153,12 +140,12 @@ class BinaryOpTest : public HalfTestBase,
 XLA_TEST_P(BinaryOpTest, Ops) {
   std::vector<half> x({half(1.0), half(2.0), half(3.0), half(-4.0)});
   std::vector<half> y({half(0.4), half(-0.3), half(0.2), half(0.1)});
-  ComputationBuilder builder(client_, TestName());
-  ComputationDataHandle x_opnd;
+  XlaBuilder builder(TestName());
+  XlaOp x_opnd;
   auto x_data = CreateR1Parameter<half>(x, /*parameter_number=*/0, "x",
                                         &builder, &x_opnd);
 
-  ComputationDataHandle y_opnd;
+  XlaOp y_opnd;
   auto y_data = CreateR1Parameter<half>(y, /*parameter_number=*/1, "y",
                                         &builder, &y_opnd);
 
@@ -169,7 +156,7 @@ XLA_TEST_P(BinaryOpTest, Ops) {
   }
 
   BinaryBuildFuncTy build_func = GetParam().build_func;
-  build_func(&builder, x_opnd, y_opnd, {});
+  build_func(x_opnd, y_opnd, {});
 
   ComputeAndCompareR1<half>(&builder, expected, {x_data.get(), y_data.get()},
                             error_spec_);
@@ -183,22 +170,15 @@ half atan2_imp(half x, half y) {
 INSTANTIATE_TEST_CASE_P(
     half, BinaryOpTest,
     ::testing::Values(
-        BinaryOpTestParam{[](half x, half y) { return x + y; },
-                          &ComputationBuilder::Add},
+        BinaryOpTestParam{[](half x, half y) { return x + y; }, &Add},
         BinaryOpTestParam{[](half x, half y) { return atan2_imp(x, y); },
-                          &ComputationBuilder::Atan2},
-        BinaryOpTestParam{[](half x, half y) { return x / y; },
-                          &ComputationBuilder::Div},
-        BinaryOpTestParam{[](half x, half y) { return max(x, y); },
-                          &ComputationBuilder::Max},
-        BinaryOpTestParam{[](half x, half y) { return min(x, y); },
-                          &ComputationBuilder::Min},
-        BinaryOpTestParam{[](half x, half y) { return x * y; },
-                          &ComputationBuilder::Mul},
-        BinaryOpTestParam{[](half x, half y) { return pow(x, y); },
-                          &ComputationBuilder::Pow},
-        BinaryOpTestParam{[](half x, half y) { return x - y; },
-                          &ComputationBuilder::Sub}
+                          &Atan2},
+        BinaryOpTestParam{[](half x, half y) { return x / y; }, &Div},
+        BinaryOpTestParam{[](half x, half y) { return max(x, y); }, &Max},
+        BinaryOpTestParam{[](half x, half y) { return min(x, y); }, &Min},
+        BinaryOpTestParam{[](half x, half y) { return x * y; }, &Mul},
+        BinaryOpTestParam{[](half x, half y) { return pow(x, y); }, &Pow},
+        BinaryOpTestParam{[](half x, half y) { return x - y; }, &Sub}
 
         ));
 
@@ -214,12 +194,12 @@ class BinaryPredTest
 XLA_TEST_P(BinaryPredTest, Ops) {
   std::vector<half> x({half(1.0), half(2.0), half(0.2), half(-4.0)});
   std::vector<half> y({half(0.4), half(-0.3), half(0.2), half(0.1)});
-  ComputationBuilder builder(client_, TestName());
-  ComputationDataHandle x_opnd;
+  XlaBuilder builder(TestName());
+  XlaOp x_opnd;
   auto x_data = CreateR1Parameter<half>(x, /*parameter_number=*/0, "x",
                                         &builder, &x_opnd);
 
-  ComputationDataHandle y_opnd;
+  XlaOp y_opnd;
   auto y_data = CreateR1Parameter<half>(y, /*parameter_number=*/1, "y",
                                         &builder, &y_opnd);
 
@@ -231,27 +211,22 @@ XLA_TEST_P(BinaryPredTest, Ops) {
   }
 
   BinaryBuildFuncTy build_func = GetParam().build_func;
-  build_func(&builder, x_opnd, y_opnd, {});
+  build_func(x_opnd, y_opnd, {});
 
   ComputeAndCompareR1<bool>(&builder, expected, {x_data.get(), y_data.get()});
 }
 
 INSTANTIATE_TEST_CASE_P(
     half, BinaryPredTest,
-    ::testing::Values(BinaryPredTestParam{[](half x, half y) { return x == y; },
-                                          &ComputationBuilder::Eq},
-                      BinaryPredTestParam{[](half x, half y) { return x != y; },
-                                          &ComputationBuilder::Ne},
-                      BinaryPredTestParam{[](half x, half y) { return x >= y; },
-                                          &ComputationBuilder::Ge},
-                      BinaryPredTestParam{[](half x, half y) { return x > y; },
-                                          &ComputationBuilder::Gt},
-                      BinaryPredTestParam{[](half x, half y) { return x <= y; },
-                                          &ComputationBuilder::Le},
-                      BinaryPredTestParam{[](half x, half y) { return x < y; },
-                                          &ComputationBuilder::Lt}
+    ::testing::Values(
+        BinaryPredTestParam{[](half x, half y) { return x == y; }, &Eq},
+        BinaryPredTestParam{[](half x, half y) { return x != y; }, &Ne},
+        BinaryPredTestParam{[](half x, half y) { return x >= y; }, &Ge},
+        BinaryPredTestParam{[](half x, half y) { return x > y; }, &Gt},
+        BinaryPredTestParam{[](half x, half y) { return x <= y; }, &Le},
+        BinaryPredTestParam{[](half x, half y) { return x < y; }, &Lt}
 
-                      ));
+        ));
 
 }  // namespace
 }  // namespace xla

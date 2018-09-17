@@ -34,6 +34,7 @@ from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.feature_column import feature_column
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
@@ -52,7 +53,9 @@ def _dnn_only_estimator_fn(
     config=None):
   return dnn_linear_combined.DNNLinearCombinedEstimator(
       head=head_lib.regression_head(
-          weight_column=weight_column, label_dimension=label_dimension),
+          weight_column=weight_column, label_dimension=label_dimension,
+          # Tests in core (from which this test inherits) test the sum loss.
+          loss_reduction=losses.Reduction.SUM),
       model_dir=model_dir,
       dnn_feature_columns=feature_columns,
       dnn_optimizer=optimizer,
@@ -97,15 +100,19 @@ def _linear_only_estimator_fn(
     weight_column=None,
     optimizer='Ftrl',
     config=None,
-    partitioner=None):
+    partitioner=None,
+    sparse_combiner='sum'):
   return dnn_linear_combined.DNNLinearCombinedEstimator(
       head=head_lib.regression_head(
-          weight_column=weight_column, label_dimension=label_dimension),
+          weight_column=weight_column, label_dimension=label_dimension,
+          # Tests in core (from which this test inherits) test the sum loss.
+          loss_reduction=losses.Reduction.SUM),
       model_dir=model_dir,
       linear_feature_columns=feature_columns,
       linear_optimizer=optimizer,
       input_layer_partitioner=partitioner,
-      config=config)
+      config=config,
+      linear_sparse_combiner=sparse_combiner)
 
 
 class LinearOnlyEstimatorEvaluateTest(

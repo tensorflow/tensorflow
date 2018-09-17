@@ -30,7 +30,7 @@ class ImplicitBroadcastRemover : public HloPassInterface {
   ImplicitBroadcastRemover() {}
   ~ImplicitBroadcastRemover() override {}
 
-  tensorflow::StringPiece name() const override {
+  absl::string_view name() const override {
     return "implicit-broadcast-remover";
   }
 

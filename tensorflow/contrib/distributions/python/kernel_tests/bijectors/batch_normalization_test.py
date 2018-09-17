@@ -69,7 +69,7 @@ class BatchNormTest(test_util.VectorDistributionTestHelpers,
     ]
     for input_shape, event_dims, training in params:
       x_ = np.arange(5 * 4 * 2).astype(np.float32).reshape(input_shape)
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         x = constant_op.constant(x_)
         # When training, memorize the exact mean of the last
         # minibatch that it normalized (instead of moving average assignment).
@@ -83,10 +83,11 @@ class BatchNormTest(test_util.VectorDistributionTestHelpers,
           moving_mean = array_ops.identity(batch_norm.batchnorm.moving_mean)
           moving_var = array_ops.identity(batch_norm.batchnorm.moving_variance)
           denorm_x = batch_norm.forward(array_ops.identity(norm_x))
-          fldj = batch_norm.forward_log_det_jacobian(x)
+          fldj = batch_norm.forward_log_det_jacobian(
+              x, event_ndims=len(event_dims))
           # Use identity to invalidate cache.
           ildj = batch_norm.inverse_log_det_jacobian(
-              array_ops.identity(denorm_x))
+              array_ops.identity(denorm_x), event_ndims=len(event_dims))
         variables.global_variables_initializer().run()
         # Update variables.
         norm_x_ = sess.run(norm_x)
@@ -144,7 +145,7 @@ class BatchNormTest(test_util.VectorDistributionTestHelpers,
 
   def testMaximumLikelihoodTraining(self):
     # Test Maximum Likelihood training with default bijector.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       base_dist = distributions.MultivariateNormalDiag(loc=[0., 0.])
       batch_norm = BatchNormalization(training=True)
       dist = transformed_distribution_lib.TransformedDistribution(
@@ -175,7 +176,7 @@ class BatchNormTest(test_util.VectorDistributionTestHelpers,
       self.assertAllClose([1., 1.], moving_var_, atol=5e-2)
 
   def testLogProb(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       layer = normalization.BatchNormalization(epsilon=0.)
       batch_norm = BatchNormalization(batchnorm_layer=layer, training=False)
       base_dist = distributions.MultivariateNormalDiag(loc=[0., 0.])
@@ -195,7 +196,7 @@ class BatchNormTest(test_util.VectorDistributionTestHelpers,
   def testMutuallyConsistent(self):
     # BatchNorm bijector is only mutually consistent when training=False.
     dims = 4
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       layer = normalization.BatchNormalization(epsilon=0.)
       batch_norm = BatchNormalization(batchnorm_layer=layer, training=False)
       dist = transformed_distribution_lib.TransformedDistribution(
@@ -214,7 +215,7 @@ class BatchNormTest(test_util.VectorDistributionTestHelpers,
   def testInvertMutuallyConsistent(self):
     # BatchNorm bijector is only mutually consistent when training=False.
     dims = 4
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       layer = normalization.BatchNormalization(epsilon=0.)
       batch_norm = Invert(
           BatchNormalization(batchnorm_layer=layer, training=False))

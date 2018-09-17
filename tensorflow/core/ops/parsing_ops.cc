@@ -132,6 +132,99 @@ REGISTER_OP("ParseSingleExample")
       return Status::OK();
     });
 
+REGISTER_OP("ParseSequenceExample")
+    .Input("serialized: string")
+    .Input("debug_name: string")
+    .Input("context_dense_defaults: Tcontext_dense")
+    .Output("context_sparse_indices: Ncontext_sparse * int64")
+    .Output("context_sparse_values: context_sparse_types")
+    .Output("context_sparse_shapes: Ncontext_sparse * int64")
+    .Output("context_dense_values: Tcontext_dense")
+    .Output("feature_list_sparse_indices: Nfeature_list_sparse * int64")
+    .Output("feature_list_sparse_values: feature_list_sparse_types")
+    .Output("feature_list_sparse_shapes: Nfeature_list_sparse * int64")
+    .Output("feature_list_dense_values: feature_list_dense_types")
+    .Output("feature_list_dense_lengths: Nfeature_list_dense * int64")
+    .Attr("feature_list_dense_missing_assumed_empty: list(string) >= 0")
+    .Attr("context_sparse_keys: list(string) >= 0")
+    .Attr("context_dense_keys: list(string) >= 0")
+    .Attr("feature_list_sparse_keys: list(string) >= 0")
+    .Attr("feature_list_dense_keys: list(string) >= 0")
+    .Attr("Ncontext_sparse: int >= 0 = 0")
+    .Attr("Ncontext_dense: int >= 0 = 0")
+    .Attr("Nfeature_list_sparse: int >= 0 = 0")
+    .Attr("Nfeature_list_dense: int >= 0 = 0")
+    .Attr("context_sparse_types: list({float,int64,string}) >= 0 = []")
+    .Attr("Tcontext_dense: list({float,int64,string}) >= 0 = []")
+    .Attr("feature_list_dense_types: list({float,int64,string}) >= 0 = []")
+    .Attr("context_dense_shapes: list(shape) >= 0 = []")
+    .Attr("feature_list_sparse_types: list({float,int64,string}) >= 0 = []")
+    .Attr("feature_list_dense_shapes: list(shape) >= 0 = []")
+    .SetShapeFn([](InferenceContext* c) {
+      ParseSequenceExampleAttrs attrs;
+      TF_RETURN_IF_ERROR(attrs.Init(c));
+
+      // Verify that the input is a vector, and carry the shape if known.
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &input));
+      shape_inference::DimensionHandle num_examples = c->Dim(input, 0);
+
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));  // debug_name
+
+      int output_idx = 0;
+
+      // Output context_sparse_indices, context_sparse_values, and
+      // context_sparse_shapes.
+      for (int i = 0; i < attrs.num_context_sparse; ++i) {
+        c->set_output(output_idx++, c->Matrix(c->UnknownDim(), 2));
+      }
+      for (int i = 0; i < attrs.num_context_sparse; ++i) {
+        c->set_output(output_idx++, c->Vector(c->UnknownDim()));
+      }
+      for (int i = 0; i < attrs.num_context_sparse; ++i) {
+        c->set_output(output_idx++, c->Vector(2));
+      }
+
+      // Output context_dense_values.
+      for (int i = 0; i < attrs.num_context_dense; ++i) {
+        ShapeHandle s;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
+            attrs.context_dense_shapes[i], &s));
+        TF_RETURN_IF_ERROR(c->Concatenate(c->Vector(num_examples), s, &s));
+        c->set_output(output_idx++, s);
+      }
+
+      // Output feature_list_sparse_indices, feature_list_sparse_values,
+      // feature_list_sparse_shapes.
+      for (int i = 0; i < attrs.num_feature_list_sparse; ++i) {
+        c->set_output(output_idx++, c->Matrix(c->UnknownDim(), 3));
+      }
+      for (int i = 0; i < attrs.num_feature_list_sparse; ++i) {
+        c->set_output(output_idx++, c->Vector(c->UnknownDim()));
+      }
+      for (int i = 0; i < attrs.num_feature_list_sparse; ++i) {
+        c->set_output(output_idx++, c->Vector(3));
+      }
+
+      // Output feature_list_dense_shapes.
+      for (int i = 0; i < attrs.num_feature_list_dense; ++i) {
+        ShapeHandle s;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
+            attrs.feature_list_dense_shapes[i], &s));
+        TF_RETURN_IF_ERROR(
+            c->Concatenate(c->Matrix(num_examples, c->UnknownDim()), s, &s));
+        c->set_output(output_idx++, s);
+      }
+
+      // Output feature_list_dense_lengths.
+      for (int i = 0; i < attrs.num_feature_list_dense; ++i) {
+        c->set_output(output_idx++, c->Vector(num_examples));
+      }
+
+      return Status::OK();
+    });
+
 REGISTER_OP("ParseSingleSequenceExample")
     .Input("serialized: string")
     .Input("feature_list_dense_missing_assumed_empty: string")
@@ -245,14 +338,16 @@ REGISTER_OP("DecodeCSV")
     .Attr("field_delim: string = ','")
     .Attr("use_quote_delim: bool = true")
     .Attr("na_value: string = ''")
+    .Attr("select_cols: list(int) = []")
     .SetShapeFn([](InferenceContext* c) {
       // Validate the record_defaults inputs.
       for (int i = 1; i < c->num_inputs(); ++i) {
         ShapeHandle v;
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &v));
-        if (c->Value(c->Dim(v, 0)) > 1) {
+        TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(i), 1, &v));
+        if (c->Rank(c->input(i)) == 1 && c->Value(c->Dim(v, 0)) > 1) {
           return errors::InvalidArgument(
-              "Shape of a default must be a length-0 or length-1 vector");
+              "Shape of a default must be a length-0 or length-1 vector, or a "
+              "scalar.");
         }
       }
 

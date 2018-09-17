@@ -20,28 +20,30 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class DecodeCSVOpTest(test.TestCase):
 
   def _test(self, args, expected_out=None, expected_err_re=None):
-    with self.test_session() as sess:
+    if expected_err_re is None:
       decode = parsing_ops.decode_csv(**args)
+      out = self.evaluate(decode)
 
-      if expected_err_re is None:
-        out = sess.run(decode)
-
-        for i, field in enumerate(out):
-          if field.dtype == np.float32 or field.dtype == np.float64:
-            self.assertAllClose(field, expected_out[i])
-          else:
-            self.assertAllEqual(field, expected_out[i])
-
-      else:
-        with self.assertRaisesOpError(expected_err_re):
-          sess.run(decode)
+      for i, field in enumerate(out):
+        if field.dtype == np.float32 or field.dtype == np.float64:
+          self.assertAllClose(field, expected_out[i])
+        else:
+          self.assertAllEqual(field, expected_out[i])
+    else:
+      with self.assertRaisesOpError(expected_err_re):
+        decode = parsing_ops.decode_csv(**args)
+        self.evaluate(decode)
 
   def testSimple(self):
     args = {
@@ -52,6 +54,31 @@ class DecodeCSVOpTest(test.TestCase):
     expected_out = [[1, 2, 3]]
 
     self._test(args, expected_out)
+
+  def testSimpleWithScalarDefaults(self):
+    args = {
+        "records": ["1,4", "2,5", "3,6"],
+        "record_defaults": [1, 2],
+    }
+
+    expected_out = [[1, 2, 3], [4, 5, 6]]
+
+    self._test(args, expected_out)
+
+  def testSimpleWith2DDefaults(self):
+    args = {
+        "records": ["1", "2", "3"],
+        "record_defaults": [[[0]]],
+    }
+
+    if context.executing_eagerly():
+      err_spec = errors.InvalidArgumentError, (
+          "Each record default should be at "
+          "most rank 1.")
+    else:
+      err_spec = ValueError, "Shape must be at most rank 1 but is rank 2"
+    with self.assertRaisesWithPredicateMatch(*err_spec):
+      self._test(args)
 
   def testSimpleNoQuoteDelimiter(self):
     args = {
@@ -78,9 +105,11 @@ class DecodeCSVOpTest(test.TestCase):
     self._test(args, expected_out)
 
   def test2DNoQuoteDelimiter(self):
-    args = {"records": [["1", "2"], ['""', '"']],
-            "record_defaults": [[""]],
-            "use_quote_delim": False}
+    args = {
+        "records": [["1", "2"], ['""', '"']],
+        "record_defaults": [[""]],
+        "use_quote_delim": False
+    }
     expected_out = [[[b"1", b"2"], [b'""', b'"']]]
 
     self._test(args, expected_out)
@@ -88,8 +117,7 @@ class DecodeCSVOpTest(test.TestCase):
   def testDouble(self):
     args = {
         "records": ["1.0", "-1.79e+308", '"1.79e+308"'],
-        "record_defaults": [np.array(
-            [], dtype=np.double)],
+        "record_defaults": [np.array([], dtype=np.double)],
     }
 
     expected_out = [[1.0, -1.79e+308, 1.79e+308]]
@@ -99,8 +127,7 @@ class DecodeCSVOpTest(test.TestCase):
   def testInt64(self):
     args = {
         "records": ["1", "2", '"2147483648"'],
-        "record_defaults": [np.array(
-            [], dtype=np.int64)],
+        "record_defaults": [np.array([], dtype=np.int64)],
     }
 
     expected_out = [[1, 2, 2147483648]]
@@ -173,8 +200,7 @@ class DecodeCSVOpTest(test.TestCase):
   def testWithoutDefaultsError(self):
     args = {
         "records": [",1", "0.2,3", "3.0,"],
-        "record_defaults": [[1.0], np.array(
-            [], dtype=np.int32)]
+        "record_defaults": [[1.0], np.array([], dtype=np.int32)]
     }
 
     self._test(
@@ -183,8 +209,7 @@ class DecodeCSVOpTest(test.TestCase):
   def testWrongFieldIntError(self):
     args = {
         "records": [",1", "0.2,234a", "3.0,2"],
-        "record_defaults": [[1.0], np.array(
-            [], dtype=np.int32)]
+        "record_defaults": [[1.0], np.array([], dtype=np.int32)]
     }
 
     self._test(
@@ -202,8 +227,7 @@ class DecodeCSVOpTest(test.TestCase):
   def testWrongFieldFloatError(self):
     args = {
         "records": [",1", "0.2,2", "3.0adf,3"],
-        "record_defaults": [[1.0], np.array(
-            [], dtype=np.int32)]
+        "record_defaults": [[1.0], np.array([], dtype=np.int32)]
     }
 
     self._test(
@@ -228,6 +252,73 @@ class DecodeCSVOpTest(test.TestCase):
 
     self._test(
         args, expected_err_re="Quoted field has to end with quote followed.*")
+
+  def testSelectCols(self):
+    args = {
+        "records": [",,", "4,5,6"],
+        "record_defaults": [[1], [2]],
+        "select_cols": [0, 1]
+    }
+    expected_out = [[1, 4], [2, 5]]
+    self._test(args, expected_out)
+
+  def testSelectColsInclLast(self):
+    # The last col is a edge-casey; add test for that
+    args = {
+        "records": [",,", "4,5,6"],
+        "record_defaults": [[0], [1], [2]],
+        "select_cols": [0, 1, 2]
+    }
+    expected_out = [[0, 4], [1, 5], [2, 6]]
+    self._test(args, expected_out)
+
+  def testWrongSelectColsInclLast(self):
+    # The last col is a edge-casey; add test for that
+    args = {
+        "records": [",,", "4,5,6"],
+        "record_defaults": [[0], [1], [2]],
+        "select_cols": [0, 1, 3]
+    }
+    self._test(args, expected_err_re="Expect 3 fields but have 2 in record 0")
+
+  def testWrongSelectColsLen(self):
+    args = {
+        "records": ["1,2,3", "4,5,6"],
+        "record_defaults": [[0], [0], [0]],
+        "select_cols": [0]
+    }
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, "Length of select_cols and record_defaults do not match."):
+      self._test(args)
+
+  def testWrongSelectColsSorting(self):
+    args = {
+        "records": ["1,2,3"],
+        "record_defaults": [[0], [1]],
+        "select_cols": [1, 0]
+    }
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, "select_cols is not strictly increasing."):
+      self._test(args)
+
+  def testWrongSelectColsIndicesNegative(self):
+    args = {
+        "records": ["1,2,3"],
+        "record_defaults": [[0], [1]],
+        "select_cols": [-1, 0]  # -1 is not a valid index
+    }
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, "select_cols contains negative values."):
+      self._test(args)
+
+  def testWrongSelectColsIndicesTooHigh(self):
+    args = {
+        "records": ["1,2,3"],
+        "record_defaults": [[0], [1]],
+        "select_cols": [0, 3]  # 3 is not a valid index
+    }
+    # Only successfully parses one of the columns
+    self._test(args, expected_err_re="Expect 2 fields but have 1 in record 0")
 
 
 if __name__ == "__main__":

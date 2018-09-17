@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace xla {
 namespace {
@@ -30,6 +31,11 @@ class WhileLoopSimplifierTest : public HloVerifiedTestBase {
  protected:
   // Makes an HloModule that contains a loop with `num_iters` iteration.
   void MakeModuleWithSimpleLoop(int num_iters);
+
+  // Similar to MakeModuleWithSimpleLoop except that the loop bound is passed to
+  // the loop-condition through an element of a tuple which is the
+  // loop-condition parameter.
+  void MakeModuleWithSimpleLoopTupleElementLoopBound(int num_iters);
 };
 
 void WhileLoopSimplifierTest::MakeModuleWithSimpleLoop(int num_iters) {
@@ -59,11 +65,46 @@ void WhileLoopSimplifierTest::MakeModuleWithSimpleLoop(int num_iters) {
   }
   )";
 
-  string hlo_string = tensorflow::str_util::StringReplace(
-      hlo_string_template, "{{LOOP_BOUND}}",
-      tensorflow::strings::StrCat(42 + num_iters),
-      /*replace_all=*/true);
-  ParseAndVerifyModule(hlo_string.c_str());
+  string hlo_string = absl::StrReplaceAll(
+      hlo_string_template, {{"{{LOOP_BOUND}}", absl::StrCat(42 + num_iters)}});
+  ParseAndVerifyModule(hlo_string);
+}
+
+void WhileLoopSimplifierTest::MakeModuleWithSimpleLoopTupleElementLoopBound(
+    int num_iters) {
+  string hlo_string_template = R"(
+  HloModule SimpleLoopWithIndirectLoopBound
+  SimpleLoopWithIndirectLoopBound.body {
+    loop_var.1 = (s32[], s32[3]{0}, s32[]) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element(loop_var.1), index=0
+    constant.1 = s32[] constant(1)
+    add = s32[] add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(loop_var.1), index=1
+    multiply = s32[3]{0} multiply(get-tuple-element.2, get-tuple-element.2)
+    limit = s32[] get-tuple-element(loop_var.1), index=2
+    ROOT tuple = (s32[], s32[3]{0}, s32[]) tuple(add, multiply, limit)
+  }
+  SimpleLoopWithIndirectLoopBound.condition {
+    loop_var.2 = (s32[], s32[3]{0}, s32[]) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
+    get-tuple-element.4 = s32[] get-tuple-element(loop_var.2), index=2
+    ROOT less-than = pred[] less-than(get-tuple-element.3, get-tuple-element.4)
+  }
+  ENTRY SimpleLoopWithIndirectLoopBound {
+    constant.3 = s32[] constant(42)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    constant.2 = s32[] constant({{LOOP_BOUND}})
+    tuple.1 = (s32[], s32[3]{0}, s32[]) tuple(constant.3, constant.4,
+      constant.2)
+    ROOT while = (s32[], s32[3]{0}, s32[]) while(tuple.1),
+      condition=SimpleLoopWithIndirectLoopBound.condition,
+      body=SimpleLoopWithIndirectLoopBound.body
+  }
+  )";
+
+  string hlo_string = absl::StrReplaceAll(
+      hlo_string_template, {{"{{LOOP_BOUND}}", absl::StrCat(42 + num_iters)}});
+  ParseAndVerifyModule(hlo_string);
 }
 
 TEST_F(WhileLoopSimplifierTest, LoopWithZeroIterationSimiplified) {
@@ -74,12 +115,30 @@ TEST_F(WhileLoopSimplifierTest, LoopWithZeroIterationSimiplified) {
               op::Tuple(op::Constant(), op::Constant()));
 }
 
+TEST_F(WhileLoopSimplifierTest,
+       LoopWithZeroIterationTupleElementLoopBoundSimplified) {
+  MakeModuleWithSimpleLoopTupleElementLoopBound(/*num_iters=*/0);
+  HloModule* the_module = &module();
+  ASSERT_TRUE(WhileLoopSimplifier().Run(the_module).ValueOrDie());
+  EXPECT_THAT(the_module->entry_computation()->root_instruction(),
+              op::Tuple(op::Constant(), op::Constant(), op::Constant()));
+}
+
 TEST_F(WhileLoopSimplifierTest, LoopWithOneIterationSimplified) {
   MakeModuleWithSimpleLoop(/*num_iters=*/1);
   HloModule* the_module = &module();
   ASSERT_TRUE(WhileLoopSimplifier().Run(the_module).ValueOrDie());
   EXPECT_THAT(the_module->entry_computation()->root_instruction(),
               op::Tuple(op::Add(), op::Multiply()));
+}
+
+TEST_F(WhileLoopSimplifierTest,
+       LoopWithOneIterationTupleELementLoopBoundSimplified) {
+  MakeModuleWithSimpleLoopTupleElementLoopBound(/*num_iters=*/1);
+  HloModule* the_module = &module();
+  ASSERT_TRUE(WhileLoopSimplifier().Run(the_module).ValueOrDie());
+  EXPECT_THAT(the_module->entry_computation()->root_instruction(),
+              op::Tuple(op::Add(), op::Multiply(), op::Constant()));
 }
 
 TEST_F(WhileLoopSimplifierTest, LoopWithTwoIterationsNotSimplified) {
@@ -95,7 +154,7 @@ TEST_F(WhileLoopSimplifierTest,
   auto* while_op = computation->root_instruction();
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   auto* true_op = while_op->while_body()->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
   TF_ASSERT_OK(true_op->AddControlDependencyTo(
       while_op->while_body()->root_instruction()));
   ASSERT_TRUE(WhileLoopSimplifier().Run(the_module).ValueOrDie());
@@ -113,9 +172,11 @@ TEST_F(WhileLoopSimplifierTest, LoopWithSendNotSimplified) {
   auto* while_op = computation->root_instruction();
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   auto* while_body = while_op->while_body();
+  auto* token = while_body->AddInstruction(HloInstruction::CreateToken());
   auto* send = while_body->AddInstruction(HloInstruction::CreateSend(
       while_body->AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<bool>(true))),
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true))),
+      token,
       /*channel_id=*/0));
   while_body->AddInstruction(HloInstruction::CreateSendDone(send));
   EXPECT_FALSE(WhileLoopSimplifier().Run(the_module).ValueOrDie());
@@ -128,8 +189,9 @@ TEST_F(WhileLoopSimplifierTest, LoopWithRecvNotSimplified) {
   auto* while_op = computation->root_instruction();
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   auto* while_body = while_op->while_body();
+  auto* token = while_body->AddInstruction(HloInstruction::CreateToken());
   auto* recv = while_body->AddInstruction(
-      HloInstruction::CreateRecv(ShapeUtil::MakeShape(F32, {1}),
+      HloInstruction::CreateRecv(ShapeUtil::MakeShape(F32, {1}), token,
                                  /*channel_id=*/0));
   while_body->AddInstruction(HloInstruction::CreateRecvDone(recv));
   EXPECT_FALSE(WhileLoopSimplifier().Run(the_module).ValueOrDie());
@@ -146,8 +208,9 @@ TEST_F(WhileLoopSimplifierTest, LoopWithInfeedNotSimplified) {
   auto* while_op = computation->root_instruction();
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   auto* while_body = while_op->while_body();
-  while_body->AddInstruction(
-      HloInstruction::CreateInfeed(ShapeUtil::MakeShape(F32, {1}), "config"));
+  auto token = while_body->AddInstruction(HloInstruction::CreateToken());
+  while_body->AddInstruction(HloInstruction::CreateInfeed(
+      ShapeUtil::MakeShape(F32, {1}), token, "config"));
   EXPECT_FALSE(WhileLoopSimplifier().Run(the_module).ValueOrDie());
 }
 
@@ -173,7 +236,7 @@ TEST_F(WhileLoopSimplifierTest, NonTupleShapedLoopNotSimplified) {
   }
   )";
 
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
@@ -205,7 +268,7 @@ TEST_F(WhileLoopSimplifierTest, LoopSwappingTupleElementsNotSimplified) {
   }
   )";
 
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
@@ -234,7 +297,7 @@ TEST_F(WhileLoopSimplifierTest,
   }
   )";
 
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
@@ -257,7 +320,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithEmptyTupleNotSimplified) {
   }
   )";
 
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
@@ -285,7 +348,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithElemUsedTwiceNotSimplified) {
   }
   )";
 
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
@@ -327,7 +390,7 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
   }
   )";
 
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
   HloModule* the_module = &module();
   EXPECT_TRUE(WhileLoopSimplifier().Run(the_module).ValueOrDie());
 
@@ -364,7 +427,6 @@ TEST_F(WhileLoopSimplifierTest, LoopWithNonTupleBodyShapeNotSimplified) {
   HloModule BodyHasNonTupleRoot
   BodyHasNonTupleRoot.passthrough {
     ROOT param = (s32[], s32[]) parameter(0)
-    get-tuple-element = s32[] get-tuple-element((s32[], s32[]) param), index=1
   }
   BodyHasNonTupleRoot.always_true {
     param.1 = (s32[], s32[]) parameter(0)
@@ -378,7 +440,72 @@ TEST_F(WhileLoopSimplifierTest, LoopWithNonTupleBodyShapeNotSimplified) {
   }
   )";
 
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
+  EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
+}
+
+TEST_F(WhileLoopSimplifierTest,
+       LoopWithNonTupleBodyRootInstructionNotSimplified) {
+  const string hlo_string = R"(
+  HloModule SimpleLoop
+  SimpleLoop.body {
+    loop_var.1 = (s32[], s32[3]{0}) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element(loop_var.1), index=0
+    constant.1 = s32[] constant(1)
+    add = s32[] add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(loop_var.1), index=1
+    multiply = s32[3]{0} multiply(get-tuple-element.2, get-tuple-element.2)
+    ROOT custom-call = (s32[], s32[3]{0}) custom-call(add, multiply),
+      custom_call_target="x"
+  }
+  SimpleLoop.condition {
+    loop_var.2 = (s32[], s32[3]{0}) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[] constant(44)
+    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s32[] constant(42)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    tuple.1 = (s32[], s32[3]{0}) tuple(constant.3, constant.4)
+    ROOT while = (s32[], s32[3]{0}) while(tuple.1), condition=
+      SimpleLoop.condition, body=SimpleLoop.body
+  }
+  )";
+
+  ParseAndVerifyModule(hlo_string);
+  EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
+}
+
+TEST_F(WhileLoopSimplifierTest, LoopWithArrayConstantNotSimplified) {
+  const string hlo_string = R"(
+  HloModule SimpleLoop
+  SimpleLoop.body {
+    loop_var.1 = (s32[], s32[3]{0}, s32[3]{0}) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element(loop_var.1), index=0
+    constant.1 = s32[] constant(1)
+    add = s32[] add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(loop_var.1), index=1
+    get-tuple-element.3 = s32[3]{0} get-tuple-element(loop_var.1), index=2
+    add.2 = s32[3]{0} add(get-tuple-element.2, get-tuple-element.3)
+    ROOT tuple = (s32[], s32[3]{0}) tuple(add, add.2, get-tuple-element.3)
+  }
+  SimpleLoop.condition {
+    loop_var.2 = (s32[], s32[3]{0}, s32[3]{0}) parameter(0)
+    get-tuple-element.4 = s32[] get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[] constant(47)
+    ROOT less-than = pred[] less-than(get-tuple-element.4, constant.2)
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s32[] constant(42)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    tuple.1 = (s32[], s32[3]{0}) tuple(constant.3, constant.4, constant.4)
+    ROOT while = (s32[], s32[3]{0}, s32[3]{0}) while(tuple.1), condition=
+      SimpleLoop.condition, body=SimpleLoop.body
+  }
+  )";
+
+  ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 

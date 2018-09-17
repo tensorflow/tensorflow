@@ -41,6 +41,17 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Compute padding for the given spatial dimension.
+int ConvBackpropDimensions::SpatialPadding(const Padding& padding,
+                                           int dim) const {
+  return (padding == VALID)
+             ? 0
+             : std::max<int>(
+                   0, static_cast<int>((output_size(dim) - 1) * stride(dim) +
+                                       (filter_size(dim) - 1) * dilation(dim) +
+                                       1 - input_size(dim)));
+}
+
 // The V2 version computes windowed output size with arbitrary dilation_rate,
 // while the original version only handles the cases where dilation_rates equal
 // to 1.
@@ -63,7 +74,7 @@ Status ConvBackpropExtractAndVerifyDimensionV2(
     return errors::InvalidArgument(
         label, ": Size of out_backprop doesn't match computed: ", "actual = ",
         dim->output_size, ", computed = ", out_size,
-        "spatial_dim: ", spatial_dim, " input: ", dim->input_size,
+        " spatial_dim: ", spatial_dim, " input: ", dim->input_size,
         " filter: ", dim->filter_size, " output: ", dim->output_size,
         " stride: ", dim->stride, " dilation: ", dim->dilation);
   }
@@ -127,16 +138,17 @@ Status ConvBackpropComputeDimensionsV2(
   dims->in_depth = input_shape.dim_size(feature_dim);
   // The input and output feature dimensions are the second last and last
   // dimensions of the filter Tensor.
-  if (dims->in_depth != filter_shape.dim_size(num_dims - 2)) {
+  VLOG(2) << "input vs filter_in depth " << dims->in_depth << " "
+          << filter_shape.dim_size(num_dims - 2);
+  if (dims->in_depth % filter_shape.dim_size(num_dims - 2)) {
     return errors::InvalidArgument(
-        label, ": input and filter must have the same depth");
+        label, ": input depth must be evenly divisible by filter depth");
   }
   dims->out_depth = filter_shape.dim_size(num_dims - 1);
   if (dims->out_depth != out_backprop_shape.dim_size(feature_dim)) {
     return errors::InvalidArgument(
         label, ": filter and out_backprop must have the same out_depth");
   }
-
   dims->spatial_dims.resize(num_spatial_dims);
   for (int i = 0; i < num_spatial_dims; ++i) {
     int image_dim = GetTensorSpatialDimIndex(num_dims, data_format, i);

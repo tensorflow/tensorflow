@@ -285,7 +285,7 @@ def convert_variables_to_constants(sess,
     output_graph_def.node.extend([output_node])
 
   output_graph_def.library.CopyFrom(inference_graph.library)
-  print("Converted %d variables to const ops." % how_many_converted)
+  logging.info("Converted %d variables to const ops.", how_many_converted)
   return output_graph_def
 
 

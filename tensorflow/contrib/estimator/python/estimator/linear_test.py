@@ -32,6 +32,7 @@ from tensorflow.python.estimator.export import export
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.feature_column import feature_column
 from tensorflow.python.framework import ops
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
@@ -42,7 +43,9 @@ def _linear_estimator_fn(
   """Returns a LinearEstimator that uses regression_head."""
   return linear.LinearEstimator(
       head=head_lib.regression_head(
-          weight_column=weight_column, label_dimension=label_dimension),
+          weight_column=weight_column, label_dimension=label_dimension,
+          # Tests in core (from which this test inherits) test the sum loss.
+          loss_reduction=losses.Reduction.SUM),
       *args, **kwargs)
 
 

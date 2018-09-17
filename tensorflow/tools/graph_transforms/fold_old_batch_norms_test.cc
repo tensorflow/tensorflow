@@ -191,7 +191,7 @@ class FoldOldBatchNormsTest : public ::testing::Test {
     std::vector<Tensor> fused_outputs;
     TF_ASSERT_OK(fused_session->Run({}, {"output"}, {}, &fused_outputs));
 
-    test::ExpectTensorNear<float>(original_outputs[0], fused_outputs[0], 1e-5);
+    test::ExpectTensorNear<float>(original_outputs[0], fused_outputs[0], 2e-5);
 
     for (const NodeDef& node : fused_graph_def.node()) {
       EXPECT_NE("FusedBatchNorm", node.op());
@@ -398,7 +398,7 @@ TEST_F(FoldOldBatchNormsTest, TestFoldFusedBatchNorms) {
 }
 
 TEST_F(FoldOldBatchNormsTest, TestFoldFusedBatchNormsWithConcat) {
-  // Test axis is not 3, so all weigths and offsets are fused to each of inputs
+  // Test axis is not 3, so all weights and offsets are fused to each of inputs
   // of conv2d.
   TestFoldFusedBatchNormsWithConcat(/*split=*/true);
   // Test axis = 3, BatchNorm weights and offsets will be split before fused

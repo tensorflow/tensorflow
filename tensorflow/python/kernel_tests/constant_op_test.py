@@ -30,6 +30,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import logging_ops
@@ -63,6 +64,11 @@ class ConstantTest(test.TestCase):
   def _testAll(self, x):
     self._testCpu(x)
     self._testGpu(x)
+
+  def testInvalidDType(self):
+    # Test case for GitHub issue 18474
+    with self.assertRaises(TypeError):
+      constant_op.constant(dtypes_lib.string, "[,]")
 
   def testBFloat16(self):
     bfloat16 = dtypes_lib.bfloat16.as_numpy_dtype
@@ -156,18 +162,18 @@ class ConstantTest(test.TestCase):
       logging_const_op.run()
 
   def testStringWithNulls(self):
-    with self.test_session():
+    with self.cached_session():
       val = ops.convert_to_tensor(b"\0\0\0\0").eval()
     self.assertEqual(len(val), 4)
     self.assertEqual(val, b"\0\0\0\0")
 
-    with self.test_session():
+    with self.cached_session():
       val = ops.convert_to_tensor(b"xx\0xx").eval()
     self.assertEqual(len(val), 5)
     self.assertAllEqual(val, b"xx\0xx")
     nested = [[b"\0\0\0\0", b"xx\0xx"], [b"\0_\0_\0_\0", b"\0"]]
 
-    with self.test_session():
+    with self.cached_session():
       val = ops.convert_to_tensor(nested).eval()
     # NOTE(mrry): Do not use assertAllEqual, because it converts nested to a
     #   numpy array, which loses the null terminators.
@@ -179,6 +185,11 @@ class ConstantTest(test.TestCase):
           np.arange(-15, 15).reshape([2, 3, 5]).astype(np.float32),
           shape=[2, 3, 5])
     self.assertEqual(c.get_shape(), [2, 3, 5])
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testEagerMemory(self):
+    """Tests PyObject refs are managed correctly when executing eagerly."""
+    constant_op.constant([[1.]])
 
   def testImplicitShapeNumPy(self):
     with ops.Graph().as_default():
@@ -268,7 +279,7 @@ class AsTensorTest(test.TestCase):
     self.assertTrue(isinstance(x, ops.Tensor))
 
   def testAsTensorForShapeInput(self):
-    with self.test_session():
+    with self.cached_session():
       x = ops.convert_to_tensor(tensor_shape.TensorShape([]))
       self.assertEqual(dtypes_lib.int32, x.dtype)
       self.assertAllEqual([], x.eval())
@@ -320,7 +331,7 @@ class AsTensorTest(test.TestCase):
           tensor_shape.TensorShape([1, 2, 3]), dtype=dtypes_lib.float32)
 
   def testAsTensorForDimensionInput(self):
-    with self.test_session():
+    with self.cached_session():
       x = ops.convert_to_tensor(tensor_shape.TensorShape([1, 2, 3])[1])
       self.assertEqual(dtypes_lib.int32, x.dtype)
       self.assertAllEqual(2, x.eval())
@@ -356,7 +367,7 @@ class IdentityOpTest(test.TestCase):
 class ZerosTest(test.TestCase):
 
   def _Zeros(self, shape):
-    with self.test_session():
+    with self.cached_session():
       ret = array_ops.zeros(shape)
       self.assertEqual(shape, ret.get_shape())
       return ret.eval()
@@ -368,13 +379,13 @@ class ZerosTest(test.TestCase):
   def testScalar(self):
     self.assertEqual(0, self._Zeros([]))
     self.assertEqual(0, self._Zeros(()))
-    with self.test_session():
+    with self.cached_session():
       scalar = array_ops.zeros(constant_op.constant([], dtype=dtypes_lib.int32))
       self.assertEqual(0, scalar.eval())
 
   def testDynamicSizes(self):
     np_ans = np.array([[0] * 3] * 2)
-    with self.test_session():
+    with self.cached_session():
       # Creates a tensor of 2 x 3.
       d = array_ops.fill([2, 3], 12., name="fill")
       # Constructs a tensor of zeros of the same dimensions as "d".
@@ -385,7 +396,7 @@ class ZerosTest(test.TestCase):
     self.assertShapeEqual(np_ans, z)
 
   def testDtype(self):
-    with self.test_session():
+    with self.cached_session():
       d = array_ops.fill([2, 3], 12., name="fill")
       self.assertEqual(d.get_shape(), [2, 3])
       # Test default type for both constant size and dynamic size
@@ -478,7 +489,7 @@ class ZerosLikeTest(test.TestCase):
 
   def testZerosLikeDtype(self):
     # Make sure zeros_like works even for dtypes that cannot be cast between
-    with self.test_session():
+    with self.cached_session():
       shape = (3, 5)
       dtypes = np.float32, np.complex64
       for in_type in dtypes:
@@ -522,7 +533,7 @@ class ZerosLikeTest(test.TestCase):
 class OnesTest(test.TestCase):
 
   def _Ones(self, shape):
-    with self.test_session():
+    with self.cached_session():
       ret = array_ops.ones(shape)
       self.assertEqual(shape, ret.get_shape())
       return ret.eval()
@@ -533,13 +544,13 @@ class OnesTest(test.TestCase):
   def testScalar(self):
     self.assertEqual(1, self._Ones([]))
     self.assertEqual(1, self._Ones(()))
-    with self.test_session():
+    with self.cached_session():
       scalar = array_ops.ones(constant_op.constant([], dtype=dtypes_lib.int32))
       self.assertEqual(1, scalar.eval())
 
   def testDynamicSizes(self):
     np_ans = np.array([[1] * 3] * 2)
-    with self.test_session():
+    with self.cached_session():
       # Creates a tensor of 2 x 3.
       d = array_ops.fill([2, 3], 12., name="fill")
       # Constructs a tensor of ones of the same dimensions as "d".
@@ -550,7 +561,7 @@ class OnesTest(test.TestCase):
     self.assertShapeEqual(np_ans, z)
 
   def testAutoPack(self):
-    with self.test_session():
+    with self.cached_session():
       h = array_ops.placeholder(dtypes_lib.int32, shape=[])
       w = array_ops.placeholder(dtypes_lib.int32, shape=[])
       z = array_ops.ones([h, w])
@@ -558,7 +569,7 @@ class OnesTest(test.TestCase):
     self.assertAllEqual(out, np.array([[1] * 16] * 4))
 
   def testDtype(self):
-    with self.test_session():
+    with self.cached_session():
       d = array_ops.fill([2, 3], 12., name="fill")
       self.assertEqual(d.get_shape(), [2, 3])
       # Test default type for both constant size and dynamic size
@@ -595,7 +606,7 @@ class OnesLikeTest(test.TestCase):
         dtypes_lib.complex128
     ]:
       numpy_dtype = dtype.as_numpy_dtype
-      with self.test_session():
+      with self.cached_session():
         # Creates a tensor of non-zero values with shape 2 x 3.
         d = constant_op.constant(
             np.ones(
@@ -647,12 +658,12 @@ class FillTest(test.TestCase):
     self._compareAll([2, 3], np_ans[0][0], np_ans)
 
   def testFillComplex64(self):
-    np_ans = np.array([[0.15] * 3] * 2).astype(np.complex64)
-    self._compare([2, 3], np_ans[0][0], np_ans, use_gpu=False)
+    np_ans = np.array([[0.15 + 0.3j] * 3] * 2).astype(np.complex64)
+    self._compareAll([2, 3], np_ans[0][0], np_ans)
 
   def testFillComplex128(self):
-    np_ans = np.array([[0.15] * 3] * 2).astype(np.complex128)
-    self._compare([2, 3], np_ans[0][0], np_ans, use_gpu=False)
+    np_ans = np.array([[0.15 + 0.3j] * 3] * 2).astype(np.complex128)
+    self._compareAll([2, 3], np_ans[0][0], np_ans)
 
   def testFillString(self):
     np_ans = np.array([[b"yolo"] * 3] * 2)
@@ -661,7 +672,7 @@ class FillTest(test.TestCase):
     self.assertAllEqual(np_ans, tf_ans)
 
   def testFillNegative(self):
-    with self.test_session():
+    with self.cached_session():
       for shape in (-1,), (2, -1), (-1, 2), (-2), (-3):
         with self.assertRaises(ValueError):
           array_ops.fill(shape, 7)
@@ -692,7 +703,7 @@ class FillTest(test.TestCase):
     self.assertEqual([None, 17], f.get_shape().as_list())
 
   def testGradient(self):
-    with self.test_session():
+    with self.cached_session():
       in_v = constant_op.constant(5.0)
       out_shape = [3, 2]
       out_filled = array_ops.fill(out_shape, in_v)
@@ -704,7 +715,7 @@ class FillTest(test.TestCase):
 class PlaceholderTest(test.TestCase):
 
   def testDtype(self):
-    with self.test_session():
+    with self.cached_session():
       p = array_ops.placeholder(dtypes_lib.float32, shape=(10, 10), name="p")
       p_identity = array_ops.identity(p)
       feed_array = np.random.rand(10, 10)
@@ -716,7 +727,7 @@ class PlaceholderTest(test.TestCase):
         p_identity.eval()
 
   def testShape(self):
-    with self.test_session():
+    with self.cached_session():
       p = array_ops.placeholder(dtypes_lib.float32, shape=(10, 10), name="p")
       p_identity = array_ops.identity(p)
       feed_array = np.random.rand(10, 10)
@@ -733,7 +744,7 @@ class PlaceholderTest(test.TestCase):
         p_identity.eval(feed_dict={p: feed_array[:5, :5]})
 
   def testUnknownShape(self):
-    with self.test_session():
+    with self.cached_session():
       p = array_ops.placeholder(dtypes_lib.float32, shape=None, name="p")
       p_identity = array_ops.identity(p)
       # can feed anything
@@ -745,13 +756,13 @@ class PlaceholderTest(test.TestCase):
           p_identity.eval(feed_dict={p: feed_array}), feed_array)
 
   def testScalarShape(self):
-    with self.test_session():
+    with self.cached_session():
       p = array_ops.placeholder(dtypes_lib.float32, shape=[], name="p")
       p_identity = array_ops.identity(p)
       self.assertAllClose(p_identity.eval(feed_dict={p: 5}), 5)
 
   def testPartialShape(self):
-    with self.test_session():
+    with self.cached_session():
       p = array_ops.placeholder(dtypes_lib.float32, shape=[None, 3], name="p")
       p_identity = array_ops.identity(p)
       feed_array = np.random.rand(10, 3)
@@ -763,7 +774,7 @@ class PlaceholderTest(test.TestCase):
         p_identity.eval(feed_dict={p: feed_array[:5, :2]})
 
   def testPartialShapeWhenNotFed(self):
-    with self.test_session():
+    with self.cached_session():
       p = array_ops.placeholder(dtypes_lib.float32, shape=[None, 3], name="p")
       p_identity = array_ops.identity(p)
 
@@ -773,7 +784,7 @@ class PlaceholderTest(test.TestCase):
         p_identity.eval()
 
   def testControlDependency(self):
-    with self.test_session():
+    with self.cached_session():
       p = array_ops.placeholder(dtypes_lib.int32, shape=[], name="p")
       with ops.control_dependencies([p]):
         c = constant_op.constant(5, dtypes_lib.int32)
@@ -861,7 +872,7 @@ versions {
 """
     gdef = graph_pb2.GraphDef()
     text_format.Merge(graph, gdef)
-    with self.test_session():
+    with self.cached_session():
       p, ret = importer.import_graph_def(
           gdef, return_elements=["Placeholder:0", "add:0"])
 
@@ -875,7 +886,7 @@ versions {
 class PlaceholderWithDefaultTest(test.TestCase):
 
   def testFullShape(self):
-    with self.test_session():
+    with self.test_session(force_gpu=test_util.is_gpu_available()):
       p = array_ops.placeholder_with_default([[2, 2], [2, 2]], shape=[2, 2])
       a = array_ops.identity(p)
       self.assertAllEqual([[2, 2], [2, 2]], a.eval())
@@ -886,7 +897,7 @@ class PlaceholderWithDefaultTest(test.TestCase):
         a.eval(feed_dict={p: [[6, 6, 6], [6, 6, 6]]})
 
   def testPartialShape(self):
-    with self.test_session():
+    with self.test_session(force_gpu=test_util.is_gpu_available()):
       p = array_ops.placeholder_with_default([1, 2, 3], shape=[None])
       a = array_ops.identity(p)
       self.assertAllEqual([1, 2, 3], a.eval())
@@ -896,7 +907,7 @@ class PlaceholderWithDefaultTest(test.TestCase):
         a.eval(feed_dict={p: [[2, 2], [2, 2]]})
 
   def testNoShape(self):
-    with self.test_session():
+    with self.test_session(force_gpu=test_util.is_gpu_available()):
       p = array_ops.placeholder_with_default([17], shape=None)
       a = array_ops.identity(p)
       self.assertAllEqual([17], a.eval())
@@ -905,11 +916,12 @@ class PlaceholderWithDefaultTest(test.TestCase):
           [[3, 3], [3, 3]], a.eval(feed_dict={p: [[3, 3], [3, 3]]}))
 
   def testGradient(self):
-    with self.test_session():
+    with self.test_session(force_gpu=test_util.is_gpu_available()):
       x = array_ops.placeholder(dtypes_lib.float32, [5, 7])
       y = array_ops.placeholder_with_default(x, None)
       err = gradient_checker.compute_gradient_error(x, [5, 7], y, [5, 7])
       self.assertLess(err, 1e-3)
+
 
 if __name__ == "__main__":
   test.main()

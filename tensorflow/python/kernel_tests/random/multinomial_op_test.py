@@ -46,7 +46,7 @@ def composed_sampler(logits, num_samples):
   logits = array_ops.expand_dims(logits, -1)
 
   # [batch size, num samples]
-  return math_ops.argmax(logits + noise, dimension=1)
+  return math_ops.argmax(logits + noise, axis=1)
 
 
 native_sampler = random_ops.multinomial
@@ -54,7 +54,7 @@ native_sampler = random_ops.multinomial
 
 class MultinomialTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testSmallEntropy(self):
     random_seed.set_random_seed(1618)
     for output_dtype in [np.int32, np.int64]:

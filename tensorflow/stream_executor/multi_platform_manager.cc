@@ -20,8 +20,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/str_util.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 /* static */ mutex MultiPlatformManager::platforms_mutex_{LINKER_INITIALIZED};
 
@@ -132,8 +131,7 @@ MultiPlatformManager::InitializePlatformWithId(
   GetPlatformByIdMap()->clear();
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 REGISTER_MODULE_INITIALIZER(
     multi_platform_manager,

@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <string.h>
 #include <vector>
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
@@ -37,8 +37,8 @@ struct TransposeContext {
     perm = GetInput(context, node, 1);
     output = GetOutput(context, node, 0);
   }
-  TfLiteTensor* input;
-  TfLiteTensor* perm;
+  const TfLiteTensor* input;
+  const TfLiteTensor* perm;
   TfLiteTensor* output;
 };
 
@@ -136,7 +136,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     default:
       context->ReportError(context,
-                           "Type is currently not supported by Transpose.");
+                           "Type %d is currently not supported by Transpose.",
+                           op_context.input->type);
       return kTfLiteError;
   }
 #undef TF_LITE_TRANSPOSE

@@ -39,7 +39,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.tools import optimize_for_inference_lib
 
 
-@test_util.with_c_api
 class OptimizeForInferenceTest(test.TestCase):
 
   def create_node_def(self, op, name, inputs):

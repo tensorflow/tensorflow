@@ -13,17 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_TRANSFER_MANAGER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_TRANSFER_MANAGER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_TRANSFER_MANAGER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_TRANSFER_MANAGER_H_
 
 #include <vector>
 
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/cpu/xfeed_manager.h"
 #include "tensorflow/compiler/xla/service/generic_transfer_manager.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
@@ -37,42 +38,41 @@ class CpuTransferManager : public GenericTransferManager {
   CpuTransferManager();
   ~CpuTransferManager() override {}
 
-  Status TransferLiteralToInfeed(perftools::gputools::StreamExecutor* executor,
-                                 const Literal& literal) override;
-  Status TransferBufferToInfeed(perftools::gputools::StreamExecutor* executor,
-                                int64 size, const void* source) override;
-  Status TransferLiteralFromOutfeed(
-      perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
-      Literal* literal) override;
+  Status TransferLiteralToInfeed(se::StreamExecutor* executor,
+                                 const LiteralSlice& literal) override;
+  Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
+                                    const Shape& literal_shape,
+                                    MutableBorrowingLiteral literal) override;
 
  private:
+  Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,
+                                const void* source);
+
   // Transfers infeed data to device. InfeedBuffer->Done() must be
   // called to clean up the memory allocated for InfeedBuffer.
   StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(
-      perftools::gputools::StreamExecutor* executor, int64 size,
-      const void* source);
+      se::StreamExecutor* executor, int64 size, const void* source);
 
   // Helper that transfers a tuple of element buffers from the device's outfeed.
   StatusOr<Shape> TransferTupleBuffersFromOutfeed(
-      perftools::gputools::StreamExecutor* executor,
-      tensorflow::gtl::ArraySlice<std::pair<void*, int64>> buffer_data);
+      se::StreamExecutor* executor,
+      absl::Span<const std::pair<void*, int64>> buffer_data);
 
   // Helper that transfers an array buffer from the device's outfeed.
-  StatusOr<Shape> TransferArrayBufferFromOutfeed(
-      perftools::gputools::StreamExecutor* executor, void* destination,
-      int64 size_bytes);
+  StatusOr<Shape> TransferArrayBufferFromOutfeed(se::StreamExecutor* executor,
+                                                 void* destination,
+                                                 int64 size_bytes);
 
   // On success, returns the shape that was transferred from the outfeed -- if
   // is_tuple is true, the returned shape will be a tuple of the returned shapes
   // for the given buffers.
   StatusOr<Shape> TransferBuffersFromOutfeedInternal(
-      perftools::gputools::StreamExecutor* executor,
-      tensorflow::gtl::ArraySlice<std::pair<void*, int64>> buffer_data,
-      bool is_tuple);
+      se::StreamExecutor* executor,
+      absl::Span<const std::pair<void*, int64>> buffer_data, bool is_tuple);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CpuTransferManager);
 };
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_TRANSFER_MANAGER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_TRANSFER_MANAGER_H_

@@ -17,28 +17,27 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/interpreter/platform_id.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
-
-namespace sei = ::perftools::gputools::interpreter;
 
 namespace xla {
 
 InterpreterTransferManager::InterpreterTransferManager()
-    : GenericTransferManager(sei::kInterpreterPlatformId,
+    : GenericTransferManager(se::interpreter::kXlaInterpreterPlatformId,
                              /*pointer_size=*/sizeof(void*)) {}
 
 }  // namespace xla
 
 static std::unique_ptr<xla::TransferManager>
 CreateInterpreterTransferManager() {
-  return xla::MakeUnique<xla::InterpreterTransferManager>();
+  return absl::make_unique<xla::InterpreterTransferManager>();
 }
 
 static bool InitModule() {
   xla::TransferManager::RegisterTransferManager(
-      sei::kInterpreterPlatformId, &CreateInterpreterTransferManager);
+      stream_executor::interpreter::kXlaInterpreterPlatformId,
+      &CreateInterpreterTransferManager);
   return true;
 }
 

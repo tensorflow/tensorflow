@@ -65,9 +65,9 @@ struct SmartReplyConfig {
   float backoff_confidence;
   // Backoff responses are used when predicted responses cannot fulfill the
   // list.
-  const std::vector<std::string>& backoff_responses;
+  std::vector<std::string> backoff_responses;
 
-  SmartReplyConfig(std::vector<std::string> backoff_responses)
+  SmartReplyConfig(const std::vector<std::string>& backoff_responses)
       : num_response(kDefaultNumResponse),
         backoff_confidence(kDefaultBackoffConfidence),
         backoff_responses(backoff_responses) {}

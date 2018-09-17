@@ -60,6 +60,7 @@ cc_library(
 tf_cc_test(
     name = "resolve_svdf_test",
     srcs = ["resolve_svdf_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":cluster",
         ":cluster_utils",
@@ -87,16 +88,4 @@ cc_library(
         "//tensorflow/contrib/lite/toco:tooling_util",
         "//tensorflow/core:protos_all_cc",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_HOST_INFO_H_
-#define TENSORFLOW_PLATFORM_HOST_INFO_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_HOST_INFO_H_
+#define TENSORFLOW_CORE_PLATFORM_HOST_INFO_H_
 
 #include "tensorflow/core/platform/types.h"
 
@@ -27,4 +27,4 @@ string Hostname();
 }  // namespace port
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_HOST_INFO_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_HOST_INFO_H_

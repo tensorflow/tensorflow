@@ -34,7 +34,7 @@ namespace gpu {
 //
 class FusionMerger : public HloPassInterface {
  public:
-  tensorflow::StringPiece name() const override { return "fusion merger"; }
+  absl::string_view name() const override { return "fusion merger"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 

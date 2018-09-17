@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/test.h"
 
 #if GOOGLE_CUDA
@@ -95,9 +97,9 @@ nvinfer1::IHostMemory* CreateNetwork() {
 }
 
 // Executes the network.
-void Execute(nvinfer1::IExecutionContext& context, const float* input,
+void Execute(nvinfer1::IExecutionContext* context, const float* input,
              float* output) {
-  const nvinfer1::ICudaEngine& engine = context.getEngine();
+  const nvinfer1::ICudaEngine& engine = context->getEngine();
 
   // We have two bindings: input and output.
   ASSERT_EQ(engine.getNbBindings(), 2);
@@ -118,7 +120,7 @@ void Execute(nvinfer1::IExecutionContext& context, const float* input,
   // could be removed.
   ASSERT_EQ(0, cudaMemcpyAsync(buffers[input_index], input, sizeof(float),
                                cudaMemcpyHostToDevice, stream));
-  context.enqueue(1, buffers, stream, nullptr);
+  context->enqueue(1, buffers, stream, nullptr);
   ASSERT_EQ(0, cudaMemcpyAsync(output, buffers[output_index], sizeof(float),
                                cudaMemcpyDeviceToHost, stream));
   cudaStreamSynchronize(stream);
@@ -130,6 +132,13 @@ void Execute(nvinfer1::IExecutionContext& context, const float* input,
 }
 
 TEST(TensorrtTest, BasicFunctions) {
+  // Handle the case where the test is run on machine with no gpu available.
+  if (CHECK_NOTNULL(GPUMachineManager())->VisibleDeviceCount() <= 0) {
+    LOG(WARNING) << "No gpu device available, probably not being run on a gpu "
+                    "machine. Skipping...";
+    return;
+  }
+
   // Create the network model.
   nvinfer1::IHostMemory* model = CreateNetwork();
   // Use the model to create an engine and then an execution context.
@@ -143,7 +152,7 @@ TEST(TensorrtTest, BasicFunctions) {
   // Execute the network.
   float input = 1234;
   float output;
-  Execute(*context, &input, &output);
+  Execute(context, &input, &output);
   EXPECT_EQ(output, input * 2 + 3);
 
   // Destroy the engine.
