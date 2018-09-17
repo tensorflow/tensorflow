@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -61,13 +60,10 @@ class Node {
  public:
   Node(int64 id, std::shared_ptr<Node> output) : id_(id), output_(output) {}
 
-  explicit Node(const proto::Node& node_proto) : id_(node_proto.id()) {
-    name_ = node_proto.name();
-    type_ = TypeFromName(node_proto.name());
-    processing_time_ = node_proto.processing_time();
-    num_elements_ = node_proto.num_elements();
-    metadata_.insert(node_proto.metadata().begin(),
-                     node_proto.metadata().end());
+  // Adds a constant parameter.
+  void add_constant_param(const string& name, int64 value) LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(mu_);
+    constant_params_[name] = value;
   }
 
   // Records that the node produced an element.
@@ -86,6 +82,15 @@ class Node {
   void add_processing_time(int64 delta) LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     processing_time_ += delta;
+  }
+
+  // Adds a tunable parameter.
+  void add_tunable_param(const string& name, int64 value, int64 min, int64 max,
+                         std::function<void(int64)>&& set_fn)
+      LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(mu_);
+    tunable_params_[name] =
+        std::make_shared<Tunable>(value, min, max, std::move(set_fn));
   }
 
   // Returns the unique node ID.
@@ -121,12 +126,6 @@ class Node {
     inputs_.remove(input);
   }
 
-  // Adds the given key-value pair to the node metadata.
-  void set_metadata(const string& key, int64 value) LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    metadata_[key] = value;
-  }
-
   // Sets the node name.
   void set_name(const string& name) LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
@@ -157,11 +156,16 @@ class Node {
   }
 
  private:
-  // Represents a performance knob.
-  struct Knob {
-    Node* node;
-    int64 processing_time;
+  // Represents a tunable parameter.
+  struct Tunable {
+    Tunable(int64 value, int64 min, int64 max,
+            std::function<void(int64)> set_fn)
+        : value(value), min(min), max(max), set_fn(std::move(set_fn)) {}
+
     int64 value;
+    int64 min;
+    int64 max;
+    std::function<void(int64)> set_fn;
   };
 
   enum class Type {
@@ -186,8 +190,12 @@ class Node {
     UNKNOWN,
   };
 
-  // Collects performance knobs in the subtree rooted in this node.
-  void CollectKnobs(std::vector<Node::Knob>* knobs) LOCKS_EXCLUDED(mu_);
+  // Collects tunable parameters in the subtree rooted in this node.
+  void CollectTunables(std::vector<std::shared_ptr<Node::Tunable>>* tunables)
+      LOCKS_EXCLUDED(mu_);
+
+  // Gets a value of the given parameter (tunable or constant).
+  int64 GetParameterValue(const string& name) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Returns the per-element processing time spent in this node.
   int64 NanosPerElement() LOCKS_EXCLUDED(mu_) {
@@ -236,22 +244,6 @@ class Node {
       sum += input->ProcessingTimeLocked();
     }
     return sum;
-  }
-
-  // Serializes the node state into the given proto.
-  void ToProto(proto::Node* node_proto) LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    node_proto->set_id(id_);
-    node_proto->set_name(name_);
-    node_proto->set_num_elements(num_elements_);
-    node_proto->set_processing_time(processing_time_);
-    for (const std::shared_ptr<Node>& input : inputs_) {
-      node_proto->add_input(input->id());
-    }
-    if (output_) {
-      node_proto->set_output(output_->id());
-    }
-    node_proto->mutable_metadata()->insert(metadata_.begin(), metadata_.end());
   }
 
   Type TypeFromName(const string& name) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -319,7 +311,9 @@ class Node {
   int64 processing_time_ GUARDED_BY(mu_) = 0;
   int64 num_elements_ GUARDED_BY(mu_) = 0;
   std::map<std::thread::id, int64> work_start_ GUARDED_BY(mu_);
-  std::map<string, int64> metadata_ GUARDED_BY(mu_);
+  std::map<string, int64> constant_params_ GUARDED_BY(mu_);
+  // Tunables are shared with the model during optimization.
+  std::map<string, std::shared_ptr<Tunable>> tunable_params_ GUARDED_BY(mu_);
   std::list<std::shared_ptr<Node>> inputs_ GUARDED_BY(mu_);
   std::shared_ptr<Node> output_ GUARDED_BY(mu_);
 
@@ -330,21 +324,15 @@ class Node {
 // for collecting runtime information and optimizing performance. It collects
 // runtime information about execution of the input pipeline that is used to
 // create a performance model, which is in turn used to identify optimal values
-// of performance knobs.
+// of tunable parameters.
 //
 // Developers of tf.data transformations are not expected to interact with this
 // class directly. Boiler plate code for creating the abstract representation of
 // the input pipeline and collecting runtime information has been added to the
 // implementation of `DatasetBase` and `DatasetBaseIterator` respectively.
-//
-// TODO(jsimsa): Add a mechanism for feeding the result of the optimization
-// into the input pipeline.
 class Model {
  public:
   Model() = default;
-  explicit Model(const proto::Model& model_proto);
-
-  ~Model() {}
 
   // Returns the model output node.
   std::shared_ptr<Node> output() LOCKS_EXCLUDED(mu_) {
@@ -360,30 +348,25 @@ class Model {
   std::shared_ptr<Node> LookupNode(const string& name) LOCKS_EXCLUDED(mu_);
 
   // Runs optimization.
-  void Optimize() LOCKS_EXCLUDED(mu_);
-
-  // Outputs the state of a model to a file.
-  //
-  // TODO(jsimsa): Remove this method once the optimization loop is closed.
-  void OutputToFile() LOCKS_EXCLUDED(mu_);
+  void Optimize(int64 cpu_budget) LOCKS_EXCLUDED(mu_);
 
   // Removes the node identified by the given name.
   void RemoveNode(const string& prefix) LOCKS_EXCLUDED(mu_);
 
-  // Serializes the model state to the given proto.
-  void ToProto(proto::Model* model_proto) LOCKS_EXCLUDED(mu_);
-
  private:
-  static void AddNodeToProto(const std::shared_ptr<Node>& node,
-                             proto::Model* model_proto);
-
-  std::vector<Node::Knob> CollectKnobs() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  std::vector<std::shared_ptr<Node::Tunable>> CollectTunables()
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   int64 OutputTime() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   int64 ProcessingTime() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  // Used for coordination between different input pipeline threads.
   mutex mu_;
+  // Used for preventing iterator deletion when optimization is in progress
+  // because the optimization may try to update the values of tunable
+  // parameters.
+  mutex optimization_mu_ ACQUIRED_BEFORE(mu_);
   int64 id_counter_ GUARDED_BY(mu_) = 1;
   std::shared_ptr<Node> output_ GUARDED_BY(mu_);
   std::map<string, std::shared_ptr<Node>> lookup_table_ GUARDED_BY(mu_);
