@@ -29,8 +29,8 @@ class PlainClient : public Client {
   virtual Status Disconnect();
   virtual bool IsConnected();
   virtual int GetSocketDescriptor();
-  virtual Status ReadData(uint8_t* buf, const int32_t length);
-  virtual Status WriteData(const uint8_t* buf, const int32_t length);
+  virtual Status ReadData(uint8_t* buf, const int32_t length) override;
+  virtual Status WriteData(const uint8_t* buf, const int32_t length) override;
 
  private:
   const string host_;
