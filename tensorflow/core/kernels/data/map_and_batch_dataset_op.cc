@@ -49,14 +49,6 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    OpInputList inputs;
-    OP_REQUIRES_OK(ctx, ctx->input_list("other_arguments", &inputs));
-    std::vector<Tensor> other_arguments;
-    other_arguments.reserve(inputs.size());
-    for (const Tensor& t : inputs) {
-      other_arguments.push_back(t);
-    }
-
     int64 batch_size;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "batch_size", &batch_size));
     OP_REQUIRES(
@@ -93,8 +85,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                    ParseScalarArgument(ctx, "drop_remainder", &drop_remainder));
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                            func_, std::move(other_arguments), &captured_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
+                                                 &captured_func));
 
     *output = new Dataset(ctx, input, batch_size, num_parallel_calls,
                           drop_remainder, output_types_, output_shapes_, func_,
