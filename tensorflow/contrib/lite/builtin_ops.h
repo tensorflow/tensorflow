@@ -118,6 +118,7 @@ typedef enum {
   kTfLiteBuiltinFloorDiv = 90,
   kTfLiteBuiltinReduceAny = 91,
   kTfLiteBuiltinSquare = 92,
+  kTfLiteBuiltinZerosLike = 93,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus
