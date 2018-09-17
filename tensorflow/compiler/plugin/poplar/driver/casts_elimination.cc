@@ -191,7 +191,7 @@ unsigned CastsElimination::ReplaceNodes() {
 
   // Handle all the unused casts
   const std::vector<unsigned> unused_casts_patterns = {3, 4};
-  for (const auto pattern_index : unsued_casts_patterns) {
+  for (const auto pattern_index : unused_casts_patterns) {
     for (HloMatcherMatched& match : matches_[pattern_index]) {
       if (match.ok) {
         auto* convert_out = match.instructions[0];
