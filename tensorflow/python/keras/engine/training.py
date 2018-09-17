@@ -677,9 +677,9 @@ class Model(Network):
 
     if len(self.trainable_weights) != len(self._collected_trainable_weights):
       logging.log_first_n(logging.WARN,
-                          'Discrepancy between trainable weights and collected trainable'
-                          ' weights, did you set `model.trainable` without calling'
-                          ' `model.compile` after ?', 1)
+                          'Discrepancy between trainable weights and collected'
+                          ' trainable weights, did you set `model.trainable`'
+                          ' without calling `model.compile` after ?', 1)
 
   def _make_train_function(self):
     if not hasattr(self, 'train_function'):
