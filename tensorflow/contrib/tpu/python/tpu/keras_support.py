@@ -970,15 +970,25 @@ class TPUFunction(object):
       # Note: this condition is possible during the prologue or epilogue of the
       # pipelined loop.
       return None, None
-    # Strip sample weight from inputs
+
+    if (self.model.uses_learning_phase and
+        not isinstance(K.learning_phase(), int)):
+      # Remove the learning_phase flag at the end. We currently hard code the
+      # learning_phase in TPUFunction.
+      assert isinstance(inputs[-1], int), (
+          'Expect the final element be learning_phase flag. Got {}'.format(
+              inputs[-1]))
+      inputs = inputs[:-1]
+
     if (self.execution_mode == model_fn_lib.ModeKeys.TRAIN or
         self.execution_mode == model_fn_lib.ModeKeys.EVAL):
+      # Strip sample weight from inputs.
       input_tensors = self.model._feed_inputs + self.model._feed_targets
-      inputs = inputs[:len(input_tensors)]
-      return input_tensors, inputs
     else:
       input_tensors = self.model._feed_inputs
-      return input_tensors, inputs
+
+    inputs = inputs[:len(input_tensors)]
+    return input_tensors, inputs
 
   def _process_outputs(self, outfeed_outputs):
     """Processes the outputs of a model function execution.
