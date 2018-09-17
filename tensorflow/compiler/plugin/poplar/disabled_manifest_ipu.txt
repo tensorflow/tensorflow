@@ -34,6 +34,8 @@ QrOpTest.testLarge2000x2000 # Assertion in reduction
 GatherTest.testHigherRank # Bad
 MatrixTriangularSolveOpTest.testBatch # Arithmetic precision?
 NonMaxSuppressionTest # Don't support sort
+XlaOpsTest.testShiftRightLogical # using UINT32
+XlaOpsTest.testShiftRightArithmetic # using UINT32
 
 Conv3DBackpropFilterV2GradTest # Too long on IPU
 Conv3DTransposeTest
