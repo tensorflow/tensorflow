@@ -31,7 +31,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import metrics as metrics_module
-from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine.training_utils import weighted_masked_objective
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
