@@ -39,8 +39,8 @@ PackedLiteralReader::PackedLiteralReader(tensorflow::RandomAccessFile* file)
 
 PackedLiteralReader::~PackedLiteralReader() { delete file_; }
 
-StatusOr<std::unique_ptr<Literal>> PackedLiteralReader::Read(
-    const Shape& shape, const Layout* layout) {
+StatusOr<Literal> PackedLiteralReader::Read(const Shape& shape,
+                                            const Layout* layout) {
   VLOG(3) << "reading shape from file: " << ShapeUtil::HumanString(shape)
           << " layout: "
           << (layout == nullptr ? "<none>" : layout->ShortDebugString());
@@ -57,11 +57,11 @@ StatusOr<std::unique_ptr<Literal>> PackedLiteralReader::Read(
         PrimitiveType_Name(shape.element_type()));
   }
 
-  auto result = absl::make_unique<Literal>(literal_shape);
-  result->PopulateWithValue(std::numeric_limits<float>::quiet_NaN());
+  Literal result(literal_shape);
+  result.PopulateWithValue(std::numeric_limits<float>::quiet_NaN());
 
   int64 elements = ShapeUtil::ElementsIn(shape);
-  absl::Span<const float> field = result->data<float>();
+  absl::Span<const float> field = result.data<float>();
   char* data = absl::bit_cast<char*>(field.data());
   uint64 bytes = elements * sizeof(float);
   absl::string_view sp;

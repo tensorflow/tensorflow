@@ -135,7 +135,7 @@ class XRTTupleAllocation : public ResourceBase {
 
   // Copies the allocation from device to host and returns it in literal.
   Status ToLiteral(xla::Backend* backend, int device_ordinal,
-                   std::unique_ptr<xla::Literal>* literal);
+                   xla::Literal* literal);
 
   // True if none of the buffers in the allocation are aliased by any other live
   // handle.

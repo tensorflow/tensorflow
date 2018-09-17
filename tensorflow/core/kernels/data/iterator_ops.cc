@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -236,6 +236,8 @@ class IteratorResource : public ResourceBase {
   const std::vector<PartialTensorShape> output_shapes_;
 };
 
+namespace {
+
 // Helper class for reading data from a VariantTensorData object.
 class VariantTensorDataReader : public IteratorStateReader {
  public:
@@ -401,12 +403,12 @@ class IteratorStateVariant {
   }
   string TypeName() const { return kIteratorVariantTypeName; }
   void Encode(VariantTensorData* data) const { *data = *data_; }
-  bool Decode(const VariantTensorData& data) {
+  bool Decode(VariantTensorData data) {
     if (data.type_name() != TypeName()) {
       return false;
     }
     std::unique_ptr<VariantTensorData> tensor_data(new VariantTensorData);
-    *tensor_data = data;
+    std::swap(*tensor_data, data);
     std::unique_ptr<VariantTensorDataReader> reader(
         new VariantTensorDataReader(tensor_data.get()));
     status_ = reader->status();
@@ -442,6 +444,8 @@ class IteratorStateVariant {
 // DeserializeIteratorOp which is not recommended.
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(IteratorStateVariant,
                                        kIteratorVariantTypeName);
+
+}  // namespace
 
 // Note that IteratorHandleOp holds a reference to the resource it creates. If
 // cleaning up resources with DestroyResourceOp is important, consider creating
@@ -621,6 +625,8 @@ void MakeIteratorOp::Compute(OpKernelContext* ctx) {
       ctx, dataset->MakeIterator(std::move(iter_ctx), "Iterator", &iterator));
   OP_REQUIRES_OK(ctx, iterator_resource->set_iterator(std::move(iterator)));
 }
+
+namespace {
 
 class ToSingleElementOp : public AsyncOpKernel {
  public:
@@ -887,6 +893,8 @@ class OneShotIteratorOp : public AsyncOpKernel {
   const int graph_def_version_;
 };
 
+}  // namespace
+
 void IteratorGetNextOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   IteratorResource* iterator;
   OP_REQUIRES_OK_ASYNC(
@@ -956,6 +964,8 @@ void IteratorGetNextSyncOp::Compute(OpKernelContext* ctx) {
     ctx->set_output(i, components[i]);
   }
 }
+
+namespace {
 
 class IteratorGetNextAsOptionalOp : public AsyncOpKernel {
  public:
@@ -1037,6 +1047,8 @@ class IteratorGetNextAsOptionalOp : public AsyncOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };
 
+}  // namespace
+
 void IteratorToStringHandleOp::Compute(OpKernelContext* ctx) {
   const Tensor& resource_handle_t = ctx->input(0);
   OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(resource_handle_t.shape()),
@@ -1107,6 +1119,8 @@ void IteratorFromStringHandleOp::Compute(OpKernelContext* ctx) {
                  ctx->allocate_output(0, TensorShape({}), &resource_handle_t));
   resource_handle_t->scalar<ResourceHandle>()() = resource_handle;
 }
+
+namespace {
 
 class SerializeIteratorOp : public OpKernel {
  public:
@@ -1202,4 +1216,7 @@ REGISTER_KERNEL_BUILDER(Name("SerializeIterator").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("DeserializeIterator").Device(DEVICE_CPU),
                         DeserializeIteratorOp);
 
+}  // namespace
+
+}  // namespace data
 }  // namespace tensorflow

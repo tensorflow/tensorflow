@@ -79,7 +79,7 @@ class ResourceBase : public core::RefCounted {
   virtual string DebugString() = 0;
 
   // Returns memory used by this resource.
-  virtual int64 MemoryUsed() const { return 0; };
+  virtual int64 MemoryUsed() const { return 0; }
 };
 
 // Container used for per-step resources.
@@ -234,7 +234,7 @@ ResourceHandle MakePerStepResourceHandle(OpKernelContext* ctx,
                                          const string& name);
 
 // Returns a resource handle from a numbered op input.
-ResourceHandle HandleFromInput(OpKernelContext* ctx, int input);
+const ResourceHandle& HandleFromInput(OpKernelContext* ctx, int input);
 Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
                        ResourceHandle* handle);
 
@@ -347,6 +347,8 @@ class ResourceHandleOp : public OpKernel {
   explicit ResourceHandleOp(OpKernelConstruction* context);
 
   void Compute(OpKernelContext* ctx) override;
+
+  bool IsExpensive() override { return false; }
 
  private:
   string container_;

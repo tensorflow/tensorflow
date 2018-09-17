@@ -179,13 +179,13 @@ Status ParseGcsPath(StringPiece fname, bool empty_object_ok, string* bucket,
     return errors::InvalidArgument("GCS path doesn't start with 'gs://': ",
                                    fname);
   }
-  *bucket = std::string(bucketp);
+  *bucket = string(bucketp);
   if (bucket->empty() || *bucket == ".") {
     return errors::InvalidArgument("GCS path doesn't contain a bucket name: ",
                                    fname);
   }
   str_util::ConsumePrefix(&objectp, "/");
-  *object = std::string(objectp);
+  *object = string(objectp);
   if (!empty_object_ok && object->empty()) {
     return errors::InvalidArgument("GCS path doesn't contain an object name: ",
                                    fname);
@@ -224,7 +224,7 @@ std::set<string> AddAllSubpaths(const std::vector<string>& paths) {
   for (const string& path : paths) {
     StringPiece subpath = io::Dirname(path);
     while (!subpath.empty()) {
-      result.emplace(std::string(subpath));
+      result.emplace(string(subpath));
       subpath = io::Dirname(subpath);
     }
   }
@@ -371,7 +371,7 @@ class GcsWritableFile : public WritableFile {
 
   ~GcsWritableFile() override { Close().IgnoreError(); }
 
-  Status Append(const StringPiece& data) override {
+  Status Append(StringPiece data) override {
     TF_RETURN_IF_ERROR(CheckWritable());
     sync_needed_ = true;
     outfile_ << data;
@@ -723,7 +723,7 @@ GcsFileSystem::GcsFileSystem() {
 
       if (!header_name.empty() && !header_value.empty()) {
         additional_header_.reset(new std::pair<const string, const string>(
-            std::string(header_name), std::string(header_value)));
+            string(header_name), string(header_value)));
 
         VLOG(1) << "GCS additional header ENABLED. "
                 << "Name: " << additional_header_->first << ", "
@@ -1229,7 +1229,7 @@ Status GcsFileSystem::GetMatchingPaths(const string& pattern,
         // Find the fixed prefix by looking for the first wildcard.
         const string& fixed_prefix =
             pattern.substr(0, pattern.find_first_of("*?[\\"));
-        const string& dir = std::string(io::Dirname(fixed_prefix));
+        const string dir(io::Dirname(fixed_prefix));
         if (dir.empty()) {
           return errors::InvalidArgument(
               "A GCS pattern doesn't have a bucket name: ", pattern);
@@ -1326,7 +1326,7 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
               " doesn't match the prefix ", object_prefix));
         }
         if (!relative_path.empty() || include_self_directory_marker) {
-          result->emplace_back(std::string(relative_path));
+          result->emplace_back(relative_path);
         }
         if (++retrieved_results >= max_results) {
           return Status::OK();
@@ -1354,7 +1354,7 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
               "Unexpected response: the returned folder name ", prefix_str,
               " doesn't match the prefix ", object_prefix);
         }
-        result->emplace_back(std::string(relative_path));
+        result->emplace_back(relative_path);
         if (++retrieved_results >= max_results) {
           return Status::OK();
         }

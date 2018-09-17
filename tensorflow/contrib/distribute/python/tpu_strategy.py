@@ -310,4 +310,18 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
   def get_host_cpu_device(self, host_id):
     if self._tpu_cluster_resolver.get_master() in ('', 'local'):
       return '/replica:0/task:0/device:CPU:0'
-    return '/job:tpu_worker/task:%d/device:CPU:0' % (host_id,)
+    job_name = self._tpu_cluster_resolver.get_job_name() or 'tpu_worker'
+    return '/job:%s/task:%d/device:CPU:0' % (job_name, host_id)
+
+  def configure(self,
+                session_config=None,
+                cluster_spec=None,
+                task_type=None,
+                task_id=None):
+    del cluster_spec, task_type, task_id
+    if session_config:
+      session_config.isolate_session_state = True
+      cluster_spec = self._tpu_cluster_resolver.cluster_spec()
+      if cluster_spec:
+        session_config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
+

@@ -18,8 +18,8 @@ limitations under the License.
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/core/api/error_reporter.h"
 #include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/nnapi/NeuralNetworksShim.h"
 
@@ -62,6 +62,14 @@ void logError(const char* format, ...) {
   if (x != ANEURALNETWORKS_NO_ERROR) {                                  \
     FATAL("Aborting since NNAPI returned failure nnapi_delegate.cc:%d", \
           __LINE__);                                                    \
+  }
+
+#define RETURN_ERROR_IF_TFLITE_FAILED(x)                                       \
+  if (x != kTfLiteOk) {                                                        \
+    logError(                                                                  \
+        "Returning error since TFLite returned failure nnapi_delegate.cc:%d.", \
+        __LINE__);                                                             \
+    return kTfLiteError;                                                       \
   }
 
 #define RETURN_ERROR_IF_NN_FAILED(x)                                          \
@@ -299,17 +307,21 @@ TfLiteStatus AddOpsAndParams(
         };
     auto check_and_add_activation = [&add_scalar_int32](int activation) {
       if (activation > kTfLiteActRelu6) {
-        FATAL("NNAPI only supports RELU, RELU1 and RELU6 activations");
+        logError("NNAPI only supports RELU, RELU1 and RELU6 activations");
+        return kTfLiteError;
       }
       add_scalar_int32(activation);
+      return kTfLiteOk;
     };
 
     auto add_add_params = [&add_scalar_int32](void* data) {
       auto* builtin = reinterpret_cast<TfLiteAddParams*>(data);
       if (builtin->activation > kTfLiteActRelu6) {
-        FATAL("NNAPI only supports RELU, RELU1 and RELU6 activations");
+        logError("NNAPI only supports RELU, RELU1 and RELU6 activations");
+        return kTfLiteError;
       }
       add_scalar_int32(builtin->activation);
+      return kTfLiteOk;
     };
 
     auto add_pooling_params = [&add_scalar_int32,
@@ -320,7 +332,7 @@ TfLiteStatus AddOpsAndParams(
       add_scalar_int32(builtin->stride_height);
       add_scalar_int32(builtin->filter_width);
       add_scalar_int32(builtin->filter_height);
-      check_and_add_activation(builtin->activation);
+      return check_and_add_activation(builtin->activation);
     };
 
     auto add_convolution_params = [&add_scalar_int32,
@@ -329,7 +341,7 @@ TfLiteStatus AddOpsAndParams(
       add_scalar_int32(builtin->padding);
       add_scalar_int32(builtin->stride_width);
       add_scalar_int32(builtin->stride_height);
-      check_and_add_activation(builtin->activation);
+      return check_and_add_activation(builtin->activation);
     };
 
     auto add_depthwise_conv_params = [&add_scalar_int32,
@@ -339,20 +351,22 @@ TfLiteStatus AddOpsAndParams(
       add_scalar_int32(builtin->stride_width);
       add_scalar_int32(builtin->stride_height);
       add_scalar_int32(builtin->depth_multiplier);
-      check_and_add_activation(builtin->activation);
+      return check_and_add_activation(builtin->activation);
     };
 
     auto add_fully_connected_params = [&check_and_add_activation](void* data) {
       auto builtin = reinterpret_cast<TfLiteFullyConnectedParams*>(data);
-      check_and_add_activation(builtin->activation);
+      return check_and_add_activation(builtin->activation);
     };
 
     auto add_concatenation_params = [&add_scalar_int32](void* data) {
       auto builtin = reinterpret_cast<TfLiteConcatenationParams*>(data);
       add_scalar_int32(builtin->axis);
       if (builtin->activation != kTfLiteActNone) {
-        FATAL("Concatenation does not support fused activation in NNAPI");
+        logError("Concatenation does not support fused activation in NNAPI");
+        return kTfLiteError;
       }
+      return kTfLiteOk;
     };
 
     auto add_softmax_params = [&add_scalar_float32](void* data) {
@@ -433,22 +447,22 @@ TfLiteStatus AddOpsAndParams(
     switch (builtin) {
       case tflite::BuiltinOperator_ADD:
         nn_op_type = ANEURALNETWORKS_ADD;
-        add_add_params(node.builtin_data);
+        RETURN_ERROR_IF_TFLITE_FAILED(add_add_params(node.builtin_data));
         break;
       case tflite::BuiltinOperator_MUL:
         nn_op_type = ANEURALNETWORKS_MUL;
-        add_add_params(node.builtin_data);
+        RETURN_ERROR_IF_TFLITE_FAILED(add_add_params(node.builtin_data));
         break;
       case tflite::BuiltinOperator_AVERAGE_POOL_2D:
-        add_pooling_params(node.builtin_data);
+        RETURN_ERROR_IF_TFLITE_FAILED(add_pooling_params(node.builtin_data));
         nn_op_type = ANEURALNETWORKS_AVERAGE_POOL_2D;
         break;
       case tflite::BuiltinOperator_MAX_POOL_2D:
-        add_pooling_params(node.builtin_data);
+        RETURN_ERROR_IF_TFLITE_FAILED(add_pooling_params(node.builtin_data));
         nn_op_type = ANEURALNETWORKS_MAX_POOL_2D;
         break;
       case tflite::BuiltinOperator_L2_POOL_2D:
-        add_pooling_params(node.builtin_data);
+        RETURN_ERROR_IF_TFLITE_FAILED(add_pooling_params(node.builtin_data));
         nn_op_type = ANEURALNETWORKS_L2_POOL_2D;
         break;
       case tflite::BuiltinOperator_CONV_2D: {
@@ -459,7 +473,8 @@ TfLiteStatus AddOpsAndParams(
           return kTfLiteError;
         }
       }
-        add_convolution_params(node.builtin_data);
+        RETURN_ERROR_IF_TFLITE_FAILED(
+            add_convolution_params(node.builtin_data));
         nn_op_type = ANEURALNETWORKS_CONV_2D;
         break;
       case tflite::BuiltinOperator_RELU:
@@ -478,11 +493,13 @@ TfLiteStatus AddOpsAndParams(
         nn_op_type = ANEURALNETWORKS_LOGISTIC;
         break;
       case tflite::BuiltinOperator_DEPTHWISE_CONV_2D:
-        add_depthwise_conv_params(node.builtin_data);
+        RETURN_ERROR_IF_TFLITE_FAILED(
+            add_depthwise_conv_params(node.builtin_data));
         nn_op_type = ANEURALNETWORKS_DEPTHWISE_CONV_2D;
         break;
       case tflite::BuiltinOperator_CONCATENATION:
-        add_concatenation_params(node.builtin_data);
+        RETURN_ERROR_IF_TFLITE_FAILED(
+            add_concatenation_params(node.builtin_data));
         nn_op_type = ANEURALNETWORKS_CONCATENATION;
         break;
       case tflite::BuiltinOperator_SOFTMAX:
@@ -490,7 +507,8 @@ TfLiteStatus AddOpsAndParams(
         nn_op_type = ANEURALNETWORKS_SOFTMAX;
         break;
       case tflite::BuiltinOperator_FULLY_CONNECTED:
-        add_fully_connected_params(node.builtin_data);
+        RETURN_ERROR_IF_TFLITE_FAILED(
+            add_fully_connected_params(node.builtin_data));
         nn_op_type = ANEURALNETWORKS_FULLY_CONNECTED;
         break;
       case tflite::BuiltinOperator_RESHAPE:
@@ -544,14 +562,14 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_DIV:
         nnapi_version = 11;  // require NNAPI 1.1
         nn_op_type = ANEURALNETWORKS_DIV;
-        check_and_add_activation(
-            reinterpret_cast<TfLiteDivParams*>(node.builtin_data)->activation);
+        RETURN_ERROR_IF_TFLITE_FAILED(check_and_add_activation(
+            reinterpret_cast<TfLiteDivParams*>(node.builtin_data)->activation));
         break;
       case tflite::BuiltinOperator_SUB:
         nnapi_version = 11;  // require NNAPI 1.1
         nn_op_type = ANEURALNETWORKS_SUB;
-        check_and_add_activation(
-            reinterpret_cast<TfLiteSubParams*>(node.builtin_data)->activation);
+        RETURN_ERROR_IF_TFLITE_FAILED(check_and_add_activation(
+            reinterpret_cast<TfLiteSubParams*>(node.builtin_data)->activation));
         break;
       case tflite::BuiltinOperator_SQUEEZE:
         nnapi_version = 11;  // requires NNAPI 1.1
@@ -654,6 +672,7 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_UNPACK:
       case tflite::BuiltinOperator_FLOOR_DIV:
       case tflite::BuiltinOperator_REDUCE_ANY:
+      case tflite::BuiltinOperator_SQUARE:
         logError("Op code %d is currently not delegated to NNAPI", builtin);
         return kTfLiteError;
         break;
@@ -664,7 +683,8 @@ TfLiteStatus AddOpsAndParams(
     }
 
     if (nnapi_version == 11 && GetAndroidSdkVersionCached() < 28) {
-      FATAL("Op %d needs NNAPI1.1", builtin);
+      logError("Op %d needs NNAPI1.1", builtin);
+      return kTfLiteError;
     }
 
     // Add the operation.
@@ -712,9 +732,9 @@ TfLiteStatus NNAPIDelegate::BuildGraph(Interpreter* interpreter) {
                        interpreter->outputs().size());
 
     uint32_t next_id = 0;
-    RETURN_ERROR_IF_NN_FAILED(addTensorOperands(
+    RETURN_ERROR_IF_TFLITE_FAILED(addTensorOperands(
         interpreter, nn_model_, &next_id, &tensor_id_to_nnapi_id));
-    RETURN_ERROR_IF_NN_FAILED(
+    RETURN_ERROR_IF_TFLITE_FAILED(
         AddOpsAndParams(interpreter, nn_model_, next_id, &model_states_inputs_,
                         &model_states_outputs_, tensor_id_to_nnapi_id));
 
@@ -738,6 +758,11 @@ TfLiteStatus NNAPIDelegate::BuildGraph(Interpreter* interpreter) {
         reinterpret_cast<const uint32_t*>(augmented_inputs.data()),
         static_cast<uint32_t>(augmented_outputs.size()),
         reinterpret_cast<const uint32_t*>(augmented_outputs.data())));
+
+    if (GetAndroidSdkVersionCached() >= 28) {
+      CHECK_NN(ANeuralNetworksModel_relaxComputationFloat32toFloat16(
+          nn_model_, interpreter->GetAllowFp16PrecisionForFp32()));
+    }
     CHECK_NN(ANeuralNetworksModel_finish(nn_model_));
   }
   if (!nn_compiled_model_) {

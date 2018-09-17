@@ -38,29 +38,29 @@ class ExhaustiveF32ElementwiseOpTest
 
     XlaBuilder builder(TestName());
 
-    std::unique_ptr<Literal> input_literal =
+    Literal input_literal =
         LiteralUtil::CreateFromDimensions(F32, {input_size});
     for (int64 i = begin; i < end; i++) {
       if (i >= known_incorrect_range.first &&
           i < known_incorrect_range.second) {
         // If the operation is known to be buggy on a specific input clamp that
         // input to 0 under the assumption that the op is at least correct on 0.
-        input_literal->Set({i - begin}, 0.0f);
+        input_literal.Set({i - begin}, 0.0f);
       } else {
-        input_literal->Set({i - begin}, tensorflow::bit_cast<float, int>(i));
+        input_literal.Set({i - begin}, tensorflow::bit_cast<float, int>(i));
       }
     }
 
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
-                            client_->TransferToServer(*input_literal));
+                            client_->TransferToServer(input_literal));
 
-    auto input = Parameter(&builder, 0, input_literal->shape(), "input");
+    auto input = Parameter(&builder, 0, input_literal.shape(), "input");
     enqueue_op(&builder, input);
 
     std::vector<float> expected_result;
     expected_result.reserve(input_size);
     for (int64 i = 0; i < input_size; i++) {
-      expected_result.push_back(evaluate_op(input_literal->Get<float>({i})));
+      expected_result.push_back(evaluate_op(input_literal.Get<float>({i})));
     }
 
     ComputeAndCompareR1<float>(&builder, expected_result, {input_data.get()},

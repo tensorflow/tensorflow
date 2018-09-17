@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 struct BufferElement {
@@ -1114,5 +1115,6 @@ REGISTER_KERNEL_BUILDER(
     Name("MultiDeviceIteratorFromStringHandle").Device(DEVICE_CPU),
     MultiDeviceIteratorFromStringHandleOp);
 
-}  // anonymous namespace
+}  // namespace
+}  // namespace data
 }  // namespace tensorflow

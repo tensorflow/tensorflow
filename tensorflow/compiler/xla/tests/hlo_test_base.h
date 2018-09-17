@@ -80,6 +80,8 @@ class HloTestBase : public ::testing::Test {
   static StatusOr<bool> RunHloPass(HloPassInterface* hlo_pass,
                                    HloModule* module);
 
+  static PrecisionConfig DefaultPrecisionConfig(int operands);
+
  protected:
   // This uses the interpreter backend as the reference backend and
   // automatically finds another supported backend as the test backend. If the
@@ -113,16 +115,16 @@ class HloTestBase : public ::testing::Test {
   }
 
   // Executes the given module and return the result as a Literal.
-  StatusOr<std::unique_ptr<Literal>> Execute(
-      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments);
+  StatusOr<Literal> Execute(std::unique_ptr<HloModule> module,
+                            absl::Span<Literal* const> arguments);
 
   // Same as above, except the module will be executed without running any HLO
   // passes on it.
-  std::unique_ptr<Literal> ExecuteNoHloPasses(
-      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments);
+  Literal ExecuteNoHloPasses(std::unique_ptr<HloModule> module,
+                             absl::Span<Literal* const> arguments);
 
-  std::unique_ptr<Literal> ExecuteAndTransfer(
-      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments);
+  Literal ExecuteAndTransfer(std::unique_ptr<HloModule> module,
+                             absl::Span<Literal* const> arguments);
 
   // Executes the given hlo module on two backends and compares results.
   //

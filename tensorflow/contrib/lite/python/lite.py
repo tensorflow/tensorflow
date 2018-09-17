@@ -40,6 +40,7 @@ from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.contrib.lite.python import lite_constants as constants
 from tensorflow.contrib.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
+from tensorflow.contrib.lite.python.convert import ConverterMode
 from tensorflow.contrib.lite.python.convert import tensor_name as _tensor_name
 from tensorflow.contrib.lite.python.convert import toco_convert  # pylint: disable=unused-import
 from tensorflow.contrib.lite.python.convert import toco_convert_graph_def as _toco_convert_graph_def
@@ -58,6 +59,7 @@ from tensorflow.python.framework import graph_util as _tf_graph_util
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundError
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
+from tensorflow.python.lib.io import file_io as _file_io
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
 
@@ -112,6 +114,8 @@ class TocoConverter(object):
       output file. (default None)
     dump_graphviz_video: Boolean indicating whether to dump the graph after
       every graph transformation. (default False)
+    converter_mode: Experimental flag, subject to change. ConverterMode
+      indicating which converter to use. (default ConverterMode.DEFAULT)
 
   Example usage:
 
@@ -178,6 +182,7 @@ class TocoConverter(object):
     self.post_training_quantize = False
     self.dump_graphviz_dir = None
     self.dump_graphviz_video = False
+    self.converter_mode = ConverterMode.DEFAULT
 
     # Attributes are used by models that cannot be loaded into TensorFlow.
     if not self._has_valid_tensors():
@@ -225,8 +230,10 @@ class TocoConverter(object):
       TocoConverter class.
 
     Raises:
-      ValueError:
+      IOError:
+        File not found.
         Unable to parse input file.
+      ValueError:
         The graph is not frozen.
         input_arrays or output_arrays contains an invalid tensor name.
         input_shapes is not correctly defined when required
@@ -234,10 +241,13 @@ class TocoConverter(object):
     with _ops.Graph().as_default():
       with _session.Session() as sess:
         # Read GraphDef from file.
-        graph_def = _graph_pb2.GraphDef()
-        with open(graph_def_file, "rb") as f:
+        if not _file_io.file_exists(graph_def_file):
+          raise IOError("File '{0}' does not exist.".format(graph_def_file))
+        with _file_io.FileIO(graph_def_file, "rb") as f:
           file_content = f.read()
+
         try:
+          graph_def = _graph_pb2.GraphDef()
           graph_def.ParseFromString(file_content)
         except (_text_format.ParseError, DecodeError):
           try:
@@ -248,9 +258,10 @@ class TocoConverter(object):
                 file_content = file_content.decode("utf-8")
               else:
                 file_content = file_content.encode("utf-8")
+            graph_def = _graph_pb2.GraphDef()
             _text_format.Merge(file_content, graph_def)
           except (_text_format.ParseError, DecodeError):
-            raise ValueError(
+            raise IOError(
                 "Unable to parse input file '{}'.".format(graph_def_file))
 
         # Handles models with custom TFLite ops that cannot be resolved in
@@ -382,6 +393,7 @@ class TocoConverter(object):
       ValueError:
         Input shape is not specified.
         None value for dimension in input_tensor.
+        ConverterMode option is unsupported for the model.
     """
     # Checks dimensions in input tensor.
     if self._has_valid_tensors():
@@ -432,12 +444,18 @@ class TocoConverter(object):
 
     # Converts model.
     if self._has_valid_tensors():
+      converter_kwargs["converter_mode"] = self.converter_mode
       result = _toco_convert_impl(
           input_data=self._graph_def,
           input_tensors=self._input_tensors,
           output_tensors=self._output_tensors,
           **converter_kwargs)
     else:
+      # Graphs without valid tensors cannot be loaded into tf.Session since they
+      # contain TFLite operation(s) that cannot be resolved in TensorFlow.
+      if self.converter_mode != ConverterMode.DEFAULT:
+        raise ValueError("This model can only be converted with the default "
+                         "converter.")
       result = _toco_convert_graph_def(
           input_data=self._graph_def,
           input_arrays_with_shape=self._input_arrays_with_shape,

@@ -901,7 +901,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                               &transformed_filter));
 
   functor::TransformFilter<GPUDevice, T, int, 4>()(
-      ctx->eigen_device<GPUDevice>(), To32Bit(filter.tensor<T, 4>()),
+      ctx->eigen_device<GPUDevice>(), FORMAT_OIHW,
+      To32Bit(filter.tensor<T, 4>()),
       To32Bit(transformed_filter.tensor<T, 4>()));
 
   Tensor transformed_out_backprop;
@@ -1090,7 +1091,8 @@ namespace functor {
   extern template struct InflatePadAndShuffle<GPUDevice, T, 4, int>;     \
   template <>                                                            \
   void TransformFilter<GPUDevice, T, int, 4>::operator()(                \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,    \
+      const GPUDevice& d, FilterTensorFormat dst_filter_format,          \
+      typename TTypes<T, 4, int>::ConstTensor in,                        \
       typename TTypes<T, 4, int>::Tensor out);                           \
   extern template struct TransformFilter<GPUDevice, T, int, 4>;          \
   template <>                                                            \

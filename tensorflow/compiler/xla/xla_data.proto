@@ -351,6 +351,7 @@ message DeviceAssignmentProto {
 message LiteralProto {
   Shape shape = 1;
   repeated bool preds = 2;
+  bytes s8s = 15;
   bytes u8s = 3;
   repeated int32 s32s = 4;
   repeated int64 s64s = 5;
@@ -364,7 +365,7 @@ message LiteralProto {
   bytes f16s = 11;
   bytes bf16s = 13;
   repeated int64 sparse_indices = 14;
-  // Next = 15
+  // Next = 16
 }
 
 message WindowDimension {
@@ -580,7 +581,7 @@ message SourceTarget {
 
 // Used to indicate the precision configuration. It has backend specific
 // meaning.
-message PrecisionConfigProto {
+message PrecisionConfig {
   enum Precision {
     DEFAULT = 0;
     HIGH = 1;

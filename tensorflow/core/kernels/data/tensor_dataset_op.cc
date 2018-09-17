@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -140,5 +140,5 @@ REGISTER_KERNEL_BUILDER(Name("TensorDataset").Device(DEVICE_CPU),
                         TensorDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

@@ -26,6 +26,7 @@ from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu_function
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.compat import compat as api_compat
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -558,10 +559,16 @@ def split_compile_and_replicate(computation,
         "topology":
             device_assignment.topology.serialized(),
         "device_assignment":
-            device_assignment.core_assignment.flatten().tolist(),
-        "computation_shape":
-            device_assignment.computation_shape.tolist()
+            device_assignment.core_assignment.flatten().tolist()
     }
+    # TODO(phawkins): remove this case after the forward compatibility window
+    # expires on 2018-10-6.
+    if api_compat.forward_compatible(2018, 10, 6):
+      metadata_kwargs["num_cores_per_replica"] = (
+          device_assignment.num_cores_per_replica)
+    else:
+      metadata_kwargs["computation_shape"] = (
+          device_assignment.computation_shape.tolist())
 
   if ((not isinstance(inputs, list)) or
       any(not isinstance(inp, (list, tuple)) for inp in inputs)):
@@ -652,13 +659,31 @@ def split_compile_and_replicate(computation,
       # TODO(phawkins): consider removing this code. It will
       # be less confusing to clients if they knowingly choose to use resource
       # variables.
+      # Partitioned variables is not supported (b/112311320).
+      def custom_getter(getter, name, *args, **kwargs):
+        """Variables on TPU have a few restrictions."""
+        partitioner = kwargs["partitioner"]
+        if partitioner is not None:
+          kwargs["partitioner"] = None
+          logging.warning(
+              "Partitioned variables are not supported on TPU. Got "
+              "`partitioner` that is {} for variable {}. "
+              "Setting `partitioner` to `None`."
+              .format(partitioner, name))
+        return getter(name, *args, **kwargs)
+
       vscope = variable_scope.get_variable_scope()
+
       saved_use_resource = vscope.use_resource
+      saved_custom_getter = vscope.custom_getter
+
       vscope.set_use_resource(True)
+      vscope.set_custom_getter(custom_getter)
 
       outputs = computation(*computation_inputs)
 
       vscope.set_use_resource(saved_use_resource)
+      vscope.set_custom_getter(saved_custom_getter)
 
     # If the computation returns `None`, make it an empty tuple.
     if outputs is None:

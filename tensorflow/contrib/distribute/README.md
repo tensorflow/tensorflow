@@ -76,7 +76,7 @@ We then compile the Keras model and pass the `MirroredStrategy` object in the
 ```python
 model.compile(loss='mean_squared_error',
               optimizer=tf.train.GradientDescentOptimizer(learning_rate=0.2),
-              distribute=strategy)
+              distribute=distribution)
 ```
 
 To train the model we call Keras `fit` API using the input dataset that we

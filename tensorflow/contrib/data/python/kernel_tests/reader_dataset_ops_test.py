@@ -116,7 +116,7 @@ class ReadBatchFeaturesTest(
     init_op = iterator.initializer
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for file_batch, _, _, _, record_batch, _ in self._next_expected_batch(
           range(self._num_files), 2, 10):

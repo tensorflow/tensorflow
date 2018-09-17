@@ -601,8 +601,11 @@ TEST_F(HloComputationTest, Stringification) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
+  PrecisionConfig precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      2, PrecisionConfig::DEFAULT);
   builder.AddInstruction(
-      HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
+      HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
   auto module = CreateNewModule();
   auto* computation = module->AddEntryComputation(builder.Build());
 
@@ -633,8 +636,11 @@ TEST_F(HloComputationTest, StringificationIndent) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
+  PrecisionConfig precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      2, PrecisionConfig::DEFAULT);
   builder.AddInstruction(
-      HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
+      HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
   auto module = CreateNewModule();
   auto* computation = module->AddEntryComputation(builder.Build());
 
@@ -666,8 +672,11 @@ TEST_F(HloComputationTest, StringificationCanonical) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
+  PrecisionConfig precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      2, PrecisionConfig::DEFAULT);
   builder.AddInstruction(
-      HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
+      HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
   auto module = CreateNewModule();
   auto* computation = module->AddEntryComputation(builder.Build());
 

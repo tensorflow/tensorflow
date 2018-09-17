@@ -68,9 +68,9 @@ Status RecordArguments(const absl::Span<const ShapedBuffer* const> arguments,
   module->clear_arguments();
   for (const ShapedBuffer* argument : arguments) {
     TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<Literal> literal,
+        Literal literal,
         transfer_manager->TransferLiteralFromDevice(stream, *argument));
-    *module->add_arguments() = literal->ToProto();
+    *module->add_arguments() = literal.ToProto();
   }
   return Status::OK();
 }
@@ -80,9 +80,9 @@ Status RecordResult(const ShapedBuffer& result, se::Stream* stream,
                     TransferManager* transfer_manager, HloSnapshot* module) {
   module->clear_result();
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Literal> literal,
+      Literal literal,
       transfer_manager->TransferLiteralFromDevice(stream, result));
-  *module->mutable_result() = literal->ToProto();
+  *module->mutable_result() = literal.ToProto();
   return Status::OK();
 }
 
@@ -812,7 +812,7 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       HloModule::CreateFromProto(module_proto, *module_config));
 
-  TF_RETURN_IF_ERROR(MaybeDumpHloModule(*module));
+  TF_RETURN_IF_ERROR(MaybeDumpUnoptimizedHloModule(*module));
 
   TF_ASSIGN_OR_RETURN(
       module, backend->compiler()->RunHloPasses(std::move(module), executor,
@@ -928,16 +928,15 @@ Status Service::TransferToClient(const TransferToClientRequest* arg,
                                        shaped_buffer->device_ordinal()));
 
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Literal> result_literal,
+      Literal result_literal,
       execute_backend_->transfer_manager()->TransferLiteralFromDevice(
           stream.get(), *shaped_buffer));
 
-  if (LayoutUtil::LayoutsInShapesEqual(*return_shape,
-                                       result_literal->shape())) {
-    *result->mutable_literal() = result_literal->ToProto();
+  if (LayoutUtil::LayoutsInShapesEqual(*return_shape, result_literal.shape())) {
+    *result->mutable_literal() = result_literal.ToProto();
   } else {
     *result->mutable_literal() =
-        result_literal->Relayout(*return_shape)->ToProto();
+        result_literal.Relayout(*return_shape).ToProto();
   }
   return Status::OK();
 }
@@ -959,9 +958,9 @@ std::unique_ptr<ShapedBuffer> CloneShapedBufferOnDevice(
 
 Status Service::TransferToServer(const TransferToServerRequest* arg,
                                  TransferToServerResponse* result) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
+  TF_ASSIGN_OR_RETURN(Literal literal,
                       Literal::CreateFromProto(arg->literal()));
-  const Shape& shape = literal->shape();
+  const Shape& shape = literal.shape();
 
   std::vector<se::StreamExecutor*> replicas;
   if (arg->has_device_handle()) {
@@ -983,7 +982,7 @@ Status Service::TransferToServer(const TransferToServerRequest* arg,
     TF_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(executor));
     TF_RETURN_IF_ERROR(
         execute_backend_->transfer_manager()->TransferLiteralToDevice(
-            stream.get(), *literal, shaped_buffer));
+            stream.get(), literal, shaped_buffer));
     replicated_buffers.emplace_back(std::move(shaped_buffer));
   }
   TF_ASSIGN_OR_RETURN(*result->mutable_data(),
@@ -1018,10 +1017,10 @@ Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
     executor = replicas[arg->replica_id()];
   }
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
+  TF_ASSIGN_OR_RETURN(Literal literal,
                       Literal::CreateFromProto(arg->literal()));
-  return execute_backend_->transfer_manager()->TransferLiteralToInfeed(
-      executor, *literal);
+  return execute_backend_->transfer_manager()->TransferLiteralToInfeed(executor,
+                                                                       literal);
 }
 
 Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
@@ -1049,8 +1048,8 @@ Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
 
   TF_RETURN_IF_ERROR(
       execute_backend_->transfer_manager()->TransferLiteralFromOutfeed(
-          executor, arg->shape_with_layout(), *literal));
-  *result->mutable_literal() = literal->ToProto();
+          executor, arg->shape_with_layout(), literal));
+  *result->mutable_literal() = literal.ToProto();
   return Status::OK();
 }
 
@@ -1085,18 +1084,17 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
                       HloModule::CreateFromProto(arg->computation(), config));
 
   HloEvaluator evaluator;
-  TF_ASSIGN_OR_RETURN(auto result_literal,
-                      evaluator.Evaluate<std::unique_ptr<Literal>>(
-                          *module, /*arg_literals=*/{}));
+  TF_ASSIGN_OR_RETURN(auto result_literal, evaluator.Evaluate<Literal>(
+                                               *module, /*arg_literals=*/{}));
 
   // Since the result layout is non-effective to the Evaluator results, explicit
   // relayout here.
   //
   // TODO(b/77824332): Make HloEvaluator take care of the re-layout.
   if (arg->has_output_layout()) {
-    result_literal = result_literal->Relayout(arg->output_layout());
+    result_literal = result_literal.Relayout(arg->output_layout());
   }
-  *result->mutable_literal() = result_literal->ToProto();
+  *result->mutable_literal() = result_literal.ToProto();
 
   return Status::OK();
 }
@@ -1162,7 +1160,7 @@ StatusOr<std::vector<se::StreamExecutor*>> Service::Replicas(
   return replicas;
 }
 
-Status Service::MaybeDumpHloModule(const HloModule& module) const {
+Status Service::MaybeDumpUnoptimizedHloModule(const HloModule& module) const {
   const string xla_dump_unoptimized_hlo_proto_to =
       module.config().debug_options().xla_dump_unoptimized_hlo_proto_to();
   if (xla_dump_unoptimized_hlo_proto_to.empty()) {
@@ -1170,7 +1168,8 @@ Status Service::MaybeDumpHloModule(const HloModule& module) const {
   }
   HloProto proto = MakeHloProto(module);
   return protobuf_util::DumpProtoToDirectory(
-      proto, xla_dump_unoptimized_hlo_proto_to, module.name());
+      proto, xla_dump_unoptimized_hlo_proto_to,
+      StrCat(module.name(), ".unoptimized"));
 }
 
 }  // namespace xla

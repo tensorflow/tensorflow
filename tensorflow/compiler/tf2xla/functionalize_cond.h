@@ -43,59 +43,53 @@ enum class BranchType {
   kNeither = 3,
 };
 
-// CondStateMap is responsible for mapping from each graph Node to a CondState,
-// where each CondState is the array of CondNodes (corresponding to switch,
-// merge or dead states) as described below.  For efficiency, this class interns
-// the CondState, so that CondState equality comparisons are simply pointer
+// StateMap is responsible for mapping from each graph Node to
+// * a CondState, where each CondState is a map from predicate to branch (i,e.,
+//   what predicates have to hold or not hold).
+// * a AncestorState, where each AncestorState is a set of switch/merge nodes
+//   that are an ancestor of the node in the graph;
+// For efficiency, this class interns the CondState (AncestorState), so that
+// CondState (AncestorState) equality comparisons are simply pointer
 // comparisons.
-class CondStateMap {
+class StateMap {
  public:
-  explicit CondStateMap(Graph* graph);
+  explicit StateMap(Graph* graph);
 
-  // Represents an entry in the CondState. An entry can either be the
-  // switch (along with predicate), merge, or dead:
-  // * switch node indicates a node that is executed along a branch with the
-  //   given predicate - a branch can be then, else or both;
-  // * merge node indicates that the node is executed as output of a merge;
-  // * dead indicates that this node can never be executed;
-  struct CondNode {
-    enum class Type { kSwitch = 1, kMerge = 2, kDead = 3 };
-
-    CondNode(Type type, Node* switch_node = nullptr,
-             BranchType branch = BranchType::kNeither);
-
-    string ToString() const;
-    bool operator==(const CondNode& other) const;
-    bool operator!=(const CondNode& other) const;
-
-    // Type of node.
-    Type type;
-
-    // Predicate and branch, only used when type is kSwitch.
-    OutputTensor predicate;
-    BranchType branch;
+  // Compare two OutputTensors by (node id, index).
+  struct OutputTensorLess {
+    bool operator()(const OutputTensor& lhs, const OutputTensor& rhs) const;
   };
 
-  // A node in the graph is executed when multiple conditions hold. The order
-  // represents the nesting of the predicates that hold and is used when
-  // extracting the nested conditionals.
-  using CondState = std::vector<CondNode>;
+  // A node in the graph is executed when multiple conditions hold. Keep track
+  // of the predicates that must hold for a node to execute.
+  using CondState = std::map<OutputTensor, BranchType, OutputTensorLess>;
 
   // Every unique ID is mapped to a CondState.
   using CondId = const CondState*;
 
+  // Keep track of which switch/merge node's feed into a node's values.
+  using AncestorState = std::set<Node*>;
+
+  // Every unique ID is mapped to a AncestorState.
+  using AncestorId = const AncestorState*;
+
   // Returns the CondId for a given node.
-  CondId LookupId(const Node* node) const;
+  CondId LookupCondId(const Node* node) const;
 
   // Returns the unique CondId for CondState.
-  CondId GetUniqueId(const CondState& state);
-
-  // Returns the CondState for a Node.
-  // REQUIRES: node has a non-empty CondState.
-  const CondState& LookupState(const Node* node) const;
+  CondId GetCondId(const CondState& state);
 
   // Resets the CondId for a given node.
-  void ResetId(const Node* node, CondId id);
+  void ResetCondId(const Node* node, CondId id);
+
+  // Returns the AncestorId for a given node.
+  AncestorId LookupAncestorId(const Node* node) const;
+
+  // Returns the unique AncestorId for CondState.
+  AncestorId GetAncestorId(const AncestorState& state);
+
+  // Resets the AncestorId for a given node.
+  void ResetAncestorId(const Node* node, AncestorId id);
 
   // Marks `node` as dead.
   void MarkDead(const Node* node);
@@ -103,21 +97,12 @@ class CondStateMap {
   // Determine branch execution of CondState.
   BranchType FindBranchOf(CondId id, OutputTensor predicate) const;
 
-  // Enum to represent whether one cond flow state contains another.
-  enum ContainsResult {
-    kIncomparable,
-    kEqual,
-    kLhsContainsRhs,
-    kRhsContainsLhs
-  };
-
-  // Returns whether the lhs CondState holds wherever rhs CondState hols. I.e.,
-  // [(p,t)] contains [(p,t), (r,t)].
-  ContainsResult LhsHoldsWhereverRhsHolds(CondId lhs, CondId rhs);
-
   // Returns textual representation of node's CondState.
   string CondStateToString(const Node* node) const;
   string CondStateToString(CondId id) const;
+
+  // Returns textual representation of node's AncestorState.
+  string AncestorStateToString(const Node* node) const;
 
   // Returns whether the cond state is the dead state.
   bool IsDead(CondId id) const;
@@ -125,23 +110,17 @@ class CondStateMap {
   // Returns whether the cond state is the empty state.
   bool IsEmpty(CondId id) const;
 
-  // Computes the predicates that have to hold for a node to execute and returns
-  // whether it was possible to determine the predicates that must hold. `scope`
-  // is populated with these predicates. Scope differs from state in that it
-  // does not include merge and both nodes.
-  bool ScopeIn(CondId id, CondId* scope);
-
  private:
-  // Hash for CondNode and CondState.
-  struct CondHash {
-    size_t operator()(const CondNode& item) const;
-    size_t operator()(const CondState& vec) const;
+  // Hash for CondState and AncestorState.
+  struct Hash {
+    size_t operator()(const CondState& map) const;
+    size_t operator()(const AncestorState& map) const;
   };
 
   // Set to keep track of unique CondStates.
   // Pointers to the entries in the unordered set are used as identifiers:
   // unordered_set guarantees that the pointers remain the same.
-  std::unordered_set<CondState, CondHash> condstate_set_;
+  std::unordered_set<CondState, Hash> condstate_set_;
 
   // Mapping from Node id to CondId.
   std::vector<CondId> node_to_condid_map_;
@@ -150,7 +129,12 @@ class CondStateMap {
   // from Node id in the original graph to the CondId, but there will be nodes
   // added to the original graph (such as If nodes) whose CondState needs to be
   // tracked too.
-  std::unordered_map<int, CondId> added_node_mapping_;
+  std::unordered_map<int, CondId> added_node_condid_mapping_;
+
+  // AncestorId variants of the CondId members.
+  std::unordered_set<AncestorState, Hash> ancestorstate_set_;
+  std::vector<AncestorId> node_to_ancestorid_map_;
+  std::unordered_map<int, AncestorId> added_node_ancestorid_mapping_;
 
   // Identifier of the dead flow state. The empty flow state is represented with
   // a nullptr.
@@ -173,7 +157,8 @@ class FunctionalizeCond {
 
   // Add a If node to the graph defined by def that will, amongst other, replace
   // replacee in the graph.
-  xla::StatusOr<Node*> AddIfNode(const NodeDef& def, const Node* replacee);
+  xla::StatusOr<Node*> AddIfNode(const NodeDef& def, const Node* replacee,
+                                 const OutputTensor& predicate);
 
   // Propagates the state of a newly inserted node.
   Status PropagateUpdatedState(const Node* replacee);
@@ -185,35 +170,42 @@ class FunctionalizeCond {
   FunctionalizeCond(Graph* graph, FunctionLibraryDefinition* library);
 
   // Performs the actual cond functionalization. Iterate over groups of merge
-  // nodes (linked by common predicate & CondIds of the incomming edges),
-  // from innermost to outermost, and extract into If nodes.
+  // nodes (linked by common predicates & ancestor IDs), from innermost to
+  // outermost, and extract into If nodes.
   Status FunctionalizeInternal();
 
   // Returns the forward flow state propagated along edge `e`.
-  // This may modify cond_state_map_.
-  CondStateMap::CondId StateAlongEdge(const Edge* e);
+  // This may modify state_map_.
+  StateMap::CondId StateAlongEdge(const Edge* e);
 
-  // Determines the CondState of all the nodes in the given vector where
-  // the input is expected in reverse topological order.
-  // This populates the cond_state_map_.
-  Status DetermineCondStates(std::vector<Node*> rev_topo_order);
+  // Determines the CondState and AncestorState of all the nodes in the given
+  // vector where the input is expected in reverse topological order.
+  // This populates the state_map_.
+  Status DetermineStates(std::vector<Node*> rev_topo_order);
 
   // Determine the CondState for a given node using the incomming edges
   // to the node. Note: it is expected that this node's CondState is only
   // determined once its input's CondState is.
-  Status DetermineCondState(Node* dst);
+  Status DetermineCondState(Node* dst) {
+    if (IsMerge(dst)) return DetermineCondStateMerge(dst);
+    return DetermineCondStateNonMerge(dst);
+  }
 
   // Helper functions for DetermineCondState.
+  Status DetermineCondStateNonMerge(Node* dst);
   Status DetermineCondStateMerge(Node* dst);
 
-  // Helper functions for DetermineCondStates. Determines the dst node's
-  // CondState by joining the src and dst's CondState where either
-  // the dst node is a merge or not.
-  // These may modify cond_state_map_.
-  xla::StatusOr<CondStateMap::CondId> JoinCondStatesMerge(
-      CondStateMap::CondId src, CondStateMap::CondId dst);
-  xla::StatusOr<CondStateMap::CondId> JoinCondStatesNonMerge(
-      CondStateMap::CondId src, CondStateMap::CondId dst);
+  // Determines the dst node's CondState by joining the src and dst's CondState
+  // where either the dst node is a merge or not.
+  // These may modify state_map_.
+  xla::StatusOr<StateMap::CondId> JoinCondStatesMerge(Node* merge,
+                                                      StateMap::CondId src,
+                                                      StateMap::CondId dst);
+  xla::StatusOr<StateMap::CondId> JoinCondStatesNonMerge(StateMap::CondId src,
+                                                         StateMap::CondId dst);
+
+  // Determines which switch/merge nodes are ancestors of this node.
+  Status DetermineAncestorState(Node* dst);
 
   // Checks if a merge node is redundant and if so removes it from the graph.
   Status RemoveRedundantMerge(Node* node);
@@ -225,15 +217,18 @@ class FunctionalizeCond {
   // nesting depth.
   void SortMergeNodes(std::vector<Node*>* merge_order);
 
-  // Deletes all nodes in/consumers of `delete_nodes_`.
-  void DeleteReachableNodes();
+  // Deletes all nodes in/consumers reachable from switch/merge nodes that were
+  // extracted.
+  void DeleteReachableAndDeadNodes(const std::vector<int>& switch_ids,
+                                   const std::vector<Node*>& merge_order);
 
-  // Member used to unique the CondState to a unique CondId and keep track of
-  // CondState/CondId per Node.
-  CondStateMap cond_state_map_;
+  // Member used to unique the CondState to a unique CondId (AncestorState to a
+  // unique AncestorId) and keep track of CondState/CondId
+  // (AncestorState/AncestorId) per Node.
+  StateMap state_map_;
 
-  // Nodes to be deleted.
-  std::deque<int> delete_nodes_;
+  // Mapping from merge nodes to predicate.
+  std::unordered_map<Node*, OutputTensor> merge_to_predicate_;
 
   FunctionLibraryDefinition* library_;
   Graph* graph_;

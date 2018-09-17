@@ -23,7 +23,6 @@ import numpy as np
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops.bijectors.affine_linear_operator import AffineLinearOperator
 from tensorflow.contrib.distributions.python.ops.bijectors.softmax_centered import SoftmaxCentered
-from tensorflow.contrib.linalg.python.ops import linear_operator_addition as linop_add_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -36,6 +35,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops.distributions import categorical as categorical_lib
 from tensorflow.python.ops.distributions import distribution as distribution_lib
 from tensorflow.python.ops.distributions import normal as normal_lib
+from tensorflow.python.ops.linalg import linear_operator_addition as linop_add_lib
 from tensorflow.python.ops.linalg import linear_operator_diag as linop_diag_lib
 from tensorflow.python.ops.linalg import linear_operator_full_matrix as linop_full_lib
 from tensorflow.python.ops.linalg import linear_operator_identity as linop_identity_lib

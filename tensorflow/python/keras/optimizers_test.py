@@ -85,23 +85,23 @@ def _test_optimizer(optimizer, target=0.75):
 class KerasOptimizersTest(test.TestCase):
 
   def test_sgd(self):
-    with self.test_session():
+    with self.cached_session():
       _test_optimizer(keras.optimizers.SGD(lr=0.01,
                                            momentum=0.9,
                                            nesterov=True))
 
   def test_rmsprop(self):
-    with self.test_session():
+    with self.cached_session():
       _test_optimizer(keras.optimizers.RMSprop())
       _test_optimizer(keras.optimizers.RMSprop(decay=1e-3))
 
   def test_adagrad(self):
-    with self.test_session():
+    with self.cached_session():
       _test_optimizer(keras.optimizers.Adagrad())
       _test_optimizer(keras.optimizers.Adagrad(decay=1e-3))
 
   def test_adadelta(self):
-    with self.test_session():
+    with self.cached_session():
       _test_optimizer(keras.optimizers.Adadelta(), target=0.6)
       # Accuracy seems dependent on the initialization. Even adding tf.Print
       # nodes in the graph seemed to affect the initialization seed, and hence
@@ -109,28 +109,28 @@ class KerasOptimizersTest(test.TestCase):
       _test_optimizer(keras.optimizers.Adadelta(decay=1e-3), target=0.4)
 
   def test_adam(self):
-    with self.test_session():
+    with self.cached_session():
       _test_optimizer(keras.optimizers.Adam())
       _test_optimizer(keras.optimizers.Adam(decay=1e-3))
       _test_optimizer(keras.optimizers.Adam(amsgrad=True))
 
   def test_adamax(self):
-    with self.test_session():
+    with self.cached_session():
       _test_optimizer(keras.optimizers.Adamax())
       _test_optimizer(keras.optimizers.Adamax(decay=1e-3))
 
   def test_nadam(self):
-    with self.test_session():
+    with self.cached_session():
       _test_optimizer(keras.optimizers.Nadam())
 
   def test_clipnorm(self):
-    with self.test_session():
+    with self.cached_session():
       _test_optimizer(keras.optimizers.SGD(lr=0.01,
                                            momentum=0.9,
                                            clipnorm=0.5))
 
   def test_clipvalue(self):
-    with self.test_session():
+    with self.cached_session():
       _test_optimizer(keras.optimizers.SGD(lr=0.01,
                                            momentum=0.9,
                                            clipvalue=0.5))
@@ -158,7 +158,7 @@ class KerasOptimizersTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_tfoptimizer_iterations(self):
-    with self.test_session():
+    with self.cached_session():
       optimizer = keras.optimizers.TFOptimizer(AdamOptimizer(0.01))
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(

@@ -177,6 +177,30 @@ TEST_P(ConvolutionOpTest, SimpleTestFloat32WithChannels) {
                              }));
 }
 
+TEST_P(ConvolutionOpTest, InputAndFilterSameWidthHeight) {
+  ConvolutionOpModel m(GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 1}},
+                       {TensorType_FLOAT32, {1, 2, 4, 1}},
+                       {TensorType_FLOAT32, {}});
+
+  m.SetInput({
+      // First batch
+      1, 1, 1, 1,  // row = 1
+      2, 2, 2, 2,  // row = 2
+      // Second batch
+      1, 2, 3, 4,  // row = 1
+      1, 2, 3, 4,  // row = 2
+  });
+  m.SetFilter({
+      1, 2, 3, 4,    // row = 1
+      -1, -1, 1, 1,  // row = 2
+  });
+  m.SetBias({0});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({10, 34}));
+}
+
 TEST_P(ConvolutionOpTest, PointwiseFloat32) {
   ConvolutionOpModel m(GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 2}},
                        {TensorType_FLOAT32, {1, 1, 1, 2}},

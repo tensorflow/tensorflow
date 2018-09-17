@@ -134,11 +134,12 @@ XlaOp XlaBuilder::ReportErrorOrReturn(
 
 StatusOr<ProgramShape> XlaBuilder::GetProgramShape(int64 root_id) const {
   TF_RETURN_IF_ERROR(first_error_);
-  TF_RET_CHECK((root_id >= 0) && (root_id < instructions_.size()));
+  TF_ASSIGN_OR_RETURN(const HloInstructionProto* root_proto,
+                      LookUpInstructionByHandle(root_id));
 
   ProgramShape program_shape;
 
-  *program_shape.mutable_result() = instructions_[root_id].shape();
+  *program_shape.mutable_result() = root_proto->shape();
 
   // Check that the parameter numbers are continuous from 0, and add parameter
   // shapes and names to the program shape.
@@ -181,9 +182,8 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
     return;
   }
 
-  CHECK(op_handle < instructions_.size() && op_handle >= 0);
-
-  const HloInstructionProto& instr = instructions_[op_handle];
+  const HloInstructionProto& instr =
+      *(LookUpInstructionByHandle(op_handle).ValueOrDie());
   const HloOpcode opcode = StringToHloOpcode(instr.opcode()).ValueOrDie();
   switch (opcode) {
     default:
@@ -283,6 +283,7 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
 
   // Clear data held by this builder.
   this->instructions_.clear();
+  this->handle_to_index_.clear();
   this->embedded_.clear();
   this->parameter_numbers_.clear();
 
@@ -738,7 +739,7 @@ void XlaBuilder::Trace(const string& tag, const XlaOp& operand) {
   ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     *instr.mutable_shape() = ShapeUtil::MakeNil();
-    *instr.mutable_literal() = LiteralUtil::CreateR1U8(tag)->ToProto();
+    *instr.mutable_literal() = LiteralUtil::CreateR1U8(tag).ToProto();
     return AddInstruction(std::move(instr), HloOpcode::kTrace, {operand});
   });
 }
@@ -820,7 +821,7 @@ XlaOp XlaBuilder::Lt(const XlaOp& lhs, const XlaOp& rhs,
 }
 
 XlaOp XlaBuilder::Dot(const XlaOp& lhs, const XlaOp& rhs,
-                      const PrecisionConfigProto* precision_config_proto) {
+                      const PrecisionConfig* precision_config) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
 
@@ -828,14 +829,13 @@ XlaOp XlaBuilder::Dot(const XlaOp& lhs, const XlaOp& rhs,
     dimension_numbers.add_lhs_contracting_dimensions(
         lhs_shape.dimensions_size() == 1 ? 0 : 1);
     dimension_numbers.add_rhs_contracting_dimensions(0);
-    return DotGeneral(lhs, rhs, dimension_numbers, precision_config_proto);
+    return DotGeneral(lhs, rhs, dimension_numbers, precision_config);
   });
 }
 
-XlaOp XlaBuilder::DotGeneral(
-    const XlaOp& lhs, const XlaOp& rhs,
-    const DotDimensionNumbers& dimension_numbers,
-    const PrecisionConfigProto* precision_config_proto) {
+XlaOp XlaBuilder::DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
+                             const DotDimensionNumbers& dimension_numbers,
+                             const PrecisionConfig* precision_config) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
@@ -844,8 +844,8 @@ XlaOp XlaBuilder::DotGeneral(
                         ShapeInference::InferDotOpShape(lhs_shape, rhs_shape,
                                                         dimension_numbers));
     *instr.mutable_dot_dimension_numbers() = dimension_numbers;
-    if (precision_config_proto != nullptr) {
-      *instr.mutable_precision_config() = *precision_config_proto;
+    if (precision_config != nullptr) {
+      *instr.mutable_precision_config() = *precision_config;
     }
     return AddInstruction(std::move(instr), HloOpcode::kDot, {lhs, rhs});
   });
@@ -899,28 +899,26 @@ Status XlaBuilder::VerifyConvolution(
 XlaOp XlaBuilder::Conv(const XlaOp& lhs, const XlaOp& rhs,
                        absl::Span<const int64> window_strides, Padding padding,
                        int64 feature_group_count,
-                       const PrecisionConfigProto* precision_config_proto) {
+                       const PrecisionConfig* precision_config) {
   return ConvWithGeneralDimensions(
       lhs, rhs, window_strides, padding,
       CreateDefaultConvDimensionNumbers(window_strides.size()),
-      feature_group_count, precision_config_proto);
+      feature_group_count, precision_config);
 }
 
 XlaOp XlaBuilder::ConvWithGeneralPadding(
     const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
     absl::Span<const std::pair<int64, int64>> padding,
-    int64 feature_group_count,
-    const PrecisionConfigProto* precision_config_proto) {
+    int64 feature_group_count, const PrecisionConfig* precision_config) {
   return ConvGeneral(lhs, rhs, window_strides, padding,
                      CreateDefaultConvDimensionNumbers(window_strides.size()),
-                     feature_group_count, precision_config_proto);
+                     feature_group_count, precision_config);
 }
 
 XlaOp XlaBuilder::ConvWithGeneralDimensions(
     const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
     Padding padding, const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count,
-    const PrecisionConfigProto* precision_config_proto) {
+    int64 feature_group_count, const PrecisionConfig* precision_config) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
     TF_ASSIGN_OR_RETURN(const Shape& rhs_shape, GetShape(rhs));
@@ -948,7 +946,7 @@ XlaOp XlaBuilder::ConvWithGeneralDimensions(
                        MakePadding(base_area_dimensions, window_dimensions,
                                    window_strides, padding),
                        dimension_numbers, feature_group_count,
-                       precision_config_proto);
+                       precision_config);
   });
 }
 
@@ -956,11 +954,10 @@ XlaOp XlaBuilder::ConvGeneral(
     const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
     absl::Span<const std::pair<int64, int64>> padding,
     const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count,
-    const PrecisionConfigProto* precision_config_proto) {
+    int64 feature_group_count, const PrecisionConfig* precision_config) {
   return ConvGeneralDilated(lhs, rhs, window_strides, padding, {}, {},
                             dimension_numbers, feature_group_count,
-                            precision_config_proto);
+                            precision_config);
 }
 
 XlaOp XlaBuilder::ConvGeneralDilated(
@@ -968,8 +965,7 @@ XlaOp XlaBuilder::ConvGeneralDilated(
     absl::Span<const std::pair<int64, int64>> padding,
     absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
     const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count,
-    const PrecisionConfigProto* precision_config_proto) {
+    int64 feature_group_count, const PrecisionConfig* precision_config) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
@@ -990,14 +986,14 @@ XlaOp XlaBuilder::ConvGeneralDilated(
 
     TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
                         ShapeInference::InferConvolveShape(
-                            lhs_shape, rhs_shape, instr.window(),
-                            dimension_numbers, feature_group_count));
+                            lhs_shape, rhs_shape, feature_group_count,
+                            instr.window(), dimension_numbers));
 
     *instr.mutable_convolution_dimension_numbers() = dimension_numbers;
     instr.set_feature_group_count(feature_group_count);
 
-    if (precision_config_proto != nullptr) {
-      *instr.mutable_precision_config() = *precision_config_proto;
+    if (precision_config != nullptr) {
+      *instr.mutable_precision_config() = *precision_config;
     }
 
     return AddInstruction(std::move(instr), HloOpcode::kConvolution,
@@ -2290,7 +2286,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
   *program_shape->mutable_result() = root->shape();
 
   // We use std::set to keep the instruction ids in ascending order (which is
-  // also a valid denpendency order). The related ops will be added to the
+  // also a valid dependency order). The related ops will be added to the
   // subgraph in the same order.
   std::set<int64> related_ops;
   tensorflow::gtl::FlatSet<int64> related_calls;  // Related computations.
@@ -2298,14 +2294,16 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
   worklist.push(root->id());
   related_ops.insert(root->id());
   while (!worklist.empty()) {
-    int64 node = worklist.front();
+    int64 handle = worklist.front();
     worklist.pop();
-    for (int64 id : instructions_[node].operand_ids()) {
+    TF_ASSIGN_OR_RETURN(const HloInstructionProto* instr_proto,
+                        LookUpInstructionByHandle(handle));
+    for (int64 id : instr_proto->operand_ids()) {
       if (related_ops.insert(id).second) {
         worklist.push(id);
       }
     }
-    for (int64 called_id : instructions_[node].called_computation_ids()) {
+    for (int64 called_id : instr_proto->called_computation_ids()) {
       related_calls.insert(called_id);
     }
   }
@@ -2313,7 +2311,9 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
   // Add related ops to the computation.
   for (int64 id : related_ops) {
     auto* instr = entry.add_instructions();
-    *instr = instructions_[id];
+    TF_ASSIGN_OR_RETURN(const HloInstructionProto* instr_src,
+                        LookUpInstructionByHandle(id));
+    *instr = *instr_src;
     // Ensures that the instruction names are unique among the graph.
     const string& new_name =
         StrCat(instr->name(), ".", entry.id(), ".", instr->id());
@@ -2420,11 +2420,11 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
                                            absl::Span<const XlaOp> operands) {
   TF_RETURN_IF_ERROR(first_error_);
 
-  const int64 handle = instructions_.size();
+  const int64 handle = GetUniqueId();
   instr.set_id(handle);
   instr.set_opcode(HloOpcodeString(opcode));
   if (instr.name().empty()) {
-    instr.set_name(StrCat(instr.opcode()));
+    instr.set_name(instr.opcode());
   }
   for (const auto& operand : operands) {
     if (operand.builder_ == nullptr) {
@@ -2442,7 +2442,8 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
     *instr.mutable_sharding() = *sharding_;
   }
 
-  instructions_.push_back(instr);
+  handle_to_index_[handle] = instructions_.size();
+  instructions_.push_back(std::move(instr));
 
   XlaOp op(handle, this);
   return op;
@@ -2472,10 +2473,16 @@ StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstruction(
         op.handle(), op.builder_->name(), this->name());
   }
 
-  if (op.handle() >= instructions_.size() || op.handle() < 0) {
-    return InvalidArgument("no XlaOp value %d", op.handle());
+  return LookUpInstructionByHandle(op.handle());
+}
+
+StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstructionByHandle(
+    int64 handle) const {
+  auto it = handle_to_index_.find(handle);
+  if (it == handle_to_index_.end()) {
+    return InvalidArgument("No XlaOp with handle %d", handle);
   }
-  return &instructions_[op.handle()];
+  return &instructions_[it->second];
 }
 
 // Enqueues a "retrieve parameter value" instruction for a parameter that was
@@ -2594,43 +2601,40 @@ XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
 }
 
 XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,
-          const PrecisionConfigProto* precision_config_proto) {
-  return lhs.builder()->Dot(lhs, rhs, precision_config_proto);
+          const PrecisionConfig* precision_config) {
+  return lhs.builder()->Dot(lhs, rhs, precision_config);
 }
 
 XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
                  const DotDimensionNumbers& dimension_numbers,
-                 const PrecisionConfigProto* precision_config_proto) {
+                 const PrecisionConfig* precision_config) {
   return lhs.builder()->DotGeneral(lhs, rhs, dimension_numbers,
-                                   precision_config_proto);
+                                   precision_config);
 }
 
 XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
            absl::Span<const int64> window_strides, Padding padding,
-           int64 feature_group_count,
-           const PrecisionConfigProto* precision_config_proto) {
+           int64 feature_group_count, const PrecisionConfig* precision_config) {
   return lhs.builder()->Conv(lhs, rhs, window_strides, padding,
-                             feature_group_count, precision_config_proto);
+                             feature_group_count, precision_config);
 }
 
-XlaOp ConvWithGeneralPadding(
-    const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
-    absl::Span<const std::pair<int64, int64>> padding,
-    int64 feature_group_count,
-    const PrecisionConfigProto* precision_config_proto) {
-  return lhs.builder()->ConvWithGeneralPadding(lhs, rhs, window_strides,
-                                               padding, feature_group_count,
-                                               precision_config_proto);
+XlaOp ConvWithGeneralPadding(const XlaOp& lhs, const XlaOp& rhs,
+                             absl::Span<const int64> window_strides,
+                             absl::Span<const std::pair<int64, int64>> padding,
+                             int64 feature_group_count,
+                             const PrecisionConfig* precision_config) {
+  return lhs.builder()->ConvWithGeneralPadding(
+      lhs, rhs, window_strides, padding, feature_group_count, precision_config);
 }
 
 XlaOp ConvWithGeneralDimensions(
     const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
     Padding padding, const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count,
-    const PrecisionConfigProto* precision_config_proto) {
+    int64 feature_group_count, const PrecisionConfig* precision_config) {
   return lhs.builder()->ConvWithGeneralDimensions(
       lhs, rhs, window_strides, padding, dimension_numbers, feature_group_count,
-      precision_config_proto);
+      precision_config);
 }
 
 XlaOp ConvGeneral(const XlaOp& lhs, const XlaOp& rhs,
@@ -2638,10 +2642,10 @@ XlaOp ConvGeneral(const XlaOp& lhs, const XlaOp& rhs,
                   absl::Span<const std::pair<int64, int64>> padding,
                   const ConvolutionDimensionNumbers& dimension_numbers,
                   int64 feature_group_count,
-                  const PrecisionConfigProto* precision_config_proto) {
+                  const PrecisionConfig* precision_config) {
   return lhs.builder()->ConvGeneral(lhs, rhs, window_strides, padding,
                                     dimension_numbers, feature_group_count,
-                                    precision_config_proto);
+                                    precision_config);
 }
 
 XlaOp ConvGeneralDilated(const XlaOp& lhs, const XlaOp& rhs,
@@ -2651,10 +2655,10 @@ XlaOp ConvGeneralDilated(const XlaOp& lhs, const XlaOp& rhs,
                          absl::Span<const int64> rhs_dilation,
                          const ConvolutionDimensionNumbers& dimension_numbers,
                          int64 feature_group_count,
-                         const PrecisionConfigProto* precision_config_proto) {
+                         const PrecisionConfig* precision_config) {
   return lhs.builder()->ConvGeneralDilated(
       lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
-      dimension_numbers, feature_group_count, precision_config_proto);
+      dimension_numbers, feature_group_count, precision_config);
 }
 
 XlaOp Fft(const XlaOp& operand, FftType fft_type,

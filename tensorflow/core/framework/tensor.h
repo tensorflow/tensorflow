@@ -37,11 +37,12 @@ namespace tensorflow {
 class AllocationDescription;
 class Allocator;
 class OpKernelContext;
+class Tensor;
 class TensorBuffer;
 class TensorCApi;
 class TensorDescription;
 class TensorProto;
-class VariantTensorData;
+
 namespace batch_util {
 Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
 Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64 index);

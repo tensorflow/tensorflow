@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 static mutex* get_counters_map_lock() {
@@ -145,4 +146,5 @@ REGISTER_KERNEL_BUILDER(Name("StatsAggregatorSummary").Device(DEVICE_CPU),
                         StatsAggregatorSummaryOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

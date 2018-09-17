@@ -25,8 +25,9 @@ namespace reference_ops {
 inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
                           const float* filter_data, const Dims<4>& filter_dims,
                           const float* bias_data, const Dims<4>& bias_dims,
-                          int stride_width, int stride_height, int pad_width,
-                          int pad_height, int depth_multiplier,
+                          int stride_width, int stride_height,
+                          int dilation_width_factor, int dilation_height_factor,
+                          int pad_width, int pad_height, int depth_multiplier,
                           float output_activation_min,
                           float output_activation_max, float* output_data,
                           const Dims<4>& output_dims) {
@@ -52,8 +53,9 @@ inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
             float total = 0.f;
             for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
               for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
-                const int in_x = in_x_origin + filter_x;
-                const int in_y = in_y_origin + filter_y;
+                const int in_x = in_x_origin + dilation_width_factor * filter_x;
+                const int in_y =
+                    in_y_origin + dilation_height_factor * filter_y;
                 // If the location is outside the bounds of the input image,
                 // use zero as a default value.
                 if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
@@ -79,6 +81,20 @@ inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
       }
     }
   }
+}
+
+inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
+                          const float* filter_data, const Dims<4>& filter_dims,
+                          const float* bias_data, const Dims<4>& bias_dims,
+                          int stride_width, int stride_height, int pad_width,
+                          int pad_height, int depth_multiplier,
+                          float output_activation_min,
+                          float output_activation_max, float* output_data,
+                          const Dims<4>& output_dims) {
+  DepthwiseConv(input_data, input_dims, filter_data, filter_dims, bias_data,
+                bias_dims, stride_width, stride_height, 1, 1, pad_width,
+                pad_height, depth_multiplier, output_activation_min,
+                output_activation_max, output_data, output_dims);
 }
 
 // Legacy, for compatibility with old checked-in code.

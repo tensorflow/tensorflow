@@ -36,30 +36,39 @@ bool ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val) {
 
 EagerContext::EagerContext(const SessionOptions& opts,
                            ContextDevicePlacementPolicy default_policy,
-                           bool async, std::unique_ptr<DeviceMgr> device_mgr,
+                           bool async,
+                           std::unique_ptr<const DeviceMgr> device_mgr,
                            Rendezvous* rendezvous)
+    : EagerContext(opts, default_policy, async, device_mgr.release(),
+                   /*device_mgr_owned*/ true, rendezvous) {}
+
+EagerContext::EagerContext(const SessionOptions& opts,
+                           ContextDevicePlacementPolicy default_policy,
+                           bool async, const DeviceMgr* device_mgr,
+                           bool device_mgr_owned, Rendezvous* rendezvous)
     : policy_(default_policy),
-      local_device_manager_(std::move(device_mgr)),
-      local_unowned_device_manager_(nullptr),
-      devices_(local_device_manager_->ListDevices()),
+      devices_(device_mgr->ListDevices()),
       rendezvous_(rendezvous),
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
       pflr_(new ProcessFunctionLibraryRuntime(
-          local_device_manager_.get(), opts.env, TF_GRAPH_DEF_VERSION,
-          &func_lib_def_, {}, thread_pool_.get())),
+          device_mgr, opts.env, TF_GRAPH_DEF_VERSION, &func_lib_def_, {},
+          thread_pool_.get())),
       log_device_placement_(opts.config.log_device_placement()),
       num_active_steps_(0),
       async_default_(async),
+      log_memory_(LogMemory::IsEnabled()),
       env_(opts.env),
       use_send_tensor_rpc_(false) {
-  InitDeviceMapAndAsync();
-  if (opts.config.inter_op_parallelism_threads() > 0) {
-    runner_ = [this](std::function<void()> closure) {
-      this->thread_pool_->Schedule(closure);
-    };
+  if (device_mgr_owned) {
+    local_device_manager_.reset(device_mgr);
+    local_unowned_device_manager_ = nullptr;
   } else {
-    runner_ = [](std::function<void()> closure) { closure(); };
+    local_unowned_device_manager_ = device_mgr;
   }
+  InitDeviceMapAndAsync();
+  runner_ = [this](std::function<void()> closure) {
+    this->thread_pool_->Schedule(closure);
+  };
 }
 
 void EagerContext::InitDeviceMapAndAsync() {

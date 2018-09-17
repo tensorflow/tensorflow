@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "OrderedEnqueuer"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Progbar"
     mtype: "<type \'type\'>"
   }
@@ -43,6 +47,10 @@ tf_module {
   member_method {
     name: "get_file"
     argspec: "args=[\'fname\', \'origin\', \'untar\', \'md5_hash\', \'file_hash\', \'cache_subdir\', \'hash_algorithm\', \'extract\', \'archive_format\', \'cache_dir\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\', \'datasets\', \'auto\', \'False\', \'auto\', \'None\'], "
+  }
+  member_method {
+    name: "get_source_inputs"
+    argspec: "args=[\'tensor\', \'layer\', \'node_index\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "multi_gpu_model"

@@ -33,7 +33,6 @@ import numpy as np
 
 from six import integer_types
 from tensorflow.contrib.saved_model.python.saved_model import reader
-from tensorflow.contrib.saved_model.python.saved_model import signature_def_utils
 from tensorflow.core.example import example_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
@@ -97,8 +96,7 @@ def _get_inputs_tensor_info_from_meta_graph_def(meta_graph_def,
   Returns:
     A dictionary that maps input tensor keys to TensorInfos.
   """
-  return signature_def_utils.get_signature_def_by_key(meta_graph_def,
-                                                      signature_def_key).inputs
+  return meta_graph_def.signature_def[signature_def_key].inputs
 
 
 def _get_outputs_tensor_info_from_meta_graph_def(meta_graph_def,
@@ -116,8 +114,7 @@ def _get_outputs_tensor_info_from_meta_graph_def(meta_graph_def,
   Returns:
     A dictionary that maps output tensor keys to TensorInfos.
   """
-  return signature_def_utils.get_signature_def_by_key(meta_graph_def,
-                                                      signature_def_key).outputs
+  return meta_graph_def.signature_def[signature_def_key].outputs
 
 
 def _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key, indent=0):
@@ -546,7 +543,7 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
   input_examples = preprocess_input_examples_arg_string(input_examples_str)
 
   for input_tensor_key, (filename, variable_name) in inputs.items():
-    data = np.load(file_io.FileIO(filename, mode='r'))
+    data = np.load(file_io.FileIO(filename, mode='rb'))
 
     # When a variable_name key is specified for the input file
     if variable_name:
