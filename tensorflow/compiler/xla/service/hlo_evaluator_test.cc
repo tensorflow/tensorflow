@@ -2596,9 +2596,8 @@ ENTRY main {
 }
 
 TEST_P(HloEvaluatorTest, DontFailOnCall) {
-  // The following test used to trigger unimplemented error instead of returning
-  // false. This was due to HandleCall in HloEvaluator using ConsumeValueOrDie
-  // to get a literal value, however this is not possible with RNG.
+  // RNG triggers unimplemented error within HandleCall, and we verify that the
+  // Evaluator does fail in such case.
   const string hlo_text = R"(
 HloModule DontFailOnCall
 
@@ -2614,13 +2613,12 @@ ENTRY main {
 )";
   ParseAndVerifyModule(hlo_text);
   auto statusor = Evaluate();
-  ASSERT_FALSE(statusor.status().ok());
+  EXPECT_FALSE(statusor.status().ok());
 }
 
 TEST_P(HloEvaluatorTest, DontFailOnFusion) {
-  // The following test used to trigger unimplemented error instead of returning
-  // false. This was due to HandleFusion in HloEvaluator using ConsumeValueOrDie
-  // to get a literal value, however this is not possible with RNG.
+  // RNG triggers unimplemented error within HandleFusion, and we verify that
+  // the Evaluator does fail in such case.
   const string hlo_text = R"(
 HloModule DontFailOnFusion
 
@@ -2636,14 +2634,12 @@ ENTRY main {
 )";
   ParseAndVerifyModule(hlo_text);
   auto statusor = Evaluate();
-  ASSERT_FALSE(statusor.status().ok());
+  EXPECT_FALSE(statusor.status().ok());
 }
 
 TEST_P(HloEvaluatorTest, DontFailOnConditional) {
-  // The following test used to trigger unimplemented error instead of returning
-  // false. This was due to HandleConditional in HloEvaluator using
-  // ConsumeValueOrDie to get a literal value, however this is not possible
-  // with RNG.
+  // RNG triggers unimplemented error within HandleConditional, and we verify
+  // that the Evaluator does fail in such case.
   const string hlo_text = R"(
 HloModule DontFailOnConditional
 
@@ -2674,7 +2670,7 @@ ENTRY main (pred: pred[]) -> f32[]{
   ParseAndVerifyModule(hlo_text);
   Literal arg = LiteralUtil::CreateR0<bool>(false);
   auto statusor = Evaluate({&arg});
-  ASSERT_FALSE(statusor.status().ok());
+  EXPECT_FALSE(statusor.status().ok());
 }
 
 INSTANTIATE_TEST_CASE_P(HloEvaluatorTest_Instantiation, HloEvaluatorTest,
