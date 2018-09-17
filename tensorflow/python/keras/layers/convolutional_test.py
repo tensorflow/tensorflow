@@ -260,6 +260,10 @@ class Conv3DTransposeTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_conv3dtranspose(self):
+
+    if test.is_built_with_rocm():
+      self.skipTest("5D tensors are not yet supported in ROCm")
+
     kwargs = {
         'filters': 2,
         'kernel_size': (3, 3, 3),
@@ -479,6 +483,10 @@ class Conv3DTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_conv3d(self):
+
+    if test.is_built_with_rocm():
+      self.skipTest("5D tensors are not yet supported in ROCm")
+
     kwargs = {
         'filters': 2,
         'kernel_size': (3, 3, 3),
