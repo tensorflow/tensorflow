@@ -2040,7 +2040,7 @@ class MklPrimitiveFactory {
   /// Fuction to check whether primitive memory optimization is enabled
   static inline bool IsPrimitiveMemOptEnabled() {
     bool is_primitive_mem_opt_enabled = true;
-    TF_CHECK_OK(ReadBoolFromEnvVar("TF_MKL_OPTIMIZE_PRIMITVE_MEMUSE", true,
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE", true,
           &is_primitive_mem_opt_enabled));
     return is_primitive_mem_opt_enabled;
   }
