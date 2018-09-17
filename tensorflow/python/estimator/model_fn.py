@@ -26,6 +26,7 @@ import six
 from tensorflow.python.estimator.export import export_output as export_output_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras.metrics import Metric
 from tensorflow.python.ops import array_ops
 from tensorflow.python.saved_model import signature_constants
@@ -466,7 +467,7 @@ class _TPUEstimatorSpec(
 
 
 def _check_is_tensor_or_operation(x, name):
-  if not (isinstance(x, ops.Operation) or isinstance(x, ops.Tensor)):
+  if not (isinstance(x, ops.Operation) or tensor_util.is_tensor(x)):
     raise TypeError('{} must be Operation or Tensor, given: {}'.format(name, x))
 
 
