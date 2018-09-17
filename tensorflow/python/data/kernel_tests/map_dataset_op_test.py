@@ -731,7 +731,7 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tids = sess.run(get_next)
       self.assertTrue(all(tids[0] == tid for tid in tids))
 # pylint: enable=g-long-lambda
