@@ -924,6 +924,76 @@ def _cudnn_rnn(inputs,
     outputs, output_h, output_c, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv2(**args)
   return (outputs, output_h, output_c)
 
+def _cudnn_rnn_var_len(inputs,
+               input_h,
+               input_c,
+               params,
+               sequence_lengths,
+               is_training,
+               rnn_mode,
+               input_mode=CUDNN_INPUT_LINEAR_MODE,
+               direction=CUDNN_RNN_UNIDIRECTION,
+               dropout=0.,
+               seed=0,
+               name=None):
+  """Cudnn RNN.
+
+  Args:
+    inputs: the input sequence to the RNN model. A Tensor of shape [?,
+      batch_size, input_size].
+    input_h: the initial hidden state for h. A Tensor of shape [num_layers,
+      batch_size, num_units].
+    input_c: the initial hidden state for c. This is only relevant for LSTM.
+      A Tensor of the same shape as input_h.
+    params: the parameter buffer created for this model.
+    is_training: whether this operation will be used in training or inference
+    rnn_mode: one of ('lstm', 'gru', 'rnn_relu', 'rnn_tanh').
+    input_mode: indicate whether there is a linear projection between the
+      input and the actual computation before the first layer. It could be
+      'linear_input', 'skip_input' or 'auto_select'.
+      'linear_input' (default) always applies a linear projection of input
+      onto RNN hidden state. (standard RNN behavior).
+      'skip_input' is only allowed when input_size == num_units;
+      'auto_select' implies 'skip_input' when input_size == num_units;
+      otherwise, it implies 'linear_input'.
+    direction: the direction model that the model operates. Could be either
+        'unidirectional' or 'bidirectional'
+    dropout: whether to enable dropout. With it is 0, dropout is disabled.
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
+        for behavior.
+    name: name of the operation.
+  Returns:
+    outputs, output_h, output_c
+  """
+  _check_rnn_mode(rnn_mode)
+  check_direction(direction)
+  check_input_mode(input_mode)
+  seed, seed2 = random_seed.get_seed(seed)
+  # TODO(jamesqin): switch default value to "1" on May 25th 2018, and get rid
+  # of V1 ops.
+  use_cudnn_v2 = os.environ.get("TF_CUDNN_RNN_USE_V2", "0")
+  args = {
+      "input": inputs,
+      "input_h": input_h,
+      "input_c": input_c,
+      "params": params,
+      "sequence_lengths": sequence_lengths,
+      "is_training": is_training,
+      "rnn_mode": rnn_mode,
+      "input_mode": input_mode,
+      "direction": direction,
+      "dropout": dropout,
+      "seed": seed,
+      "seed2": seed2,
+      "name": name
+  }
+  if use_cudnn_v2 is not "1":
+    outputs, output_h, output_c, _ = gen_cudnn_rnn_ops.cudnn_rnn_var_len(**args)
+  else:
+    outputs, output_h, output_c, _, _ = gen_cudnn_rnn_ops.cudnn_rnn_var_len_v2(**args)
+  return (outputs, output_h, output_c)
+
+
 
 def cudnn_lstm(inputs,
                input_h,

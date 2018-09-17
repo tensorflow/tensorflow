@@ -1124,6 +1124,30 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cuda_cc_test(
+    name = "cudnn_rnn_ops_test",
+    size = "small",
+    srcs = ["cudnn_rnn_ops_test.cc"],
+    tags = ["requires-gpu-sm35"],
+    deps = [
+		":cudnn_rnn_kernels",
+        ":conv_ops",
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cc_test(
     name = "decode_wav_op_test",
     size = "small",

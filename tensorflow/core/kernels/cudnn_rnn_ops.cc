@@ -97,13 +97,25 @@ template <typename Device, typename T>
 class CudnnRNNForwardOp;
 
 template <typename Device, typename T>
+class CudnnRNNForwardOpVarLen;
+
+template <typename Device, typename T>
 class CudnnRNNBackwardOp;
+
+template <typename Device, typename T>
+class CudnnRNNVarLenBackwardOp;
 
 template <typename Device, typename T>
 class CudnnRNNForwardOpV2;
 
 template <typename Device, typename T>
+class CudnnRNNForwardOpVarLenV2;
+
+template <typename Device, typename T>
 class CudnnRNNBackwardOpV2;
+
+template <typename Device, typename T>
+class CudnnRNNVarLenBackwardOpV2;
 
 enum class TFRNNInputMode {
   kRNNLinearInput = 0,
@@ -598,6 +610,64 @@ Status ExtractForwardInput(OpKernelContext* context,
   return Status::OK();
 }
 
+// Extract and checks the forward input tensors, parameters, and shapes from the
+// OpKernelContext.
+Status ExtractForwardInputVarLen(OpKernelContext* context,
+                           const CudnnModelTypes& model_types,
+                           const Tensor** input, const Tensor** input_h,
+                           const Tensor** input_c, const Tensor** params, const Tensor** sequence_lengths,
+                           CudnnRnnModelShapes* model_shapes) {
+  TF_RETURN_IF_ERROR(context->input("input", input));
+  TF_RETURN_IF_ERROR(context->input("input_h", input_h));
+  if (model_types.HasInputC()) {
+    TF_RETURN_IF_ERROR(context->input("input_c", input_c));
+  }
+  TF_RETURN_IF_ERROR(context->input("params", params));
+  TF_RETURN_IF_ERROR(context->input("sequence_lengths", sequence_lengths));
+
+  if ((*input)->dims() != 2) {
+    return errors::InvalidArgument("RNN variable-length input must be a 2-D vector.");
+  }
+  //model_shapes->seq_length = static_cast<const int_32t>((*sequence_lengths)->tensor_data().data)[0];
+  //model_shapes->seq_length = (*sequence_lengths)->vec<int32>().data()[0];
+  model_shapes->seq_length = (*sequence_lengths)->vec<int32>()(0);
+  model_shapes->batch_size = (*sequence_lengths)->dim_size(0);
+  model_shapes->input_size = (*input)->dim_size(1);
+  model_shapes->input_shape = (*input)->shape();
+  model_shapes->dir_count =
+      (model_types.rnn_direction_mode == RnnDirectionMode::kRnnBidirectional)
+          ? 2
+          : 1;
+
+  if ((*input_h)->dims() != 3) {
+    return errors::InvalidArgument("RNN input_h must be a 3-D vector.");
+  }
+  model_shapes->num_layers = (*input_h)->dim_size(0) / model_shapes->dir_count;
+  model_shapes->num_units = (*input_h)->dim_size(2);
+
+  model_shapes->hidden_state_shape =
+      TensorShape({model_shapes->dir_count * model_shapes->num_layers,
+                   model_shapes->batch_size, model_shapes->num_units});
+  if ((*input_h)->shape() != model_shapes->hidden_state_shape) {
+    return errors::InvalidArgument(
+        "Invalid input_h shape: ", (*input_h)->shape().DebugString(), " ",
+        model_shapes->hidden_state_shape.DebugString());
+  }
+  if (model_types.HasInputC()) {
+    if ((*input_h)->shape() != (*input_c)->shape()) {
+      return errors::InvalidArgument(
+          "input_h and input_c must have the same shape: ",
+          (*input_h)->shape().DebugString(), " ",
+          (*input_c)->shape().DebugString());
+    }
+  }
+  model_shapes->output_shape =
+      TensorShape({(*input)->dim_size(0),
+                   model_shapes->dir_count * model_shapes->num_units});
+  //return errors::InvalidArgument("RASD: ", model_shapes->DebugString());
+  return Status::OK();
+}
+
 template <typename T>
 Status CreateForwardAndBackwardIODescriptors(
     OpKernelContext* context, const CudnnRnnModelShapes& model_shapes,
@@ -635,12 +705,50 @@ Status CreateForwardAndBackwardIODescriptors(
 }
 
 template <typename T>
+Status CreateForwardAndBackwardIODescriptorsVarLen(
+    OpKernelContext* context, const CudnnRnnModelShapes& model_shapes,
+    std::unique_ptr<RnnSequenceTensorDescriptor>* input_desc,
+    std::unique_ptr<RnnStateTensorDescriptor>* state_desc,
+    std::unique_ptr<RnnSequenceTensorDescriptor>* output_desc, 
+	const int32_t batch_size, const int32_t* sequence_lengths) {
+  StreamExecutor* executor = context->op_device_context()->stream()->parent();
+  se::dnn::DataType data_type = ToDataType<T>::value;
+
+  const TensorShape& input_shape = model_shapes.input_shape;
+  const TensorShape& hidden_state_shape = model_shapes.hidden_state_shape;
+  const TensorShape& output_shape = model_shapes.output_shape;
+
+  DCHECK_EQ(input_shape.dims(), 2);
+  auto input_desc_s = executor->createRnnVarSequenceTensorDescriptor(
+      sequence_lengths[0], batch_size, model_shapes.input_size, sequence_lengths,
+      data_type);
+  TF_RETURN_IF_ERROR(input_desc_s.status());
+  *input_desc = input_desc_s.ConsumeValueOrDie();
+
+  DCHECK_EQ(hidden_state_shape.dims(), 3);
+  auto hidden_state_desc_s = executor->createRnnStateTensorDescriptor(
+      hidden_state_shape.dim_size(0), hidden_state_shape.dim_size(1),
+      hidden_state_shape.dim_size(2), data_type);
+  TF_RETURN_IF_ERROR(hidden_state_desc_s.status());
+  *state_desc = hidden_state_desc_s.ConsumeValueOrDie();
+
+  DCHECK_EQ(output_shape.dims(), 2);
+  auto output_desc_s = executor->createRnnVarSequenceTensorDescriptor(
+      sequence_lengths[0], batch_size, output_shape.dim_size(1), 
+	  sequence_lengths, data_type);
+  TF_RETURN_IF_ERROR(output_desc_s.status());
+  *output_desc = output_desc_s.ConsumeValueOrDie();
+  return Status::OK();
+}
+
+// Actual DoForward
+template <typename T>
 Status DoForward(OpKernelContext* context, const RnnDescriptor& rnn_desc,
                  const CudnnModelTypes& model_types,
                  const CudnnRnnModelShapes& model_shapes,
                  /* forward inputs */
                  const Tensor* input, const Tensor* input_h,
-                 const Tensor* input_c, const Tensor* params,
+                 const Tensor* input_c, const Tensor* params, const Tensor* sequence_lengths,
                  const bool is_training,
                  /* forward outputs, outputs of the function */
                  Tensor* output, Tensor* output_h, Tensor* output_c,
@@ -651,8 +759,16 @@ Status DoForward(OpKernelContext* context, const RnnDescriptor& rnn_desc,
   std::unique_ptr<RnnStateTensorDescriptor> state_desc;
   std::unique_ptr<RnnSequenceTensorDescriptor> output_desc;
 
-  TF_RETURN_IF_ERROR(CreateForwardAndBackwardIODescriptors<T>(
+  if(sequence_lengths == nullptr){
+    TF_RETURN_IF_ERROR(CreateForwardAndBackwardIODescriptors<T>(
       context, model_shapes, &input_desc, &state_desc, &output_desc));
+  }
+  else{
+    TF_RETURN_IF_ERROR(CreateForwardAndBackwardIODescriptorsVarLen<T>(
+      context, model_shapes, &input_desc, &state_desc, &output_desc,
+	  sequence_lengths->dim_size(0), sequence_lengths->vec<int32_t>().data()
+	));
+  }
 
   auto input_data = AsDeviceMemory<T>(input);
   auto input_h_data = AsDeviceMemory<T>(input_h);
@@ -691,7 +807,7 @@ Status DoBackward(
     const CudnnModelTypes& model_types, const CudnnRnnModelShapes& model_shapes,
     /* forward inputs */
     const Tensor* input, const Tensor* input_h, const Tensor* input_c,
-    const Tensor* params,
+    const Tensor* params, const Tensor* sequence_lengths,
     /* forward outptus */
     const Tensor* output, const Tensor* output_h, const Tensor* output_c,
     /* backprop inputs */
@@ -705,9 +821,14 @@ Status DoBackward(
   std::unique_ptr<RnnStateTensorDescriptor> state_desc;
   std::unique_ptr<RnnSequenceTensorDescriptor> output_desc;
 
-  TF_RETURN_IF_ERROR(CreateForwardAndBackwardIODescriptors<T>(
-      context, model_shapes, &input_desc, &state_desc, &output_desc));
-
+  if(sequence_lengths == nullptr){
+    TF_RETURN_IF_ERROR(CreateForwardAndBackwardIODescriptors<T>(
+        context, model_shapes, &input_desc, &state_desc, &output_desc));
+  }else{
+    TF_RETURN_IF_ERROR(CreateForwardAndBackwardIODescriptorsVarLen<T>(
+        context, model_shapes, &input_desc, &state_desc, &output_desc,
+		sequence_lengths->dim_size(0), (const int32_t*)sequence_lengths->vec<int32_t>().data()));
+  }
   auto input_data = AsDeviceMemory<T>(input);
   auto input_h_data = AsDeviceMemory<T>(input_h);
   DeviceMemory<T> input_c_data;
@@ -1148,7 +1269,7 @@ template <typename T>
 class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
  public:
   explicit CudnnRNNForwardOp(OpKernelConstruction* context)
-      : CudnnRNNKernelCommon(context) {
+      : CudnnRNNKernelCommon(context), is_variable_length_(false) {
     OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
 
     // Read debug env variables.
@@ -1161,6 +1282,10 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     AlgorithmConfig algo_config;
     ComputeAndReturnAlgorithm(context, &algo_config);
   }
+  
+  void set_is_variable_length(bool is_variable_length){
+	  is_variable_length_= is_variable_length;
+  }
 
  protected:
   virtual void ComputeAndReturnAlgorithm(OpKernelContext* context,
@@ -1171,10 +1296,17 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     const Tensor* input_h = nullptr;
     const Tensor* input_c = nullptr;
     const Tensor* params = nullptr;
+    const Tensor* sequence_lengths = nullptr;
     CudnnRnnModelShapes model_shapes;
-    OP_REQUIRES_OK(context,
+	if(is_variable_length_){
+		OP_REQUIRES_OK(context,
+                   ExtractForwardInputVarLen(context, model_types(), &input, &input_h,
+                                       &input_c, &params, &sequence_lengths, &model_shapes));
+	}else{
+		OP_REQUIRES_OK(context,
                    ExtractForwardInput(context, model_types(), &input, &input_h,
                                        &input_c, &params, &model_shapes));
+	}
     RnnInputMode input_mode;
     OP_REQUIRES_OK(context,
                    ToRNNInputMode(rnn_input_mode(), model_shapes.num_units,
@@ -1200,7 +1332,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     } else {
       OP_REQUIRES_OK(context,
                      MaybeAutoTune(context, model_shapes, input_mode, input,
-                                   input_h, input_c, params, output, output_h,
+                                   input_h, input_c, params, sequence_lengths, output, output_h,
                                    output_c, output_algo_config));
     }
 
@@ -1214,7 +1346,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
                                              &rnn_state_cache_, &rnn_desc_ptr));
       launch_status = DoForward<T>(
           context, *rnn_desc_ptr, model_types(), model_shapes, input, input_h,
-          input_c, params, is_training_, output, output_h, output_c,
+          input_c, params, sequence_lengths, is_training_, output, output_h, output_c,
           &reserve_space_allocator, &workspace_allocator,
           /*output_profile_result=*/nullptr);
     }
@@ -1226,7 +1358,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
                                const CudnnRnnModelShapes& model_shapes,
                                const RnnInputMode& input_mode,
                                const Tensor* input, const Tensor* input_h,
-                               const Tensor* input_c, const Tensor* params,
+                               const Tensor* input_c, const Tensor* params, const Tensor* sequence_lengths,
                                Tensor* output, Tensor* output_h,
                                Tensor* output_c,
                                AlgorithmConfig* best_algo_config) {
@@ -1237,6 +1369,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
 
   bool is_training() const { return is_training_; }
   bool is_debug_mode_;
+  bool is_variable_length_;
   bool debug_use_tensor_ops_;
   int64 debug_cudnn_rnn_algo_;
 
@@ -1275,6 +1408,28 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
   REGISTER_KERNEL_BUILDER(                                        \
       Name("CudnnRNN").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       CudnnRNNForwardOp<GPUDevice, T>);
+
+TF_CALL_half(REGISTER_GPU);
+TF_CALL_float(REGISTER_GPU);
+TF_CALL_double(REGISTER_GPU);
+#undef REGISTER_GPU
+
+
+// Run the forward operation of the RNN variable sequence length model.
+template <typename T>
+class CudnnRNNForwardOpVarLen<GPUDevice, T> : public CudnnRNNForwardOp<GPUDevice, T> {
+ public:
+  explicit CudnnRNNForwardOpVarLen(OpKernelConstruction* context)
+      : CudnnRNNForwardOp<GPUDevice, T>(context) {
+    //is_variable_length_ = true;		 
+	this->set_is_variable_length(true);
+  }
+};
+
+#define REGISTER_GPU(T)                                           \
+  REGISTER_KERNEL_BUILDER(                                        \
+      Name("CudnnRNNVarLen").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      CudnnRNNForwardOpVarLen<GPUDevice, T>);
 
 TF_CALL_half(REGISTER_GPU);
 TF_CALL_float(REGISTER_GPU);
@@ -1331,7 +1486,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
                        const CudnnRnnModelShapes& model_shapes,
                        const RnnInputMode& input_mode, const Tensor* input,
                        const Tensor* input_h, const Tensor* input_c,
-                       const Tensor* params, Tensor* output, Tensor* output_h,
+                       const Tensor* params, const Tensor* sequence_lengths, Tensor* output, Tensor* output_h,
                        Tensor* output_c,
                        AlgorithmConfig* algo_config) override {
     CHECK_NE(algo_config, nullptr);
@@ -1412,7 +1567,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
       CudnnRnnAllocatorInTemp<uint8> workspace_allocator(context);
       status = DoForward<T>(
           context, *rnn_desc, model_types(), model_shapes, input, input_h,
-          input_c, params, is_training(), output, output_h, output_c,
+          input_c, params, sequence_lengths, is_training(), output, output_h, output_c,
           &reserve_space_allocator, &workspace_allocator, &fwd_profile_result);
       if (!status.ok()) {
         continue;
@@ -1423,7 +1578,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
         Tensor reserve_space = reserve_space_allocator.get_allocated_tensor(0);
         status = DoBackward<T>(
             context, *rnn_desc, model_types(), model_shapes, input, input_h,
-            input_c, params, output, output_h, output_c, &output_backprop,
+            input_c, params, sequence_lengths, output, output_h, output_c, &output_backprop,
             &output_h_backprop, &output_c_backprop, &reserve_space,
             &input_backprop, &input_h_backprop, &input_c_backprop,
             &params_backprop, &workspace_allocator, &bak_profile_result);
@@ -1467,22 +1622,49 @@ TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
 #undef REGISTER_GPU
 
+// Run the forward operation of the RNN variable sequence length model.
+template <typename T>
+class CudnnRNNForwardOpVarLenV2<GPUDevice, T> : public CudnnRNNForwardOpV2<GPUDevice, T> {
+ public:
+  explicit CudnnRNNForwardOpVarLenV2(OpKernelConstruction* context)
+      : CudnnRNNForwardOpV2<GPUDevice, T>(context) {
+    this->is_variable_length_ = true;
+  }
+};
+
+#define REGISTER_GPU(T)                                           \
+  REGISTER_KERNEL_BUILDER(                                        \
+      Name("CudnnRNNVarLenV2").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      CudnnRNNForwardOpVarLenV2<GPUDevice, T>);
+
+TF_CALL_half(REGISTER_GPU);
+TF_CALL_float(REGISTER_GPU);
+TF_CALL_double(REGISTER_GPU);
+#undef REGISTER_GPU
+
 // Run the backward operation of the RNN model.
 template <typename T>
 class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
  public:
   explicit CudnnRNNBackwardOp(OpKernelConstruction* context)
-      : CudnnRNNKernelCommon(context) {}
+      : CudnnRNNKernelCommon(context), is_variable_length_(false) {}
 
   void Compute(OpKernelContext* context) override {
     const Tensor* input = nullptr;
     const Tensor* input_h = nullptr;
     const Tensor* input_c = nullptr;
     const Tensor* params = nullptr;
+	const Tensor* sequence_lengths = nullptr;
     CudnnRnnModelShapes model_shapes;
-    OP_REQUIRES_OK(context,
+	if(is_variable_length_){
+	  OP_REQUIRES_OK(context,
+                   ExtractForwardInputVarLen(context, model_types(), &input, &input_h,
+                                       &input_c, &params, &sequence_lengths, &model_shapes));
+	}else{
+      OP_REQUIRES_OK(context,
                    ExtractForwardInput(context, model_types(), &input, &input_h,
                                        &input_c, &params, &model_shapes));
+	}
     RnnInputMode input_mode;
     OP_REQUIRES_OK(context,
                    ToRNNInputMode(rnn_input_mode(), model_shapes.num_units,
@@ -1525,7 +1707,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
                                              &rnn_desc_ptr));
       launch_status = DoBackward<T>(
           context, *rnn_desc_ptr, model_types(), model_shapes, input, input_h,
-          input_c, params, output, output_h, output_c, output_backprop,
+          input_c, params, sequence_lengths, output, output_h, output_c, output_backprop,
           output_h_backprop, output_c_backprop, reserve_space, input_backprop,
           input_h_backprop, input_c_backprop, params_backprop,
           &workspace_allocator, /*output_profile_result=*/nullptr);
@@ -1540,6 +1722,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     *algo_config = AlgorithmConfig();
     return Status::OK();
   }
+  bool is_variable_length_;
 
  private:
   mutex mu_;

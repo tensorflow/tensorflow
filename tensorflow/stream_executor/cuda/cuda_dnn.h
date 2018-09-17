@@ -33,6 +33,7 @@ namespace cuda {
 class CUDAExecutor;
 class CudnnRnnDescriptor;
 class CudnnRnnSequenceTensorDescriptor;
+class CudnnRnnVarSequenceTensorDescriptor;
 class CudnnRnnStateTensorDescriptor;
 
 // Opaque and unique identifier for the cuDNN plugin.
@@ -57,6 +58,11 @@ class CudnnSupport : public dnn::DnnSupport {
   port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
                                     int data_size,
+                                    dnn::DataType data_type) override;
+
+  port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  createRnnVarSequenceTensorDescriptor(int seq_length, int batch_size,
+                                    int data_size, const int* sequence_lengths,
                                     dnn::DataType data_type) override;
 
   port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>

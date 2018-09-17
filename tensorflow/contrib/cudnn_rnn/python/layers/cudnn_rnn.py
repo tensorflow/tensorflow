@@ -315,14 +315,14 @@ class _CudnnRNN(base_layer.Layer):
       return
 
     input_shape = tensor_shape.TensorShape(input_shape)
-    if input_shape.ndims != 3:
-      raise ValueError("Expecting input_shape with 3 dims, got %d" %
+    if input_shape.ndims not in [2, 3]:
+      raise ValueError("Expecting input_shape with 2 or 3 dims, got %d" %
                        input_shape.ndims)
     if input_shape[-1].value is None:
       raise ValueError("The last dimension of the inputs to `CudnnRNN` "
                        "should be defined. Found `None`.")
     self._input_size = input_shape[-1].value
-    self.input_spec = base_layer.InputSpec(ndim=3, axes={-1: self._input_size})
+    self.input_spec = base_layer.InputSpec(min_ndim=2, max_ndim=3, axes={-1: self._input_size})
 
     self._set_scope(None)
 
@@ -372,7 +372,7 @@ class _CudnnRNN(base_layer.Layer):
         "This cell does not yet support object-based saving. File a feature "
         "request if this limitation bothers you.")
 
-  def call(self, inputs, initial_state=None, training=True):
+  def call(self, inputs, initial_state=None, training=True, sequence_lengths=None):
     """Runs the forward step for the RNN model.
 
     Args:
@@ -408,7 +408,13 @@ class _CudnnRNN(base_layer.Layer):
     else:
       # For model that doesn't take input_c, replace with a dummy tensor.
       c = array_ops.constant([], dtype=dtype)
-    outputs, (output_h, output_c) = self._forward(inputs, h, c, self.kernel,
+    if sequence_lengths is None:  
+      assert inputs.get_shape().ndims == 3
+      outputs, (output_h, output_c) = self._forward(inputs, h, c, self.kernel,
+                                                  training)
+    else:
+      assert inputs.get_shape().ndims == 2
+      outputs, (output_h, output_c) = self._forward_var_len(inputs, h, c, self.kernel, sequence_lengths,
                                                   training)
     if self._rnn_mode == CUDNN_LSTM:
       return outputs, (output_h, output_c)
@@ -479,6 +485,21 @@ class _CudnnRNN(base_layer.Layer):
         h,
         c,
         opaque_params,
+        training,
+        self._rnn_mode,
+        input_mode=self._input_mode,
+        direction=self._direction,
+        dropout=self._dropout,
+        seed=self._seed)
+    return output, (output_h, output_c)
+
+  def _forward_var_len(self, inputs, h, c, opaque_params, sequence_lengths, training):
+    output, output_h, output_c = cudnn_rnn_ops._cudnn_rnn_var_len(  # pylint:disable=protected-access
+        inputs,
+        h,
+        c,
+        opaque_params,
+        sequence_lengths,
         training,
         self._rnn_mode,
         input_mode=self._input_mode,

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
@@ -1200,17 +1201,33 @@ port::StatusOr<CudnnRnnParamsDescriptor> CudnnRnnParamsDescriptor::Create(
 
 class CudnnRnnSequenceTensorDescriptor
     : public dnn::RnnSequenceTensorDescriptor {
-  CudnnRnnSequenceTensorDescriptor(CUDAExecutor* parent, int seq_length,
+		
+    CudnnRnnSequenceTensorDescriptor(CUDAExecutor* parent, int seq_length,
+                                   int batch_size, int data_size,
+                                   cudnnDataType_t data_type, 
+								   std::vector<TensorDescriptor> & descriptors, 
+								   std::vector<cudnnTensorDescriptor_t> &handles)
+	  : parent_(parent),
+        seq_length_(seq_length),
+        batch_size_(batch_size),
+        data_size_(data_size),
+        data_type_(data_type),
+        descriptors_(std::move(descriptors)),
+        handles_(std::move(handles)){}
+
+    CudnnRnnSequenceTensorDescriptor(CUDAExecutor* parent, int seq_length,
                                    int batch_size, int data_size,
                                    cudnnDataType_t data_type,
-                                   TensorDescriptor handle)
+                                   TensorDescriptor& descriptor)
       : parent_(parent),
         seq_length_(seq_length),
         batch_size_(batch_size),
         data_size_(data_size),
         data_type_(data_type),
-        handle_(std::move(handle)),
-        handles_(seq_length, handle_.get()) {}
+        descriptors_(),
+        handles_(seq_length, descriptor.get()){
+			descriptors_.push_back(std::move(descriptor));
+		}
 
  public:
   CudnnRnnSequenceTensorDescriptor(CudnnRnnSequenceTensorDescriptor&&) =
@@ -1227,11 +1244,52 @@ class CudnnRnnSequenceTensorDescriptor
         /*tensorDesc=*/tensor_desc.get(), /*dataType=*/data_type,
         /*nbDims=*/sizeof(dims) / sizeof(dims[0]), /*dimA=*/dims,
         /*strideA=*/strides));
+	//auto descriptors = std::vector<TensorDescriptor>();
+	//descriptors.push_back(std::move(tensor_desc));
+	//auto handles = std::vector<cudnnTensorDescriptor_t>(seq_length, std::move(tensor_desc.get()));
+	//descriptors.push_back(std::move(tensor_desc));
     return CudnnRnnSequenceTensorDescriptor(parent, seq_length, batch_size,
                                             data_size, data_type,
-                                            std::move(tensor_desc));
+                                            tensor_desc);
   }
 
+  static port::StatusOr<CudnnRnnSequenceTensorDescriptor> CreateVar(
+		  CUDAExecutor* parent, int seq_length, int batch_size, int data_size, const int32_t* sequence_lengths,
+		  cudnnDataType_t data_type) {
+		CHECK_GT(seq_length, 0);
+		TensorDescriptor tensor_desc = CreateTensorDescriptor();
+		{
+			int dims[] = {batch_size, data_size, 1};
+			int strides[] = {data_size, 1, 1};
+			RETURN_IF_CUDNN_ERROR(cudnnSetTensorNdDescriptor(
+				/*tensorDesc=*/tensor_desc.get(), /*dataType=*/data_type,
+				/*nbDims=*/3, /*dimA=*/dims,
+				/*strideA=*/strides));
+		}
+        //auto seq_desc = CudnnRnnSequenceTensorDescriptor(parent, seq_length, batch_size,
+        //                                    data_size, data_type,
+        //                                    std::move(tensor_desc));
+		auto descriptors = std::vector<TensorDescriptor>(0);
+		auto handles = std::vector<cudnnTensorDescriptor_t>(seq_length);
+		int pos = batch_size-1;
+		for(int i=0; i< seq_length; i++){
+			while(sequence_lengths[pos] < i && pos > 0){
+				pos--;
+			}
+			//auto td = CreateTensorDescriptor();
+			//cudnnCreateTensorDescriptor(&(seq_desc.handles_[i]));
+			cudnnCreateTensorDescriptor(&(handles[i]));
+			int dims[] = {pos+1, data_size, 1};
+			int strides[] = {data_size, 1, 1};
+			RETURN_IF_CUDNN_ERROR(cudnnSetTensorNdDescriptor(
+				handles[i], data_type, 3, dims, strides));
+			//handles[i]=td.get();
+			//descriptors.push_back(std::move(td));
+		}
+		return CudnnRnnSequenceTensorDescriptor(parent, seq_length, batch_size,
+                                           data_size, data_type, descriptors, handles);
+		//return seq_desc;
+	  }
   const cudnnTensorDescriptor_t* handles() const {
     return handles_.data();
   }
@@ -1246,7 +1304,8 @@ class CudnnRnnSequenceTensorDescriptor
   int batch_size_;
   int data_size_;
   cudnnDataType_t data_type_;
-  TensorDescriptor handle_;
+  //TensorDescriptor handle_;
+  std::vector<TensorDescriptor> descriptors_;
   std::vector<cudnnTensorDescriptor_t> handles_;  // Copies of handle_.
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnRnnSequenceTensorDescriptor);
 };
@@ -1323,22 +1382,44 @@ port::StatusOr<RnnModelDims> ExtractAndCheckRnnForward(
       (rnn_desc.direction_mode() == CUDNN_BIDIRECTIONAL) ? 2 : 1;
 
   // check parameters
-  if (!(input_h_desc.num_layers() ==
-            model_dims.num_layers * model_dims.dir_count &&
-        input_h_desc.batch_size() == model_dims.batch_size &&
-        input_h_desc.data_size() == model_dims.hidden_size)) {
-    return port::Status(port::error::INVALID_ARGUMENT, "Invalid input_h shape");
+  if (!(input_h_desc.num_layers() == model_dims.num_layers * model_dims.dir_count)){
+	return port::Status(port::error::INVALID_ARGUMENT, "Invalid input_h num_layers");
+  }
+  if (!(input_h_desc.batch_size() == model_dims.batch_size)){
+	return port::Status(port::error::INVALID_ARGUMENT, ::tensorflow::strings::StrCat(
+	  "Invalid input_h batch_size: ",
+	  input_h_desc.batch_size(),
+	  ", expected: ",
+	  model_dims.batch_size));
+  }
+  if (!(input_h_desc.data_size() == model_dims.hidden_size)){
+	return port::Status(port::error::INVALID_ARGUMENT, "Invalid input_h data_size");
   }
   if (!(input_h_desc.num_layers() == input_c_desc.num_layers() &&
         input_h_desc.batch_size() == input_c_desc.batch_size() &&
         input_h_desc.data_size() == input_c_desc.data_size())) {
     return port::Status(port::error::INVALID_ARGUMENT, "Invalid input_c shape");
   }
-  if (!(output_desc.seq_length() == model_dims.seq_length &&
-        output_desc.batch_size() == model_dims.batch_size &&
-        output_desc.data_size() ==
-            model_dims.hidden_size * model_dims.dir_count)) {
-    return port::Status(port::error::INVALID_ARGUMENT, "Invalid output shape");
+  if (!(output_desc.seq_length() == model_dims.seq_length)){
+	return port::Status(port::error::INVALID_ARGUMENT, ::tensorflow::strings::StrCat(
+	  "Invalid output seq_length: ",
+	  output_desc.seq_length(),
+	  ", expected: ",
+	  model_dims.seq_length));
+  }
+  if (!(output_desc.batch_size() == model_dims.batch_size )){
+	return port::Status(port::error::INVALID_ARGUMENT, ::tensorflow::strings::StrCat(
+	  "Invalid output batch_size: ",
+	  output_desc.batch_size(),
+	  ", expected: ",
+	  model_dims.batch_size));
+  }
+  if (!(output_desc.data_size() == model_dims.hidden_size * model_dims.dir_count)){
+	return port::Status(port::error::INVALID_ARGUMENT, ::tensorflow::strings::StrCat(
+	  "Invalid output data_size: ",
+	  output_desc.data_size(),
+	  ", expected: ",
+	  model_dims.hidden_size * model_dims.dir_count));
   }
   if (!(input_h_desc.num_layers() == output_h_desc.num_layers() &&
         input_h_desc.batch_size() == output_h_desc.batch_size() &&
@@ -1360,15 +1441,33 @@ port::Status CheckRNNParameterSize(
     const CudnnHandle& cudnn, const CudnnRnnDescriptor& rnn_desc,
     const CudnnRnnSequenceTensorDescriptor& input_desc) {
   size_t params_size_in_bytes = 0;
+  
+  TensorDescriptor input_desc2 = CreateTensorDescriptor();
+  int tensor_dims[] = {2, 1, 1};
+  int strides[] = {1,1,1};
+  RETURN_IF_CUDNN_ERROR(cudnnSetTensorNdDescriptor(
+      input_desc2.get(), rnn_desc.data_type(),
+      sizeof(tensor_dims) / sizeof(tensor_dims[0]),
+      tensor_dims,
+      strides));
+  
+  //input_desc.handles()[0]
   RETURN_IF_CUDNN_ERROR(cudnnGetRNNParamsSize(
       /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
-      /*xDesc=*/input_desc.handles()[0], /*sizeInBytes=*/&params_size_in_bytes,
+      ///*xDesc=*/input_desc2.get(), 
+	  /*xDesc=*/input_desc.handles()[0], 
+	  /*sizeInBytes=*/&params_size_in_bytes,
       /*dataType=*/rnn_desc.data_type()));
   if (static_cast<int64>(params_size_in_bytes) !=
       rnn_desc.ParamsSizeInBytes()) {
     return port::Status(port::error::INVALID_ARGUMENT,
-                        "Mismatching RNN parameter size");
+                        ::tensorflow::strings::StrCat(
+						  "Mismatching RNN parameter size: ",
+						  static_cast<int64>(params_size_in_bytes),
+						  ", expected: ",
+						  rnn_desc.ParamsSizeInBytes()));
   }
+							
   return port::Status::OK();
 }
 
@@ -1626,6 +1725,18 @@ CudnnSupport::createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
   SE_ASSIGN_OR_RETURN(CudnnRnnSequenceTensorDescriptor descriptor,
                       CudnnRnnSequenceTensorDescriptor::Create(
                           parent_, seq_length, batch_size, data_size,
+                          ToCudnnDataType(data_type)));
+  return std::unique_ptr<dnn::RnnSequenceTensorDescriptor>(
+      new CudnnRnnSequenceTensorDescriptor(std::move(descriptor)));
+}
+
+port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+CudnnSupport::createRnnVarSequenceTensorDescriptor(int seq_length, int batch_size,
+                                                int data_size, const int32_t* sequence_lengths,
+                                                dnn::DataType data_type) {
+  SE_ASSIGN_OR_RETURN(CudnnRnnSequenceTensorDescriptor descriptor,
+                      CudnnRnnSequenceTensorDescriptor::CreateVar(
+                          parent_, seq_length, batch_size, data_size, sequence_lengths,
                           ToCudnnDataType(data_type)));
   return std::unique_ptr<dnn::RnnSequenceTensorDescriptor>(
       new CudnnRnnSequenceTensorDescriptor(std::move(descriptor)));

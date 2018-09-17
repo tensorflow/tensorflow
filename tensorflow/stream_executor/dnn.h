@@ -2071,6 +2071,22 @@ class DnnSupport {
                         "createRnnSequenceTensorDescriptor is unimplemented");
   }
 
+  // Create a RNN sequence descriptor that specifies either the input or output
+  // sequence. The caller retains the ownership of the returned descriptor.
+  //
+  // Arguments:
+  //  seq_length: the length of the sequence.
+  //  batch_size: the size of a minibatch.
+  //  data_size: the size of the state.
+  //  sequence_lengths: the size of each sequence.
+  //  data_type: an enum to specify the type for the underlying data.
+  virtual port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  createRnnVarSequenceTensorDescriptor(int seq_length, int batch_size,
+                                    int data_size, const int* sequence_lengths, dnn::DataType data_type) {
+    return port::Status(port::error::UNIMPLEMENTED,
+                        "createRnnSequenceTensorDescriptor is unimplemented");
+  }
+
   // Create an RNN state descriptor that specifies the input or hidden state.
   // The caller retains the ownership of the returned descriptor.
   virtual port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
