@@ -44,14 +44,6 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    OpInputList inputs;
-    OP_REQUIRES_OK(ctx, ctx->input_list("other_arguments", &inputs));
-    std::vector<Tensor> other_arguments;
-    other_arguments.reserve(inputs.size());
-    for (const Tensor& t : inputs) {
-      other_arguments.push_back(t);
-    }
-
     int32 num_parallel_calls;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
@@ -60,9 +52,9 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
                     "num_parallel_calls must be greater than zero."));
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                            func_, std::move(other_arguments),
-                            use_inter_op_parallelism_, &captured_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
+                                                 use_inter_op_parallelism_,
+                                                 &captured_func));
 
     *output = new Dataset(ctx, input, func_, num_parallel_calls, output_types_,
                           output_shapes_, use_inter_op_parallelism_,

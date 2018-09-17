@@ -22,39 +22,28 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
 
 /* static */
 Status CapturedFunction::Create(
-    const NameAttrList& func, std::vector<Tensor> captured_inputs,
-    std::unique_ptr<CapturedFunction>* out_function) {
-  return Create(func, std::move(captured_inputs), true, out_function);
-}
-
-/* static */
-Status CapturedFunction::Create(
-    const NameAttrList& func, std::vector<Tensor> captured_inputs,
-    bool use_inter_op_parallelism,
-    std::unique_ptr<CapturedFunction>* out_function) {
-  out_function->reset(new CapturedFunction(func, std::move(captured_inputs),
-                                           use_inter_op_parallelism));
-  return Status::OK();
-}
-
-/* static */
-Status CapturedFunction::Create(
     const NameAttrList& func, OpKernelContext* ctx, const string& argument,
     std::unique_ptr<CapturedFunction>* out_function) {
-  OpInputList argument_inputs;
-  TF_RETURN_IF_ERROR(ctx->input_list(argument, &argument_inputs));
-  std::vector<Tensor> arguments_t;
-  arguments_t.reserve(argument_inputs.size());
-  for (const Tensor& t : argument_inputs) {
-    arguments_t.push_back(t);
-  }
-  return CapturedFunction::Create(func, std::move(arguments_t), out_function);
+  return CapturedFunction::Create(func, ctx, argument, true, out_function);
+}
+
+Status CapturedFunction::Create(
+    const NameAttrList& func, OpKernelContext* ctx, const string& argument,
+    bool use_inter_op_parallelism,
+    std::unique_ptr<CapturedFunction>* out_function) {
+  OpInputList inputs;
+  TF_RETURN_IF_ERROR(ctx->input_list(argument, &inputs));
+  std::vector<Tensor> arguments(inputs.begin(), inputs.end());
+  *out_function = WrapUnique(new CapturedFunction(func, std::move(arguments),
+                                                  use_inter_op_parallelism));
+  return Status::OK();
 }
 
 CapturedFunction::~CapturedFunction() {
