@@ -433,6 +433,7 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
   CudnnConvBackendConfig backend_config;
   backend_config.set_algorithm(algorithm);
   backend_config.set_tensor_ops_enabled(tensor_ops_enabled);
+  backend_config.set_scratch_size(scratch_bytes);
 
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, {instr->mutable_operand(0),

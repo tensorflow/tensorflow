@@ -329,7 +329,8 @@ Status PopulateCudnnConvParams(const HloCustomCallInstruction* custom_call,
   params->dnums = &custom_call->convolution_dimension_numbers();
   params->feature_group_count = custom_call->feature_group_count();
   params->algorithm = se::dnn::AlgorithmConfig(se::dnn::AlgorithmDesc(
-      backend_config.algorithm(), backend_config.tensor_ops_enabled()));
+      backend_config.algorithm(), backend_config.tensor_ops_enabled(),
+      backend_config.scratch_size()));
 
   if (target == kCudnnConvForwardCallTarget) {
     params->kind = CudnnConvKind::kForward;

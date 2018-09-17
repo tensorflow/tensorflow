@@ -24,4 +24,6 @@ message CudnnConvBackendConfig {
   // true, cudnn may choose not to use tensor cores, e.g. because the GPU or
   // selected algorithm doesn't support it.
   bool tensor_ops_enabled = 2;
+
+  int64 scratch_size = 3;
 }
