@@ -696,14 +696,14 @@ def track_variable(v):
     return
   graph = v.graph if hasattr(v, 'graph') else ops.get_default_graph()
   if graph not in _GRAPH_VARIABLES:
-    _GRAPH_VARIABLES[graph] = set()
+    _GRAPH_VARIABLES[graph] = weakref.WeakSet()
   _GRAPH_VARIABLES[graph].add(v)
 
 
 def _get_variables(graph=None):
   """Returns variables corresponding to the given graph for initialization."""
   assert not context.executing_eagerly()
-  variables = _GRAPH_VARIABLES.get(graph, set())
+  variables = _GRAPH_VARIABLES.setdefault(graph, weakref.WeakSet())
   for opt in _GRAPH_TF_OPTIMIZERS.get(graph, set()):
     variables.update(opt.optimizer.variables())
   return variables
