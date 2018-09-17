@@ -53,7 +53,7 @@ public:
 
   /// Returns the closest surrounding statement that contains this block or
   /// nullptr if this is a top-level statement block.
-  Statement *getParentStmt() const;
+  Statement *getContainingStmt() const;
 
   /// Returns the function that this statement block is part of.
   /// The function is determined by traversing the chain of parent statements.

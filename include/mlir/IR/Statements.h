@@ -437,8 +437,10 @@ public:
   // Then, else, condition.
   //===--------------------------------------------------------------------===//
 
-  IfClause *getThen() const { return thenClause; }
-  IfClause *getElse() const { return elseClause; }
+  IfClause *getThen() { return &thenClause; }
+  const IfClause *getThen() const { return &thenClause; }
+  IfClause *getElse() { return elseClause; }
+  const IfClause *getElse() const { return elseClause; }
   bool hasElse() const { return elseClause != nullptr; }
 
   IfClause *createElse() {
@@ -503,9 +505,9 @@ public:
   }
 
 private:
-  // TODO: The 'If' always has an associated 'theClause', we should be able to
-  // store the IfClause object for it inline to save an extra allocation.
-  IfClause *thenClause;
+  // it is always present.
+  IfClause thenClause;
+  // 'else' clause of the if statement. 'nullptr' if there is no else clause.
   IfClause *elseClause;
 
   // The integer set capturing the conditional guard.

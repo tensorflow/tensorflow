@@ -24,7 +24,7 @@ using namespace mlir;
 // Statement block
 //===----------------------------------------------------------------------===//
 
-Statement *StmtBlock::getParentStmt() const {
+Statement *StmtBlock::getContainingStmt() const {
   switch (kind) {
   case StmtBlockKind::MLFunc:
     return nullptr;
@@ -38,8 +38,8 @@ Statement *StmtBlock::getParentStmt() const {
 MLFunction *StmtBlock::findFunction() const {
   StmtBlock *block = const_cast<StmtBlock *>(this);
 
-  while (block->getParentStmt()) {
-    block = block->getParentStmt()->getBlock();
+  while (block->getContainingStmt()) {
+    block = block->getContainingStmt()->getBlock();
     if (!block)
       return nullptr;
   }

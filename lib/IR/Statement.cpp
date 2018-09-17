@@ -72,14 +72,12 @@ MLIRContext *Statement::getContext() const {
   case Kind::For:
     return cast<ForStmt>(this)->getContext();
   case Kind::If:
-    // TODO(shpeisman): When if statement has value operands, we can get a
-    // context from their type.
-    return findFunction()->getContext();
+    return cast<IfStmt>(this)->getContext();
   }
 }
 
 Statement *Statement::getParentStmt() const {
-  return block ? block->getParentStmt() : nullptr;
+  return block ? block->getContainingStmt() : nullptr;
 }
 
 MLFunction *Statement::findFunction() const {
@@ -368,14 +366,12 @@ void ForStmt::setConstantUpperBound(int64_t value) {
 //===----------------------------------------------------------------------===//
 
 IfStmt::IfStmt(Location *location, unsigned numOperands, IntegerSet *set)
-    : Statement(Kind::If, location), thenClause(new IfClause(this)),
-      elseClause(nullptr), set(set) {
+    : Statement(Kind::If, location), thenClause(this), elseClause(nullptr),
+      set(set) {
   operands.reserve(numOperands);
 }
 
 IfStmt::~IfStmt() {
-  delete thenClause;
-
   if (elseClause)
     delete elseClause;
 

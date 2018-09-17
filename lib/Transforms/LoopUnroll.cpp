@@ -101,8 +101,9 @@ PassResult LoopUnroll::runOnMLFunction(MLFunction *f) {
     bool walkIfStmtPostOrder(IfStmt *ifStmt) {
       bool hasInnerLoops =
           walkPostOrder(ifStmt->getThen()->begin(), ifStmt->getThen()->end());
-      hasInnerLoops |=
-          walkPostOrder(ifStmt->getElse()->begin(), ifStmt->getElse()->end());
+      if (ifStmt->hasElse())
+        hasInnerLoops |=
+            walkPostOrder(ifStmt->getElse()->begin(), ifStmt->getElse()->end());
       return hasInnerLoops;
     }
 
