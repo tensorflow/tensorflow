@@ -20,10 +20,10 @@ limitations under the License.
 #include <set>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
@@ -106,6 +106,12 @@ class BufferAllocations {
   const BufferAssignment* buffer_assignment_;
   bool torn_down_ = false;
 };
+
+// LLVM and PTXAS don't deal well with large constants, so we only emit very
+// small constants directly in LLVM IR.  Larger constants are emitted with zero
+// initializers in LLVM IR and are later overwritten when the PTX/CUBIN is
+// loaded.
+bool ShouldEmitLiteralInLlvmIr(const Literal& literal);
 
 }  // namespace gpu
 }  // namespace xla

@@ -23,7 +23,6 @@ from __future__ import print_function
 
 import collections
 import hashlib
-import sys
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
@@ -34,16 +33,12 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import cond_v2_impl
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import compat
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_contextlib
-from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-
-# This is to avoid a circular dependency with cond_v2_impl.
-cond_v2_impl._function = sys.modules[__name__]  # pylint: disable=protected-access
 
 
 class Defun(object):
@@ -255,9 +250,12 @@ class _DefinedFunction(object):
     # Constructed only when C API is enabled, lazily
     self._c_func = None
     self._sub_functions = dict()  # Constructed with _definition or _c_func
-    device_stack = ops.get_default_graph()._device_function_stack  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    device_funcs = ops.get_default_graph()._device_functions_outer_to_inner
+    # pylint: enable=protected-access
+
     # Get the innermost device if possbile.
-    self._caller_device = device_stack[-1] if device_stack else None
+    self._caller_device = device_funcs[-1] if device_funcs else None
 
     # Cached OpDef for this function. When C API is enabled, this is
     # the only part of FunctionDef that we cache in Python. When C API
@@ -354,7 +352,7 @@ class _DefinedFunction(object):
     if self._func_name:
       base_func_name = self._func_name
     else:
-      base_func_name = _get_func_name(self._func)
+      base_func_name = function_utils.get_func_name(self._func)
       if self._grad_func:
         base_func_name += ("_%s" % self._grad_func.name)
     kwargs_attr = _parse_kwargs_as_attrs(base_func_name, **self._extra_kwargs)
@@ -662,7 +660,7 @@ class _FuncGraph(ops.Graph):
   def container(self, container_name):
     """Returns a context manager that specifies the resource container to use.
 
-    Overridden from @{tf.Graph} to update both the init_scope container
+    Overridden from `tf.Graph` to update both the init_scope container
     and the present inner container. This is necessary to make sure setting
     containers applies correctly both to created variables and to stateful
     ops.
@@ -816,7 +814,7 @@ class _FuncGraph(ops.Graph):
 def func_graph_from_py_func(func, arg_names, arg_types, name=None,
                             capture_by_value=False, device=None,
                             colocation_stack=None, container=None,
-                            collections_ref=None):
+                            collections_ref=None, arg_shapes=None):
   """Returns a _FuncGraph generated from `func`.
 
   Args:
@@ -833,6 +831,7 @@ def func_graph_from_py_func(func, arg_names, arg_types, name=None,
     container: A container name the _FuncGraph should start with.
     collections_ref: A reference to a collections dict the _FuncGraph should
       use internally.
+    arg_shapes: A sequence of the function's argument shapes.
 
   Returns:
     A _FuncGraph.
@@ -841,7 +840,7 @@ def func_graph_from_py_func(func, arg_names, arg_types, name=None,
     ValueError: if func returns None.
   """
   if not name:
-    name = _get_func_name(func)
+    name = function_utils.get_func_name(func)
   func_graph = _FuncGraph(name, capture_by_value)
 
   with func_graph.as_default(), ops.device(device):
@@ -854,9 +853,12 @@ def func_graph_from_py_func(func, arg_names, arg_types, name=None,
       func_graph._colocation_stack = colocation_stack
     # pylint: enable=protected-access
 
+    if arg_shapes is None:
+      arg_shapes = [None] * len(arg_types)
+
     # Create placeholders for the function arguments.
-    for (argname, argtype) in zip(arg_names, arg_types):
-      argholder = array_ops.placeholder(argtype, name=argname)
+    for (argname, argtype, argshape) in zip(arg_names, arg_types, arg_shapes):
+      argholder = array_ops.placeholder(argtype, shape=argshape, name=argname)
       func_graph.inputs.append(argholder)
     # Call func and gather the output tensors.
     with vs.variable_scope("", custom_getter=func_graph.getvar):
@@ -1022,20 +1024,10 @@ def _from_definition(fdef, grad_func=None):
   result = _DefinedFunction(func, argnames, input_types, func_name, grad_func,
                             python_grad_func, out_names)
   # pylint: disable=protected-access
-  if ops._USE_C_API:
-    serialized = fdef.SerializeToString()
-    c_func = c_api.TF_FunctionImportFunctionDef(serialized)
-    result._c_func = c_api_util.ScopedTFFunction(c_func)
-    result._extra_inputs = []
-  else:
-    result._definition = fdef
-    # Captured inputs are added as regular inputs to a function when it's
-    # serialized, i.e. any extra inputs from the original function are now
-    # included in `result`._args
-    result._extra_inputs = []
-    result._hash_str = result._create_hash_str(
-        result._definition.signature.input_arg,
-        result._definition.signature.output_arg, result._definition.node_def)
+  serialized = fdef.SerializeToString()
+  c_func = c_api.TF_FunctionImportFunctionDef(serialized)
+  result._c_func = c_api_util.ScopedTFFunction(c_func)
+  result._extra_inputs = []
   # pylint: enable=protected-access
 
   return result
@@ -1137,19 +1129,6 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
   if kwargs:
     raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())
   return attrs
-
-
-def _get_func_name(func):
-  _, func = tf_decorator.unwrap(func)
-  if callable(func):
-    if tf_inspect.isfunction(func):
-      return func.__name__
-    elif tf_inspect.ismethod(func):
-      return "%s.%s" % (func.__self__.__name__, func.__name__)
-    else:  # Probably a class instance with __call__
-      return type(func)
-  else:
-    raise ValueError("Argument must be callable")
 
 
 def get_extra_vars():

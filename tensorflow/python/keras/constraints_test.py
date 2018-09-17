@@ -49,7 +49,7 @@ class KerasConstraintsTest(test.TestCase):
       assert fn.__class__ == ref_fn.__class__
 
   def test_max_norm(self):
-    with self.test_session():
+    with self.cached_session():
       array = get_example_array()
       for m in get_test_values():
         norm_instance = keras.constraints.max_norm(m)
@@ -69,13 +69,13 @@ class KerasConstraintsTest(test.TestCase):
       self.assertAllClose(x_normed_actual, x_normed_target, rtol=1e-05)
 
   def test_non_neg(self):
-    with self.test_session():
+    with self.cached_session():
       non_neg_instance = keras.constraints.non_neg()
       normed = non_neg_instance(keras.backend.variable(get_example_array()))
       assert np.all(np.min(keras.backend.eval(normed), axis=1) == 0.)
 
   def test_unit_norm(self):
-    with self.test_session():
+    with self.cached_session():
       unit_norm_instance = keras.constraints.unit_norm()
       normalized = unit_norm_instance(
           keras.backend.variable(get_example_array()))
@@ -87,7 +87,7 @@ class KerasConstraintsTest(test.TestCase):
       assert np.abs(largest_difference) < 10e-5
 
   def test_min_max_norm(self):
-    with self.test_session():
+    with self.cached_session():
       array = get_example_array()
       for m in get_test_values():
         norm_instance = keras.constraints.min_max_norm(min_value=m,

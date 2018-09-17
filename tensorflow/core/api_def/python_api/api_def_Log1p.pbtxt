@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "log1p"
-    deprecation_message: "tf.log1p is deprecated, please use tf.math.log1p instead."
+    deprecated: true
   }
 }

@@ -23,6 +23,12 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops.losses import losses
+
+
+def per_example_squared_hinge_loss(labels, weights, predictions):
+  loss = losses.hinge_loss(labels=labels, logits=predictions, weights=weights)
+  return math_ops.square(loss), control_flow_ops.no_op()
 
 
 def per_example_logistic_loss(labels, weights, predictions):
@@ -126,7 +132,7 @@ def per_example_squared_loss(labels, weights, predictions):
 
 
 def per_example_exp_loss(labels, weights, predictions, name=None, eps=0.1):
-  """Exponential loss given labels, example weights and predictions.
+  """Trimmed exponential loss given labels, example weights and predictions.
 
   Note that this is only for binary classification.
   If logistic loss tries to make sure that the classifier is certain of its
@@ -210,4 +216,63 @@ def per_example_exp_loss(labels, weights, predictions, name=None, eps=0.1):
   labels = math_ops.to_float(labels)
   unweighted_loss = exp_with_logits(
       name=name, eps=eps, labels=labels, logits=predictions)
+  return unweighted_loss * weights, control_flow_ops.no_op()
+
+
+def per_example_full_exp_loss(labels, weights, predictions, name=None):
+  """Full exponential loss given labels, example weights and predictions.
+
+  Note that this is only for binary classification.
+  The loss returns is exp(-targets*logits), where targets are converted to -1
+  and 1.
+
+  Args:
+    labels: Rank 2 (N, D) tensor of per-example labels.
+    weights: Rank 2 (N, 1) tensor of per-example weights.
+    predictions: Rank 2 (N, D) tensor of per-example predictions.
+    name: A name for the operation (optional).
+
+  Returns:
+    loss: A Rank 2 (N, 1) tensor of per-example exp loss
+    update_op: An update operation to update the loss's internal state.
+  """
+
+  def full_exp_with_logits(name, labels=None, logits=None):
+    """Computes exponential loss given `logits`.
+
+    Args:
+      name: A name for the operation (optional).
+      labels: A `Tensor` of the same type and shape as `logits`.
+      logits: A `Tensor` of type `float32` or `float64`.
+
+    Returns:
+      A `Tensor` of the same shape as `logits` with the componentwise
+      exponential losses.
+
+    Raises:
+      ValueError: If `logits` and `labels` do not have the same shape.
+    """
+    with ops.name_scope(name, "exp_loss", [logits, labels]) as name:
+      logits = ops.convert_to_tensor(logits, name="logits")
+      labels = ops.convert_to_tensor(labels, name="labels")
+      try:
+        labels.get_shape().merge_with(logits.get_shape())
+      except ValueError:
+        raise ValueError("logits and labels must have the same shape (%s vs %s)"
+                         % (logits.get_shape(), labels.get_shape()))
+
+    # Default threshold of 0 to switch between classes
+    zeros = array_ops.zeros_like(logits, dtype=logits.dtype)
+    ones = array_ops.ones_like(logits, dtype=logits.dtype)
+    neg_ones = -array_ops.ones_like(logits, dtype=logits.dtype)
+
+    # Convert labels to 1 and -1
+    cond_labels = (labels > zeros)
+    labels_converted = array_ops.where(cond_labels, ones, neg_ones)
+
+    return math_ops.exp(-1.0 * logits * labels_converted)
+
+  labels = math_ops.to_float(labels)
+  unweighted_loss = full_exp_with_logits(
+      name=name, labels=labels, logits=predictions)
   return unweighted_loss * weights, control_flow_ops.no_op()

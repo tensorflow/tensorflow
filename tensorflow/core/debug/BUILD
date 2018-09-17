@@ -82,25 +82,6 @@ cc_library(
 )
 
 tf_cuda_library(
-    name = "debug_gateway_internal",
-    srcs = ["debug_gateway.cc"],
-    hdrs = ["debug_gateway.h"],
-    copts = tf_copts(),
-    linkstatic = 1,
-    deps = [
-        ":debug",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:direct_session_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:proto_text",
-        "//tensorflow/core:protos_all_cc",
-    ],
-    alwayslink = 1,
-)
-
-tf_cuda_library(
     name = "debugger_state_impl",
     srcs = ["debugger_state_impl.cc"],
     hdrs = ["debugger_state_impl.h"],
@@ -184,42 +165,6 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
-    ],
-)
-
-# TODO(cais): Fix flakiness on GPU and change this back to a tf_cc_test_gpu.
-#   See b/34081273.
-tf_cc_test(
-    name = "debug_gateway_test",
-    size = "small",
-    srcs = ["debug_gateway_test.cc"],
-    args = ["--heap_check=local"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_gpu",
-    ],
-    deps = [
-        ":debug",
-        ":debug_gateway_internal",
-        ":debug_graph_utils",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core:all_kernels",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:direct_session",
-        "//tensorflow/core:direct_session_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:gpu_runtime",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels:debug_ops",
-        "//tensorflow/core/kernels:ops_util",
     ],
 )
 

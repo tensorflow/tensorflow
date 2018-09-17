@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import math
 
-import numpy as np
+import numpy as _np  # Avoids becoming a part of public Tensorflow API.
 
 from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.compiler.xla.python_api import xla_shape
@@ -85,7 +85,7 @@ class Sharding(object):
     something we really want to expose to users (especially as the
     contract for tile_assignment is very strict).
     """
-    if not isinstance(tile_assignment, np.ndarray):
+    if not isinstance(tile_assignment, _np.ndarray):
       raise TypeError('Tile assignment must be of type np.ndarray')
     if not isinstance(tile_shape, xla_shape.Shape):
       raise TypeError('Tile shape must be of type xla_shape.Shape')

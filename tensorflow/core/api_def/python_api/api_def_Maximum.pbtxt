@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "maximum"
-    deprecation_message: "tf.maximum is deprecated, please use tf.math.maximum instead."
+    deprecated: true
   }
 }

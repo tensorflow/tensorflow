@@ -24,6 +24,7 @@ from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer as input_layer_lib
@@ -110,7 +111,6 @@ class TopologyConstructionTest(test.TestCase):
     layer = keras.layers.BatchNormalization()
     _ = layer.apply(x1)
 
-    print('BN updates', layer._updates)
     self.assertEqual(len(layer.updates), 2)
     self.assertEqual(len(layer.get_updates_for(x1)), 2)
     self.assertEqual(len(layer.get_updates_for(None)), 0)
@@ -342,7 +342,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertListEqual(model.non_trainable_weights, weights)
 
   def test_learning_phase(self):
-    with self.test_session():
+    with self.cached_session():
       a = keras.layers.Input(shape=(32,), name='input_a')
       b = keras.layers.Input(shape=(32,), name='input_b')
 
@@ -458,7 +458,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(dense.get_output_mask_at(1), None)
 
   def test_multi_input_layer(self):
-    with self.test_session():
+    with self.cached_session():
       # test multi-input layer
       a = keras.layers.Input(shape=(32,), name='input_a')
       b = keras.layers.Input(shape=(32,), name='input_b')
@@ -530,7 +530,7 @@ class TopologyConstructionTest(test.TestCase):
       self.assertListEqual([x.shape for x in fn_outputs], [(10, 64), (10, 5)])
 
   def test_recursion(self):
-    with self.test_session():
+    with self.cached_session():
       a = keras.layers.Input(shape=(32,), name='input_a')
       b = keras.layers.Input(shape=(32,), name='input_b')
 
@@ -591,7 +591,7 @@ class TopologyConstructionTest(test.TestCase):
       self.assertListEqual([x.shape for x in fn_outputs], [(10, 7), (10, 64)])
 
   def test_multi_input_multi_output_recursion(self):
-    with self.test_session():
+    with self.cached_session():
       # test multi-input multi-output
       a = keras.layers.Input(shape=(32,), name='input_a')
       b = keras.layers.Input(shape=(32,), name='input_b')
@@ -816,7 +816,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(loss, 4.)
 
   def test_layer_sharing_at_heterogenous_depth(self):
-    with self.test_session():
+    with self.cached_session():
       x_val = np.random.random((10, 5))
 
       x = input_layer_lib.Input(shape=(5,))
@@ -837,7 +837,7 @@ class TopologyConstructionTest(test.TestCase):
       self.assertAllClose(output_val, output_val_2, atol=1e-6)
 
   def test_layer_sharing_at_heterogenous_depth_with_concat(self):
-    with self.test_session():
+    with self.cached_session():
       input_shape = (16, 9, 3)
       input_layer = input_layer_lib.Input(shape=input_shape)
 
@@ -864,7 +864,7 @@ class TopologyConstructionTest(test.TestCase):
       self.assertAllClose(output_val, output_val_2, atol=1e-6)
 
   def test_explicit_training_argument(self):
-    with self.test_session():
+    with self.cached_session():
       a = keras.layers.Input(shape=(2,))
       b = keras.layers.Dropout(0.5)(a)
       base_model = keras.models.Model(a, b)
@@ -887,7 +887,8 @@ class TopologyConstructionTest(test.TestCase):
 
   def test_multi_output_model_with_none_masking(self):
 
-    with self.test_session():
+    with self.cached_session():
+
       def func(x):
         return [x * 0.2, x * 0.3]
 
@@ -911,6 +912,23 @@ class TopologyConstructionTest(test.TestCase):
       out = model2.predict(x)
       assert out.shape == (4, 3, 2, 1)
       self.assertAllClose(out, x * 0.2 + x * 0.3, atol=1e-4)
+
+  def test_constant_initializer_with_numpy(self):
+
+    with self.test_session():
+      initializer = keras.initializers.Constant(np.ones((3, 2)))
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_shape=(3,),
+                                   kernel_initializer=initializer))
+      model.add(keras.layers.Dense(3))
+      model.compile(loss='mse', optimizer='sgd', metrics=['acc'])
+
+      json_str = model.to_json()
+      keras.models.model_from_json(json_str)
+
+      if yaml is not None:
+        yaml_str = model.to_yaml()
+        keras.models.model_from_yaml(yaml_str)
 
 
 class DeferredModeTest(test.TestCase):
@@ -960,9 +978,6 @@ class DeferredModeTest(test.TestCase):
       def call(self, inputs):
         return inputs[0] + inputs[1]
 
-      def compute_output_shape(self, input_shape):
-        return input_shape[0]
-
     c = AddLayer()([a, input_b])  # pylint: disable=not-callable
     c = keras.layers.Dense(2)(c)
 
@@ -978,11 +993,201 @@ class DeferredModeTest(test.TestCase):
       self.assertEqual(outputs[1].shape.as_list(), [10, 2])
 
 
+class DefaultShapeInferenceBehaviorTest(test.TestCase):
+
+  def _testShapeInference(self, model, input_shape, expected_output_shape):
+    input_value = np.random.random(input_shape)
+    output_value = model.predict(input_value)
+    self.assertEqual(output_value.shape, expected_output_shape)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testSingleInputCase(self):
+
+    class LayerWithOneInput(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.w = array_ops.ones(shape=(3, 4))
+
+      def call(self, inputs):
+        return keras.backend.dot(inputs, self.w)
+
+    inputs = input_layer_lib.Input(shape=(3,))
+    layer = LayerWithOneInput()
+
+    if context.executing_eagerly():
+      self.assertEqual(
+          layer.compute_output_shape((None, 3)).as_list(), [None, 4])
+      # As a side-effect, compute_output_shape builds the layer.
+      self.assertTrue(layer.built)
+      # We can still query the layer's compute_output_shape with compatible
+      # input shapes.
+      self.assertEqual(
+          layer.compute_output_shape((6, 3)).as_list(), [6, 4])
+
+    outputs = layer(inputs)
+    model = keras.Model(inputs, outputs)
+    self._testShapeInference(model, (2, 3), (2, 4))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testMultiInputOutputCase(self):
+
+    class MultiInputOutputLayer(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.w = array_ops.ones(shape=(3, 4))
+
+      def call(self, inputs):
+        a = keras.backend.dot(inputs[0], self.w)
+        b = a + inputs[1]
+        return [a, b]
+
+    input_a = input_layer_lib.Input(shape=(3,))
+    input_b = input_layer_lib.Input(shape=(4,))
+    output_a, output_b = MultiInputOutputLayer()([input_a, input_b])
+    model = keras.Model([input_a, input_b], [output_a, output_b])
+    output_a_val, output_b_val = model.predict(
+        [np.random.random((2, 3)), np.random.random((2, 4))])
+    self.assertEqual(output_a_val.shape, (2, 4))
+    self.assertEqual(output_b_val.shape, (2, 4))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testTrainingArgument(self):
+
+    class LayerWithTrainingArg(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.w = array_ops.ones(shape=(3, 4))
+
+      def call(self, inputs, training):
+        return keras.backend.dot(inputs, self.w)
+
+    inputs = input_layer_lib.Input(shape=(3,))
+    outputs = LayerWithTrainingArg()(inputs, training=False)
+    model = keras.Model(inputs, outputs)
+    self._testShapeInference(model, (2, 3), (2, 4))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testUnsupportedSignature(self):
+
+    class LayerWithAdditionalArg(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.w = array_ops.ones(shape=(3, 4))
+
+      def call(self, inputs, some_arg):
+        return keras.backend.dot(inputs, self.w) + some_arg
+
+    inputs = input_layer_lib.Input(shape=(3,))
+    if context.executing_eagerly():
+      with self.assertRaises(NotImplementedError):
+        outputs = LayerWithAdditionalArg()(inputs, some_arg=0)
+    else:
+      # Works with graph mode because the graph of ops is built together with
+      # the graph of layers.
+      outputs = LayerWithAdditionalArg()(inputs, some_arg=0)
+      _ = keras.Model(inputs, outputs)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testNoneInShape(self):
+
+    class Model(keras.Model):
+
+      def __init__(self):
+        super(Model, self).__init__()
+        self.conv1 = keras.layers.Conv2D(8, 3)
+        self.pool = keras.layers.GlobalAveragePooling2D()
+        self.fc = keras.layers.Dense(3)
+
+      def call(self, x):
+        x = self.conv1(x)
+        x = self.pool(x)
+        x = self.fc(x)
+        return x
+
+    model = Model()
+    model.build(tensor_shape.TensorShape((None, None, None, 1)))
+    self.assertTrue(model.built, 'Model should be built')
+    self.assertTrue(model.weights,
+                    'Model should have its weights created as it '
+                    'has been built')
+    sample_input = array_ops.ones((1, 10, 10, 1))
+    output = model(sample_input)
+    self.assertEqual(output.shape, (1, 3))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testNoneInShapeWithCompoundModel(self):
+
+    class BasicBlock(keras.Model):
+
+      def __init__(self):
+        super(BasicBlock, self).__init__()
+        self.conv1 = keras.layers.Conv2D(8, 3)
+        self.pool = keras.layers.GlobalAveragePooling2D()
+        self.dense = keras.layers.Dense(3)
+
+      def call(self, x):
+        x = self.conv1(x)
+        x = self.pool(x)
+        x = self.dense(x)
+        return x
+
+    class CompoundModel(keras.Model):
+
+      def __init__(self):
+        super(CompoundModel, self).__init__()
+        self.block = BasicBlock()
+
+      def call(self, x):
+        x = self.block(x)  # pylint: disable=not-callable
+        return x
+
+    model = CompoundModel()
+    model.build(tensor_shape.TensorShape((None, None, None, 1)))
+    self.assertTrue(model.built, 'Model should be built')
+    self.assertTrue(model.weights,
+                    'Model should have its weights created as it '
+                    'has been built')
+    sample_input = array_ops.ones((1, 10, 10, 1))
+    output = model(sample_input)  # pylint: disable=not-callable
+    self.assertEqual(output.shape, (1, 3))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testNoneInShapeWithFunctinalAPI(self):
+
+    class BasicBlock(keras.Model):
+      # Inherting from keras.layers.Layer since we are calling this layer
+      # inside a model created using functional API.
+
+      def __init__(self):
+        super(BasicBlock, self).__init__()
+        self.conv1 = keras.layers.Conv2D(8, 3)
+
+      def call(self, x):
+        x = self.conv1(x)
+        return x
+
+    input_layer = keras.layers.Input(shape=(None, None, 1))
+    x = BasicBlock()(input_layer)
+    x = keras.layers.GlobalAveragePooling2D()(x)
+    output_layer = keras.layers.Dense(3)(x)
+
+    model = keras.Model(inputs=input_layer, outputs=output_layer)
+
+    model.build(tensor_shape.TensorShape((None, None, None, 1)))
+    self.assertTrue(model.built, 'Model should be built')
+    self.assertTrue(model.weights,
+                    'Model should have its weights created as it '
+                    'has been built')
+    sample_input = array_ops.ones((1, 10, 10, 1))
+    output = model(sample_input)
+    self.assertEqual(output.shape, (1, 3))
+
+
 class GraphUtilsTest(test.TestCase):
 
   def testGetReachableFromInputs(self):
 
-    with self.test_session():
+    with self.cached_session():
       pl_1 = array_ops.placeholder(shape=None, dtype='float32')
       pl_2 = array_ops.placeholder(shape=None, dtype='float32')
       pl_3 = array_ops.placeholder(shape=None, dtype='float32')

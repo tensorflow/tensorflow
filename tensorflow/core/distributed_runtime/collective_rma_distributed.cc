@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/cancellable_call.h"
+#include "tensorflow/core/distributed_runtime/request_id.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
@@ -47,6 +48,7 @@ class RecvBufCall : public CancellableCall {
     req_.set_buf_ptr(reinterpret_cast<int64>(DMAHelper::base(to_tensor)));
     req_.set_src_device(peer_device);
     req_.set_dst_device(to_device->name());
+    req_.set_request_id(GetUniqueRequestId());
   }
 
   ~RecvBufCall() override {}
@@ -65,11 +67,13 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
     const string& peer_device, const string& peer_task, bool peer_is_local,
     const string& key, Device* to_device, DeviceContext* to_device_ctx,
     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
-    const DeviceLocality& client_locality, const StatusCallback& done) {
+    const DeviceLocality& client_locality, int dev_to_dev_stream_index,
+    const StatusCallback& done) {
   if (peer_is_local) {
     CollectiveRemoteAccessLocal::RecvFromPeer(
         peer_device, peer_task, peer_is_local, key, to_device, to_device_ctx,
-        to_alloc_attr, to_tensor, client_locality, done);
+        to_alloc_attr, to_tensor, client_locality, dev_to_dev_stream_index,
+        done);
     return;
   }
 
@@ -83,7 +87,8 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
 
   // Logic to be executed on the RecvBufAsync callback.
   auto recv_buf_callback = [this, state, peer_task, to_device, to_alloc_attr,
-                            to_device_ctx, to_tensor, done](const Status& s) {
+                            to_device_ctx, to_tensor, dev_to_dev_stream_index,
+                            done](const Status& s) {
     if (s.ok()) {
       // In this generic implementation the bytes come back in the
       // RPC response protobuf rather than via RDMA so we need to copy
@@ -119,7 +124,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
         CopyTensor::ViaDMA("",  // edge name (non-existent)
                            nullptr /*send_dev_ctx*/, to_device_ctx, cpu_dev,
                            to_device, cpu_attr, to_alloc_attr, cpu_tensor,
-                           to_tensor,
+                           to_tensor, dev_to_dev_stream_index,
                            [this, cpu_tensor, done](const Status& s) {
                              delete cpu_tensor;
                              // This callback must not block, so execute

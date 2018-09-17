@@ -53,7 +53,7 @@ HloComputation* WhileLoopInvariantCodeMotionTest::MakeAlwaysTrueComputation(
   builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "param"));
   builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
   return module->AddEmbeddedComputation(builder.Build());
 }
 
@@ -125,7 +125,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistInvariantOperationTree) {
         builder.AddInstruction(HloInstruction::CreateUnary(
             scalar_s32, HloOpcode::kNegate, mul_result));
     HloInstruction* constant = builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<int32>(4)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(4)));
     HloInstruction* sub_result =
         builder.AddInstruction(HloInstruction::CreateBinary(
             scalar_s32, HloOpcode::kSubtract, negate_result, constant));
@@ -273,7 +273,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistInstructionWithSideEffects) {
   HloComputation::Builder builder(TestName());
   auto* scalar_param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_s32, "param"));
-  auto* token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto* token = builder.AddInstruction(HloInstruction::CreateToken());
   auto* init_value = builder.AddInstruction(
       HloInstruction::CreateTuple({scalar_param, scalar_param, token}));
   auto* while_inst = builder.AddInstruction(HloInstruction::CreateWhile(
@@ -323,7 +323,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistBitcastAlone) {
   HloComputation::Builder builder(TestName());
   auto* scalar_param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_s32, "param"));
-  auto* token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto* token = builder.AddInstruction(HloInstruction::CreateToken());
   auto* init_value = builder.AddInstruction(
       HloInstruction::CreateTuple({scalar_param, scalar_param, token}));
   auto* while_inst = builder.AddInstruction(HloInstruction::CreateWhile(

@@ -26,6 +26,7 @@ import time
 import six
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.distribute import estimator_training as distribute_coordinator_training
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import exporter as exporter_lib
 from tensorflow.python.estimator import run_config as run_config_lib
@@ -129,8 +130,8 @@ class TrainSpec(
 
     Args:
       input_fn: A function that provides input data for training as minibatches.
-        See @{$premade_estimators#create_input_functions} for more
-        information. The function should construct and return one of
+        See [Premade Estimators](https://tensorflow.org/guide/premade_estimators#create_input_functions)
+        for more information. The function should construct and return one of
         the following:
           * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
             tuple (features, labels) with same constraints as below.
@@ -193,8 +194,8 @@ class EvalSpec(
 
     Args:
       input_fn: A function that constructs the input data for evaluation.
-        See @{$premade_estimators#create_input_functions} for more
-        information. The function should construct and return one of
+        See [Premade Estimators](https://tensorflow.org/api_guides/premade_estimators#create_input_functions)
+        for more information. The function should construct and return one of
         the following:
           * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
             tuple (features, labels) with same constraints as below.
@@ -274,14 +275,13 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   evaluation `input_fn`, steps, etc.
 
   This utility function provides consistent behavior for both local
-  (non-distributed) and distributed configurations. Currently, the only
-  supported distributed training configuration is between-graph replication.
+  (non-distributed) and distributed configurations. The default distribution
+  configuration is parameter server-based between-graph replication. For other
+  types of distribution configurations such as all-reduce training, please use
+  [DistributionStrategies](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/distribute).  # pylint: disable=line-too-long
 
   Overfitting: In order to avoid overfitting, it is recommended to set up the
-  training `input_fn` to shuffle the training data properly. It is also
-  recommended to train the model a little longer, say multiple epochs, before
-  performing evaluation, as the input pipeline starts from scratch for each
-  training. It is particularly important for local training and evaluation.
+  training `input_fn` to shuffle the training data properly.
 
   Stop condition: In order to support both distributed and non-distributed
   configuration reliably, the only supported stop condition for model
@@ -315,10 +315,10 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   #       hidden_units=[1024, 512, 256])
 
   # Input pipeline for train and evaluate.
-  def train_input_fn: # returns x, y
+  def train_input_fn(): # returns x, y
     # please shuffle the data.
     pass
-  def eval_input_fn_eval: # returns x, y
+  def eval_input_fn(): # returns x, y
     pass
 
   train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, max_steps=1000)
@@ -326,6 +326,10 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
 
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
   ```
+  Note that in current implementation `estimator.evaluate` will be called
+  multiple times. This means that evaluation graph (including eval_input_fn)
+  will be re-created for each `evaluate` call. `estimator.train` will be called
+  only once.
 
   Example of distributed training:
 
@@ -425,6 +429,11 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   }'
   ```
 
+  When `distribute` or `experimental_distribute.train_distribute` and
+  `experimental_distribute.remote_cluster` is set, this method will start a
+  client running on the current host which connects to the `remote_cluster` for
+  training and evaluation.
+
   Args:
     estimator: An `Estimator` instance to train and evaluate.
     train_spec: A `TrainSpec` instance to specify the training specification.
@@ -443,8 +452,16 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
 
   executor = _TrainingExecutor(
       estimator=estimator, train_spec=train_spec, eval_spec=eval_spec)
-
   config = estimator.config
+
+  # If `distribute_coordinator_mode` is set and running in distributed
+  # environment, we run `train_and_evaluate` via distribute coordinator.
+  if distribute_coordinator_training.should_run_distribute_coordinator(config):
+    logging.info('Running `train_and_evaluate` with Distribute Coordinator.')
+    distribute_coordinator_training.train_and_evaluate(
+        estimator, train_spec, eval_spec, _TrainingExecutor)
+    return
+
   if (config.task_type == run_config_lib.TaskType.EVALUATOR and
       config.task_id > 0):
     raise ValueError(
@@ -735,7 +752,8 @@ class _TrainingExecutor(object):
         job_name=config.task_type,
         task_index=config.task_id,
         config=session_config,
-        start=False)
+        start=False,
+        protocol=config.protocol)
     server.start()
     return server
 
@@ -835,6 +853,13 @@ class _TrainingExecutor(object):
     if difference > 0:
       logging.info('Waiting %f secs before starting next eval run.', difference)
       time.sleep(difference)
+    elif (throttle_secs == 0 and
+          eval_result.status != _EvalStatus.EVALUATED):
+      # Prints a user-actionable warning to avoid unnecessary load on evaluator.
+      logging.warning(
+          'EvalSpec.throttle_secs is set as 0. This might overload the job '
+          'before finding (next) new checkpoint. Please consider to increase '
+          'it.')
 
     return (eval_result, should_early_stop)
 

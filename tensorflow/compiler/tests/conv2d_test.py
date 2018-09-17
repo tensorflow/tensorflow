@@ -26,23 +26,20 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import test_utils
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import googletest
 
-
 DATA_FORMATS = (
     ("_data_format_NHWC", "NHWC"),
     ("_data_format_NCHW", "NCHW"),
-    ("_data_format_HWNC", "HWNC"),
-    ("_data_format_HWCN", "HWCN"),
 )
 
 
-class Conv2DTest(XLATestCase, parameterized.TestCase):
+class Conv2DTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def _VerifyValues(self,
                     input_sizes=None,
@@ -90,7 +87,7 @@ class Conv2DTest(XLATestCase, parameterized.TestCase):
     dilations = test_utils.PermuteDimsBetweenDataFormats(
         dilations, data_format_src, data_format_dst)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       t1 = array_ops.placeholder(dtypes.float32, shape=input_sizes)
       t2 = array_ops.placeholder(dtypes.float32, shape=filter_sizes)
       with self.test_scope():
@@ -236,7 +233,7 @@ class Conv2DTest(XLATestCase, parameterized.TestCase):
         expected=np.reshape([108, 128], [1, 1, 1, 2]))
 
 
-class Conv2DBackpropInputTest(XLATestCase, parameterized.TestCase):
+class Conv2DBackpropInputTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def _VerifyValues(self,
                     input_sizes=None,
@@ -291,7 +288,7 @@ class Conv2DBackpropInputTest(XLATestCase, parameterized.TestCase):
       dilations = test_utils.PermuteDimsBetweenDataFormats(
           dilations, data_format_src, data_format_dst)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       t1 = array_ops.placeholder(dtypes.float32, shape=filter_sizes)
       t2 = array_ops.placeholder(dtypes.float32, shape=out_backprop_sizes)
       with self.test_scope():
@@ -534,7 +531,7 @@ class Conv2DBackpropInputTest(XLATestCase, parameterized.TestCase):
         expected=[5, 0, 11, 0, 0, 0, 17, 0, 23])
 
 
-class Conv2DBackpropFilterTest(XLATestCase, parameterized.TestCase):
+class Conv2DBackpropFilterTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def _VerifyValues(self,
                     input_sizes=None,
@@ -589,7 +586,7 @@ class Conv2DBackpropFilterTest(XLATestCase, parameterized.TestCase):
       dilations = test_utils.PermuteDimsBetweenDataFormats(
           dilations, data_format_src, data_format_dst)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       t1 = array_ops.placeholder(dtypes.float32, shape=input_sizes)
       t2 = array_ops.placeholder(dtypes.float32, shape=out_backprop_sizes)
       with self.test_scope():

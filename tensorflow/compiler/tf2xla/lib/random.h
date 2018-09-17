@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_LIB_RANDOM_H_
 #define TENSORFLOW_COMPILER_TF2XLA_LIB_RANDOM_H_
 
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/types.pb.h"
 
@@ -28,7 +28,7 @@ namespace tensorflow {
 //
 // The "uniform" parameter must be an array of random numbers distributed in
 // (0,1).
-xla::XlaOp TruncatedNormal(DataType dtype, xla::XlaOp uniform);
+xla::XlaOp TruncatedNormal(xla::XlaOp uniform);
 
 }  // namespace tensorflow
 

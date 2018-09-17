@@ -56,6 +56,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -69,6 +70,20 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "csv_dataset_serialization_test",
+    size = "small",
+    srcs = ["csv_dataset_serialization_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":dataset_serialization_test_base",
+        "//tensorflow/contrib/data/python/ops:readers",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
     ],
 )
 
@@ -195,6 +210,7 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -299,6 +315,19 @@ py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "parse_example_dataset_serialization_test",
+    size = "medium",
+    srcs = ["parse_example_dataset_serialization_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":dataset_serialization_test_base",
+        "//tensorflow/contrib/data/python/kernel_tests:reader_dataset_ops_test_base",
+        "//tensorflow/python:client_testlib",
     ],
 )
 

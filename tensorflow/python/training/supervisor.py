@@ -45,7 +45,7 @@ class Supervisor(object):
   """A training helper that checkpoints models and computes summaries.
 
   This class is deprecated. Please use
-  @{tf.train.MonitoredTrainingSession} instead.
+  `tf.train.MonitoredTrainingSession` instead.
 
   The Supervisor is a small wrapper around a `Coordinator`, a `Saver`,
   and a `SessionManager` that takes care of common needs of TensorFlow
@@ -134,7 +134,7 @@ class Supervisor(object):
 
   * Specifying `'local'` requests a session that uses the RPC-based
     "Master interface" to run TensorFlow programs. See
-    @{tf.train.Server.create_local_server} for
+    `tf.train.Server.create_local_server` for
     details.
 
   * Specifying `'grpc://hostname:port'` requests a session that uses

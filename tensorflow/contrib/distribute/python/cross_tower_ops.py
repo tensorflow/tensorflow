@@ -28,21 +28,78 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_util
 
 
-def validate_destinations(destinations):
-  if not isinstance(destinations,
-                    (value_lib.DistributedValues, six.string_types, list)):
-    raise ValueError("destinations must be one of a `DistributedValues` object,"
-                     " a device string, a list of device strings or None")
+def check_destinations(destinations):
+  """Checks whether `destinations` is not empty.
 
-  if not destinations:
+  Args:
+    destinations: a DistributedValues, Variable, string or a list of strings.
+
+  Returns:
+    Boolean which is True if `destinations` is not empty.
+  """
+  # Calling bool() on a ResourceVariable is not allowed.
+  if isinstance(destinations, resource_variable_ops.ResourceVariable):
+    return bool(destinations.device)
+  return bool(destinations)
+
+
+def validate_destinations(destinations):
+  if not isinstance(
+      destinations,
+      (value_lib.DistributedValues, resource_variable_ops.ResourceVariable,
+       value_lib.AggregatingVariable, six.string_types, list)):
+    raise ValueError("destinations must be one of a `DistributedValues` object,"
+                     " a tf.Variable object, a device string, a list of device "
+                     "strings")
+
+  if not check_destinations(destinations):
     raise ValueError("destinations can not be empty")
 
 
+def _make_tensor_into_per_device(input_tensor):
+  """Converts a single tensor into a PerDevice object."""
+  if isinstance(input_tensor, (tuple, list)):
+    raise ValueError("Cannot convert `input_tensor` to a `PerDevice` object, "
+                     "got %r but expected a object that is not a tuple or list."
+                     % (input_tensor,))
+  if isinstance(input_tensor, value_lib.PerDevice):
+    return input_tensor
+
+  try:
+    device = input_tensor.device
+  except AttributeError:
+    raise ValueError("Cannot convert `input_tensor` to a `PerDevice` object "
+                     "because it doesn't have device set.")
+
+  return value_lib.PerDevice({device: input_tensor})
+
+
+def _normalize_value_destination_pairs(value_destination_pairs):
+  """Converts each tensor into a PerDevice object in the input list."""
+  result = []
+  if not isinstance(value_destination_pairs, (list, tuple)):
+    raise ValueError("`value_destination_pairs` should be a list or tuple")
+  for pair in value_destination_pairs:
+    if not isinstance(pair, tuple):
+      raise ValueError(
+          "Each element of `value_destination_pairs` should be a tuple.")
+    if len(pair) != 2:
+      raise ValueError("Each element of `value_destination_pairs` should be a "
+                       "tuple of size 2.")
+
+    per_device = _make_tensor_into_per_device(pair[0])
+    result.append((per_device, pair[1]))
+  return result
+
+
 def _validate_value_destination_pairs(value_destination_pairs):
+  # TODO(yuefengz): raise exceptions instead of returning False.
   # pylint: disable=g-missing-docstring
   if not value_destination_pairs: return False
   if not isinstance(value_destination_pairs, (list, tuple)): return False
@@ -58,10 +115,15 @@ def _validate_value_destination_pairs(value_destination_pairs):
 def get_devices_from(destinations):
   if isinstance(destinations, value_lib.DistributedValues):
     return list(destinations.devices)
+  elif isinstance(destinations, (resource_variable_ops.ResourceVariable,
+                                 value_lib.AggregatingVariable)):
+    return [destinations.device]
   elif isinstance(destinations, six.string_types):
     return [device_util.resolve(destinations)]
-  else:
+  elif isinstance(destinations, (list, tuple)):
     return [device_util.resolve(destination) for destination in destinations]
+  else:
+    return [destinations.device]
 
 
 def _devices_match(left, right):
@@ -69,8 +131,7 @@ def _devices_match(left, right):
 
 
 def _all_devices_match(value_destination_pairs):
-  if not all([d is None or _devices_match(v, d)
-              for v, d in value_destination_pairs]):
+  if not all([_devices_match(v, d) for v, d in value_destination_pairs]):
     return False
   if not all([_devices_match(v, value_destination_pairs[0][0])
               for v, _ in value_destination_pairs[1:]]):
@@ -88,7 +149,7 @@ def _simple_broadcast(value, destinations):
 
 
 def _simple_reduce(per_device_value, reduce_to_device, accumulation_fn,
-                   method_string):
+                   aggregation):
   # pylint: disable=g-missing-docstring
   all_values = []
   count = 0
@@ -112,11 +173,12 @@ def _simple_reduce(per_device_value, reduce_to_device, accumulation_fn,
     with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
       reduced = cross_tower_utils.aggregate_tensors_or_indexed_slices(
           all_values, accumulation_fn)
-      if method_string == "mean":
+      if aggregation == vs.VariableAggregation.MEAN:
         reduced = cross_tower_utils.divide_by_n_tensors_or_indexed_slices(
             reduced, count)
-      elif method_string != "sum":
-        raise ValueError("`method_string` must be 'sum' or 'mean'")
+      elif aggregation != vs.VariableAggregation.SUM:
+        raise ValueError("`aggregation` must be VariableAggregation.SUM "
+                         "or VariableAggregation.MEAN.")
   return reduced
 
 
@@ -126,15 +188,16 @@ class CrossTowerOps(object):
   def __init__(self):
     pass
 
-  def reduce(self, method_string, per_device_value, destinations=None):
+  def reduce(self, aggregation, per_device_value, destinations):
     """Reduce `per_device_value` to `destinations`.
 
-    It runs the reduction operation defined by `method_string` and put the
+    It runs the reduction operation defined by `aggregation` and put the
     result on `destinations`.
 
     Args:
-      method_string: either 'sum' or 'mean' specifying the reduction method.
-      per_device_value: a PerDevice object.
+      aggregation: Indicates how a variable will be aggregated. Accepted values
+        are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`.
+      per_device_value: a PerDevice object or a tensor with device set.
       destinations: the reduction destinations.
 
     Returns:
@@ -144,22 +207,22 @@ class CrossTowerOps(object):
       ValueError: if per_device_value is not a PerDevice object.
     """
     if not isinstance(per_device_value, value_lib.PerDevice):
-      raise ValueError("`per_device_value` must be a `PerDevice` object.")
-    if destinations is not None:
-      validate_destinations(destinations)
-    return self._reduce(method_string, per_device_value, destinations)
+      per_device_value = _make_tensor_into_per_device(per_device_value)
 
-  def batch_reduce(self, method_string, value_destination_pairs):
+    validate_destinations(destinations)
+    return self._reduce(aggregation, per_device_value, destinations)
+
+  def batch_reduce(self, aggregation, value_destination_pairs):
     """Reduce PerDevice objects in a batch.
 
     Reduce each first element in `value_destination_pairs` to each second
     element which indicates the destinations.
 
     Args:
-      method_string: either 'sum' or 'mean' specifying the reduction method.
+      aggregation: Indicates how a variable will be aggregated. Accepted values
+        are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`.
       value_destination_pairs: a list or a tuple of tuples of PerDevice objects
-        and destinations. If a destination is None, then the destinations
-        are set to match the devices of the input PerDevice object.
+        (or tensors with device set if there is one tower) and destinations.
 
     Returns:
       a list of Mirrored objects.
@@ -169,13 +232,15 @@ class CrossTowerOps(object):
         tuples of PerDevice objects and destinations
     """
     if not _validate_value_destination_pairs(value_destination_pairs):
-      raise ValueError("`value_destination_pairs` must be a list or a tuple of "
-                       "tuples of PerDevice objects and destinations")
-    for _, d in value_destination_pairs:
-      if d is not None:
-        validate_destinations(d)
+      # If the first element of each pair is a tensor, we try to turn it into a
+      # PerDevice object.
+      value_destination_pairs = _normalize_value_destination_pairs(
+          value_destination_pairs)
 
-    return self._batch_reduce(method_string, value_destination_pairs)
+    for _, d in value_destination_pairs:
+      validate_destinations(d)
+
+    return self._batch_reduce(aggregation, value_destination_pairs)
 
   def broadcast(self, tensor, destinations):
     """Broadcast the `tensor` to destinations.
@@ -190,11 +255,11 @@ class CrossTowerOps(object):
     validate_destinations(destinations)
     return self._broadcast(tensor, destinations)
 
-  def _reduce(self, method_string, per_device_value, destinations):
+  def _reduce(self, aggregation, per_device_value, destinations):
     raise NotImplementedError(
         "_reduce method must be implemented in descendants.")
 
-  def _batch_reduce(self, method_string, value_destination_pairs):
+  def _batch_reduce(self, aggregation, value_destination_pairs):
     raise NotImplementedError(
         "_batch_reduce method must be implemented in descendants.")
 
@@ -220,16 +285,21 @@ class ReductionToOneDeviceCrossTowerOps(CrossTowerOps):
     self.accumulation_fn = accumulation_fn
     super(ReductionToOneDeviceCrossTowerOps, self).__init__()
 
-  def _reduce(self, method_string, per_device_value, destinations):
-    devices = get_devices_from(destinations or per_device_value)
+  def _reduce(self, aggregation, per_device_value, destinations):
+    if check_destinations(destinations):
+      devices = get_devices_from(destinations)
+    else:
+      devices = get_devices_from(per_device_value)
     reduce_to_device = self.reduce_to_device or devices[0]
     reduced = _simple_reduce(per_device_value, reduce_to_device,
-                             self.accumulation_fn, method_string)
+                             self.accumulation_fn, aggregation)
     return self.broadcast(reduced, devices)
 
-  def _batch_reduce(self, method_string, value_destination_pairs):
-    return [self._reduce(method_string, t, destinations=v)
-            for t, v in value_destination_pairs]
+  def _batch_reduce(self, aggregation, value_destination_pairs):
+    return [
+        self._reduce(aggregation, t, destinations=v)
+        for t, v in value_destination_pairs
+    ]
 
 
 def _group_value_by_device(per_device_values):
@@ -237,9 +307,9 @@ def _group_value_by_device(per_device_values):
 
   This grouping is needed to call the all-reduce library because it expects a
   list of the following form:
-    [(grad0_gpu0, v0_gpu0), (grad1_gpu0, v1_gpu0), (grad2_gpu0, v2_gpu0) ...
-     (grad0_gpu1, v0_gpu1), (grad1_gpu1, v1_gpu1), (grad2_gpu1, v2_gpu1) ...
-     (grad0_gpu2, v0_gpu2), (grad1_gpu0, v1_gpu2), (grad2_gpu0, v2_gpu2) ...
+    [[(grad0_gpu0, v0_gpu0), (grad1_gpu0, v1_gpu0), (grad2_gpu0, v2_gpu0) ...],
+     [(grad0_gpu1, v0_gpu1), (grad1_gpu1, v1_gpu1), (grad2_gpu1, v2_gpu1) ...],
+     [(grad0_gpu2, v0_gpu2), (grad1_gpu0, v1_gpu2), (grad2_gpu0, v2_gpu2) ...],
      ...
     ]
 
@@ -260,18 +330,24 @@ def _group_value_by_device(per_device_values):
   return grouped
 
 
-def _ungroup_and_make_mirrored(grouped_reduced, destinations, method_string):
+def _ungroup_and_make_mirrored(grouped_reduced,
+                               destinations,
+                               aggregation,
+                               num_between_graph_workers=1):
   """Ungroup results from all-reduce and make Mirrored objects.
 
   Each all-reduce result will be divided by the number of destinations before
-  Mirrored objects are created if method_string is "mean".
+  Mirrored objects are created if aggregation is "mean".
 
   Args:
     grouped_reduced: a list of lists, each sublist has components for each
       device, paired with a None. It is the result from
       cross_tower_utils.aggregate_gradients_using*.
     destinations: a list of device strings for returned Mirrored objects.
-    method_string: "mean" or "sum".
+    aggregation: Indicates how a variable will be aggregated. Accepted values
+      are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`.
+    num_between_graph_workers: number of workers in the between-graph
+      replication.
 
   Returns:
     a list of Mirrored objects.
@@ -279,8 +355,9 @@ def _ungroup_and_make_mirrored(grouped_reduced, destinations, method_string):
   index = [{} for _ in range(len(grouped_reduced[0]))]
   for d, per_device_reduced in enumerate(grouped_reduced):
     for i, (v, _) in enumerate(per_device_reduced):
-      if method_string == "mean":
-        index[i][destinations[d]] = v / len(destinations)
+      if aggregation == vs.VariableAggregation.MEAN:
+        index[i][destinations[d]] = v / (
+            len(destinations) * num_between_graph_workers)
       else:
         index[i][destinations[d]] = v
   return [value_lib.Mirrored(v) for v in index]
@@ -488,51 +565,56 @@ class AllReduceCrossTowerOps(CrossTowerOps):
     self._agg_small_grads_max_group = agg_small_grads_max_group
     super(AllReduceCrossTowerOps, self).__init__()
 
-  def _reduce(self, method_string, per_device_value, destinations):
+  def _reduce(self, aggregation, per_device_value, destinations):
     contains_indexed_slices = cross_tower_utils.contains_indexed_slices(
         per_device_value)
-    if ((destinations is None or _devices_match(per_device_value, destinations))
+    if (_devices_match(per_device_value, destinations)
         and not context.executing_eagerly()
         and not contains_indexed_slices):
-      return self._batch_all_reduce(method_string, [per_device_value])[0]
+      return self._batch_all_reduce(aggregation, [per_device_value])[0]
     else:
       if contains_indexed_slices:
         logging.log_first_n(
             logging.WARN,
             "Efficient allreduce is not supported for IndexedSlices.", 10)
 
-      devices = get_devices_from(destinations or per_device_value)
+      if check_destinations(destinations):
+        devices = get_devices_from(destinations)
+      else:
+        devices = get_devices_from(per_device_value)
       reduce_to_device = devices[0]
       reduced = _simple_reduce(per_device_value, reduce_to_device,
-                               math_ops.add_n, method_string)
+                               math_ops.add_n, aggregation)
       return self.broadcast(reduced, devices)
 
-  def _batch_reduce(self, method_string, value_destination_pairs):
+  def _batch_reduce(self, aggregation, value_destination_pairs):
     all_devices_match = _all_devices_match(value_destination_pairs)
     contains_indexed_slices = cross_tower_utils.contains_indexed_slices(
         value_destination_pairs)
     if (all_devices_match and not context.executing_eagerly()
         and not contains_indexed_slices):
-      return self._batch_all_reduce(method_string,
+      return self._batch_all_reduce(aggregation,
                                     [v[0] for v in value_destination_pairs])
     else:
       if not all_devices_match:
-        logging.warning("Efficient batch_reduce is not supported if "
-                        "destinations are different.")
+        logging.log_first_n(logging.WARN,
+                            "Efficient batch_reduce is not supported if "
+                            "destinations are different.",
+                            10)
 
       return [
-          self._reduce(method_string, t, destinations=v)
+          self._reduce(aggregation, t, destinations=v)
           for t, v in value_destination_pairs
       ]
 
-  def _batch_all_reduce(self, method_string, per_device_values):
+  def _batch_all_reduce(self, aggregation, per_device_values):
     """All reduce algorithm in a batch."""
-    logging.info(
-        "batch_all_reduce invoked for batches size = %d with "
+    logging.log_first_n(
+        logging.INFO, "batch_all_reduce invoked for batches size = %d with "
         "algorithm = %s, num_packs = %d, agg_small_grads_max_bytes = %d and "
-        "agg_small_grads_max_group = %d", len(per_device_values),
-        self._all_reduce_alg, self._num_packs, self._agg_small_grads_max_bytes,
-        self._agg_small_grads_max_group)
+        "agg_small_grads_max_group = %d" %
+        (len(per_device_values), self._all_reduce_alg, self._num_packs,
+         self._agg_small_grads_max_bytes, self._agg_small_grads_max_group), 10)
     destinations = per_device_values[0].devices
     grouped = _group_value_by_device(per_device_values)
 
@@ -556,7 +638,7 @@ class AllReduceCrossTowerOps(CrossTowerOps):
 
     reduced = _unpack_tensors(reduced, tensor_packer)
     return _ungroup_and_make_mirrored(reduced, per_device_values[0].devices,
-                                      method_string)
+                                      aggregation)
 
 
 AllReduceSpecTuple = collections.namedtuple("AllReduceSpecTuple",
@@ -635,14 +717,15 @@ class MultiWorkerAllReduce(AllReduceCrossTowerOps):
           validate_and_complete_spec(spec) for spec in all_reduce_spec
       ]
 
-  def _batch_all_reduce(self, method_string, per_device_values):
+  def _batch_all_reduce(self, aggregation, per_device_values):
     """All reduce algorithm in a batch."""
-    logging.info(
+    logging.log_first_n(
+        logging.INFO,
         "distributed batch_all_reduce invoked for batches size = %d with "
         "allreduce_spec = %r, num_packs = %d, agg_small_grads_max_bytes = %d "
-        "and agg_small_grads_max_group = %d", len(per_device_values),
-        self._all_reduce_spec, self._num_packs, self._agg_small_grads_max_bytes,
-        self._agg_small_grads_max_group)
+        "and agg_small_grads_max_group = %d" %
+        (len(per_device_values), self._all_reduce_spec, self._num_packs,
+         self._agg_small_grads_max_bytes, self._agg_small_grads_max_group), 10)
 
     destinations = sorted(per_device_values[0].devices)
     device_grads = _group_value_by_device(per_device_values)
@@ -682,7 +765,130 @@ class MultiWorkerAllReduce(AllReduceCrossTowerOps):
     assert not remaining_grads
 
     return _ungroup_and_make_mirrored(aggregated_grads, destinations,
-                                      method_string)
+                                      aggregation)
+
+
+# TODO(yuefengz): support in-graph collective all-reduce.
+class CollectiveAllReduce(CrossTowerOps):
+  """All-reduce cross tower ops using collective ops.
+
+  In the between-graph replicated training, it will still do all-reduces across
+  all workers and then put results on the right destinations.
+  """
+
+  def __init__(self,
+               num_workers=1,
+               num_gpus_per_worker=0,
+               all_reduce_merge_scope=32,
+               collective_keys=None):
+    """Initializes the object.
+
+    Args:
+      num_workers: number of workers in the between-graph replicated training.
+      num_gpus_per_worker: number of GPUs per worker.
+      all_reduce_merge_scope: size of groups into which to partition consecutive
+        gradients grouped under a common 'allreduce' name scope. This is useful
+        for some optimization of collective ops.
+      collective_keys: an optional CollectiveKey object.
+    """
+    self._num_workers = num_workers
+    self._num_gpus_per_worker = num_gpus_per_worker
+    self._all_reduce_merge_scope = all_reduce_merge_scope
+    self._collective_keys = collective_keys or cross_tower_utils.CollectiveKeys(
+    )
+    super(CollectiveAllReduce, self).__init__()
+
+  # TODO(yuefengz, tucker): is indexed slices supported by collective ops?
+  def _reduce(self, aggregation, per_device_value, destinations):
+    if cross_tower_utils.contains_indexed_slices(per_device_value):
+      raise ValueError(
+          "`IndexSlices` is not supported for Collective All-Reduce.")
+    if context.executing_eagerly():
+      raise ValueError(
+          "Eager execution is not supported for Collective All-Reduce")
+
+    all_reduced = self._batch_all_reduce(aggregation, [per_device_value])[0]
+    if _devices_match(per_device_value, destinations):
+      return all_reduced
+    else:
+      index = {}
+      for d in get_devices_from(destinations):
+        # pylint: disable=protected-access
+        if d in all_reduced._index:
+          index[d] = all_reduced._index[d]
+        else:
+          with ops.control_dependencies(list(
+              all_reduced._index.values())), ops.device(d):
+            index[d] = array_ops.identity(list(all_reduced._index.values())[0])
+
+      return value_lib.Mirrored(index)
+
+  def _batch_reduce(self, aggregation, value_destination_pairs):
+    if cross_tower_utils.contains_indexed_slices(value_destination_pairs):
+      raise ValueError(
+          "`IndexSlices` is not supported for Collective All-Reduce.")
+    if context.executing_eagerly():
+      raise ValueError(
+          "Eager execution is not supported for Collective All-Reduce")
+
+    all_devices_match = _all_devices_match(value_destination_pairs)
+    if all_devices_match:
+      return self._batch_all_reduce(aggregation,
+                                    [v[0] for v in value_destination_pairs])
+    else:
+      if not all_devices_match:
+        logging.log_first_n(
+            logging.WARN, "Efficient batch_reduce is not supported if "
+            "destinations are different.", 10)
+
+      return [
+          self._reduce(aggregation, t, destinations=v)
+          for t, v in value_destination_pairs
+      ]
+
+  def _batch_all_reduce(self, aggregation, per_device_values):
+    """All-reduce across all workers in a batch."""
+    if context.executing_eagerly():
+      raise ValueError(
+          "Eager execution with collective ops is not supported yet.")
+
+    logging.log_first_n(
+        logging.INFO, "Collective All-reduce invoked with batches size = %d, "
+        "num_workers = %d" % (len(per_device_values), self._num_workers), 10)
+
+    grouped_by_tower = _group_value_by_device(per_device_values)
+
+    grouped_by_var = list(zip(*grouped_by_tower))
+    # grouped_by_var is grouped by variables and takes the following format:
+    # [((grad0_gpu0, v0_gpu0), (grad0_gpu1, v0_gpu1), (grad0_gpu2, v0_gpu2) ..),
+    #  ((grad1_gpu0, v1_gpu0), (grad1_gpu1, v1_gpu1), (grad1_gpu0, v1_gpu2) ..),
+    #  ((grad2_gpu0, v2_gpu0), (grad2_gpu1, v2_gpu1), (grad2_gpu0, v2_gpu2) ..),
+    #  ...
+    # ]
+    chunked_gv = [
+        grouped_by_var[x:x + self._all_reduce_merge_scope]
+        for x in range(0, len(grouped_by_var), self._all_reduce_merge_scope)
+    ]
+
+    reduced_gv_list = []
+    for chunk in chunked_gv:
+      with ops.name_scope("allreduce"):
+        for grad_and_vars in chunk:
+          scaled_grads = [g for g, _ in grad_and_vars]
+          collective_reduced = cross_tower_utils.build_collective_reduce(
+              scaled_grads, self._num_workers, self._collective_keys, "Add",
+              "Id")
+          result = []
+          for (_, v), g in zip(grad_and_vars, collective_reduced):
+            result.append([g, v])
+          reduced_gv_list.append(result)
+
+    new_tower_grads = [list(x) for x in zip(*reduced_gv_list)]
+    return _ungroup_and_make_mirrored(
+        new_tower_grads,
+        per_device_values[0].devices,
+        aggregation,
+        num_between_graph_workers=self._num_workers)
 
 
 _dgx1_links = [[1, 2, 3, 4], [0, 2, 3, 5], [0, 1, 3, 6], [0, 1, 2, 7],

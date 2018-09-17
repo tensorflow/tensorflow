@@ -27,7 +27,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import numerics
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
 from tensorflow.python.summary.writer import writer
@@ -44,12 +43,6 @@ class TFETest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  r'indices = 7 is not in \[0, 3\)'):
       array_ops.gather([0, 1, 2], 7)
-
-  def testVariableError(self):
-    with self.assertRaisesRegexp(
-        RuntimeError,
-        r'Variable not supported when eager execution is enabled'):
-      variables.Variable(initial_value=1.0)
 
   def testGradients(self):
 

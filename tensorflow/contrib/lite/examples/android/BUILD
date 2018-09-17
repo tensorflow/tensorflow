@@ -37,6 +37,7 @@ android_binary(
         "@tflite_conv_actions_frozen//:conv_actions_frozen.tflite",
         "//tensorflow/contrib/lite/examples/android/app/src/main/assets:conv_actions_labels.txt",
         "@tflite_mobilenet_ssd//:mobilenet_ssd.tflite",
+        "@tflite_mobilenet_ssd_quant//:detect.tflite",
         "//tensorflow/contrib/lite/examples/android/app/src/main/assets:box_priors.txt",
         "//tensorflow/contrib/lite/examples/android/app/src/main/assets:coco_labels_list.txt",
     ],

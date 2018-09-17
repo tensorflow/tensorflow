@@ -350,16 +350,17 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Less)
     HANDLE_OPERATORTYPENAME_CASE(LessEqual)
     HANDLE_OPERATORTYPENAME_CASE(MatMul)
-    HANDLE_OPERATORTYPENAME_CASE(Max)      //  Reduction Max
-    HANDLE_OPERATORTYPENAME_CASE(Maximum)  //  Element-wise Maximum
+    HANDLE_OPERATORTYPENAME_CASE(ReduceMax)  //  Reduction Max
+    HANDLE_OPERATORTYPENAME_CASE(Maximum)    //  Element-wise Maximum
     HANDLE_OPERATORTYPENAME_CASE(Merge)
-    HANDLE_OPERATORTYPENAME_CASE(Min)      //  Reduction Min
-    HANDLE_OPERATORTYPENAME_CASE(Minimum)  //  Element-wise Minimum
+    HANDLE_OPERATORTYPENAME_CASE(ReduceMin)  //  Reduction Min
+    HANDLE_OPERATORTYPENAME_CASE(Minimum)    //  Element-wise Minimum
     HANDLE_OPERATORTYPENAME_CASE(Neg)
+    HANDLE_OPERATORTYPENAME_CASE(OneHot)
+    HANDLE_OPERATORTYPENAME_CASE(Pack)
     HANDLE_OPERATORTYPENAME_CASE(Pad)
     HANDLE_OPERATORTYPENAME_CASE(PadV2)
     HANDLE_OPERATORTYPENAME_CASE(StridedSlice)
-    HANDLE_OPERATORTYPENAME_CASE(Stack)
     HANDLE_OPERATORTYPENAME_CASE(Range)
     HANDLE_OPERATORTYPENAME_CASE(Rank)
     HANDLE_OPERATORTYPENAME_CASE(Reshape)
@@ -385,8 +386,10 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(SpaceToBatchND)
     HANDLE_OPERATORTYPENAME_CASE(BatchToSpaceND)
     HANDLE_OPERATORTYPENAME_CASE(Mean)
+    HANDLE_OPERATORTYPENAME_CASE(ReduceProd)
     HANDLE_OPERATORTYPENAME_CASE(Svdf)
     HANDLE_OPERATORTYPENAME_CASE(ArgMax)
+    HANDLE_OPERATORTYPENAME_CASE(ArgMin)
     HANDLE_OPERATORTYPENAME_CASE(TopK_V2)
     HANDLE_OPERATORTYPENAME_CASE(Unsupported)
     HANDLE_OPERATORTYPENAME_CASE(Exp)
@@ -396,6 +399,14 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(SparseToDense)
     HANDLE_OPERATORTYPENAME_CASE(Equal)
     HANDLE_OPERATORTYPENAME_CASE(NotEqual)
+    HANDLE_OPERATORTYPENAME_CASE(Pow)
+    HANDLE_OPERATORTYPENAME_CASE(Any)
+    HANDLE_OPERATORTYPENAME_CASE(LogicalAnd)
+    HANDLE_OPERATORTYPENAME_CASE(LogicalNot)
+    HANDLE_OPERATORTYPENAME_CASE(LogicalOr)
+    HANDLE_OPERATORTYPENAME_CASE(CTCBeamSearchDecoder)
+    HANDLE_OPERATORTYPENAME_CASE(Unpack)
+    HANDLE_OPERATORTYPENAME_CASE(ZerosLike)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -446,8 +457,12 @@ void LogSummary(int log_level, const Model& model) {
 }
 
 void LogArray(int log_level, const Model& model, const string& name) {
-  const auto& array = model.GetArray(name);
   VLOG(log_level) << "Array: " << name;
+  if (!model.HasArray(name)) {
+    VLOG(log_level) << "  DOES NOT EXIST";
+    return;
+  }
+  const auto& array = model.GetArray(name);
   VLOG(log_level) << "  Data type: " << ArrayDataTypeName(array.data_type);
   VLOG(log_level) << "  Final type: "
                   << ArrayDataTypeName(array.final_data_type);
@@ -589,14 +604,33 @@ void UnextendShape(Shape* shape, int new_shape_size) {
   shape_dims.erase(shape_dims.begin(), shape_dims.begin() + size_reduction);
 }
 
-bool IsValid(const Shape& shape) {
+// In general, zero-sized dimensions are disallowed, but there are exceptions,
+// e.g., if the tensor data itself represents a scalar (rank 0) shape, its
+// shape will have dimensions [0]. CheckNonEmptyShapeDimensions is more
+// strict, and is appropriate for ops and comparisons where an empty shape
+// doesn't make sense.
+template <typename Dims>
+void CheckValidShapeDimensions(const Dims& dims) {
+  if (dims.size() == 1 && dims[0] == 0) {
+    return;
+  }
+  for (const auto& dim : dims) {
+    CHECK_GE(dim, 1);
+  }
+}
+
+void CheckValidShape(const Shape& shape) {
+  CheckValidShapeDimensions(shape.dims());
+}
+
+bool IsNonEmpty(const Shape& shape) {
   for (int i = 0; i < shape.dimensions_count(); ++i) {
     if (shape.dims(i) < 1) return false;
   }
   return true;
 }
 
-void CheckShapeDimensions(const Shape& shape) {
+void CheckNonEmptyShapeDimensions(const Shape& shape) {
   for (int i = 0; i < shape.dimensions_count(); ++i) {
     CHECK_GE(shape.dims()[i], 1) << "shape has dimension 0 at index << " << i
                                  << ". shape = " << ShapeToString(shape);
@@ -604,8 +638,8 @@ void CheckShapeDimensions(const Shape& shape) {
 }
 
 bool ShapesAgreeUpToBroadcasting(const Shape& shape0, const Shape& shape1) {
-  CheckShapeDimensions(shape0);
-  CheckShapeDimensions(shape1);
+  CheckNonEmptyShapeDimensions(shape0);
+  CheckNonEmptyShapeDimensions(shape1);
 
   const Shape* longer = &shape0;
   const Shape* shorter = &shape1;
@@ -632,8 +666,8 @@ bool ShapesAgreeUpToBroadcasting(const Shape& shape0, const Shape& shape1) {
 }
 
 bool ShapesAgreeUpToExtending(const Shape& shape0, const Shape& shape1) {
-  CheckShapeDimensions(shape0);
-  CheckShapeDimensions(shape1);
+  CheckNonEmptyShapeDimensions(shape0);
+  CheckNonEmptyShapeDimensions(shape1);
 
   const Shape* longer = &shape0;
   const Shape* shorter = &shape1;
@@ -670,9 +704,9 @@ bool ShapesAgreeUpToExtending(const Shape& shape0, const Shape& shape1) {
 }
 
 int RequiredBufferSizeForShape(const Shape& shape) {
+  CheckValidShape(shape);
   int max_offset = 1;
   for (const auto& dim : shape.dims()) {
-    CHECK_GE(dim, 1);
     max_offset *= dim;
   }
   return max_offset;
@@ -933,9 +967,7 @@ void CheckEachArray(const Model& model) {
       // shape.
       CHECK(array->has_shape());
       // Constant buffer should has a valid shape.
-      for (int d : array->shape().dims()) {
-        CHECK_GE(d, 1);
-      }
+      CheckValidShape(array->shape());
       // The shape flat-size should agree with the buffer length.
       CHECK_EQ(array->buffer->Length(),
                RequiredBufferSizeForShape(array->shape()));
@@ -1260,8 +1292,13 @@ void InsertCopyOperator(Model* model, const string& source_array_name,
   auto* copy_op = new TensorFlowReshapeOperator;
   copy_op->inputs = {
       source_array_name,
-      CreateInt32Array(model, target_array_name + "_copy_shape", shape)};
+      CreateInt32Array(
+          model, AvailableArrayName(*model, target_array_name + "_copy_shape"),
+          shape)};
   copy_op->outputs = {target_array_name};
+  if (target_array.has_shape()) {
+    copy_op->shape = target_array.shape().dims();
+  }
   model->operators.emplace_back(copy_op);
 }
 
@@ -1522,8 +1559,8 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
     if (!input_array.has_shape()) {
       if (input_array_proto.has_shape()) {
         auto& input_array_dims = *input_array.mutable_shape()->mutable_dims();
+        CheckValidShapeDimensions(input_array_proto.shape().dims());
         for (auto dim : input_array_proto.shape().dims()) {
-          CHECK_GE(dim, 1);
           input_array_dims.push_back(dim);
         }
       }
@@ -1566,11 +1603,6 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
                                model);
   }
 
-  for (const auto& input_array : model->flags.input_arrays()) {
-    if (input_array.has_shape()) {
-      CHECK(input_array.shape().dims_size());
-    }
-  }
   model->flags.set_change_concat_input_ranges(
       model_flags.change_concat_input_ranges());
   model->flags.set_allow_nonascii_arrays(model_flags.allow_nonascii_arrays());
@@ -1603,11 +1635,12 @@ void CheckIsReadyForQuantization(const Model& model) {
           << "Array " << input << ", which is an input to the "
           << HelpfulOperatorTypeName(*op) << " operator producing the output "
           << "array " << op->outputs[0] << ", is lacking min/max data, "
-          << "which is necessary for quantization. Either target a "
-          << "non-quantized output format, or change the input graph to "
-          << "contain min/max information, or pass --default_ranges_min= and "
-          << "--default_ranges_max= if you do not care about the accuracy of "
-          << "results.";
+          << "which is necessary for quantization. If accuracy matters, either "
+          << "target a non-quantized output format, or run quantized training "
+          << "with your model from a floating point checkpoint to change the "
+          << "input graph to contain min/max information. If you don't care "
+          << "about accuracy, you can pass --default_ranges_min= and "
+          << "--default_ranges_max= for easy experimentation.";
     }
   }
 }
@@ -2198,6 +2231,63 @@ void UseArraysExtraInfo(Model* model, bool quantize_output) {
       }
     }
   }
+}
+
+void UndoWeightsShuffling(Model* model) {
+  for (const auto& op : model->operators) {
+    if (op->type != toco::OperatorType::kFullyConnected) {
+      continue;
+    }
+    const auto& fc_op = static_cast<toco::FullyConnectedOperator&>(*op);
+    if (fc_op.weights_format == FullyConnectedWeightsFormat::kDefault) {
+      continue;
+    }
+    const string& weights_name = fc_op.inputs[1];
+    QCHECK_EQ(CountOpsWithInput(*model, weights_name), 1);
+    auto& weights_array = model->GetArray(weights_name);
+    QCHECK(weights_array.data_type == ArrayDataType::kUint8);
+    auto& weights_data =
+        weights_array.GetMutableBuffer<toco::ArrayDataType::kUint8>().data;
+    const auto& weights_shape = weights_array.shape();
+    QCHECK_EQ(weights_shape.dimensions_count(), 2);
+    const int rows = weights_shape.dims(0);
+    const int cols = weights_shape.dims(1);
+    QCHECK_EQ(rows % 4, 0);
+    QCHECK_EQ(cols % 16, 0);
+    CHECK_EQ(rows * cols, weights_data.size());
+    // Compute the de-shuffled weights
+    std::vector<uint8> deshuffled_data(weights_data.size());
+    uint8* shuffled_data_ptr = weights_data.data();
+    for (int r = 0; r < rows; r += 4) {
+      for (int c = 0; c < cols; c += 16) {
+        for (int i = 0; i < 4; i++) {
+          uint8* deshuffled_data_ptr =
+              deshuffled_data.data() + (r + i) * cols + c;
+          for (int j = 0; j < 16; j++) {
+            uint8 shuffled_val = *shuffled_data_ptr++;
+            // Deshuffling isn't only about deshuffling the storage layout,
+            // it's also about undoing the flipping of the sign bit, which is
+            // performed on the shuffled weights.
+            uint8 deshuffled_val = shuffled_val ^ 0x80;
+            *deshuffled_data_ptr++ = deshuffled_val;
+          }
+        }
+      }
+    }
+    CHECK_EQ(shuffled_data_ptr, weights_data.data() + rows * cols);
+    // Switch this FC op to using the deshuffled weights.
+    weights_data = std::move(deshuffled_data);
+  }
+}
+
+void CopyMinMaxAndQuantizationRelatedFields(const Array& src, Array* dst) {
+  if (src.minmax) {
+    dst->GetOrCreateMinMax() = src.GetMinMax();
+  }
+  if (src.quantization_params) {
+    dst->GetOrCreateQuantizationParams() = src.GetQuantizationParams();
+  }
+  dst->narrow_range = src.narrow_range;
 }
 
 }  // namespace toco

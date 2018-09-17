@@ -23,9 +23,15 @@ limitations under the License.
 #include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/kernels/constant_op.h"
 #include "tensorflow/core/kernels/control_flow_ops.h"
+#include "tensorflow/core/kernels/data/generator_dataset_op.h"
+#include "tensorflow/core/kernels/data/iterator_ops.h"
+#include "tensorflow/core/kernels/data/prefetch_dataset_op.h"
+#include "tensorflow/core/kernels/fifo_queue.h"
+#include "tensorflow/core/kernels/function_ops.h"
 #include "tensorflow/core/kernels/identity_n_op.h"
 #include "tensorflow/core/kernels/identity_op.h"
 #include "tensorflow/core/kernels/no_op.h"
+#include "tensorflow/core/kernels/queue_op.h"
 #include "tensorflow/core/kernels/resource_variable_ops.h"
 #include "tensorflow/core/kernels/sendrecv_ops.h"
 #include "tensorflow/core/kernels/shape_ops.h"
@@ -75,9 +81,7 @@ class XlaAssignVariableOp : public AsyncOpKernel {
       ConstantOp);                                                             \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("Identity").Device(DEVICE).TypeConstraint("T", TYPES), IdentityOp); \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("IdentityN").Device(DEVICE).TypeConstraint("T", TYPES),             \
-      IdentityNOp);                                                            \
+  REGISTER_KERNEL_BUILDER(Name("IdentityN").Device(DEVICE), IdentityNOp);      \
   REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE), PlaceholderOp);  \
   REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE),                \
                           PlaceholderOp);                                      \
@@ -88,6 +92,9 @@ class XlaAssignVariableOp : public AsyncOpKernel {
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("ReadVariableOp").Device(DEVICE).HostMemory("resource"),            \
       ReadVariableOp);                                                         \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("DestroyResourceOp").Device(DEVICE).HostMemory("resource"),         \
+      DestroyResourceOp);                                                      \
   REGISTER_KERNEL_BUILDER(Name("Shape")                                        \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \
@@ -145,7 +152,96 @@ class XlaAssignVariableOp : public AsyncOpKernel {
                               .Device(DEVICE)                                  \
                               .HostMemory("input")                             \
                               .HostMemory("output"),                           \
-                          LoopCondOp);
+                          LoopCondOp);                                         \
+                                                                               \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("QueueEnqueueV2").Device(DEVICE).HostMemory("handle"), EnqueueOp);  \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("QueueDequeueV2").Device(DEVICE).HostMemory("handle"), DequeueOp);  \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("QueueCloseV2").Device(DEVICE).HostMemory("handle"), QueueCloseOp); \
+  REGISTER_KERNEL_BUILDER(Name("QueueSizeV2")                                  \
+                              .Device(DEVICE)                                  \
+                              .HostMemory("size")                              \
+                              .HostMemory("handle"),                           \
+                          QueueSizeOp);                                        \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("QueueIsClosedV2").Device(DEVICE).HostMemory("handle"),             \
+      QueueIsClosedOp);                                                        \
+                                                                               \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("FIFOQueueV2").Device(DEVICE).HostMemory("handle"), FIFOQueueOp);   \
+                                                                               \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name(kArgOp).Device(DEVICE).HostMemory("output").TypeConstraint("T",     \
+                                                                      TYPES),  \
+      ArgOp);                                                                  \
+  REGISTER_KERNEL_BUILDER(Name(kArgOp)                                         \
+                              .Device(DEVICE)                                  \
+                              .HostMemory("output")                            \
+                              .TypeConstraint<ResourceHandle>("T"),            \
+                          ArgOp);                                              \
+                                                                               \
+  REGISTER_KERNEL_BUILDER(Name(kRetOp)                                         \
+                              .Device(DEVICE)                                  \
+                              .TypeConstraint("T", TYPES)                      \
+                              .HostMemory("input"),                            \
+                          RetvalOp);                                           \
+  REGISTER_KERNEL_BUILDER(Name(kRetOp)                                         \
+                              .Device(DEVICE)                                  \
+                              .TypeConstraint<ResourceHandle>("T")             \
+                              .HostMemory("input"),                            \
+                          RetvalOp);                                           \
+                                                                               \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("RemoteCall").Device(DEVICE).HostMemory("target"), RemoteCallOp);   \
+                                                                               \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("GeneratorDataset").Device(DEVICE).HostMemory("handle"),            \
+      data::GeneratorDatasetOp);                                               \
+  REGISTER_KERNEL_BUILDER(Name("PrefetchDataset")                              \
+                              .Device(DEVICE)                                  \
+                              .HostMemory("buffer_size")                       \
+                              .HostMemory("input_dataset")                     \
+                              .HostMemory("handle"),                           \
+                          data::PrefetchDatasetOp);                            \
+                                                                               \
+  REGISTER_KERNEL_BUILDER(Name("IteratorV2").Device(DEVICE),                   \
+                          data::IteratorHandleOp);                             \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("MakeIterator").Device(DEVICE).HostMemory("dataset"),               \
+      data::MakeIteratorOp);                                                   \
+  REGISTER_KERNEL_BUILDER(Name("AnonymousIterator").Device(DEVICE),            \
+                          data::AnonymousIteratorHandleOp);                    \
+  REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE),              \
+                          data::IteratorGetNextOp);                            \
+  REGISTER_KERNEL_BUILDER(Name("IteratorGetNextSync").Device(DEVICE),          \
+                          data::IteratorGetNextSyncOp);                        \
+  REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle")                       \
+                              .Device(DEVICE)                                  \
+                              .HostMemory("string_handle"),                    \
+                          data::IteratorToStringHandleOp);                     \
+  REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandleV2")                   \
+                              .Device(DEVICE)                                  \
+                              .HostMemory("string_handle"),                    \
+                          data::IteratorFromStringHandleOp);                   \
+  REGISTER_KERNEL_BUILDER(Name(FunctionLibraryDefinition::kArgOp)              \
+                              .Device(DEVICE)                                  \
+                              .HostMemory("output")                            \
+                              .TypeConstraint<string>("T"),                    \
+                          ArgOp);                                              \
+  REGISTER_KERNEL_BUILDER(Name(FunctionLibraryDefinition::kRetOp)              \
+                              .Device(DEVICE)                                  \
+                              .TypeConstraint<string>("T")                     \
+                              .HostMemory("input"),                            \
+                          RetvalOp);
+
+// TODO(phawkins): currently we do not register the QueueEnqueueMany,
+// QueueDequeueMany, or QueueDequeueUpTo kernels because they attempt to read
+// and write the tensors they access in order to concatenate them into a batch.
+// We would need either to call out to an XLA computation to perform the
+// concatenation, or we would need to refactor those kernels so the splitting
+// or merging is done in a separate operator that can be compiled.
 
 }  // namespace tensorflow
 

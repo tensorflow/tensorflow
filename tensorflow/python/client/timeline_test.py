@@ -134,7 +134,7 @@ class TimelineTest(test.TestCase):
     ctf = tl.generate_chrome_trace_format()
     self._validateTrace(ctf)
 
-  def testAnalysisAndAllocations(self):
+  def disabled_testAnalysisAndAllocations(self):
     run_options = config_pb2.RunOptions(
         trace_level=config_pb2.RunOptions.FULL_TRACE)
     run_metadata = config_pb2.RunMetadata()
@@ -161,7 +161,7 @@ class TimelineTest(test.TestCase):
     cpu_max = maximums[
         'cuda_host_bfc'] if 'cuda_host_bfc' in maximums else maximums[cpuname]
     # At least num1 + num2, both float32s (4 bytes each)
-    self.assertGreater(cpu_max.num_bytes, 8)
+    self.assertGreaterEqual(cpu_max.num_bytes, 8)
     self.assertGreater(cpu_max.timestamp, 0)
     self.assertTrue('num1' in cpu_max.tensors or 'num1/read' in cpu_max.tensors)
     self.assertTrue('num2' in cpu_max.tensors or 'num2/read' in cpu_max.tensors)

@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "asinh"
-    deprecation_message: "tf.asinh is deprecated, please use tf.math.asinh instead."
+    deprecated: true
   }
 }

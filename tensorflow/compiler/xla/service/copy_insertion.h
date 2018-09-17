@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 
@@ -46,7 +45,7 @@ namespace xla {
 //       InstructionAliasSet::IsDistinct return true.
 class CopyInsertion : public HloPassInterface {
  public:
-  tensorflow::StringPiece name() const override { return "copy-insertion"; }
+  absl::string_view name() const override { return "copy-insertion"; }
 
   // fusion_can_share_buffer: backend specific function that decides whether a
   // fusion can share buffer with its operand.
@@ -72,20 +71,39 @@ class CopyInsertion : public HloPassInterface {
   // TODO(b/62548313): Remove this when buffer assignment is module-scoped.
   static StatusOr<bool> AddCopiesForBufferAssignment(HloModule* module);
 
+  // Try to remove as many copies from the module as possible without
+  // introducing live range interference. Only copy instructions that are
+  // eligible for copy elision are considered for removal.
+  Status RemoveUnnecessaryCopies(const HloOrdering& ordering,
+                                 HloModule* module);
+
+  // Add copies to address special constraints on the roots of computations not
+  // related to live range interference:
+  //
+  //    (1) Entry computation root must be unambiguous and distinct.
+  //
+  //    (2) Any computation called by a kCall instruction must have an
+  //        unambiguous root.
+  //
+  //    (3) Constants and parameters cannot be live out of the entry computation
+  //
+  Status AddSpecialCaseCopies(HloModule* module);
+
+  // Verifies that no HLO values have interfering live ranges using the given
+  // ordering.
+  Status VerifyNoLiveRangeInterference(const HloOrdering& ordering,
+                                       HloModule* module);
+
  private:
+  // Override which requires the caller to pass in a call graph.
+  Status AddSpecialCaseCopies(const CallGraph& call_graph, HloModule* module);
+
+  Status AddCopiesToResolveInterference(HloModule* module);
+
   // Backend specific function that decides whether a fusion can share buffer
   // with its operand.
   HloDataflowAnalysis::FusionCanShareBufferFunction fusion_can_share_buffer_;
 };
-
-// Try to remove as many copies from the module as possible without introducing
-// live range interference. Copy instructions (identified by their unique id) in
-// the set copies_to_exclude are not considered for removal.
-Status RemoveUnnecessaryCopies(
-    const HloOrdering& ordering,
-    const tensorflow::gtl::FlatSet<int>& copies_to_exclude, HloModule* module,
-    const HloDataflowAnalysis::FusionCanShareBufferFunction&
-        fusion_can_share_buffer = nullptr);
 
 }  // namespace xla
 

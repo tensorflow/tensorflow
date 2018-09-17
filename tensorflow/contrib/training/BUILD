@@ -61,7 +61,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/data",
-        "//tensorflow/python/estimator:inputs_queues",
+        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -133,7 +133,7 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:training",
-        "//tensorflow/python/estimator:inputs_queues",
+        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
     ],
 )

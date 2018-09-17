@@ -1,4 +1,3 @@
-
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -76,14 +75,14 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
             const NameAttrList& func,
             std::unique_ptr<CapturedFunction> captured_func, int64 cycle_length,
             int64 block_length, const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           func_(func),
           captured_func_(std::move(captured_func)),
@@ -114,11 +113,12 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       Node* input_node;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
       Node* cycle_length_node;
       TF_RETURN_IF_ERROR(b->AddScalar(cycle_length_, &cycle_length_node));
       Node* block_length_node;
@@ -155,7 +155,9 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
             args_list_(params.dataset->cycle_length_) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        TF_RETURN_IF_ERROR(
+            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+        return dataset()->captured_func_->Instantiate(ctx);
       }
 
       void AdvanceToNextInCycle() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -199,7 +201,7 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
             TF_RETURN_IF_ERROR(input_impl_->GetNext(
                 ctx, &args_list_[cycle_index_], &end_of_input_));
             if (!end_of_input_) {
-              TF_RETURN_IF_ERROR(dataset::MakeIteratorFromInputElement(
+              TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
                   ctx, args_list_[cycle_index_], cycle_index_,
                   dataset()->captured_func_.get(), prefix(),
                   &current_elements_[cycle_index_]));
@@ -217,7 +219,7 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
      protected:
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name("cycle_index"), cycle_index_));
         TF_RETURN_IF_ERROR(
@@ -235,7 +237,7 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         int64 cycle_index;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(full_name("cycle_index"), &cycle_index));
@@ -256,7 +258,7 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         for (int idx = 0; idx < current_elements_.size(); idx++) {
           if (current_elements_[idx]) {
-            TF_RETURN_IF_ERROR(SaveParent(writer, current_elements_[idx]));
+            TF_RETURN_IF_ERROR(SaveInput(writer, current_elements_[idx]));
             TF_RETURN_IF_ERROR(writer->WriteScalar(
                 full_name(strings::StrCat("args_size[", idx, "]")),
                 args_list_[idx].size()));
@@ -286,11 +288,11 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
                   full_name(strings::StrCat("args_list_[", idx, "][", i, "]")),
                   &args_list_[idx][i]));
             }
-            TF_RETURN_IF_ERROR(dataset::MakeIteratorFromInputElement(
+            TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
                 ctx, args_list_[idx], idx, dataset()->captured_func_.get(),
                 prefix(), &current_elements_[idx]));
             TF_RETURN_IF_ERROR(
-                RestoreParent(ctx, reader, current_elements_[idx]));
+                RestoreInput(ctx, reader, current_elements_[idx]));
           } else {
             current_elements_[idx].reset();
           }
@@ -328,5 +330,5 @@ REGISTER_KERNEL_BUILDER(Name("InterleaveDataset").Device(DEVICE_CPU),
                         InterleaveDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
 
 #include "tensorflow/compiler/jit/defs.h"
-#include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -51,19 +51,22 @@ XlaLocalLaunchBase::XlaLocalLaunchBase(OpKernelConstruction* ctx,
   if (device_type_ == DeviceType(DEVICE_CPU)) {
     platform_id_ = se::host::kHostPlatformId;
   } else if (device_type_ == DeviceType(DEVICE_GPU)) {
-    platform_id_ = se::cuda::kCudaPlatformId;
-  } else {
-    platform_id_ = nullptr;
+    platform_id_ = ctx->device()
+                       ->tensorflow_gpu_device_info()
+                       ->stream->parent()
+                       ->platform()
+                       ->id();
+  } else if (XlaDevice::GetMetadata(ctx, &xla_device_metadata_).ok()) {
+    use_multiple_streams_ = xla_device_metadata_->UseMultipleStreams();
+    platform_id_ = xla_device_metadata_->platform()->id();
   }
 }
 
 Status XlaLocalLaunchBase::BuildCompilationCache(OpKernelContext* ctx,
                                                  XlaCompilationCache** cache) {
-  const XlaDevice::Metadata* metadata;
-  Status s = XlaDevice::GetMetadata(ctx, &metadata);
-  if (s.ok()) {
-    *cache = new XlaCompilationCache(metadata->client(),
-                                     metadata->jit_device_type());
+  if (xla_device_metadata_) {
+    *cache = new XlaCompilationCache(xla_device_metadata_->client(),
+                                     xla_device_metadata_->jit_device_type());
     return Status::OK();
   }
 
@@ -112,17 +115,6 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   // this is more obviously correct.)
   core::ScopedUnref cache_ref(cache);
 
-  const XlaDevice::Metadata* metadata = nullptr;
-  Status s = XlaDevice::GetMetadata(ctx, &metadata);
-  bool allocate_xla_tensors = s.ok();
-
-  // Get the platform_id_ for XLA_* devices.
-  if (platform_id_ == nullptr) {
-    if (s.ok()) {
-      platform_id_ = metadata->platform()->id();
-    }
-  }
-
   std::map<int, OptionalTensor> variables =
       SnapshotResourceVariables(ctx, resources_);
 
@@ -140,7 +132,7 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   // (which local_xla_allocator above uses) as on an XlaDevice, this is a
   // dummy allocator that returns XlaTensor objects. The XlaCompiler needs a
   // real allocator to allocate real buffers.
-  if (allocate_xla_tensors) {
+  if (xla_device_metadata_) {
     xla_allocator = client->backend().memory_allocator();
   } else {
     xla_allocator = &local_xla_allocator;
@@ -148,13 +140,18 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   XlaCompiler::Options options;
   options.client = client;
+  if (ctx->op_device_context() != nullptr) {
+    options.device_ordinal =
+        ctx->op_device_context()->stream()->parent()->device_ordinal();
+  }
   options.device_type = cache->device_type();
   options.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
   options.graph_def_version = ctx->function_library()->graph_def_version();
   options.allow_cpu_custom_calls = (platform_id_ == se::host::kHostPlatformId);
   options.device_allocator = xla_allocator;
-  if (metadata) {
-    options.shape_representation_fn = metadata->shape_representation_fn();
+  if (xla_device_metadata_) {
+    options.shape_representation_fn =
+        xla_device_metadata_->shape_representation_fn();
   }
 
   const XlaCompiler::CompilationResult* kernel;
@@ -166,14 +163,25 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   }
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;
+  // If we resolve constants we never emit them on the device, meaning that if
+  // they are needed by a following computation the host has to transfer
+  // them. Not resolving constants is expected to be faster than resolving
+  // constants.
+  compile_options.resolve_compile_time_constants = true;
+  // Optimization: where possible, have the computation return a naked array
+  // rather than a one-element tuple.
+  compile_options.always_return_tuple = false;
+
   OP_REQUIRES_OK(
       ctx, cache->Compile(options, function_, constant_args, variables, ctx,
-                          &kernel, &executable, &compile_options));
+                          &kernel, &executable, compile_options));
 
   VLOG(1) << "Executing XLA Computation...";
 
-  XlaComputationLaunchContext launch_context(client, xla_allocator,
-                                             allocate_xla_tensors);
+  XlaComputationLaunchContext launch_context(
+      client, xla_allocator,
+      /*allocate_xla_tensors=*/xla_device_metadata_ != nullptr,
+      use_multiple_streams_);
   launch_context.PopulateInputs(ctx, kernel, variables);
 
   // Execute the computation.
@@ -182,7 +190,7 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   run_options.set_stream(stream);
   run_options.set_allocator(xla_allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
-  run_options.set_rng_seed(ctx->step_id());
+  run_options.set_rng_seed(GetXLARandomSeed());
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
 
@@ -192,7 +200,8 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   auto elapsed = env->NowMicros() - start_time;
   VLOG(2) << "Elapsed time: " << elapsed << "us";
 
-  launch_context.PopulateOutputs(ctx, kernel, run_result.ConsumeValueOrDie());
+  OP_REQUIRES_OK(ctx, launch_context.PopulateOutputs(
+                          ctx, kernel, run_result.ConsumeValueOrDie()));
   VLOG(1) << "Done";
 }
 

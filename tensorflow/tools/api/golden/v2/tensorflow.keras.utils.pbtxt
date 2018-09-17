@@ -1,0 +1,75 @@
+path: "tensorflow.keras.utils"
+tf_module {
+  member {
+    name: "CustomObjectScope"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "GeneratorEnqueuer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "HDF5Matrix"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "OrderedEnqueuer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Progbar"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Sequence"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SequenceEnqueuer"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "convert_all_kernels_in_model"
+    argspec: "args=[\'model\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "custom_object_scope"
+    argspec: "args=[], varargs=args, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "deserialize_keras_object"
+    argspec: "args=[\'identifier\', \'module_objects\', \'custom_objects\', \'printable_module_name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'object\'], "
+  }
+  member_method {
+    name: "get_custom_objects"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_file"
+    argspec: "args=[\'fname\', \'origin\', \'untar\', \'md5_hash\', \'file_hash\', \'cache_subdir\', \'hash_algorithm\', \'extract\', \'archive_format\', \'cache_dir\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\', \'datasets\', \'auto\', \'False\', \'auto\', \'None\'], "
+  }
+  member_method {
+    name: "get_source_inputs"
+    argspec: "args=[\'tensor\', \'layer\', \'node_index\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "multi_gpu_model"
+    argspec: "args=[\'model\', \'gpus\', \'cpu_merge\', \'cpu_relocation\'], varargs=None, keywords=None, defaults=[\'True\', \'False\'], "
+  }
+  member_method {
+    name: "normalize"
+    argspec: "args=[\'x\', \'axis\', \'order\'], varargs=None, keywords=None, defaults=[\'-1\', \'2\'], "
+  }
+  member_method {
+    name: "plot_model"
+    argspec: "args=[\'model\', \'to_file\', \'show_shapes\', \'show_layer_names\', \'rankdir\'], varargs=None, keywords=None, defaults=[\'model.png\', \'False\', \'True\', \'TB\'], "
+  }
+  member_method {
+    name: "serialize_keras_object"
+    argspec: "args=[\'instance\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "to_categorical"
+    argspec: "args=[\'y\', \'num_classes\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

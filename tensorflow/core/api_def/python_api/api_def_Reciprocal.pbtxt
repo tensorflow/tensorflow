@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "reciprocal"
-    deprecation_message: "tf.reciprocal is deprecated, please use tf.math.reciprocal instead."
+    deprecated: true
   }
 }

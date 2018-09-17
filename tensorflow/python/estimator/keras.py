@@ -21,11 +21,11 @@ from __future__ import print_function
 
 import os
 import re
+
 from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import export as export_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
-from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
@@ -33,16 +33,15 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import models
 from tensorflow.python.keras import optimizers
-from tensorflow.python.keras.engine.base_layer import Layer
-from tensorflow.python.keras.engine.network import Network
-from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_module
-from tensorflow.python.ops import variables as variables_module
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training import distribution_strategy_context
+from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
 
@@ -69,187 +68,97 @@ def _convert_tensor(x):
   return x
 
 
-def _any_variable_initialized():
-  """Check if any variable has been initialized in the Keras model.
-
-  Returns:
-    boolean, True if at least one variable has been initialized, else False.
-  """
-  variables = variables_module.global_variables()
-  for v in variables:
-    if getattr(v, '_keras_initialized', False):
-      return True
-  return False
-
-
-def _create_ordered_io(keras_model, estimator_io, is_input=True):
-  """Create a list of tensors from IO dictionary based on Keras IO order.
+def _any_weight_initialized(keras_model):
+  """Check if any weights has been initialized in the Keras model.
 
   Args:
     keras_model: An instance of compiled keras model.
-    estimator_io: The features or labels (dict or plain array) from model_fn.
-    is_input: True if dictionary is for inputs.
 
   Returns:
-    A list of tensors based on Keras IO order.
-
-  Raises:
-    ValueError: if dictionary keys cannot be found in Keras model input_names
-      or output_names.
+    boolean, True if at least one weight has been initialized, else False.
+    Currently keras initialize all weights at get_session().
   """
-  if isinstance(estimator_io, (list, tuple)):
-    # Case currently not supported by most built-in input_fn,
-    # but it's good to have for sanity
-    return [_convert_tensor(x) for x in estimator_io]
-  elif isinstance(estimator_io, dict):
-    if is_input:
-      if keras_model._is_graph_network:
-        keras_io_names = keras_model.input_names
-      else:
-        keras_io_names = [
-            'input_%d' % i for i in range(1, len(estimator_io) + 1)]
-    else:
-      if keras_model._is_graph_network:
-        keras_io_names = keras_model.output_names
-      else:
-        keras_io_names = [
-            'output_%d' % i for i in range(1, len(estimator_io) + 1)]
-
-    for key in estimator_io:
-      if key not in keras_io_names:
-        raise ValueError(
-            'Cannot find %s with name "%s" in Keras Model. '
-            'It needs to match one '
-            'of the following: %s' % ('input' if is_input else 'output', key,
-                                      ', '.join(keras_io_names)))
-    tensors = [_convert_tensor(estimator_io[io_name])
-               for io_name in keras_io_names]
-    return tensors
-  else:
-    # Plain array.
-    return _convert_tensor(estimator_io)
+  if keras_model is None:
+    return False
+  for layer in keras_model.layers:
+    for weight in layer.weights:
+      if hasattr(weight, '_keras_initialized'):
+        return True
+  return False
 
 
-def _in_place_subclassed_model_reset(model):
-  """Substitute for model cloning that works for subclassed models.
-
-  Subclassed models cannot be cloned because their topology is not serializable.
-  To "instantiate" an identical model in a new TF graph, we reuse the original
-  model object, but we clear its state.
-
-  After calling this function on a model instance, you can use the model
-  instance as if it were a model clone (in particular you can use it in a new
-  graph).
-
-  This method clears the state of the input model. It is thus destructive.
-  However the original state can be restored fully by calling
-  `_in_place_subclassed_model_state_restoration`.
+def _convert_estimator_io_to_keras(keras_model, features, labels):
+  """Converts estimator features and labels to keras input and target tensors.
 
   Args:
-    model: Instance of a Keras model created via subclassing.
+    keras_model: a compiled `tf.keras.Model` instance, used to determine the
+      order of the returned lists.
+    features: Dict of tensors or `None`.
+    labels: Dict of tensors, a single tensor, or `None`.
 
-  Raises:
-    ValueError: In case the model uses a subclassed model as inner layer.
+  Returns:
+    Tuple of (
+      list of input tensors or `None`,
+      list of target tensors or `None`)
+    The order of tensors is determined by the order set in the keras model.
   """
-  assert not model._is_graph_network  # Only makes sense for subclassed networks
-  # Retrieve all layers tracked by the model as well as their attribute names
-  attributes_cache = {}
-  for name in dir(model):
-    try:
-      value = getattr(model, name)
-    except (AttributeError, ValueError, TypeError):
-      continue
-    if isinstance(value, Layer):
-      attributes_cache[name] = value
-      assert value in model._layers
-    elif isinstance(value, (list, tuple)) and name not in ('layers', '_layers'):
-      # Handle case: list/tuple of layers (also tracked by the Network API).
-      if value and all(isinstance(val, Layer) for val in value):
-        raise ValueError('We do not support the use of list-of-layers '
-                         'attributes in subclassed models used with '
-                         '`model_to_estimator` at this time. Found list '
-                         'model: %s' % name)
 
-  # Replace layers on the model with fresh layers
-  layers_to_names = {value: key for key, value in attributes_cache.items()}
-  original_layers = model._layers[:]
-  model._layers = []
-  for layer in original_layers:  # We preserve layer order.
-    config = layer.get_config()
-    # This will not work for nested subclassed models used as layers.
-    # This would be theoretically possible to support, but would add complexity.
-    # Only do it if users complain.
-    if isinstance(layer, Network) and not layer._is_graph_network:
-      raise ValueError('We do not support the use of nested subclassed models '
-                       'in `model_to_estimator` at this time. Found nested '
-                       'model: %s' % layer)
-    fresh_layer = layer.__class__.from_config(config)
-    name = layers_to_names[layer]
-    setattr(model, name, fresh_layer)
+  def _to_ordered_tensor_list(obj, key_order, obj_name, order_name):
+    """Convert obj to an ordered list of tensors.
 
-  # Cache original model build attributes (in addition to layers)
-  if (not hasattr(model, '_original_attributes_cache') or
-      model._original_attributes_cache is None):
-    if model.built:
-      attributes_to_cache = [
-          'inputs',
-          'outputs',
-          '_feed_outputs',
-          '_feed_output_names',
-          '_feed_output_shapes',
-          '_feed_loss_fns',
-          'loss_weights_list',
-          'targets',
-          '_feed_targets',
-          'sample_weight_modes',
-          'weighted_metrics',
-          'metrics_names',
-          'metrics_tensors',
-          'metrics_updates',
-          'stateful_metric_names',
-          'total_loss',
-          'sample_weights',
-          '_feed_sample_weights',
-          'train_function',
-          'test_function',
-          'predict_function',
-          '_collected_trainable_weights',
-          '_feed_inputs',
-          '_feed_input_names',
-          '_feed_input_shapes',
-          'optimizer',
-      ]
-      for name in attributes_to_cache:
-        attributes_cache[name] = getattr(model, name)
-  model._original_attributes_cache = attributes_cache
-  # Reset built state
-  model.built = False
-  model.inputs = None
-  model.outputs = None
+    Args:
+      obj: List, dict, or single tensor. May be `None`.
+      key_order: List of strings with the order to return (used if obj is a
+        dict).
+      obj_name: String name of object (e.g. "features" or "labels")
+      order_name: String name of the key order (e.g. "inputs" or "outputs")
 
+    Returns:
+      List of tensors, or `None`
 
-def _in_place_subclassed_model_state_restoration(model):
-  """Restores the original state of a model after it was "reset".
+    Raises:
+      KeyError: If obj has invalid keys.
+    """
+    if obj is None:
+      return None
+    elif isinstance(obj, (list, tuple)):
+      return [_convert_tensor(x) for x in obj]
+    elif isinstance(obj, dict):
+      # Ensure that the obj keys and keys in key_order are exactly the same.
+      different_keys = set(obj.keys()) ^ set(key_order)
 
-  This undoes this action of `_in_place_subclassed_model_reset`.
+      if different_keys:
+        raise KeyError(
+            'The dictionary passed into {obj_name} does not have the expected '
+            '{order_name} keys defined in the keras model.'
+            '\n\tExpected keys: {order_keys}'
+            '\n\t{obj_name} keys: {obj_keys}'
+            '\n\tDifference: {different_keys}'.format(
+                order_name=order_name, order_keys=set(key_order),
+                obj_name=obj_name, obj_keys=set(obj.keys()),
+                different_keys=different_keys))
 
-  Args:
-    model: Instance of a Keras model created via subclassing, on which
-      `_in_place_subclassed_model_reset` was previously called.
-  """
-  assert not model._is_graph_network
-  # Restore layers and build attributes
-  if (hasattr(model, '_original_attributes_cache') and
-      model._original_attributes_cache is not None):
-    model._layers = []
-    for name, value in model._original_attributes_cache.items():
-      setattr(model, name, value)
-    model._original_attributes_cache = None
-  else:
-    # Restore to the state of a never-called model.
-    model.built = False
-    model.inputs = None
-    model.outputs = None
+      return [_convert_tensor(obj[key]) for key in key_order]
+    else:  # Assume obj is a tensor.
+      return [_convert_tensor(obj)]
+
+  input_names = None
+  output_names = None
+  if isinstance(features, dict):
+    input_names = (
+        keras_model.input_names if keras_model._is_graph_network else
+        ['input_%d' % i for i in range(1, len(features) + 1)])
+  if isinstance(labels, dict):
+    output_names = (
+        keras_model.output_names if keras_model._is_graph_network else
+        ['output_%d' % i for i in range(1, len(labels) + 1)])
+
+  input_tensors = _to_ordered_tensor_list(
+      features, input_names, 'features', 'inputs')
+  target_tensors = _to_ordered_tensor_list(
+      labels, output_names, 'labels', 'outputs')
+
+  return input_tensors, target_tensors
 
 
 def _clone_and_build_model(mode,
@@ -269,61 +178,62 @@ def _clone_and_build_model(mode,
   Returns:
     The newly built model.
   """
-  # Set to True during training, False for inference.
+  # Set to True during training, False for inference or testing.
   K.set_learning_phase(mode == model_fn_lib.ModeKeys.TRAIN)
+  input_tensors, target_tensors = _convert_estimator_io_to_keras(
+      keras_model, features, labels)
 
-  # Get list of inputs.
-  if features is None:
-    input_tensors = None
-  else:
-    input_tensors = _create_ordered_io(keras_model,
-                                       estimator_io=features,
-                                       is_input=True)
-  # Get list of outputs.
-  if labels is None:
-    target_tensors = None
-  elif isinstance(labels, dict):
-    target_tensors = _create_ordered_io(keras_model,
-                                        estimator_io=labels,
-                                        is_input=False)
-  else:
-    target_tensors = [
-        _convert_tensor(labels)
-    ]
+  compile_clone = (mode != model_fn_lib.ModeKeys.PREDICT)
 
-  if keras_model._is_graph_network:
-    if custom_objects:
-      with CustomObjectScope(custom_objects):
-        model = models.clone_model(keras_model, input_tensors=input_tensors)
-    else:
-      model = models.clone_model(keras_model, input_tensors=input_tensors)
-  else:
-    model = keras_model
-    _in_place_subclassed_model_reset(model)
-    if input_tensors is not None:
-      model._set_inputs(input_tensors)
+  global_step = None
+  if compile_clone:
+    # Set iterations to the global step created by tf.train.create_global_step()
+    # which is automatically run in the estimator framework.
+    global_step = training_util.get_or_create_global_step()
+    K.track_variable(global_step)
 
-  # Compile/Build model
-  if mode is model_fn_lib.ModeKeys.PREDICT:
-    if isinstance(model, models.Sequential):
-      model.build()
-  else:
-    if isinstance(keras_model.optimizer, optimizers.TFOptimizer):
-      optimizer = keras_model.optimizer
-    else:
-      optimizer_config = keras_model.optimizer.get_config()
-      optimizer = keras_model.optimizer.__class__.from_config(optimizer_config)
-    optimizer.iterations = training_util.get_or_create_global_step()
+  clone = models.clone_and_build_model(
+      keras_model, input_tensors, target_tensors, custom_objects,
+      compile_clone=compile_clone,
+      in_place_reset=(not keras_model._is_graph_network),
+      optimizer_iterations=global_step)
 
-    model.compile(
-        optimizer,
-        keras_model.loss,
-        metrics=keras_model.metrics,
-        loss_weights=keras_model.loss_weights,
-        sample_weight_mode=keras_model.sample_weight_mode,
-        weighted_metrics=keras_model.weighted_metrics,
-        target_tensors=target_tensors)
-  return model
+  return clone
+
+
+def _convert_keras_metrics_to_estimator(model):
+  """Convert metrics from a Keras model to ops used by the Estimator framework.
+
+  Args:
+    model: A `tf.keras.Model` object.
+
+  Returns:
+    Dictionary mapping metric names to tuples of (value, update) ops. May return
+    `None` if the model does not contain any metrics.
+  """
+  if not getattr(model, 'metrics', None):
+    return None
+
+  # TODO(psv/fchollet): support stateful metrics
+  eval_metric_ops = {}
+  # When each metric maps to an output
+  if isinstance(model.metrics, dict):
+    for i, output_name in enumerate(model.metrics.keys()):
+      metric_name = model.metrics[output_name]
+      if callable(metric_name):
+        metric_name = metric_name.__name__
+      # When some outputs use the same metric
+      if list(model.metrics.values()).count(metric_name) > 1:
+        metric_name += '_' + output_name
+      eval_metric_ops[metric_name] = metrics_module.mean(
+          model.metrics_tensors[i - len(model.metrics)])
+  else:
+    for i, metric_name in enumerate(model.metrics):
+      if callable(metric_name):
+        metric_name = metric_name.__name__
+      eval_metric_ops[metric_name] = metrics_module.mean(
+          model.metrics_tensors[i])
+  return eval_metric_ops
 
 
 def _create_keras_model_fn(keras_model, custom_objects=None):
@@ -339,13 +249,21 @@ def _create_keras_model_fn(keras_model, custom_objects=None):
 
   def model_fn(features, labels, mode):
     """model_fn for keras Estimator."""
+    # Raise an error when users use DistributionStrategy with native Keras
+    # optimizers. Currently we only support native TensorFlow optimizers.
+    if distribution_strategy_context.has_distribution_strategy() and \
+        not isinstance(keras_model.optimizer,
+                       (tf_optimizer_module.Optimizer, optimizers.TFOptimizer)):
+      raise ValueError('Only TensorFlow native optimizers are supported with '
+                       'DistributionStrategy.')
+
     model = _clone_and_build_model(mode, keras_model, custom_objects, features,
                                    labels)
     model_output_names = []
     # We need to make sure that the output names of the last layer in the model
     # is the same for each of the cloned models. This is required for mirrored
     # strategy when we call regroup.
-    if distribute_lib.has_distribution_strategy():
+    if distribution_strategy_context.has_distribution_strategy():
       for name in model.output_names:
         name = re.compile(r'_\d$').sub('', name)
         model_output_names.append(name)
@@ -367,26 +285,7 @@ def _create_keras_model_fn(keras_model, custom_objects=None):
         model._make_test_function()  # pylint: disable=protected-access
       loss = model.total_loss
 
-      if model.metrics:
-        # TODO(fchollet): support stateful metrics
-        eval_metric_ops = {}
-        # When each metric maps to an output
-        if isinstance(model.metrics, dict):
-          for i, output_name in enumerate(model.metrics.keys()):
-            metric_name = model.metrics[output_name]
-            if callable(metric_name):
-              metric_name = metric_name.__name__
-            # When some outputs use the same metric
-            if list(model.metrics.values()).count(metric_name) > 1:
-              metric_name += '_' + output_name
-            eval_metric_ops[metric_name] = metrics_module.mean(
-                model.metrics_tensors[i - len(model.metrics)])
-        else:
-          for i, metric_name in enumerate(model.metrics):
-            if callable(metric_name):
-              metric_name = metric_name.__name__
-            eval_metric_ops[metric_name] = metrics_module.mean(
-                model.metrics_tensors[i])
+      eval_metric_ops = _convert_keras_metrics_to_estimator(model)
 
     # Set train_op only during train.
     if mode is model_fn_lib.ModeKeys.TRAIN:
@@ -395,7 +294,7 @@ def _create_keras_model_fn(keras_model, custom_objects=None):
     if not model._is_graph_network:
       # Reset model state to original state,
       # to avoid `model_fn` being destructive for the initial model argument.
-      _in_place_subclassed_model_state_restoration(keras_model)
+      models.in_place_subclassed_model_state_restoration(keras_model)
     return model_fn_lib.EstimatorSpec(
         mode=mode,
         predictions=predictions,
@@ -410,29 +309,34 @@ def _create_keras_model_fn(keras_model, custom_objects=None):
   return model_fn
 
 
-def _save_first_checkpoint(keras_model, estimator, custom_objects,
-                           keras_weights):
+def _save_first_checkpoint(keras_model, custom_objects, config):
   """Save first checkpoint for the keras Estimator.
 
   Args:
     keras_model: an instance of compiled keras model.
-    estimator: keras estimator.
     custom_objects: Dictionary for custom objects.
-    keras_weights: A flat list of Numpy arrays for weights of given keras_model.
+    config: Estimator config.
 
   Returns:
-    The model_fn for a keras Estimator.
+    The path where keras model checkpoint is saved.
   """
+  # save checkpoint into subdirectory to allow warm start
+  keras_model_dir = os.path.join(config.model_dir, 'keras')
   # Load weights and save to checkpoint if there is no checkpoint
-  latest_path = saver_lib.latest_checkpoint(estimator.model_dir)
+  latest_path = checkpoint_management.latest_checkpoint(keras_model_dir)
   if not latest_path:
+    keras_weights = None
+    if _any_weight_initialized(keras_model):
+      keras_weights = keras_model.get_weights()
+    if not gfile.IsDirectory(keras_model_dir):
+      gfile.MakeDirs(keras_model_dir)
     with ops.Graph().as_default():
-      random_seed.set_random_seed(estimator.config.tf_random_seed)
+      random_seed.set_random_seed(config.tf_random_seed)
       training_util.create_global_step()
       model = _clone_and_build_model(model_fn_lib.ModeKeys.TRAIN, keras_model,
                                      custom_objects)
       # save to checkpoint
-      with session.Session(config=estimator._session_config) as sess:
+      with session.Session(config=config.session_config) as sess:
         if keras_weights:
           model.set_weights(keras_weights)
         # Make update ops and initialize all variables.
@@ -442,7 +346,9 @@ def _save_first_checkpoint(keras_model, estimator, custom_objects,
           K._initialize_variables(sess)
           # pylint: enable=protected-access
         saver = saver_lib.Saver()
-        saver.save(sess, os.path.join(estimator.model_dir, 'keras_model.ckpt'))
+        latest_path = os.path.join(keras_model_dir, 'keras_model.ckpt')
+        saver.save(sess, latest_path)
+  return latest_path
 
 
 def model_to_estimator(keras_model=None,
@@ -452,8 +358,9 @@ def model_to_estimator(keras_model=None,
                        config=None):
   """Constructs an `Estimator` instance from given keras model.
 
-  For usage example, please see
-  @{$guide/estimators$creating_estimators_from_keras_models}.
+  For usage example, please see:
+  [Creating estimators from Keras
+  Models](https://tensorflow.org/guide/estimators#model_to_estimator).
 
   Args:
     keras_model: A compiled Keras model object. This argument is mutually
@@ -462,9 +369,9 @@ def model_to_estimator(keras_model=None,
       format, which can be generated with the `save()` method of a Keras model.
       This argument is mutually exclusive with `keras_model`.
     custom_objects: Dictionary for custom objects.
-    model_dir: Directory to save Estimator model parameters, graph, summary
+    model_dir: Directory to save `Estimator` model parameters, graph, summary
       files for TensorBoard, etc.
-    config: Configuration object.
+    config: `RunConfig` to config `Estimator`.
 
   Returns:
     An Estimator from given keras model.
@@ -501,45 +408,40 @@ def model_to_estimator(keras_model=None,
         'Please compile the model with `model.compile()` '
         'before calling `model_to_estimator()`.')
 
-  if isinstance(config, dict):
-    config = run_config_lib.RunConfig(**config)
+  config = estimator_lib.maybe_overwrite_model_dir_and_session_config(config,
+                                                                      model_dir)
 
   keras_model_fn = _create_keras_model_fn(keras_model, custom_objects)
-  estimator = estimator_lib.Estimator(
-      keras_model_fn, model_dir=model_dir, config=config)
-
-  # Check if we need to call get_weights:
-  if _any_variable_initialized():
-    keras_weights = keras_model.get_weights()
+  if _any_weight_initialized(keras_model):
     # Warn if config passed to estimator tries to update GPUOptions. If a
     # session has already been created, the GPUOptions passed to the first
     # session sticks.
-    if estimator._session_config.HasField('gpu_options'):
+    if config.session_config.HasField('gpu_options'):
       logging.warning(
           'The Keras backend session has already been set. '
           'The _session_config passed to model_to_estimator will not be used.')
   else:
     # Pass the config into keras backend's default session.
-    sess = session.Session(config=estimator._session_config)
+    sess = session.Session(config=config.session_config)
     K.set_session(sess)
-    keras_weights = None
 
+  warm_start_path = None
   if keras_model._is_graph_network:
-    # TODO(yifeif): move checkpoint initialization to scaffold.init_fn
-    _save_first_checkpoint(keras_model,
-                           estimator,
-                           custom_objects,
-                           keras_weights)
+    warm_start_path = _save_first_checkpoint(keras_model, custom_objects,
+                                             config)
   elif keras_model.built:
-    logging.warning('You are creating an Estimator from a Keras model '
-                    'manually subclassed from `Model`, that was '
-                    'already called on some inputs (and thus already had '
-                    'weights). We are currently unable to preserve '
-                    'the model\'s state (its weights) '
-                    'as part of the estimator '
-                    'in this case. Be warned that the estimator '
-                    'has been created using '
-                    'a freshly initialized version of your model.\n'
-                    'Note that this doesn\'t affect the state of the '
-                    'model instance you passed as `keras_model` argument.')
+    logging.warning('You are creating an Estimator from a Keras model manually '
+                    'subclassed from `Model`, that was already called on some '
+                    'inputs (and thus already had weights). We are currently '
+                    'unable to preserve the model\'s state (its weights) as '
+                    'part of the estimator in this case. Be warned that the '
+                    'estimator has been created using a freshly initialized '
+                    'version of your model.\n'
+                    'Note that this doesn\'t affect the state of the model '
+                    'instance you passed as `keras_model` argument.')
+
+  estimator = estimator_lib.Estimator(keras_model_fn,
+                                      config=config,
+                                      warm_start_from=warm_start_path)
+
   return estimator

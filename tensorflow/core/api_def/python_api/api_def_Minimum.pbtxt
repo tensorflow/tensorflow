@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "minimum"
-    deprecation_message: "tf.minimum is deprecated, please use tf.math.minimum instead."
+    deprecated: true
   }
 }

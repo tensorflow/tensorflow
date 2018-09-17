@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/testlib.h"
@@ -115,7 +116,7 @@ TEST_F(ScopedAllocatorOptimizerTest, UnaryRewriteOnly) {
 
   ScopedAllocatorOptions opts;
   opts.add_enable_op("Abs");
-  ScopedAllocatorOptimizer sao(opts);
+  ScopedAllocatorOptimizer sao(RewriterConfig::ON, opts);
   ScopedAllocatorOptimizer::OpNameSet ons;
   ons.insert("Abs");
 
@@ -199,7 +200,7 @@ TEST_F(ScopedAllocatorOptimizerTest, UnaryExecute) {
   // b + c == -4, -4, 3, 2
   for (int oi = 0; oi < outputs.size(); ++oi) {
     for (int i = 0; i < outputs[oi].NumElements(); ++i) {
-      VLOG(0) << "output vec " << oi << " index " << i << " = "
+      VLOG(1) << "output vec " << oi << " index " << i << " = "
               << outputs[oi].flat<float>()(i);
     }
     if (oi == 0) {

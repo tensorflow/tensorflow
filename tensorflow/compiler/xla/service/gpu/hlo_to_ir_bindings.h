@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/alias_analysis.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 namespace gpu {
@@ -36,18 +36,17 @@ class HloToIrBindings {
  public:
   HloToIrBindings(const HloModule& module,
                   const BufferAssignment* buffer_assignment,
-                  llvm::IRBuilder<>* ir_builder, llvm::Module* llvm_module,
+                  llvm::IRBuilder<>* b, llvm::Module* llvm_module,
                   bool is_nested)
       : buffer_assignment_(buffer_assignment),
         is_nested_(is_nested),
-        ir_builder_(ir_builder),
+        b_(b),
         module_(llvm_module),
-        alias_analysis_(module, *buffer_assignment_,
-                        &ir_builder_->getContext()) {}
+        alias_analysis_(module, *buffer_assignment_, &b_->getContext()) {}
 
   void EmitBasePointersForHlos(
-      tensorflow::gtl::ArraySlice<const HloInstruction*> io_hlos,
-      tensorflow::gtl::ArraySlice<const HloInstruction*> non_io_hlos);
+      absl::Span<const HloInstruction* const> io_hlos,
+      absl::Span<const HloInstruction* const> non_io_hlos);
 
   // Rebinds the given HLO to the LLVM IR value that represent its address.
   void BindHloToIrValue(const HloInstruction& hlo, llvm::Value* ir_value,
@@ -104,7 +103,7 @@ class HloToIrBindings {
 
   const bool is_nested_;
 
-  llvm::IRBuilder<>* ir_builder_;
+  llvm::IRBuilder<>* b_;
   llvm::Module* module_;
 
   // Stores the underlying llvm::IrArray for each HloInstruction.

@@ -124,6 +124,11 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     self._ui_type = ui_type
 
+  def _is_disk_usage_reset_each_run(self):
+    # The dumped tensors are all cleaned up after every Session.run
+    # in a command-line wrapper.
+    return True
+
   def _initialize_argparsers(self):
     self._argparsers = {}
     ap = argparse.ArgumentParser(
@@ -596,7 +601,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       # Register tab completion for the filter names.
       curses_cli.register_tab_comp_context(["run", "r"],
                                            list(self._tensor_filters.keys()))
-    if self._feed_dict:
+    if self._feed_dict and hasattr(self._feed_dict, "keys"):
       # Register tab completion for feed_dict keys.
       feed_keys = [common.get_graph_element_name(key)
                    for key in self._feed_dict.keys()]

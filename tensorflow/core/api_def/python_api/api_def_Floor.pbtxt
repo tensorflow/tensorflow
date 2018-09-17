@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "floor"
-    deprecation_message: "tf.floor is deprecated, please use tf.math.floor instead."
+    deprecated: true
   }
 }

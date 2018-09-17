@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "ifft"
-    deprecation_message: "tf.ifft is deprecated, please use tf.spectral.ifft instead."
+    deprecated: true
   }
 }

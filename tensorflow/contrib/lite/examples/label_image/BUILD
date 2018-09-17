@@ -63,6 +63,7 @@ cc_test(
     data = [
         "testdata/grace_hopper.bmp",
     ],
+    tags = ["no_oss"],
     deps = [
         ":bitmap_helpers",
         "@com_google_googletest//:gtest",

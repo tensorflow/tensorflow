@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "digamma"
-    deprecation_message: "tf.digamma is deprecated, please use tf.math.digamma instead."
+    deprecated: true
   }
 }

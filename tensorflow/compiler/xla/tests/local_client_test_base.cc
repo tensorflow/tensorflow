@@ -18,10 +18,11 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -135,7 +136,7 @@ ScopedShapedBuffer LocalClientTestBase::LiteralToShapedBuffer(
       .ConsumeValueOrDie();
 }
 
-std::unique_ptr<Literal> LocalClientTestBase::ShapedBufferToLiteral(
+Literal LocalClientTestBase::ShapedBufferToLiteral(
     const ShapedBuffer& shaped_buffer) {
   return local_client_->ShapedBufferToLiteral(shaped_buffer)
       .ConsumeValueOrDie();
@@ -155,7 +156,7 @@ ExecutableRunOptions LocalClientTestBase::DefaultExecutableRunOptions() const {
 
 ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
     const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
+    absl::Span<const ShapedBuffer* const> arguments) {
   return ExecuteLocally(computation, arguments, DefaultExecutableBuildOptions(),
                         DefaultExecutableRunOptions())
       .ConsumeValueOrDie();
@@ -163,7 +164,7 @@ ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
 
 ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
     const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    absl::Span<const ShapedBuffer* const> arguments,
     const ExecutableBuildOptions& build_options,
     const ExecutableRunOptions& run_options) {
   return ExecuteLocally(computation, arguments, build_options, run_options)
@@ -172,14 +173,14 @@ ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
 
 StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
     const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
+    absl::Span<const ShapedBuffer* const> arguments) {
   return ExecuteLocally(computation, arguments, DefaultExecutableBuildOptions(),
                         DefaultExecutableRunOptions());
 }
 
 StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
     const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    absl::Span<const ShapedBuffer* const> arguments,
     const ExecutableBuildOptions& build_options,
     const ExecutableRunOptions& run_options) {
   std::vector<const Shape*> argument_layouts(arguments.size());
@@ -189,7 +190,19 @@ StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<LocalExecutable> executable,
       local_client_->Compile(computation, argument_layouts, build_options));
-  return executable->Run(arguments, run_options);
+  TF_ASSIGN_OR_RETURN(auto ret, executable->Run(arguments, run_options));
+
+  auto device_ordinal =
+      build_options.device_ordinal() == -1 ? 0 : build_options.device_ordinal();
+  auto* stream = run_options.stream();
+  if (!stream) {
+    stream = local_client_->mutable_backend()
+                 ->BorrowStream(device_ordinal)
+                 .ValueOrDie()
+                 .get();
+  }
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  return std::move(ret);
 }
 
 }  // namespace xla

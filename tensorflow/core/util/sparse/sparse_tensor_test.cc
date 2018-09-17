@@ -94,9 +94,12 @@ TEST(SparseTensorTest, SparseTensorInvalidIndicesType) {
   const int NDIM = 3;
   Tensor ix(DT_INT32, TensorShape({N, NDIM}));
   Tensor vals(DT_STRING, TensorShape({N}));
+  SparseTensor result;
 
-  EXPECT_DEATH(SparseTensor(ix, vals, TensorShape({10, 10, 10}), {0, 1, 2}),
-               "indices must be type int64");
+  EXPECT_EQ(SparseTensor::Create(ix, vals, TensorShape({10, 10, 10}), {0, 1, 2},
+                                 &result)
+                .code(),
+            error::INVALID_ARGUMENT);
 }
 
 TEST(SparseTensorTest, SparseTensorInvalidIndicesShape) {
@@ -104,9 +107,12 @@ TEST(SparseTensorTest, SparseTensorInvalidIndicesShape) {
   const int NDIM = 3;
   Tensor ix(DT_INT64, TensorShape({N, NDIM, 1}));
   Tensor vals(DT_STRING, TensorShape({N}));
+  SparseTensor result;
 
-  EXPECT_DEATH(SparseTensor(ix, vals, TensorShape({10, 10, 10}), {0, 1, 2}),
-               "indices must be a matrix");
+  EXPECT_EQ(SparseTensor::Create(ix, vals, TensorShape({10, 10, 10}), {0, 1, 2},
+                                 &result)
+                .code(),
+            error::INVALID_ARGUMENT);
 }
 
 TEST(SparseTensorTest, SparseTensorInvalidValues) {
@@ -114,9 +120,12 @@ TEST(SparseTensorTest, SparseTensorInvalidValues) {
   const int NDIM = 3;
   Tensor ix(DT_INT64, TensorShape({N, NDIM}));
   Tensor vals(DT_STRING, TensorShape({N, 1}));
+  SparseTensor result;
 
-  EXPECT_DEATH(SparseTensor(ix, vals, TensorShape({10, 10, 10}), {0, 1, 2}),
-               "vals must be a vec");
+  EXPECT_EQ(SparseTensor::Create(ix, vals, TensorShape({10, 10, 10}), {0, 1, 2},
+                                 &result)
+                .code(),
+            error::INVALID_ARGUMENT);
 }
 
 TEST(SparseTensorTest, SparseTensorInvalidN) {
@@ -124,9 +133,12 @@ TEST(SparseTensorTest, SparseTensorInvalidN) {
   const int NDIM = 3;
   Tensor ix(DT_INT64, TensorShape({N, NDIM}));
   Tensor vals(DT_STRING, TensorShape({N - 1}));
+  SparseTensor result;
 
-  EXPECT_DEATH(SparseTensor(ix, vals, TensorShape({10, 10, 10}), {0, 1, 2}),
-               "indices and values rows .* must match");
+  EXPECT_EQ(SparseTensor::Create(ix, vals, TensorShape({10, 10, 10}), {0, 1, 2},
+                                 &result)
+                .code(),
+            error::INVALID_ARGUMENT);
 }
 
 TEST(SparseTensorTest, SparseTensorInvalidOrder) {
@@ -134,18 +146,24 @@ TEST(SparseTensorTest, SparseTensorInvalidOrder) {
   const int NDIM = 3;
   Tensor ix(DT_INT64, TensorShape({N, NDIM}));
   Tensor vals(DT_STRING, TensorShape({N}));
+  SparseTensor result;
 
-  EXPECT_DEATH(SparseTensor(ix, vals, TensorShape({10, 10, 10}), {0, 1}),
-               "Order length must be SparseTensor rank");
+  EXPECT_EQ(
+      SparseTensor::Create(ix, vals, TensorShape({10, 10, 10}), {0, 1}, &result)
+          .code(),
+      error::INVALID_ARGUMENT);
 }
 TEST(SparseTensorTest, SparseTensorInvalidShape) {
   int N = 5;
   const int NDIM = 3;
   Tensor ix(DT_INT64, TensorShape({N, NDIM}));
   Tensor vals(DT_STRING, TensorShape({N}));
+  SparseTensor result;
 
-  EXPECT_DEATH(SparseTensor(ix, vals, TensorShape({10, 10}), {0, 1, 2}),
-               "Shape rank must be SparseTensor rank");
+  EXPECT_EQ(
+      SparseTensor::Create(ix, vals, TensorShape({10, 10}), {0, 1, 2}, &result)
+          .code(),
+      error::INVALID_ARGUMENT);
 }
 
 TEST(SparseTensorTest, SparseTensorConstruction) {
@@ -169,7 +187,8 @@ TEST(SparseTensorTest, SparseTensorConstruction) {
 
   TensorShape shape({10, 10, 10});
   std::vector<int64> order{0, 1, 2};
-  SparseTensor st(ix, vals, shape, order);
+  SparseTensor st;
+  TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
   Status st_indices_valid = st.IndicesValid();
   EXPECT_FALSE(st_indices_valid.ok());
   EXPECT_EQ("indices[2] = [2,0,0] is out of order",
@@ -210,7 +229,8 @@ TEST(SparseTensorTest, EmptySparseTensorAllowed) {
 
   std::vector<int64> shape{10, 10, 10};
   std::vector<int64> order{0, 1, 2};
-  SparseTensor st(ix, vals, shape, order);
+  SparseTensor st;
+  TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
   TF_EXPECT_OK(st.IndicesValid());
   EXPECT_EQ(st.order(), order);
 
@@ -227,7 +247,8 @@ TEST(SparseTensorTest, SortingWorksCorrectly) {
   Tensor ix(DT_INT64, TensorShape({N, NDIM}));
   Tensor vals(DT_STRING, TensorShape({N}));
   TensorShape shape({1000, 1000, 1000, 1000});
-  SparseTensor st(ix, vals, shape);
+  SparseTensor st;
+  TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, &st));
 
   auto ix_t = ix.matrix<int64>();
 
@@ -266,7 +287,8 @@ TEST(SparseTensorTest, ValidateIndicesFindsInvalid) {
 
   TensorShape shape({10, 10, 10});
   std::vector<int64> order{0, 1, 2};
-  SparseTensor st(ix, vals, shape, order);
+  SparseTensor st;
+  TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
 
   st.Reorder<string>(order);
   Status st_indices_valid = st.IndicesValid();
@@ -302,7 +324,8 @@ TEST(SparseTensorTest, SparseTensorCheckBoundaries) {
   TensorShape shape({10, 10, 10});
   std::vector<int64> order{0, 1, 2};
 
-  SparseTensor st(ix, vals, shape, order);
+  SparseTensor st;
+  TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
   EXPECT_FALSE(st.IndicesValid().ok());
 
   st.Reorder<string>(order);
@@ -351,7 +374,8 @@ TEST(SparseTensorTest, SparseTensorToDenseTensor) {
 
   TensorShape shape({4, 4, 5});
   std::vector<int64> order{0, 1, 2};
-  SparseTensor st(ix, vals, shape, order);
+  SparseTensor st;
+  TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
 
   Tensor dense(DT_STRING, TensorShape({4, 4, 5}));
   st.ToDense<string>(&dense);
@@ -390,7 +414,8 @@ TEST(SparseTensorTest, SparseTensorToLargerDenseTensor) {
 
   TensorShape shape({4, 4, 5});
   std::vector<int64> order{0, 1, 2};
-  SparseTensor st(ix, vals, shape, order);
+  SparseTensor st;
+  TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
 
   Tensor dense(DT_STRING, TensorShape({10, 10, 10}));
   st.ToDense<string>(&dense);
@@ -433,7 +458,8 @@ TEST(SparseTensorTest, SparseTensorGroup) {
   TensorShape shape({10, 10, 10});
   std::vector<int64> order{0, 1, 2};
 
-  SparseTensor st(ix, vals, shape, order);
+  SparseTensor st;
+  TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
   st.Reorder<int32>(order);
 
   std::vector<std::vector<int64> > groups;
@@ -521,7 +547,8 @@ TEST(SparseTensorTest, Concat) {
   TensorShape shape({10, 10, 10});
   std::vector<int64> order{0, 1, 2};
 
-  SparseTensor st(ix, vals, shape, order);
+  SparseTensor st;
+  TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
   EXPECT_FALSE(st.IndicesValid().ok());
   st.Reorder<string>(order);
   TF_EXPECT_OK(st.IndicesValid());
@@ -551,7 +578,9 @@ TEST(SparseTensorTest, Concat) {
 
   // Concat works if non-primary ix is out of order, but output order
   // is not defined
-  SparseTensor st_ooo(ix, vals, shape, {0, 2, 1});  // non-primary ix OOO
+  SparseTensor st_ooo;
+  TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, {0, 2, 1},
+                                    &st_ooo));  // non-primary ix OOO
   SparseTensor conc_ooo = SparseTensor::Concat<string>({st, st, st, st_ooo});
   std::vector<int64> expected_ooo{-1, -1, -1};
   EXPECT_EQ(conc_ooo.order(), expected_ooo);
@@ -584,9 +613,11 @@ TEST(SparseTensorTest, Split) {
   vals.vec<int64>()(2) = 3;
   vals.vec<int64>()(3) = 4;
 
-  SparseTensor st(ids, vals, TensorShape({4, 3}));
+  SparseTensor st;
+  TF_ASSERT_OK(SparseTensor::Create(ids, vals, TensorShape({4, 3}), &st));
 
-  std::vector<SparseTensor> st_list = SparseTensor::Split<int64>(st, 0, 2);
+  std::vector<SparseTensor> st_list;
+  TF_ASSERT_OK(SparseTensor::Split<int64>(st, 0, 2, &st_list));
 
   EXPECT_EQ(st_list.size(), 2);
   auto expected_shape = gtl::InlinedVector<int64, 8>{2, 3};
@@ -633,7 +664,8 @@ TEST(SparseTensorTest, Slice) {
   vals.vec<int64>()(2) = 3;
   vals.vec<int64>()(3) = 4;
 
-  SparseTensor st(ids, vals, TensorShape({4, 3}));
+  SparseTensor st;
+  TF_ASSERT_OK(SparseTensor::Create(ids, vals, TensorShape({4, 3}), &st));
 
   std::vector<int64> start(2, 0);
   std::vector<int64> size(2);
@@ -662,7 +694,8 @@ TEST(SparseTensorTest, Dim0SparseTensorToDenseTensor) {
   vals.scalar<int32>()() = 5;
 
   TensorShape shape({});
-  SparseTensor st(ix, vals, shape);
+  SparseTensor st;
+  TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, &st));
 
   Tensor dense(DT_INT32, TensorShape({}));
   st.ToDense<int32>(&dense);
@@ -699,7 +732,8 @@ static void BM_SparseReorderFloat(int iters, int N32, int NDIM32) {
         ix_t(i, d) = rnd.Rand64() % 1000;
       }
     }
-    SparseTensor st(ix, vals, shape, order);
+    SparseTensor st;
+    TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
 
     testing::StartTiming();
     st.Reorder<float>(reorder);
@@ -740,7 +774,8 @@ static void BM_SparseReorderString(int iters, int N32, int NDIM32) {
         ix_t(i, d) = rnd.Rand64() % 1000;
       }
     }
-    SparseTensor st(ix, vals, shape, order);
+    SparseTensor st;
+    TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
 
     testing::StartTiming();
     st.Reorder<string>(reorder);

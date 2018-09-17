@@ -141,6 +141,9 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     options.dedup_computations = false;
     options.combine_add_to_addn = false;
     options.convert_sqrt_div_to_rsqrt_mul = false;
+    options.convert_pow = false;
+    options.convert_log1p = false;
+    options.optimize_max_or_min_of_monotonic = false;
     options.fold_conjugate_into_transpose = false;
     options.fold_multiply_into_conv = false;
     options.fold_transpose_into_matmul = false;
@@ -158,6 +161,7 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     options.reorder_cast_and_transpose = false;
     options.replace_mul_with_square = false;
     options.simplify_aggregation = false;
+    options.unary_ops_composition = false;
     optimizer->options_ = options;
   }
 
@@ -273,6 +277,16 @@ class ArithmeticOptimizerTest : public GrapplerTest {
   void EnableOnlyOptimizeMaxOrMinOfMonotonic(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.optimize_max_or_min_of_monotonic = true;
+  }
+
+  void EnableOnlyExpm1(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.convert_expm1 = true;
+  }
+
+  void EnableOnlyUnaryOpsComposition(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.unary_ops_composition = true;
   }
 };
 
@@ -567,7 +581,7 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsSimple) {
   const NodeDef* new_const = node_map.GetNode(optimized_const_name);
   ASSERT_NE(new_const, nullptr);
   EXPECT_EQ("^x", new_const->input(0));
-  EXPECT_EQ(std::string("\0\0\0@", 4),
+  EXPECT_EQ(string("\0\0\0@", 4),
             new_const->attr().at("value").tensor().tensor_content());
 
   const NodeDef* new_mul = node_map.GetNode(optimized_mul_name);
@@ -611,7 +625,7 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsSimpleWithControlDep) {
   const NodeDef* new_const = node_map.GetNode(optimized_const_name);
   ASSERT_NE(new_const, nullptr);
   EXPECT_EQ("^x", new_const->input(0));
-  EXPECT_EQ(std::string("\0\0\0@", 4),
+  EXPECT_EQ(string("\0\0\0@", 4),
             new_const->attr().at("value").tensor().tensor_content());
 
   const NodeDef* new_mul = node_map.GetNode(optimized_mul_name);
@@ -2475,6 +2489,11 @@ TEST_F(ArithmeticOptimizerTest, ConvertPow) {
   auto tensors = EvaluateNodes(got, item.fetch);
   EXPECT_EQ(7, tensors.size());
 
+  for (int i = 0; i < 7; ++i) {
+    EXPECT_EQ(tensors[i].NumElements(), tensors_expected[i].NumElements());
+    test::ExpectTensorNear<float>(tensors[i], tensors_expected[i], 1e-6);
+  }
+
   GraphDef want;
   AddNode("x", "Const", {}, {}, &want);
   AddNode("y2", "Const", {}, {}, &want);
@@ -2520,6 +2539,11 @@ TEST_F(ArithmeticOptimizerTest, Log1p) {
   auto tensors = EvaluateNodes(got, item.fetch);
   EXPECT_EQ(2, tensors.size());
 
+  for (int i = 0; i < 2; ++i) {
+    EXPECT_EQ(tensors[i].NumElements(), tensors_expected[i].NumElements());
+    test::ExpectTensorNear<float>(tensors[i], tensors_expected[i], 1e-6);
+  }
+
   GraphDef want;
   AddNode("x1", "Const", {}, {}, &want);
   AddNode("x2", "Const", {}, {}, &want);
@@ -2529,6 +2553,47 @@ TEST_F(ArithmeticOptimizerTest, Log1p) {
           {"x2", AsControlDependency("x1"), AsControlDependency("x3")}, {},
           &want);
   AddNode("out2", "Log", {"a23"}, {}, &want);
+
+  CompareGraphs(want, got);
+}
+
+TEST_F(ArithmeticOptimizerTest, Expm1) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  auto x1 = ops::Const(s.WithOpName("x1"), {2.0f, 2.0f}, {1, 2});
+  auto x2 = ops::Const(s.WithOpName("x2"), {1.0f, 1.0f}, {1, 2});
+  auto x3 = ops::Const(s.WithOpName("x3"), {3.0f, 3.0f}, {1, 2});
+  auto exp1 = ops::Exp(s.WithOpName("exp1").WithControlDependencies(x3), x1);
+  Output out1 = ops::Sub(s.WithOpName("out1"), exp1, x2);
+  Output out2 = ops::Sub(s.WithOpName("out2"), exp1, x3);
+
+  GrapplerItem item;
+  item.fetch = {"out1", "out2"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(2, tensors_expected.size());
+
+  GraphDef got;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyExpm1(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &got);
+  auto tensors = EvaluateNodes(got, item.fetch);
+  EXPECT_EQ(2, tensors.size());
+
+  for (int i = 0; i < 2; ++i) {
+    EXPECT_EQ(tensors[i].NumElements(), tensors_expected[i].NumElements());
+    test::ExpectTensorNear<float>(tensors[i], tensors_expected[i], 1e-6);
+  }
+
+  GraphDef want;
+  AddNode("x1", "Const", {}, {}, &want);
+  AddNode("x2", "Const", {}, {}, &want);
+  AddNode("x3", "Const", {}, {}, &want);
+  AddNode("exp1", "Exp", {"x1", AsControlDependency("x3")}, {}, &want);
+  AddNode("out1", "Expm1",
+          {"x1", AsControlDependency("x2"), AsControlDependency("x3")}, {},
+          &want);
+  AddNode("out2", "Sub", {"exp1", "x3"}, {}, &want);
 
   CompareGraphs(want, got);
 }
@@ -3157,6 +3222,129 @@ TEST_F(ArithmeticOptimizerTest, OptimizeMaxOrMinOfMonotonicElementWise) {
     }
   }
   EXPECT_EQ(2, required_node_count);
+}
+
+TEST_F(ArithmeticOptimizerTest,
+       OptimizeMaxOrMinOfMonotonicElementWise_DoNotChangeFetchNode) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+  Output sqrt = ops::Sqrt(s.WithOpName("sqrt"), x);
+  Output reduce_max = ops::Max(s.WithOpName("reduce_max"), sqrt, {0});
+  Output final_out = ops::Identity(s.WithOpName("final_out"), reduce_max);
+
+  GrapplerItem item;
+  item.fetch = {"sqrt", "final_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(2, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  OptimizeTwice(&optimizer, &item, &output);
+
+  // Should be a NoOp since we are not allowed to change the output of fetch
+  // nodes.
+  VerifyGraphsMatch(item.graph, output, __LINE__);
+}
+
+TEST_F(ArithmeticOptimizerTest,
+       OptimizeMaxOrMinOfMonotonicElementWiseNonIncreasing) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+  Output neg = ops::Neg(s.WithOpName("neg"), x);
+  Output reduce_max = ops::Max(s.WithOpName("reduce_max"), neg, {0});
+  Output final_out = ops::Identity(s.WithOpName("final_out"), reduce_max);
+
+  GrapplerItem item;
+  item.fetch = {"final_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, tensors.size());
+
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+  EXPECT_EQ(item.graph.node_size(), output.node_size());
+  // Check if the inputs are switched
+  int required_node_count = 0;
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    if (node.name() == "neg") {
+      EXPECT_EQ("Neg", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("reduce_max", node.input(0));
+      ++required_node_count;
+    } else if (node.name() == "reduce_max") {
+      EXPECT_EQ("Min", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      ++required_node_count;
+    }
+  }
+  EXPECT_EQ(2, required_node_count);
+}
+
+TEST_F(ArithmeticOptimizerTest, UnaryOpsComposition) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+  Output sqrt = ops::Sqrt(s.WithOpName("sqrt"), x);
+  Output log = ops::Log(s.WithOpName("log"), sqrt);
+  Output relu = ops::Relu(s.WithOpName("relu"), log);
+  Output final_out = ops::Identity(s.WithOpName("final_out"), relu);
+
+  GrapplerItem item;
+  item.fetch = {"final_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  // Place all nodes on CPU.
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    item.graph.mutable_node(i)->set_device("/device:CPU:0");
+  }
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyUnaryOpsComposition(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+
+  EXPECT_EQ(3, output.node_size());
+
+  // Check that Sqrt/Log/Relu were replaced with a single op.
+  int required_node_count = 0;
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    if (node.name() == "final_out") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("relu/unary_ops_composition", node.input(0));
+      ++required_node_count;
+    } else if (node.name() == "relu/unary_ops_composition") {
+      EXPECT_EQ("_UnaryOpsComposition", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+
+      auto op_names = node.attr().at("op_names").list().s();
+      EXPECT_EQ(3, op_names.size());
+      EXPECT_EQ("Sqrt", op_names[0]);
+      EXPECT_EQ("Log", op_names[1]);
+      EXPECT_EQ("Relu", op_names[2]);
+      ++required_node_count;
+    }
+  }
+  EXPECT_EQ(2, required_node_count);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
 }  // namespace grappler

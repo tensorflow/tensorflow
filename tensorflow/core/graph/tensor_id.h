@@ -62,13 +62,10 @@ TensorId ParseTensorName(StringPiece name);
 struct SafeTensorId : public std::pair<string, int> {
   typedef std::pair<string, int> Base;
 
-  // Inherit the set of constructors.
-  using Base::pair;
-
   // NOTE(skyewm): this is required on some platforms. I'm not sure why the
-  // using statement above isn't always sufficient.
+  // using "using Base::pair;" isn't always sufficient.
   SafeTensorId() : Base() {}
-  SafeTensorId(StringPiece str, int idx);
+  SafeTensorId(const string& str, int idx) : Base(str, idx) {}
   SafeTensorId(const TensorId& id);
 
   string ToString() const {

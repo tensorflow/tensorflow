@@ -55,7 +55,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ConvertExpandDimsToReshape);
   transformations->Add(new ConvertSqueezeToReshape);
   transformations->Add(new ConvertTrivialAddNToAdd);
-  transformations->Add(new ConvertTrivialStackToReshape);
+  transformations->Add(new ConvertTrivialPackToReshape);
   transformations->Add(new ConvertTrivialTileToConcat);
   transformations->Add(new ConvertTrivialTransposeToReshape);
   transformations->Add(new ConvertReorderAxes);
@@ -79,18 +79,21 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new FuseBinaryIntoFollowingAffine);
   transformations->Add(new FuseBroadcastIntoFollowingBinary);
   transformations->Add(new MergeReshapeIntoPrecedingTranspose);
+  transformations->Add(new MoveBinaryOperatorBeforeReshape);
   transformations->Add(new ReorderElementwiseUnary);
   transformations->Add(new ReorderReshapeTranspose);
   transformations->Add(new ResolveBatchNormalization);
   transformations->Add(new ResolveConstantBinaryOperator);
   transformations->Add(new ResolveConstantFill);
   transformations->Add(new ResolveConstantGather);
+  transformations->Add(new ResolveConstantPack);
   transformations->Add(new ResolveConstantRandomUniform);
   transformations->Add(new ResolveConstantRange);
   transformations->Add(new ResolveConstantReshape);
+  transformations->Add(new ResolveConstantSelect);
   transformations->Add(new ResolveConstantSlice);
-  transformations->Add(new ResolveConstantStack);
   transformations->Add(new ResolveConstantStridedSlice);
+  transformations->Add(new ResolveConstantTile);
   transformations->Add(new ResolveConstantTranspose);
   transformations->Add(new ResolveConstantUnaryOperator);
   transformations->Add(new ResolveTensorFlowMerge);
@@ -104,17 +107,19 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new IdentifyRelu1);
   transformations->Add(new IdentifyPRelu);
   transformations->Add(new RemoveTrivialBinaryOperator);
-  transformations->Add(new ReadFakeQuantMinMax);
+  transformations->Add(new ResolveFakeQuantArgsFromVars);
+  transformations->Add(new ReadArrayMinmaxAndNarrowRangeFromFakeQuant);
   transformations->Add(new ResolveSpaceToBatchNDAttributes);
   transformations->Add(new ResolveBatchToSpaceNDAttributes);
   transformations->Add(new ResolvePadAttributes);
   transformations->Add(new ResolvePadV2Attributes);
   transformations->Add(new ResolveStridedSliceAttributes);
   transformations->Add(new ResolveSliceAttributes);
-  transformations->Add(new ResolveMeanAttributes);
+  transformations->Add(new ResolveReduceAttributes);
   transformations->Add(new ResolveConstantShapeOrRank);
   transformations->Add(new MakeInitialDequantizeOperator);
   transformations->Add(new UnpartitionEmbeddingLookup);
+  transformations->Add(new ResolveGatherAttributes);
 }
 
 bool SupportsQuantization(FileFormat format) {
@@ -133,6 +138,8 @@ bool SupportsLstmCell(FileFormat format) {
 bool SupportsPreallocatedWorkspace(FileFormat format) {
   return (format == TFLITE);
 }
+
+bool SupportsShuffledFCWeights(FileFormat format) { return format == TFLITE; }
 
 bool IsRealValued(toco::ArrayDataType type) {
   // TODO(benoitjacob) - this is hardcoding that uint8 and int16 are only used
@@ -190,6 +197,10 @@ std::unique_ptr<Model> Import(const TocoFlags& toco_flags,
           toco_flags.has_drop_control_dependency()
               ? toco_flags.drop_control_dependency()
               : (toco_flags.output_format() != TENSORFLOW_GRAPHDEF);
+
+      tf_import_flags.import_all_ops_as_unsupported =
+          toco_flags.force_eager_ops();
+
       model = ImportTensorFlowGraphDef(model_flags, tf_import_flags,
                                        input_file_contents);
       break;
@@ -270,9 +281,6 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
       transformations.Add(new toco::MergeLstmCellInputs);
     }
   }
-  if (toco_flags.quantize_weights()) {
-    transformations.Add(new QuantizeWeights);
-  }
   transformations.Add(new ResolveConstantConcatenation);
   RunGraphTransformations(model, "general graph transformations",
                           transformations);
@@ -301,8 +309,9 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     // HardcodeMinMax to move changes through the graph as we make changes.
     auto propagate_default_min_max =
         absl::make_unique<PropagateDefaultMinMax>();
-    if (toco_flags.has_default_ranges_min() &&
-        toco_flags.has_default_ranges_max()) {
+    bool has_default_ranges_flag = (toco_flags.has_default_ranges_min() &&
+                                    toco_flags.has_default_ranges_max());
+    if (has_default_ranges_flag) {
       propagate_default_min_max->DefineTypeRange(
           ArrayDataType::kUint8, toco_flags.default_ranges_min(),
           toco_flags.default_ranges_max());
@@ -327,6 +336,8 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
         new EnsureUint8WeightsSafeForFastInt8Kernels;
     ensure_safe_for_int8_kernels->set_allow_nudging_weights(
         toco_flags.allow_nudging_weights_to_use_fast_gemm_kernel());
+    ensure_safe_for_int8_kernels->set_has_default_ranges_flag(
+        has_default_ranges_flag);
     RunGraphTransformations(model, "quantization graph transformations",
                             {
                                 new RemoveTrivialQuantizedActivationFunc,
@@ -335,6 +346,10 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
                                 new RemoveFinalDequantizeOp,
                                 ensure_safe_for_int8_kernels,
                             });
+    if (SupportsShuffledFCWeights(output_format)) {
+      RunGraphTransformations(model, "shuffling of FC weights",
+                              {new ShuffleFCWeights});
+    }
   } else {
     GraphTransformationsSet dequantization_transformations{new Dequantize};
     // Dequantize creates FakeQuant nodes. We may want to discard
@@ -386,9 +401,21 @@ void Export(const TocoFlags& toco_flags, const Model& model,
     case TENSORFLOW_GRAPHDEF:
       ExportTensorFlowGraphDef(model, output_file_contents);
       break;
-    case TFLITE:
-      toco::tflite::Export(model, allow_custom_ops, output_file_contents);
-      break;
+    case TFLITE: {
+      toco::tflite::ExportParams params;
+
+      // Always allow custom ops when eager ops are allowed.
+      if (toco_flags.force_eager_ops() || toco_flags.allow_eager_ops()) {
+        params.allow_eager_ops = true;
+        params.allow_custom_ops = true;
+      } else if (allow_custom_ops) {
+        params.allow_custom_ops = true;
+      }
+
+      params.quantize_weights = toco_flags.post_training_quantize();
+
+      toco::tflite::Export(model, output_file_contents, params);
+    } break;
     case GRAPHVIZ_DOT:
       DumpGraphviz(model, output_file_contents);
       break;

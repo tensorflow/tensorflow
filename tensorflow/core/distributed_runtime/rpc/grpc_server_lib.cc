@@ -120,6 +120,34 @@ Status GrpcServer::Init(
   master_env_.env = env_;
   worker_env_.env = env_;
 
+  // Check parameters before DeviceFactory::AddDevices,
+  // otherwise if 'task_index=-1' the program will abort.
+
+  // Look up the port that has been requested for this task in `server_def_`.
+  int requested_port = -1;
+  for (const auto& job : server_def_.cluster().job()) {
+    if (job.name() == server_def_.job_name()) {
+      auto iter = job.tasks().find(server_def_.task_index());
+      if (iter == job.tasks().end()) {
+        return errors::InvalidArgument("Task ", server_def_.task_index(),
+                                       " was not defined in job \"",
+                                       server_def_.job_name(), "\"");
+      }
+      auto colon_index = iter->second.find_last_of(':');
+      if (!strings::safe_strto32(iter->second.substr(colon_index + 1),
+                                 &requested_port)) {
+        return errors::InvalidArgument(
+            "Could not parse port for local server from \"", iter->second,
+            "\".");
+      }
+      break;
+    }
+  }
+  if (requested_port == -1) {
+    return errors::Internal("Job \"", server_def_.job_name(),
+                            "\" was not defined in cluster");
+  }
+
   SessionOptions sess_opts;
   ConfigProto config = server_def_.default_session_config();
   sess_opts.config = config;
@@ -142,33 +170,6 @@ Status GrpcServer::Init(
     return errors::Internal("Could not parse worker name.");
   }
 
-  // Look up the port that has been requested for this task in `server_def_`.
-  int requested_port = -1;
-  for (const auto& job : server_def_.cluster().job()) {
-    if (job.name() == server_def_.job_name()) {
-      auto iter = job.tasks().find(server_def_.task_index());
-      if (iter == job.tasks().end()) {
-        return errors::InvalidArgument("Task ", server_def_.task_index(),
-                                       " was not defined in job \"",
-                                       server_def_.job_name(), "\"");
-      }
-      const std::vector<string> hostname_port =
-          str_util::Split(iter->second, ':');
-      if (hostname_port.size() != 2 ||
-          !strings::safe_strto32(hostname_port[1], &requested_port)) {
-        return errors::InvalidArgument(
-            "Could not parse port for local server from \"", iter->second,
-            "\"");
-      } else {
-        break;
-      }
-    }
-  }
-  if (requested_port == -1) {
-    return errors::Internal("Job \"", server_def_.job_name(),
-                            "\" was not defined in cluster");
-  }
-
   // N.B. The order of initialization here is intricate, because we
   // wish to allow `requested_port == 0` (for choosing any port,
   // mostly for testing). Therefore, the construction of the channel
@@ -189,6 +190,8 @@ Status GrpcServer::Init(
   builder.SetMaxMessageSize(std::numeric_limits<int32>::max());
   builder.SetOption(
       std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption));
+  // Allow subclasses to specify more args to pass to the gRPC server.
+  MaybeMutateBuilder(&builder);
   master_impl_ = CreateMaster(&master_env_);
   master_service_ = NewGrpcMasterService(master_impl_.get(), config, &builder);
   worker_impl_ =
@@ -246,6 +249,7 @@ Status GrpcServer::Init(
   // Finish setting up master environment.
   master_env_.ops = OpRegistry::Global();
   master_env_.worker_cache = worker_cache;
+  master_env_.collective_executor_mgr = worker_env_.collective_executor_mgr;
   master_env_.master_session_factory =
       [config, stats_factory](
           SessionOptions options, const MasterEnv* env,
@@ -289,12 +293,10 @@ Status GrpcServer::Init(
               nullptr);
 }
 
-
 Status GrpcServer::Init(
     ServiceInitFunction service_func,
     const RendezvousMgrCreationFunction& rendezvous_mgr_func) {
-  return Init(std::move(service_func), rendezvous_mgr_func, nullptr,
-              nullptr);
+  return Init(std::move(service_func), rendezvous_mgr_func, nullptr, nullptr);
 }
 
 Status GrpcServer::Init() { return Init(nullptr, nullptr, nullptr, nullptr); }
@@ -345,11 +347,13 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
   const string host_port = channel_cache_->TranslateTask(name_prefix);
   int requested_port;
 
-  if (!strings::safe_strto32(str_util::Split(host_port, ':')[1],
+  auto colon_index = host_port.find_last_of(':');
+  if (!strings::safe_strto32(host_port.substr(colon_index + 1),
                              &requested_port)) {
     return errors::Internal("Could not parse port for local server from \"",
-                            channel_cache_->TranslateTask(name_prefix), "\".");
+                            host_port, "\".");
   }
+
   if (requested_port != bound_port_) {
     return errors::InvalidArgument("Requested port ", requested_port,
                                    " differs from expected port ", bound_port_);

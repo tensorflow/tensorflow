@@ -14,8 +14,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef TENSORFLOW_KERNELS_PERIODICRESAMPLE_OP_H_
-#define TENSORFLOW_KERNELS_PERIODICRESAMPLE_OP_H_
+#ifndef TENSORFLOW_CONTRIB_PERIODIC_RESAMPLE_KERNELS_PERIODIC_RESAMPLE_OP_H_
+#define TENSORFLOW_CONTRIB_PERIODIC_RESAMPLE_KERNELS_PERIODIC_RESAMPLE_OP_H_
 
 #include <cmath>
 #include <type_traits>
@@ -421,4 +421,4 @@ class PeriodicResampleOpGrad : public tensorflow::OpKernel {
   tensorflow::PartialTensorShape desired_shape;
 };
 
-#endif  // TENSORFLOW_KERNELS_PERIODICRESAMPLE_OP_H_
+#endif  // TENSORFLOW_CONTRIB_PERIODIC_RESAMPLE_KERNELS_PERIODIC_RESAMPLE_OP_H_

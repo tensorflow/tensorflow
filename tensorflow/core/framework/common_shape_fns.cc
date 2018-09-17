@@ -432,9 +432,9 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
   DimensionHandle batch_size_dim;
   DimensionHandle input_depth_dim;
   gtl::InlinedVector<DimensionHandle, 2> input_spatial_dims(2);
-  TF_RETURN_IF_ERROR(DimensionsFromShape(conv_input_shape, data_format,
-                                         &batch_size_dim, &input_spatial_dims,
-                                         &input_depth_dim, c));
+  TF_RETURN_IF_ERROR(DimensionsFromShape(
+      conv_input_shape, data_format, &batch_size_dim,
+      absl::MakeSpan(input_spatial_dims), &input_depth_dim, c));
 
   DimensionHandle output_depth_dim = c->Dim(
       filter_shape, GetFilterDimIndex<num_spatial_dims>(filter_format, 'O'));
@@ -1231,11 +1231,13 @@ Status ConcatV2Shape(InferenceContext* c) {
                            c->num_inputs() - 1 /* dim_index */);
 }
 
-Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c, int output_index) {
-  ShapeHandle shape_x = c->input(0);
-  ShapeHandle shape_y = c->input(1);
+Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
+                                            ShapeHandle shape_x,
+                                            ShapeHandle shape_y,
+                                            ShapeHandle* out) {
+  CHECK_NOTNULL(out);
   if (!c->RankKnown(shape_x) || !c->RankKnown(shape_y)) {
-    c->set_output(0, c->UnknownShape());
+    *out = c->UnknownShape();
     return Status::OK();
   }
   const int32 rank_x = c->Rank(shape_x);
@@ -1293,7 +1295,7 @@ Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c, int output_index) {
     }
   }
 
-  c->set_output(output_index, c->MakeShape(dims));
+  *out = c->MakeShape(dims);
   return Status::OK();
 }
 

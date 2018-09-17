@@ -41,7 +41,7 @@ bool ParseTocoFlagsFromCommandLineFlags(
            "extension."),
       Flag("savedmodel_directory", parsed_flags.savedmodel_directory.bind(),
            parsed_flags.savedmodel_directory.default_value(),
-           "Full path to the directory containing the SavedModel."),
+           "Deprecated. Full path to the directory containing the SavedModel."),
       Flag("output_file", parsed_flags.output_file.bind(),
            parsed_flags.output_file.default_value(),
            "Output file. "
@@ -55,9 +55,9 @@ bool ParseTocoFlagsFromCommandLineFlags(
            "One of TENSORFLOW_GRAPHDEF, TFLITE, GRAPHVIZ_DOT."),
       Flag("savedmodel_tagset", parsed_flags.savedmodel_tagset.bind(),
            parsed_flags.savedmodel_tagset.default_value(),
-           "Comma-separated set of tags identifying the MetaGraphDef within "
-           "the SavedModel to analyze. All tags in the tag set must be "
-           "specified."),
+           "Deprecated. Comma-separated set of tags identifying the "
+           "MetaGraphDef within the SavedModel to analyze. All tags in the tag "
+           "set must be specified."),
       Flag("default_ranges_min", parsed_flags.default_ranges_min.bind(),
            parsed_flags.default_ranges_min.default_value(),
            "If defined, will be used as the default value for the min bound "
@@ -160,10 +160,18 @@ bool ParseTocoFlagsFromCommandLineFlags(
            "Ignored if the output format is not TFLite."),
       Flag("quantize_weights", parsed_flags.quantize_weights.bind(),
            parsed_flags.quantize_weights.default_value(),
-           "Store weights as quantized weights followed by dequantize "
-           "operations. Computation is still done in float, but reduces model "
-           "size (at the cost of accuracy and latency)."),
-  };
+           "Deprecated. Please use --post_training_quantize instead."),
+      Flag("post_training_quantize", parsed_flags.post_training_quantize.bind(),
+           parsed_flags.post_training_quantize.default_value(),
+           "Boolean indicating whether to quantize the weights of the "
+           "converted float model. Model size will be reduced and there will "
+           "be latency improvements (at the cost of accuracy)."),
+      // WARNING: Experimental interface, subject to change
+      Flag("allow_eager_ops", parsed_flags.allow_eager_ops.bind(),
+           parsed_flags.allow_eager_ops.default_value(), ""),
+      // WARNING: Experimental interface, subject to change
+      Flag("force_eager_ops", parsed_flags.force_eager_ops.bind(),
+           parsed_flags.force_eager_ops.default_value(), "")};
   bool asked_for_help =
       *argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-help"));
   if (asked_for_help) {
@@ -257,6 +265,17 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
   READ_TOCO_FLAG(dedupe_array_min_size_bytes, FlagRequirement::kNone);
   READ_TOCO_FLAG(split_tflite_lstm_inputs, FlagRequirement::kNone);
   READ_TOCO_FLAG(quantize_weights, FlagRequirement::kNone);
+  READ_TOCO_FLAG(post_training_quantize, FlagRequirement::kNone);
+  READ_TOCO_FLAG(allow_eager_ops, FlagRequirement::kNone);
+  READ_TOCO_FLAG(force_eager_ops, FlagRequirement::kNone);
+
+  if (parsed_toco_flags.force_eager_ops.value() &&
+      !parsed_toco_flags.allow_eager_ops.value()) {
+    // TODO(ycling): Consider to enforce `allow_eager_ops` when
+    // `force_eager_ops` is true.
+    LOG(WARNING) << "--force_eager_ops should always be used with "
+                    "--allow_eager_ops.";
+  }
 
   // Deprecated flag handling.
   if (parsed_toco_flags.input_type.specified()) {
@@ -291,9 +310,19 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
     toco_flags->set_inference_input_type(input_type);
   }
   if (parsed_toco_flags.quantize_weights.value()) {
-    QCHECK_NE(toco_flags->inference_type(), IODataType::QUANTIZED_UINT8)
-        << "quantize_weights is not supported with inference_type "
-           "QUANTIZED_UINT8.";
+    LOG(WARNING)
+        << "--quantize_weights is deprecated. Falling back to "
+           "--post_training_quantize. Please switch --post_training_quantize.";
+    toco_flags->set_post_training_quantize(
+        parsed_toco_flags.quantize_weights.value());
+  }
+  if (parsed_toco_flags.quantize_weights.value()) {
+    if (toco_flags->inference_type() == IODataType::QUANTIZED_UINT8) {
+      LOG(WARNING)
+          << "--post_training_quantize quantizes a graph of inference_type "
+             "FLOAT. Overriding inference type QUANTIZED_UINT8 to FLOAT.";
+      toco_flags->set_inference_type(IODataType::FLOAT);
+    }
   }
 
 #undef READ_TOCO_FLAG

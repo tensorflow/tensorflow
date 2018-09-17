@@ -25,6 +25,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import training
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -359,6 +360,23 @@ class TemplateTest(test.TestCase):
     self.assertEqual(2, len(tmpl1._checkpoint_dependencies))
     self.assertEqual("nested", tmpl1._checkpoint_dependencies[0].name)
     self.assertEqual("nested_1", tmpl1._checkpoint_dependencies[1].name)
+    model = training.Model()
+    model.template = tmpl1
+    self.assertEqual(model.variables, [v1, v2])
+    self.assertEqual(model.trainable_variables, [v1, v2])
+    self.assertEqual(len(model.non_trainable_variables), 0)
+    model.templates = [tmpl2]
+    self.assertEqual(model.variables, [v1, v2, v5, v6])
+    self.assertEqual(model.trainable_variables, [v1, v2, v5, v6])
+    self.assertEqual(len(model.non_trainable_variables), 0)
+    # Make sure losses, layers, and updates aren't broken by having a Template
+    # in the mix, which does not expose any updates or losses.
+    self.assertEqual([], model.layers)
+    self.assertEqual([], model.updates)
+    self.assertEqual([], model.losses)
+    self.assertEqual([], model.templates.layers)
+    self.assertEqual([], model.templates.updates)
+    self.assertEqual([], model.templates.losses)
 
   @test_util.run_in_graph_and_eager_modes
   def test_nested_templates_with_defun(self):

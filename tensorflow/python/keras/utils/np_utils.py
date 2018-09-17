@@ -33,7 +33,8 @@ def to_categorical(y, num_classes=None):
       num_classes: total number of classes.
 
   Returns:
-      A binary matrix representation of the input.
+      A binary matrix representation of the input. The classes axis is placed
+      last.
   """
   y = np.array(y, dtype='int')
   input_shape = y.shape

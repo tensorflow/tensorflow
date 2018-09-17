@@ -17,10 +17,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/casts.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/platform/env.h"
@@ -67,9 +67,8 @@ int main(int argc, char** argv) {
     floats.push_back(value);
   }
 
-  tensorflow::StringPiece content(
-      tensorflow::bit_cast<const char*>(floats.data()),
-      floats.size() * sizeof(float));
+  tensorflow::StringPiece content(absl::bit_cast<const char*>(floats.data()),
+                                  floats.size() * sizeof(float));
   TF_CHECK_OK(tensorflow::WriteStringToFile(tensorflow::Env::Default(),
                                             output_file, content));
   return 0;

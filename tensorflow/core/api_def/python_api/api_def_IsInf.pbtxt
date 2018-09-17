@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "is_inf"
-    deprecation_message: "tf.is_inf is deprecated, please use tf.debugging.is_inf instead."
+    deprecated: true
   }
 }

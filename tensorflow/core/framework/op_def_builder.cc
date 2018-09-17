@@ -527,7 +527,7 @@ void FinalizeDoc(const string& text, OpDef* op_def,
 }  // namespace
 
 OpDefBuilder::OpDefBuilder(StringPiece op_name) {
-  op_def()->set_name(std::string(op_name));  // NOLINT
+  op_def()->set_name(string(op_name));  // NOLINT
 }
 
 OpDefBuilder& OpDefBuilder::Attr(StringPiece spec) {
@@ -584,7 +584,7 @@ OpDefBuilder& OpDefBuilder::Deprecated(int version, StringPiece explanation) {
   } else {
     OpDeprecation* deprecation = op_def()->mutable_deprecation();
     deprecation->set_version(version);
-    deprecation->set_explanation(std::string(explanation));
+    deprecation->set_explanation(string(explanation));
   }
   return *this;
 }

@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <string.h>
 #include <map>
-#include <string>
 #include <vector>
 #include <memory>
 
@@ -35,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/padding.h"
@@ -42,7 +42,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/mkl_util.h"
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 
 using mkldnn::prop_kind;
@@ -57,7 +57,7 @@ using mkldnn::convolution_direct;
 
 namespace tensorflow {
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 
 // This structure aggregates multiple inputs to Conv2DFwd* methods.
 struct MklConvFwdParams {
@@ -70,23 +70,25 @@ struct MklConvFwdParams {
   memory::dims padding_left;
   memory::dims padding_right;
 
-  MklConvFwdParams(memory::dims src_dims,
-    memory::dims filter_dims, memory::dims bias_dims,
-    memory::dims dst_dims, memory::dims strides,
-    memory::dims dilations, memory::dims padding_left,
-    memory::dims padding_right) :
-      src_dims(src_dims), filter_dims(filter_dims),
-      bias_dims(bias_dims), dst_dims(dst_dims),
-      strides(strides), dilations(dilations),
-      padding_left(padding_left), padding_right(padding_right) {
-  }
+  MklConvFwdParams(memory::dims src_dims, memory::dims filter_dims,
+                   memory::dims bias_dims, memory::dims dst_dims,
+                   memory::dims strides, memory::dims dilations,
+                   memory::dims padding_left, memory::dims padding_right)
+      : src_dims(src_dims),
+        filter_dims(filter_dims),
+        bias_dims(bias_dims),
+        dst_dims(dst_dims),
+        strides(strides),
+        dilations(dilations),
+        padding_left(padding_left),
+        padding_right(padding_right) {}
 };
 
 template <typename T>
-class MklConv2DFwdPrimitive: public MklPrimitive {
+class MklConvFwdPrimitive : public MklPrimitive {
  public:
-  explicit MklConv2DFwdPrimitive(const MklConvFwdParams& convFwdDims) :
-    cpu_engine_(engine::cpu, 0) {
+  explicit MklConvFwdPrimitive(const MklConvFwdParams& convFwdDims)
+      : cpu_engine_(engine::cpu, 0) {
     context_.fwd_stream.reset(new stream(stream::kind::eager));
     // create conv primitive
     if (context_.conv_fwd == nullptr) {
@@ -94,15 +96,15 @@ class MklConv2DFwdPrimitive: public MklPrimitive {
     }
   }
 
-  ~MklConv2DFwdPrimitive() {}
+  ~MklConvFwdPrimitive() {}
 
   // Convolution forward execute with bias
   //   src_data:    input data buffer of src
   //   filter_data: input data buffer of filter (weights)
   //   bias_data:   input data buffer of bias
   //   dst_data:    output data buffer of dst
-  void Execute(const T* src_data, const T* filter_data,
-      const T* bias_data, const T* dst_data) {
+  void Execute(const T* src_data, const T* filter_data, const T* bias_data,
+               const T* dst_data) {
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.filter_mem->set_data_handle(
@@ -126,8 +128,7 @@ class MklConv2DFwdPrimitive: public MklPrimitive {
   //   src_data:    input data buffer of src
   //   filter_data: input data buffer of filter (weights)
   //   dst_data:    output data buffer of dst
-  void Execute(const T* src_data, const T* filter_data,
-      const T* dst_data) {
+  void Execute(const T* src_data, const T* filter_data, const T* dst_data) {
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.filter_mem->set_data_handle(
@@ -142,13 +143,9 @@ class MklConv2DFwdPrimitive: public MklPrimitive {
     context_.dst_mem->set_data_handle(DummyData);
   }
 
-  memory::format GetSrcMemoryFormat() const {
-    return context_.src_fmt;
-  }
+  memory::format GetSrcMemoryFormat() const { return context_.src_fmt; }
 
-  memory::format GetFilterMemoryFormat() const {
-    return context_.filter_fmt;
-  }
+  memory::format GetFilterMemoryFormat() const { return context_.filter_fmt; }
 
   std::shared_ptr<mkldnn::convolution_forward::primitive_desc>
   GetPrimitiveDesc() const {
@@ -184,43 +181,50 @@ class MklConv2DFwdPrimitive: public MklPrimitive {
     std::shared_ptr<mkldnn::stream> fwd_stream;
     std::vector<mkldnn::primitive> fwd_primitives;
 
-    ConvFwdContext() :
-       src_fmt(memory::format::any), filter_fmt(memory::format::any),
-       src_mem(nullptr), filter_mem(nullptr), bias_mem(nullptr),
-       dst_mem(nullptr), fwd_desc(nullptr),
-       src_md(nullptr), filter_md(nullptr), bias_md(nullptr),
-       fwd_pd(nullptr), conv_fwd(nullptr), fwd_stream(nullptr) {
-    }
+    ConvFwdContext()
+        : src_fmt(memory::format::any),
+          filter_fmt(memory::format::any),
+          src_mem(nullptr),
+          filter_mem(nullptr),
+          bias_mem(nullptr),
+          dst_mem(nullptr),
+          fwd_desc(nullptr),
+          src_md(nullptr),
+          filter_md(nullptr),
+          bias_md(nullptr),
+          fwd_pd(nullptr),
+          conv_fwd(nullptr),
+          fwd_stream(nullptr) {}
   };
 
   void Setup(const MklConvFwdParams& convFwdDims) {
     // create memory descriptors for convolution data w/ no specified format
-    context_.src_md.reset(new memory::desc({convFwdDims.src_dims},
-        MklDnnType<T>(), memory::format::any));
+    context_.src_md.reset(new memory::desc(
+        {convFwdDims.src_dims}, MklDnnType<T>(), memory::format::any));
 
-    context_.filter_md.reset(new memory::desc({convFwdDims.filter_dims},
-        MklDnnType<T>(), memory::format::any));
+    context_.filter_md.reset(new memory::desc(
+        {convFwdDims.filter_dims}, MklDnnType<T>(), memory::format::any));
 
-    context_.dst_md.reset(new memory::desc({convFwdDims.dst_dims},
-        MklDnnType<T>(), memory::format::any));
+    context_.dst_md.reset(new memory::desc(
+        {convFwdDims.dst_dims}, MklDnnType<T>(), memory::format::any));
 
     if (!convFwdDims.bias_dims.empty())
-        context_.bias_md.reset(new memory::desc({convFwdDims.bias_dims},
-            MklDnnType<T>(), memory::format::any));
+      context_.bias_md.reset(new memory::desc(
+          {convFwdDims.bias_dims}, MklDnnType<T>(), memory::format::any));
 
     // create a convolution
     if (!convFwdDims.bias_dims.empty()) {
-      context_.fwd_desc.reset(new convolution_forward::desc(prop_kind::forward,
-          convolution_direct, *context_.src_md, *context_.filter_md,
-          *context_.bias_md, *context_.dst_md,
+      context_.fwd_desc.reset(new convolution_forward::desc(
+          prop_kind::forward, convolution_direct, *context_.src_md,
+          *context_.filter_md, *context_.bias_md, *context_.dst_md,
           convFwdDims.strides, convFwdDims.dilations, convFwdDims.padding_left,
           convFwdDims.padding_right, padding_kind::zero));
     } else {
-      context_.fwd_desc.reset(new convolution_forward::desc(prop_kind::forward,
-          convolution_direct, *context_.src_md, *context_.filter_md,
-          *context_.dst_md, convFwdDims.strides, convFwdDims.dilations,
-          convFwdDims.padding_left, convFwdDims.padding_right,
-          padding_kind::zero));
+      context_.fwd_desc.reset(new convolution_forward::desc(
+          prop_kind::forward, convolution_direct, *context_.src_md,
+          *context_.filter_md, *context_.dst_md, convFwdDims.strides,
+          convFwdDims.dilations, convFwdDims.padding_left,
+          convFwdDims.padding_right, padding_kind::zero));
     }
 
     context_.fwd_pd.reset(new convolution_forward::primitive_desc(
@@ -234,24 +238,26 @@ class MklConv2DFwdPrimitive: public MklPrimitive {
         context_.fwd_pd.get()->weights_primitive_desc().desc().data.format);
 
     // create memory primitive based on dummy data
-    context_.src_mem.reset(new memory(
-        context_.fwd_pd.get()->src_primitive_desc(), DummyData));
-    context_.filter_mem.reset(new memory(
-        context_.fwd_pd.get()->weights_primitive_desc(), DummyData));
-    context_.dst_mem.reset(new memory(
-        context_.fwd_pd.get()->dst_primitive_desc(), DummyData));
+    context_.src_mem.reset(
+        new memory(context_.fwd_pd.get()->src_primitive_desc(), DummyData));
+    context_.filter_mem.reset(
+        new memory(context_.fwd_pd.get()->weights_primitive_desc(), DummyData));
+    context_.dst_mem.reset(
+        new memory(context_.fwd_pd.get()->dst_primitive_desc(), DummyData));
 
     // create convolution primitive and add it to net
     if (!convFwdDims.bias_dims.empty()) {
-        context_.bias_mem.reset(new memory({{{convFwdDims.bias_dims},
-            MklDnnType<T>(), memory::format::x}, cpu_engine_}, DummyData));
-        context_.conv_fwd.reset(new convolution_forward(
-            *context_.fwd_pd, *context_.src_mem, *context_.filter_mem,
-            *context_.bias_mem, *context_.dst_mem));
+      context_.bias_mem.reset(new memory(
+          {{{convFwdDims.bias_dims}, MklDnnType<T>(), memory::format::x},
+           cpu_engine_},
+          DummyData));
+      context_.conv_fwd.reset(new convolution_forward(
+          *context_.fwd_pd, *context_.src_mem, *context_.filter_mem,
+          *context_.bias_mem, *context_.dst_mem));
     } else {
-        context_.conv_fwd.reset(new convolution_forward(
-            *context_.fwd_pd, *context_.src_mem,
-            *context_.filter_mem, *context_.dst_mem));
+      context_.conv_fwd.reset(
+          new convolution_forward(*context_.fwd_pd, *context_.src_mem,
+                                  *context_.filter_mem, *context_.dst_mem));
     }
 
     context_.fwd_primitives.push_back(*context_.conv_fwd);
@@ -263,37 +269,41 @@ class MklConv2DFwdPrimitive: public MklPrimitive {
 };
 
 template <typename T>
-class MklConv2DFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
+class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
  public:
-  static MklConv2DFwdPrimitive<T>* Get(const MklConvFwdParams& convFwdDims) {
-     MklConv2DFwdPrimitive<T>* conv2d_fwd = nullptr;
+  static MklConvFwdPrimitive<T>* Get(const MklConvFwdParams& convFwdDims,
+                                     bool do_not_cache) {
+    MklConvFwdPrimitive<T>* conv_fwd = nullptr;
 
-     // try to find a suitable one in pool
-     conv2d_fwd = dynamic_cast<MklConv2DFwdPrimitive<T>*> (
-       MklConv2DFwdPrimitiveFactory<T>::GetInstance().GetConv2DFwd(
-       convFwdDims));
+    if (do_not_cache) { /* Always create new primitive */
+      conv_fwd = new MklConvFwdPrimitive<T>(convFwdDims);
+    } else {
+      // try to find a suitable one in pool
+      conv_fwd = dynamic_cast<MklConvFwdPrimitive<T>*>(
+          MklConvFwdPrimitiveFactory<T>::GetInstance().GetConvFwd(convFwdDims));
+      if (conv_fwd == nullptr) {
+        conv_fwd = new MklConvFwdPrimitive<T>(convFwdDims);
+        MklConvFwdPrimitiveFactory<T>::GetInstance().SetConvFwd(convFwdDims,
+                                                                conv_fwd);
+      }
+    }
 
-     if (conv2d_fwd == nullptr) {
-       conv2d_fwd = new MklConv2DFwdPrimitive<T>(convFwdDims);
-       MklConv2DFwdPrimitiveFactory<T>::GetInstance().SetConv2DFwd(
-           convFwdDims, conv2d_fwd);
-     }
-     return conv2d_fwd;
+    return conv_fwd;
   }
 
  private:
-  MklConv2DFwdPrimitiveFactory() {}
-  ~MklConv2DFwdPrimitiveFactory() {}
+  MklConvFwdPrimitiveFactory() {}
+  ~MklConvFwdPrimitiveFactory() {}
 
   static const int kDilationH = 0, kDilationW = 1;
 
-  static MklConv2DFwdPrimitiveFactory& GetInstance() {
-    static MklConv2DFwdPrimitiveFactory instance_;
+  static MklConvFwdPrimitiveFactory& GetInstance() {
+    static MklConvFwdPrimitiveFactory instance_;
     return instance_;
   }
 
-  static std::string CreateKey(const MklConvFwdParams& convFwdDims) {
-    std::string prefix = "conv2d_fwd_";
+  static string CreateKey(const MklConvFwdParams& convFwdDims) {
+    string prefix = "conv_fwd_";
     FactoryKeyCreator key_creator;
     key_creator.AddAsKey(prefix);
     key_creator.AddAsKey(convFwdDims.src_dims);
@@ -307,13 +317,13 @@ class MklConv2DFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     return key_creator.GetKey();
   }
 
-  MklPrimitive* GetConv2DFwd(const MklConvFwdParams& convFwdDims) {
-    std::string key = CreateKey(convFwdDims);
+  MklPrimitive* GetConvFwd(const MklConvFwdParams& convFwdDims) {
+    string key = CreateKey(convFwdDims);
     return this->GetOp(key);
   }
 
-  void SetConv2DFwd(const MklConvFwdParams& convFwdDims, MklPrimitive *op) {
-    std::string key = CreateKey(convFwdDims);
+  void SetConvFwd(const MklConvFwdParams& convFwdDims, MklPrimitive* op) {
+    string key = CreateKey(convFwdDims);
     this->SetOp(key, op);
   }
 };
@@ -323,13 +333,13 @@ class MklConv2DFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 // For now, MKL-ML is default. So making MKL-DNN not a default choice.
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 template <typename Device, typename T, bool biasEnabled>
-class MklConv2DOp : public OpKernel {
+class MklConvOp : public OpKernel {
  public:
-  ~MklConv2DOp() {}
+  ~MklConvOp() {}
 
-  explicit MklConv2DOp(OpKernelConstruction* context) : OpKernel(context) {
+  explicit MklConvOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
@@ -749,21 +759,22 @@ class MklConv2DOp : public OpKernel {
 
 #else
 
+// Base class for convolution forward operations
 template <typename Device, typename T, bool biasEnabled>
-class MklConv2DOp : public OpKernel {
+class MklConvOp : public OpKernel {
  public:
-  ~MklConv2DOp() {}
+  ~MklConvOp() {}
 
-  explicit MklConv2DOp(OpKernelConstruction* context) : OpKernel(context) {
+  explicit MklConvOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES(context, strides_.size() == 4,
+    OP_REQUIRES(context, (strides_.size() == 4 || strides_.size() == 5),
                 errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 dimensions"));
+                                        "specify 4 or 5 dimensions"));
 
     const int64 stride_n = GetTensorDim(strides_, data_format_, 'N');
     const int64 stride_c = GetTensorDim(strides_, data_format_, 'C');
@@ -772,20 +783,39 @@ class MklConv2DOp : public OpKernel {
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-    OP_REQUIRES(context, dilations_.size() == 4,
-                errors::InvalidArgument("Sliding window dilations field must "
-                                        "specify 4 dimensions"));
-    const int64 dilation_n = GetTensorDim(dilations_, data_format_, 'N');
-    const int64 dilation_c = GetTensorDim(dilations_, data_format_, 'C');
-    const int64 dilation_h = GetTensorDim(dilations_, data_format_, 'H');
-    const int64 dilation_w = GetTensorDim(dilations_, data_format_, 'W');
-    OP_REQUIRES(context, dilation_n == 1 && dilation_c == 1,
-                errors::InvalidArgument(
-                    "Current implementation does not yet support "
-                    "dilations in the batch and depth dimensions."));
-    OP_REQUIRES(
-        context, dilation_h > 0 && dilation_w > 0,
-        errors::InvalidArgument("Dilated rates should be larger than 0."));
+
+    if (strides_.size() == 4) {
+      OP_REQUIRES(context, dilations_.size() == 4,
+                  errors::InvalidArgument("Sliding window dilations field must "
+                                          "specify 4 dimensions"));
+      const int64 dilation_n = GetTensorDim(dilations_, data_format_, 'N');
+      const int64 dilation_c = GetTensorDim(dilations_, data_format_, 'C');
+      const int64 dilation_h = GetTensorDim(dilations_, data_format_, 'H');
+      const int64 dilation_w = GetTensorDim(dilations_, data_format_, 'W');
+      OP_REQUIRES(context, dilation_n == 1 && dilation_c == 1,
+                  errors::InvalidArgument(
+                      "Current implementation does not yet support "
+                      "dilations in the batch and depth dimensions."));
+      OP_REQUIRES(
+          context, dilation_h > 0 && dilation_w > 0,
+          errors::InvalidArgument("Dilated rates should be larger than 0."));
+    } else if (strides_.size() == 5) {
+      OP_REQUIRES(context, dilations_.size() == 5,
+                  errors::InvalidArgument("Dilation rates field must "
+                                          "specify 5 dimensions"));
+      OP_REQUIRES(context,
+                  (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
+                   GetTensorDim(dilations_, data_format_, 'C') == 1),
+                  errors::InvalidArgument(
+                      "Current implementation does not yet support "
+                      "dilations rates in the batch and depth dimensions."));
+      OP_REQUIRES(
+          context,
+          (GetTensorDim(dilations_, data_format_, '0') > 0 &&
+           GetTensorDim(dilations_, data_format_, '1') > 0 &&
+           GetTensorDim(dilations_, data_format_, '2') > 0),
+          errors::InvalidArgument("Dilated rates should be larger than 0."));
+    }
   }
 
   void Compute(OpKernelContext* context) override {
@@ -831,7 +861,8 @@ class MklConv2DOp : public OpKernel {
         AllocateOutputSetMklShape(context, kOutputIndex_Dst,
                     &dst_tensor, src_tf_shape, dst_mkl_shape);
 
-        // MklConv2D also outputs converted filter as 2nd output of Conv2D.
+        // MklConv2D/3D also outputs converted filter
+        // as 2nd output of Conv2D/3D.
         filter_mkl_shape.SetMklTensor(false);
         Tensor* output_filter_tensor = nullptr;
         AllocateOutputSetMklShape(context, kOutputIndex_Filter,
@@ -840,15 +871,20 @@ class MklConv2DOp : public OpKernel {
         return;
       }
 
+      bool isConv2D = (strides_.size() == 4);
+
       // Create memory for user data.
       // Describe how the inputs and outputs of Convolution look like. Also
       // specify buffers containing actual input and output data.
-      auto tf_fmt = TFDataFormatToMklDnnDataFormat(data_format_);
+      auto tf_fmt = isConv2D ? TFDataFormatToMklDnnDataFormat(data_format_)
+                             : TFDataFormatToMklDnn3DDataFormat(data_format_);
 
       // If input is in MKL layout, then simply grab input layout; otherwise,
       // construct input Tf layout. For TF layout, although input shape
       // (src_dims) required is in MKL-DNN order, the layout is Tensorflow's
-      // layout (NHWC or NCHW depending on data format).
+      // layout depending on data format:
+      //     Conv2D: NHWC or NCHW
+      //     Conv3D: NDHWC or NCDHW
       auto src_md = src_mkl_shape.IsMklTensor()
                         ? src_mkl_shape.GetMklLayout()
                         : memory::desc(src_dims, MklDnnType<T>(), tf_fmt);
@@ -858,29 +894,43 @@ class MklConv2DOp : public OpKernel {
       auto filter_md = filter_mkl_shape.IsMklTensor()  // Should NEVER be true
                            ? filter_mkl_shape.GetMklLayout()
                            : memory::desc(filter_dims, MklDnnType<T>(),
-                                          memory::format::hwio);
-
+                                          isConv2D ? memory::format::hwio
+                                                   : memory::format::dhwio);
       // MKLDNN dilation starts from 0.
-      dilations[kDilationH] -= 1;
-      dilations[kDilationW] -= 1;
+      for (int i = 0; i < dilations.size(); i++) dilations[i] -= 1;
+
+      // In some cases, primitve descriptor includes potentialy large buffers,
+      // we don't cache those primitves if the env variable
+      // TF_MKL_OPTIMIZE_PRIMITVE_MEMUSE is true. MKL DNN allocates buffers
+      // in the following cases
+      //   1. Legacy CPU without AVX512/AVX2, or
+      //   2. 1x1 convolution with stride != 1
+      bool do_not_cache = MklPrimitiveFactory<T>::IsPrimitiveMemOptEnabled() &&
+                    (src_dims[MklDnnDims::Dim_N] > kSmallBatchSize) &&
+                    (MklPrimitiveFactory<T>::IsLegacyPlatform() ||
+                     IsConv1x1StrideNot1(filter_dims, strides));
 
       // get a conv2d fwd from primitive pool
-      MklConv2DFwdPrimitive<T> *conv2d_fwd = nullptr;
+      MklConvFwdPrimitive<T>* conv_fwd = nullptr;
       if (biasEnabled) {
         memory::dims bias_dims = {};
         conv_utl.GetBiasSizeInMklOrder(kInputIndex_Bias, &bias_dims);
         MklConvFwdParams convFwdDims(src_dims, filter_dims, bias_dims,
-          dst_dims_mkl_order, strides, dilations, padding_left, padding_right);
-        conv2d_fwd = MklConv2DFwdPrimitiveFactory<T>::Get(convFwdDims);
+                                     dst_dims_mkl_order, strides, dilations,
+                                     padding_left, padding_right);
+        conv_fwd = MklConvFwdPrimitiveFactory<T>::Get(
+            convFwdDims, do_not_cache);
       } else {
         MklConvFwdParams convFwdDims(src_dims, filter_dims, NONE_DIMS,
-          dst_dims_mkl_order, strides, dilations, padding_left, padding_right);
-        conv2d_fwd = MklConv2DFwdPrimitiveFactory<T>::Get(convFwdDims);
+                                     dst_dims_mkl_order, strides, dilations,
+                                     padding_left, padding_right);
+        conv_fwd = MklConvFwdPrimitiveFactory<T>::Get(
+            convFwdDims, do_not_cache);
       }
 
       // allocate output tensors output_tensor and filter_out_tensor
-      std::shared_ptr<mkldnn::convolution_forward::primitive_desc>
-      conv_fwd_pd = conv2d_fwd->GetPrimitiveDesc();
+      std::shared_ptr<mkldnn::convolution_forward::primitive_desc> conv_fwd_pd =
+          conv_fwd->GetPrimitiveDesc();
       AllocateOutputTensor(context, *conv_fwd_pd,
                        dst_dims_mkl_order, tf_fmt, &dst_tensor);
       Tensor* filter_out_tensor = nullptr;
@@ -891,31 +941,24 @@ class MklConv2DOp : public OpKernel {
       T* dst_data = static_cast<T*>(dst_tensor->flat<T>().data());
 
       // check whether src/filter need reorder
-      std::vector<primitive> net;
       T *src_data = nullptr;
-      if (src_md.data.format != conv2d_fwd->GetSrcMemoryFormat()) {
+      if (src_md.data.format != conv_fwd->GetSrcMemoryFormat()) {
         src.SetUsrMem(src_md, &src_tensor);
-        src.CheckReorderToOpMem(
-            conv_fwd_pd.get()->src_primitive_desc(), &net);
+        src.CheckReorderToOpMem(conv_fwd_pd.get()->src_primitive_desc());
         src_data = static_cast<T*>(src.GetOpMem().get_data_handle());
       } else {
-        src_data = static_cast<T*>(const_cast<T*>(
-                    src_tensor.flat<T>().data()));
+        src_data = static_cast<T*>(const_cast<T*>(src_tensor.flat<T>().data()));
       }
-      T *filter_data = nullptr;
-      if (filter_md.data.format != conv2d_fwd->GetFilterMemoryFormat()) {
+      T* filter_data = nullptr;
+      if (filter_md.data.format != conv_fwd->GetFilterMemoryFormat()) {
         filter.SetUsrMem(filter_md, &filter_tensor);
-        filter.CheckReorderToOpMem(
-            conv_fwd_pd.get()->weights_primitive_desc(),
-            filter.GetTensorBuffer(filter_out_tensor), &net);
+        filter.CheckReorderToOpMem(conv_fwd_pd.get()->weights_primitive_desc(),
+                                   filter.GetTensorBuffer(filter_out_tensor));
         filter_data = static_cast<T*>(filter.GetOpMem().get_data_handle());
       } else {
-        filter_data = static_cast<T*>(const_cast<T*>(
-                       filter_tensor.flat<T>().data()));
+        filter_data =
+            static_cast<T*>(const_cast<T*>(filter_tensor.flat<T>().data()));
       }
-
-      stream(stream::kind::eager).submit(net).wait();
-
 
       // execute convolution
       if (biasEnabled) {
@@ -923,15 +966,17 @@ class MklConv2DOp : public OpKernel {
         T* bias_data = static_cast<T*>(const_cast<T*>(
             bias_tensor.flat<T>().data()));
 
-        conv2d_fwd->Execute(src_data, filter_data, bias_data, dst_data);
+        conv_fwd->Execute(src_data, filter_data, bias_data, dst_data);
       } else {
-        conv2d_fwd->Execute(src_data, filter_data, dst_data);
+        conv_fwd->Execute(src_data, filter_data, dst_data);
       }
+
+      // delete primitive since it is not cached.
+      if (do_not_cache) delete conv_fwd;
     } catch (mkldnn::error &e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + std::string(e.message) +
-                       ", in file " + std::string(__FILE__) + ":" +
-                       std::to_string(__LINE__);
+      string error_msg = tensorflow::strings::StrCat(
+          "Status: ", e.status, ", message: ", string(e.message), ", in file ",
+          __FILE__, ":", __LINE__);
       OP_REQUIRES_OK(context,
         errors::Aborted("Operation received an exception:", error_msg));
     }
@@ -1010,16 +1055,15 @@ class MklConv2DOp : public OpKernel {
     // Create reorders between user layout and MKL layout if it is needed and
     // add it to the net before convolution. No need to check for output
     // reorder as we propagate output layout to the next layer.
-    std::vector<primitive> net;
-    src->CheckReorderToOpMem(conv_prim_desc.src_primitive_desc(), &net);
+    src->CheckReorderToOpMem(conv_prim_desc.src_primitive_desc());
 
     // rather than re-order to a temp buffer, reorder directly to the
     // filter output tensor
     filter->CheckReorderToOpMem(conv_prim_desc.weights_primitive_desc(),
-                                filter->GetTensorBuffer(filter_out_tensor),
-                                &net);
+                                filter->GetTensorBuffer(filter_out_tensor));
 
     // Create convolution primitive and add it to net.
+    std::vector<primitive> net;
     if (bias) {
       CHECK_EQ(biasEnabled, true);
       net.push_back(convolution_forward(conv_prim_desc, src->GetOpMem(),
@@ -1038,24 +1082,34 @@ class MklConv2DOp : public OpKernel {
 
 #endif
 
-#define REGISTER_MKL_CPU(T)                                         \
+// Register 2D operations
+#define REGISTER_MKL_CPU_2D(T)                                      \
   REGISTER_KERNEL_BUILDER(Name("_MklConv2D")                        \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \
-                          MklConv2DOp<CPUDevice, T, false>);        \
+                          MklConvOp<CPUDevice, T, false>);          \
   REGISTER_KERNEL_BUILDER(Name("_MklConv2DWithBias")                \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \
-                          MklConv2DOp<CPUDevice, T, true>);         \
+                          MklConvOp<CPUDevice, T, true>);           \
   REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DWithBias")          \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \
                           MklDummyOp<CPUDevice, T>);
 
-TF_CALL_float(REGISTER_MKL_CPU);
+TF_CALL_float(REGISTER_MKL_CPU_2D);
+
+// Register 3D operations
+#define REGISTER_MKL_CPU_3D(T)                                      \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv3D")                        \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklConvOp<CPUDevice, T, false>);
+TF_CALL_float(REGISTER_MKL_CPU_3D);
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL

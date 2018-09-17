@@ -86,7 +86,7 @@
 #                     When set, overrides TF_BUILD_IS_OPT and TF_BUILD_MAVX
 #                     options, as this will replace the two.
 #   TF_SKIP_CONTRIB_TESTS:
-#                     If set to any non-empty or non-0 value, will skipp running
+#                     If set to any non-empty or non-0 value, will skip running
 #                     contrib tests.
 #   TF_NIGHTLY:
 #                     If this run is being used to build the tf_nightly pip
@@ -127,11 +127,19 @@ NO_DOCKER_OPT_FLAG="--genrule_strategy=standalone"
 
 DO_DOCKER=1
 
-BAZEL_CMD="bazel test"
-BAZEL_BUILD_ONLY_CMD="bazel build"
-BAZEL_CLEAN_CMD="bazel clean"
 
-DEFAULT_BAZEL_CONFIGS="--config=gcp --config=hdfs"
+# Helpful flags:
+# --test_summary=detailed: Tell us more about which targets are being built
+# --keep_going: Don't stop at the first failure; tell us all the failures
+# --build_tests_only: Don't build targets depended on by tests if the test is
+#                     disabled. Also saves some compilation time. Otherwise,
+#                     tries to build everything.
+BAZEL_TEST_FLAGS="--test_summary=detailed --build_tests_only --keep_going"
+BAZEL_BUILD_FLAGS="--keep_going"
+
+BAZEL_CMD="bazel test ${BAZEL_TEST_FLAGS}"
+BAZEL_BUILD_ONLY_CMD="bazel build ${BAZEL_BUILD_FLAGS}"
+BAZEL_CLEAN_CMD="bazel clean"
 
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
 PIP_TEST_TUTORIALS_FLAG="--test_tutorials"
@@ -148,38 +156,7 @@ EXTRA_PARAMS=""
 BAZEL_TARGET="//tensorflow/... -//tensorflow/compiler/..."
 
 if [[ -n "$TF_SKIP_CONTRIB_TESTS" ]]; then
-  BAZEL_TARGET="$BAZEL_TARGET -//tensorflow/contrib/..."
-else
-  BAZEL_TARGET="${BAZEL_TARGET} -//tensorflow/contrib/lite/..."
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:context_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:framework"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:interpreter_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:model_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/toco:toco"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:simple_memory_arena_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:string_util_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:activations_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:add_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:basic_rnn_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:concatenation_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:conv_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:depthwise_conv_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:embedding_lookup_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:embedding_lookup_sparse_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:fully_connected_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:hashtable_lookup_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:local_response_norm_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:lsh_projection_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:lstm_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:l2norm_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:mul_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:pooling_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:reshape_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:resize_bilinear_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:skip_gram_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:softmax_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:space_to_depth_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:svdf_test"
+  BAZEL_TARGET="${BAZEL_TARGET} -//tensorflow/contrib/..."
 fi
 
 TUT_TEST_DATA_DIR="/tmp/tf_tutorial_test_data"
@@ -406,6 +383,10 @@ else
   if [[ ${IS_MAC} == "1" ]]; then
     EXTRA_ARGS="${EXTRA_ARGS},-nomac"
   fi
+  EXTRA_ARGS="${EXTRA_ARGS} --build_tag_filters=-no_oss,-oss_serial,-benchmark-test"
+  if [[ ${IS_MAC} == "1" ]]; then
+    EXTRA_ARGS="${EXTRA_ARGS},-nomac"
+  fi
 fi
 
 # For any "tool" dependencies in genrules, Bazel will build them for host
@@ -414,7 +395,7 @@ fi
 EXTRA_ARGS="${EXTRA_ARGS} --distinct_host_configuration=false"
 
 if [[ ! -z "${TF_BAZEL_BUILD_ONLY}" ]] &&
-   [[ "${TF_BAZEL_BUILD_ONLY}" != "0" ]];then 
+   [[ "${TF_BAZEL_BUILD_ONLY}" != "0" ]];then
   BAZEL_CMD=${BAZEL_BUILD_ONLY_CMD}
 fi
 
@@ -570,33 +551,35 @@ echo ""
 
 TMP_DIR=""
 DOCKERFILE_FLAG=""
-if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]] ||
-  [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.6" ]]; then
-  # Modify Dockerfile for Python3.5 | Python3.6 build
-  TMP_DIR=$(mktemp -d)
-  echo "Docker build will occur in temporary directory: ${TMP_DIR}"
+if [[ "${DO_DOCKER}" == "1" ]]; then
+  if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]] ||
+    [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.6" ]]; then
+    # Modify Dockerfile for Python3.5 | Python3.6 build
+    TMP_DIR=$(mktemp -d)
+    echo "Docker build will occur in temporary directory: ${TMP_DIR}"
 
-  # Copy the files required for the docker build
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  cp -r "${SCRIPT_DIR}/install" "${TMP_DIR}/install" || \
-      die "ERROR: Failed to copy directory ${SCRIPT_DIR}/install"
+    # Copy the files required for the docker build
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    cp -r "${SCRIPT_DIR}/install" "${TMP_DIR}/install" || \
+        die "ERROR: Failed to copy directory ${SCRIPT_DIR}/install"
 
-  DOCKERFILE="${SCRIPT_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
-  cp "${DOCKERFILE}" "${TMP_DIR}/" || \
-      die "ERROR: Failed to copy Dockerfile at ${DOCKERFILE}"
-  DOCKERFILE="${TMP_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
+    DOCKERFILE="${SCRIPT_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
+    cp "${DOCKERFILE}" "${TMP_DIR}/" || \
+        die "ERROR: Failed to copy Dockerfile at ${DOCKERFILE}"
+    DOCKERFILE="${TMP_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
 
-  # Replace a line in the Dockerfile
-  if sed -i \
-      "s/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_${TF_BUILD_PYTHON_VERSION}_pip_packages.sh/g" \
-      "${DOCKERFILE}"
-  then
-    echo "Copied and modified Dockerfile for ${TF_BUILD_PYTHON_VERSION} build: ${DOCKERFILE}"
-  else
-    die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
+    # Replace a line in the Dockerfile
+    if sed -i \
+        "s/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_${TF_BUILD_PYTHON_VERSION}_pip_packages.sh/g" \
+        "${DOCKERFILE}"
+    then
+      echo "Copied and modified Dockerfile for ${TF_BUILD_PYTHON_VERSION} build: ${DOCKERFILE}"
+    else
+      die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
+    fi
+
+    DOCKERFILE_FLAG="--dockerfile ${DOCKERFILE}"
   fi
-
-  DOCKERFILE_FLAG="--dockerfile ${DOCKERFILE}"
 fi
 
 chmod +x ${TMP_SCRIPT}

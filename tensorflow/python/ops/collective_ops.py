@@ -22,7 +22,7 @@ from tensorflow.python.ops import gen_collective_ops
 
 
 def all_reduce(t, group_size, group_key, instance_key, merge_op, final_op,
-               subdiv_offsets=(0)):
+               subdiv_offsets=(0,)):
   """Reduces tensors collectively, across devices.
 
   Args:

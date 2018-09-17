@@ -404,6 +404,7 @@ py_library(
     deps = [
         ":debug_errors",
         ":debug_fibonacci",
+        ":debug_keras",
         ":debug_mnist",
         ":debug_tflearn_iris",
     ],
@@ -451,6 +452,17 @@ py_binary(
         ":debug_py",
         "//tensorflow:tensorflow_py",
         "@six_archive//:six",
+    ],
+)
+
+py_binary(
+    name = "debug_keras",
+    srcs = ["examples/debug_keras.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_py",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -564,7 +576,6 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
-        "nomac",
         "oss_serial",
     ],
     deps = [
@@ -791,6 +802,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 py_test(
@@ -923,7 +935,6 @@ py_test(
     size = "small",
     srcs = ["cli/profile_analyzer_cli_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
     deps = [
         ":debugger_cli_common",
         ":profile_analyzer_cli",
@@ -1035,7 +1046,6 @@ cuda_py_test(
     tags = [
         "no_oss",  # Incompatible with bazel_pip.
         "no_windows",
-        "nomac",  # TODO(cais): Install of futures and grpcio on all macs.
         "notsan",
     ],
 )
@@ -1086,6 +1096,24 @@ py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "disk_usage_test",
+    size = "small",
+    srcs = ["wrappers/disk_usage_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dumping_wrapper",
+        ":hooks",
+        "//tensorflow/python:client",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -1096,6 +1124,7 @@ sh_test(
     data = [
         ":debug_errors",
         ":debug_fibonacci",
+        ":debug_keras",
         ":debug_mnist",
         ":debug_tflearn_iris",
         ":offline_analyzer",

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
@@ -146,18 +147,15 @@ class DirectSessionFactory : public SessionFactory {
     return options.target.empty();
   }
 
-  Session* NewSession(const SessionOptions& options) override {
+  Status NewSession(const SessionOptions& options,
+                    Session** out_session) override {
     // Must do this before the CPU allocator is created.
     if (options.config.graph_options().build_cost_model() > 0) {
       EnableCPUAllocatorFullStats(true);
     }
     std::vector<Device*> devices;
-    const Status s = DeviceFactory::AddDevices(
-        options, "/job:localhost/replica:0/task:0", &devices);
-    if (!s.ok()) {
-      LOG(ERROR) << s;
-      return nullptr;
-    }
+    TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
+        options, "/job:localhost/replica:0/task:0", &devices));
 
     DirectSession* session =
         new DirectSession(options, new DeviceMgr(devices), this);
@@ -165,7 +163,8 @@ class DirectSessionFactory : public SessionFactory {
       mutex_lock l(sessions_lock_);
       sessions_.push_back(session);
     }
-    return session;
+    *out_session = session;
+    return Status::OK();
   }
 
   Status Reset(const SessionOptions& options,
@@ -237,7 +236,11 @@ void DirectSession::SchedClosure(thread::ThreadPool* pool,
   // safe given the reasoning above.
   c();
 #else
-  pool->Schedule(std::move(c));
+  if (pool != nullptr) {
+    pool->Schedule(std::move(c));
+  } else {
+    c();
+  }
 #endif  // __ANDROID__
 }
 
@@ -448,8 +451,22 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
   RunState run_state(step_id, &devices_);
   run_state.rendez = new IntraProcessRendezvous(device_mgr_.get());
 #ifndef __ANDROID__
-  // Set up for collectives if the RunOption declares a key.
-  if (run_options.experimental().collective_graph_key() > 0) {
+  // Set up for collectives if ExecutorsAndKeys declares a key.
+  if (executors_and_keys->collective_graph_key !=
+      BuildGraphOptions::kNoCollectiveGraphKey) {
+    if (run_options.experimental().collective_graph_key() !=
+        BuildGraphOptions::kNoCollectiveGraphKey) {
+      // If a collective_graph_key was specified in run_options, ensure that it
+      // matches what came out of GraphExecutionState::BuildGraph().
+      if (run_options.experimental().collective_graph_key() !=
+          executors_and_keys->collective_graph_key) {
+        return errors::Internal(
+            "collective_graph_key in RunOptions ",
+            run_options.experimental().collective_graph_key(),
+            " should match collective_graph_key from optimized graph ",
+            executors_and_keys->collective_graph_key);
+      }
+    }
     if (!collective_executor_mgr_) {
       std::unique_ptr<DeviceResolverInterface> drl(
           new DeviceResolverLocal(device_mgr_.get()));
@@ -524,8 +541,9 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     }
   }
 
-  if (run_options.inter_op_thread_pool() < 0 ||
-      run_options.inter_op_thread_pool() >= thread_pools_.size()) {
+  if (run_options.inter_op_thread_pool() < -1 ||
+      run_options.inter_op_thread_pool() >=
+          static_cast<int32>(thread_pools_.size())) {
     run_state.executors_done.Notify();
     delete barrier;
     return errors::InvalidArgument("Invalid inter_op_thread_pool: ",
@@ -550,7 +568,19 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
   }
 
   thread::ThreadPool* pool =
-      thread_pools_[run_options.inter_op_thread_pool()].first;
+      run_options.inter_op_thread_pool() >= 0
+          ? thread_pools_[run_options.inter_op_thread_pool()].first
+          : nullptr;
+
+  if (pool == nullptr) {
+    // We allow using the caller thread only when having a single executor
+    // specified.
+    if (executors_and_keys->items.size() > 1) {
+      pool = thread_pools_[0].first;
+    } else {
+      VLOG(1) << "Executing Session::Run() synchronously!";
+    }
+  }
 
   Executor::Args::Runner default_runner = [this,
                                            pool](Executor::Args::Closure c) {
@@ -586,7 +616,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
 
   if (tracer) {
     TF_RETURN_IF_ERROR(tracer->Stop());
-    TF_RETURN_IF_ERROR(tracer->Collect(args.stats_collector));
+    TF_RETURN_IF_ERROR(tracer->Collect(run_state.collector.get()));
   }
 
   {
@@ -602,8 +632,8 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
         &session_state_));
   }
 
-  if (args.stats_collector) {
-    args.stats_collector->Finalize();
+  if (run_state.collector) {
+    run_state.collector->Finalize();
   }
 
   // Build and return the cost model as instructed.
@@ -618,7 +648,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     }
 
     mutex_lock l(executor_lock_);
-    args.stats_collector->BuildCostModel(&cost_model_manager_, device_to_graph);
+    run_state.collector->BuildCostModel(&cost_model_manager_, device_to_graph);
 
     // annotate stats onto cost graph.
     CostGraphDef* cost_graph = run_metadata->mutable_cost_graph();
@@ -662,10 +692,16 @@ Status DirectSession::Run(const RunOptions& run_options,
   // Check if we already have an executor for these arguments.
   ExecutorsAndKeys* executors_and_keys;
   RunStateArgs run_state_args(run_options.debug_options());
+  run_state_args.collective_graph_key =
+      run_options.experimental().collective_graph_key();
 
   TF_RETURN_IF_ERROR(GetOrCreateExecutors(input_tensor_names, output_names,
                                           target_nodes, &executors_and_keys,
                                           &run_state_args));
+  {
+    mutex_lock l(collective_graph_key_lock_);
+    collective_graph_key_ = executors_and_keys->collective_graph_key;
+  }
 
   // Configure a call frame for the step, which we use to feed and
   // fetch values to and from the executors.
@@ -702,7 +738,8 @@ Status DirectSession::Run(const RunOptions& run_options,
   // Receive outputs.
   if (outputs) {
     std::vector<Tensor> sorted_outputs;
-    const Status s = call_frame.ConsumeRetvals(&sorted_outputs);
+    const Status s = call_frame.ConsumeRetvals(
+        &sorted_outputs, /* allow_dead_tensors = */ false);
     if (errors::IsInternal(s)) {
       return errors::InvalidArgument(s.error_message());
     } else if (!s.ok()) {
@@ -1099,6 +1136,8 @@ Status DirectSession::CreateExecutors(
   BuildGraphOptions options;
   options.callable_options = callable_options;
   options.use_function_convention = !run_state_args->is_partial_run;
+  options.collective_graph_key =
+      callable_options.run_options().experimental().collective_graph_key();
 
   std::unique_ptr<FunctionInfo> func_info(new FunctionInfo);
   std::unique_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
@@ -1106,9 +1145,9 @@ Status DirectSession::CreateExecutors(
   ek->callable_options = callable_options;
 
   std::unordered_map<string, std::unique_ptr<Graph>> graphs;
-  TF_RETURN_IF_ERROR(CreateGraphs(options, &graphs, &func_info->flib_def,
-                                  run_state_args, &ek->input_types,
-                                  &ek->output_types));
+  TF_RETURN_IF_ERROR(CreateGraphs(
+      options, &graphs, &func_info->flib_def, run_state_args, &ek->input_types,
+      &ek->output_types, &ek->collective_graph_key));
 
   if (run_state_args->is_partial_run) {
     ek->graph = std::move(run_state_args->graph);
@@ -1163,14 +1202,11 @@ Status DirectSession::CreateExecutors(
     auto opseg = device->op_segment();
     params.create_kernel = [this, lib, opseg](const NodeDef& ndef,
                                               OpKernel** kernel) {
-      // We do not share the kernel via the OpSegment if the node is
-      // stateless, or a function.
       // NOTE(mrry): We must not share function kernels (implemented
       // using `CallOp`) between subgraphs, because `CallOp::handle_`
       // is tied to a particular subgraph. Even if the function itself
       // is stateful, the `CallOp` that invokes it is not.
-      if (!lib->IsStateful(ndef.op()) ||
-          lib->GetFunctionLibraryDefinition()->Find(ndef.op()) != nullptr) {
+      if (!OpSegment::ShouldOwnKernel(lib, ndef.op())) {
         return lib->CreateKernel(ndef, kernel);
       }
       auto create_fn = [lib, &ndef](OpKernel** kernel) {
@@ -1183,17 +1219,14 @@ Status DirectSession::CreateExecutors(
                                  create_fn);
     };
     params.delete_kernel = [lib](OpKernel* kernel) {
-      // If the node is stateful, opseg owns it. Otherwise, delete it.
-      if (kernel && !lib->IsStateful(kernel->type_string())) {
+      if (kernel && !OpSegment::ShouldOwnKernel(lib, kernel->type_string()))
         delete kernel;
-      }
     };
-    params.node_outputs_cb = node_outputs_callback_;
 
-    optimizer.Optimize(lib, options_.env, device, &iter->second,
+    optimizer.Optimize(lib, options_.env, device, &partition_graph,
                        /*shape_map=*/nullptr);
 
-    // EXPERIMENTAL: tfdbg inserts debug nodes in the graph.
+    // TensorFlow Debugger (tfdbg) inserts debug nodes in the graph.
     const DebugOptions& debug_options =
         options.callable_options.run_options().debug_options();
     if (!debug_options.debug_tensor_watch_opts().empty()) {
@@ -1208,10 +1241,9 @@ Status DirectSession::CreateExecutors(
     item->graph = partition_graph.get();
     item->executor = nullptr;
     item->device = device;
-    Executor* executor;
-    TF_RETURN_IF_ERROR(
-        NewLocalExecutor(params, std::move(partition_graph), &executor));
-    item->executor.reset(executor);
+    auto executor_type = options_.config.experimental().executor_type();
+    TF_RETURN_IF_ERROR(NewExecutor(
+        executor_type, params, std::move(partition_graph), &item->executor));
   }
 
   // Cache the mapping from input/output names to graph elements to
@@ -1338,6 +1370,9 @@ Status DirectSession::GetOrCreateExecutors(
   }
   *callable_options.mutable_run_options()->mutable_debug_options() =
       run_state_args->debug_options;
+  callable_options.mutable_run_options()
+      ->mutable_experimental()
+      ->set_collective_graph_key(run_state_args->collective_graph_key);
   std::unique_ptr<ExecutorsAndKeys> ek;
   std::unique_ptr<FunctionInfo> func_info;
   TF_RETURN_IF_ERROR(
@@ -1364,7 +1399,7 @@ Status DirectSession::CreateGraphs(
     std::unordered_map<string, std::unique_ptr<Graph>>* outputs,
     std::unique_ptr<FunctionLibraryDefinition>* flib_def,
     RunStateArgs* run_state_args, DataTypeVector* input_types,
-    DataTypeVector* output_types) {
+    DataTypeVector* output_types, int64* collective_graph_key) {
   mutex_lock l(graph_def_lock_);
   std::unique_ptr<ClientGraph> client_graph;
 
@@ -1388,6 +1423,7 @@ Status DirectSession::CreateGraphs(
     TF_RETURN_IF_ERROR(
         execution_state->BuildGraph(subgraph_options, &client_graph));
   }
+  *collective_graph_key = client_graph->collective_graph_key;
 
   if (subgraph_options.callable_options.feed_size() !=
       client_graph->feed_types.size()) {
@@ -1625,15 +1661,6 @@ Status DirectSession::MakeCallable(const CallableOptions& callable_options,
                                    CallableHandle* out_handle) {
   TF_RETURN_IF_ERROR(CheckNotClosed());
   TF_RETURN_IF_ERROR(CheckGraphCreated("MakeCallable()"));
-
-  if (!callable_options.run_options()
-           .debug_options()
-           .debug_tensor_watch_opts()
-           .empty()) {
-    return errors::Unimplemented(
-        "Debug options are not currently supported via the C++ MakeCallable "
-        "interface.");
-  }
 
   std::unique_ptr<ExecutorsAndKeys> ek;
   std::unique_ptr<FunctionInfo> func_info;

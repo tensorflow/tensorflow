@@ -38,6 +38,7 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
   CHECK_EQ(op.new_axis_mask, 0);
 
   int num_input_axes = op.start_indices.size();
+  CHECK_EQ(num_input_axes, op.start_indices.size());
   CHECK_EQ(num_input_axes, op.stop_indices.size());
   CHECK_EQ(num_input_axes, op.strides.size());
 
@@ -49,11 +50,20 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
   // Initialize source coordinate
   Shape const& input_shape = input_array.shape();
   Buffer<Type> const& input_buffer = input_array.GetBuffer<Type>();
-  std::vector<int> src_coord(op.start_indices.size());
+  std::vector<int> src_coord(num_input_axes);
+  std::vector<int> stop_for_axis(num_input_axes);
+  const auto strided_slice_params =
+      tflite::strided_slice::BuildStridedSliceParams(
+          op.begin_mask, op.end_mask, op.shrink_axis_mask, op.start_indices,
+          op.stop_indices, op.strides);
+
   for (int axis = 0; axis < num_input_axes; axis++) {
-    src_coord[axis] = tflite::strided_slice::StartForAxis(
-        op.begin_mask, op.start_indices, op.strides, input_shape.dims().data(),
-        axis);
+    int start_index = tflite::strided_slice::StartForAxis(
+        strided_slice_params, ToRuntimeShape(input_array.shape()), axis);
+    src_coord[axis] = start_index;
+    stop_for_axis[axis] = tflite::strided_slice::StopForAxis(
+        strided_slice_params, ToRuntimeShape(input_array.shape()), axis,
+        start_index);
   }
 
   // In order to handle any number (N) of dimensions, we copy elements one by
@@ -76,14 +86,11 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
       }
 
       // Check if we've overflowed.
-      int stop = tflite::strided_slice::StopForAxis(
-          op.end_mask, op.stop_indices, op.strides, input_shape.dims().data(),
-          axis);
+      int stop = stop_for_axis[axis];
       if (tflite::strided_slice::LoopCondition(src_coord[axis], stop, stride)) {
         // Reset axis and set carry
         src_coord[axis] = tflite::strided_slice::StartForAxis(
-            op.begin_mask, op.start_indices, op.strides,
-            input_shape.dims().data(), axis);
+            strided_slice_params, ToRuntimeShape(input_shape), axis);
         carry = true;
       } else {
         carry = false;

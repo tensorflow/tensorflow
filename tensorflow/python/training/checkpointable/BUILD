@@ -47,6 +47,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":base",
+        ":data_structures",
     ],
 )
 
@@ -100,15 +101,26 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":base",
+        ":data_structures",
         ":tracking",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:checkpoint_management",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:io_ops_gen",
-        "//tensorflow/python:ops",
+        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:saveable_object",
+        "//tensorflow/python:saver",
+        "//tensorflow/python:session",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
     ],
 )
@@ -117,20 +129,21 @@ py_test(
     name = "util_test",
     srcs = ["util_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_windows",  # TODO: needs investigation on Windows
-        "notsan",  # b/74395663
-    ],
+    tags = ["notsan"],  # b/74395663
     deps = [
         ":base",
+        ":tracking",
         ":util",
+        "//tensorflow/python:checkpoint_management",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:saver",
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:template",

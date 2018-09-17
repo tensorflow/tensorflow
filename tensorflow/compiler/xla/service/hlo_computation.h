@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_COMPUTATION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_COMPUTATION_H_
 
+#include <functional>
 #include <list>
 #include <memory>
 #include <string>
@@ -24,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
@@ -38,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/macros.h"
@@ -133,9 +134,11 @@ class HloComputation {
   Status RemoveInstructionAndUnusedOperands(HloInstruction* instruction);
 
   // Set the root of the computation to the given instruction. The instruction
-  // must have already been added to the computation and have the same shape as
-  // the result of the computation for non fusion computations.
-  void set_root_instruction(HloInstruction* new_root_instruction);
+  // must have already been added to the computation. In addition it must have
+  // the same shape as the result of the computation for non fusion
+  // computations, except if accept_different_shape is set to true.
+  void set_root_instruction(HloInstruction* new_root_instruction,
+                            bool accept_different_shape = false);
 
   // Return the root instruction of the computation. The root instruction is the
   // instruction which produces the output of the computation.
@@ -168,6 +171,11 @@ class HloComputation {
   // param because gdb ignores default params, but does resolve overloads.)
   string ToString() const { return ToString(HloPrintOptions()); }
   string ToString(const HloPrintOptions& options) const;
+
+  // Overload which accepts an order to emit the instructions in.
+  string ToString(
+      const HloPrintOptions& options,
+      absl::Span<const HloInstruction* const> instruction_order) const;
 
   // Returns a serialized representation of this computation.
   HloComputationProto ToProto() const;
@@ -236,7 +244,7 @@ class HloComputation {
   // removed if they have no uses after fusion (this is necessarily true for at
   // least the root).
   HloInstruction* CreateFusionInstruction(
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
+      absl::Span<HloInstruction* const> instructions_to_fuse,
       HloInstruction::FusionKind fusion_kind);
 
   // Create a deep copy of the given instruction and return the instruction
@@ -253,6 +261,14 @@ class HloComputation {
       HloInstruction* instruction,
       const ShapeTree<bool>* indices_to_copy = nullptr,
       ShapeTree<HloInstruction*>* copies_added = nullptr);
+
+  // As above, but uses a custom function to copy the leaf nodes, which could
+  // create alternative HLOs other than kCopy, or even pass-throughs.
+  StatusOr<HloInstruction*> DeepCopyInstructionWithCustomCopier(
+      HloInstruction* instruction,
+      const std::function<
+          HloInstruction*(HloInstruction* leaf, const ShapeIndex& leaf_index,
+                          HloComputation* computation)>& copy_leaf);
 
   // Computes and returns the ProgramShape of this computation (shape of
   // parameters and result with layout).
@@ -356,6 +372,10 @@ class HloComputation {
     unique_id_ = id;
   }
 
+  // Returns the instruction in this computation that has name `name`.  Returns
+  // null if there is no such computation.
+  HloInstruction* GetInstructionWithName(absl::string_view name);
+
   int64 unique_id() const { return unique_id_; }
 
  private:
@@ -372,17 +392,33 @@ class HloComputation {
   //
   // Pre-condition: fusion_instruction's opcode is kFusion.
   void FuseInstructionsInto(
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
+      absl::Span<HloInstruction* const> instructions_to_fuse,
       HloInstruction* fusion_instruction);
 
   // Internal helper for recursive copying of an instruction. Creates and
   // returns a deep copy of the given instruction.
   StatusOr<HloInstruction*> DeepCopyHelper(
-      HloInstruction* instruction, const ShapeTree<bool>* indices_to_copy,
-      ShapeTree<HloInstruction*>* copies_added, ShapeIndex* index);
+      HloInstruction* instruction, ShapeIndex* index,
+      const std::function<
+          HloInstruction*(HloInstruction* leaf, const ShapeIndex& leaf_index,
+                          HloComputation* computation)>& copy_leaf);
 
   // Internal helper to collect unreachable roots.
   std::vector<HloInstruction*> CollectUnreachableRoots() const;
+
+  // Returns a map from channel-id to directed dependencies of the channel
+  // instructions. For send&recv pairs it means the send instruction and for
+  // cross-replica-sum the union of the dependencies for all participating
+  // instructions.
+  using ChannelDependencyMap =
+      tensorflow::gtl::FlatMap<int64, absl::InlinedVector<HloInstruction*, 1>>;
+  ChannelDependencyMap ComputeChannelDependencies() const;
+
+  enum VisitState { kVisiting, kVisited };
+  void ComputeInstructionPostOrder(
+      const HloComputation::ChannelDependencyMap& channel_dependency_map,
+      std::vector<HloInstruction*>* post_order, HloInstruction* root,
+      tensorflow::gtl::FlatMap<HloInstruction*, VisitState>* visited) const;
 
   string name_;
   int64 unique_id_;

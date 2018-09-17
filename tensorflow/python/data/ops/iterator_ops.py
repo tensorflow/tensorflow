@@ -20,6 +20,8 @@ from __future__ import print_function
 import threading
 import warnings
 
+from tensorflow.python.compat import compat
+from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.eager import context
@@ -29,6 +31,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -56,8 +60,15 @@ GET_NEXT_CALL_WARNING_MESSAGE = (
 GLOBAL_ITERATORS = "iterators"
 
 
+def _device_stack_is_empty():
+  # pylint: disable=protected-access
+  device_stack = ops.get_default_graph()._device_functions_outer_to_inner
+  # pylint: enable=protected-access
+  return not bool(device_stack)
+
+
 @tf_export("data.Iterator")
-class Iterator(object):
+class Iterator(checkpointable.CheckpointableBase):
   """Represents the state of iterating through a `Dataset`."""
 
   def __init__(self, iterator_resource, initializer, output_types,
@@ -172,13 +183,32 @@ class Iterator(object):
     nest.assert_same_structure(output_types, output_shapes)
     if shared_name is None:
       shared_name = ""
-    iterator_resource = gen_dataset_ops.iterator(
-        container="",
-        shared_name=shared_name,
-        output_types=nest.flatten(
-            sparse.as_dense_types(output_types, output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(output_shapes, output_classes)))
+    if compat.forward_compatible(2018, 8, 3):
+      if _device_stack_is_empty():
+        with ops.device("/cpu:0"):
+          iterator_resource = gen_dataset_ops.iterator_v2(
+              container="",
+              shared_name=shared_name,
+              output_types=nest.flatten(
+                  sparse.as_dense_types(output_types, output_classes)),
+              output_shapes=nest.flatten(
+                  sparse.as_dense_shapes(output_shapes, output_classes)))
+      else:
+        iterator_resource = gen_dataset_ops.iterator_v2(
+            container="",
+            shared_name=shared_name,
+            output_types=nest.flatten(
+                sparse.as_dense_types(output_types, output_classes)),
+            output_shapes=nest.flatten(
+                sparse.as_dense_shapes(output_shapes, output_classes)))
+    else:
+      iterator_resource = gen_dataset_ops.iterator(
+          container="",
+          shared_name=shared_name,
+          output_types=nest.flatten(
+              sparse.as_dense_types(output_types, output_classes)),
+          output_shapes=nest.flatten(
+              sparse.as_dense_shapes(output_shapes, output_classes)))
     return Iterator(iterator_resource, None, output_types, output_shapes,
                     output_classes)
 
@@ -190,9 +220,9 @@ class Iterator(object):
     """Creates a new, uninitialized `Iterator` based on the given handle.
 
     This method allows you to define a "feedable" iterator where you can choose
-    between concrete iterators by feeding a value in a @{tf.Session.run} call.
-    In that case, `string_handle` would a @{tf.placeholder}, and you would feed
-    it with the value of @{tf.data.Iterator.string_handle} in each step.
+    between concrete iterators by feeding a value in a `tf.Session.run` call.
+    In that case, `string_handle` would be a `tf.placeholder`, and you would
+    feed it with the value of `tf.data.Iterator.string_handle` in each step.
 
     For example, if you had two iterators that marked the current position in
     a training dataset and a test dataset, you could choose which to use in
@@ -242,12 +272,29 @@ class Iterator(object):
       output_classes = nest.map_structure(lambda _: ops.Tensor, output_types)
     nest.assert_same_structure(output_types, output_shapes)
     string_handle = ops.convert_to_tensor(string_handle, dtype=dtypes.string)
-    iterator_resource = gen_dataset_ops.iterator_from_string_handle(
-        string_handle,
-        output_types=nest.flatten(
-            sparse.as_dense_types(output_types, output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(output_shapes, output_classes)))
+    if compat.forward_compatible(2018, 8, 3):
+      if _device_stack_is_empty():
+        with ops.device("/cpu:0"):
+          iterator_resource = gen_dataset_ops.iterator_from_string_handle_v2(
+              string_handle,
+              output_types=nest.flatten(
+                  sparse.as_dense_types(output_types, output_classes)),
+              output_shapes=nest.flatten(
+                  sparse.as_dense_shapes(output_shapes, output_classes)))
+      else:
+        iterator_resource = gen_dataset_ops.iterator_from_string_handle_v2(
+            string_handle,
+            output_types=nest.flatten(
+                sparse.as_dense_types(output_types, output_classes)),
+            output_shapes=nest.flatten(
+                sparse.as_dense_shapes(output_shapes, output_classes)))
+    else:
+      iterator_resource = gen_dataset_ops.iterator_from_string_handle(
+          string_handle,
+          output_types=nest.flatten(
+              sparse.as_dense_types(output_types, output_classes)),
+          output_shapes=nest.flatten(
+              sparse.as_dense_shapes(output_shapes, output_classes)))
     return Iterator(iterator_resource, None, output_types, output_shapes,
                     output_classes)
 
@@ -315,9 +362,9 @@ class Iterator(object):
 
     In graph mode, you should typically call this method *once* and use its
     result as the input to another computation. A typical loop will then call
-    @{tf.Session.run} on the result of that computation. The loop will terminate
+    `tf.Session.run` on the result of that computation. The loop will terminate
     when the `Iterator.get_next()` operation raises
-    @{tf.errors.OutOfRangeError}. The following skeleton shows how to use
+    `tf.errors.OutOfRangeError`. The following skeleton shows how to use
     this method when building a training loop:
 
     ```python
@@ -420,6 +467,13 @@ class Iterator(object):
     """
     return self._output_types
 
+  def _gather_saveables_for_checkpoint(self):
+
+    def _saveable_factory(name):
+      return _IteratorSaveable(self._iterator_resource, name)
+
+    return {"ITERATOR": _saveable_factory}
+
 
 _uid_counter = 0
 _uid_lock = threading.Lock()
@@ -433,7 +487,7 @@ def _generate_shared_name(prefix):
   return "{}{}".format(prefix, uid)
 
 
-class EagerIterator(object):
+class EagerIterator(checkpointable.CheckpointableBase):
   """An iterator producing tf.Tensor objects from a tf.data.Dataset."""
 
   def __init__(self, dataset):
@@ -462,7 +516,8 @@ class EagerIterator(object):
           "tf.data.Dataset.make_initializable_iterator or "
           "tf.data.Dataset.make_one_shot_iterator for graph construction".
           format(type(self)))
-    with ops.device("/device:CPU:0"):
+    self._device = context.context().device_name
+    with ops.device("/cpu:0"):
       ds_variant = dataset._as_variant_tensor()  # pylint: disable=protected-access
       self._output_classes = dataset.output_classes
       self._output_types = dataset.output_types
@@ -471,14 +526,14 @@ class EagerIterator(object):
           sparse.as_dense_types(self._output_types, self._output_classes))
       self._flat_output_shapes = nest.flatten(
           sparse.as_dense_shapes(self._output_shapes, self._output_classes))
-      self._resource = gen_dataset_ops.anonymous_iterator(
-          output_types=self._flat_output_types,
-          output_shapes=self._flat_output_shapes)
-      gen_dataset_ops.make_iterator(ds_variant, self._resource)
-      # Delete the resource when this object is deleted
-      self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
-          handle=self._resource, handle_device="/device:CPU:0")
-    self._device = context.context().device_name
+      with ops.colocate_with(ds_variant):
+        self._resource = gen_dataset_ops.anonymous_iterator(
+            output_types=self._flat_output_types,
+            output_shapes=self._flat_output_shapes)
+        gen_dataset_ops.make_iterator(ds_variant, self._resource)
+        # Delete the resource when this object is deleted
+        self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
+            handle=self._resource, handle_device=self._device)
 
   def __iter__(self):
     return self
@@ -565,3 +620,56 @@ class EagerIterator(object):
     """
     del name
     return self._next_internal()
+
+  def _gather_saveables_for_checkpoint(self):
+
+    def _saveable_factory(name):
+      return _IteratorSaveable(self._resource, name)
+
+    return {"ITERATOR": _saveable_factory}
+
+
+# TODO(b/71645805): Expose checkpointable stateful objects from dataset
+# attributes(potential).
+class _IteratorSaveable(BaseSaverBuilder.SaveableObject):
+  """SaveableObject for saving/restoring iterator state."""
+
+  def __init__(self, iterator_resource, name):
+    serialized_iterator = gen_dataset_ops.serialize_iterator(iterator_resource)
+    specs = [
+        BaseSaverBuilder.SaveSpec(serialized_iterator, "", name + "_STATE")
+    ]
+    # pylint: disable=protected-access
+    super(_IteratorSaveable, self).__init__(iterator_resource, specs, name)
+
+  def restore(self, restored_tensors, restored_shapes):
+    with ops.colocate_with(self.op):
+      return gen_dataset_ops.deserialize_iterator(self.op, restored_tensors[0])
+
+
+def get_next_as_optional(iterator):
+  """Returns an `Optional` that contains the next value from the iterator.
+
+  If `iterator` has reached the end of the sequence, the returned `Optional`
+  will have no value.
+
+  Args:
+    iterator: A `tf.data.Iterator` object.
+
+  Returns:
+    An `Optional` object representing the next value from the iterator (if it
+    has one) or no value.
+  """
+  # pylint: disable=protected-access
+  return optional_ops._OptionalImpl(
+      gen_dataset_ops.iterator_get_next_as_optional(
+          iterator._iterator_resource,
+          output_types=nest.flatten(
+              sparse.as_dense_types(iterator.output_types,
+                                    iterator.output_classes)),
+          output_shapes=nest.flatten(
+              sparse.as_dense_shapes(iterator.output_shapes,
+                                     iterator.output_classes))),
+      output_shapes=iterator.output_shapes,
+      output_types=iterator.output_types,
+      output_classes=iterator.output_classes)

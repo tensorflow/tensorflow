@@ -15,18 +15,20 @@ limitations under the License.
 
 #include "tensorflow/python/framework/python_op_gen_internal.h"
 
+#include <float.h>
 #include <stdio.h>
+#include <iomanip>
 #include <sstream>
 #include <unordered_map>
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
-#include "tensorflow/core/framework/tensor.pb_text.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor.pb_text.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -435,7 +437,12 @@ string AttrValueToPython(const string& type, const AttrValue& value,
     if (std::isnan(value.f()) || std::isinf(value.f())) {
       return strings::StrCat("float('", value.f(), "')");
     } else {
-      return strings::StrCat(value.f());
+      // Use locale-independent conversion.
+      static_assert(FLT_DIG < 10, "FLT_DIG is too big");
+      std::ostringstream s;
+      s.imbue(std::locale::classic());
+      s << std::setprecision(FLT_DIG) << value.f();
+      return s.str();
     }
   } else if (type == "bool") {
     return value.b() ? "True" : "False";
@@ -478,15 +485,6 @@ const ApiDef::Attr* FindAttr(StringPiece name, const ApiDef& api_def) {
   for (int i = 0; i < api_def.attr_size(); ++i) {
     if (api_def.attr(i).name() == name) {
       return &api_def.attr(i);
-    }
-  }
-  return nullptr;
-}
-
-const ApiDef::Arg* FindInputArg(StringPiece name, const ApiDef& api_def) {
-  for (int i = 0; i < api_def.in_arg_size(); ++i) {
-    if (api_def.in_arg(i).name() == name) {
-      return &api_def.in_arg(i);
     }
   }
   return nullptr;
@@ -588,10 +586,12 @@ void GenPythonOp::AddExport() {
     return;
   }
 
+  // Add @tf_export decorator.
   strings::StrAppend(&result_, "@tf_export(");
 
   // Add all endpoint names to tf_export.
   bool first_endpoint = true;
+  std::vector<string> deprecated_endpoints;
   for (const auto& endpoint : api_def_.endpoint()) {
     if (!first_endpoint) {
       strings::StrAppend(&result_, ", ");
@@ -601,9 +601,32 @@ void GenPythonOp::AddExport() {
     string endpoint_name;
     python_op_gen_internal::GenerateLowerCaseOpName(endpoint.name(),
                                                     &endpoint_name);
+    if (endpoint.deprecated()) {
+      deprecated_endpoints.push_back(endpoint_name);
+    }
     strings::StrAppend(&result_, "'", endpoint_name, "'");
   }
   strings::StrAppend(&result_, ")\n");
+
+  // If all endpoints are deprecated, add @deprecated decorator.
+  if (!api_def_.deprecation_message().empty()) {
+    const string instructions = api_def_.deprecation_message();
+    strings::StrAppend(&result_, "@deprecated(None, '", instructions, "')\n");
+  }
+  // Add @deprecated_endpoints decorator.
+  if (!deprecated_endpoints.empty()) {
+    strings::StrAppend(&result_, "@deprecated_endpoints(");
+    bool first_endpoint = true;
+    for (auto& endpoint_name : deprecated_endpoints) {
+      if (first_endpoint) {
+        first_endpoint = false;
+      } else {
+        strings::StrAppend(&result_, ", ");
+      }
+      strings::StrAppend(&result_, "'", endpoint_name, "'");
+    }
+    strings::StrAppend(&result_, ")\n");
+  }
 }
 
 void GenPythonOp::AddDefLine(const string& function_name,

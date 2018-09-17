@@ -26,6 +26,7 @@ import warnings
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import activations
@@ -465,7 +466,7 @@ class Permute(Layer):
   Arguments:
       dims: Tuple of integers. Permutation pattern, does not include the
           samples dimension. Indexing starts at 1.
-          For instance, `(2, 1)` permutes the first and second dimension
+          For instance, `(2, 1)` permutes the first and second dimensions
           of the input.
 
   Input shape:
@@ -481,6 +482,11 @@ class Permute(Layer):
   def __init__(self, dims, **kwargs):
     super(Permute, self).__init__(**kwargs)
     self.dims = tuple(dims)
+    if sorted(dims) != list(range(1, len(dims) + 1)):
+      raise ValueError(
+          'Invalid permutation `dims` for Permute Layer: %s. '
+          'The set of indices in `dims` must be consecutive and start from 1.' %
+          (dims,))
     self.input_spec = InputSpec(ndim=len(self.dims) + 1)
 
   def compute_output_shape(self, input_shape):
@@ -675,9 +681,8 @@ class Lambda(Layer):
                         'must be a list, a tuple, or a function.')
       self._output_shape = output_shape
 
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
-    input_shape = tuple(tensor_shape.TensorShape(input_shape).as_list())
-
     if self._output_shape is None:
       if context.executing_eagerly():
         raise NotImplementedError
@@ -929,13 +934,13 @@ class Dense(Layer):
 
   def call(self, inputs):
     inputs = ops.convert_to_tensor(inputs, dtype=self.dtype)
-    shape = inputs.get_shape().as_list()
-    if len(shape) > 2:
+    rank = common_shapes.rank(inputs)
+    if rank > 2:
       # Broadcasting is required for the inputs.
-      outputs = standard_ops.tensordot(inputs, self.kernel, [[len(shape) - 1],
-                                                             [0]])
+      outputs = standard_ops.tensordot(inputs, self.kernel, [[rank - 1], [0]])
       # Reshape the output back to the original ndim of the input.
       if not context.executing_eagerly():
+        shape = inputs.get_shape().as_list()
         output_shape = shape[:-1] + [self.units]
         outputs.set_shape(output_shape)
     else:

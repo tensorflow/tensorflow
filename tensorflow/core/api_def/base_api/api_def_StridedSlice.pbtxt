@@ -32,7 +32,7 @@ END
     description: <<END
 a bitmask where a bit i being 1 means to ignore the begin
 value and instead use the largest interval possible. At runtime
-begin[i] will be replaced with `[0, n-1) if `stride[i] > 0` or
+begin[i] will be replaced with `[0, n-1)` if `stride[i] > 0` or
 `[-1, n-1]` if `stride[i] < 0`
 END
   }

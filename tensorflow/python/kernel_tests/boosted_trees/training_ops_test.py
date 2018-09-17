@@ -32,7 +32,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testGrowWithEmptyEnsemble(self):
     """Test growing an empty ensemble."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create empty ensemble.
       tree_ensemble = boosted_trees_ops.TreeEnsemble('ensemble')
       tree_ensemble_handle = tree_ensemble.resource_handle
@@ -139,9 +139,52 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       self.assertEqual(new_stamp, 1)
       self.assertProtoEquals(expected_result, tree_ensemble)
 
+  def testBiasCenteringOnEmptyEnsemble(self):
+    """Test growing with bias centering on an empty ensemble."""
+    with self.cached_session() as session:
+      # Create empty ensemble.
+      tree_ensemble = boosted_trees_ops.TreeEnsemble('ensemble')
+      tree_ensemble_handle = tree_ensemble.resource_handle
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      gradients = np.array([[5.]], dtype=np.float32)
+      hessians = np.array([[24.]], dtype=np.float32)
+
+      # Grow tree ensemble.
+      grow_op = boosted_trees_ops.center_bias(
+          tree_ensemble_handle,
+          mean_gradients=gradients,
+          mean_hessians=hessians,
+          l1=0.0,
+          l2=1.0
+      )
+      session.run(grow_op)
+
+      new_stamp, serialized = session.run(tree_ensemble.serialize())
+
+      tree_ensemble = boosted_trees_pb2.TreeEnsemble()
+      tree_ensemble.ParseFromString(serialized)
+
+      expected_result = """
+        trees {
+         nodes {
+            leaf {
+              scalar: -0.2
+            }
+          }
+        }
+        tree_weights: 1.0
+        tree_metadata {
+          num_layers_grown: 0
+          is_finalized: false
+        }
+      """
+      self.assertEqual(new_stamp, 1)
+      self.assertProtoEquals(expected_result, tree_ensemble)
+
   def testGrowExistingEnsembleTreeNotFinalized(self):
     """Test growing an existing ensemble with the last tree not finalized."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge("""
         trees {
@@ -325,7 +368,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testGrowExistingEnsembleTreeFinalized(self):
     """Test growing an existing ensemble with the last tree finalized."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge("""
         trees {
@@ -474,7 +517,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testPrePruning(self):
     """Test growing an existing ensemble with pre-pruning."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge("""
         trees {
@@ -630,7 +673,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testMetadataWhenCantSplitDueToEmptySplits(self):
     """Test that the metadata is updated even though we can't split."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge(
           """
@@ -666,7 +709,6 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           num_layers_attempted: 1
           last_layer_node_start: 1
           last_layer_node_end: 3
-
         }
       """, tree_ensemble_config)
 
@@ -742,7 +784,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testMetadataWhenCantSplitDuePrePruning(self):
     """Test metadata is updated correctly when no split due to prepruning."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge(
           """
@@ -877,7 +919,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testPostPruningOfSomeNodes(self):
     """Test growing an ensemble with post-pruning."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create empty ensemble.
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       tree_ensemble = boosted_trees_ops.TreeEnsemble(
@@ -1211,7 +1253,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testPostPruningOfAllNodes(self):
     """Test growing an ensemble with post-pruning, with all nodes are pruned."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create empty ensemble.
       # Create empty ensemble.
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
@@ -1394,7 +1436,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testPostPruningChangesNothing(self):
     """Test growing an ensemble with post-pruning with all gains >0."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create empty ensemble.
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       tree_ensemble = boosted_trees_ops.TreeEnsemble(

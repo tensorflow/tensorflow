@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "segment_max"
-    deprecation_message: "tf.segment_max is deprecated, please use tf.math.segment_max instead."
+    deprecated: true
   }
 }

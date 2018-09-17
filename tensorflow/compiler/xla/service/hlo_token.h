@@ -44,7 +44,6 @@ enum class TokKind {
   kRparen,  // (  )
 
   kArrow,    // ->
-  kComment,  // /*xxx*/
 
   // Keywords
   kw_HloModule,

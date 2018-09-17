@@ -94,26 +94,8 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
         ops.set_shape_and_handle_data_for_outputs(h.op)
       handle._handle_data = h._handle_data
     # pylint: enable=protected-access
-
-  # Clean up our reference cycles to avoid making the garbage collector run.
-  # pylint: disable=protected-access
-  # OrderedDict, constructed on Graph creation, makes a simple reference loop
-  # and hides it in an __attribute in some Python versions. We don't need to
-  # throw an error if we can't find it, but if we do find it we can break the
-  # loop to avoid creating work for the garbage collector.
-  problematic_cycle = graph._functions.__dict__.get("_OrderedDict__root", None)
-  # pylint: enable=protected-access
-  if problematic_cycle:
-    try:
-      del problematic_cycle[0][:]
-    except TypeError:
-      # This is probably not one of the problematic Python versions. Continue
-      # with the rest of our cleanup.
-      pass
-  # Now clean up our own reference cycles by clearing all of the attributes for
-  # the Graph and op we created.
-  h.__dict__ = {}
-  graph.__dict__ = {}
+  # Clean up op->graph->op reference cycles.
+  ops.dismantle_graph(graph)
   return handle
 
 
@@ -181,10 +163,12 @@ def shape_safe_assign_variable_handle(handle, shape, value, name=None):
                                                       name=name)
 
 
-class ResourceVariable(variables.Variable):
+# TODO(apassos) make this be variables.Variable
+class ResourceVariable(variables.RefVariable):
   """Variable based on resource handles.
 
-  See the @{$variables$Variables How To} for a high level overview.
+  See the [Variables How To](https://tensorflow.org/guide/variables)
+  for a high level overview.
 
   A `ResourceVariable` allows you to maintain state across subsequent calls to
   session.run.
@@ -195,15 +179,16 @@ class ResourceVariable(variables.Variable):
   the variable are fixed. The value can be changed using one of the assign
   methods.
 
-  Just like any `Tensor`, variables created with `ResourceVariable()` can be
-  used as inputs for other Ops in the graph. Additionally, all the operators
-  overloaded for the `Tensor` class are carried over to variables, so you can
-  also add nodes to the graph by just doing arithmetic on variables.
+  Just like any `Tensor`, variables created with
+  `tf.Variable(use_resource=True)` can be used as inputs for other Ops in the
+  graph. Additionally, all the operators overloaded for the `Tensor` class are
+  carried over to variables, so you can also add nodes to the graph by just
+  doing arithmetic on variables.
 
-  Unlike tf.Variable, a tf.ResourceVariable has well-defined semantics. Each
+  Unlike ref-based variable, a ResourceVariable has well-defined semantics. Each
   usage of a ResourceVariable in a TensorFlow graph adds a read_value operation
-  to the graph. The Tensors returned by a read_value operation are guaranteed
-  to see all modifications to the value of the variable which happen in any
+  to the graph. The Tensors returned by a read_value operation are guaranteed to
+  see all modifications to the value of the variable which happen in any
   operation on which the read_value depends on (either directly, indirectly, or
   via a control dependency) and guaranteed to not see any modification to the
   value of the variable from operations that depend on the read_value operation.
@@ -217,7 +202,7 @@ class ResourceVariable(variables.Variable):
   can cause tf.Variable and tf.ResourceVariable to behave differently:
 
   ```python
-  a = tf.ResourceVariable(1.0)
+  a = tf.Variable(1.0, use_resource=True)
   a.initializer.run()
 
   assign = a.assign(2.0)
@@ -369,6 +354,15 @@ class ResourceVariable(variables.Variable):
     if initial_value is None:
       raise ValueError("initial_value must be specified.")
     init_from_fn = callable(initial_value)
+
+    if isinstance(initial_value, ops.Tensor) and hasattr(
+        initial_value, "graph") and initial_value.graph.building_function:
+      raise ValueError("Tensor-typed variable initializers must either be "
+                       "wrapped in an init_scope or callable "
+                       "(e.g., `tf.Variable(lambda : "
+                       "tf.truncated_normal([10, 40]))`) when building "
+                       "functions. Please file a feature request if this "
+                       "restriction inconveniences you.")
 
     if collections is None:
       collections = [ops.GraphKeys.GLOBAL_VARIABLES]
@@ -601,6 +595,22 @@ class ResourceVariable(variables.Variable):
   def __bool__(self):
     return bool(self.read_value())
 
+  def __copy__(self):
+    return self
+
+  def __deepcopy__(self, memo):
+    if not context.executing_eagerly():
+      raise NotImplementedError(
+          "__deepcopy__() is only available when eager execution is enabled.")
+    copied_variable = ResourceVariable(
+        initial_value=self.read_value(),
+        trainable=self._trainable,
+        constraint=self._constraint,
+        dtype=self._dtype,
+        name=self._shared_name + "_copy")
+    memo[self._unique_id] = copied_variable
+    return copied_variable
+
   @property
   def dtype(self):
     """The dtype of this variable."""
@@ -740,9 +750,15 @@ class ResourceVariable(variables.Variable):
 
   def _read_variable_op(self):
     if self.trainable:
-      tape.watch_variable(self)
-    return gen_resource_variable_ops.read_variable_op(self._handle,
-                                                      self._dtype)
+      tape.variable_accessed(self)
+    result = gen_resource_variable_ops.read_variable_op(self._handle,
+                                                        self._dtype)
+    if not context.executing_eagerly():
+      # Note that if a control flow context is active the input of the read op
+      # might not actually be the handle. This line bypasses it.
+      tape.record_operation(
+          "ReadVariableOp", [result], [self._handle], lambda x: [x])
+    return result
 
   def read_value(self):
     """Constructs an op which reads the value of this variable.
@@ -765,7 +781,7 @@ class ResourceVariable(variables.Variable):
     """Reads the value of this variable sparsely, using `gather`."""
     with ops.name_scope("Gather" if name is None else name) as name:
       if self.trainable:
-        tape.watch_variable(self)
+        tape.variable_accessed(self)
       value = gen_resource_variable_ops.resource_gather(
           self._handle, indices, dtype=self._dtype, name=name)
     return array_ops.identity(value)
@@ -867,6 +883,19 @@ class ResourceVariable(variables.Variable):
 
   __array_priority__ = 100
 
+  def is_initialized(self, name=None):
+    """Checks whether a resource variable has been initialized.
+
+    Outputs boolean scalar indicating whether the tensor has been initialized.
+
+    Args:
+      name: A name for the operation (optional).
+
+    Returns:
+      A `Tensor` of type `bool`.
+    """
+    return gen_resource_variable_ops.var_is_initialized_op(self.handle, name)
+
   def assign_sub(self, delta, use_locking=None, name=None, read_value=True):
     """Subtracts a value from this variable.
 
@@ -920,11 +949,12 @@ class ResourceVariable(variables.Variable):
 
   def _lazy_read(self, op):
     if self.trainable:
-      tape.watch_variable(self)
+      tape.variable_accessed(self)
     return _UnreadVariable(
-        self._handle, self.dtype, self._shape, self._in_graph_mode,
-        self._handle_deleter if not self._in_graph_mode else None, op,
-        self._unique_id)
+        handle=self._handle, dtype=self.dtype, shape=self._shape,
+        in_graph_mode=self._in_graph_mode,
+        deleter=self._handle_deleter if not self._in_graph_mode else None,
+        parent_op=op, unique_id=self._unique_id)
 
   def assign(self, value, use_locking=None, name=None, read_value=True):
     """Assigns a new value to this variable.
@@ -952,6 +982,231 @@ class ResourceVariable(variables.Variable):
       if read_value:
         return self._lazy_read(assign_op)
     return assign_op
+
+  def __reduce__(self):
+    return (ResourceVariable, (self.numpy(),))
+
+  def scatter_sub(self, sparse_delta, use_locking=False, name=None):
+    """Subtracts `IndexedSlices` from this variable.
+
+    Args:
+      sparse_delta: `IndexedSlices` to be subtracted from this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return self._lazy_read(gen_resource_variable_ops.resource_scatter_sub(
+        self.handle, sparse_delta.indices,
+        ops.convert_to_tensor(sparse_delta.values, self.dtype), name=name))
+
+  def scatter_add(self, sparse_delta, use_locking=False, name=None):
+    """Adds `IndexedSlices` from this variable.
+
+    Args:
+      sparse_delta: `IndexedSlices` to be added to this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return self._lazy_read(gen_resource_variable_ops.resource_scatter_add(
+        self.handle, sparse_delta.indices,
+        ops.convert_to_tensor(sparse_delta.values, self.dtype), name=name))
+
+  def scatter_update(self, sparse_delta, use_locking=False, name=None):
+    """Assigns `IndexedSlices` to this variable.
+
+    Args:
+      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return self._lazy_read(gen_resource_variable_ops.resource_scatter_update(
+        self.handle, sparse_delta.indices,
+        ops.convert_to_tensor(sparse_delta.values, self.dtype), name=name))
+
+  def scatter_nd_sub(self, indices, updates, name=None):
+    """Applies sparse subtraction to individual values or slices in a Variable.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    For example, say we want to add 4 scattered elements to a rank-1 tensor to
+    8 elements. In Python, that update would look like this:
+
+    ```python
+        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        indices = tf.constant([[4], [3], [1] ,[7]])
+        updates = tf.constant([9, 10, 11, 12])
+        op = ref.scatter_nd_sub(indices, updates)
+        with tf.Session() as sess:
+          print sess.run(op)
+    ```
+
+    The resulting update to ref would look like this:
+
+        [1, -9, 3, -6, -6, 6, 7, -4]
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    return self._lazy_read(gen_state_ops.resource_scatter_nd_sub(
+        self.handle, indices, ops.convert_to_tensor(updates, self.dtype),
+        name=name))
+
+  def scatter_nd_add(self, indices, updates, name=None):
+    """Applies sparse addition to individual values or slices in a Variable.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    For example, say we want to add 4 scattered elements to a rank-1 tensor to
+    8 elements. In Python, that update would look like this:
+
+    ```python
+        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        indices = tf.constant([[4], [3], [1] ,[7]])
+        updates = tf.constant([9, 10, 11, 12])
+        add = ref.scatter_nd_add(indices, updates)
+        with tf.Session() as sess:
+          print sess.run(add)
+    ```
+
+    The resulting update to ref would look like this:
+
+        [1, 13, 3, 14, 14, 6, 7, 20]
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    return self._lazy_read(gen_state_ops.resource_scatter_nd_add(
+        self.handle, indices, ops.convert_to_tensor(updates, self.dtype),
+        name=name))
+
+  def scatter_nd_update(self, indices, updates, name=None):
+    """Applies sparse assignment to individual values or slices in a Variable.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    For example, say we want to add 4 scattered elements to a rank-1 tensor to
+    8 elements. In Python, that update would look like this:
+
+    ```python
+        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        indices = tf.constant([[4], [3], [1] ,[7]])
+        updates = tf.constant([9, 10, 11, 12])
+        op = ref.scatter_nd_update(indices, updates)
+        with tf.Session() as sess:
+          print sess.run(op)
+    ```
+
+    The resulting update to ref would look like this:
+
+        [1, 11, 3, 10, 9, 6, 7, 12]
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    return self._lazy_read(gen_state_ops.resource_scatter_nd_update(
+        self.handle, indices, ops.convert_to_tensor(updates, self.dtype),
+        name=name))
 
   def _strided_slice_assign(self, begin, end, strides, value, name, begin_mask,
                             end_mask, ellipsis_mask, new_axis_mask,
@@ -1066,7 +1321,10 @@ class _UnreadVariable(ResourceVariable):
 
   @property
   def name(self):
-    return self._parent_op.name
+    if self._in_graph_mode:
+      return self._parent_op.name
+    else:
+      return "UnreadVariable"
 
   def value(self):
     return self._read_variable_op()
@@ -1090,6 +1348,113 @@ class _UnreadVariable(ResourceVariable):
 
 ops.register_tensor_conversion_function(_UnreadVariable, _dense_var_to_tensor)
 ops.register_dense_tensor_like_type(_UnreadVariable)
+
+
+class _MixedPrecisionVariable(ResourceVariable):
+  """Represents a variable that can return in desired dtype when read.
+
+  In mixed precision training, it is usually desirable to use different dtypes
+  for variables and computation. This class will be used to wrap created
+  ResourceVariable when mixed precision training is enabled. It allows layers to
+  perform computation in a different dtype than their variable dtypes, in order
+  to achieve higher performance without causing quality loss.
+  """
+
+  def __init__(self, var, read_dtype):
+    """Creates a MixedPrecisionVariable.
+
+    Args:
+      var: A ResourceVariable instance.
+      read_dtype: A tf.DType, the returned dtype when read, default to None.
+        Casting is performed if read_dtype is not None and differs from
+        var.dtype.
+    Returns:
+      An MixedPrecisionVariable instance.
+    Raises:
+      ValueError: if var is not a ResourceVariable instance, or read_dtype is
+        not a tf.DType instance.
+    """
+    # pylint: disable=super-init-not-called
+    # We do not call super init on purpose.
+    if not isinstance(var, ResourceVariable):
+      raise ValueError("InvalidArgument: var must be a ResourceVariable type.")
+    if not isinstance(read_dtype, dtypes.DType):
+      raise ValueError("InvalidArgument: read_dtype must be a tf.DType type.")
+
+    self._var = var
+    self._trainable = var.trainable
+    self._save_slice_info = None
+    self._graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
+    self._in_graph_mode = var._in_graph_mode  # pylint: disable=protected-access
+    self._handle = var.handle
+    self._shape = var.shape
+    self._initial_value = None
+    if isinstance(self.handle, ops.EagerTensor):
+      self._handle_name = ""
+    else:
+      self._handle_name = self.handle.name
+    self._unique_id = var._unique_id  # pylint: disable=protected-access
+    self._dtype = var.dtype
+    self._constraint = None
+    self._cached_value = None
+    self._is_initialized_op = var._is_initialized_op  # pylint: disable=protected-access
+    self._initializer_op = var._initializer_op  # pylint: disable=protected-access
+    # This needs to be set before read_value() is called.
+    self._read_dtype = read_dtype
+    if context.executing_eagerly():
+      self._graph_element = None
+    else:
+      self._graph_element = self.read_value()
+    self._handle_deleter = (
+        var._handle_deleter if not self._in_graph_mode  # pylint: disable=protected-access
+        else None)
+    # pylint: enable=super-init-not-called
+
+  @property
+  def name(self):
+    return self._var.name
+
+  def value(self):
+    return self._read_variable_op()
+
+  def read_value(self):
+    return self._read_variable_op()
+
+  def _read_variable_op(self):
+    with ops.colocate_with(self._handle):
+      res = gen_resource_variable_ops.read_variable_op(self._handle,
+                                                       self._dtype)
+      if self._read_dtype != self._dtype:
+        return math_ops.cast(res, self._read_dtype)
+      else:
+        return res
+
+  def set_shape(self, shape):
+    self._shape = shape
+    self._cached_shape_as_list = None
+
+  @property
+  def op(self):
+    """The op for this variable."""
+    return self._var.op
+
+  @property
+  def read_dtype(self):
+    """The dtype of the returned tensor when reading the var."""
+    return self._read_dtype
+
+  def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
+    del name
+    dtype = dtype or self.read_dtype
+    if dtype != self.read_dtype or as_ref:
+      return NotImplemented
+    else:
+      res = self.value()
+    return res
+
+  def _should_act_as_resource_variable(self):
+    """To pass resource_variable_ops.is_resource_variable check."""
+    pass
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.

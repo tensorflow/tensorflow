@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
@@ -69,8 +69,8 @@ StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
 
   // Create executable from only the Hlo module.
   std::unique_ptr<Executable> executable =
-      xla::MakeUnique<InterpreterExecutable>(std::move(hlo_module),
-                                             xla::MakeUnique<HloEvaluator>());
+      absl::make_unique<InterpreterExecutable>(
+          std::move(hlo_module), absl::make_unique<HloEvaluator>());
 
   return std::move(executable);
 }
@@ -103,11 +103,11 @@ HloCostAnalysis::ShapeSizeFunction InterpreterCompiler::ShapeSizeBytesFunction()
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       se::interpreter::kXlaInterpreterPlatformId, []() {
-        return xla::MakeUnique<xla::interpreter::InterpreterCompiler>();
+        return absl::make_unique<xla::interpreter::InterpreterCompiler>();
       });
   xla::ComputationPlacer::RegisterComputationPlacer(
       se::interpreter::kXlaInterpreterPlatformId,
-      []() { return xla::MakeUnique<xla::ComputationPlacer>(); });
+      []() { return absl::make_unique<xla::ComputationPlacer>(); });
   return true;
 }
 

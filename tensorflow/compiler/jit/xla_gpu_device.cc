@@ -49,6 +49,7 @@ Status XlaGpuDeviceFactory::CreateDevices(const SessionOptions& options,
       XlaDevice::Create("CUDA", DEVICE_XLA_GPU, 0, DEVICE_GPU_XLA_JIT, options,
                         name_prefix, registration,
                         /*transfer_as_literal=*/false,
+                        /*use_multiple_streams=*/false,
                         /*shape_representation_fn=*/{},
                         /*padded_shape_fn=*/{}, &device);
   if (!status.ok()) {
@@ -58,7 +59,7 @@ Status XlaGpuDeviceFactory::CreateDevices(const SessionOptions& options,
   }
 
   // TODO(b/78468222): Uncomment after fixing this bug
-  // status = device->CreateAndSetGpuDeviceInfo();
+  // status = device->UseGpuDeviceInfo();
   // if (!status.ok()) {
   //  errors::AppendToMessage(&status, "while setting up ", DEVICE_GPU_XLA_JIT,
   //                          " device");
@@ -73,9 +74,9 @@ REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_GPU, XlaGpuDeviceFactory);
 
 // Kernel registrations
 
-constexpr std::array<DataType, 8> kAllXlaGpuTypes = {
-    {DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL,
-     DT_BFLOAT16}};
+constexpr std::array<DataType, 10> kAllXlaGpuTypes = {
+    {DT_UINT8, DT_INT8, DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE,
+     DT_COMPLEX64, DT_BOOL, DT_BFLOAT16}};
 
 REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_GPU, XlaLocalLaunchOp, kAllXlaGpuTypes);
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_GPU, kAllXlaGpuTypes);

@@ -52,6 +52,13 @@ class FloatAddOpModel : public BaseAddOpModel {
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 };
 
+class IntegerAddOpModel : public BaseAddOpModel {
+ public:
+  using BaseAddOpModel::BaseAddOpModel;
+
+  std::vector<int32_t> GetOutput() { return ExtractVector<int32_t>(output_); }
+};
+
 class QuantizedAddOpModel : public BaseAddOpModel {
  public:
   using BaseAddOpModel::BaseAddOpModel;
@@ -129,6 +136,57 @@ TEST(FloatAddOpModel, WithBroadcast) {
     EXPECT_THAT(
         m.GetOutput(),
         ElementsAreArray(ArrayFloatNear({-1.9, 0.3, 0.8, 0.9, 1.2, 2.1})))
+        << "With shape number " << i;
+  }
+}
+
+TEST(IntegerAddOpModel, NoActivation) {
+  IntegerAddOpModel m({TensorType_INT32, {1, 2, 2, 1}},
+                      {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {}},
+                      ActivationFunctionType_NONE);
+  m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8});
+  m.PopulateTensor<int32_t>(m.input2(), {1, 2, 3, 5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-19, 4, 10, 13}));
+}
+
+TEST(IntegerAddOpModel, ActivationRELU_N1_TO_1) {
+  IntegerAddOpModel m({TensorType_INT32, {1, 2, 2, 1}},
+                      {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {}},
+                      ActivationFunctionType_RELU_N1_TO_1);
+  m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8});
+  m.PopulateTensor<int32_t>(m.input2(), {1, 2, 3, 5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1, 1, 1, 1}));
+}
+
+TEST(IntegerAddOpModel, VariousInputShapes) {
+  std::vector<std::initializer_list<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    IntegerAddOpModel m({TensorType_INT32, test_shapes[i]},
+                        {TensorType_INT32, test_shapes[i]},
+                        {TensorType_INT32, {}}, ActivationFunctionType_NONE);
+    m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8, 11, 20});
+    m.PopulateTensor<int32_t>(m.input2(), {1, 2, 3, 5, 11, 1});
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({-19, 04, 10, 13, 22, 21}))
+        << "With shape number " << i;
+  }
+}
+
+TEST(IntegerAddOpModel, WithBroadcast) {
+  std::vector<std::initializer_list<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    IntegerAddOpModel m({TensorType_INT32, test_shapes[i]},
+                        {TensorType_INT32, {}},  // always a scalar
+                        {TensorType_INT32, {}}, ActivationFunctionType_NONE);
+    m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8, 11, 20});
+    m.PopulateTensor<int32_t>(m.input2(), {1});
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreArray(ArrayFloatNear({-19, 3, 8, 9, 12, 21})))
         << "With shape number " << i;
   }
 }

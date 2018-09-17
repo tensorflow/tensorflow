@@ -76,7 +76,7 @@ class AccumulateNV2Test(test_util.TensorFlowTestCase):
   # Putting them here so that everything that exercises AccumulateNV2 is in
   # one place and the default build runs all unit tests.
   def testSimple(self):
-    with self.test_session():
+    with self.cached_session():
       random_arrays = [
           np.random.rand(16, 16, 16, 16).astype(np.float32) for _ in range(20)
       ]
@@ -91,27 +91,27 @@ class AccumulateNV2Test(test_util.TensorFlowTestCase):
       self.assertAllClose(np_val, tf_val.eval())
 
   def testZeroArgs(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         tf_val = math_ops.accumulate_n([])
         tf_val.eval()
 
   def testWrongShape(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         a = variables.Variable(0.2)
         b = variables.Variable(0.1)
         math_ops.accumulate_n([a, b], shape=[2, 2])  # Should be shape=[]
 
   def testIncompatibleShapes(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         a = variables.Variable(np.array([0.1, 0.2]))
         b = variables.Variable(np.array([[0.3], [0.4]]))
         math_ops.accumulate_n([a, b])
 
   def testWrongType(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(TypeError):
         a = variables.Variable(0.2, dtype=np.float32)
         b = variables.Variable(0.1, dtype=np.float32)
@@ -119,7 +119,7 @@ class AccumulateNV2Test(test_util.TensorFlowTestCase):
 
   def testWrongTypeOneInput(self):
     # Scenario that used to trigger a bug, even when testWrongType() worked
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(TypeError):
         a = variables.Variable(0.2, dtype=np.float32)
         math_ops.accumulate_n([a], tensor_dtype=np.int32)

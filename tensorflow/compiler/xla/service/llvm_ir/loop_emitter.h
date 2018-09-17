@@ -41,11 +41,11 @@ class LoopEmitter {
   using BodyEmitter = std::function<Status(const IrArray::Index& index)>;
 
   LoopEmitter(const BodyEmitter& body_emitter, const Shape& shape,
-              llvm::IRBuilder<>* ir_builder);
+              llvm::IRBuilder<>* b);
   // Constructs a LoopEmitter from an element generator that generates each
   // element of the given target array.
   LoopEmitter(const ElementGenerator& target_element_generator,
-              const IrArray& target_array, llvm::IRBuilder<>* ir_builder);
+              const IrArray& target_array, llvm::IRBuilder<>* b);
 
   // Constructs a LoopEmitter that emits one element into each of N separate
   // arrays on each iteration of the loop.
@@ -53,8 +53,7 @@ class LoopEmitter {
   // This is used for multi-output fusion.  target_element_generator must
   // produce an LLVM struct with N elements.
   LoopEmitter(const ElementGenerator& target_element_generator,
-              tensorflow::gtl::ArraySlice<IrArray> target_arrays,
-              llvm::IRBuilder<>* ir_builder);
+              absl::Span<const IrArray> target_arrays, llvm::IRBuilder<>* b);
 
   LoopEmitter(const LoopEmitter&) = delete;
   LoopEmitter& operator=(const LoopEmitter&) = delete;
@@ -65,15 +64,14 @@ class LoopEmitter {
   // specifies the element, will return multiple indices if the loop is
   // unrolled.
   std::vector<IrArray::Index> EmitIndexAndSetExitBasicBlock() {
-    return EmitIndexAndSetExitBasicBlock(/*loop_name=*/"",
-                                         ir_builder_->getInt64Ty());
+    return EmitIndexAndSetExitBasicBlock(/*loop_name=*/"", b_->getInt64Ty());
   }
 
   virtual std::vector<IrArray::Index> EmitIndexAndSetExitBasicBlock(
-      tensorflow::StringPiece loop_name, llvm::Type* index_type);
+      absl::string_view loop_name, llvm::Type* index_type);
 
   // Emits a complete loop nest for every element in the given shape.
-  Status EmitLoop(tensorflow::StringPiece loop_name = "",
+  Status EmitLoop(absl::string_view loop_name = "",
                   llvm::Type* index_type = nullptr);
 
  protected:
@@ -87,7 +85,7 @@ class LoopEmitter {
   // scalar, no loops are emitted and exit_bb_ is nullptr in that case.
   llvm::BasicBlock* exit_bb_;
 
-  llvm::IRBuilder<>* ir_builder_;
+  llvm::IRBuilder<>* b_;
 };
 
 }  // namespace llvm_ir

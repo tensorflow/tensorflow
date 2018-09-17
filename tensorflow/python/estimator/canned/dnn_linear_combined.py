@@ -31,10 +31,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
-from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
 from tensorflow.python.util.tf_export import estimator_export
@@ -88,7 +88,9 @@ def _dnn_linear_combined_model_fn(features,
                                   dnn_activation_fn=nn.relu,
                                   dnn_dropout=None,
                                   input_layer_partitioner=None,
-                                  config=None):
+                                  config=None,
+                                  batch_norm=False,
+                                  linear_sparse_combiner='sum'):
   """Deep Neural Net and Linear combined model_fn.
 
   Args:
@@ -115,7 +117,10 @@ def _dnn_linear_combined_model_fn(features,
       coordinate.
     input_layer_partitioner: Partitioner for input layer.
     config: `RunConfig` object to configure the runtime settings.
-
+    batch_norm: Whether to use batch normalization after each hidden layer.
+    linear_sparse_combiner: A string specifying how to reduce the linear model
+      if a categorical column is multivalent.  One of "mean", "sqrtn", and
+      "sum".
   Returns:
     An `EstimatorSpec` instance.
 
@@ -156,15 +161,16 @@ def _dnn_linear_combined_model_fn(features,
     with variable_scope.variable_scope(
         dnn_parent_scope,
         values=tuple(six.itervalues(features)),
-        partitioner=dnn_partitioner):
-
+        partitioner=dnn_partitioner) as scope:
+      dnn_absolute_scope = scope.name
       dnn_logit_fn = dnn._dnn_logit_fn_builder(  # pylint: disable=protected-access
           units=head.logits_dimension,
           hidden_units=dnn_hidden_units,
           feature_columns=dnn_feature_columns,
           activation_fn=dnn_activation_fn,
           dropout=dnn_dropout,
-          input_layer_partitioner=input_layer_partitioner)
+          input_layer_partitioner=input_layer_partitioner,
+          batch_norm=batch_norm)
       dnn_logits = dnn_logit_fn(features=features, mode=mode)
 
   linear_parent_scope = 'linear'
@@ -180,9 +186,11 @@ def _dnn_linear_combined_model_fn(features,
         linear_parent_scope,
         values=tuple(six.itervalues(features)),
         partitioner=input_layer_partitioner) as scope:
+      linear_absolute_scope = scope.name
       logit_fn = linear._linear_logit_fn_builder(  # pylint: disable=protected-access
           units=head.logits_dimension,
-          feature_columns=linear_feature_columns)
+          feature_columns=linear_feature_columns,
+          sparse_combiner=linear_sparse_combiner)
       linear_logits = logit_fn(features=features)
       _add_layer_summary(linear_logits, scope.name)
 
@@ -204,18 +212,18 @@ def _dnn_linear_combined_model_fn(features,
               loss,
               var_list=ops.get_collection(
                   ops.GraphKeys.TRAINABLE_VARIABLES,
-                  scope=dnn_parent_scope)))
+                  scope=dnn_absolute_scope)))
     if linear_logits is not None:
       train_ops.append(
           linear_optimizer.minimize(
               loss,
               var_list=ops.get_collection(
                   ops.GraphKeys.TRAINABLE_VARIABLES,
-                  scope=linear_parent_scope)))
+                  scope=linear_absolute_scope)))
 
     train_op = control_flow_ops.group(*train_ops)
     with ops.control_dependencies([train_op]):
-      return distribute_lib.increment_var(global_step)
+      return state_ops.assign_add(global_step, 1).op
 
   return head.create_estimator_spec(
       features=features,
@@ -321,7 +329,9 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
                input_layer_partitioner=None,
                config=None,
                warm_start_from=None,
-               loss_reduction=losses.Reduction.SUM):
+               loss_reduction=losses.Reduction.SUM,
+               batch_norm=False,
+               linear_sparse_combiner='sum'):
     """Initializes a DNNLinearCombinedClassifier instance.
 
     Args:
@@ -374,6 +384,12 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         names are unchanged.
       loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
         to reduce training loss over batch. Defaults to `SUM`.
+      batch_norm: Whether to use batch normalization after each hidden layer.
+      linear_sparse_combiner: A string specifying how to reduce the linear model
+        if a categorical column is multivalent.  One of "mean", "sqrtn", and
+        "sum" -- these are effectively different ways to do example-level
+        normalization, which can be useful for bag-of-words features.  For more
+        details, see `tf.feature_column.linear_model`.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -413,7 +429,9 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
           dnn_activation_fn=dnn_activation_fn,
           dnn_dropout=dnn_dropout,
           input_layer_partitioner=input_layer_partitioner,
-          config=config)
+          config=config,
+          batch_norm=batch_norm,
+          linear_sparse_combiner=linear_sparse_combiner)
 
     super(DNNLinearCombinedClassifier, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config,
@@ -515,7 +533,9 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
                input_layer_partitioner=None,
                config=None,
                warm_start_from=None,
-               loss_reduction=losses.Reduction.SUM):
+               loss_reduction=losses.Reduction.SUM,
+               batch_norm=False,
+               linear_sparse_combiner='sum'):
     """Initializes a DNNLinearCombinedRegressor instance.
 
     Args:
@@ -562,6 +582,12 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
         names are unchanged.
       loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
         to reduce training loss over batch. Defaults to `SUM`.
+      batch_norm: Whether to use batch normalization after each hidden layer.
+      linear_sparse_combiner: A string specifying how to reduce the linear model
+        if a categorical column is multivalent.  One of "mean", "sqrtn", and
+        "sum" -- these are effectively different ways to do example-level
+        normalization, which can be useful for bag-of-words features.  For more
+        details, see `tf.feature_column.linear_model`.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -592,7 +618,9 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
           dnn_activation_fn=dnn_activation_fn,
           dnn_dropout=dnn_dropout,
           input_layer_partitioner=input_layer_partitioner,
-          config=config)
+          config=config,
+          batch_norm=batch_norm,
+          linear_sparse_combiner=linear_sparse_combiner)
 
     super(DNNLinearCombinedRegressor, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config,

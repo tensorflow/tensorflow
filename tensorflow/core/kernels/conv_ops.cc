@@ -680,9 +680,9 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                           TensorShape({filter.dim_size(3), filter.dim_size(2),
                                        filter.dim_size(0), filter.dim_size(1)}),
                           &transformed_filter));
-
   functor::TransformFilter<GPUDevice, T, int, 4>()(
-      ctx->eigen_device<GPUDevice>(), To32Bit(filter.tensor<T, 4>()),
+      ctx->eigen_device<GPUDevice>(), FORMAT_OIHW,
+      To32Bit(filter.tensor<T, 4>()),
       To32Bit(transformed_filter.tensor<T, 4>()));
 
   Tensor transformed_output;
@@ -713,6 +713,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       in_depths,         // in_depths
       {{in_rows,         // in_rows
         in_cols}},       // in_cols
+      FORMAT_NCHW,       // compute_data_format
       out_depths,        // out_depths
       {{patch_rows,      // filter_rows
         patch_cols,      // filter_cols
@@ -822,7 +823,8 @@ namespace functor {
   extern template struct MatMulConvFunctor<GPUDevice, T>;                    \
   template <>                                                                \
   void TransformFilter<GPUDevice, T, int, 4>::operator()(                    \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,        \
+      const GPUDevice& d, FilterTensorFormat dst_filter_format,              \
+      typename TTypes<T, 4, int>::ConstTensor in,                            \
       typename TTypes<T, 4, int>::Tensor out);                               \
   extern template struct TransformFilter<GPUDevice, T, int, 4>;              \
   template <>                                                                \

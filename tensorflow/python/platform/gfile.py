@@ -33,12 +33,20 @@ from tensorflow.python.lib.io.file_io import rename as Rename
 from tensorflow.python.lib.io.file_io import stat as Stat
 from tensorflow.python.lib.io.file_io import walk as Walk
 # pylint: enable=unused-import
+from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export('gfile.GFile', 'gfile.Open')
 class GFile(_FileIO):
-  """File I/O wrappers without thread locking."""
+  """File I/O wrappers without thread locking.
+
+  Note, that this  is somewhat like builtin Python  file I/O, but
+  there are  semantic differences to  make it more  efficient for
+  some backing filesystems.  For example, a write  mode file will
+  not  be opened  until the  first  write call  (to minimize  RPC
+  invocations in network filesystems).
+  """
 
   def __init__(self, name, mode='r'):
     super(GFile, self).__init__(name=name, mode=mode)
@@ -46,8 +54,16 @@ class GFile(_FileIO):
 
 @tf_export('gfile.FastGFile')
 class FastGFile(_FileIO):
-  """File I/O wrappers without thread locking."""
+  """File I/O wrappers without thread locking.
 
+  Note, that this  is somewhat like builtin Python  file I/O, but
+  there are  semantic differences to  make it more  efficient for
+  some backing filesystems.  For example, a write  mode file will
+  not  be opened  until the  first  write call  (to minimize  RPC
+  invocations in network filesystems).
+  """
+
+  @deprecated(None, 'Use tf.gfile.GFile.')
   def __init__(self, name, mode='r'):
     super(FastGFile, self).__init__(name=name, mode=mode)
 

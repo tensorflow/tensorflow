@@ -4,10 +4,14 @@ package tensorflow.tpu.op_profile;
 
 // Profile is the top-level data that summarizes a program.
 message Profile {
+  reserved 2;
+  reserved "by_program_structure";
+  reserved 3;
+  reserved "per_program";
   // Root of a profile broken down by instruction category.
   Node by_category = 1;
-  // Root of a profile broken down by program structure.
-  Node by_program_structure = 2;
+  // Root of a profile broken down by program.
+  Node by_program = 4;
 }
 
 // An entry in the profile tree. (An instruction, or set of instructions).

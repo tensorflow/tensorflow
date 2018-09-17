@@ -310,6 +310,7 @@ class CallOp : public AsyncOpKernel {
     opts.step_container = ctx->step_container();
     opts.stats_collector = ctx->stats_collector();
     opts.runner = ctx->runner();
+    opts.collective_executor = ctx->collective_executor();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -346,9 +347,10 @@ const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
     return nullptr;
   }
 
-  mutex_lock l(mu_);
-  CHECK_EQ(1, items_.count(local_handle));
-  return items_[local_handle]->func_graph;
+  tf_shared_lock l(mu_);
+  auto iter = items_.find(local_handle);
+  CHECK(iter != items_.end());
+  return iter->second->func_graph;
 }
 
 Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
@@ -399,12 +401,11 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
   // types.
   MemoryTypeVector input_memory_types;
   for (const auto& t : fbody->arg_types) {
-    input_memory_types.push_back(
-        (t == DT_INT32 || t == DT_RESOURCE) ? HOST_MEMORY : DEVICE_MEMORY);
+    input_memory_types.push_back(MTypeFromDType(t));
   }
   MemoryTypeVector output_memory_types;
   for (const auto& t : fbody->ret_types) {
-    output_memory_types.push_back(t == DT_INT32 ? HOST_MEMORY : DEVICE_MEMORY);
+    output_memory_types.push_back(MTypeFromDType(t));
   }
 
   // Constructs a CallOp kernel for running the instantiated function.
@@ -413,9 +414,8 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
       device_type, device_, device_->GetAllocator(AllocatorAttributes()), &ndef,
       &fbody->fdef.signature(), this, fbody->arg_types, input_memory_types,
       fbody->ret_types, output_memory_types, graph_def_version_, &s);
-  *kernel = new CallOp(handle, &construction);
-  if (!s.ok()) {
-    delete *kernel;
+  if (s.ok()) {
+    *kernel = new CallOp(handle, &construction);
   }
   return s;
 }
@@ -556,6 +556,12 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
       next_handle_++;
     }
   }
+
+  if (options.create_kernels_eagerly) {
+    Item* item;
+    TF_RETURN_IF_ERROR(GetOrCreateItem(*handle, &item));
+  }
+
   return Status::OK();
 }
 
@@ -608,11 +614,14 @@ void PruneFunctionBody(Graph* g) {
   std::unordered_set<const Node*> nodes;
   for (auto n : g->nodes()) {
     // NOTE(mrry): "_Retval" nodes are stateful, and so will be added
-    // to the seed set of `nodes`.
+    // to the seed set of `nodes`. "_Arg" nodes are also stateful, but we
+    // specifically exclude them as seeds, to avoid unconditionally executing
+    // unused argument nodes (e.g. in a function like `lambda x, y: y`).
     // TODO(mrry): Investigate whether the `n->IsControlFlow()` test is
     // still needed. It would be preferable to prune entire loops and/or
     // conditionals if they are not used in the graph.
-    if (n->IsControlFlow() || n->op_def().is_stateful()) {
+    if (n->IsControlFlow() ||
+        (n->op_def().is_stateful() && n->type_string() != kArgOp)) {
       nodes.insert(n);
     }
   }
@@ -628,7 +637,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   const FunctionLibraryDefinition* lib_def;
   string executor_type;
   {
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     fbody = (*item)->func_graph;
     lib_def = (*item)->overlay_lib;
     executor_type = (*item)->executor_type;
@@ -677,12 +686,13 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
 Status FunctionLibraryRuntimeImpl::GetOrCreateItem(Handle handle, Item** item) {
   LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
   {
-    mutex_lock l(mu_);
-    if (items_.count(local_handle) == 0) {
+    tf_shared_lock l(mu_);
+    auto iter = items_.find(local_handle);
+    if (iter == items_.end()) {
       return errors::NotFound("Function handle ", handle,
                               " is not valid. Likely an internal error.");
     }
-    *item = items_[local_handle].get();
+    *item = iter->second.get();
     if ((*item)->exec != nullptr) {
       return Status::OK();
     }
@@ -728,6 +738,27 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
     return;
   }
 
+  std::vector<AllocatorAttributes> args_alloc_attrs, rets_alloc_attrs;
+  args_alloc_attrs.reserve(fbody->arg_types.size());
+  rets_alloc_attrs.reserve(fbody->ret_types.size());
+  // Note: Functions assume that int32's are always on host memory.
+  for (const auto& arg_type : fbody->arg_types) {
+    AllocatorAttributes arg_alloc_attrs;
+    if (MTypeFromDType(arg_type) == HOST_MEMORY) {
+      arg_alloc_attrs.set_on_host(true);
+    }
+    args_alloc_attrs.push_back(arg_alloc_attrs);
+  }
+  for (const auto& ret_type : fbody->ret_types) {
+    AllocatorAttributes ret_alloc_attrs;
+    if (MTypeFromDType(ret_type) == HOST_MEMORY) {
+      ret_alloc_attrs.set_on_host(true);
+    }
+    rets_alloc_attrs.push_back(ret_alloc_attrs);
+  }
+
+  bool allow_dead_tensors = opts.allow_dead_tensors;
+
   // The ProcFLR sends the arguments to the function from the source_device to
   // the target_device. So here we receive those arguments. Similarly, when the
   // computation is done and stored in *rets, we send the return values back
@@ -735,10 +766,10 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
   std::vector<Tensor>* remote_args = new std::vector<Tensor>;
   ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
       source_device, target_device, "arg_", src_incarnation, args.size(),
-      device_context, {}, rendezvous, remote_args,
+      device_context, args_alloc_attrs, rendezvous, remote_args,
       [frame, remote_args, item, source_device, target_device,
-       target_incarnation, rendezvous, device_context, rets, done,
-       exec_args](const Status& status) {
+       target_incarnation, rendezvous, device_context, rets, done, exec_args,
+       rets_alloc_attrs, allow_dead_tensors](const Status& status) {
         Status s = status;
         if (s.ok()) {
           s = frame->SetArgs(*remote_args);
@@ -753,10 +784,11 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
         item->exec->RunAsync(
             *exec_args, [frame, rets, done, source_device, target_device,
                          target_incarnation, rendezvous, device_context,
-                         remote_args, exec_args](const Status& status) {
+                         remote_args, exec_args, rets_alloc_attrs,
+                         allow_dead_tensors](const Status& status) {
               Status s = status;
               if (s.ok()) {
-                s = frame->ConsumeRetvals(rets);
+                s = frame->ConsumeRetvals(rets, allow_dead_tensors);
               }
               delete frame;
               if (!s.ok()) {
@@ -767,7 +799,7 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
               }
               s = ProcessFunctionLibraryRuntime::SendTensors(
                   target_device, source_device, "ret_", target_incarnation,
-                  *rets, device_context, {}, rendezvous);
+                  *rets, device_context, rets_alloc_attrs, rendezvous);
               delete remote_args;
               delete exec_args;
               done(s);
@@ -840,14 +872,15 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     return;
   }
 
+  bool allow_dead_tensors = opts.allow_dead_tensors;
   item->exec->RunAsync(
       // Executor args
       *exec_args,
       // Done callback.
-      [frame, rets, done, exec_args](const Status& status) {
+      [frame, rets, done, exec_args, allow_dead_tensors](const Status& status) {
         Status s = status;
         if (s.ok()) {
-          s = frame->ConsumeRetvals(rets);
+          s = frame->ConsumeRetvals(rets, allow_dead_tensors);
         }
         delete frame;
         delete exec_args;
@@ -894,29 +927,18 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   }
   DCHECK(run_opts.runner != nullptr);
 
-  Executor::Args* exec_args = new Executor::Args;
+  Executor::Args exec_args;
   // Inherit the step_id from the caller.
-  exec_args->step_id = run_opts.step_id;
-  exec_args->rendezvous = run_opts.rendezvous;
-  exec_args->stats_collector = run_opts.stats_collector;
-  exec_args->cancellation_manager = run_opts.cancellation_manager;
-  exec_args->collective_executor = run_opts.collective_executor;
-  exec_args->step_container = run_opts.step_container;
-  exec_args->runner = *run_opts.runner;
-  exec_args->call_frame = frame;
+  exec_args.step_id = run_opts.step_id;
+  exec_args.rendezvous = run_opts.rendezvous;
+  exec_args.stats_collector = run_opts.stats_collector;
+  exec_args.cancellation_manager = run_opts.cancellation_manager;
+  exec_args.collective_executor = run_opts.collective_executor;
+  exec_args.step_container = run_opts.step_container;
+  exec_args.runner = *run_opts.runner;
+  exec_args.call_frame = frame;
 
-  item->exec->RunAsync(
-      // Executor args
-      *exec_args,
-      // Done callback.
-      std::bind(
-          [item, frame, exec_args](DoneCallback done,
-                                   // Start unbound arguments.
-                                   const Status& status) {
-            delete exec_args;
-            done(status);
-          },
-          std::move(done), std::placeholders::_1));
+  item->exec->RunAsync(exec_args, std::move(done));
 }
 
 bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) {

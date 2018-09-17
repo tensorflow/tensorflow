@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class ThreadPoolResource : public ResourceBase {
@@ -130,11 +131,13 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
             ThreadPoolResource* threadpool)
-        : GraphDatasetBase(ctx), input_(input), threadpool_(threadpool) {
+        : DatasetBase(DatasetContext(ctx)),
+          input_(input),
+          threadpool_(threadpool) {
       input_->Ref();
       threadpool_->Ref();
     }
@@ -162,11 +165,11 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      return errors::Unimplemented(
-          "Cannot currently serialize the thread pool for a "
-          "ThreadPoolDataset.");
+      return errors::Unimplemented("%s does not support serialization",
+                                   DebugString());
     }
 
    private:
@@ -212,4 +215,5 @@ REGISTER_KERNEL_BUILDER(Name("ThreadPoolDataset").Device(DEVICE_CPU),
                         ThreadPoolDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

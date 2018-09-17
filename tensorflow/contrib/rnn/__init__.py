@@ -14,7 +14,7 @@
 # ==============================================================================
 """RNN Cells and additional RNN operations.
 
-See @{$python/contrib.rnn} guide.
+See [Contrib RNN](https://tensorflow.org/api_guides/python/contrib.rnn) guide.
 
 <!--From core-->
 @@RNNCell
@@ -58,6 +58,10 @@ See @{$python/contrib.rnn} guide.
 @@Conv3DLSTMCell
 @@HighwayWrapper
 @@GLSTMCell
+@@SRUCell
+@@IndRNNCell
+@@IndyGRUCell
+@@IndyLSTMCell
 
 <!--RNNCell wrappers-->
 @@AttentionCellWrapper

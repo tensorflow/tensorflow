@@ -47,3 +47,8 @@ class MetricKeys(object):
   PROBABILITY_MEAN_AT_CLASS = 'probability_mean/class%d'
   AUC_AT_CLASS = 'auc/class%d'
   AUC_PR_AT_CLASS = 'auc_precision_recall/class%d'
+
+  # The following require a class name applied.
+  PROBABILITY_MEAN_AT_NAME = 'probability_mean/%s'
+  AUC_AT_NAME = 'auc/%s'
+  AUC_PR_AT_NAME = 'auc_precision_recall/%s'

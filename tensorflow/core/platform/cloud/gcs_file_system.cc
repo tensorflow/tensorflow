@@ -57,6 +57,7 @@ constexpr char kGcsUriBase[] = "https://www.googleapis.com/storage/v1/";
 constexpr char kGcsUploadUriBase[] =
     "https://www.googleapis.com/upload/storage/v1/";
 constexpr char kStorageHost[] = "storage.googleapis.com";
+constexpr char kBucketMetadataLocationKey[] = "location";
 constexpr size_t kReadAppendableFileBufferSize = 1024 * 1024;  // In bytes.
 constexpr int kGetChildrenDefaultPageSize = 1000;
 // The HTTP response code "308 Resume Incomplete".
@@ -98,6 +99,11 @@ constexpr uint64 kMatchingPathsCacheDefaultMaxAge = 0;
 constexpr char kMatchingPathsCacheMaxEntries[] =
     "GCS_MATCHING_PATHS_CACHE_MAX_ENTRIES";
 constexpr size_t kMatchingPathsCacheDefaultMaxEntries = 1024;
+// Number of bucket locations cached, most workloads wont touch more than one
+// bucket so this limit is set fairly low
+constexpr size_t kBucketLocationCacheMaxEntries = 10;
+// ExpiringLRUCache doesnt support any "cache forever" option
+constexpr size_t kCacheNeverExpire = std::numeric_limits<uint64>::max();
 // The file statistics returned by Stat() for directories.
 const FileStatistics DIRECTORY_STAT(0, 0, true);
 // Some environments exhibit unreliable DNS resolution. Set this environment
@@ -130,6 +136,14 @@ constexpr char kThrottleBucket[] = "GCS_THROTTLE_BUCKET_SIZE";
 constexpr char kTokensPerRequest[] = "GCS_TOKENS_PER_REQUEST";
 // The environment variable to configure the initial tokens (format: <int64>)
 constexpr char kInitialTokens[] = "GCS_INITIAL_TOKENS";
+
+// The environment variable to customize which GCS bucket locations are allowed,
+// if the list is empty defaults to using the region of the zone (format, comma
+// delimited list). Requires 'storage.buckets.get' permission.
+constexpr char kAllowedBucketLocations[] = "GCS_ALLOWED_BUCKET_LOCATIONS";
+// When this value is passed as an allowed location detects the zone tensorflow
+// is running in and restricts to buckets in that region.
+constexpr char kDetectZoneSentinalValue[] = "auto";
 
 // TODO: DO NOT use a hardcoded path
 Status GetTmpFilename(string* filename) {
@@ -165,13 +179,13 @@ Status ParseGcsPath(StringPiece fname, bool empty_object_ok, string* bucket,
     return errors::InvalidArgument("GCS path doesn't start with 'gs://': ",
                                    fname);
   }
-  *bucket = std::string(bucketp);
+  *bucket = string(bucketp);
   if (bucket->empty() || *bucket == ".") {
     return errors::InvalidArgument("GCS path doesn't contain a bucket name: ",
                                    fname);
   }
   str_util::ConsumePrefix(&objectp, "/");
-  *object = std::string(objectp);
+  *object = string(objectp);
   if (!empty_object_ok && object->empty()) {
     return errors::InvalidArgument("GCS path doesn't contain an object name: ",
                                    fname);
@@ -210,7 +224,7 @@ std::set<string> AddAllSubpaths(const std::vector<string>& paths) {
   for (const string& path : paths) {
     StringPiece subpath = io::Dirname(path);
     while (!subpath.empty()) {
-      result.emplace(std::string(subpath));
+      result.emplace(string(subpath));
       subpath = io::Dirname(subpath);
     }
   }
@@ -357,7 +371,7 @@ class GcsWritableFile : public WritableFile {
 
   ~GcsWritableFile() override { Close().IgnoreError(); }
 
-  Status Append(const StringPiece& data) override {
+  Status Append(StringPiece data) override {
     TF_RETURN_IF_ERROR(CheckWritable());
     sync_needed_ = true;
     outfile_ << data;
@@ -603,15 +617,37 @@ bool StringPieceIdentity(StringPiece str, StringPiece* value) {
   return true;
 }
 
+/// \brief Utility function to split a comma delimited list of strings to an
+/// unordered set, lowercasing all values.
+bool SplitByCommaToLowercaseSet(StringPiece list,
+                                std::unordered_set<string>* set) {
+  std::vector<string> vector =
+      str_util::Split(tensorflow::str_util::Lowercase(list), ",");
+  *set = std::unordered_set<string>(vector.begin(), vector.end());
+  return true;
+}
+
+// \brief Convert Compute Engine zone to region
+string ZoneToRegion(string* zone) {
+  return zone->substr(0, zone->find_last_of('-'));
+}
+
 }  // namespace
 
-GcsFileSystem::GcsFileSystem()
-    : auth_provider_(new GoogleAuthProvider()),
-      http_request_factory_(new CurlHttpRequest::Factory()) {
+GcsFileSystem::GcsFileSystem() {
   uint64 value;
   size_t block_size = kDefaultBlockSize;
   size_t max_bytes = kDefaultMaxCacheSize;
   uint64 max_staleness = kDefaultMaxStaleness;
+
+  http_request_factory_ = std::make_shared<CurlHttpRequest::Factory>();
+  compute_engine_metadata_client_ =
+      std::make_shared<ComputeEngineMetadataClient>(http_request_factory_);
+  auth_provider_ = std::unique_ptr<AuthProvider>(
+      new GoogleAuthProvider(compute_engine_metadata_client_));
+  zone_provider_ = std::unique_ptr<ZoneProvider>(
+      new ComputeEngineZoneProvider(compute_engine_metadata_client_));
+
   // Apply the sys env override for the readahead buffer size if it's provided.
   if (GetEnvVar(kReadaheadBufferSize, strings::safe_strtou64, &value)) {
     block_size = value;
@@ -631,6 +667,9 @@ GcsFileSystem::GcsFileSystem()
     // Setting either to 0 disables the cache; set both for good measure.
     block_size = max_bytes = 0;
   }
+  VLOG(1) << "GCS cache max size = " << max_bytes << " ; "
+          << "block size = " << block_size << " ; "
+          << "max staleness = " << max_staleness;
   file_block_cache_ = MakeFileBlockCache(block_size, max_bytes, max_staleness);
   // Apply overrides for the stat cache max age and max entries, if provided.
   uint64 stat_cache_max_age = kStatCacheDefaultMaxAge;
@@ -658,6 +697,9 @@ GcsFileSystem::GcsFileSystem()
   matching_paths_cache_.reset(new ExpiringLRUCache<std::vector<string>>(
       matching_paths_cache_max_age, matching_paths_cache_max_entries));
 
+  bucket_location_cache_.reset(new ExpiringLRUCache<string>(
+      kCacheNeverExpire, kBucketLocationCacheMaxEntries));
+
   int64 resolve_frequency_secs;
   if (GetEnvVar(kResolveCacheSecs, strings::safe_strto64,
                 &resolve_frequency_secs)) {
@@ -681,7 +723,7 @@ GcsFileSystem::GcsFileSystem()
 
       if (!header_name.empty() && !header_value.empty()) {
         additional_header_.reset(new std::pair<const string, const string>(
-            std::string(header_name), std::string(header_value)));
+            string(header_name), string(header_value)));
 
         VLOG(1) << "GCS additional header ENABLED. "
                 << "Name: " << additional_header_->first << ", "
@@ -737,24 +779,31 @@ GcsFileSystem::GcsFileSystem()
     }
     throttle_.SetConfig(config);
   }
+
+  GetEnvVar(kAllowedBucketLocations, SplitByCommaToLowercaseSet,
+            &allowed_locations_);
 }
 
 GcsFileSystem::GcsFileSystem(
     std::unique_ptr<AuthProvider> auth_provider,
     std::unique_ptr<HttpRequest::Factory> http_request_factory,
-    size_t block_size, size_t max_bytes, uint64 max_staleness,
-    uint64 stat_cache_max_age, size_t stat_cache_max_entries,
-    uint64 matching_paths_cache_max_age,
+    std::unique_ptr<ZoneProvider> zone_provider, size_t block_size,
+    size_t max_bytes, uint64 max_staleness, uint64 stat_cache_max_age,
+    size_t stat_cache_max_entries, uint64 matching_paths_cache_max_age,
     size_t matching_paths_cache_max_entries, int64 initial_retry_delay_usec,
-    TimeoutConfig timeouts,
+    TimeoutConfig timeouts, const std::unordered_set<string>& allowed_locations,
     std::pair<const string, const string>* additional_header)
     : auth_provider_(std::move(auth_provider)),
       http_request_factory_(std::move(http_request_factory)),
+      zone_provider_(std::move(zone_provider)),
       file_block_cache_(
           MakeFileBlockCache(block_size, max_bytes, max_staleness)),
       stat_cache_(new StatCache(stat_cache_max_age, stat_cache_max_entries)),
       matching_paths_cache_(new MatchingPathsCache(
           matching_paths_cache_max_age, matching_paths_cache_max_entries)),
+      bucket_location_cache_(new BucketLocationCache(
+          kCacheNeverExpire, kBucketLocationCacheMaxEntries)),
+      allowed_locations_(allowed_locations),
       timeouts_(timeouts),
       initial_retry_delay_usec_(initial_retry_delay_usec),
       additional_header_(additional_header) {}
@@ -763,6 +812,7 @@ Status GcsFileSystem::NewRandomAccessFile(
     const string& fname, std::unique_ptr<RandomAccessFile>* result) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
+  TF_RETURN_IF_ERROR(CheckBucketLocationConstraint(bucket));
   result->reset(new GcsRandomAccessFile(fname, [this, bucket, object](
                                                    const string& fname,
                                                    uint64 offset, size_t n,
@@ -1064,11 +1114,7 @@ Status GcsFileSystem::StatForObject(const string& fname, const string& bucket,
 }
 
 Status GcsFileSystem::BucketExists(const string& bucket, bool* result) {
-  std::unique_ptr<HttpRequest> request;
-  TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
-  request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket));
-  request->SetTimeouts(timeouts_.connect, timeouts_.idle, timeouts_.metadata);
-  const Status status = request->Send();
+  const Status status = GetBucketMetadata(bucket, nullptr);
   switch (status.code()) {
     case errors::Code::OK:
       *result = true;
@@ -1079,6 +1125,65 @@ Status GcsFileSystem::BucketExists(const string& bucket, bool* result) {
     default:
       return status;
   }
+}
+
+Status GcsFileSystem::CheckBucketLocationConstraint(const string& bucket) {
+  if (allowed_locations_.empty()) {
+    return Status::OK();
+  }
+
+  // Avoid calling external API's in the constructor
+  if (allowed_locations_.erase(kDetectZoneSentinalValue) == 1) {
+    string zone;
+    TF_RETURN_IF_ERROR(zone_provider_->GetZone(&zone));
+    allowed_locations_.insert(ZoneToRegion(&zone));
+  }
+
+  string location;
+  TF_RETURN_IF_ERROR(GetBucketLocation(bucket, &location));
+  if (allowed_locations_.find(location) != allowed_locations_.end()) {
+    return Status::OK();
+  }
+
+  return errors::FailedPrecondition(strings::Printf(
+      "Bucket '%s' is in '%s' location, allowed locations are: (%s).",
+      bucket.c_str(), location.c_str(),
+      str_util::Join(allowed_locations_, ", ").c_str()));
+}
+
+Status GcsFileSystem::GetBucketLocation(const string& bucket,
+                                        string* location) {
+  auto compute_func = [this](const string& bucket, string* location) {
+    std::vector<char> result_buffer;
+    Status status = GetBucketMetadata(bucket, &result_buffer);
+    Json::Value result;
+    TF_RETURN_IF_ERROR(ParseJson(result_buffer, &result));
+    string bucket_location;
+    TF_RETURN_IF_ERROR(
+        GetStringValue(result, kBucketMetadataLocationKey, &bucket_location));
+    // Lowercase the GCS location to be case insensitive for allowed locations.
+    *location = tensorflow::str_util::Lowercase(bucket_location);
+    return Status::OK();
+  };
+
+  TF_RETURN_IF_ERROR(
+      bucket_location_cache_->LookupOrCompute(bucket, location, compute_func));
+
+  return Status::OK();
+}
+
+Status GcsFileSystem::GetBucketMetadata(const string& bucket,
+                                        std::vector<char>* result_buffer) {
+  std::unique_ptr<HttpRequest> request;
+  TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
+  request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket));
+
+  if (result_buffer != nullptr) {
+    request->SetResultBuffer(result_buffer);
+  }
+
+  request->SetTimeouts(timeouts_.connect, timeouts_.idle, timeouts_.metadata);
+  return request->Send();
 }
 
 Status GcsFileSystem::FolderExists(const string& dirname, bool* result) {
@@ -1124,7 +1229,7 @@ Status GcsFileSystem::GetMatchingPaths(const string& pattern,
         // Find the fixed prefix by looking for the first wildcard.
         const string& fixed_prefix =
             pattern.substr(0, pattern.find_first_of("*?[\\"));
-        const string& dir = std::string(io::Dirname(fixed_prefix));
+        const string dir(io::Dirname(fixed_prefix));
         if (dir.empty()) {
           return errors::InvalidArgument(
               "A GCS pattern doesn't have a bucket name: ", pattern);
@@ -1221,7 +1326,7 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
               " doesn't match the prefix ", object_prefix));
         }
         if (!relative_path.empty() || include_self_directory_marker) {
-          result->emplace_back(std::string(relative_path));
+          result->emplace_back(relative_path);
         }
         if (++retrieved_results >= max_results) {
           return Status::OK();
@@ -1249,7 +1354,7 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
               "Unexpected response: the returned folder name ", prefix_str,
               " doesn't match the prefix ", object_prefix);
         }
-        result->emplace_back(std::string(relative_path));
+        result->emplace_back(relative_path);
         if (++retrieved_results >= max_results) {
           return Status::OK();
         }
@@ -1506,6 +1611,7 @@ void GcsFileSystem::FlushCaches() {
   file_block_cache_->Flush();
   stat_cache_->Clear();
   matching_paths_cache_->Clear();
+  bucket_location_cache_->Clear();
 }
 
 void GcsFileSystem::SetStats(GcsStatsInterface* stats) {
@@ -1557,6 +1663,7 @@ Status GcsFileSystem::CreateHttpRequest(std::unique_ptr<HttpRequest>* request) {
   return Status::OK();
 }
 
-REGISTER_FILE_SYSTEM("gs", RetryingGcsFileSystem);
-
 }  // namespace tensorflow
+
+// Initialize gcs_file_system
+REGISTER_FILE_SYSTEM("gs", ::tensorflow::RetryingGcsFileSystem);

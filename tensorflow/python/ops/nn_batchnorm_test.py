@@ -129,7 +129,7 @@ class BatchNormalizationTest(test.TestCase):
     v_val = np.random.random_sample(param_shape).astype(np.float64)
     beta_val = np.random.random_sample(param_shape).astype(np.float64)
     gamma_val = np.random.random_sample(param_shape).astype(np.float64)
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(x_val, name="x")
       m = constant_op.constant(m_val, name="m")
       v = constant_op.constant(v_val, name="v")
@@ -455,7 +455,7 @@ class MomentsTest(test.TestCase):
     return nn_impl.moments(x, axes, keep_dims=keep_dims)
 
   def RunMomentTestWithDynamicShape(self, shape, axes, keep_dims, dtype):
-    with self.test_session():
+    with self.cached_session():
       # shape = [batch, width, height, depth]
       assert len(shape) == 4
 
@@ -482,7 +482,7 @@ class MomentsTest(test.TestCase):
           expected_variance, var.eval(feed_dict={x: x_numpy}))
 
   def RunMomentTest(self, shape, axes, keep_dims, dtype):
-    with self.test_session():
+    with self.cached_session():
       # shape = [batch, width, height, depth]
       assert len(shape) == 4
 
@@ -547,7 +547,7 @@ class MomentsTest(test.TestCase):
             dtype=dtype)
 
   def _testGlobalGradient(self, from_y="mean"):
-    with self.test_session():
+    with self.cached_session():
       x_shape = [3, 5, 4, 2]
       x_val = np.random.random_sample(x_shape).astype(np.float64)
       x = constant_op.constant(x_val)
@@ -644,7 +644,7 @@ class WeightedMomentsTest(MomentsTest):
                             keep_dims,
                             dtype,
                             dynshapes=False):
-    with self.test_session() as s:
+    with self.cached_session() as s:
       x_numpy = np.random.normal(size=shape).astype(np.float32)
       weights_numpy = np.absolute(  # weights must be positive
           np.random.normal(

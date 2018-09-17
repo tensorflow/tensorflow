@@ -297,11 +297,16 @@ class LayoutAssignment : public HloPassInterface {
       ComputationLayout* entry_computation_layout,
       ChannelLayoutConstraints* channel_constraints = nullptr);
   ~LayoutAssignment() override {}
-  tensorflow::StringPiece name() const override { return "layout-assignment"; }
+  absl::string_view name() const override { return "layout-assignment"; }
 
   // Assign layouts to the given module. Returns whether the module was changed
   // (any layouts were changed).
   StatusOr<bool> Run(HloModule* module) override;
+
+  // Returns true if the instruction requires that operands with the same rank
+  // as the output have to have the same layout as the output.
+  virtual bool InstructionRequiresInputLayoutEqualToOutputLayout(
+      const HloInstruction* instruction);
 
  protected:
   // These methods, invoked by PropagateConstraints, propagate a layout
@@ -488,6 +493,9 @@ class LayoutAssignment : public HloPassInterface {
     }
   }
 
+  // Adds constraints related to host Send/Recv instructions.
+  Status BuildHostChannelConstraints(HloComputation* computation);
+
   // Map containing the layouts of all computations assigned so
   // far. Computations are handled in a topological sort where computations are
   // handled before their caller instructions so the layouts of caller
@@ -506,6 +514,10 @@ class LayoutAssignment : public HloPassInterface {
   // case we have to undo operations due to the multiple passes over the
   // computations/instructions.
   ChannelLayoutConstraints channel_constraints_;
+
+  // Layout constraints for send/recv instructions which communicate with the
+  // host.
+  ChannelLayoutConstraints host_channel_constraints_;
 
   // The set of HLO instructions which lacked any layout constraint, thus
   // receiving propagated default layouts.

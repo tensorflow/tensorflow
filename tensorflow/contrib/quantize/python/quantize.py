@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import re
-from tensorflow.contrib import graph_editor
 from tensorflow.contrib.quantize.python import common
 from tensorflow.contrib.quantize.python import graph_matcher
 from tensorflow.contrib.quantize.python import input_to_ops
@@ -194,9 +193,11 @@ def _FindLayersToQuantize(graph):
                 /
          conv|fc
             |
+      [batch_to_space_nd]
+            |
     [post_conv_correction]
             |
-     biasadd|folded_bias
+     [biasadd|folded_bias]
             |
          [bypass]
             |
@@ -247,9 +248,31 @@ def _FindLayersToQuantize(graph):
       ],
       ordered_inputs=False)
 
+  # For atrous convolutions a BatchToSpaceND will occur after the depthwise
+  # convolution.
+  batch_to_space_pattern = graph_matcher.OpTypePattern(
+      'BatchToSpaceND',
+      inputs=[
+          layer_pattern,
+          graph_matcher.OpTypePattern('*'),
+          graph_matcher.OpTypePattern('*')
+      ])
+
+  layer_output_pattern = graph_matcher.OneofPattern(
+      [batch_to_space_pattern, layer_pattern])
+
+  # For separable convolutions, we are looking for a conv, followed by a conv
+  # with no activations between the two.
+  sep_conv_pattern = graph_matcher.OpTypePattern(
+      '|'.join(_QUANTIZABLE_TYPES),
+      inputs=[
+          graph_matcher.OneofPattern([layer_output_pattern]),
+          graph_matcher.OpTypePattern('*')
+      ],
+      ordered_inputs=False)
   folded_bias_mul_pattern = graph_matcher.OpTypePattern(
       'Mul',
-      inputs=[graph_matcher.OpTypePattern('*'), layer_pattern],
+      inputs=[graph_matcher.OpTypePattern('*'), layer_output_pattern],
       ordered_inputs=False)
   post_layer_op_correction_pattern = graph_matcher.OpTypePattern(
       'Add',
@@ -264,29 +287,39 @@ def _FindLayersToQuantize(graph):
       ],
       ordered_inputs=False)
 
+  # batch_norms with forced updates have an Identity operation at the end.
+  # TODO(suharshs): Find a way to easily skip extra Identity operations. The
+  # current issue is that doing so can often match patterns across many layers
+  # incorrectly.
+  batch_norm_identity = graph_matcher.OpTypePattern(
+      'Identity', inputs=[folded_bias_add_pattern])
+
   bias_add_pattern = graph_matcher.OpTypePattern(
-      'Add|BiasAdd', inputs=[layer_pattern, '*'], ordered_inputs=False)
+      'Add|BiasAdd', inputs=[layer_output_pattern, '*'], ordered_inputs=False)
 
   # The bias can come from the bias add or the folded bias add.
   bypass_pattern = graph_matcher.OpTypePattern(
       'Add',
       inputs=[
           graph_matcher.OneofPattern(
-              [bias_add_pattern, folded_bias_add_pattern]), '*'
+              [bias_add_pattern, folded_bias_add_pattern, batch_norm_identity]),
+          '*'
       ],
       ordered_inputs=False)
 
   # The input to the activation can come from bias add, fold bias add, the
   # bypasses.
   # TODO(suharshs): We should ideally skip Identity operations instead of
-  # treating them as an activation.
+  # treating them as activations.
   activation_pattern = graph_matcher.OpTypePattern(
       '|'.join(_ACTIVATION_TYPES) + '|Identity',
       inputs=[
           graph_matcher.OneofPattern([
               bias_add_pattern,
               folded_bias_add_pattern,
+              batch_norm_identity,
               bypass_pattern,
+              layer_pattern,
           ])
       ])
 
@@ -370,15 +403,18 @@ def _FindLayersToQuantize(graph):
       layer_matches.append(
           _LayerMatch(layer_op, weight_tensor, activation_op, None, None, None))
 
+  # Look for separable convolutions here
+  sep_conv_matcher = graph_matcher.GraphMatcher(sep_conv_pattern)
+  for match_result in sep_conv_matcher.match_graph(graph):
+    layer_op = match_result.get_op(layer_pattern)
+    weight_tensor = match_result.get_tensor(weight_identity_pattern)
+    activation_op = match_result.get_op(layer_pattern)
+    if layer_op not in matched_layer_set:
+      matched_layer_set.add(layer_op)
+      layer_matches.append(
+          _LayerMatch(layer_op, weight_tensor, activation_op, None, None, None))
+
   return layer_matches
-
-
-def _HasPostActivationBypass(activation_op):
-  for activation_tensor in activation_op.outputs:
-    for output_op in activation_tensor.consumers():
-      if output_op.type == 'Add':
-        return True
-  return False
 
 
 class _LayerMatch(object):
@@ -416,6 +452,24 @@ class _LayerMatch(object):
   @property
   def bias_add_op(self):
     return self._bias_add_op
+
+
+def _FollowedByFakeQuant(tensor):
+  """Returns True if the tensor is followed by a FakeQuant."""
+  fake_quant_ops = set([
+      'FakeQuantWithMinMaxVars', 'FakeQuantWithMinMaxArgs',
+      'FakeQuantWithMinMaxVarsPerChannel'
+  ])
+  pass_through_ops = set(['Reshape', 'Identity'])
+  consumers = tensor.consumers()
+  while consumers:
+    c = consumers.pop()
+    if c.type in fake_quant_ops:
+      return True
+    elif c.type in pass_through_ops:
+      for output in c.outputs:
+        consumers.extend(output.consumers())
+  return False
 
 
 def _InsertQuantOp(context,
@@ -498,11 +552,7 @@ def _InsertQuantOp(context,
   # Prevent ops from being quantized multiple times. Bypass ops can sometimes
   # overlap between multiple matches, so we need to ensure that we don't
   # add duplicate FakeQuant operations.
-  fake_quant_ops = set([
-      'FakeQuantWithMinMaxVars',
-      'FakeQuantWithMinMaxArgs'
-  ])
-  if fake_quant_ops.intersection(set([c.type for c in inputs.consumers()])):
+  if _FollowedByFakeQuant(inputs):
     return
 
   if moving_avg:
@@ -541,8 +591,8 @@ def _InsertQuantOp(context,
         name=name_prefix + '/delayed_quant')
 
   if consumers:
-    tensors_modified_count = graph_editor.reroute_ts(
-        [quant], [inputs], can_modify=consumers)
+    tensors_modified_count = common.RerouteTensor(
+        quant, inputs, can_modify=consumers)
     # Some operations can have multiple output tensors going to the same
     # consumer. Since consumers is a set, we need to ensure that
     # tensors_modified_count is greater than or equal to the length of the set

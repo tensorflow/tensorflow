@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+ * Copyright 2018 The TensorFlow Authors. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,9 +50,10 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
   // Configuration values for the prepackaged SSD model.
   private static final int TF_OD_API_INPUT_SIZE = 300;
-  private static final String TF_OD_API_MODEL_FILE = "mobilenet_ssd.tflite";
+  private static final boolean TF_OD_API_IS_QUANTIZED = true;
+  private static final String TF_OD_API_MODEL_FILE = "detect.tflite";
   private static final String TF_OD_API_LABELS_FILE = "file:///android_asset/coco_labels_list.txt";
-
+  
   // Which detection model to use: by default uses Tensorflow Object Detection API frozen
   // checkpoints.
   private enum DetectorMode {
@@ -107,7 +108,11 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     try {
       detector =
           TFLiteObjectDetectionAPIModel.create(
-              getAssets(), TF_OD_API_MODEL_FILE, TF_OD_API_LABELS_FILE, TF_OD_API_INPUT_SIZE);
+              getAssets(),
+              TF_OD_API_MODEL_FILE,
+              TF_OD_API_LABELS_FILE,
+              TF_OD_API_INPUT_SIZE,
+              TF_OD_API_IS_QUANTIZED);
       cropSize = TF_OD_API_INPUT_SIZE;
     } catch (final IOException e) {
       LOGGER.e("Exception initializing classifier!", e);

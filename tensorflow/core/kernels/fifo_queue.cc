@@ -366,4 +366,19 @@ Status FIFOQueue::MatchesNodeDef(const NodeDef& node_def) {
   return Status::OK();
 }
 
+// Defines a FIFOQueueOp, which produces a Queue (specifically, one
+// backed by FIFOQueue) that persists across different graph
+// executions, and sessions. Running this op produces a single-element
+// tensor of handles to Queues in the corresponding device.
+FIFOQueueOp::FIFOQueueOp(OpKernelConstruction* context)
+    : TypedQueueOp(context) {
+  OP_REQUIRES_OK(context, context->GetAttr("shapes", &component_shapes_));
+}
+
+Status FIFOQueueOp::CreateResource(QueueInterface** ret) {
+  FIFOQueue* queue = new FIFOQueue(capacity_, component_types_,
+                                   component_shapes_, cinfo_.name());
+  return CreateTypedQueue(queue, ret);
+}
+
 }  // namespace tensorflow

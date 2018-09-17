@@ -50,7 +50,7 @@ class ScanDatasetTest(test.TestCase):
         start, make_scan_fn(step)).take(take).make_initializable_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
       for start_val, step_val, take_val in [(0, 1, 10), (0, 1, 0), (10, 1, 10),
                                             (10, 2, 10), (10, -1, 10),
@@ -100,7 +100,7 @@ class ScanDatasetTest(test.TestCase):
         make_scan_fn(step)).take(take).make_initializable_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
       for start_val, step_val, take_val in [(0, 1, 10), (0, 1, 0), (10, 1, 10),
                                             (10, 2, 10), (10, -1, 10),
@@ -133,7 +133,7 @@ class ScanDatasetTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for i in range(5):
         (longer_vector_val, larger_rank_val), _ = sess.run(next_element)
         self.assertAllEqual([0] * (2**i), longer_vector_val)

@@ -11,8 +11,10 @@ Table of contents:
 
 *   [Command-line tools](#tools)
     *   [Converting models prior to TensorFlow 1.9.](#pre-tensorflow-1.9)
-*   [Convert a TensorFlow GraphDef](#graphdef)
-*   [Convert a TensorFlow SavedModel](#savedmodel)
+*   [Basic examples](#basic)
+    *   [Convert a TensorFlow GraphDef](#graphdef)
+    *   [Convert a TensorFlow SavedModel](#savedmodel)
+    *   [Convert a tf.keras model](#keras)
 *   [Quantization](#quantization)
     *   [Convert a TensorFlow GraphDef for quantized inference](#graphdef-quant)
     *   [Use "dummy-quantization" to try out quantized inference on a float
@@ -22,8 +24,8 @@ Table of contents:
     *   [Multiple output arrays](#multiple-output-arrays)
     *   [Specifying subgraphs](#specifying-subgraphs)
 *   [Graph visualizations](#graph-visualizations)
-    *   [Using --output_format=GRAPHVIZ_DOT](#using-output-formatgraphviz-dot)
-    *   [Using --dump_graphviz](#using-dump-graphviz)
+    *   [Using --output_format=GRAPHVIZ_DOT](#using-output-format-graphviz-dot)
+    *   [Using --dump_graphviz_dir](#using-dump-graphviz-dir)
     *   [Graph "video" logging](#graph-video-logging)
     *   [Legend for the graph visualizations](#graphviz-legend)
 
@@ -34,7 +36,7 @@ There are two approaches to running TOCO via command line.
 *   `tflite_convert`: Starting from TensorFlow 1.9, the command-line tool
     `tflite_convert` will be installed as part of the Python package. All of the
     examples below use `tflite_convert` for simplicity.
-    *   Example: `tflite --output_file=...`
+    *   Example: `tflite_convert --output_file=...`
 *   `bazel`: In order to run the latest version of TOCO, [clone the TensorFlow
     repository](https://www.tensorflow.org/install/install_sources#clone_the_tensorflow_repository)
     and use `bazel`. This is the recommended approach for converting models that
@@ -51,7 +53,12 @@ API](python_api.md#pre-tensorflow-1.9). If a command line tool is desired, the
 Terminal for additional details on the command-line flags available. There were
 no command line tools in TensorFlow 1.8.
 
-## Convert a TensorFlow GraphDef <a name="graphdef"></a>
+## Basic examples <a name="basic"></a>
+
+The following section shows examples of how to convert a basic float-point model
+from each of the supported data formats into a TensorFlow Lite FlatBuffers.
+
+### Convert a TensorFlow GraphDef <a name="graphdef"></a>
 
 The follow example converts a basic TensorFlow GraphDef (frozen by
 [freeze_graph.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/tools/freeze_graph.py))
@@ -70,7 +77,7 @@ tflite_convert \
 
 The value for `input_shapes` is automatically determined whenever possible.
 
-## Convert a TensorFlow SavedModel <a name="savedmodel"></a>
+### Convert a TensorFlow SavedModel <a name="savedmodel"></a>
 
 The follow example converts a basic TensorFlow SavedModel into a Tensorflow Lite
 FlatBuffer to perform floating-point inference.
@@ -94,6 +101,17 @@ specified by `--saved_model_tag_set`. As with the GraphDef, the value for
 There is currently no support for MetaGraphDefs without a SignatureDef or for
 MetaGraphDefs that use the [`assets/`
 directory](https://www.tensorflow.org/guide/saved_model#structure_of_a_savedmodel_directory).
+
+### Convert a tf.Keras model <a name="keras"></a>
+
+The following example converts a `tf.keras` model into a TensorFlow Lite
+Flatbuffer. The `tf.keras` file must contain both the model and the weights.
+
+```
+tflite_convert \
+  --output_file=/tmp/foo.tflite \
+  --keras_model_file=/tmp/keras_model.h5
+```
 
 ## Quantization
 
@@ -229,17 +247,17 @@ function tends to get fused).
 
 ## Graph visualizations
 
-TOCO can export a graph to the GraphViz Dot format for easy visualization via
+TOCO can export a graph to the Graphviz Dot format for easy visualization via
 either the `--output_format` flag or the `--dump_graphviz_dir` flag. The
 subsections below outline the use cases for each.
 
-### Using `--output_format=GRAPHVIZ_DOT`
+### Using `--output_format=GRAPHVIZ_DOT` <a name="using-output-format-graphviz-dot"></a>
 
-The first way to get a graphviz rendering is to pass `GRAPHVIZ_DOT` into
+The first way to get a Graphviz rendering is to pass `GRAPHVIZ_DOT` into
 `--output_format`. This results in a plausible visualization of the graph. This
-reduces the requirements that exist during conversion between other input and
-output formats. This may be useful if conversion from TENSORFLOW_GRAPHDEF to
-TFLITE is failing.
+reduces the requirements that exist during conversion from a TensorFlow GraphDef
+to a TensorFlow Lite FlatBuffer. This may be useful if the conversion to TFLite
+is failing.
 
 ```
 curl https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_0.50_128_frozen.tgz \
@@ -269,10 +287,10 @@ google-chrome /tmp/foo.dot.pdf
 
 Example PDF files are viewable online in the next section.
 
-### Using `--dump_graphviz`
+### Using `--dump_graphviz_dir`
 
-The second way to get a graphviz rendering is to pass the `--dump_graphviz_dir`
-flag, specifying a destination directory to dump GraphViz rendering to. Unlike
+The second way to get a Graphviz rendering is to pass the `--dump_graphviz_dir`
+flag, specifying a destination directory to dump Graphviz rendering to. Unlike
 the previous approach, this one retains the original output format. This
 provides a visualization of the actual graph resulting from a specific
 conversion process.

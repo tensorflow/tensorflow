@@ -64,7 +64,14 @@ bool UnfuseActivationFunctions::Run(Model* model, std::size_t op_index) {
   const string& tmp_array_name =
       AvailableArrayName(*model, op->outputs[0] + "_unfused");
   CHECK(!model->HasArray(tmp_array_name));
-  model->GetOrCreateArray(tmp_array_name);
+
+  const auto& output_array = model->GetArray(op->outputs[0]);
+  auto& tmp_array = model->GetOrCreateArray(tmp_array_name);
+  if (output_array.quantization_params) {
+    tmp_array.GetOrCreateQuantizationParams() =
+        output_array.GetQuantizationParams();
+  }
+
   ac_op->inputs = {tmp_array_name};
   op->outputs = {tmp_array_name};
   return true;

@@ -42,4 +42,4 @@ class TRTResourceManager {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CONTRIB_TENSORRT_RESOURCE_TRT_RESOURCE_MANAGER_H_
+#endif  // TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_RESOURCE_MANAGER_H_

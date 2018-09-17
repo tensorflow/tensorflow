@@ -17,8 +17,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 
 namespace tensorflow {
-
-namespace dataset {
+namespace data {
 
 Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const std::vector<Tensor>& input_element,
@@ -45,6 +44,5 @@ Status MakeIteratorFromInputElement(
       ctx, strings::StrCat(prefix, "[", thread_index, "]"), out_iterator);
 }
 
-}  // namespace dataset
-
+}  // namespace data
 }  // namespace tensorflow

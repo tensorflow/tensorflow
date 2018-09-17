@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "igammac"
-    deprecation_message: "tf.igammac is deprecated, please use tf.math.igammac instead."
+    deprecated: true
   }
 }

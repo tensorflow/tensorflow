@@ -28,8 +28,9 @@ namespace tflite {
 // Given the min and max values of a float array, return
 // reasonable quantization parameters to use for this array.
 template <typename T>
-QuantizationParams ChooseQuantizationParams(double rmin, double rmax) {
-  const T qmin = std::numeric_limits<T>::min();
+QuantizationParams ChooseQuantizationParams(double rmin, double rmax,
+                                            bool narrow_range) {
+  const T qmin = std::numeric_limits<T>::min() + (narrow_range ? 1 : 0);
   const T qmax = std::numeric_limits<T>::max();
   const double qmin_double = qmin;
   const double qmax_double = qmax;
@@ -95,6 +96,11 @@ QuantizationParams ChooseQuantizationParams(double rmin, double rmax) {
   quantization_params.zero_point = nudged_zero_point;
   quantization_params.scale = scale;
   return quantization_params;
+}
+
+template <typename T>
+QuantizationParams ChooseQuantizationParams(double rmin, double rmax) {
+  return ChooseQuantizationParams<T>(rmin, rmax, false);
 }
 
 // Converts a floating-point number to an integer. For all inputs x where
@@ -189,6 +195,44 @@ void QuantizeMultiplierGreaterThanOne(double double_multiplier,
 void QuantizeMultiplier(double double_multiplier, int32_t* quantized_multiplier,
                         int* shift);
 
+// Splits a double input value into a returned fraction, and a shift value from
+// the exponent, using only bitwise and integer operations to support
+// microcontrollers and other environments without floating-point support.
+//
+// This is designed to be a replacement for how std::frexp() is used within the
+// QuantizeMultiplier() function, and so has a different signature than the
+// standard version, returning a 64-bit integer rather than a double. This
+// result has a maximum value of 1<<31, with the fraction expressed as a
+// proportion of that maximum.
+//
+// std::frexp() returns NaNs and infinities unmodified, but since we're
+// returning integers that can't represent those values, instead we return
+// a shift of std::numeric_limits<int>::max() for all bad numbers, with an int64
+// result of 0 for NaNs, std:numeric_limits<int64_t>::max() for +INFINITY, and
+// std::numeric_limits<int64_t>::min() for -INFINITY. Denormalized inputs will
+// result in return values that end up truncating some bits at the end,
+// reflecting the loss of precision inherent in denormalization.
+int64_t IntegerFrExp(double input, int* shift);
+
+// Converts an integer fraction in the format produced by IntegerFrExp (where
+// 0x40000000 is 1.0) and an exponent shift (between -1022 and +1022) into an
+// IEEE binary64 double format result. The implementation uses only integer and
+// bitwise operators, so no floating point hardware support or emulation is
+// needed. This is here so quantized operations can run non-time-critical
+// preparation calculations on microcontrollers and other platforms without
+// float support.
+double DoubleFromFractionAndShift(int64_t fraction, int shift);
+
+// Performs a multiplication of two numbers in double format, using only integer
+// and bitwise instructions. This is aimed at supporting housekeeping functions
+// for quantized operations on microcontrollers without floating-point hardware.
+double IntegerDoubleMultiply(double a, double b);
+
+// Returns -1 if a is less than b, 0 if a and b are equal, and +1 if a is
+// greater than b. It is implemented using only integer and logical instructions
+// so that it can be easily run on microcontrollers for quantized operations.
+int IntegerDoubleCompare(double a, double b);
+
 // This first creates a multiplier in a double equivalent of
 // Q(input_integer_bits).(31-input_integer_bits) representation, with extra
 // precision in the double's fractional bits.  It then splits the result into
@@ -216,7 +260,15 @@ int CalculateInputRadius(int input_integer_bits, int input_left_shift);
 // Outputs nudged_min, nudged_max, nudged_scale.
 void NudgeQuantizationRange(const float min, const float max,
                             const int quant_min, const int quant_max,
-                            float* nudged_min, float* nudged_max, float* scale);
+                            float* nudged_min, float* nudged_max,
+                            float* nudged_scale);
+
+// Fake quantizes (quantizes and dequantizes) input_data using the scale,
+// nudged_min, and nudged_max from NudgeQuantizationRange. This matches the code
+// in TensorFlow's FakeQuantizeWithMinMaxVarsFunctor.
+void FakeQuantizeArray(const float nudged_scale, const float nudged_min,
+                       const float nudged_max, const float* input_data,
+                       float* output_data, const float size);
 
 // If x is approximately a power of two (with any positive or negative
 // exponent), stores that exponent (i.e. log2(x)) in *log2_result, otherwise
