@@ -59,6 +59,8 @@ using TestTypes = ::testing::Types<float>;
 using TestTypes = ::testing::Types<float, Eigen::half>;
 #endif
 
+using TestTypesNoFP16 = ::testing::Types<float>;
+
 template <typename T>
 class ForwardPassConvolution_3x3x256_256_OutputZ_Iota : public ConvolutionTest {
  public:
@@ -520,7 +522,7 @@ class Convolve2D_1x3x3x5_3x3x5x3_Valid : public ConvolutionTest {
   }
 };
 
-TYPED_TEST_CASE(Convolve2D_1x3x3x5_3x3x5x3_Valid, TestTypes);
+TYPED_TEST_CASE(Convolve2D_1x3x3x5_3x3x5x3_Valid, TestTypesNoFP16);
 TYPED_TEST(Convolve2D_1x3x3x5_3x3x5x3_Valid, Types) { this->RunTest(); }
 
 template <typename T>
@@ -584,7 +586,7 @@ class Convolve2D_1x3x3x5_3x3x1x15_Depthwise_Valid : public ConvolutionTest {
   }
 };
 
-TYPED_TEST_CASE(Convolve2D_1x3x3x5_3x3x1x15_Depthwise_Valid, TestTypes);
+TYPED_TEST_CASE(Convolve2D_1x3x3x5_3x3x1x15_Depthwise_Valid, TestTypesNoFP16);
 TYPED_TEST(Convolve2D_1x3x3x5_3x3x1x15_Depthwise_Valid, Types) {
   this->RunTest();
 }
@@ -649,7 +651,7 @@ class Convolve2D_1x2x2x6_2x2x1x12_Grouped_Valid : public ConvolutionTest {
   }
 };
 
-TYPED_TEST_CASE(Convolve2D_1x2x2x6_2x2x1x12_Grouped_Valid, TestTypes);
+TYPED_TEST_CASE(Convolve2D_1x2x2x6_2x2x1x12_Grouped_Valid, TestTypesNoFP16);
 TYPED_TEST(Convolve2D_1x2x2x6_2x2x1x12_Grouped_Valid, Types) {
   this->RunTest();
 }
